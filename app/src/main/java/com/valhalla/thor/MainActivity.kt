@@ -2,7 +2,6 @@ package com.valhalla.thor
 
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -23,7 +22,7 @@ import com.valhalla.thor.model.UserAppInfo
 import com.valhalla.thor.model.copyTo
 import com.valhalla.thor.ui.screens.AppListScreen
 import com.valhalla.thor.ui.theme.ThorTheme
-import com.valhalla.thor.ui.widgets.AppAction
+import com.valhalla.thor.ui.widgets.AppClickAction
 import kotlinx.coroutines.delay
 import java.io.File
 
@@ -68,10 +67,10 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.padding(innerPadding),
                         onAppAction = {
                             when (it) {
-                                AppAction.Reinstall ->{
+                                AppClickAction.Reinstall ->{
                                     //startActivity(Intent().setClass(this, ScriptRunner::class.java))
                                 }
-                                is AppAction.Launch -> {
+                                is AppClickAction.Launch -> {
                                     it.appInfo.packageName?.let { appPackage ->
                                         this.packageManager.getLaunchIntentForPackage(appPackage)?.let {
                                             startActivity(it)
@@ -80,7 +79,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 }
-                                is AppAction.Share -> {
+                                is AppClickAction.Share -> {
                                     // Share app
                                     it.appInfo.publicSourceDir?.let { sourcePath ->
                                         val sourceDir = File(sourcePath)
@@ -113,7 +112,11 @@ class MainActivity : ComponentActivity() {
                                     }
 
                                 }
-                                is AppAction.Uninstall -> {
+                                is AppClickAction.Uninstall -> {
+                                    if(it.appInfo.isSystem){
+                                        Toast.makeText(this, "Cannot uninstall system app", Toast.LENGTH_SHORT).show()
+                                        return@AppListScreen
+                                    }
                                     val appPackage = it.appInfo.packageName
                                     val intent = Intent(Intent.ACTION_DELETE)
                                     intent.data = "package:${appPackage}".toUri()

@@ -9,12 +9,6 @@ import android.os.Build
 @Suppress("DEPRECATION")
 class UserAppInfo(private val context: Context) {
 
-    /*val allApps: MutableList<UserApps> = mutableListOf()
-    init {
-        allApps.addAll(getUserApps())
-        allApps.addAll(getSystemApps())
-    }*/
-
     @SuppressLint("QueryPermissionsNeeded")
     fun getUserApps(): List<AppInfo> {
         val res = ArrayList<AppInfo>()

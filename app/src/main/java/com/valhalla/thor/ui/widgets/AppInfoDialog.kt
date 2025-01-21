@@ -1,20 +1,16 @@
 package com.valhalla.thor.ui.widgets
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FloatingActionButtonDefaults
-import androidx.compose.material3.FloatingToolbarColors
 import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
@@ -22,25 +18,28 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.ui.screens.getAppIcon
 
-sealed interface AppAction {
-    data class Launch(val appInfo: AppInfo) : AppAction
-    data class Share(val appInfo: AppInfo) : AppAction
-    data class Uninstall(val appInfo: AppInfo) : AppAction
-    data object Reinstall: AppAction
+sealed interface AppClickAction {
+    data class Launch(val appInfo: AppInfo) : AppClickAction
+    data class Share(val appInfo: AppInfo) : AppClickAction
+    data class Uninstall(val appInfo: AppInfo) : AppClickAction
+    data object Reinstall : AppClickAction
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
@@ -49,9 +48,12 @@ fun AppInfoDialog(
     modifier: Modifier = Modifier,
     appInfo: AppInfo,
     onDismiss: () -> Unit,
-    onAppAction: (AppAction) -> Unit = {}
+    onAppAction: (AppClickAction) -> Unit = {}
 ) {
     val context = LocalContext.current
+    var getConfirmation by remember {
+        mutableStateOf(false)
+    }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         scrimColor = Color.Black.copy(alpha = 0.5f),
@@ -98,7 +100,7 @@ fun AppInfoDialog(
             ) {
                 IconButton(
                     onClick = {
-                        onAppAction(AppAction.Launch(appInfo))
+                        onAppAction(AppClickAction.Launch(appInfo))
                     }
                 ) {
                     Icon(
@@ -112,7 +114,7 @@ fun AppInfoDialog(
                 }
                 IconButton(
                     onClick = {
-                        onAppAction(AppAction.Share(appInfo))
+                        onAppAction(AppClickAction.Share(appInfo))
                     }
                 ) {
                     Icon(
@@ -126,7 +128,10 @@ fun AppInfoDialog(
                 }
                 IconButton(
                     onClick = {
-                        onAppAction(AppAction.Uninstall(appInfo))
+                        if (appInfo.isSystem) {
+                            getConfirmation = true
+                        } else
+                            onAppAction(AppClickAction.Uninstall(appInfo))
                     }
                 ) {
                     Icon(
@@ -144,95 +149,47 @@ fun AppInfoDialog(
 
         }
     }
+
+    if(getConfirmation){
+        UninstallConfirmationDialog(
+            appInfo = appInfo,
+            onDismiss = { getConfirmation = false },
+            onAppAction = onAppAction
+        )
+    }
+
 }
 
-@Preview(showBackground = true)
 @Composable
-fun ControlsBar(
-    modifier: Modifier = Modifier,
-    appInfo: AppInfo = AppInfo(),
-    onAppAction: (AppAction) -> Unit = {}
+fun UninstallConfirmationDialog(
+    appInfo: AppInfo,
+    onDismiss: () -> Unit,
+    onAppAction: (AppClickAction) -> Unit
 ) {
-    Row(modifier) {
-
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(5.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .clickable {
-                    onAppAction(AppAction.Launch(appInfo))
-                },
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                painter = painterResource(id = R.drawable.open_in_new),
-                "Launch",
-                modifier = Modifier
-                    .padding(2.dp)
-                    .size(30.dp)
-                    .padding(3.dp)
-            )
-            Text(
-                "Launch",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(5.dp)
-            )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onAppAction(AppClickAction.Uninstall(appInfo))
+                    onDismiss()
+                }
+            ) {
+                Text("Yes")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss
+            ) {
+                Text("No")
+            }
+        },
+        title = {
+            Text("Uninstall ${appInfo.appName}?")
+        },
+        text = {
+            Text("Are you sure you want to uninstall ${appInfo.appName}?")
         }
-
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(5.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .clickable {
-                    onAppAction(AppAction.Share(appInfo))
-                },
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                painter = painterResource(id = R.drawable.ios_share),
-                "Share",
-                modifier = Modifier
-                    .padding(2.dp)
-                    .size(30.dp)
-                    .padding(3.dp)
-            )
-            Text(
-                "Share",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(5.dp)
-            )
-        }
-
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(5.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .clickable {
-                    onAppAction(AppAction.Uninstall(appInfo))
-                },
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                painter = painterResource(id = R.drawable.delete_forever),
-                "Uninstall",
-                modifier = Modifier
-                    .padding(2.dp)
-                    .size(30.dp)
-                    .padding(3.dp)
-            )
-            Text(
-                "Uninstall",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(5.dp)
-            )
-        }
-
-
-    }
+    )
 }

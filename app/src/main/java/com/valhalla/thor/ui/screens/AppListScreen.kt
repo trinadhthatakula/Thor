@@ -41,7 +41,7 @@ import androidx.compose.ui.unit.dp
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfo
-import com.valhalla.thor.ui.widgets.AppAction
+import com.valhalla.thor.ui.widgets.AppClickAction
 import com.valhalla.thor.ui.widgets.AppInfoDialog
 
 val popularInstallers = mapOf<String, String>(
@@ -78,7 +78,7 @@ fun AppListScreen(
     userAppList: List<AppInfo>,
     systemAppList: List<AppInfo>,
     modifier: Modifier = Modifier,
-    onAppAction: (AppAction) -> Unit = {},
+    onAppAction: (AppClickAction) -> Unit = {},
     isRefreshing: Boolean = false,
     onRefresh: () -> Unit = {}
 ) {
