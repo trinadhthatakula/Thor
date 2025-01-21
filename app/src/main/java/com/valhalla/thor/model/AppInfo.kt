@@ -14,6 +14,7 @@ class AppInfo : Serializable {
     var versionCode: Int = 0
     var isSystem: Boolean = false
     var installerPackageName: String? = null
+    var publicSourceDir: String? = null
 
     fun toJSON(): JSONObject? {
         val jsonObject = JSONObject()

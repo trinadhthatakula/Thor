@@ -34,6 +34,7 @@ class UserAppInfo(private val context: Context) {
                 appInfo.versionCode = p.versionCode
                 appInfo.isSystem = false
                 appInfo.installerPackageName = context.packageManager.getInstallerPackageName(p.packageName)
+                appInfo.publicSourceDir = p.applicationInfo?.publicSourceDir
                 res.add(appInfo)
             }
         }
