@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlinSerialization)
 }
 
 android {
@@ -16,6 +17,7 @@ android {
         targetSdk = 35
         versionCode = 1002
         versionName = "1.002"
+        vectorDrawables.useSupportLibrary = true
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -60,5 +62,8 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
 
     implementation( libs.accompanist.drawablepainter)
+
+    /// Kotlinx
+    implementation(libs.kotlinx.serialization.json)
 
 }
