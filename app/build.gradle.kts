@@ -14,8 +14,8 @@ android {
         applicationId = "com.valhalla.thor"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 1002
+        versionName = "1.002"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

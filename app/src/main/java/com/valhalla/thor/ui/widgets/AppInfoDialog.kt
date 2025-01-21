@@ -12,7 +12,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.material3.FloatingToolbarColors
+import androidx.compose.material3.FloatingToolbarDefaults
+import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -20,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -36,7 +43,7 @@ sealed interface AppAction {
     data object Reinstall: AppAction
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun AppInfoDialog(
     modifier: Modifier = Modifier,
@@ -47,6 +54,7 @@ fun AppInfoDialog(
     val context = LocalContext.current
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        scrimColor = Color.Black.copy(alpha = 0.5f),
     ) {
         Column(
             modifier = modifier
@@ -60,7 +68,7 @@ fun AppInfoDialog(
                 contentDescription = appInfo.appName,
                 modifier = Modifier
                     .padding(5.dp)
-                    .size(50.dp)
+                    .size(70.dp)
             )
             Text(
                 appInfo.appName ?: "",
@@ -81,9 +89,58 @@ fun AppInfoDialog(
                 modifier = Modifier.padding(horizontal = 5.dp)
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(15.dp))
 
-            ControlsBar(appInfo = appInfo,onAppAction = onAppAction)
+            HorizontalFloatingToolbar(
+                expanded = true,
+                modifier = Modifier.padding(5.dp),
+                colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors()
+            ) {
+                IconButton(
+                    onClick = {
+                        onAppAction(AppAction.Launch(appInfo))
+                    }
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.open_in_new),
+                        "Launch",
+                        modifier = Modifier
+                            .padding(2.dp)
+                            .size(30.dp)
+                            .padding(3.dp)
+                    )
+                }
+                IconButton(
+                    onClick = {
+                        onAppAction(AppAction.Share(appInfo))
+                    }
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.share),
+                        "Share",
+                        modifier = Modifier
+                            .padding(2.dp)
+                            .size(30.dp)
+                            .padding(3.dp)
+                    )
+                }
+                IconButton(
+                    onClick = {
+                        onAppAction(AppAction.Uninstall(appInfo))
+                    }
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.delete_forever),
+                        "Uninstall",
+                        modifier = Modifier
+                            .padding(2.dp)
+                            .size(30.dp)
+                            .padding(3.dp)
+                    )
+                }
+            }
+
+            //ControlsBar(appInfo = appInfo,onAppAction = onAppAction)
 
         }
     }

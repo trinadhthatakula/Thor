@@ -14,12 +14,18 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,48 +44,75 @@ import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.ui.widgets.AppAction
 import com.valhalla.thor.ui.widgets.AppInfoDialog
 
+val popularInstallers = mapOf<String, String>(
+    "com.android.vending" to "Google Play Store",
+    "com.sec.android.app.samsungapps" to "Samsung Store",
+    "com.huawei.appmarket" to "Huawei Store",
+    "com.amazon.venezia" to "Amazon App Store",
+    "com.miui.supermarket" to "Xiaomi Store",
+    "com.xiaomi.discover" to "Xiaomi Discover",
+    "com.oppo.market" to "Oppo Store",
+    "com.vivo.sdkplugin" to "Vivo Store",
+    "com.oneplus.appstore" to "OnePlus Store",
+    "com.qualcomm.qti.appstore" to "Qualcomm Store",
+    "com.sonymobile.playanywhere" to "Sony Store",
+    "com.asus.appmarket" to "Asus Store",
+    "com.zte.appstore" to "ZTE Store",
+    "com.lenovo.leos.appstore" to "Lenovo Store",
+    "com.htc.appmarket" to "HTC Store",
+    "com.lge.appbox.client" to "LG Store",
+    "com.nokia.nstore" to "Nokia Store",
+    "com.miui.packageinstaller" to "Xiaomi Package Installer",
+    "com.google.android.packageinstaller" to "Google Package Installer",
+    "com.android.packageinstaller" to "Android Package Installer",
+    "com.samsung.android.packageinstaller" to "Samsung Package Installer",
+)
+
+enum class AppListType {
+    USER, SYSTEM
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun AppListScreen(
-    appList: List<AppInfo>, modifier: Modifier = Modifier, onAppAction: (AppAction) -> Unit = {}
+    userAppList: List<AppInfo>,
+    systemAppList: List<AppInfo>,
+    modifier: Modifier = Modifier,
+    onAppAction: (AppAction) -> Unit = {},
+    isRefreshing: Boolean = false,
+    onRefresh: () -> Unit = {}
 ) {
-    val popularInstallers = mapOf<String, String>(
-        "com.android.vending" to "Google Play Store",
-        "com.sec.android.app.samsungapps" to "Samsung Store",
-        "com.huawei.appmarket" to "Huawei Store",
-        "com.amazon.venezia" to "Amazon App Store",
-        "com.miui.supermarket" to "Xiaomi Store",
-        "com.xiaomi.discover" to "Xiaomi Discover",
-        "com.oppo.market" to "Oppo Store",
-        "com.vivo.sdkplugin" to "Vivo Store",
-        "com.oneplus.appstore" to "OnePlus Store",
-        "com.qualcomm.qti.appstore" to "Qualcomm Store",
-        "com.sonymobile.playanywhere" to "Sony Store",
-        "com.asus.appmarket" to "Asus Store",
-        "com.zte.appstore" to "ZTE Store",
-        "com.lenovo.leos.appstore" to "Lenovo Store",
-        "com.htc.appmarket" to "HTC Store",
-        "com.lge.appbox.client" to "LG Store",
-        "com.nokia.nstore" to "Nokia Store",
-        "com.miui.packageinstaller" to "Xiaomi Package Installer",
-        "com.google.android.packageinstaller" to "Google Package Installer",
-        "com.android.packageinstaller" to "Android Package Installer",
-        "com.samsung.android.packageinstaller" to "Samsung Package Installer",
-    )
 
-    val installers = appList.map { it.installerPackageName }.distinct().toMutableList()
-    installers.add(0, "All")
+    var selectedAppListType by remember {
+        mutableStateOf(AppListType.USER)
+    }
+
+    var installers by remember {
+        mutableStateOf(
+            userAppList.map { it.installerPackageName }.distinct().toMutableList()
+                .apply { add(0, "All") }.toList()
+        )
+    }
     var selectedFilter: String? by remember {
         mutableStateOf("All")
     }
 
     var filteredList by remember {
-        mutableStateOf(appList.sortedBy { it.appName })
+        mutableStateOf(userAppList.sortedBy { it.appName })
     }
-    LaunchedEffect(selectedFilter) {
+    LaunchedEffect(selectedFilter, selectedAppListType) {
+        installers = if (selectedAppListType == AppListType.USER)
+            userAppList.map { it.installerPackageName }.distinct().toMutableList().apply { add(0, "All") }
+        else {
+            systemAppList.map { it.installerPackageName }.distinct()
+        }
         filteredList = if (selectedFilter == "All") {
-            appList.sortedBy { it.appName }
+            if (selectedAppListType == AppListType.USER) userAppList.sortedBy { it.appName } else systemAppList.sortedBy { it.appName }
         } else {
-            appList.filter { it.installerPackageName == selectedFilter }.sortedBy { it.appName }
+            if (selectedAppListType == AppListType.USER) userAppList.filter { it.installerPackageName == selectedFilter }
+                .sortedBy { it.appName } else
+                systemAppList.filter { it.installerPackageName == selectedFilter }
+                    .sortedBy { it.appName }
         }
     }
 
@@ -96,59 +129,46 @@ fun AppListScreen(
                     .weight(1f),
                 style = MaterialTheme.typography.titleLarge
             )
-            IconButton(
-                onClick = {
-                    onAppAction(AppAction.Reinstall)
-                }) {
-                Icon(
-                    painter = painterResource(R.drawable.apk_install),
-                    "Re-Install Apps with Google Play"
-                )
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.padding(horizontal = 5.dp)) {
+                AppListType.entries.forEachIndexed { index, appListType ->
+                    SegmentedButton(
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = 2),
+                        selected = selectedAppListType == appListType,
+                        onClick = {
+                            selectedAppListType = appListType
+                        }
+                    ) {
+                        Icon(
+                            painter = painterResource(if (appListType == AppListType.USER) R.drawable.apps else R.drawable.android),
+                            appListType.name
+                        )
+                    }
+                }
+
             }
         }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(5.dp)
-                .horizontalScroll(rememberScrollState())
+
+        val state = rememberPullToRefreshState()
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = onRefresh,
+            state = state
         ) {
-            installers.sortedBy { it ?: "z" }.forEach {
-                FilterChip(
-                    selected = it == selectedFilter, onClick = {
+            AppList(
+                appListType = selectedAppListType,
+                installers = installers,
+                selectedFilter = selectedFilter,
+                filteredList = filteredList,
+                onFilterSelected = {
                     selectedFilter = it
-                }, label = {
-                    Text(text = popularInstallers[it] ?: it ?: "Unknown")
-                }, modifier = Modifier.padding(horizontal = 5.dp)
-                )
-            }
+                },
+                onAppInfoSelected = {
+                    selectedAppInfo = it
+                }
+            )
         }
-        val context = LocalContext.current
-        LazyColumn {
-            items(filteredList) {
-                ListItem(leadingContent = {
-                    Image(
-                        painter = rememberDrawablePainter(getAppIcon(it.packageName, context)),
-                        "App Icon",
-                        modifier = Modifier
-                            .padding(5.dp)
-                            .size(50.dp)
-                    )
-                }, headlineContent = {
-                    Text(
-                        it.appName ?: "Unknown"
-                    )
-                }, supportingContent = {
-                    Text(
-                        it.packageName ?: "Unknown"
-                    )
-                }, modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable {
-                        selectedAppInfo = it
-                    })
-            }
-        }
+
     }
 
     if (selectedAppInfo != null) {
@@ -161,12 +181,74 @@ fun AppListScreen(
 
 }
 
+@Composable
+fun AppList(
+    appListType: AppListType,
+    modifier: Modifier = Modifier,
+    installers: List<String?>,
+    selectedFilter: String?,
+    filteredList: List<AppInfo>,
+    onFilterSelected: (String?) -> Unit,
+    onAppInfoSelected: (AppInfo) -> Unit
+) {
+    Column(modifier) {
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(5.dp)
+                .horizontalScroll(rememberScrollState())
+        ) {
+            installers.sortedBy { it ?: "z" }.forEach {
+                FilterChip(
+                    selected = it == selectedFilter, onClick = {
+                        onFilterSelected(it)
+                    }, label = {
+                        Text(text = popularInstallers[it] ?: it ?: if(appListType!= AppListType.SYSTEM) "Unknown" else "System")
+                    }, modifier = Modifier.padding(horizontal = 5.dp)
+                )
+            }
+        }
+        val context = LocalContext.current
+        LazyColumn {
+            items(filteredList) {
+                ListItem(
+                    leadingContent = {
+                        Image(
+                            painter = rememberDrawablePainter(getAppIcon(it.packageName, context)),
+                            "App Icon",
+                            modifier = Modifier
+                                .padding(5.dp)
+                                .size(50.dp)
+                        )
+                    }, headlineContent = {
+                        Text(
+                            it.appName ?: "Unknown"
+                        )
+                    }, supportingContent = {
+                        Text(
+                            it.packageName ?: "Unknown"
+                        )
+                    },
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable {
+                            onAppInfoSelected(it)
+                        }
+                )
+            }
+        }
+
+    }
+}
+
 
 fun getAppIcon(packageName: String?, context: Context): Drawable? {
     return packageName?.let {
         try {
             context.packageManager.getApplicationIcon(packageName)
         } catch (e: Exception) {
+            e.printStackTrace()
             null
         }
     }

@@ -10,6 +10,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,6 +24,7 @@ import com.valhalla.thor.model.copyTo
 import com.valhalla.thor.ui.screens.AppListScreen
 import com.valhalla.thor.ui.theme.ThorTheme
 import com.valhalla.thor.ui.widgets.AppAction
+import kotlinx.coroutines.delay
 import java.io.File
 
 class MainActivity : ComponentActivity() {
@@ -32,17 +34,37 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            var appList by remember {
-                mutableStateOf(emptyList<AppInfo>())
-            }
+
             val grabber = UserAppInfo(this)
-            grabber.getUserApps().also {
-                appList = it
+
+            var userApps by remember { mutableStateOf<List<AppInfo>>(emptyList()) }
+            var systemApps by remember { mutableStateOf<List<AppInfo>>(emptyList()) }
+            var isRefreshing by remember { mutableStateOf(false) }
+
+            userApps = grabber.getUserApps()
+            systemApps = grabber.getSystemApps()
+
+            LaunchedEffect(isRefreshing) {
+                if(isRefreshing){
+                    userApps = grabber.getUserApps()
+                    systemApps = grabber.getSystemApps()
+                    delay(1000)
+                    isRefreshing = false
+                    runOnUiThread {
+                        Toast.makeText(this@MainActivity, "Refreshed", Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
+
             ThorTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     AppListScreen(
-                        appList,
+                        userApps,
+                        systemApps,
+                        isRefreshing = isRefreshing,
+                        onRefresh = {
+                            isRefreshing = true
+                        },
                         modifier = Modifier.padding(innerPadding),
                         onAppAction = {
                             when (it) {
