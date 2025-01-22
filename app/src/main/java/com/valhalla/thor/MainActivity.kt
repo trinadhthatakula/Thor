@@ -1,5 +1,6 @@
 package com.valhalla.thor
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
@@ -16,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.FileProvider
+import androidx.core.content.edit
 import androidx.core.net.toUri
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.UserAppInfo
@@ -27,7 +29,6 @@ import kotlinx.coroutines.delay
 import java.io.File
 
 class MainActivity : ComponentActivity() {
-
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -122,6 +123,14 @@ class MainActivity : ComponentActivity() {
                                     intent.data = "package:${appPackage}".toUri()
                                     startActivity(intent)
                                 }
+                            }
+                        },
+                        onEggBroken = {
+                            getSharedPreferences("egg", MODE_PRIVATE).edit {
+                                putBoolean(
+                                    "found",
+                                    true
+                                )
                             }
                         }
                     )

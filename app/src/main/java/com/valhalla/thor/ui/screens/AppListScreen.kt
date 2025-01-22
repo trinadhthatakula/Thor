@@ -29,6 +29,7 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -43,6 +44,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.ui.widgets.AppClickAction
 import com.valhalla.thor.ui.widgets.AppInfoDialog
+import androidx.core.content.edit
 
 val popularInstallers = mapOf<String, String>(
     "com.android.vending" to "Google Play Store",
@@ -80,7 +82,8 @@ fun AppListScreen(
     modifier: Modifier = Modifier,
     onAppAction: (AppClickAction) -> Unit = {},
     isRefreshing: Boolean = false,
-    onRefresh: () -> Unit = {}
+    onRefresh: () -> Unit = {},
+    onEggBroken: () -> Unit = {}
 ) {
 
     var selectedAppListType by remember {
@@ -102,7 +105,8 @@ fun AppListScreen(
     }
     LaunchedEffect(selectedFilter, selectedAppListType) {
         installers = if (selectedAppListType == AppListType.USER)
-            userAppList.map { it.installerPackageName }.distinct().toMutableList().apply { add(0, "All") }
+            userAppList.map { it.installerPackageName }.distinct().toMutableList()
+                .apply { add(0, "All") }
         else {
             systemAppList.map { it.installerPackageName }.distinct()
         }
@@ -120,11 +124,41 @@ fun AppListScreen(
         mutableStateOf(null)
     }
 
+    var titleEasterEgg by remember {
+        mutableStateOf("App List")
+    }
+    var counter by remember {
+        mutableIntStateOf(1)
+    }
+    var context = LocalContext.current
+    LaunchedEffect(counter) {
+        if (counter > 99) {
+            counter = 1
+            titleEasterEgg = "App List"
+
+        }
+    }
+
     Column(modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "App List",
+                text = titleEasterEgg,
                 modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable {
+                        titleEasterEgg = when (titleEasterEgg) {
+                            "App List" -> "Hey! You found me!"
+                            "Hey! You found me!" -> "Now go back"
+                            "Now go back" -> "Stop it"
+                            "Stop it" -> "Ouch! Stop it"
+                            "Ouch! Stop it" -> "I'm serious"
+                            "I'm serious" -> "Fine! You win"
+                            "Fine! You win" -> "I'm done"
+                            else -> {
+                                counter++.toString()
+                            }
+                        }
+                    }
                     .padding(10.dp)
                     .weight(1f),
                 style = MaterialTheme.typography.titleLarge
@@ -136,6 +170,7 @@ fun AppListScreen(
                         selected = selectedAppListType == appListType,
                         onClick = {
                             selectedAppListType = appListType
+                            selectedFilter = "All"
                         }
                     ) {
                         Icon(
@@ -204,7 +239,10 @@ fun AppList(
                     selected = it == selectedFilter, onClick = {
                         onFilterSelected(it)
                     }, label = {
-                        Text(text = popularInstallers[it] ?: it ?: if(appListType!= AppListType.SYSTEM) "Unknown" else "System")
+                        Text(
+                            text = popularInstallers[it] ?: it
+                            ?: if (appListType != AppListType.SYSTEM) "Unknown" else "System"
+                        )
                     }, modifier = Modifier.padding(horizontal = 5.dp)
                 )
             }
