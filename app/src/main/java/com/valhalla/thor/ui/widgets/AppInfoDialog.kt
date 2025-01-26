@@ -127,20 +127,21 @@ fun AppInfoDialog(
                                 .padding(3.dp)
                         )
                     }
-                IconButton(
-                    onClick = {
-                        onAppAction(AppClickAction.Share(appInfo))
+                if (appInfo.isSystem.not())
+                    IconButton(
+                        onClick = {
+                            onAppAction(AppClickAction.Share(appInfo))
+                        }
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.share),
+                            "Share",
+                            modifier = Modifier
+                                .padding(2.dp)
+                                .size(30.dp)
+                                .padding(3.dp)
+                        )
                     }
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.share),
-                        "Share",
-                        modifier = Modifier
-                            .padding(2.dp)
-                            .size(30.dp)
-                            .padding(3.dp)
-                    )
-                }
                 IconButton(
                     onClick = {
                         if (appInfo.isSystem) {
