@@ -2,17 +2,20 @@ package com.valhalla.thor.model
 
 import android.content.ContentResolver
 import android.content.Context
+import android.content.Intent
 import android.database.Cursor
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.system.Os
 import android.util.Log
 import android.util.Log.e
+import android.widget.Toast
+import androidx.core.content.FileProvider
 import com.topjohnwu.superuser.CallbackList
 import com.topjohnwu.superuser.Shell
 import com.topjohnwu.superuser.ShellUtils
-import com.topjohnwu.superuser.internal.Utils.context
 import com.valhalla.thor.BuildConfig
+import java.io.File
 
 private const val TAG = "SuCli"
 
@@ -60,7 +63,6 @@ fun createRootShell(globalMnt: Boolean = false): Shell {
         builder.build("sh")
     }
 }
-
 
 
 private fun flashWithIO(
@@ -129,18 +131,88 @@ fun forceStopApp(packageName: String) {
     Log.i(TAG, "force stop $packageName result: $result")
 }
 
-fun getApkPath(packageName: String): Shell.Result {
-    val shell = getRootShell()
-    return shell.newJob()
-        .add("pm path \"$packageName\" | cut -d ':' -f 2")
-        .exec()
+fun shareApp(appInfo: AppInfo, context: Context) {
+    appInfo.packageName?.let { packageName ->
+        ShellUtils.fastCmd("pm path \"${packageName}\" | sed 's/package://' | tr '\\n' ' '")
+            .trim()
+            .split(" ")
+            .firstOrNull { it.contains("base.apk") }
+            ?.let { baseApkPath ->
+                val file = File(baseApkPath)
+                val tempFolder = File(context.filesDir, "shareApp")
+                val baseFile = File(tempFolder, appInfo.appName + ".apk")
+                if (
+                    (!tempFolder.exists() || tempFolder.delete())
+                    && tempFolder.mkdirs()
+                    && (!baseFile.exists() || baseFile.delete())
+                    && baseFile.createNewFile()
+                    && file.copyTo(baseFile)
+                ) {
+                    val intent = Intent(Intent.ACTION_SEND)
+                    intent.type = "application/vnd.android.package-archive"
+                    intent.putExtra(
+                        Intent.EXTRA_STREAM,
+                        FileProvider.getUriForFile(
+                            context,
+                            BuildConfig.APPLICATION_ID + ".provider",
+                            baseFile
+                        )
+                    )
+                    context.startActivity(
+                        Intent.createChooser(
+                            intent,
+                            "Share App using"
+                        )
+                    )
+                } else {
+                    Toast.makeText(context, "Failed to share app", Toast.LENGTH_SHORT).show()
+                }
+            }
+    }
+
 }
 
-fun reInstallWithGoogle(packageName: String): Shell.Result {
-    val shell = getRootShell()
-    val currentUser = ShellUtils.fastCmd(shell, "am get-current-user").trim()
-    val apkPath = ShellUtils.fastCmd(shell, "pm path \"$packageName\" | cut -d ':' -f 2")
-    return shell.newJob().add("pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 \"$apkPath\"").exec()
+fun reInstallWithGoogle(packageName: String, observer: (String) -> Unit, exit: () -> Unit) {
+    var failCounter = 0
+    var successCounter = 0
+    try {
+        observer("Reinstalling with Google...")
+        observer("Package: $packageName")
+        val shell = getRootShell()
+        observer("Root access found")
+        val currentUser = ShellUtils.fastCmd(shell, "am get-current-user").trim()
+        observer("Found User $currentUser")
+        observer("Searching for any splits")
+        val apkFilePaths =
+            ShellUtils.fastCmd("pm path \"$packageName\" | sed 's/package://' | tr '\\n' ' '")
+                .trim().split(" ")
+        if (apkFilePaths.size > 1)
+            observer("Found ${apkFilePaths.size} splits")
+        else if (apkFilePaths.size == 1)
+            observer("Found apk file at ${apkFilePaths.first()}")
+        apkFilePaths.forEach { path ->
+            observer("Reinstalling $path")
+            shell.newJob()
+                .add("pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 \"$path\"")
+                .exec().let {
+                    if (!it.isSuccess) {
+                        failCounter++
+                        observer("Failed to reinstall $path")
+                    } else {
+                        successCounter++
+                        observer("Reinstalled $path")
+                    }
+                }
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    } finally {
+        observer("successfully reinstalled $successCounter apks\n\n")
+        observer("Special Thanks")
+        observer("CIT, citra_standalone")
+        observer("TSA")
+        exit()
+    }
 }
 
 fun launchApp(packageName: String): Shell.Result {

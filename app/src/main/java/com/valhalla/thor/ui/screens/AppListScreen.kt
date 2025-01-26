@@ -43,6 +43,7 @@ import com.valhalla.thor.model.getAppIcon
 import com.valhalla.thor.ui.widgets.AppClickAction
 import com.valhalla.thor.ui.widgets.AppInfoDialog
 import com.valhalla.thor.ui.widgets.AppList
+import com.valhalla.thor.ui.widgets.TypeWriterText
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -133,13 +134,15 @@ fun AppListScreen(
                     }
                     .padding(8.dp)
             )
-            Text(
+            TypeWriterText(
                 text = titleEasterEgg,
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
                     .padding(vertical = 10.dp)
                     .weight(1f),
-                style = MaterialTheme.typography.titleLarge
+                delay = 25,
+                style = MaterialTheme.typography.titleLarge,
+                textAlign = TextAlign.Start
             )
             SingleChoiceSegmentedButtonRow(modifier = Modifier.padding(horizontal = 5.dp)) {
                 AppListType.entries.forEachIndexed { index, appListType ->
