@@ -100,14 +100,18 @@ class MainActivity : ComponentActivity() {
                                 is AppClickAction.Reinstall -> {
                                     if (rootAvailable())
                                         lifecycleScope.launch {
+                                            logObserver = emptyList()
                                             reinstalling = true
                                             withContext(Dispatchers.IO) {
-                                                reInstallWithGoogle(it.appInfo.packageName.toString(), observer = {
-                                                    logObserver+=it
-                                                }, exit = {
-                                                    canExit = true
-                                                    isRefreshing = true
-                                                })
+                                                reInstallWithGoogle(
+                                                    it.appInfo.packageName.toString(),
+                                                    observer = {
+                                                        logObserver += it
+                                                    },
+                                                    exit = {
+                                                        canExit = true
+                                                        isRefreshing = true
+                                                    })
                                             }
                                         }
                                     else {
@@ -187,7 +191,9 @@ class MainActivity : ComponentActivity() {
                 if (reinstalling) {
                     ModalBottomSheet(
                         onDismissRequest = {
-                            if(canExit) reinstalling = false
+                            if (canExit) {
+                                reinstalling = false
+                            }
                         },
                         scrimColor = Color.Black.copy(alpha = 0.6f)
                     ) {
@@ -195,16 +201,16 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.fillMaxWidth(),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically){
-                                if(!canExit)
-                                AnimateLottieRaw(
-                                    resId = R.raw.rearrange,
-                                    shouldLoop = true,
-                                    modifier = Modifier
-                                        .size(50.dp),
-                                    contentScale = ContentScale.Crop
-                                )
-                                Text(if(!canExit)"Reinstalling..," else "")
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (!canExit)
+                                    AnimateLottieRaw(
+                                        resId = R.raw.rearrange,
+                                        shouldLoop = true,
+                                        modifier = Modifier
+                                            .size(50.dp),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                Text(if (!canExit) "Reinstalling..," else "")
                             }
                             LazyColumn(modifier = Modifier.padding(10.dp)) {
                                 items(logObserver) { logTxt ->
@@ -224,7 +230,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
 
-                            if(canExit)
+                            if (canExit)
                                 Button(
                                     onClick = {
                                         reinstalling = false

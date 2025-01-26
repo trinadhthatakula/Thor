@@ -193,7 +193,7 @@ fun reInstallWithGoogle(packageName: String, observer: (String) -> Unit, exit: (
         apkFilePaths.forEach { path ->
             observer("Reinstalling $path")
             shell.newJob()
-                .add("pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 \"$path\"")
+                .add("su -c pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 \"$path\" > /dev/null")
                 .exec().let {
                     if (!it.isSuccess) {
                         failCounter++
@@ -207,7 +207,10 @@ fun reInstallWithGoogle(packageName: String, observer: (String) -> Unit, exit: (
     } catch (e: Exception) {
         e.printStackTrace()
     } finally {
-        observer("successfully reinstalled $successCounter apks\n\n")
+        if (successCounter >= 1)
+            observer("successfully reinstalled $successCounter apks\n\n")
+        if (failCounter >= 1)
+            observer("failed to reinstall $failCounter apks\n\n")
         observer("Special Thanks")
         observer("CIT, citra_standalone")
         observer("TSA")
