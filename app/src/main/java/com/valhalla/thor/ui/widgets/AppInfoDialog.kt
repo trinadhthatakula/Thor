@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingToolbarDefaults
@@ -18,7 +17,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,13 +31,14 @@ import androidx.compose.ui.unit.dp
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfo
-import com.valhalla.thor.ui.screens.getAppIcon
+import com.valhalla.thor.model.getAppIcon
 
 sealed interface AppClickAction {
     data class Launch(val appInfo: AppInfo) : AppClickAction
     data class Share(val appInfo: AppInfo) : AppClickAction
     data class Uninstall(val appInfo: AppInfo) : AppClickAction
-    data object Reinstall : AppClickAction
+    data class Reinstall(val appInfo: AppInfo) : AppClickAction
+    data object ReinstallAll : AppClickAction
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
@@ -112,6 +111,22 @@ fun AppInfoDialog(
                             .padding(3.dp)
                     )
                 }
+                if (!appInfo.isSystem && appInfo.installerPackageName != "com.android.vending")
+                    IconButton(
+                        onClick = {
+                            onDismiss()
+                            onAppAction(AppClickAction.Reinstall(appInfo))
+                        }
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.apk_install),
+                            "Reinstall",
+                            modifier = Modifier
+                                .padding(2.dp)
+                                .size(30.dp)
+                                .padding(3.dp)
+                        )
+                    }
                 IconButton(
                     onClick = {
                         onAppAction(AppClickAction.Share(appInfo))
@@ -150,7 +165,7 @@ fun AppInfoDialog(
         }
     }
 
-    if(getConfirmation){
+    if (getConfirmation) {
         UninstallConfirmationDialog(
             appInfo = appInfo,
             onDismiss = { getConfirmation = false },
@@ -160,36 +175,3 @@ fun AppInfoDialog(
 
 }
 
-@Composable
-fun UninstallConfirmationDialog(
-    appInfo: AppInfo,
-    onDismiss: () -> Unit,
-    onAppAction: (AppClickAction) -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    onAppAction(AppClickAction.Uninstall(appInfo))
-                    onDismiss()
-                }
-            ) {
-                Text("Yes")
-            }
-        },
-        dismissButton = {
-            TextButton(
-                onClick = onDismiss
-            ) {
-                Text("No")
-            }
-        },
-        title = {
-            Text("Uninstall ${appInfo.appName}?")
-        },
-        text = {
-            Text("Are you sure you want to uninstall ${appInfo.appName}?")
-        }
-    )
-}
