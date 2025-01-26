@@ -100,11 +100,15 @@ fun AppInfoDialog(
                 appInfo = appInfo,
                 onDismiss = { onDismiss() },
                 onAppAction = {
-                    if (appInfo.isSystem) {
-                        getConfirmation = true
+                    if (it is AppClickAction.Uninstall) {
+                        if (appInfo.isSystem) {
+                            getConfirmation = true
+                        } else {
+                            onDismiss()
+                            onAppAction(AppClickAction.Uninstall(appInfo))
+                        }
                     } else {
-                        onDismiss()
-                        onAppAction(AppClickAction.Uninstall(appInfo))
+                        onAppAction(it)
                     }
                 }
             )
@@ -185,8 +189,10 @@ fun AppActionItem(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
-        modifier = modifier.padding(horizontal = 2.dp).clip(RoundedCornerShape(10.dp))
-            .clickable{
+        modifier = modifier
+            .padding(horizontal = 2.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .clickable {
                 onClick()
             }
     ) {
@@ -212,7 +218,9 @@ fun AppActionItem(
             text,
             style = MaterialTheme.typography.labelSmall,
             maxLines = 1,
-            modifier = Modifier.padding(horizontal = 5.dp).padding(bottom = 5.dp),
+            modifier = Modifier
+                .padding(horizontal = 5.dp)
+                .padding(bottom = 5.dp),
             color = MaterialTheme.colorScheme.onBackground
         )
     }
