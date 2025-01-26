@@ -37,6 +37,7 @@ import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.UserAppInfo
+import com.valhalla.thor.model.hasMagisk
 import com.valhalla.thor.model.launchApp
 import com.valhalla.thor.model.reInstallWithGoogle
 import com.valhalla.thor.model.rootAvailable
@@ -98,13 +99,13 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 is AppClickAction.Reinstall -> {
-                                    if (rootAvailable())
+                                    if (rootAvailable() || hasMagisk())
                                         lifecycleScope.launch {
                                             logObserver = emptyList()
                                             reinstalling = true
                                             withContext(Dispatchers.IO) {
                                                 reInstallWithGoogle(
-                                                    it.appInfo.packageName.toString(),
+                                                    it.appInfo,
                                                     observer = {
                                                         logObserver += it
                                                     },
@@ -124,7 +125,7 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 is AppClickAction.Launch -> {
-                                    if (rootAvailable())
+                                    if (rootAvailable() || hasMagisk())
                                         launchApp(it.appInfo.packageName.toString()).let { result ->
                                             if (!result.isSuccess) {
                                                 Toast.makeText(

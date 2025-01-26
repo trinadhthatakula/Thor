@@ -146,8 +146,10 @@ fun AppInfoDialog(
                     onClick = {
                         if (appInfo.isSystem) {
                             getConfirmation = true
-                        } else
+                        } else {
+                            onDismiss()
                             onAppAction(AppClickAction.Uninstall(appInfo))
+                        }
                     }
                 ) {
                     Icon(

@@ -24,8 +24,8 @@ import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.AppListType
 import com.valhalla.thor.model.getAppIcon
+import com.valhalla.thor.model.getSplits
 import com.valhalla.thor.model.popularInstallers
-import kotlin.collections.get
 
 @Composable
 fun AppList(
@@ -82,6 +82,7 @@ fun AppList(
                     modifier = Modifier.Companion
                         .clip(RoundedCornerShape(10.dp))
                         .clickable {
+                            getSplits(it.packageName.toString())
                             onAppInfoSelected(it)
                         }
                 )

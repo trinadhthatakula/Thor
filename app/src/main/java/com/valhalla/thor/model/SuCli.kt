@@ -172,49 +172,56 @@ fun shareApp(appInfo: AppInfo, context: Context) {
 
 }
 
-fun reInstallWithGoogle(packageName: String, observer: (String) -> Unit, exit: () -> Unit) {
-    var failCounter = 0
-    var successCounter = 0
-    try {
-        observer("Reinstalling with Google...")
-        observer("Package: $packageName")
-        val shell = getRootShell()
-        observer("Root access found")
-        val currentUser = ShellUtils.fastCmd(shell, "am get-current-user").trim()
-        observer("Found User $currentUser")
-        observer("Searching for any splits")
-        val apkFilePaths =
-            ShellUtils.fastCmd("pm path \"$packageName\" | sed 's/package://' | tr '\\n' ' '")
-                .trim().split(" ")
-        if (apkFilePaths.size > 1)
-            observer("Found ${apkFilePaths.size} splits")
-        else if (apkFilePaths.size == 1)
-            observer("Found apk file at ${apkFilePaths.first()}")
-        apkFilePaths.forEach { path ->
-            observer("Reinstalling $path")
+fun getSplits(packageName: String) {
+    val apkFilePaths = ShellUtils
+        .fastCmd("pm path \"$packageName\" | sed 's/package://' | tr '\\n' ' '")
+        .trim()
+        .split(" ")
+    apkFilePaths.forEach { path ->
+        Log.d(TAG, path)
+    }
+}
+
+fun reInstallWithGoogle(appInfo: AppInfo, observer: (String) -> Unit, exit: () -> Unit) {
+    appInfo.packageName?.let { packageName ->
+        var failCounter = 0
+        var successCounter = 0
+        try {
+            observer("Reinstalling with Google...")
+            observer("Package: $packageName")
+            val shell = getRootShell()
+            observer("Root access found")
+            val currentUser = ShellUtils.fastCmd(shell, "am get-current-user").trim()
+            observer("Found User $currentUser")
+            observer("Searching for any splits")
+            val combinedPath =
+                ShellUtils.fastCmd("pm path \"$packageName\" | sed 's/package://' | tr '\\n' ' '")
+                    .trim()
+            val apkFilePaths = combinedPath.split(" ")
+            if (apkFilePaths.size > 1)
+                observer("Found ${apkFilePaths.size} splits")
+            else if (apkFilePaths.size == 1)
+                observer("Found apk file at ${apkFilePaths.first()}")
             shell.newJob()
-                .add("su -c pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 \"$path\" > /dev/null")
+                .add("su -c pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 \"$combinedPath\" > /dev/null")
                 .exec().let {
                     if (!it.isSuccess) {
                         failCounter++
-                        observer("Failed to reinstall $path")
+                        observer("Failed to reinstall ${appInfo.appName}")
                     } else {
                         successCounter++
-                        observer("Reinstalled $path")
+                        observer("Reinstalled ${appInfo.appName}")
                     }
                 }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            observer("\n")
+            observer("Special Thanks")
+            observer("CIT, citra_standalone")
+            observer("TSA")
+            exit()
         }
-    } catch (e: Exception) {
-        e.printStackTrace()
-    } finally {
-        if (successCounter >= 1)
-            observer("successfully reinstalled $successCounter apks\n\n")
-        if (failCounter >= 1)
-            observer("failed to reinstall $failCounter apks\n\n")
-        observer("Special Thanks")
-        observer("CIT, citra_standalone")
-        observer("TSA")
-        exit()
     }
 }
 
