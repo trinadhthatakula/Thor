@@ -1,5 +1,3 @@
-import org.gradle.kotlin.dsl.implementation
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -71,5 +69,7 @@ dependencies {
     implementation(libs.topjohnwu.libsu.core)
 
     implementation(libs.lottie.compose)
+
+    implementation(libs.androidx.ui.text.google.fonts)
 
 }
