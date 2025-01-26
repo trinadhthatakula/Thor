@@ -10,6 +10,7 @@ espressoCore = "3.6.1"
 lifecycleRuntimeKtx = "2.8.7"
 activityCompose = "1.10.0"
 composeBom = "2025.01.00"
+lottieCompose = "6.6.2"
 material3 = "1.4.0-alpha06"
 kotlinx-serialization-json = "1.7.3"
 
@@ -32,9 +33,9 @@ androidx-material3 = { group = "androidx.compose.material3", name = "material3",
 
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinx-serialization-json" }
 
+lottie-compose = { module = "com.airbnb.android:lottie-compose", version.ref = "lottieCompose" }
+
 topjohnwu-libsu-core = { module = "com.github.topjohnwu.libsu:core", version.ref = "libsu" }
-topjohnwu-libsu-service = { module = "com.github.topjohnwu.libsu:service", version.ref = "libsu" }
-topjohnwu-libsu-io = { module = "com.github.topjohnwu.libsu:io", version.ref = "libsu" }
 
 
 [plugins]

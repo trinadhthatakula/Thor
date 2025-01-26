@@ -15,8 +15,8 @@ android {
         applicationId = "com.valhalla.thor"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1002
-        versionName = "1.002"
+        versionCode = 1100
+        versionName = "1.100"
         vectorDrawables.useSupportLibrary = true
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -24,7 +24,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -68,5 +69,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     implementation(libs.topjohnwu.libsu.core)
+
+    implementation(libs.lottie.compose)
 
 }
