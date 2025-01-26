@@ -13,6 +13,11 @@
 
 ---
 
+* 100% Kotlin 
+* Material 3 Deisgn 
+* Jetpack Compose
+* Smallest APK size
+
 ## Features
 - Fully reproducible, copylefted libre software (GPLv3+)
 - Material 3 with dynamic colours
