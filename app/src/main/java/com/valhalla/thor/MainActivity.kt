@@ -123,7 +123,7 @@ class MainActivity : ComponentActivity() {
                                     else {
                                         Toast.makeText(
                                             this,
-                                            "Root access not available",
+                                            "Root access not available\nPlease grant root access and restart this app",
                                             Toast.LENGTH_SHORT
                                         ).show()
                                     }
