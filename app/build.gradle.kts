@@ -39,6 +39,7 @@ android {
         jvmTarget = "21"
     }
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 }
@@ -65,5 +66,7 @@ dependencies {
 
     /// Kotlinx
     implementation(libs.kotlinx.serialization.json)
+
+    implementation(libs.topjohnwu.libsu.core)
 
 }
