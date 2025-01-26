@@ -97,70 +97,44 @@ fun AppInfoDialog(
                 modifier = Modifier.padding(5.dp),
                 colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors()
             ) {
-                IconButton(
-                    onClick = {
-                        onAppAction(AppClickAction.Launch(appInfo))
-                    }
+
+                AppActionItem(
+                    icon = R.drawable.open_in_new,
+                    text = "Launch"
                 ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.open_in_new),
-                        "Launch",
-                        modifier = Modifier
-                            .padding(2.dp)
-                            .size(30.dp)
-                            .padding(3.dp)
-                    )
+                    onDismiss()
+                    onAppAction(AppClickAction.Launch(appInfo))
                 }
+
                 if (!appInfo.isSystem && appInfo.installerPackageName != "com.android.vending")
-                    IconButton(
-                        onClick = {
-                            onDismiss()
-                            onAppAction(AppClickAction.Reinstall(appInfo))
-                        }
+                    AppActionItem(
+                        icon = R.drawable.apk_install,
+                        text = "ReInstall"
                     ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.apk_install),
-                            "Reinstall",
-                            modifier = Modifier
-                                .padding(2.dp)
-                                .size(30.dp)
-                                .padding(3.dp)
-                        )
+                        onDismiss()
+                        onAppAction(AppClickAction.Reinstall(appInfo))
                     }
+
                 if (appInfo.isSystem.not())
-                    IconButton(
-                        onClick = {
-                            onAppAction(AppClickAction.Share(appInfo))
-                        }
+                    AppActionItem(
+                        icon = R.drawable.share,
+                        text = "Share"
                     ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.share),
-                            "Share",
-                            modifier = Modifier
-                                .padding(2.dp)
-                                .size(30.dp)
-                                .padding(3.dp)
-                        )
+                        onAppAction(AppClickAction.Share(appInfo))
                     }
-                IconButton(
-                    onClick = {
-                        if (appInfo.isSystem) {
-                            getConfirmation = true
-                        } else {
-                            onDismiss()
-                            onAppAction(AppClickAction.Uninstall(appInfo))
-                        }
-                    }
+
+                AppActionItem(
+                    icon = R.drawable.delete_forever,
+                    text = "Uninstall",
                 ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.delete_forever),
-                        "Uninstall",
-                        modifier = Modifier
-                            .padding(2.dp)
-                            .size(30.dp)
-                            .padding(3.dp)
-                    )
+                    if (appInfo.isSystem) {
+                        getConfirmation = true
+                    } else {
+                        onDismiss()
+                        onAppAction(AppClickAction.Uninstall(appInfo))
+                    }
                 }
+
             }
 
             //ControlsBar(appInfo = appInfo,onAppAction = onAppAction)
@@ -176,5 +150,40 @@ fun AppInfoDialog(
         )
     }
 
+}
+
+@Composable
+fun AppActionItem(
+    modifier: Modifier = Modifier,
+    icon : Int = R.drawable.open_in_new,
+    text: String = "Launch",
+    onClick: () -> Unit = {}
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier = modifier
+    ) {
+        IconButton(
+            onClick = {
+                onClick()
+            }
+        ) {
+            Icon(
+                painter = painterResource(id = icon),
+                text,
+                modifier = Modifier
+                    .padding(2.dp)
+                    .size(30.dp)
+                    .padding(3.dp)
+            )
+        }
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 5.dp)
+        )
+    }
 }
 
