@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -110,10 +111,12 @@ fun AppListScreen(
 
     Column(modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = titleEasterEgg,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
+            Icon(
+                painter = painterResource(R.drawable.thor_mono),
+                "App Icon",
+                modifier = Modifier.padding(5.dp)
+                    .size(48.dp)
+                    .clip(CircleShape)
                     .clickable {
                         titleEasterEgg = when (titleEasterEgg) {
                             "App List" -> "Hey! You found me!"
@@ -128,7 +131,13 @@ fun AppListScreen(
                             }
                         }
                     }
-                    .padding(10.dp)
+                    .padding(8.dp)
+            )
+            Text(
+                text = titleEasterEgg,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .padding(vertical = 10.dp)
                     .weight(1f),
                 style = MaterialTheme.typography.titleLarge
             )
