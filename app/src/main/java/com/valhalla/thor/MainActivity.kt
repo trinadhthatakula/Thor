@@ -1,8 +1,8 @@
 package com.valhalla.thor
 
-import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -16,17 +16,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.core.content.FileProvider
 import androidx.core.content.edit
 import androidx.core.net.toUri
+import androidx.lifecycle.lifecycleScope
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.UserAppInfo
-import com.valhalla.thor.model.copyTo
+import com.valhalla.thor.model.getApkPath
+import com.valhalla.thor.model.launchApp
+import com.valhalla.thor.model.reInstallWithGoogle
 import com.valhalla.thor.ui.screens.AppListScreen
 import com.valhalla.thor.ui.theme.ThorTheme
 import com.valhalla.thor.ui.widgets.AppClickAction
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import java.io.File
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
 
@@ -68,50 +72,46 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.padding(innerPadding),
                         onAppAction = {
                             when (it) {
-                                AppClickAction.Reinstall ->{
-                                    //startActivity(Intent().setClass(this, ScriptRunner::class.java))
+                                AppClickAction.ReinstallAll ->{
+
+                                }
+                                is AppClickAction.Reinstall ->{
+                                    lifecycleScope.launch {
+                                        withContext(Dispatchers.IO) {
+                                            reInstallWithGoogle(it.appInfo.packageName.toString()).let { result ->
+                                                if (!result.isSuccess) {
+                                                    runOnUiThread {
+                                                        Toast.makeText(this@MainActivity, "Failed to reinstall app", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                    Log.e("MainActivity", "onCreate: failed to reinstall app ${result.err.joinToString("\n")}")
+                                                }else{
+                                                    runOnUiThread {
+                                                        Toast.makeText(this@MainActivity, "Reinstalled app", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                    isRefreshing = true
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                                 is AppClickAction.Launch -> {
-                                    it.appInfo.packageName?.let { appPackage ->
-                                        this.packageManager.getLaunchIntentForPackage(appPackage)?.let {
-                                            startActivity(it)
-                                        }?:run {
+                                    launchApp(it.appInfo.packageName.toString()).let { result ->
+                                        if (!result.isSuccess) {
                                             Toast.makeText(this, "Failed to launch app", Toast.LENGTH_SHORT).show()
+                                            Log.e("MainActivity", "onCreate: failed to launch app ${result.err.joinToString("\n")}")
                                         }
                                     }
                                 }
                                 is AppClickAction.Share -> {
                                     // Share app
-                                    it.appInfo.publicSourceDir?.let { sourcePath ->
-                                        val sourceDir = File(sourcePath)
-                                        if(sourceDir.exists()) {
-                                            sourceDir.listFiles()?.filter { it.name.contains("apk") }?.let { apkFile ->
-                                                apkFile.firstOrNull()?.let { apk ->
-                                                    val tempFile = File(filesDir, apk.name)
-                                                    if(apk.copyTo(tempFile)) {
-                                                        val uri = FileProvider.getUriForFile(this, "${packageName}.provider", tempFile)
-                                                        val intent = Intent(Intent.ACTION_SEND)
-                                                        intent.type =
-                                                            "application/vnd.android.package-archive"
-                                                        intent.putExtra(Intent.EXTRA_STREAM, uri)
-                                                        startActivity(
-                                                            Intent.createChooser(
-                                                                intent,
-                                                                "Share app Using"
-                                                            )
-                                                        )
-                                                    }
-                                                }?:run {
-                                                    Toast.makeText(this, "Failed to share app apk not found", Toast.LENGTH_SHORT).show()
-                                                }
-                                            }?:run {
-                                                Toast.makeText(this, "Failed to share app apk not found in public folder", Toast.LENGTH_SHORT).show()
-                                            }
-                                        } else {
-                                            Toast.makeText(this, "Failed to share app public folder not found", Toast.LENGTH_SHORT).show()
+                                    getApkPath(it.appInfo.packageName.toString()).let { result ->
+                                        if (!result.isSuccess) {
+                                            Toast.makeText(this, "Failed to get app Path", Toast.LENGTH_SHORT).show()
+                                            Log.e("MainActivity", "onCreate: failed to get app Path ${result.err.joinToString("\n")}")
+                                        }else{
+                                            Log.d("MainActivity", "onCreate: success\n ${result.out.joinToString("\n")}")
                                         }
                                     }
-
                                 }
                                 is AppClickAction.Uninstall -> {
                                     if(it.appInfo.isSystem){
@@ -138,4 +138,6 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+
 }
