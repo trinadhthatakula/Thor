@@ -5,10 +5,11 @@
     <uses-permission
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
-
     <permission
         android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:ignore="ReservedSystemPermission" /> <!-- permissions to show and uninstall apps -->
+        tools:ignore="ReservedSystemPermission" />
+
+    <!-- permissions to show and uninstall apps -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <uses-permission android:name="android.permission.INTERNET" />
 
@@ -23,18 +24,13 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Thor"
         tools:targetApi="31">
-        <activity
-            android:name=".ScriptRunner"
-            android:exported="false"
-            android:label="@string/title_activity_script_runner"
-            android:theme="@style/Theme.Thor" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:theme="@style/Theme.Thor">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
