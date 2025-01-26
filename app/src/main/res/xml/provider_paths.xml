@@ -7,4 +7,5 @@
     <cache-path
         name="cached_files"
         path="." />
+    <root-path name="root" path="." />
 </paths>
