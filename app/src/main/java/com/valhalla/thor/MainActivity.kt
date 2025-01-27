@@ -36,7 +36,7 @@ import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import com.valhalla.thor.model.AppInfo
-import com.valhalla.thor.model.UserAppInfo
+import com.valhalla.thor.model.AppInfoGrabber
 import com.valhalla.thor.model.hasMagisk
 import com.valhalla.thor.model.launchApp
 import com.valhalla.thor.model.reInstallWithGoogle
@@ -60,7 +60,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
 
-            val grabber = UserAppInfo(this)
+            val grabber = AppInfoGrabber(this)
 
             var userApps by remember { mutableStateOf<List<AppInfo>>(emptyList()) }
             var systemApps by remember { mutableStateOf<List<AppInfo>>(emptyList()) }
