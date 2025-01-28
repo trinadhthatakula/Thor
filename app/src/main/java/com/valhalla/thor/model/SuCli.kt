@@ -132,39 +132,54 @@ fun forceStopApp(packageName: String) {
 }
 
 fun shareApp(appInfo: AppInfo, context: Context) {
-    appInfo.packageName?.let { packageName ->
+    appInfo.packageName.let { packageName ->
         ShellUtils.fastCmd("pm path \"${packageName}\" | sed 's/package://' | tr '\\n' ' '")
             .trim()
             .split(" ")
             .firstOrNull { it.contains("base.apk") }
             ?.let { baseApkPath ->
-                val file = File(baseApkPath)
-                val tempFolder = File(context.filesDir, "shareApp")
-                val baseFile = File(tempFolder, appInfo.appName + ".apk")
-                if (
-                    (!tempFolder.exists() || tempFolder.delete())
-                    && tempFolder.mkdirs()
-                    && (!baseFile.exists() || baseFile.delete())
-                    && baseFile.createNewFile()
-                    && file.copyTo(baseFile)
-                ) {
-                    val intent = Intent(Intent.ACTION_SEND)
-                    intent.type = "application/vnd.android.package-archive"
-                    intent.putExtra(
-                        Intent.EXTRA_STREAM,
-                        FileProvider.getUriForFile(
-                            context,
-                            BuildConfig.APPLICATION_ID + ".provider",
-                            baseFile
+                try {
+                    Log.i(TAG, "shareApp: $baseApkPath")
+                    val file = File(baseApkPath)
+                    val tempFolder = File(context.filesDir, "shareApp")
+                    val baseFile = File(tempFolder, "${appInfo.appName}_${appInfo.versionName}.apk")
+                    if (copyApk(file, baseFile)) {
+                        val intent = Intent(Intent.ACTION_SEND)
+                        intent.type = "application/vnd.android.package-archive"
+                        intent.putExtra(
+                            Intent.EXTRA_STREAM,
+                            FileProvider.getUriForFile(
+                                context,
+                                BuildConfig.APPLICATION_ID + ".provider",
+                                baseFile
+                            )
                         )
-                    )
-                    context.startActivity(
-                        Intent.createChooser(
-                            intent,
-                            "Share App using"
+                        context.startActivity(
+                            Intent.createChooser(
+                                intent,
+                                "Share App using"
+                            )
                         )
-                    )
-                } else {
+                    } else {
+                        val intent = Intent(Intent.ACTION_SEND)
+                        intent.type = "application/vnd.android.package-archive"
+                        intent.putExtra(
+                            Intent.EXTRA_STREAM,
+                            FileProvider.getUriForFile(
+                                context,
+                                BuildConfig.APPLICATION_ID + ".provider",
+                                file
+                            )
+                        )
+                        context.startActivity(
+                            Intent.createChooser(
+                                intent,
+                                "Share App using"
+                            )
+                        )
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
                     Toast.makeText(context, "Failed to share app", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -172,18 +187,30 @@ fun shareApp(appInfo: AppInfo, context: Context) {
 
 }
 
-fun getSplits(packageName: String) {
-    val apkFilePaths = ShellUtils
-        .fastCmd("pm path \"$packageName\" | sed 's/package://' | tr '\\n' ' '")
-        .trim()
-        .split(" ")
-    apkFilePaths.forEach { path ->
-        Log.d(TAG, path)
+fun copyApk(source: File, destination: File): Boolean {
+    try {
+        if (!source.exists()) throw Exception("Source file does not exist")
+        destination.parentFile?.let { parentFile ->
+            return if (parentFile.mkdirs()) {
+                if (destination.exists() || destination.createNewFile())
+                    source.copyTo(destination)
+                else false
+            } else false
+        } ?: return false
+    } catch (e: Exception) {
+        e.printStackTrace()
+        return false
     }
 }
 
+fun getSplits(packageName: String) {
+    ShellUtils.fastCmd("pm path \"$packageName\" | sed 's/package://' | tr '\\n' ' '")
+        .trim()
+        .split(" ")
+}
+
 fun reInstallWithGoogle(appInfo: AppInfo, observer: (String) -> Unit, exit: () -> Unit) {
-    appInfo.packageName?.let { packageName ->
+    appInfo.packageName.let { packageName ->
         var failCounter = 0
         var successCounter = 0
         try {
