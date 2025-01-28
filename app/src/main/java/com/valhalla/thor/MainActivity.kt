@@ -2,7 +2,6 @@ package com.valhalla.thor
 
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -92,29 +91,21 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 is AppClickAction.Reinstall -> {
-                                    //if (rootAvailable() || hasMagisk())
-                                        lifecycleScope.launch {
-                                            logObserver = emptyList()
-                                            reinstalling = true
-                                            withContext(Dispatchers.IO) {
-                                                reInstallWithGoogle(
-                                                    it.appInfo,
-                                                    observer = {
-                                                        logObserver += it
-                                                    },
-                                                    exit = {
-                                                        canExit = true
-                                                        isRefreshing = true
-                                                    })
-                                            }
+                                    lifecycleScope.launch {
+                                        logObserver = emptyList()
+                                        reinstalling = true
+                                        withContext(Dispatchers.IO) {
+                                            reInstallWithGoogle(
+                                                it.appInfo,
+                                                observer = {
+                                                    logObserver += it
+                                                },
+                                                exit = {
+                                                    canExit = true
+                                                    isRefreshing = true
+                                                })
                                         }
-                                    /* else {
-                                        Toast.makeText(
-                                            this,
-                                            "Root access not available\nPlease grant root access and restart this app",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }*/
+                                    }
                                 }
 
                                 is AppClickAction.Launch -> {
@@ -126,12 +117,6 @@ class MainActivity : ComponentActivity() {
                                                     "Failed to launch app",
                                                     Toast.LENGTH_SHORT
                                                 ).show()
-                                                Log.e(
-                                                    "MainActivity",
-                                                    "onCreate: failed to launch app ${
-                                                        result.err.joinToString("\n")
-                                                    }"
-                                                )
                                             }
                                         }
                                     else
@@ -186,31 +171,41 @@ class MainActivity : ComponentActivity() {
 
                 if (multiAction != null) {
 
-                    if (multiAction is MultiAppAction.ReInstall) {
-                        val appList = (multiAction as MultiAppAction.ReInstall).appList
-                        var hasAffirmation by remember { mutableStateOf(false) }
-                        LaunchedEffect(hasAffirmation) {
-                            if (hasAffirmation) {
-                                logObserver = emptyList()
-                                canExit = false
-                                multiAction = null
-                                reinstalling = true
-                                withContext(Dispatchers.IO) {
-                                    reInstallAppsWithGoogle(
-                                        appList,
-                                        observer = {
-                                            logObserver += it
-                                        },
-                                        exit = {
-                                            canExit = true
-                                            isRefreshing = true
-                                        }
-                                    )
-                                }
+                    when (multiAction) {
+
+                        is MultiAppAction.Uninstall -> {
+                            (multiAction as MultiAppAction.Uninstall).appList.forEach {
+                                val appPackage = it.packageName
+                                val intent = Intent(Intent.ACTION_DELETE)
+                                intent.data = "package:${appPackage}".toUri()
+                                startActivity(intent)
                             }
                         }
-                        if (!hasAffirmation)
-                            AlertDialog(
+
+                        is MultiAppAction.ReInstall -> {
+                            val appList = (multiAction as MultiAppAction.ReInstall).appList
+                            var hasAffirmation by remember { mutableStateOf(false) }
+                            LaunchedEffect(hasAffirmation) {
+                                if (hasAffirmation) {
+                                    logObserver = emptyList()
+                                    canExit = false
+                                    multiAction = null
+                                    reinstalling = true
+                                    withContext(Dispatchers.IO) {
+                                        reInstallAppsWithGoogle(
+                                            appList,
+                                            observer = {
+                                                logObserver += it
+                                            },
+                                            exit = {
+                                                canExit = true
+                                                isRefreshing = true
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                            if (!hasAffirmation) AlertDialog(
                                 onDismissRequest = {},
                                 confirmButton = {
                                     TextButton(
@@ -237,7 +232,12 @@ class MainActivity : ComponentActivity() {
                                     Text("This will reinstall ${appList.size} apps with Google Play")
                                 }
                             )
+                        }
+                        else -> {
+                            Toast.makeText(this,"Work in progress",Toast.LENGTH_SHORT).show()
+                        }
                     }
+
                 }
                 if (reinstalling) {
                     TermLogger(
