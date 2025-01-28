@@ -1,5 +1,6 @@
 package com.valhalla.thor.model
 
+import android.R.attr.shell
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
@@ -250,6 +251,46 @@ fun reInstallWithGoogle(appInfo: AppInfo, observer: (String) -> Unit, exit: () -
             exit()
         }
     }
+}
+
+fun reInstallAppsWithGoogle(appInfos: List<AppInfo>, observer: (String) -> Unit, exit: () -> Unit) {
+    observer("Reinstalling with Google...")
+    val shell = getRootShell()
+    observer("Root access found")
+    val currentUser = ShellUtils.fastCmd(shell, "am get-current-user").trim()
+    observer("Found User $currentUser")
+    try {
+        appInfos.forEach { appInfo ->
+            appInfo.packageName.let { packageName ->
+                var failCounter = 0
+                var successCounter = 0
+                val combinedPath =
+                    ShellUtils.fastCmd("pm path \"$packageName\" | sed 's/package://' | tr '\\n' ' '")
+                        .trim()
+                shell.newJob()
+                    .add("su -c pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 \"$combinedPath\" > /dev/null")
+                    .exec().let {
+                        if (!it.isSuccess) {
+                            failCounter++
+                            observer("Failed to reinstall ${appInfo.appName}")
+                        } else {
+                            successCounter++
+                            observer("Reinstalled ${appInfo.appName}")
+                        }
+                    }
+
+            }
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    } finally {
+        observer("\n")
+        observer("Special Thanks")
+        observer("CIT, citra_standalone")
+        observer("TSA")
+        exit()
+    }
+
 }
 
 fun launchApp(packageName: String): Shell.Result {

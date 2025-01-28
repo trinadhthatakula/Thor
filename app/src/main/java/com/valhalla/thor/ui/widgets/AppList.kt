@@ -44,6 +44,7 @@ import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.AppListType
+import com.valhalla.thor.model.MultiAppAction
 import com.valhalla.thor.model.getAppIcon
 import com.valhalla.thor.model.getSplits
 import com.valhalla.thor.model.popularInstallers
@@ -57,7 +58,8 @@ fun AppList(
     selectedFilter: String?,
     filteredList: List<AppInfo>,
     onFilterSelected: (String?) -> Unit,
-    onAppInfoSelected: (AppInfo) -> Unit
+    onAppInfoSelected: (AppInfo) -> Unit,
+    onMultiAppAction: (MultiAppAction) -> Unit = {}
 ) {
 
     var multiSelect by remember {
@@ -201,10 +203,15 @@ fun AppList(
 
         if (multiSelect.isNotEmpty()) {
             MultiSelectToolBox(
+                selected = multiSelect,
                 modifier = Modifier
                     .padding(10.dp)
                     .align(Alignment.BottomEnd),
                 onCancel = {
+                    multiSelect = emptyList()
+                },
+                onMultiAppAction = {
+                    onMultiAppAction(it)
                     multiSelect = emptyList()
                 }
             )
@@ -217,7 +224,9 @@ fun AppList(
 @Composable
 fun MultiSelectToolBox(
     modifier: Modifier = Modifier,
-    onCancel: () -> Unit = {}
+    selected: List<AppInfo> = emptyList(),
+    onCancel: () -> Unit = {},
+    onMultiAppAction: (MultiAppAction) -> Unit = {}
 ) {
     ElevatedCard(
         modifier = modifier
@@ -232,19 +241,21 @@ fun MultiSelectToolBox(
                     icon = R.drawable.apk_install,
                     text = "ReInstall",
                     onClick = {
+                        onMultiAppAction(MultiAppAction.ReInstall(selected))
                     }
                 )
                 AppActionItem(
                     icon = R.drawable.delete_forever,
                     text = "Uninstall",
                     onClick = {
-
+                        onMultiAppAction(MultiAppAction.Uninstall(selected))
                     }
                 )
                 AppActionItem(
                     icon = R.drawable.share,
                     text = "Share",
                     onClick = {
+                        onMultiAppAction(MultiAppAction.Share(selected))
                     }
                 )
                 AppActionItem(

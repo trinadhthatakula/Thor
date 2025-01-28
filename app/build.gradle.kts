@@ -6,6 +6,7 @@ plugins {
 }
 
 android {
+
     namespace = "com.valhalla.thor"
     compileSdk = 35
 
@@ -13,10 +14,9 @@ android {
         applicationId = "com.valhalla.thor"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1250
-        versionName = "1.250"
+        versionCode = 1300
+        versionName = "1.300"
         vectorDrawables.useSupportLibrary = true
-
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

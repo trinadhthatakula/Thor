@@ -39,6 +39,7 @@ import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.AppListType
+import com.valhalla.thor.model.MultiAppAction
 import com.valhalla.thor.model.getAppIcon
 import com.valhalla.thor.ui.widgets.AppClickAction
 import com.valhalla.thor.ui.widgets.AppInfoDialog
@@ -54,7 +55,8 @@ fun AppListScreen(
     onAppAction: (AppClickAction) -> Unit = {},
     isRefreshing: Boolean = false,
     onRefresh: () -> Unit = {},
-    onEggBroken: () -> Unit = {}
+    onEggBroken: () -> Unit = {},
+    onMultiAppAction: (MultiAppAction) -> Unit = {}
 ) {
 
     var selectedAppListType by remember {
@@ -181,7 +183,8 @@ fun AppListScreen(
                 },
                 onAppInfoSelected = {
                     selectedAppInfo = it
-                }
+                },
+                onMultiAppAction = onMultiAppAction
             )
         }
 
@@ -201,7 +204,8 @@ fun AppListScreen(
                 } else {
                     onAppAction(it)
                 }
-            }
+            },
+
         )
     }
 

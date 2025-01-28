@@ -9,18 +9,22 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,8 +41,10 @@ import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.AppInfoGrabber
+import com.valhalla.thor.model.MultiAppAction
 import com.valhalla.thor.model.hasMagisk
 import com.valhalla.thor.model.launchApp
+import com.valhalla.thor.model.reInstallAppsWithGoogle
 import com.valhalla.thor.model.reInstallWithGoogle
 import com.valhalla.thor.model.rootAvailable
 import com.valhalla.thor.model.shareApp
@@ -81,6 +87,10 @@ class MainActivity : ComponentActivity() {
             var reinstalling by remember { mutableStateOf(false) }
             var logObserver by remember { mutableStateOf(emptyList<String>()) }
             var canExit by remember { mutableStateOf(false) }
+
+            var multiAction: MultiAppAction? by remember {
+                mutableStateOf(null)
+            }
 
             ThorTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
@@ -185,8 +195,71 @@ class MainActivity : ComponentActivity() {
                                     true
                                 )
                             }
+                        },
+                        onMultiAppAction = {
+                            multiAction = it
                         }
                     )
+                }
+
+                if (multiAction != null) {
+
+
+                    if (multiAction is MultiAppAction.ReInstall) {
+                        val appList = (multiAction as MultiAppAction.ReInstall).appList
+
+                        var hasAffirmation by remember { mutableStateOf(false) }
+
+                        LaunchedEffect(hasAffirmation) {
+                            if (hasAffirmation) {
+                                logObserver = emptyList()
+                                canExit = false
+                                multiAction = null
+                                reinstalling = true
+                                withContext(Dispatchers.IO) {
+                                    reInstallAppsWithGoogle(
+                                        appList,
+                                        observer = {
+                                            logObserver += it
+                                        },
+                                        exit = {
+                                            canExit = true
+                                            isRefreshing = true
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                        if (!hasAffirmation)
+                            AlertDialog(
+                                onDismissRequest = {
+                                },
+                                confirmButton = {
+                                    TextButton(
+                                        onClick = {
+                                            hasAffirmation = true
+                                        }
+                                    ) {
+                                        Text("Yes")
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(
+                                        onClick = {
+                                            multiAction = null
+                                        }
+                                    ) {
+                                        Text("No")
+                                    }
+                                },
+                                title = {
+                                    Text("Are You Sure?")
+                                },
+                                text = {
+                                    Text("This will reinstall ${appList.size} apps with Google Play")
+                                }
+                            )
+                    }
                 }
 
                 if (reinstalling) {
