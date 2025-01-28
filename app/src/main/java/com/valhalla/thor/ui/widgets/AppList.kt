@@ -204,7 +204,8 @@ fun AppList(
                                             multiSelect += it
                                     }
                                 }, onLongClick = {
-                                    multiSelect += it
+                                    if (filteredList.size > 1)
+                                        multiSelect += it
                                 }
                             )
                     )
