@@ -91,7 +91,7 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 is AppClickAction.Reinstall -> {
-                                    lifecycleScope.launch {
+                                    if (rootAvailable() || hasMagisk()) lifecycleScope.launch {
                                         logObserver = emptyList()
                                         reinstalling = true
                                         withContext(Dispatchers.IO) {
@@ -105,7 +105,11 @@ class MainActivity : ComponentActivity() {
                                                     isRefreshing = true
                                                 })
                                         }
-                                    }
+                                    } else Toast.makeText(
+                                        this,
+                                        "Root not available\nPlease grant root in manager app",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 }
 
                                 is AppClickAction.Launch -> {
