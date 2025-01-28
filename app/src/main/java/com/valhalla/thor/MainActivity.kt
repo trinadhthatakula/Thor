@@ -25,6 +25,8 @@ import androidx.lifecycle.lifecycleScope
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.AppInfoGrabber
 import com.valhalla.thor.model.MultiAppAction
+import com.valhalla.thor.model.disableApps
+import com.valhalla.thor.model.enableApps
 import com.valhalla.thor.model.hasMagisk
 import com.valhalla.thor.model.launchApp
 import com.valhalla.thor.model.reInstallAppsWithGoogle
@@ -88,6 +90,16 @@ class MainActivity : ComponentActivity() {
                             when (it) {
                                 AppClickAction.ReinstallAll -> {
 
+                                }
+
+                                is AppClickAction.Freeze -> {
+                                    disableApps(it.appInfo)
+                                    isRefreshing = true
+                                }
+
+                                is AppClickAction.UnFreeze -> {
+                                    enableApps(it.appInfo)
+                                    isRefreshing = true
                                 }
 
                                 is AppClickAction.Reinstall -> {

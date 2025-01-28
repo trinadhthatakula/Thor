@@ -292,6 +292,22 @@ fun reInstallAppsWithGoogle(appInfos: List<AppInfo>, observer: (String) -> Unit,
 
 }
 
+fun Context.disableApps(vararg appInfos: AppInfo) {
+    appInfos.forEach { appInfo ->
+        getRootShell().newJob()
+            .add("su pm disable ${appInfo.packageName}")
+            .exec()
+    }
+}
+
+fun Context.enableApps(vararg appInfos: AppInfo) {
+    appInfos.forEach { appInfo ->
+        getRootShell().newJob()
+            .add("su pm enable ${appInfo.packageName}")
+            .exec()
+    }
+}
+
 fun launchApp(packageName: String): Shell.Result {
     val shell = getRootShell()
     val result =

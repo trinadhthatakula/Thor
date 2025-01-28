@@ -156,6 +156,12 @@ fun AppList(
                             }
                         }, headlineContent = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (!it.enabled)
+                                    Icon(
+                                        painterResource(R.drawable.frozen),
+                                        "Frozen app",
+                                        modifier = Modifier.size(20.dp).padding(2.dp)
+                                    )
                                 Text(
                                     it.appName ?: "Unknown"
                                 )

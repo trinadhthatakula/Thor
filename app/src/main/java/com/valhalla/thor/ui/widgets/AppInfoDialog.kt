@@ -43,6 +43,8 @@ sealed interface AppClickAction {
     data class Share(val appInfo: AppInfo) : AppClickAction
     data class Uninstall(val appInfo: AppInfo) : AppClickAction
     data class Reinstall(val appInfo: AppInfo) : AppClickAction
+    data class Freeze(val appInfo: AppInfo) : AppClickAction
+    data class UnFreeze(val appInfo: AppInfo) : AppClickAction
     data object ReinstallAll : AppClickAction
 }
 
@@ -168,6 +170,9 @@ fun FloatingBar(
     onAppAction: (AppClickAction) -> Unit = {},
     onDismiss: () -> Unit = {}
 ) {
+
+    val isFrozen by remember { mutableStateOf(appInfo.enabled.not()) }
+
     Row(
         modifier = modifier.padding(horizontal = 30.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -199,6 +204,16 @@ fun FloatingBar(
                 onAppAction(AppClickAction.Share(appInfo))
             }
 
+        /*AppActionItem(
+            icon = if (isFrozen) R.drawable.unfreeze else R.drawable.frozen,
+            text = if (isFrozen) "Unfreeze" else "Freeze",
+        ) {
+            if (isFrozen)
+                onAppAction(AppClickAction.UnFreeze(appInfo))
+            else
+                onAppAction(AppClickAction.Freeze(appInfo))
+            onDismiss()
+        }*/
         AppActionItem(
             icon = R.drawable.delete_forever,
             text = "Uninstall",
