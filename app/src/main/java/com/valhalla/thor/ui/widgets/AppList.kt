@@ -3,6 +3,7 @@ package com.valhalla.thor.ui.widgets
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
@@ -128,7 +129,7 @@ fun AppList(
                             multiSelect = emptyList()
                         },
                         modifier = Modifier.padding(5.dp)
-                    ){
+                    ) {
                         Icon(
                             painter = painterResource(id = R.drawable.round_close),
                             contentDescription = "Close",
@@ -156,13 +157,27 @@ fun AppList(
                                         .padding(5.dp)
                                         .size(50.dp)
                                 )
-
                             }
-
                         }, headlineContent = {
-                            Text(
-                                it.appName ?: "Unknown"
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    it.appName ?: "Unknown"
+                                )
+                                if (it.splitPublicSourceDirs.isNotEmpty()) {
+                                    Text(
+                                        text = "${it.splitPublicSourceDirs.size} Splits",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier
+                                            .padding(horizontal = 2.dp)
+                                            .background(
+                                                color = MaterialTheme.colorScheme.primaryContainer,
+                                                RoundedCornerShape(50)
+                                            )
+                                            .padding(horizontal = 8.dp, vertical = 2.5.dp),
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
                         }, supportingContent = {
                             Text(
                                 it.packageName
@@ -181,19 +196,20 @@ fun AppList(
                             .clip(RoundedCornerShape(10.dp))
                             .clickable {
                             }
-                            .combinedClickable(onClick = {
-                                if (multiSelect.isEmpty()) {
-                                    getSplits(it.packageName.toString())
-                                    onAppInfoSelected(it)
-                                } else {
-                                    if (multiSelect.contains(it))
-                                        multiSelect -= it
-                                    else
-                                        multiSelect += it
+                            .combinedClickable(
+                                onClick = {
+                                    if (multiSelect.isEmpty()) {
+                                        getSplits(it.packageName.toString())
+                                        onAppInfoSelected(it)
+                                    } else {
+                                        if (multiSelect.contains(it))
+                                            multiSelect -= it
+                                        else
+                                            multiSelect += it
+                                    }
+                                }, onLongClick = {
+                                    multiSelect += it
                                 }
-                            }, onLongClick = {
-                                multiSelect += it
-                            }
                             )
                     )
                 }

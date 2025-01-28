@@ -30,6 +30,8 @@ class AppInfoGrabber(private val context: Context) {
                     installerPackageName =
                         context.packageManager.getInstallerPackageName(p.packageName)
                     publicSourceDir = a.publicSourceDir
+                    splitPublicSourceDirs = a.splitPublicSourceDirs?.map { it }?:emptyList()
+                    enabled = a.enabled
                 })
             }
         }
@@ -57,6 +59,8 @@ class AppInfoGrabber(private val context: Context) {
                     installerPackageName =
                         context.packageManager.getInstallerPackageName(p.packageName)
                     publicSourceDir = a.publicSourceDir
+                    splitPublicSourceDirs = a.splitPublicSourceDirs?.map { it }?:emptyList()
+                    enabled = a.enabled
                 })
             }
         }

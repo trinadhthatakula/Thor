@@ -1,6 +1,7 @@
 package com.valhalla.thor.ui.widgets
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -81,8 +82,25 @@ fun AppInfoDialog(
                 maxLines = 1,
                 modifier = Modifier.padding(horizontal = 5.dp)
             )
+            Row {
+                if (appInfo.splitPublicSourceDirs.isNotEmpty())
+                    Text(
+                        text = "${appInfo.splitPublicSourceDirs.size} Splits",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier
+                            .padding(5.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                RoundedCornerShape(50)
+                            )
+                            .padding(horizontal = 8.dp, vertical = 2.5.dp),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+            }
+
+
             Text(
-                appInfo.packageName ?: "",
+                appInfo.packageName,
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1,
                 modifier = Modifier.padding(horizontal = 5.dp)

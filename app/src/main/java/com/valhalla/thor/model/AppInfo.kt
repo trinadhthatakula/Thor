@@ -8,5 +8,7 @@ data class AppInfo(
     var versionCode: Int = 0,
     var isSystem: Boolean = false,
     var installerPackageName: String? = null,
-    var publicSourceDir: String? = null
+    var publicSourceDir: String? = null,
+    var splitPublicSourceDirs: List<String> = emptyList(),
+    var enabled: Boolean = true
 )
