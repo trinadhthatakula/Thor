@@ -83,6 +83,7 @@ fun AppListScreen(
         else {
             systemAppList.map { it.installerPackageName }.distinct()
         }
+        if(selectedFilter!=null && selectedFilter!="Unknown" && installers.contains(selectedFilter).not()) selectedFilter ="All"
         filteredList = if (selectedFilter == "All") {
             if (selectedAppListType == AppListType.USER) userAppList.sortedBy { it.appName } else systemAppList.sortedBy { it.appName }
         } else {

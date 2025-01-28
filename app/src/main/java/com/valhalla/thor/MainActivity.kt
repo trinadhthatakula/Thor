@@ -92,7 +92,7 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 is AppClickAction.Reinstall -> {
-                                    if (rootAvailable() || hasMagisk()) {
+                                    //if (rootAvailable() || hasMagisk())
                                         lifecycleScope.launch {
                                             logObserver = emptyList()
                                             reinstalling = true
@@ -108,13 +108,13 @@ class MainActivity : ComponentActivity() {
                                                     })
                                             }
                                         }
-                                    } else {
+                                    /* else {
                                         Toast.makeText(
                                             this,
                                             "Root access not available\nPlease grant root access and restart this app",
                                             Toast.LENGTH_SHORT
                                         ).show()
-                                    }
+                                    }*/
                                 }
 
                                 is AppClickAction.Launch -> {

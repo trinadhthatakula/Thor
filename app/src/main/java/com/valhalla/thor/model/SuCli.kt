@@ -1,6 +1,5 @@
 package com.valhalla.thor.model
 
-import android.R.attr.shell
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
@@ -231,7 +230,7 @@ fun reInstallWithGoogle(appInfo: AppInfo, observer: (String) -> Unit, exit: () -
             else if (apkFilePaths.size == 1)
                 observer("Found apk file at ${apkFilePaths.first()}")
             shell.newJob()
-                .add("su -c pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 \"$combinedPath\" > /dev/null")
+                .add("pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 \"$combinedPath\" > /dev/null")
                 .exec().let {
                     if (!it.isSuccess) {
                         failCounter++
@@ -268,7 +267,7 @@ fun reInstallAppsWithGoogle(appInfos: List<AppInfo>, observer: (String) -> Unit,
                     ShellUtils.fastCmd("pm path \"$packageName\" | sed 's/package://' | tr '\\n' ' '")
                         .trim()
                 shell.newJob()
-                    .add("su -c pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 \"$combinedPath\" > /dev/null")
+                    .add("pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 \"$combinedPath\" > /dev/null")
                     .exec().let {
                         if (!it.isSuccess) {
                             failCounter++
