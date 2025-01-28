@@ -155,15 +155,21 @@ fun AppList(
                                 )
                             }
                         }, headlineContent = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.horizontalScroll(rememberScrollState())
+                            ) {
                                 if (!it.enabled)
                                     Icon(
                                         painterResource(R.drawable.frozen),
                                         "Frozen app",
-                                        modifier = Modifier.size(20.dp).padding(2.dp)
+                                        modifier = Modifier
+                                            .size(20.dp)
+                                            .padding(2.dp)
                                     )
                                 Text(
-                                    it.appName ?: "Unknown"
+                                    it.appName ?: "Unknown",
+                                    maxLines = 1
                                 )
                                 if (it.splitPublicSourceDirs.isNotEmpty()) {
                                     Text(
