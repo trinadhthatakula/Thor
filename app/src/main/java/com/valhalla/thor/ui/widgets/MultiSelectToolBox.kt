@@ -13,7 +13,7 @@ import com.valhalla.thor.model.MultiAppAction
 
 @Composable
 fun MultiSelectToolBox(
-    modifier: Modifier = Modifier.Companion,
+    modifier: Modifier = Modifier,
     selected: List<AppInfo> = emptyList(),
     onCancel: () -> Unit = {},
     onMultiAppAction: (MultiAppAction) -> Unit = {}
@@ -27,20 +27,22 @@ fun MultiSelectToolBox(
         ) {
 
             Row {
-                AppActionItem(
-                    icon = R.drawable.apk_install,
-                    text = "ReInstall",
-                    onClick = {
-                        onMultiAppAction(MultiAppAction.ReInstall(selected))
-                    }
-                )
-                AppActionItem(
-                    icon = R.drawable.delete_forever,
-                    text = "Uninstall",
-                    onClick = {
-                        onMultiAppAction(MultiAppAction.Uninstall(selected))
-                    }
-                )
+                if(!selected.first().isSystem) {
+                    AppActionItem(
+                        icon = R.drawable.apk_install,
+                        text = "ReInstall",
+                        onClick = {
+                            onMultiAppAction(MultiAppAction.ReInstall(selected))
+                        }
+                    )
+                    AppActionItem(
+                        icon = R.drawable.delete_forever,
+                        text = "Uninstall",
+                        onClick = {
+                            onMultiAppAction(MultiAppAction.Uninstall(selected))
+                        }
+                    )
+                }
                 AppActionItem(
                     icon = R.drawable.share,
                     text = "Share",
