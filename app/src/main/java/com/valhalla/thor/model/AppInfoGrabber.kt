@@ -32,6 +32,7 @@ class AppInfoGrabber(private val context: Context) {
                     publicSourceDir = a.publicSourceDir
                     splitPublicSourceDirs = a.splitPublicSourceDirs?.map { it }?:emptyList()
                     enabled = a.enabled
+                    enabledState = context.packageManager.getApplicationEnabledSetting(p.packageName)
                 })
             }
         }
@@ -61,6 +62,7 @@ class AppInfoGrabber(private val context: Context) {
                     publicSourceDir = a.publicSourceDir
                     splitPublicSourceDirs = a.splitPublicSourceDirs?.map { it }?:emptyList()
                     enabled = a.enabled
+                    enabledState = context.packageManager.getApplicationEnabledSetting(p.packageName)
                 })
             }
         }

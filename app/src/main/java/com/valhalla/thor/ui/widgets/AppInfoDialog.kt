@@ -96,6 +96,19 @@ fun AppInfoDialog(
                             .padding(horizontal = 8.dp, vertical = 2.5.dp),
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
+                if (!appInfo.enabled)
+                    Text(
+                        text = "Frozen",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier
+                            .padding(5.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                RoundedCornerShape(50)
+                            )
+                            .padding(horizontal = 8.dp, vertical = 2.5.dp),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
             }
 
 
