@@ -16,7 +16,7 @@
 * 100% Kotlin 
 * Material 3 Deisgn 
 * Jetpack Compose
-* Smallest APK size
+* Smallest APK size (1.6MB as of now)
 
 ## Features
 - Fully reproducible, copylefted libre software (GPLv3+)
