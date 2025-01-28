@@ -26,10 +26,12 @@
 - Install/Uninstall Apk files
 - Reinstall APKs/app with Google
 - Share App Apk file
+- Batch Reinstall
 
 ## Upcoming Features
-- Batch Install/Uninstall & Reinstall
+- Batch Install/Uninstall
 - Sorting a& filters
+- BackUp App Data
 - Option to choose installers when reinstalling
 - Debloater for system apps
 - Freeze/UnFreeze apps
