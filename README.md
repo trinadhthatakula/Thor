@@ -26,10 +26,12 @@
 - Install/Uninstall Apk files
 - Reinstall APKs/app with Google
 - Share App Apk file
-- Batch Reinstall
+- Batch Reinstall/Uninstall
+- Split App Indicator
+- AppState Indicator (frozen = disabled)
 
 ## Upcoming Features
-- Batch Install/Uninstall
+- Batch Install
 - Sorting a& filters
 - BackUp App Data
 - Option to choose installers when reinstalling
