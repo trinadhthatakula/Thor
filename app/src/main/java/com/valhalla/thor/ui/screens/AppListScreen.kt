@@ -178,7 +178,7 @@ fun AppListScreen(
                 appListType = selectedAppListType,
                 installers = installers,
                 selectedFilter = selectedFilter,
-                filteredList = filteredList,
+                appList = filteredList,
                 onFilterSelected = {
                     selectedFilter = it
                 },

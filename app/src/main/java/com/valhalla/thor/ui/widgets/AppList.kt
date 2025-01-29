@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -18,13 +19,20 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.clearText
+import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,8 +42,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import com.valhalla.thor.R
@@ -53,11 +66,15 @@ fun AppList(
     modifier: Modifier = Modifier,
     installers: List<String?>,
     selectedFilter: String?,
-    filteredList: List<AppInfo>,
+    appList: List<AppInfo>,
     onFilterSelected: (String?) -> Unit,
     onAppInfoSelected: (AppInfo) -> Unit,
     onMultiAppAction: (MultiAppAction) -> Unit = {}
 ) {
+
+    var filteredList by remember {
+        mutableStateOf(appList)
+    }
 
     var multiSelect by remember {
         mutableStateOf(emptyList<AppInfo>())
@@ -72,9 +89,75 @@ fun AppList(
         multiSelect = emptyList()
     }
 
-    Box {
+    Box(modifier = modifier.fillMaxSize()) {
 
-        Column(modifier) {
+        Column {
+
+            val searchTerm = rememberTextFieldState("")
+            searchTerm.edit {
+                filteredList = if (length>0) {
+                    appList.filter {
+                        it.appName?.contains(toString(), true) == true
+                                || it.packageName.contains(toString(), true)
+                    }
+                }else appList
+            }
+
+            Card (
+                modifier = Modifier
+                    .padding(5.dp)
+                    .fillMaxWidth(),
+                shape = RoundedCornerShape(50)
+            ) {
+                BasicTextField(
+                    searchTerm,
+                    decorator = { tf ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = {}){
+                                Icon(
+                                    painterResource(R.drawable.round_search),
+                                    "Search Icon",
+                                )
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                if (searchTerm.text.isEmpty()) {
+                                    Text("Search any App",
+                                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
+                                }
+                                tf()
+                            }
+                            if (searchTerm.text.isNotEmpty())
+                                IconButton(
+                                    onClick = {
+                                        searchTerm.clearText()
+                                    }
+                                ) {
+                                    Icon(
+                                        painterResource(R.drawable.round_close),
+                                        "clear"
+                                    )
+                                }
+                        }
+                    },
+                    textStyle = MaterialTheme.typography.titleMedium.copy(
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.onBackground),
+                    keyboardOptions = KeyboardOptions.Default.copy(
+                        keyboardType = KeyboardType.Text,
+                        capitalization = KeyboardCapitalization.Words,
+                        imeAction = ImeAction.Search
+                    ),
+                    onKeyboardAction = {
+
+                    }
+                )
+            }
 
             AnimatedVisibility(multiSelect.isEmpty()) {
                 Row(
@@ -227,6 +310,8 @@ fun AppList(
         }
 
         if (multiSelect.isNotEmpty()) {
+            if(multiSelect.size == 1)
+                selectAll = false
             MultiSelectToolBox(
                 selected = multiSelect,
                 modifier = Modifier
