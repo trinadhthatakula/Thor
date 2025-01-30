@@ -1,12 +1,12 @@
 
-<p>
-  <img src="app/src/main/thor_icon-playstore.png" alt="Thor Logo" height="512">
+<p align="center">
+  <img src="app/src/main/thor_icon-playstore.png" alt="Thor Logo" height="192dp">
 </p>
 
 
-<h1>Thor App Manager</h1>
+<h1 align="center">Thor App Manager</h1>
 
-<p>
+<p align="center">
   <a href="https://t.me/thorAppDev">Telegram Channel</a>
 </p>
 
