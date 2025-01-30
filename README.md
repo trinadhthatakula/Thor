@@ -1,12 +1,12 @@
 
-<p align="center">
-  <img src="app/src/main/thor_icon-playstore.png" alt="Thor Logo" height="150dp">
+<p>
+  <img src="app/src/main/thor_icon-playstore.png" alt="Thor Logo" height="512">
 </p>
 
 
-<h1 align="center">Thor App Manager</h1>
+<h1>Thor App Manager</h1>
 
-<p align=center>
+<p>
   <a href="https://t.me/thorAppDev">Telegram Channel</a>
 </p>
 
@@ -14,9 +14,9 @@
 ---
 
 * 100% Kotlin 
-* Material 3 Deisgn 
+* Material 3 Design 
 * Jetpack Compose
-* Smallest APK size (1.6MB as of now)
+* Smallest APK size (less than 2.0MB)
 
 ## Features
 - Fully reproducible, copylefted libre software (GPLv3+)
@@ -31,10 +31,11 @@
 - AppState Indicator (frozen = disabled)
 
 ## Upcoming Features
+- Editing Packages.xml 
 - Batch Install
 - Sorting a& filters
 - BackUp App Data
 - Option to choose installers when reinstalling
-- Debloater for system apps
+- De-bloater for system apps
 - Freeze/UnFreeze apps
 - Many more
