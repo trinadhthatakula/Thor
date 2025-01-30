@@ -14,8 +14,11 @@ import androidx.core.content.FileProvider
 import com.topjohnwu.superuser.CallbackList
 import com.topjohnwu.superuser.Shell
 import com.topjohnwu.superuser.ShellUtils
+import com.topjohnwu.superuser.ShellUtils.fastCmd
 import com.valhalla.thor.BuildConfig
+import kotlinx.serialization.descriptors.serialDescriptor
 import java.io.File
+import java.lang.System.exit
 
 private const val TAG = "SuCli"
 
@@ -93,9 +96,9 @@ fun reboot(reason: String = "") {
     val shell = getRootShell()
     if (reason == "recovery") {
         // KEYCODE_POWER = 26, hide incorrect "Factory data reset" message
-        ShellUtils.fastCmd(shell, "/system/bin/input keyevent 26")
+        fastCmd(shell, "/system/bin/input keyevent 26")
     }
-    ShellUtils.fastCmd(shell, "/system/bin/svc power reboot $reason || /system/bin/reboot $reason")
+    fastCmd(shell, "/system/bin/svc power reboot $reason || /system/bin/reboot $reason")
 }
 
 fun rootAvailable(): Boolean {
@@ -105,7 +108,7 @@ fun rootAvailable(): Boolean {
 
 fun isAbDevice(): Boolean {
     val shell = getRootShell()
-    return ShellUtils.fastCmd(shell, "getprop ro.build.ab_update").trim().toBoolean()
+    return fastCmd(shell, "getprop ro.build.ab_update").trim().toBoolean()
 }
 
 fun isInitBoot(): Boolean {
@@ -133,7 +136,7 @@ fun forceStopApp(packageName: String) {
 
 fun shareApp(appInfo: AppInfo, context: Context) {
     appInfo.packageName.let { packageName ->
-        ShellUtils.fastCmd("pm path \"${packageName}\" | sed 's/package://' | tr '\\n' ' '")
+        fastCmd("pm path \"${packageName}\" | sed 's/package://' | tr '\\n' ' '")
             .trim()
             .split(" ")
             .firstOrNull { it.contains("base.apk") }
@@ -204,7 +207,7 @@ fun copyApk(source: File, destination: File): Boolean {
 }
 
 fun getSplits(packageName: String) {
-    ShellUtils.fastCmd("pm path \"$packageName\" | sed 's/package://' | tr '\\n' ' '")
+    fastCmd("pm path \"$packageName\" | sed 's/package://' | tr '\\n' ' '")
         .trim()
         .split(" ")
 }
@@ -217,12 +220,11 @@ fun reInstallWithGoogle(appInfo: AppInfo, observer: (String) -> Unit, exit: () -
             observer("Reinstalling with Google...")
             observer("Package: $packageName")
             val shell = getRootShell()
-            observer("Root access found")
-            val currentUser = ShellUtils.fastCmd(shell, "am get-current-user").trim()
+            val currentUser = fastCmd(shell, "am get-current-user").trim()
             observer("Found User $currentUser")
             observer("Searching for any splits")
             val combinedPath =
-                ShellUtils.fastCmd("pm path \"$packageName\" | sed 's/package://' | tr '\\n' ' '")
+                fastCmd("pm path \"$packageName\" | sed 's/package://' | tr '\\n' ' '")
                     .trim()
             val apkFilePaths = combinedPath.split(" ")
             if (apkFilePaths.size > 1)
@@ -256,7 +258,7 @@ fun reInstallAppsWithGoogle(appInfos: List<AppInfo>, observer: (String) -> Unit,
     observer("Reinstalling with Google...")
     val shell = getRootShell()
     observer("Root access found")
-    val currentUser = ShellUtils.fastCmd(shell, "am get-current-user").trim()
+    val currentUser = fastCmd(shell, "am get-current-user").trim()
     observer("Found User $currentUser")
     try {
         appInfos.forEach { appInfo ->
@@ -264,7 +266,7 @@ fun reInstallAppsWithGoogle(appInfos: List<AppInfo>, observer: (String) -> Unit,
                 var failCounter = 0
                 var successCounter = 0
                 val combinedPath =
-                    ShellUtils.fastCmd("pm path \"$packageName\" | sed 's/package://' | tr '\\n' ' '")
+                    fastCmd("pm path \"$packageName\" | sed 's/package://' | tr '\\n' ' '")
                         .trim()
                 shell.newJob()
                     .add("su -c pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 \"$combinedPath\" > /dev/null")
@@ -321,4 +323,133 @@ fun launchApp(packageName: String): Shell.Result {
 fun restartApp(packageName: String) {
     forceStopApp(packageName)
     launchApp(packageName)
+}
+
+fun commandExists(command: String): String {
+    return fastCmd(
+        "command -v $command || echo 'command not found'"
+    )
+}
+
+fun copyFilesWithShell(sourcePath: String, destinationPath: String) = fastCmd(
+        "cp $sourcePath $destinationPath"
+    )
+
+
+fun convertAbxToXml(abxPath: String, xmlPath: String): String {
+    return fastCmd(
+        "abx2xml $abxPath  $xmlPath"
+    )
+}
+
+fun convertXmlToAbx(xmlPath: String, abxPath: String): String {
+    return fastCmd(
+        "xml2abx $xmlPath $abxPath"
+    )
+}
+
+fun modifyInstallersInPackagesXml(
+    xmlPath: String,
+    avoidOEMs: Boolean = true
+): String {
+    return fastCmd(
+        "sed -i -E '/installer=/ {\n" +
+                "      /installer=\"[^\"]*(miui|xiaomi|samsung)[^\"]*\"/! {\n" +
+                "          s/(installer=\")[^\"]*(\")/\\1com.android.vending\\2/g\n" +
+                "      }\n" +
+                "  }' \"$xmlPath\""
+    )
+}
+
+fun modifyInstallInitiatorInPackagesXml(
+    xmlPath: String,
+    avoidOEMs: Boolean = true
+): String {
+    return fastCmd(
+        "sed -i -E '/installInitiator=/ {\n" +
+                "      /installInitiator=\"[^\"]*(miui|xiaomi|samsung)[^\"]*\"/! {\n" +
+                "          s/(installInitiator=\")[^\"]*(\")/\\1com.android.vending\\2/g\n" +
+                "      }\n" +
+                "  }' \"$xmlPath\""
+    )
+}
+
+fun removeInstallOriginatorInPackagesXml(
+    xmlPath: String
+): String{
+    return fastCmd(
+        "sed -i -E 's/ installOriginator=\"[^\"]*\"//g' \"$xmlPath\""
+    )
+}
+
+fun removeFile(path:String): String{
+    return fastCmd("rm $path")
+}
+
+fun processPackagesXml(xmlPath: String, name: String = "Packages.xml", observer: (String) -> Unit): Boolean {
+    val tempFile = "${xmlPath}_temp.xml"
+    val result = convertAbxToXml(xmlPath, tempFile)
+    observer(if (result.isEmpty()) "Converted ABX to XML" else "failed to convert ABX to XML")
+    if (result.isEmpty()) {
+        val modResult = modifyInstallersInPackagesXml(tempFile) +
+                modifyInstallInitiatorInPackagesXml(tempFile) +
+                removeInstallOriginatorInPackagesXml(tempFile)
+        if (modResult.isNotEmpty()) {
+            observer("failed to edit $name reason: $modResult")
+        } else {
+            observer("Modified Successfully")
+            val reverseResult = convertXmlToAbx(tempFile,xmlPath)
+            if (reverseResult.isEmpty()) {
+                observer("Converted XML to ABX")
+                observer("Edited $name")
+                observer("removing temp files ${removeFile(tempFile)}")
+                return true
+            } else {
+                observer("failed to convert XML to ABX")
+                removeFile(tempFile)
+            }
+        }
+    }
+    return false
+
+}
+
+fun editPackagesABXML(
+    observer: (String) -> Unit,
+    exit: () -> Unit
+) {
+    try {
+        observer("started working on packages.xml")
+        val packagesXmlPath = "/data/system/packages.xml"
+        val warningsXmlPath = "/data/system/packages-warnings.xml"
+        val packagesXmlBackUp = "$packagesXmlPath.bak"
+        val warningsXmlBackUp = "$warningsXmlPath.bak"
+        if (commandExists("abx2xml") != "command not found" && commandExists("xml2abx") != "command not found") {
+            observer("abx2xml and xml2abx found")
+            observer("creating backups")
+            if(File(packagesXmlBackUp).exists().not() && File(packagesXmlPath).exists()) observer(copyFilesWithShell(packagesXmlPath, packagesXmlBackUp))
+            if(File(warningsXmlBackUp).exists().not() && File(warningsXmlPath).exists()) observer(copyFilesWithShell(warningsXmlPath, warningsXmlBackUp))
+            observer("Modifying installer, installInitiator string values (except those containing xiaomi or samsung) and removing installOriginator attribute...")
+            var editedPackagesXml = File(packagesXmlPath).exists() && processPackagesXml(packagesXmlPath, name = "packages.xml", observer = observer)
+            var editedWarningsXml = File(warningsXmlPath).exists() && processPackagesXml(warningsXmlPath, name = "packages-warnings.xml", observer = observer)
+            if(editedWarningsXml || editedPackagesXml){
+                observer("original packages.xml backed up to $packagesXmlBackUp")
+                observer("original packages-warnings.xml.xml backed up to $warningsXmlBackUp")
+                observer("Please reboot and check your play integrity json Unknown installed should now be resolved")
+            }
+        } else {
+            observer("abx2xml and xml2abx not found")
+            observer("can't proceed any further")
+            observer("exiting runner")
+        }
+
+    } catch (e: Exception) {
+        e.printStackTrace()
+    } finally {
+        observer("\n\nSpecial thanks")
+        observer("Tesla @T3SL4")
+        observer("RiRi's RRR Chat @RiRiRRC")
+        exit
+    }
+
 }
