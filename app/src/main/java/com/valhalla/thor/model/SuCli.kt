@@ -16,9 +16,7 @@ import com.topjohnwu.superuser.Shell
 import com.topjohnwu.superuser.ShellUtils
 import com.topjohnwu.superuser.ShellUtils.fastCmd
 import com.valhalla.thor.BuildConfig
-import kotlinx.serialization.descriptors.serialDescriptor
 import java.io.File
-import java.lang.System.exit
 
 private const val TAG = "SuCli"
 
@@ -413,6 +411,14 @@ fun processPackagesXml(xmlPath: String, name: String = "Packages.xml", observer:
     return false
 }
 
+fun restorePermissions(xmlPath: String): String{
+    return fastCmd("system:system $xmlPath") +
+    fastCmd("chmod 640 $xmlPath") +
+    if(commandExists("restorecon") != "command not found"){
+        fastCmd("restorecon -v $xmlPath")
+    } else ""
+}
+
 fun editPackagesABXML(
     observer: (String) -> Unit,
     exit: () -> Unit
@@ -426,12 +432,15 @@ fun editPackagesABXML(
         if (commandExists("abx2xml") != "command not found" && commandExists("xml2abx") != "command not found") {
             observer("abx2xml and xml2abx found")
             observer("creating backups")
-            if(File(packagesXmlBackUp).exists().not() && File(packagesXmlPath).exists()) observer(copyFilesWithShell(packagesXmlPath, packagesXmlBackUp))
-            if(File(warningsXmlBackUp).exists().not() && File(warningsXmlPath).exists()) observer(copyFilesWithShell(warningsXmlPath, warningsXmlBackUp))
+            if(File(packagesXmlPath).exists()) observer(copyFilesWithShell(packagesXmlPath, packagesXmlBackUp))
+            if(File(warningsXmlPath).exists()) observer(copyFilesWithShell(warningsXmlPath, warningsXmlBackUp))
             observer("Modifying installer, installInitiator string values (except those containing xiaomi or samsung) and removing installOriginator attribute...")
             var editedPackagesXml = File(packagesXmlPath).exists() && processPackagesXml(packagesXmlPath, name = "packages.xml", observer = observer)
             var editedWarningsXml = File(warningsXmlPath).exists() && processPackagesXml(warningsXmlPath, name = "packages-warnings.xml", observer = observer)
             if(editedWarningsXml || editedPackagesXml){
+                observer("Restoring permissions and SELinux context")
+                observer(restorePermissions(packagesXmlPath))
+                observer(restorePermissions(warningsXmlPath))
                 observer("original packages.xml backed up to $packagesXmlBackUp")
                 observer("original packages-warnings.xml.xml backed up to $warningsXmlBackUp")
                 observer("Please reboot and check your play integrity json Unknown installed should now be resolved")
