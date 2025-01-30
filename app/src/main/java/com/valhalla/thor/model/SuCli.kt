@@ -411,7 +411,6 @@ fun processPackagesXml(xmlPath: String, name: String = "Packages.xml", observer:
         }
     }
     return false
-
 }
 
 fun editPackagesABXML(
