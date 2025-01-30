@@ -14,12 +14,15 @@ android {
         applicationId = "com.valhalla.thor"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1306
-        versionName = "1.306"
+        versionCode = 1307
+        versionName = "1.307"
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
     buildTypes {
         release {
             isMinifyEnabled = true

@@ -6,13 +6,15 @@ import androidx.compose.ui.text.googlefonts.GoogleFont
 import androidx.compose.material3.Typography
 import com.valhalla.thor.R
 
-
+/**
+ * Downloadable fonts:
+ * These fonts will be downloaded on user's end if they have internet connection
+ */
 val provider = GoogleFont.Provider(
     providerAuthority = "com.google.android.gms.fonts",
     providerPackage = "com.google.android.gms",
     certificates = R.array.com_google_android_gms_fonts_certs
 )
-
 
 val firaMonoFontFamily = FontFamily(
     Font(
