@@ -52,16 +52,12 @@ fun AppListScreen(
     userAppList: List<AppInfo>,
     systemAppList: List<AppInfo>,
     modifier: Modifier = Modifier,
-    onAppAction: (AppClickAction) -> Unit = {},
     isRefreshing: Boolean = false,
+    selectedAppListType: AppListType = AppListType.USER,
+    onAppAction: (AppClickAction) -> Unit = {},
     onRefresh: () -> Unit = {},
-    onEggBroken: () -> Unit = {},
     onMultiAppAction: (MultiAppAction) -> Unit = {}
 ) {
-
-    var selectedAppListType by remember {
-        mutableStateOf(AppListType.USER)
-    }
 
     var installers by remember {
         mutableStateOf(
@@ -77,6 +73,8 @@ fun AppListScreen(
         mutableStateOf(userAppList.sortedBy { it.appName })
     }
     LaunchedEffect(selectedFilter, selectedAppListType, isRefreshing) {
+        if(selectedAppListType == AppListType.SYSTEM)
+            selectedFilter = "All"
         installers = if (selectedAppListType == AppListType.USER)
             userAppList.map { it.installerPackageName }.distinct().toMutableList()
                 .apply { add(0, "All") }
@@ -94,78 +92,16 @@ fun AppListScreen(
         }
     }
 
-    var titleEasterEgg by remember {
-        mutableStateOf("App List")
-    }
-    var counter by remember {
-        mutableIntStateOf(1)
-    }
+
     var context = LocalContext.current
-    LaunchedEffect(counter) {
-        if (counter > 99) {
-            counter = 1
-            titleEasterEgg = "App List"
-            onEggBroken()
-        }
-    }
+
 
     var selectedAppInfo: AppInfo? by remember {
         mutableStateOf(null)
     }
 
     Column(modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                painter = painterResource(R.drawable.thor_mono),
-                "App Icon",
-                modifier = Modifier.padding(5.dp)
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .clickable {
-                        titleEasterEgg = when (titleEasterEgg) {
-                            "App List" -> "Hey! You found me!"
-                            "Hey! You found me!" -> "Now go back"
-                            "Now go back" -> "Stop it"
-                            "Stop it" -> "Ouch! Stop it"
-                            "Ouch! Stop it" -> "I'm serious"
-                            "I'm serious" -> "Fine! You win"
-                            "Fine! You win" -> "I'm done"
-                            else -> {
-                                counter++.toString()
-                            }
-                        }
-                    }
-                    .padding(8.dp)
-            )
-            TypeWriterText(
-                text = titleEasterEgg,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .padding(vertical = 10.dp)
-                    .weight(1f),
-                delay = 25,
-                style = MaterialTheme.typography.titleLarge,
-                textAlign = TextAlign.Start
-            )
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.padding(horizontal = 5.dp)) {
-                AppListType.entries.forEachIndexed { index, appListType ->
-                    SegmentedButton(
-                        shape = SegmentedButtonDefaults.itemShape(index = index, count = 2),
-                        selected = selectedAppListType == appListType,
-                        onClick = {
-                            selectedAppListType = appListType
-                            selectedFilter = "All"
-                        }
-                    ) {
-                        Icon(
-                            painter = painterResource(if (appListType == AppListType.USER) R.drawable.apps else R.drawable.android),
-                            appListType.name
-                        )
-                    }
-                }
 
-            }
-        }
 
 
         val state = rememberPullToRefreshState()

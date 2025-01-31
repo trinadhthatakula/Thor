@@ -6,14 +6,23 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
@@ -21,13 +30,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.AppInfoGrabber
+import com.valhalla.thor.model.AppListType
 import com.valhalla.thor.model.MultiAppAction
 import com.valhalla.thor.model.NavBarItems
 import com.valhalla.thor.model.disableApps
@@ -39,10 +53,12 @@ import com.valhalla.thor.model.reInstallWithGoogle
 import com.valhalla.thor.model.rootAvailable
 import com.valhalla.thor.model.shareApp
 import com.valhalla.thor.ui.screens.AppListScreen
+import com.valhalla.thor.ui.screens.HomeScreen
 import com.valhalla.thor.ui.screens.KBoxVerificationScreen
 import com.valhalla.thor.ui.theme.ThorTheme
 import com.valhalla.thor.ui.widgets.AppClickAction
 import com.valhalla.thor.ui.widgets.TermLogger
+import com.valhalla.thor.ui.widgets.TypeWriterText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -90,10 +106,10 @@ class MainActivity : ComponentActivity() {
                     selectedIcon = R.drawable.home
                 ),
                 NavBarItems(
-                    title = "Key Status",
-                    route = "key_search",
-                    unselectedIcon = R.drawable.key_outline,
-                    selectedIcon = R.drawable.key
+                    title = "Apps",
+                    route = "apps",
+                    unselectedIcon = R.drawable.apps,
+                    selectedIcon = R.drawable.apps
                 )
             )
 
@@ -101,9 +117,55 @@ class MainActivity : ComponentActivity() {
                 mutableStateOf(navBarItems.first())
             }
 
+            var selectedAppListType by remember {
+                mutableStateOf(AppListType.USER)
+            }
+
             ThorTheme {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
+                    topBar = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                painter = painterResource(R.drawable.thor_mono),
+                                "App Icon",
+                                modifier = Modifier.padding(5.dp)
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .clickable {
+
+                                    }
+                                    .padding(8.dp)
+                            )
+                            TypeWriterText(
+                                text = selectedNavItem.title,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .padding(vertical = 10.dp)
+                                    .weight(1f),
+                                delay = 25,
+                                style = MaterialTheme.typography.titleLarge,
+                                textAlign = TextAlign.Start
+                            )
+                            SingleChoiceSegmentedButtonRow(modifier = Modifier.padding(horizontal = 5.dp)) {
+                                AppListType.entries.forEachIndexed { index, appListType ->
+                                    SegmentedButton(
+                                        shape = SegmentedButtonDefaults.itemShape(index = index, count = 2),
+                                        selected = selectedAppListType == appListType,
+                                        onClick = {
+                                            selectedAppListType = appListType
+                                        }
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(if (appListType == AppListType.USER) R.drawable.apps else R.drawable.android),
+                                            appListType.name
+                                        )
+                                    }
+                                }
+
+                            }
+                        }
+                    },
                     bottomBar = {
                         NavigationBar {
                             navBarItems.forEach {
@@ -127,6 +189,8 @@ class MainActivity : ComponentActivity() {
                     }
                 ) { innerPadding ->
                     if (selectedNavItem == navBarItems.first())
+                        HomeScreen(modifier = Modifier.padding(innerPadding))
+                    else {
                         AppListScreen(
                             userApps,
                             systemApps,
@@ -135,6 +199,7 @@ class MainActivity : ComponentActivity() {
                                 isRefreshing = true
                             },
                             modifier = Modifier.padding(innerPadding),
+                            selectedAppListType = selectedAppListType,
                             onAppAction = {
                                 when (it) {
                                     AppClickAction.ReinstallAll -> {
@@ -222,20 +287,10 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             },
-                            onEggBroken = {
-                                getSharedPreferences("egg", MODE_PRIVATE).edit {
-                                    putBoolean(
-                                        "found",
-                                        true
-                                    )
-                                }
-                            },
                             onMultiAppAction = {
                                 multiAction = it
                             }
                         )
-                    else {
-                        KBoxVerificationScreen(Modifier.padding(innerPadding))
                     }
                 }
 
