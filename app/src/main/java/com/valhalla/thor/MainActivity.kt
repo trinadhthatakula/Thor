@@ -116,14 +116,14 @@ class MainActivity : ComponentActivity() {
                                 NavigationBarItem(
                                     selected = selectedNavItem == it,
                                     onClick = {
-                                        if(it.route == "home"){
+                                        if (it.route == "home") {
                                             Toast.makeText(
                                                 context,
                                                 "Coming Soon",
                                                 Toast.LENGTH_SHORT
                                             ).show()
-                                        }else
-                                        selectedNavItem = it
+                                        } else
+                                            selectedNavItem = it
                                     },
                                     icon = {
                                         Icon(
@@ -288,74 +288,88 @@ class MainActivity : ComponentActivity() {
                             }
                             if (!hasAffirmation) AffirmationDialog(
                                 text = "This will reinstall ${appList.size} apps with Google Play",
-                                onConfirm = {hasAffirmation = true},
-                                onRejected = {multiAction = null}
+                                onConfirm = { hasAffirmation = true },
+                                onRejected = { multiAction = null }
                             )
                         }
 
                         is MultiAppAction.UnFreeze -> {
-                            val selectedAppInfos = (multiAction as MultiAppAction.UnFreeze).appList
-                            val frozenApps = selectedAppInfos.filter { it.enabled.not() }
-                            var hasAffirmation by remember { mutableStateOf(false) }
-                            LaunchedEffect(hasAffirmation) {
-                                if (hasAffirmation) {
-                                    termLoggerTitle = "UnFreezing Apps..,"
-                                    logObserver = emptyList()
-                                    canExit = false
-                                    multiAction = null
-                                    reinstalling = true
-                                    withContext(Dispatchers.IO) {
-                                        enableApps(*frozenApps.toTypedArray(),
-                                            observer = {
-                                                logObserver += it
-                                            },
-                                            exit = {
-                                                canExit = true
-                                                isRefreshing = true
-                                            }
-                                        )
+                            if (rootAvailable()) {
+                                val selectedAppInfos =
+                                    (multiAction as MultiAppAction.UnFreeze).appList
+                                val frozenApps = selectedAppInfos.filter { it.enabled.not() }
+                                var hasAffirmation by remember { mutableStateOf(false) }
+                                LaunchedEffect(hasAffirmation) {
+                                    if (hasAffirmation) {
+                                        termLoggerTitle = "UnFreezing Apps..,"
+                                        logObserver = emptyList()
+                                        canExit = false
+                                        multiAction = null
+                                        reinstalling = true
+                                        withContext(Dispatchers.IO) {
+                                            enableApps(
+                                                *frozenApps.toTypedArray(),
+                                                observer = {
+                                                    logObserver += it
+                                                },
+                                                exit = {
+                                                    canExit = true
+                                                    isRefreshing = true
+                                                }
+                                            )
+                                        }
                                     }
                                 }
-                            }
-                            if (!hasAffirmation) {
-                                AffirmationDialog(
-                                    text = "${frozenApps.size} of ${selectedAppInfos.size} apps are frozen do you want to unfreeze them?",
-                                    onConfirm = {hasAffirmation = true},
-                                    onRejected = {multiAction = null}
-                                )
+                                if (!hasAffirmation) {
+                                    AffirmationDialog(
+                                        text = "${frozenApps.size} of ${selectedAppInfos.size} apps are frozen do you want to unfreeze them?",
+                                        onConfirm = { hasAffirmation = true },
+                                        onRejected = { multiAction = null }
+                                    )
+                                }
+                            } else {
+                                Toast.makeText(this, "Root not available", Toast.LENGTH_SHORT)
+                                    .show()
                             }
                         }
 
                         is MultiAppAction.Freeze -> {
-                            val selectedAppInfos = (multiAction as MultiAppAction.Freeze).appList
-                            val activeApps = selectedAppInfos.filter { it.enabled }
-                            var hasAffirmation by remember { mutableStateOf(false) }
-                            LaunchedEffect(hasAffirmation) {
-                                if (hasAffirmation) {
-                                    termLoggerTitle = "Freezing Apps"
-                                    logObserver = emptyList()
-                                    canExit = false
-                                    multiAction = null
-                                    reinstalling = true
-                                    withContext(Dispatchers.IO) {
-                                        disableApps(*activeApps.toTypedArray(),
-                                            observer = {
-                                                logObserver += it
-                                            },
-                                            exit = {
-                                                canExit = true
-                                                isRefreshing = true
-                                            }
-                                        )
+                            if (rootAvailable()) {
+                                val selectedAppInfos =
+                                    (multiAction as MultiAppAction.Freeze).appList
+                                val activeApps = selectedAppInfos.filter { it.enabled }
+                                var hasAffirmation by remember { mutableStateOf(false) }
+                                LaunchedEffect(hasAffirmation) {
+                                    if (hasAffirmation) {
+                                        termLoggerTitle = "Freezing Apps"
+                                        logObserver = emptyList()
+                                        canExit = false
+                                        multiAction = null
+                                        reinstalling = true
+                                        withContext(Dispatchers.IO) {
+                                            disableApps(
+                                                *activeApps.toTypedArray(),
+                                                observer = {
+                                                    logObserver += it
+                                                },
+                                                exit = {
+                                                    canExit = true
+                                                    isRefreshing = true
+                                                }
+                                            )
+                                        }
                                     }
                                 }
-                            }
-                            if (!hasAffirmation) {
-                                AffirmationDialog(
-                                    text = "${activeApps.size} of ${selectedAppInfos.size} apps are not frozen do you want to freeze them?",
-                                    onConfirm = {hasAffirmation = true},
-                                    onRejected = {multiAction = null}
-                                )
+                                if (!hasAffirmation) {
+                                    AffirmationDialog(
+                                        text = "${activeApps.size} of ${selectedAppInfos.size} apps are not frozen do you want to freeze them?",
+                                        onConfirm = { hasAffirmation = true },
+                                        onRejected = { multiAction = null }
+                                    )
+                                }
+                            } else {
+                                Toast.makeText(this, "Root not available", Toast.LENGTH_SHORT)
+                                    .show()
                             }
                         }
 
