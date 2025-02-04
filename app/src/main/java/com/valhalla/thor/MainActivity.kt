@@ -48,6 +48,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.log
 
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
@@ -313,6 +314,7 @@ class MainActivity : ComponentActivity() {
                                                     logObserver += it
                                                 },
                                                 exit = {
+                                                    logObserver += "Exiting Shell"
                                                     canExit = true
                                                     isRefreshing = true
                                                 }
@@ -405,6 +407,7 @@ fun AffirmationDialog(
     onRejected: () -> Unit
 ) {
     AlertDialog(
+        modifier = modifier,
         onDismissRequest = {},
         confirmButton = {
             TextButton(
