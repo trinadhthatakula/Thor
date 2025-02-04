@@ -1,5 +1,6 @@
 package com.valhalla.thor.model
 
+import android.R.attr.shell
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
@@ -460,4 +461,15 @@ fun editPackagesABXML(
         exit
     }
 
+}
+
+fun getPermissions(permission: Array<String>){
+    permission.forEach {
+        val result = fastCmd("su pm grant ${BuildConfig.APPLICATION_ID} $it")
+        if(result.isNotEmpty()){
+            Log.d(TAG,"failed to get $it, reason: $result")
+        }else {
+            Log.d(TAG,"got $it")
+        }
+    }
 }

@@ -117,55 +117,9 @@ class MainActivity : ComponentActivity() {
                 mutableStateOf(navBarItems.first())
             }
 
-            var selectedAppListType by remember {
-                mutableStateOf(AppListType.USER)
-            }
-
             ThorTheme {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
-                    topBar = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                painter = painterResource(R.drawable.thor_mono),
-                                "App Icon",
-                                modifier = Modifier.padding(5.dp)
-                                    .size(48.dp)
-                                    .clip(CircleShape)
-                                    .clickable {
-
-                                    }
-                                    .padding(8.dp)
-                            )
-                            TypeWriterText(
-                                text = selectedNavItem.title,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .padding(vertical = 10.dp)
-                                    .weight(1f),
-                                delay = 25,
-                                style = MaterialTheme.typography.titleLarge,
-                                textAlign = TextAlign.Start
-                            )
-                            SingleChoiceSegmentedButtonRow(modifier = Modifier.padding(horizontal = 5.dp)) {
-                                AppListType.entries.forEachIndexed { index, appListType ->
-                                    SegmentedButton(
-                                        shape = SegmentedButtonDefaults.itemShape(index = index, count = 2),
-                                        selected = selectedAppListType == appListType,
-                                        onClick = {
-                                            selectedAppListType = appListType
-                                        }
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(if (appListType == AppListType.USER) R.drawable.apps else R.drawable.android),
-                                            appListType.name
-                                        )
-                                    }
-                                }
-
-                            }
-                        }
-                    },
                     bottomBar = {
                         NavigationBar {
                             navBarItems.forEach {
@@ -199,7 +153,6 @@ class MainActivity : ComponentActivity() {
                                 isRefreshing = true
                             },
                             modifier = Modifier.padding(innerPadding),
-                            selectedAppListType = selectedAppListType,
                             onAppAction = {
                                 when (it) {
                                     AppClickAction.ReinstallAll -> {

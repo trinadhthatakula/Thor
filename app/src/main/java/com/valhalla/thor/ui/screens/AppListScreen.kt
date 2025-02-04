@@ -53,7 +53,6 @@ fun AppListScreen(
     systemAppList: List<AppInfo>,
     modifier: Modifier = Modifier,
     isRefreshing: Boolean = false,
-    selectedAppListType: AppListType = AppListType.USER,
     onAppAction: (AppClickAction) -> Unit = {},
     onRefresh: () -> Unit = {},
     onMultiAppAction: (MultiAppAction) -> Unit = {}
@@ -72,6 +71,9 @@ fun AppListScreen(
     var filteredList by remember {
         mutableStateOf(userAppList.sortedBy { it.appName })
     }
+
+    var selectedAppListType: AppListType by remember { mutableStateOf(AppListType.USER)}
+
     LaunchedEffect(selectedFilter, selectedAppListType, isRefreshing) {
         if(selectedAppListType == AppListType.SYSTEM)
             selectedFilter = "All"
@@ -102,7 +104,46 @@ fun AppListScreen(
 
     Column(modifier.fillMaxWidth()) {
 
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                painter = painterResource(R.drawable.thor_mono),
+                "App Icon",
+                modifier = Modifier.padding(5.dp)
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .clickable {
 
+                    }
+                    .padding(8.dp)
+            )
+            TypeWriterText(
+                text = "App List",
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .padding(vertical = 10.dp)
+                    .weight(1f),
+                delay = 25,
+                style = MaterialTheme.typography.titleLarge,
+                textAlign = TextAlign.Start
+            )
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.padding(horizontal = 5.dp)) {
+                AppListType.entries.forEachIndexed { index, appListType ->
+                    SegmentedButton(
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = 2),
+                        selected = selectedAppListType == appListType,
+                        onClick = {
+                            selectedAppListType = appListType
+                        }
+                    ) {
+                        Icon(
+                            painter = painterResource(if (appListType == AppListType.USER) R.drawable.apps else R.drawable.android),
+                            appListType.name
+                        )
+                    }
+                }
+
+            }
+        }
 
         val state = rememberPullToRefreshState()
         PullToRefreshBox(
