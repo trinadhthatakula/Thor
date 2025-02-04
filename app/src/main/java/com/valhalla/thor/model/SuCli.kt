@@ -1,9 +1,11 @@
 package com.valhalla.thor.model
 
+import android.Manifest
 import android.R.attr.shell
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -293,19 +295,31 @@ fun reInstallAppsWithGoogle(appInfos: List<AppInfo>, observer: (String) -> Unit,
 
 }
 
-fun Context.disableApps(vararg appInfos: AppInfo) {
-    appInfos.forEach { appInfo ->
-        getRootShell().newJob()
-            .add("su pm disable ${appInfo.packageName}")
-            .exec()
+fun Context.disableApps(vararg appInfos: AppInfo,observer: (String) -> Unit = {}, exit: () -> Unit = {}) {
+    try {
+        observer("Freezing apps...")
+        appInfos.forEach { appInfo ->
+            observer(fastCmd(getRootShell(), "su -c pm disable ${appInfo.packageName}"))
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        observer(e.message.toString())
+    } finally {
+        exit()
     }
 }
 
-fun Context.enableApps(vararg appInfos: AppInfo) {
-    appInfos.forEach { appInfo ->
-        getRootShell().newJob()
-            .add("su pm enable ${appInfo.packageName}")
-            .exec()
+fun Context.enableApps(vararg appInfos: AppInfo, observer: (String) -> Unit = {}, exit: () -> Unit ={}) {
+    try {
+        observer("UnFreezing apps...")
+        appInfos.forEach { appInfo ->
+            observer(fastCmd(getRootShell(), "su -c pm enable ${appInfo.packageName}"))
+        }
+    }catch (e: Exception){
+        e.printStackTrace()
+        observer(e.message.toString())
+    }finally {
+        exit()
     }
 }
 
@@ -331,8 +345,8 @@ fun commandExists(command: String): String {
 }
 
 fun copyFilesWithShell(sourcePath: String, destinationPath: String) = fastCmd(
-        "cp $sourcePath $destinationPath"
-    )
+    "cp $sourcePath $destinationPath"
+)
 
 
 fun convertAbxToXml(abxPath: String, xmlPath: String): String {
@@ -375,17 +389,21 @@ fun modifyInstallInitiatorInPackagesXml(
 
 fun removeInstallOriginatorInPackagesXml(
     xmlPath: String
-): String{
+): String {
     return fastCmd(
         "sed -i -E 's/ installOriginator=\"[^\"]*\"//g' \"$xmlPath\""
     )
 }
 
-fun removeFile(path:String): String{
+fun removeFile(path: String): String {
     return fastCmd("rm $path")
 }
 
-fun processPackagesXml(xmlPath: String, name: String = "Packages.xml", observer: (String) -> Unit): Boolean {
+fun processPackagesXml(
+    xmlPath: String,
+    name: String = "Packages.xml",
+    observer: (String) -> Unit
+): Boolean {
     val tempFile = "${xmlPath}_temp.xml"
     val result = convertAbxToXml(xmlPath, tempFile)
     observer(if (result.isEmpty()) "Converted ABX to XML" else "failed to convert ABX to XML")
@@ -397,7 +415,7 @@ fun processPackagesXml(xmlPath: String, name: String = "Packages.xml", observer:
             observer("failed to edit $name reason: $modResult")
         } else {
             observer("Modified Successfully")
-            val reverseResult = convertXmlToAbx(tempFile,xmlPath)
+            val reverseResult = convertXmlToAbx(tempFile, xmlPath)
             if (reverseResult.isEmpty()) {
                 observer("Converted XML to ABX")
                 observer("Edited $name")
@@ -412,12 +430,12 @@ fun processPackagesXml(xmlPath: String, name: String = "Packages.xml", observer:
     return false
 }
 
-fun restorePermissions(xmlPath: String): String{
+fun restorePermissions(xmlPath: String): String {
     return fastCmd("system:system $xmlPath") +
-    fastCmd("chmod 640 $xmlPath") +
-    if(commandExists("restorecon") != "command not found"){
-        fastCmd("restorecon -v $xmlPath")
-    } else ""
+            fastCmd("chmod 640 $xmlPath") +
+            if (commandExists("restorecon") != "command not found") {
+                fastCmd("restorecon -v $xmlPath")
+            } else ""
 }
 
 fun editPackagesABXML(
@@ -433,12 +451,30 @@ fun editPackagesABXML(
         if (commandExists("abx2xml") != "command not found" && commandExists("xml2abx") != "command not found") {
             observer("abx2xml and xml2abx found")
             observer("creating backups")
-            if(File(packagesXmlPath).exists()) observer(copyFilesWithShell(packagesXmlPath, packagesXmlBackUp))
-            if(File(warningsXmlPath).exists()) observer(copyFilesWithShell(warningsXmlPath, warningsXmlBackUp))
+            if (File(packagesXmlPath).exists()) observer(
+                copyFilesWithShell(
+                    packagesXmlPath,
+                    packagesXmlBackUp
+                )
+            )
+            if (File(warningsXmlPath).exists()) observer(
+                copyFilesWithShell(
+                    warningsXmlPath,
+                    warningsXmlBackUp
+                )
+            )
             observer("Modifying installer, installInitiator string values (except those containing xiaomi or samsung) and removing installOriginator attribute...")
-            var editedPackagesXml = File(packagesXmlPath).exists() && processPackagesXml(packagesXmlPath, name = "packages.xml", observer = observer)
-            var editedWarningsXml = File(warningsXmlPath).exists() && processPackagesXml(warningsXmlPath, name = "packages-warnings.xml", observer = observer)
-            if(editedWarningsXml || editedPackagesXml){
+            var editedPackagesXml = File(packagesXmlPath).exists() && processPackagesXml(
+                packagesXmlPath,
+                name = "packages.xml",
+                observer = observer
+            )
+            var editedWarningsXml = File(warningsXmlPath).exists() && processPackagesXml(
+                warningsXmlPath,
+                name = "packages-warnings.xml",
+                observer = observer
+            )
+            if (editedWarningsXml || editedPackagesXml) {
                 observer("Restoring permissions and SELinux context")
                 observer(restorePermissions(packagesXmlPath))
                 observer(restorePermissions(warningsXmlPath))
@@ -463,13 +499,13 @@ fun editPackagesABXML(
 
 }
 
-fun getPermissions(permission: Array<String>){
+fun getPermissions(permission: Array<String>) {
     permission.forEach {
         val result = fastCmd("su pm grant ${BuildConfig.APPLICATION_ID} $it")
-        if(result.isNotEmpty()){
-            Log.d(TAG,"failed to get $it, reason: $result")
-        }else {
-            Log.d(TAG,"got $it")
+        if (result.isNotEmpty()) {
+            Log.d(TAG, "failed to get $it, reason: $result")
+        } else {
+            Log.d(TAG, "got $it")
         }
     }
 }

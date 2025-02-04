@@ -26,6 +26,7 @@ import com.valhalla.thor.ui.theme.firaMonoFontFamily
 @Composable
 fun TermLogger(
     modifier: Modifier = Modifier,
+    title: String = "Reinstalling..,",
     canExit: Boolean = false,
     logObserver: List<String>,
     doneReinstalling: () -> Unit
@@ -52,7 +53,7 @@ fun TermLogger(
                             .size(50.dp),
                         contentScale = ContentScale.Companion.Crop
                     )
-                Text(if (!canExit) "Reinstalling..," else "")
+                Text(if (!canExit) title else "")
             }
             LazyColumn(modifier = Modifier.Companion.padding(10.dp)) {
                 items(logObserver) { logTxt ->

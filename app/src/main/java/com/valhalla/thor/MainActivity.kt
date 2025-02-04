@@ -6,42 +6,29 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.AppInfoGrabber
-import com.valhalla.thor.model.AppListType
 import com.valhalla.thor.model.MultiAppAction
 import com.valhalla.thor.model.NavBarItems
 import com.valhalla.thor.model.disableApps
@@ -54,11 +41,9 @@ import com.valhalla.thor.model.rootAvailable
 import com.valhalla.thor.model.shareApp
 import com.valhalla.thor.ui.screens.AppListScreen
 import com.valhalla.thor.ui.screens.HomeScreen
-import com.valhalla.thor.ui.screens.KBoxVerificationScreen
 import com.valhalla.thor.ui.theme.ThorTheme
 import com.valhalla.thor.ui.widgets.AppClickAction
 import com.valhalla.thor.ui.widgets.TermLogger
-import com.valhalla.thor.ui.widgets.TypeWriterText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -83,10 +68,12 @@ class MainActivity : ComponentActivity() {
 
             LaunchedEffect(isRefreshing) {
                 if (isRefreshing) {
-                    userApps = grabber.getUserApps()
-                    systemApps = grabber.getSystemApps()
-                    delay(1000)
-                    isRefreshing = false
+                    withContext(Dispatchers.IO) {
+                        userApps = grabber.getUserApps()
+                        systemApps = grabber.getSystemApps()
+                        delay(1000)
+                        isRefreshing = false
+                    }
                 }
             }
 
@@ -114,9 +101,12 @@ class MainActivity : ComponentActivity() {
             )
 
             var selectedNavItem by remember {
-                mutableStateOf(navBarItems.first())
+                mutableStateOf(navBarItems.last())
             }
 
+            var termLoggerTitle by remember { mutableStateOf("Reinstalling..,") }
+
+            val context = LocalContext.current
             ThorTheme {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
@@ -126,6 +116,13 @@ class MainActivity : ComponentActivity() {
                                 NavigationBarItem(
                                     selected = selectedNavItem == it,
                                     onClick = {
+                                        if(it.route == "home"){
+                                            Toast.makeText(
+                                                context,
+                                                "Coming Soon",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }else
                                         selectedNavItem = it
                                     },
                                     icon = {
@@ -160,17 +157,22 @@ class MainActivity : ComponentActivity() {
                                     }
 
                                     is AppClickAction.Freeze -> {
-                                        disableApps(it.appInfo)
-                                        isRefreshing = true
+                                        lifecycleScope.launch(Dispatchers.IO) {
+                                            disableApps(it.appInfo)
+                                            isRefreshing = true
+                                        }
                                     }
 
                                     is AppClickAction.UnFreeze -> {
-                                        enableApps(it.appInfo)
-                                        isRefreshing = true
+                                        lifecycleScope.launch(Dispatchers.IO) {
+                                            enableApps(it.appInfo)
+                                            isRefreshing = true
+                                        }
                                     }
 
                                     is AppClickAction.Reinstall -> {
                                         if (rootAvailable() || hasMagisk()) lifecycleScope.launch {
+                                            termLoggerTitle = "Reinstalling Apps..,"
                                             logObserver = emptyList()
                                             reinstalling = true
                                             withContext(Dispatchers.IO) {
@@ -265,6 +267,7 @@ class MainActivity : ComponentActivity() {
                             var hasAffirmation by remember { mutableStateOf(false) }
                             LaunchedEffect(hasAffirmation) {
                                 if (hasAffirmation) {
+                                    termLoggerTitle = "Reinstalling Apps..,"
                                     logObserver = emptyList()
                                     canExit = false
                                     multiAction = null
@@ -283,33 +286,77 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             }
-                            if (!hasAffirmation) AlertDialog(
-                                onDismissRequest = {},
-                                confirmButton = {
-                                    TextButton(
-                                        onClick = {
-                                            hasAffirmation = true
-                                        }
-                                    ) {
-                                        Text("Yes")
-                                    }
-                                },
-                                dismissButton = {
-                                    TextButton(
-                                        onClick = {
-                                            multiAction = null
-                                        }
-                                    ) {
-                                        Text("No")
-                                    }
-                                },
-                                title = {
-                                    Text("Are You Sure?")
-                                },
-                                text = {
-                                    Text("This will reinstall ${appList.size} apps with Google Play")
-                                }
+                            if (!hasAffirmation) AffirmationDialog(
+                                text = "This will reinstall ${appList.size} apps with Google Play",
+                                onConfirm = {hasAffirmation = true},
+                                onRejected = {multiAction = null}
                             )
+                        }
+
+                        is MultiAppAction.UnFreeze -> {
+                            val selectedAppInfos = (multiAction as MultiAppAction.UnFreeze).appList
+                            val frozenApps = selectedAppInfos.filter { it.enabled.not() }
+                            var hasAffirmation by remember { mutableStateOf(false) }
+                            LaunchedEffect(hasAffirmation) {
+                                if (hasAffirmation) {
+                                    termLoggerTitle = "UnFreezing Apps..,"
+                                    logObserver = emptyList()
+                                    canExit = false
+                                    multiAction = null
+                                    reinstalling = true
+                                    withContext(Dispatchers.IO) {
+                                        enableApps(*frozenApps.toTypedArray(),
+                                            observer = {
+                                                logObserver += it
+                                            },
+                                            exit = {
+                                                canExit = true
+                                                isRefreshing = true
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                            if (!hasAffirmation) {
+                                AffirmationDialog(
+                                    text = "${frozenApps.size} of ${selectedAppInfos.size} apps are frozen do you want to unfreeze them?",
+                                    onConfirm = {hasAffirmation = true},
+                                    onRejected = {multiAction = null}
+                                )
+                            }
+                        }
+
+                        is MultiAppAction.Freeze -> {
+                            val selectedAppInfos = (multiAction as MultiAppAction.Freeze).appList
+                            val activeApps = selectedAppInfos.filter { it.enabled }
+                            var hasAffirmation by remember { mutableStateOf(false) }
+                            LaunchedEffect(hasAffirmation) {
+                                if (hasAffirmation) {
+                                    termLoggerTitle = "Freezing Apps"
+                                    logObserver = emptyList()
+                                    canExit = false
+                                    multiAction = null
+                                    reinstalling = true
+                                    withContext(Dispatchers.IO) {
+                                        disableApps(*activeApps.toTypedArray(),
+                                            observer = {
+                                                logObserver += it
+                                            },
+                                            exit = {
+                                                canExit = true
+                                                isRefreshing = true
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                            if (!hasAffirmation) {
+                                AffirmationDialog(
+                                    text = "${activeApps.size} of ${selectedAppInfos.size} apps are not frozen do you want to freeze them?",
+                                    onConfirm = {hasAffirmation = true},
+                                    onRejected = {multiAction = null}
+                                )
+                            }
                         }
 
                         else -> {
@@ -321,6 +368,7 @@ class MainActivity : ComponentActivity() {
                 if (reinstalling) {
                     TermLogger(
                         Modifier,
+                        termLoggerTitle,
                         canExit,
                         logObserver,
                         doneReinstalling = {
@@ -332,6 +380,43 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
+
+@Composable
+fun AffirmationDialog(
+    modifier: Modifier = Modifier,
+    title: String = "Are you sure?",
+    text: String = "Some Message",
+    onConfirm: () -> Unit,
+    onRejected: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = {},
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onConfirm()
+                }
+            ) {
+                Text("Yes")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = {
+                    onRejected()
+                }
+            ) {
+                Text("No")
+            }
+        },
+        title = {
+            Text(title)
+        },
+        text = {
+            Text(text)
+        }
+    )
 }
 
 
