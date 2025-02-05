@@ -40,6 +40,10 @@ import com.valhalla.thor.ui.widgets.TypeWriterText
 fun HomeScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
 
+    var usedTokens by remember {
+        mutableStateOf(emptyList<String>())
+    }
+
     var tokenString by remember {
         mutableStateOf("")
     }
@@ -48,7 +52,7 @@ fun HomeScreen(modifier: Modifier = Modifier) {
     }
 
     LaunchedEffect(Unit) {
-        context.initStandardIntegrityProvider { integrityTokenProvider ->
+        /*context.initStandardIntegrityProvider { integrityTokenProvider ->
             if (integrityTokenProvider.isSuccess) {
                 integrityTokenProvider.getOrNull()?.let { provider ->
                     getVerdict(provider) { tokenResponse ->
@@ -60,17 +64,25 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                     }
                 }
             }
+        }*/
+        context.initIntegrityManager{
+            if(it.isSuccess){
+                it.getOrNull()?.let { token ->
+                    tokenString = token
+                }
+            }
         }
     }
 
     LaunchedEffect(tokenString) {
-        if (tokenString.isNotEmpty()) {
+        if (tokenString.isNotEmpty() && usedTokens.contains(tokenString).not()) {
             getTokenResponse(tokenString) { jsonResult ->
                 if (jsonResult.isSuccess) {
                     jsonResult.getOrNull()?.let {
                         Log.d("HomeScreen", "HomeScreen: token is $tokenString")
                         jsonString = it
                     }
+                    usedTokens+=tokenString
                 }
             }
         }
