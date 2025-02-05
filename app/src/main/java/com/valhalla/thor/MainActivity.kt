@@ -102,7 +102,7 @@ class MainActivity : ComponentActivity() {
             )
 
             var selectedNavItem by remember {
-                mutableStateOf(navBarItems.last())
+                mutableStateOf(navBarItems.first())
             }
 
             var termLoggerTitle by remember { mutableStateOf("Reinstalling..,") }
@@ -117,13 +117,13 @@ class MainActivity : ComponentActivity() {
                                 NavigationBarItem(
                                     selected = selectedNavItem == it,
                                     onClick = {
-                                        if (it.route == "home") {
+                                        /*if (it.route == "home") {
                                             Toast.makeText(
                                                 context,
                                                 "Coming Soon",
                                                 Toast.LENGTH_SHORT
                                             ).show()
-                                        } else
+                                        } else*/
                                             selectedNavItem = it
                                     },
                                     icon = {

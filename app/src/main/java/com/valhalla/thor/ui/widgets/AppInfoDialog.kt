@@ -37,6 +37,7 @@ import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.getAppIcon
+import com.valhalla.thor.model.rootAvailable
 
 sealed interface AppClickAction {
     data class Launch(val appInfo: AppInfo) : AppClickAction
@@ -187,7 +188,7 @@ fun FloatingBar(
             onAppAction(AppClickAction.Launch(appInfo))
         }
 
-        if (!appInfo.isSystem && appInfo.installerPackageName != "com.android.vending")
+        if (!appInfo.isSystem && appInfo.installerPackageName != "com.android.vending" && rootAvailable())
             AppActionItem(
                 icon = R.drawable.apk_install,
                 text = "ReInstall"
@@ -204,16 +205,18 @@ fun FloatingBar(
                 onAppAction(AppClickAction.Share(appInfo))
             }
 
-        AppActionItem(
-            icon = if (isFrozen) R.drawable.unfreeze else R.drawable.frozen,
-            text = if (isFrozen) "Unfreeze" else "Freeze",
-        ) {
-            if (isFrozen)
-                onAppAction(AppClickAction.UnFreeze(appInfo))
-            else
-                onAppAction(AppClickAction.Freeze(appInfo))
-            onDismiss()
-        }
+        if (rootAvailable() && appInfo.isSystem.not())
+            AppActionItem(
+                icon = if (isFrozen) R.drawable.unfreeze else R.drawable.frozen,
+                text = if (isFrozen) "Unfreeze" else "Freeze",
+            ) {
+                if (isFrozen)
+                    onAppAction(AppClickAction.UnFreeze(appInfo))
+                else
+                    onAppAction(AppClickAction.Freeze(appInfo))
+                onDismiss()
+            }
+
         AppActionItem(
             icon = R.drawable.delete_forever,
             text = "Uninstall",

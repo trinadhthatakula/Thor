@@ -1,3 +1,7 @@
+import com.android.build.gradle.internal.cxx.configure.gradleLocalProperties
+import org.jetbrains.kotlin.gradle.utils.loadPropertyFromResources
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -14,10 +18,17 @@ android {
         applicationId = "com.valhalla.thor"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1310
-        versionName = "1.310-alpha"
+        versionCode = 1311
+        versionName = "1.311-alpha"
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        val p = Properties()
+        p.load(project.rootProject.file("local.properties").reader())
+        buildConfigField(
+            type = "String",
+            name = "API_URL",
+            value = "\"${p.getProperty("API_URL")}\""
+        )
     }
     dependenciesInfo {
         includeInApk = false
@@ -28,8 +39,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             )
         }
     }
@@ -64,7 +74,7 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 
-    implementation( libs.accompanist.drawablepainter)
+    implementation(libs.accompanist.drawablepainter)
 
     /// Kotlinx
     implementation(libs.kotlinx.serialization.json)
@@ -74,5 +84,6 @@ dependencies {
     implementation(libs.lottie.compose)
 
     implementation(libs.androidx.ui.text.google.fonts)
+    implementation(libs.play.integrity)
 
 }

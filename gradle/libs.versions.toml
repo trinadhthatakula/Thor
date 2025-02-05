@@ -1,6 +1,7 @@
 [versions]
 accompanistDrawablepainter = "0.36.0"
 agp = "8.10.0-alpha03"
+playIntegrity = "1.4.0"
 libsu = "6.0.0"
 kotlin = "2.1.10"
 coreKtx = "1.15.0"
@@ -19,6 +20,7 @@ uiTextGoogleFonts = "1.7.7"
 accompanist-drawablepainter = { module = "com.google.accompanist:accompanist-drawablepainter", version.ref = "accompanistDrawablepainter" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-ui-text-google-fonts = { module = "androidx.compose.ui:ui-text-google-fonts", version.ref = "uiTextGoogleFonts" }
+play-integrity = { module = "com.google.android.play:integrity", version.ref = "playIntegrity" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
