@@ -37,6 +37,7 @@
 - Force Close Apps
 
 ## Upcoming Features
+- Packages.xml editor based on [script]([url](https://github.com/Pixel-Props/BetterKnownInstalled?tab=readme-ov-file)) by T3SL4 @Pixel-Props
 - Overall Application Overview (New Home UI)
 - Editing Packages.xml 
 - App Installer
