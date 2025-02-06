@@ -18,7 +18,7 @@
 * Jetpack Compose
 * Smallest APK size (less than 2.0MB)
 
-## Features
+## Working Features
 - FOSS
 - Material 3 with dynamic colours
 - Displays App List while sorting them based on Installation source
@@ -30,12 +30,19 @@
 - Split App Indicator
 - AppState Indicator (frozen = disabled)
 
+## Features in Testing
+- Freeze/UnFreeze apps (enable/disable)
+- Batch Freeze/UnFreeze
+- Play Integrity Indicator(Experimental)
+- Force Close Apps
+
 ## Upcoming Features
+- Overall Application Overview (New Home UI)
 - Editing Packages.xml 
+- App Installer
 - Batch Install
-- Sorting a& filters
+- Sorting & filters
 - BackUp App Data
 - Option to choose installers when reinstalling
 - De-bloater for system apps
-- Freeze/UnFreeze apps
 - Many more
