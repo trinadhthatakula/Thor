@@ -1,19 +1,18 @@
 package com.valhalla.thor.model
 
-import android.Manifest
-import android.R.attr.shell
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.provider.Settings
 import android.system.Os
 import android.util.Log
 import android.util.Log.e
 import android.widget.Toast
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
 import com.topjohnwu.superuser.CallbackList
 import com.topjohnwu.superuser.Shell
 import com.topjohnwu.superuser.ShellUtils
@@ -530,5 +529,16 @@ fun killApps(vararg appInfos: AppInfo,observer: (String) -> Unit, exit: () -> Un
         observer("\n\nPutting War Machine to rest")
         observer("Done")
         exit()
+    }
+}
+
+fun openAppInfoScreen(context: Context,appInfo: AppInfo){
+    try {
+        context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            data = "package:${appInfo.packageName}".toUri()
+        })
+    } catch (_: Exception) {
+        context.startActivity(Intent(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS))
     }
 }

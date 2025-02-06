@@ -21,18 +21,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.input.clearText
-import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,7 +39,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -94,15 +89,19 @@ fun AppList(
 
         Column {
 
-            val searchTerm = rememberTextFieldState("")
-            searchTerm.edit {
-                filteredList = if (length>0) {
+            var searchQuery by remember {
+                mutableStateOf("")
+            }
+
+            LaunchedEffect(searchQuery) {
+                filteredList = if (searchQuery.isNotEmpty()) {
                     appList.filter {
-                        it.appName?.contains(toString(), true) == true
-                                || it.packageName.contains(toString(), true)
+                        it.appName?.contains(searchQuery, true) == true
+                                || it.packageName.contains(searchQuery, true)
                     }
                 }else appList
             }
+
 
             Card (
                 modifier = Modifier
@@ -111,8 +110,15 @@ fun AppList(
                 shape = RoundedCornerShape(50)
             ) {
                 BasicTextField(
-                    searchTerm,
-                    decorator = { tf ->
+                    value = searchQuery,
+                    onValueChange = {
+                        searchQuery = it
+                    },
+                    textStyle = MaterialTheme.typography.titleMedium.copy(
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.onBackground),
+                    decorationBox = { tf ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = {}){
                                 Icon(
@@ -126,16 +132,16 @@ fun AppList(
                                     .weight(1f),
                                 contentAlignment = Alignment.CenterStart
                             ) {
-                                if (searchTerm.text.isEmpty()) {
+                                if (searchQuery.isEmpty()) {
                                     Text("Search any App",
                                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
                                 }
                                 tf()
                             }
-                            if (searchTerm.text.isNotEmpty())
+                            if (searchQuery.isNotEmpty())
                                 IconButton(
                                     onClick = {
-                                        searchTerm.clearText()
+                                        searchQuery = ""
                                     }
                                 ) {
                                     Icon(
@@ -145,18 +151,11 @@ fun AppList(
                                 }
                         }
                     },
-                    textStyle = MaterialTheme.typography.titleMedium.copy(
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    ),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.onBackground),
                     keyboardOptions = KeyboardOptions.Default.copy(
                         keyboardType = KeyboardType.Text,
                         capitalization = KeyboardCapitalization.Words,
                         imeAction = ImeAction.Search
-                    ),
-                    onKeyboardAction = {
-
-                    }
+                    )
                 )
             }
 

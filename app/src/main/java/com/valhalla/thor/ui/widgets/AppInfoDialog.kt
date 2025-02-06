@@ -3,6 +3,7 @@ package com.valhalla.thor.ui.widgets
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -47,6 +49,7 @@ sealed interface AppClickAction {
     data class Freeze(val appInfo: AppInfo) : AppClickAction
     data class UnFreeze(val appInfo: AppInfo) : AppClickAction
     data class Kill(val appInfo: AppInfo) : AppClickAction
+    data class AppInfoSettings(val appInfo: AppInfo) : AppClickAction
     data object ReinstallAll : AppClickAction
 }
 
@@ -73,6 +76,19 @@ fun AppInfoDialog(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            IconButton(
+                onClick = {
+                    onAppAction(AppClickAction.AppInfoSettings(appInfo))
+                },
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .padding(end = 10.dp),
+            ) {
+                Icon(
+                    painterResource(R.drawable.settings),
+                    "Settings"
+                )
+            }
             Image(
                 painter = rememberDrawablePainter(getAppIcon(appInfo.packageName, context)),
                 contentDescription = appInfo.appName,
@@ -176,7 +192,9 @@ fun FloatingBar(
     val isFrozen by remember { mutableStateOf(appInfo.enabled.not()) }
 
     Row(
-        modifier = modifier.padding(horizontal = 30.dp),
+        modifier = modifier
+            .padding(horizontal = 30.dp)
+            .horizontalScroll(rememberScrollState()),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {

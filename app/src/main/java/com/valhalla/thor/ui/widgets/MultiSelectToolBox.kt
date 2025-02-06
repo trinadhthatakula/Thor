@@ -1,8 +1,10 @@
 package com.valhalla.thor.ui.widgets
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,6 +39,7 @@ fun MultiSelectToolBox(
         Column(
             modifier = Modifier.Companion
                 .padding(5.dp)
+                .horizontalScroll(rememberScrollState())
         ) {
 
             Row {

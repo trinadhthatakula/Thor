@@ -23,7 +23,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
@@ -37,6 +36,7 @@ import com.valhalla.thor.model.hasMagisk
 import com.valhalla.thor.model.killApp
 import com.valhalla.thor.model.killApps
 import com.valhalla.thor.model.launchApp
+import com.valhalla.thor.model.openAppInfoScreen
 import com.valhalla.thor.model.reInstallAppsWithGoogle
 import com.valhalla.thor.model.reInstallWithGoogle
 import com.valhalla.thor.model.rootAvailable
@@ -50,7 +50,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.log
 
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
@@ -120,7 +119,7 @@ class MainActivity : ComponentActivity() {
                                     onClick = {
                                         /*if (it.route == "home") {
                                             Toast.makeText(
-                                                context,
+                                                this@MainActivity,
                                                 "Coming Soon",
                                                 Toast.LENGTH_SHORT
                                             ).show()
@@ -154,7 +153,9 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(innerPadding),
                             onAppAction = {
                                 when (it) {
-
+                                    is AppClickAction.AppInfoSettings ->{
+                                        openAppInfoScreen(this,it.appInfo)
+                                    }
                                     is AppClickAction.Kill -> {
                                         lifecycleScope.launch(Dispatchers.IO) {
                                             val killResult = killApp(it.appInfo)
