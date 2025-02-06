@@ -219,6 +219,33 @@ class MainActivity : ComponentActivity() {
                                     }
 
                                     is AppClickAction.Launch -> {
+                                        if(it.appInfo.enabled.not()){
+                                            if(rootAvailable()){
+                                                lifecycleScope.launch {
+                                                    enableApps(it.appInfo, exit = {
+                                                        isRefreshing = true
+                                                        launchApp(it.appInfo.packageName.toString()).let { result ->
+                                                            if (!result.isSuccess) {
+                                                                runOnUiThread {
+                                                                    Toast.makeText(
+                                                                        this@MainActivity,
+                                                                        "Failed to launch app",
+                                                                        Toast.LENGTH_SHORT
+                                                                    ).show()
+                                                                }
+                                                            }
+                                                        }
+                                                    })
+                                                }
+
+                                            }else{
+                                                Toast.makeText(
+                                                    this,
+                                                    "App is Frozen",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        }else
                                         if (rootAvailable() || hasMagisk())
                                             launchApp(it.appInfo.packageName.toString()).let { result ->
                                                 if (!result.isSuccess) {
