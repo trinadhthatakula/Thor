@@ -509,3 +509,26 @@ fun getPermissions(permission: Array<String>) {
         }
     }
 }
+
+fun killApp(appInfo: AppInfo) = fastCmd(
+    getRootShell(),
+    "am force-stop ${appInfo.packageName}"
+)
+
+
+fun killApps(vararg appInfos: AppInfo,observer: (String) -> Unit, exit: () -> Unit){
+    try {
+        observer("Requesting War Machine to initialise Kill Apps")
+        observer("War Machine identifies ${appInfos.size} targets")
+        appInfos.forEach {
+            observer("Killing ${it.appName} ${fastCmd(getRootShell(),"am force-stop ${it.packageName}")}")
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        observer(e.message.toString())
+    } finally {
+        observer("\n\nPutting War Machine to rest")
+        observer("Done")
+        exit()
+    }
+}

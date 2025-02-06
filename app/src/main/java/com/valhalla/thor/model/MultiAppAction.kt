@@ -6,4 +6,5 @@ sealed interface MultiAppAction {
     data class Freeze(val appList: List<AppInfo>) : MultiAppAction
     data class UnFreeze(val appList: List<AppInfo>) : MultiAppAction
     data class Share(val appList: List<AppInfo>) : MultiAppAction
+    data class Kill(val appList: List<AppInfo>) : MultiAppAction
 }

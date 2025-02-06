@@ -78,6 +78,13 @@ fun MultiSelectToolBox(
                     }
                 )
                 AppActionItem(
+                    icon = R.drawable.danger,
+                    text = "Kill Apps",
+                    onClick = {
+                        onMultiAppAction(MultiAppAction.Kill(selected))
+                    }
+                )
+                AppActionItem(
                     icon = R.drawable.round_close,
                     text = "Close",
                     onClick = {

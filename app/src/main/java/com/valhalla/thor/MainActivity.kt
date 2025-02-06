@@ -34,6 +34,8 @@ import com.valhalla.thor.model.NavBarItems
 import com.valhalla.thor.model.disableApps
 import com.valhalla.thor.model.enableApps
 import com.valhalla.thor.model.hasMagisk
+import com.valhalla.thor.model.killApp
+import com.valhalla.thor.model.killApps
 import com.valhalla.thor.model.launchApp
 import com.valhalla.thor.model.reInstallAppsWithGoogle
 import com.valhalla.thor.model.reInstallWithGoogle
@@ -123,7 +125,7 @@ class MainActivity : ComponentActivity() {
                                                 Toast.LENGTH_SHORT
                                             ).show()
                                         } else*/
-                                            selectedNavItem = it
+                                        selectedNavItem = it
                                     },
                                     icon = {
                                         Icon(
@@ -152,6 +154,28 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(innerPadding),
                             onAppAction = {
                                 when (it) {
+
+                                    is AppClickAction.Kill -> {
+                                        lifecycleScope.launch(Dispatchers.IO) {
+                                            val killResult = killApp(it.appInfo)
+                                            withContext(Dispatchers.Main) {
+                                                if (killResult.isEmpty()) {
+                                                    Toast.makeText(
+                                                        this@MainActivity,
+                                                        "Killed ${it.appInfo.appName}",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }else {
+                                                    Toast.makeText(
+                                                        this@MainActivity,
+                                                        "Failed to kill ${it.appInfo.appName}",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                            }
+                                        }
+                                    }
+
                                     AppClickAction.ReinstallAll -> {
 
                                     }
@@ -253,6 +277,44 @@ class MainActivity : ComponentActivity() {
 
                     when (multiAction) {
 
+                        is MultiAppAction.Kill -> {
+                            val appList =
+                                (multiAction as MultiAppAction.Kill).appList.toMutableList()
+                            val thorAppInfo =
+                                appList.firstOrNull { it.packageName == BuildConfig.APPLICATION_ID }
+                            if (thorAppInfo != null) {
+                                appList -= thorAppInfo
+                            }
+                            var hasAffirmation by remember { mutableStateOf(false) }
+                            LaunchedEffect(hasAffirmation) {
+                                if (hasAffirmation) {
+                                    termLoggerTitle = "Killing Apps..,"
+                                    logObserver = emptyList()
+                                    canExit = false
+                                    multiAction = null
+                                    reinstalling = true
+                                    withContext(Dispatchers.IO) {
+                                        killApps(
+                                            *appList.toTypedArray(),
+                                            observer = {
+                                                logObserver += it
+                                            },
+                                            exit = {
+                                                logObserver += "Exiting Shell"
+                                                canExit = true
+                                                isRefreshing = true
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                            if (!hasAffirmation) AffirmationDialog(
+                                text = "This will kill ${appList.size} apps",
+                                onConfirm = { hasAffirmation = true },
+                                onRejected = { multiAction = null }
+                            )
+                        }
+
                         is MultiAppAction.Uninstall -> {
                             (multiAction as MultiAppAction.Uninstall).appList.forEach {
                                 val appPackage = it.packageName
@@ -263,11 +325,13 @@ class MainActivity : ComponentActivity() {
                         }
 
                         is MultiAppAction.ReInstall -> {
-                            val appList = (multiAction as MultiAppAction.ReInstall).appList.toMutableList()
-                            val thorAppInfo = appList.firstOrNull { it.packageName == BuildConfig.APPLICATION_ID }
-                            if(thorAppInfo!=null){
-                                appList-=thorAppInfo
-                                appList+=thorAppInfo
+                            val appList =
+                                (multiAction as MultiAppAction.ReInstall).appList.toMutableList()
+                            val thorAppInfo =
+                                appList.firstOrNull { it.packageName == BuildConfig.APPLICATION_ID }
+                            if (thorAppInfo != null) {
+                                appList -= thorAppInfo
+                                appList += thorAppInfo
                             }
                             var hasAffirmation by remember { mutableStateOf(false) }
                             LaunchedEffect(hasAffirmation) {
@@ -343,11 +407,13 @@ class MainActivity : ComponentActivity() {
                             if (rootAvailable()) {
                                 val selectedAppInfos =
                                     (multiAction as MultiAppAction.Freeze).appList
-                                val thorAppInfo = selectedAppInfos.firstOrNull { it.packageName == BuildConfig.APPLICATION_ID }
-                                val activeApps = selectedAppInfos.filter { it.enabled }.toMutableList()
-                                if(thorAppInfo!=null){
-                                    if(activeApps.contains(thorAppInfo)){
-                                        activeApps-=thorAppInfo
+                                val thorAppInfo =
+                                    selectedAppInfos.firstOrNull { it.packageName == BuildConfig.APPLICATION_ID }
+                                val activeApps =
+                                    selectedAppInfos.filter { it.enabled }.toMutableList()
+                                if (thorAppInfo != null) {
+                                    if (activeApps.contains(thorAppInfo)) {
+                                        activeApps -= thorAppInfo
                                     }
                                 }
                                 var hasAffirmation by remember { mutableStateOf(false) }

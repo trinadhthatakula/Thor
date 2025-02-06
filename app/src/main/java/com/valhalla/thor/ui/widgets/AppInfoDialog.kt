@@ -46,6 +46,7 @@ sealed interface AppClickAction {
     data class Reinstall(val appInfo: AppInfo) : AppClickAction
     data class Freeze(val appInfo: AppInfo) : AppClickAction
     data class UnFreeze(val appInfo: AppInfo) : AppClickAction
+    data class Kill(val appInfo: AppInfo) : AppClickAction
     data object ReinstallAll : AppClickAction
 }
 
@@ -217,6 +218,13 @@ fun FloatingBar(
                 onDismiss()
             }
 
+        if (appInfo.enabled)
+            AppActionItem(
+                icon = R.drawable.danger,
+                text = "Kill App",
+            ) {
+                onAppAction(AppClickAction.Kill(appInfo))
+            }
         AppActionItem(
             icon = R.drawable.delete_forever,
             text = "Uninstall",
