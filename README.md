@@ -19,7 +19,7 @@
 * Smallest APK size (less than 2.0MB)
 
 ## Features
-- Fully reproducible, copylefted libre software (GPLv3+)
+- FOSS
 - Material 3 with dynamic colours
 - Displays App List while sorting them based on Installation source
 - Launch App Activities
