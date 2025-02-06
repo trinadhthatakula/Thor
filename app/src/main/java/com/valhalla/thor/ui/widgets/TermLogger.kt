@@ -1,5 +1,6 @@
 package com.valhalla.thor.ui.widgets
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -7,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -37,36 +39,36 @@ fun TermLogger(
                 doneReinstalling()
             }
         },
-        scrimColor = Color.Companion.Black.copy(alpha = 0.6f),
+        scrimColor = Color.Black.copy(alpha = 0.6f),
         modifier = modifier
     ) {
         Column(
-            modifier = Modifier.Companion.fillMaxWidth(),
-            horizontalAlignment = Alignment.Companion.CenterHorizontally
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Row(verticalAlignment = Alignment.Companion.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 if (!canExit)
                     AnimateLottieRaw(
                         resId = R.raw.rearrange,
                         shouldLoop = true,
-                        modifier = Modifier.Companion
+                        modifier = Modifier
                             .size(50.dp),
-                        contentScale = ContentScale.Companion.Crop
+                        contentScale = ContentScale.Crop
                     )
                 Text(if (!canExit) title else "")
             }
-            LazyColumn(modifier = Modifier.Companion.padding(10.dp)) {
+            LazyColumn(modifier = Modifier.padding(10.dp).horizontalScroll(rememberScrollState())) {
                 items(logObserver) { logTxt ->
-                    Column(modifier = Modifier.Companion.fillMaxWidth()) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            text = logTxt,
+                            text = "* $logTxt",
                             softWrap = false,
-                            modifier = Modifier.Companion.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth(),
                             style = MaterialTheme.typography.bodySmall.copy(
                                 fontFamily = firaMonoFontFamily
                             ),
                             maxLines = 10,
-                            textAlign = TextAlign.Companion.Start
+                            textAlign = TextAlign.Start
                         )
                     }
 

@@ -102,12 +102,11 @@ class MainActivity : ComponentActivity() {
             )
 
             var selectedNavItem by remember {
-                mutableStateOf(navBarItems.first())
+                mutableStateOf(navBarItems.last())
             }
 
             var termLoggerTitle by remember { mutableStateOf("Reinstalling..,") }
 
-            val context = LocalContext.current
             ThorTheme {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
@@ -264,7 +263,12 @@ class MainActivity : ComponentActivity() {
                         }
 
                         is MultiAppAction.ReInstall -> {
-                            val appList = (multiAction as MultiAppAction.ReInstall).appList
+                            val appList = (multiAction as MultiAppAction.ReInstall).appList.toMutableList()
+                            val thorAppInfo = appList.firstOrNull { it.packageName == BuildConfig.APPLICATION_ID }
+                            if(thorAppInfo!=null){
+                                appList-=thorAppInfo
+                                appList+=thorAppInfo
+                            }
                             var hasAffirmation by remember { mutableStateOf(false) }
                             LaunchedEffect(hasAffirmation) {
                                 if (hasAffirmation) {
@@ -339,7 +343,13 @@ class MainActivity : ComponentActivity() {
                             if (rootAvailable()) {
                                 val selectedAppInfos =
                                     (multiAction as MultiAppAction.Freeze).appList
-                                val activeApps = selectedAppInfos.filter { it.enabled }
+                                val thorAppInfo = selectedAppInfos.firstOrNull { it.packageName == BuildConfig.APPLICATION_ID }
+                                val activeApps = selectedAppInfos.filter { it.enabled }.toMutableList()
+                                if(thorAppInfo!=null){
+                                    if(activeApps.contains(thorAppInfo)){
+                                        activeApps-=thorAppInfo
+                                    }
+                                }
                                 var hasAffirmation by remember { mutableStateOf(false) }
                                 LaunchedEffect(hasAffirmation) {
                                     if (hasAffirmation) {

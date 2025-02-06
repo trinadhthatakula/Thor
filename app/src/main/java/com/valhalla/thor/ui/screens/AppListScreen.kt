@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,7 +73,7 @@ fun AppListScreen(
         mutableStateOf(userAppList.sortedBy { it.appName })
     }
 
-    var selectedAppListType: AppListType by remember { mutableStateOf(AppListType.USER)}
+    var selectedAppListType: AppListType by rememberSaveable { mutableStateOf(AppListType.USER)}
 
     LaunchedEffect(selectedFilter, selectedAppListType, isRefreshing) {
         if(selectedAppListType == AppListType.SYSTEM)

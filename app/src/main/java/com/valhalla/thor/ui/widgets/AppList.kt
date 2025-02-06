@@ -38,6 +38,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,14 +77,14 @@ fun AppList(
         mutableStateOf(appList)
     }
 
-    var multiSelect by remember {
+    var multiSelect by rememberSaveable {
         mutableStateOf(emptyList<AppInfo>())
     }
 
-    var tempList by remember {
+    var tempList by rememberSaveable {
         mutableStateOf(multiSelect)
     }
-    var selectAll: Boolean by remember { mutableStateOf(false) }
+    var selectAll: Boolean by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(appListType) {
         multiSelect = emptyList()
