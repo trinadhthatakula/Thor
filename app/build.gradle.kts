@@ -84,4 +84,7 @@ dependencies {
     implementation(libs.androidx.ui.text.google.fonts)
     implementation(libs.play.integrity)
 
+    //implementation(libs.shizuku.api)
+    //implementation(libs.shizuku.provider)
+
 }

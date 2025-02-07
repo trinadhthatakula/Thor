@@ -1,6 +1,6 @@
 [versions]
 accompanistDrawablepainter = "0.36.0"
-agp = "8.10.0-alpha03"
+agp = "8.10.0-alpha04"
 playIntegrity = "1.4.0"
 libsu = "6.0.0"
 kotlin = "2.1.10"
@@ -13,8 +13,9 @@ activityCompose = "1.10.0"
 composeBom = "2025.01.01"
 lottieCompose = "6.6.2"
 material3 = "1.4.0-alpha07"
-kotlinx-serialization-json = "1.7.3"
+kotlinx-serialization-json = "1.8.0"
 uiTextGoogleFonts = "1.7.7"
+shizuku_version = "13.1.0"
 
 [libraries]
 accompanist-drawablepainter = { module = "com.google.accompanist:accompanist-drawablepainter", version.ref = "accompanistDrawablepainter" }
@@ -41,6 +42,8 @@ lottie-compose = { module = "com.airbnb.android:lottie-compose", version.ref = "
 
 topjohnwu-libsu-core = { module = "com.github.topjohnwu.libsu:core", version.ref = "libsu" }
 
+shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku_version" }
+shizuku-provider = { module = "dev.rikka.shizuku:provider", version.ref = "shizuku_version" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
