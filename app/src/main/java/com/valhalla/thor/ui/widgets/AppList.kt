@@ -174,7 +174,7 @@ fun AppList(
                             }, label = {
                                 Text(
                                     text = popularInstallers[it] ?: it
-                                    ?: if (appListType != AppListType.SYSTEM) "Unknown" else "System"
+                                    ?: if (appListType != AppListType.SYSTEM) "Others" else "System"
                                 )
                             }, modifier = Modifier.Companion.padding(horizontal = 5.dp)
                         )
