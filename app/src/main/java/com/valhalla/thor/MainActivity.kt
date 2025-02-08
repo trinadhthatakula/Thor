@@ -42,6 +42,7 @@ import com.valhalla.thor.model.reInstallWithGoogle
 import com.valhalla.thor.model.rootAvailable
 import com.valhalla.thor.model.shareApp
 import com.valhalla.thor.ui.screens.AppListScreen
+import com.valhalla.thor.ui.screens.HomeActions
 import com.valhalla.thor.ui.screens.HomeScreen
 import com.valhalla.thor.ui.theme.ThorTheme
 import com.valhalla.thor.ui.widgets.AppClickAction
@@ -117,13 +118,6 @@ class MainActivity : ComponentActivity() {
                                 NavigationBarItem(
                                     selected = selectedNavItem == it,
                                     onClick = {
-                                        /*if (it.route == "home") {
-                                            Toast.makeText(
-                                                this@MainActivity,
-                                                "Coming Soon",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                        } else*/
                                         selectedNavItem = it
                                     },
                                     icon = {
@@ -141,7 +135,20 @@ class MainActivity : ComponentActivity() {
                     }
                 ) { innerPadding ->
                     if (selectedNavItem == navBarItems.first())
-                        HomeScreen(modifier = Modifier.padding(innerPadding))
+                        HomeScreen(
+                            modifier = Modifier.padding(innerPadding),
+                            userApps, systemApps
+                        ) { homeAction ->
+
+                            when(homeAction) {
+                                is HomeActions.ActiveApps ->{
+                                }
+                                is HomeActions.FrozenApps -> {
+                                }
+                                else -> {}
+                            }
+
+                        }
                     else {
                         AppListScreen(
                             userApps,
@@ -153,9 +160,10 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(innerPadding),
                             onAppAction = {
                                 when (it) {
-                                    is AppClickAction.AppInfoSettings ->{
-                                        openAppInfoScreen(this,it.appInfo)
+                                    is AppClickAction.AppInfoSettings -> {
+                                        openAppInfoScreen(this, it.appInfo)
                                     }
+
                                     is AppClickAction.Kill -> {
                                         lifecycleScope.launch(Dispatchers.IO) {
                                             val killResult = killApp(it.appInfo)
@@ -166,7 +174,7 @@ class MainActivity : ComponentActivity() {
                                                         "Killed ${it.appInfo.appName}",
                                                         Toast.LENGTH_SHORT
                                                     ).show()
-                                                }else {
+                                                } else {
                                                     Toast.makeText(
                                                         this@MainActivity,
                                                         "Failed to kill ${it.appInfo.appName}",
@@ -219,8 +227,8 @@ class MainActivity : ComponentActivity() {
                                     }
 
                                     is AppClickAction.Launch -> {
-                                        if(it.appInfo.enabled.not()){
-                                            if(rootAvailable()){
+                                        if (it.appInfo.enabled.not()) {
+                                            if (rootAvailable()) {
                                                 lifecycleScope.launch {
                                                     enableApps(it.appInfo, exit = {
                                                         isRefreshing = true
@@ -238,39 +246,39 @@ class MainActivity : ComponentActivity() {
                                                     })
                                                 }
 
-                                            }else{
+                                            } else {
                                                 Toast.makeText(
                                                     this,
                                                     "App is Frozen",
                                                     Toast.LENGTH_SHORT
                                                 ).show()
                                             }
-                                        }else
-                                        if (rootAvailable() || hasMagisk())
-                                            launchApp(it.appInfo.packageName.toString()).let { result ->
-                                                if (!result.isSuccess) {
-                                                    Toast.makeText(
-                                                        this,
-                                                        "Failed to launch app",
-                                                        Toast.LENGTH_SHORT
-                                                    ).show()
+                                        } else
+                                            if (rootAvailable() || hasMagisk())
+                                                launchApp(it.appInfo.packageName.toString()).let { result ->
+                                                    if (!result.isSuccess) {
+                                                        Toast.makeText(
+                                                            this,
+                                                            "Failed to launch app",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
                                                 }
-                                            }
-                                        else
-                                            it.appInfo.packageName.let { appPackage ->
-                                                this.packageManager.getLaunchIntentForPackage(
-                                                    appPackage
-                                                )
-                                                    ?.let {
-                                                        startActivity(it)
-                                                    } ?: run {
-                                                    Toast.makeText(
-                                                        this,
-                                                        "Failed to launch app",
-                                                        Toast.LENGTH_SHORT
-                                                    ).show()
+                                            else
+                                                it.appInfo.packageName.let { appPackage ->
+                                                    this.packageManager.getLaunchIntentForPackage(
+                                                        appPackage
+                                                    )
+                                                        ?.let {
+                                                            startActivity(it)
+                                                        } ?: run {
+                                                        Toast.makeText(
+                                                            this,
+                                                            "Failed to launch app",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
                                                 }
-                                            }
 
                                     }
 

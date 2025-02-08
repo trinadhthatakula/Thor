@@ -3,21 +3,19 @@ package com.valhalla.thor.ui.screens
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
@@ -36,31 +34,46 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.valhalla.thor.R
+import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.getTokenResponse
 import com.valhalla.thor.model.getVerdict
-import com.valhalla.thor.model.initIntegrityManager
 import com.valhalla.thor.model.initStandardIntegrityProvider
 import com.valhalla.thor.model.parseIntegrityIcon
 import com.valhalla.thor.model.parseIntegrityStatus
-import com.valhalla.thor.ui.theme.firaMonoFontFamily
+import com.valhalla.thor.model.rootAvailable
 import com.valhalla.thor.ui.widgets.TypeWriterText
+
+
+sealed interface HomeActions {
+    data class ShowToast(val text: String, val longDuration: Boolean = false) : HomeActions
+    data object FrozenApps : HomeActions
+    data object ActiveApps : HomeActions
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(modifier: Modifier = Modifier) {
+fun HomeScreen(
+    modifier: Modifier = Modifier,
+    userAppList: List<AppInfo> = emptyList(),
+    systemAppList: List<AppInfo> = emptyList(),
+    onHomeActions: (HomeActions) -> Unit
+) {
+
     val context = LocalContext.current
 
     var usedTokens by remember { mutableStateOf(emptyList<String>()) }
 
     var tokenString by remember { mutableStateOf("") }
-    var jsonString by rememberSaveable { mutableStateOf("") }
+    var deviceIntegrityJson by rememberSaveable { mutableStateOf("") }
     var integrityStatus by remember { mutableStateOf("Checking Integrity") }
     var integrityIcon by remember { mutableIntStateOf(R.drawable.shield_countdown) }
 
+
     LaunchedEffect(Unit) {
-        if (jsonString.isEmpty())
+        if (deviceIntegrityJson.isEmpty())
             context.initStandardIntegrityProvider { integrityTokenProvider ->
                 if (integrityTokenProvider.isSuccess) {
                     integrityTokenProvider.getOrNull()?.let { provider ->
@@ -77,20 +90,53 @@ fun HomeScreen(modifier: Modifier = Modifier) {
     }
 
     LaunchedEffect(tokenString) {
-        if (jsonString.isEmpty() && tokenString.isNotEmpty() && usedTokens.contains(tokenString).not()) {
+        if (deviceIntegrityJson.isEmpty() && tokenString.isNotEmpty() && usedTokens.contains(
+                tokenString
+            ).not()
+        ) {
             getTokenResponse(tokenString) { jsonResult ->
                 if (jsonResult.isSuccess) {
                     jsonResult.getOrNull()?.let {
                         Log.d("HomeScreen", "HomeScreen: token is $tokenString")
-                        jsonString = it
+                        deviceIntegrityJson = it
                     }
                     usedTokens += tokenString
-                    integrityStatus = parseIntegrityStatus(jsonString)
-                    integrityIcon = parseIntegrityIcon(jsonString)
+                    integrityStatus = parseIntegrityStatus(deviceIntegrityJson)
+                    integrityIcon = parseIntegrityIcon(deviceIntegrityJson)
                 }
             }
         }
     }
+
+    Scaffold {
+        HomeContent(
+            Modifier.padding(it),
+            userAppList,
+            systemAppList,
+            integrityStatus,
+            integrityIcon
+        ) { homeAction ->
+            if (homeAction is HomeActions.ShowToast) {
+                Toast.makeText(context, integrityStatus, Toast.LENGTH_SHORT).show()
+            } else onHomeActions(homeAction)
+        }
+    }
+
+
+
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Preview(showBackground = true)
+@Composable
+fun HomeContent(
+    modifier: Modifier = Modifier,
+    userAppList: List<AppInfo> = emptyList(),
+    systemAppList: List<AppInfo> = emptyList(),
+    integrityStatus: String = "Checking Integrity",
+    integrityIcon: Int = R.drawable.shield_countdown,
+    onHomeActions: (HomeActions) -> Unit = {}
+) {
 
     Column(modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -127,7 +173,7 @@ fun HomeScreen(modifier: Modifier = Modifier) {
             ) {
                 IconButton(
                     onClick = {
-                        Toast.makeText(context, integrityStatus, Toast.LENGTH_SHORT).show()
+                        onHomeActions(HomeActions.ShowToast(integrityStatus))
                     }
                 ) {
                     Icon(
@@ -137,6 +183,34 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                 }
             }
         }
+
+        if(rootAvailable()){
+            Row(
+                modifier = Modifier.padding(5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                IconButton(
+                    onClick = {}
+                ) {
+                    Icon(
+                        painterResource(R.drawable.magisk_icon),
+                        "Root Available",
+                        modifier = Modifier.padding(5.dp)
+                    )
+                }
+
+                Text("Root Access Available")
+            }
+        }
+
+        Text(
+            "Installed Apps:",
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier
+                .padding(horizontal = 10.dp)
+                .padding(top = 5.dp)
+        )
 
 
     }
