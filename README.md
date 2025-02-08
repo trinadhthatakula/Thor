@@ -1,6 +1,6 @@
 
 <p align="center">
-  <img src="app/src/main/thor_icon-playstore.png" alt="Thor Logo" height="192dp">
+  <img src="app/src/main/thor_drawn-playstore.png" alt="Thor Logo" height="192dp">
 </p>
 
 

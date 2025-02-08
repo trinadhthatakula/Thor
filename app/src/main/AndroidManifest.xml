@@ -31,9 +31,9 @@
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
-        android:icon="@mipmap/thor_icon"
+        android:icon="@mipmap/thor_drawn"
         android:label="@string/app_name"
-        android:roundIcon="@mipmap/thor_icon_round"
+        android:roundIcon="@mipmap/thor_drawn_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Thor"
         tools:targetApi="31">
