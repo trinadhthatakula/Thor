@@ -144,6 +144,7 @@ fun shareApp(appInfo: AppInfo, context: Context) {
                 try {
                     Log.i(TAG, "shareApp: $baseApkPath")
                     val file = File(baseApkPath)
+                    Log.d("TAG", "shareApp: ${file.parentFile?.list()?.joinToString(", ")}")
                     val tempFolder = File(context.filesDir, "shareApp")
                     val baseFile = File(tempFolder, "${appInfo.appName}_${appInfo.versionName}.apk")
                     if (copyApk(file, baseFile)) {
