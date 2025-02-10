@@ -58,6 +58,15 @@
                 android:resource="@xml/provider_paths" />
         </provider>
 
+        <receiver android:name=".model.AppListener"
+            android:exported="true">
+            <intent-filter android:priority="100">
+                <action android:name="android.intent.action.PACKAGE_INSTALL"/>
+                <action android:name="android.intent.action.PACKAGE_ADDED"/>
+                <data android:scheme="package"/>
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>

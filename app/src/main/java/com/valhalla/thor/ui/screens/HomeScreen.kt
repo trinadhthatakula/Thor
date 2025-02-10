@@ -2,6 +2,7 @@ package com.valhalla.thor.ui.screens
 
 import android.R.attr.maxLines
 import android.R.attr.type
+import android.content.Context.MODE_PRIVATE
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -42,6 +44,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
@@ -72,6 +75,7 @@ import androidx.compose.ui.unit.dp
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.AppListType
+import com.valhalla.thor.model.commandExists
 import com.valhalla.thor.model.copyApk
 import com.valhalla.thor.model.getTokenResponse
 import com.valhalla.thor.model.getVerdict
@@ -82,12 +86,17 @@ import com.valhalla.thor.model.rootAvailable
 import com.valhalla.thor.ui.theme.greenDark
 import com.valhalla.thor.ui.theme.greenLight
 import com.valhalla.thor.ui.widgets.TypeWriterText
+import androidx.core.content.edit
+import com.valhalla.thor.model.AppListener
+import com.valhalla.thor.registerReceiver
 
 
 sealed interface HomeActions {
     data class ShowToast(val text: String, val longDuration: Boolean = false) : HomeActions
     data class FrozenApps(val appListType: AppListType) : HomeActions
     data class ActiveApps(val appListType: AppListType) : HomeActions
+    data object SwitchAutoReinstall : HomeActions
+    data object BKI : HomeActions
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -144,15 +153,38 @@ fun HomeScreen(
         }
     }
 
+    var canReinstall by remember { mutableStateOf(context.getSharedPreferences("prefs", MODE_PRIVATE)
+        .getBoolean("can_reinstall", false) == true) }
+
     HomeContent(
         modifier,
         userAppList,
         systemAppList,
         integrityStatus,
-        integrityIcon
+        integrityIcon,
+        canReinstall
     ) { homeAction ->
         if (homeAction is HomeActions.ShowToast) {
             Toast.makeText(context, homeAction.text, Toast.LENGTH_SHORT).show()
+        } else if (homeAction is HomeActions.SwitchAutoReinstall) {
+            try {
+                context.getSharedPreferences("prefs", MODE_PRIVATE).edit {
+                    putBoolean(
+                        "can_reinstall",
+                        !canReinstall
+                    )
+                }
+                canReinstall = !canReinstall
+                if (canReinstall) {
+                    context.registerReceiver(AppListener.getInstance())
+                    Toast.makeText(context, "Auto Reinstall Enabled", Toast.LENGTH_SHORT).show()
+                } else {
+                    context.unregisterReceiver(AppListener.getInstance())
+                    Toast.makeText(context, "Auto Reinstall Disabled", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         } else onHomeActions(homeAction)
     }
 
@@ -168,6 +200,7 @@ fun HomeContent(
     systemAppList: List<AppInfo> = emptyList(),
     integrityStatus: String = "Checking Integrity",
     integrityIcon: Int = R.drawable.shield_countdown,
+    canReinstall: Boolean = false,
     onHomeActions: (HomeActions) -> Unit = {}
 ) {
 
@@ -404,7 +437,10 @@ fun HomeContent(
                     .weight(1f)
                     .padding(horizontal = 5.dp)
             ) {
-                Column(modifier = Modifier.padding(5.dp)) {
+                Column(
+                    modifier = Modifier.padding(5.dp),
+                    verticalArrangement = Arrangement.Center
+                ) {
                     Text(
                         text = animatedFrozenAppCount.toString(),
                         style = MaterialTheme.typography.headlineLarge,
@@ -419,24 +455,109 @@ fun HomeContent(
             }
         }
 
-        Row(modifier = Modifier.padding(10.dp)) {
-            ElevatedCard(modifier = Modifier.weight(1f)) {
-                val uriHandler = LocalUriHandler.current
-                Column(modifier = Modifier
+
+
+        Column(modifier = Modifier.padding(horizontal = 5.dp, vertical = 10.dp)) {
+            ElevatedCard(
+                modifier = Modifier
                     .padding(5.dp)
-                    .fillMaxWidth()) {
+            ) {
+
+                Row(
+                    modifier = Modifier
+                        .padding(10.dp)
+                        .fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .weight(1f)
+                    ) {
+                        Text(
+                            text = "Auto Reinstall",
+                            style = MaterialTheme.typography.titleLarge,
+                            maxLines = 1,
+                            modifier = Modifier
+                                .padding(5.dp)
+                        )
+
+                        Text(
+                            text = "Thor listens to APP installation and tries to reinstall it with google",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(horizontal = 5.dp)
+                        )
+                    }
+                    Switch(
+                        checked = canReinstall,
+                        onCheckedChange = {
+                            onHomeActions(HomeActions.SwitchAutoReinstall)
+                        },
+                        modifier = Modifier.padding(5.dp)
+                    )
+                }
+
+            }
+            /*ElevatedCard(
+                modifier = Modifier
+                    .padding(5.dp),
+                onClick = {
+                    onHomeActions(HomeActions.BKI)
+                }
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(10.dp)
+                        .fillMaxWidth(),
+                    verticalArrangement = Arrangement.Center
+                ) {
                     Text(
+                        text = "</> BetterKnownInstalled(BKI)",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.padding(5.dp)
+                    )
+                    if (commandExists("abx2xml") != "command not found") {
+                        Text(
+                            text = "ABX2XML Supported",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    } else {
+                        Text(
+                            text = "ABX2XML Not Supported",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    Text(
+                        text = "use Better known installer script by T3SL4 to edit packages.xml",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+
+            }*/
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            ElevatedCard(
+                modifier = Modifier
+                    .padding(5.dp)
+                    .align(Alignment.CenterHorizontally)
+            ) {
+                val uriHandler = LocalUriHandler.current
+                Column(
+                    modifier = Modifier
+                        .padding(5.dp),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    /*Text(
                         text = "Support us",
                         style = MaterialTheme.typography.titleSmall,
                         modifier = Modifier.padding(5.dp)
-                    )
+                    )*/
                     Row(
                         horizontalArrangement = Arrangement.Center,
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(5.dp)
                     ) {
-                        IconButton(onClick = { uriHandler.openUri("https://github.com/reveny") }) {
+                        IconButton(onClick = { uriHandler.openUri("https://github.com/trinadhthatakula/Thor") }) {
                             Icon(
                                 painterResource(R.drawable.brand_github),
                                 contentDescription = null,
@@ -456,7 +577,6 @@ fun HomeContent(
                         }
                     }
                 }
-
             }
         }
 
