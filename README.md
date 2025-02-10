@@ -26,18 +26,22 @@
 - Install/Uninstall Apk files
 - Reinstall APKs/app with Google
 - Share App Apk file
-- Batch Reinstall/Uninstall
+- Batch Reinstall/Uninstall/Kill Apps
 - Split App Indicator
 - AppState Indicator (frozen = disabled)
+- Kill Apps
 
 ## Features in Testing
+- New Home UI
+- Root Indicator
+- Integrity Indicator - Only checks for device integrity
+- Auto Reinstall - Reinstall any app installed outside play store without user interaction (turn on in Home Page)
 - Freeze/UnFreeze apps (enable/disable)
 - Batch Freeze/UnFreeze
 - Play Integrity Indicator(Experimental)
-- Force Close Apps
+- Packages.xml editor based on [script]([url](https://github.com/Pixel-Props/BetterKnownInstalled?tab=readme-ov-file)) by T3SL4 @Pixel-Props
 
 ## Upcoming Features
-- Packages.xml editor based on [script]([url](https://github.com/Pixel-Props/BetterKnownInstalled?tab=readme-ov-file)) by T3SL4 @Pixel-Props
 - Overall Application Overview (New Home UI)
 - Editing Packages.xml 
 - App Installer
