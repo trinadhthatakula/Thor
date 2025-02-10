@@ -1,21 +1,47 @@
 package com.valhalla.thor.ui.screens
 
+import android.R.attr.maxLines
+import android.R.attr.type
 import android.util.Log
 import android.widget.Toast
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
@@ -31,26 +57,37 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfo
+import com.valhalla.thor.model.AppListType
+import com.valhalla.thor.model.copyApk
 import com.valhalla.thor.model.getTokenResponse
 import com.valhalla.thor.model.getVerdict
 import com.valhalla.thor.model.initStandardIntegrityProvider
 import com.valhalla.thor.model.parseIntegrityIcon
 import com.valhalla.thor.model.parseIntegrityStatus
 import com.valhalla.thor.model.rootAvailable
+import com.valhalla.thor.ui.theme.greenDark
+import com.valhalla.thor.ui.theme.greenLight
 import com.valhalla.thor.ui.widgets.TypeWriterText
 
 
 sealed interface HomeActions {
     data class ShowToast(val text: String, val longDuration: Boolean = false) : HomeActions
-    data object FrozenApps : HomeActions
-    data object ActiveApps : HomeActions
+    data class FrozenApps(val appListType: AppListType) : HomeActions
+    data class ActiveApps(val appListType: AppListType) : HomeActions
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -70,7 +107,6 @@ fun HomeScreen(
     var deviceIntegrityJson by rememberSaveable { mutableStateOf("") }
     var integrityStatus by remember { mutableStateOf("Checking Integrity") }
     var integrityIcon by remember { mutableIntStateOf(R.drawable.shield_countdown) }
-
 
     LaunchedEffect(Unit) {
         if (deviceIntegrityJson.isEmpty())
@@ -108,20 +144,17 @@ fun HomeScreen(
         }
     }
 
-    Scaffold {
-        HomeContent(
-            Modifier.padding(it),
-            userAppList,
-            systemAppList,
-            integrityStatus,
-            integrityIcon
-        ) { homeAction ->
-            if (homeAction is HomeActions.ShowToast) {
-                Toast.makeText(context, integrityStatus, Toast.LENGTH_SHORT).show()
-            } else onHomeActions(homeAction)
-        }
+    HomeContent(
+        modifier,
+        userAppList,
+        systemAppList,
+        integrityStatus,
+        integrityIcon
+    ) { homeAction ->
+        if (homeAction is HomeActions.ShowToast) {
+            Toast.makeText(context, homeAction.text, Toast.LENGTH_SHORT).show()
+        } else onHomeActions(homeAction)
     }
-
 
 
 }
@@ -138,7 +171,7 @@ fun HomeContent(
     onHomeActions: (HomeActions) -> Unit = {}
 ) {
 
-    Column(modifier) {
+    Column(modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 painter = painterResource(R.drawable.thor_mono),
@@ -162,6 +195,34 @@ fun HomeContent(
                 style = MaterialTheme.typography.titleLarge,
                 textAlign = TextAlign.Start
             )
+
+            val rootStatus =
+                if (rootAvailable()) "Root access granted" else "Root access not available"
+            TooltipBox(
+                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(10.dp),
+                tooltip = {
+                    PlainTooltip {
+                        Text(rootStatus)
+                    }
+                },
+                state = rememberTooltipState()
+            ) {
+                Icon(
+                    painterResource(R.drawable.magisk_icon),
+                    "Root Icon",
+                    tint = if (rootAvailable()) {
+                        if (isSystemInDarkTheme()) greenDark else greenLight
+                    } else MaterialTheme.colorScheme.error,
+                    modifier = Modifier
+                        .padding(5.dp)
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .clickable {
+                            onHomeActions(HomeActions.ShowToast(rootStatus))
+                        }
+                        .padding(3.dp)
+                )
+            }
             TooltipBox(
                 positionProvider = TooltipDefaults.rememberTooltipPositionProvider(10.dp),
                 tooltip = {
@@ -171,47 +232,343 @@ fun HomeContent(
                 },
                 state = rememberTooltipState()
             ) {
-                IconButton(
-                    onClick = {
-                        onHomeActions(HomeActions.ShowToast(integrityStatus))
+                Icon(
+                    painterResource(integrityIcon),
+                    "Integrity Indicator",
+                    modifier = Modifier
+                        .padding(vertical = 5.dp)
+                        .padding(end = 10.dp)
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .clickable {
+                            onHomeActions(HomeActions.ShowToast(integrityStatus))
+                        }
+                        .padding(3.dp)
+                )
+            }
+        }
+
+        var appListType by remember { mutableStateOf(AppListType.USER) }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (appListType == AppListType.USER) "Apps Installed (${userAppList.size})" else "System Apps (${systemAppList.size})",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier
+                    .padding(horizontal = 10.dp)
+                    .padding(top = 5.dp)
+                    .weight(1f)
+            )
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.padding(horizontal = 5.dp)) {
+                AppListType.entries.forEachIndexed { index, type ->
+                    SegmentedButton(
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = 2),
+                        selected = appListType == type,
+                        onClick = {
+                            appListType = type
+                        },
+                        icon = {}
+                    ) {
+                        Icon(
+                            painter = painterResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
+                            appListType.name
+                        )
                     }
-                ) {
-                    Icon(
-                        painterResource(integrityIcon),
-                        "Integrity Indicator"
+                }
+
+            }
+        }
+
+        var appsMapByInstaller by remember {
+            mutableStateOf(
+                (if (appListType == AppListType.USER) userAppList else systemAppList).groupBy {
+                    it.installerPackageName
+                        ?: if (appListType == AppListType.USER) "Unknown" else "System"
+                }.mapValues { it.value.size }
+            )
+        }
+
+        var activeAppsCount by remember {
+            mutableIntStateOf(
+                if (appListType == AppListType.USER) userAppList.count { it.enabled }
+                else systemAppList.count { it.enabled }
+            )
+        }
+        val animatedActiveAppCount by animateIntAsState(targetValue = activeAppsCount)
+
+        var frozenAppsCount by remember {
+            mutableIntStateOf(
+                if (appListType == AppListType.USER) userAppList.count { it.enabled.not() }
+                else systemAppList.count { it.enabled.not() }
+            )
+        }
+        val animatedFrozenAppCount by animateIntAsState(targetValue = frozenAppsCount)
+
+        LaunchedEffect(appListType) {
+            activeAppsCount =
+                if (appListType == AppListType.USER) userAppList.count { it.enabled }
+                else systemAppList.count { it.enabled }
+            frozenAppsCount =
+                if (appListType == AppListType.USER) userAppList.count { it.enabled.not() }
+                else systemAppList.count { it.enabled.not() }
+            appsMapByInstaller =
+                (if (appListType == AppListType.USER) userAppList else systemAppList).groupBy {
+                    it.installerPackageName
+                        ?: if (appListType == AppListType.USER) "Unknown" else "System"
+                }.mapValues { it.value.size }
+        }
+
+        val colors = listOf(
+            MaterialTheme.colorScheme.primary,
+            MaterialTheme.colorScheme.secondary,
+            MaterialTheme.colorScheme.tertiary,
+            MaterialTheme.colorScheme.error,
+            Color.Green,
+            Color.Yellow,
+            Color.Red,
+            Color.Magenta
+        )
+
+        Row(
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(5.dp)
+        ) {
+            PieChart(
+                data = appsMapByInstaller,
+                radiusOuter = 80.dp,
+                chartBarWidth = 20.dp,
+                animDuration = 1000,
+                colors = colors,
+                modifier = Modifier.weight(1f)
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                appsMapByInstaller.keys.forEachIndexed { index, key ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .background(color = colors[index], CircleShape)
+                        )
+                        Text(
+                            text = systemAppList.firstOrNull { it.packageName == key }?.appName
+                                ?: key,
+                            maxLines = 1,
+                            modifier = Modifier
+                                .padding(5.dp)
+                                .weight(1f),
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                        Text(
+                            text = "(${appsMapByInstaller[key]})",
+                            maxLines = 1,
+                            modifier = Modifier
+                                .padding(5.dp)
+                                .weight(1f),
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+
+                }
+            }
+
+        }
+
+        Row(modifier = Modifier.padding(horizontal = 5.dp)) {
+            ElevatedCard(
+                onClick = {
+                    onHomeActions(HomeActions.ActiveApps(appListType))
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 5.dp)
+            ) {
+                Column(modifier = Modifier.padding(5.dp)) {
+                    Text(
+                        text = animatedActiveAppCount.toString(),
+                        style = MaterialTheme.typography.headlineLarge,
+                        modifier = Modifier.padding(horizontal = 5.dp)
+                    )
+                    Text(
+                        text = "Active Apps",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(horizontal = 5.dp)
+                    )
+                }
+            }
+            ElevatedCard(
+                onClick = {
+                    onHomeActions(HomeActions.FrozenApps(appListType))
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 5.dp)
+            ) {
+                Column(modifier = Modifier.padding(5.dp)) {
+                    Text(
+                        text = animatedFrozenAppCount.toString(),
+                        style = MaterialTheme.typography.headlineLarge,
+                        modifier = Modifier.padding(horizontal = 5.dp)
+                    )
+                    Text(
+                        text = "Frozen Apps",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(horizontal = 5.dp)
                     )
                 }
             }
         }
 
-        if(rootAvailable()){
-            Row(
-                modifier = Modifier.padding(5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                IconButton(
-                    onClick = {}
-                ) {
-                    Icon(
-                        painterResource(R.drawable.magisk_icon),
-                        "Root Available",
+        Row(modifier = Modifier.padding(10.dp)) {
+            ElevatedCard(modifier = Modifier.weight(1f)) {
+                val uriHandler = LocalUriHandler.current
+                Column(modifier = Modifier
+                    .padding(5.dp)
+                    .fillMaxWidth()) {
+                    Text(
+                        text = "Support us",
+                        style = MaterialTheme.typography.titleSmall,
                         modifier = Modifier.padding(5.dp)
                     )
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(5.dp)
+                    ) {
+                        IconButton(onClick = { uriHandler.openUri("https://github.com/reveny") }) {
+                            Icon(
+                                painterResource(R.drawable.brand_github),
+                                contentDescription = null,
+                            )
+                        }
+                        IconButton(onClick = { uriHandler.openUri("https://patreon.com/trinadh") }) {
+                            Icon(
+                                painterResource(R.drawable.brand_patreon),
+                                contentDescription = null,
+                            )
+                        }
+                        IconButton(onClick = { uriHandler.openUri("https://t.me/thorAppDev") }) {
+                            Icon(
+                                painterResource(R.drawable.brand_telegram),
+                                contentDescription = null,
+                            )
+                        }
+                    }
                 }
 
-                Text("Root Access Available")
             }
         }
-
-        Text(
-            "Installed Apps:",
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier
-                .padding(horizontal = 10.dp)
-                .padding(top = 5.dp)
-        )
 
 
     }
+}
+
+@Composable
+fun PieChart(
+    modifier: Modifier = Modifier,
+    data: Map<String, Int>,
+    colors: List<Color> = listOf(
+        MaterialTheme.colorScheme.primary,
+        MaterialTheme.colorScheme.secondary,
+        MaterialTheme.colorScheme.tertiary,
+        MaterialTheme.colorScheme.error,
+        Color.Green,
+        Color.Yellow,
+        Color.Red,
+        Color.Magenta
+    ),
+    radiusOuter: Dp,
+    chartBarWidth: Dp,
+    innerPadding: PaddingValues = PaddingValues(chartBarWidth * 2),
+    gap: Int = 2,
+    animDuration: Int
+) {
+
+    val totalSum = data.values.sum()
+    val floatValue = mutableListOf<Float>()
+
+    data.values.forEachIndexed { index, values ->
+        floatValue.add(index, 360 * values.toFloat() / totalSum.toFloat())
+    }
+
+
+    var animationPlayed by remember { mutableStateOf(false) }
+
+    var lastValue = 0f
+
+    val animateSize by animateFloatAsState(
+        targetValue = if (animationPlayed) radiusOuter.value * 2f else 0f,
+        animationSpec = tween(
+            durationMillis = animDuration,
+            delayMillis = 0,
+            easing = LinearOutSlowInEasing
+        )
+    )
+
+    // if you want to stabilize the Pie Chart you can use value -90f
+    // 90f is used to complete 1/4 of the rotation
+    val animateRotation by animateFloatAsState(
+        targetValue = if (animationPlayed) 90f * 11f else 0f,
+        animationSpec = tween(
+            durationMillis = animDuration,
+            delayMillis = 0,
+            easing = LinearOutSlowInEasing
+        )
+    )
+
+    LaunchedEffect(key1 = true) {
+        animationPlayed = true
+    }
+
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+
+        // Pie Chart using Canvas Arc
+        Box(
+            modifier = Modifier
+                .size(animateSize.dp)
+                .padding(innerPadding),
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .size(radiusOuter * 2)
+                    .rotate(animateRotation)
+            ) {
+                // draw each Arc for each data entry in Pie Chart
+                floatValue.forEachIndexed { index, value ->
+                    drawArc(
+                        color = colors[index],
+                        lastValue,
+                        value - gap,
+                        useCenter = false,
+                        style = Stroke(chartBarWidth.toPx(), cap = StrokeCap.Butt)
+                    )
+                    lastValue += value + gap
+                }
+            }
+        }
+    }
+    /*
+        LazyColumn(modifier = Modifier.fillMaxWidth()) {
+            items(data.toList().sortedBy { it.first }) { pair ->
+                ListItem(
+                    headlineContent = {
+                        Text(
+                            text = pair.first
+                        )
+                    },
+                    trailingContent = {
+                        Text(
+                            text = pair.second.toString()
+                        )
+                    }
+                )
+            }
+
+        }*/
+
 }

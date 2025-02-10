@@ -45,6 +45,8 @@ topjohnwu-libsu-core = { module = "com.github.topjohnwu.libsu:core", version.ref
 shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku_version" }
 shizuku-provider = { module = "dev.rikka.shizuku:provider", version.ref = "shizuku_version" }
 
+#tabler-icon = { group = "io.github.lyxnx.compose.ui", name = "tabler-icons-android", version = "3.29.0" }
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }

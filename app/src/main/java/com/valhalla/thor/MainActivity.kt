@@ -104,7 +104,7 @@ class MainActivity : ComponentActivity() {
             )
 
             var selectedNavItem by remember {
-                mutableStateOf(navBarItems.last())
+                mutableStateOf(navBarItems.first())
             }
 
             var termLoggerTitle by remember { mutableStateOf("Reinstalling..,") }
