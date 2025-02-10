@@ -5,7 +5,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.IntentFilter
 import com.valhalla.thor.model.AppListener
-import com.valhalla.thor.model.initIntegrityManager
 import com.valhalla.thor.model.initStandardIntegrityProvider
 
 class ThorApplication : Application() {
