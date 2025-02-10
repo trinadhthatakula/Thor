@@ -7,10 +7,10 @@ import android.util.Log
 
 class AppListener : BroadcastReceiver() {
 
-    companion object{
+    companion object {
         var INSTANCE: AppListener? = null
 
-        fun getInstance() = INSTANCE?:synchronized(this) {
+        fun getInstance() = INSTANCE ?: synchronized(this) {
             val instance = AppListener()
             INSTANCE = instance
             instance
@@ -18,17 +18,20 @@ class AppListener : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context?, intent: Intent?) {
+        Log.d("Receiver", "onReceive: invoked ${intent?.data}")
         if (context?.getSharedPreferences("prefs", Context.MODE_PRIVATE)
                 ?.getBoolean("can_reinstall", false) == true
         ) intent?.action?.let { action ->
-                if (action == "android.intent.action.PACKAGE_INSTALL" || action == "android.intent.action.PACKAGE_ADDED") {
-                    context.packageManager.let { pm ->
-                        val packageName = intent.data.toString()
-                        val appInfoGrabber = AppInfoGrabber(context)
-                        val userApps = appInfoGrabber.getUserApps()
-                        val systemApps = appInfoGrabber.getSystemApps()
-                        userApps.firstOrNull { it.packageName == packageName }
-                            ?: systemApps.firstOrNull { it.packageName == packageName }?.let { appInfo ->
+            Log.d("Receiver", "onReceive: invoked ${intent.data}")
+            if (action == "android.intent.action.PACKAGE_INSTALL" || action == "android.intent.action.PACKAGE_REMOVED" || action == "android.intent.action.PACKAGE_ADDED" || action == "android.intent.action.PACKAGE_REPLACED") {
+                context.packageManager.let { pm ->
+                    val packageName = intent.data.toString()
+                    val appInfoGrabber = AppInfoGrabber(context)
+                    val userApps = appInfoGrabber.getUserApps()
+                    val systemApps = appInfoGrabber.getSystemApps()
+                    userApps.firstOrNull { it.packageName == packageName }
+                        ?: systemApps.firstOrNull { it.packageName == packageName }
+                            ?.let { appInfo ->
                                 if (appInfo.installerPackageName != "com.android.vending") {
                                     reInstallWithGoogle(appInfo, observer = {
                                         Log.d("Receiver", "onReceive: $it")
@@ -36,12 +39,12 @@ class AppListener : BroadcastReceiver() {
                                         Log.d("Receiver", "done")
                                     })
                                 }
-                            }?:run {
-                                Log.d("Receiver", "onReceive: installed app $packageName not found")
-                            }
+                            } ?: run {
+                            Log.d("Receiver", "onReceive: installed app $packageName not found")
+                        }
 
-                    }
                 }
             }
+        }
     }
 }

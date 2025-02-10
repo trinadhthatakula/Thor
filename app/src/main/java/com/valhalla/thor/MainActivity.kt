@@ -28,6 +28,7 @@ import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.AppInfoGrabber
+import com.valhalla.thor.model.AppListener
 import com.valhalla.thor.model.MultiAppAction
 import com.valhalla.thor.model.NavBarItems
 import com.valhalla.thor.model.disableApps
@@ -54,6 +55,15 @@ import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
+
+    override fun onStart() {
+        super.onStart()
+        if (getSharedPreferences("prefs", MODE_PRIVATE)
+                .getBoolean("can_reinstall", false) == true
+        ) {
+            registerReceiver(AppListener.getInstance())
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -294,11 +304,13 @@ class MainActivity : ComponentActivity() {
                                                 Toast.LENGTH_SHORT
                                             ).show()
                                             return@AppListScreen
+                                        }else {
+                                            val appPackage = it.appInfo.packageName
+                                            val intent = Intent(Intent.ACTION_DELETE)
+                                            intent.data = "package:${appPackage}".toUri()
+                                            startActivity(intent)
                                         }
-                                        val appPackage = it.appInfo.packageName
-                                        val intent = Intent(Intent.ACTION_DELETE)
-                                        intent.data = "package:${appPackage}".toUri()
-                                        startActivity(intent)
+                                        isRefreshing = true
                                     }
                                 }
                             },

@@ -164,6 +164,7 @@ fun HomeScreen(
                 }
                 canReinstall = !canReinstall
                 if (canReinstall) {
+                    Toast.makeText(context, "trying to enable Auto Reinstall", Toast.LENGTH_SHORT).show()
                     context.registerReceiver(AppListener.getInstance())
                     Toast.makeText(context, "Auto Reinstall Enabled", Toast.LENGTH_SHORT).show()
                 } else {

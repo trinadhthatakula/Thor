@@ -17,9 +17,9 @@
 * Material 3 Design 
 * Jetpack Compose
 * Smallest APK size (less than 2.0MB)
+* FOSS - GPL-3.0
 
 ## Working Features
-- FOSS - GPL-3.0
 - Material 3 with dynamic colours
 - Displays App List while sorting them based on Installation source
 - Launch App Activities
