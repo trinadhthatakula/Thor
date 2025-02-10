@@ -40,7 +40,8 @@ fun TermLogger(
             }
         },
         scrimColor = Color.Black.copy(alpha = 0.6f),
-        modifier = modifier
+        modifier = modifier,
+        sheetGesturesEnabled = false
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),

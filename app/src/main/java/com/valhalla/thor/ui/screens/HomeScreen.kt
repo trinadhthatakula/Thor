@@ -84,6 +84,8 @@ sealed interface HomeActions {
     data object BKI : HomeActions
 }
 
+var deviceIntegrityJsonBackup = ""
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -97,8 +99,8 @@ fun HomeScreen(
 
     var usedTokens by remember { mutableStateOf(emptyList<String>()) }
 
-    var tokenString by remember { mutableStateOf("") }
-    var deviceIntegrityJson by rememberSaveable { mutableStateOf("") }
+    var tokenString by rememberSaveable { mutableStateOf("") }
+    var deviceIntegrityJson by rememberSaveable { mutableStateOf(deviceIntegrityJsonBackup) }
     var integrityStatus by remember { mutableStateOf("Checking Integrity") }
     var integrityIcon by remember { mutableIntStateOf(R.drawable.shield_countdown) }
 
@@ -129,6 +131,7 @@ fun HomeScreen(
                     jsonResult.getOrNull()?.let {
                         Log.d("HomeScreen", "HomeScreen: token is $tokenString")
                         deviceIntegrityJson = it
+                        deviceIntegrityJsonBackup = deviceIntegrityJson
                     }
                     usedTokens += tokenString
                     integrityStatus = parseIntegrityStatus(deviceIntegrityJson)
