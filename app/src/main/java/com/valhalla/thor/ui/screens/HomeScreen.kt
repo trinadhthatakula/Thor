@@ -81,6 +81,7 @@ sealed interface HomeActions {
     data class FrozenApps(val appListType: AppListType) : HomeActions
     data class ActiveApps(val appListType: AppListType) : HomeActions
     data object SwitchAutoReinstall : HomeActions
+    data object ReinstallAll : HomeActions
     data object BKI : HomeActions
 }
 
@@ -141,8 +142,12 @@ fun HomeScreen(
         }
     }
 
-    var canReinstall by remember { mutableStateOf(context.getSharedPreferences("prefs", MODE_PRIVATE)
-        .getBoolean("can_reinstall", false) == true) }
+    var canReinstall by remember {
+        mutableStateOf(
+            context.getSharedPreferences("prefs", MODE_PRIVATE)
+                .getBoolean("can_reinstall", false) == true
+        )
+    }
 
     HomeContent(
         modifier,
@@ -164,7 +169,8 @@ fun HomeScreen(
                 }
                 canReinstall = !canReinstall
                 if (canReinstall) {
-                    Toast.makeText(context, "trying to enable Auto Reinstall", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "trying to enable Auto Reinstall", Toast.LENGTH_SHORT)
+                        .show()
                     context.registerReceiver(AppListener.getInstance())
                     Toast.makeText(context, "Auto Reinstall Enabled", Toast.LENGTH_SHORT).show()
                 } else {
@@ -326,7 +332,7 @@ fun HomeContent(
         }
         val animatedFrozenAppCount by animateIntAsState(targetValue = frozenAppsCount)
 
-        LaunchedEffect(appListType) {
+        LaunchedEffect(appListType, userAppList, systemAppList) {
             activeAppsCount =
                 if (appListType == AppListType.USER) userAppList.count { it.enabled }
                 else systemAppList.count { it.enabled }
@@ -405,7 +411,7 @@ fun HomeContent(
                     .weight(1f)
                     .padding(horizontal = 5.dp)
             ) {
-                Column(modifier = Modifier.padding(5.dp)) {
+                Column(modifier = Modifier.padding(10.dp)) {
                     Text(
                         text = animatedActiveAppCount.toString(),
                         style = MaterialTheme.typography.headlineLarge,
@@ -427,7 +433,7 @@ fun HomeContent(
                     .padding(horizontal = 5.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(5.dp),
+                    modifier = Modifier.padding(10.dp),
                     verticalArrangement = Arrangement.Center
                 ) {
                     Text(
@@ -445,129 +451,166 @@ fun HomeContent(
         }
 
 
-
-        Column(modifier = Modifier.padding(horizontal = 5.dp, vertical = 10.dp)) {
-            ElevatedCard(
-                modifier = Modifier
-                    .padding(5.dp)
-            ) {
-
-                Row(
+        if (rootAvailable())
+            Column(modifier = Modifier.padding(horizontal = 5.dp, vertical = 10.dp)) {
+                ElevatedCard(
                     modifier = Modifier
-                        .padding(10.dp)
-                        .fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(5.dp)
                 ) {
-                    Column(
-                        verticalArrangement = Arrangement.Center,
+
+                    Row(
                         modifier = Modifier
-                            .weight(1f)
+                            .padding(10.dp)
+                            .fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "Auto Reinstall",
-                            style = MaterialTheme.typography.titleLarge,
-                            maxLines = 1,
+                        Column(
+                            verticalArrangement = Arrangement.Center,
                             modifier = Modifier
-                                .padding(5.dp)
-                        )
+                                .weight(1f)
+                        ) {
+                            Text(
+                                text = "Auto Reinstall",
+                                style = MaterialTheme.typography.titleLarge,
+                                maxLines = 1,
+                                modifier = Modifier
+                                    .padding(5.dp)
+                            )
 
-                        Text(
-                            text = "Thor listens to APP installation and tries to reinstall it with google",
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(horizontal = 5.dp)
-                        )
-                    }
-                    Switch(
-                        checked = canReinstall,
-                        onCheckedChange = {
-                            onHomeActions(HomeActions.SwitchAutoReinstall)
-                        },
-                        modifier = Modifier.padding(5.dp)
-                    )
-                }
-
-            }
-            /*ElevatedCard(
-                modifier = Modifier
-                    .padding(5.dp),
-                onClick = {
-                    onHomeActions(HomeActions.BKI)
-                }
-            ) {
-                Column(
-                    modifier = Modifier
-                        .padding(10.dp)
-                        .fillMaxWidth(),
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = "</> BetterKnownInstalled(BKI)",
-                        style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.padding(5.dp)
-                    )
-                    if (commandExists("abx2xml") != "command not found") {
-                        Text(
-                            text = "ABX2XML Supported",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    } else {
-                        Text(
-                            text = "ABX2XML Not Supported",
-                            style = MaterialTheme.typography.bodySmall
+                            Text(
+                                text = "Thor listens to APP installation and tries to reinstall it with google",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(horizontal = 5.dp)
+                            )
+                        }
+                        Switch(
+                            checked = canReinstall,
+                            onCheckedChange = {
+                                onHomeActions(HomeActions.SwitchAutoReinstall)
+                            },
+                            modifier = Modifier.padding(5.dp)
                         )
                     }
-                    Text(
-                        text = "use Better known installer script by T3SL4 to edit packages.xml",
-                        style = MaterialTheme.typography.bodySmall
-                    )
+
                 }
 
-            }*/
+                val unknownAppsCount by animateIntAsState(userAppList.count {
+                    it.installerPackageName != "com.android.vending"
+                })
 
-            Spacer(modifier = Modifier.weight(1f))
+                if (unknownAppsCount > 0)
+                    ElevatedCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(5.dp),
+                        onClick = {
+                            onHomeActions(HomeActions.ReinstallAll)
+                        }
+                    ) {
+                        Column(
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier
+                                .padding(10.dp)
+                        ) {
+                            Text(
+                                text = "Reinstall All",
+                                style = MaterialTheme.typography.titleLarge,
+                                maxLines = 1,
+                                modifier = Modifier
+                                    .padding(5.dp)
+                            )
 
-            ElevatedCard(
-                modifier = Modifier
-                    .padding(5.dp)
-                    .align(Alignment.CenterHorizontally)
-            ) {
-                val uriHandler = LocalUriHandler.current
-                Column(
+                            Text(
+                                text = "$unknownAppsCount of ${userAppList.size} user apps are not installed from play store, try reinstalling them?",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier
+                                    .padding(horizontal = 5.dp)
+                                    .padding(bottom = 5.dp)
+                            )
+                        }
+                    }
+
+                /*ElevatedCard(
                     modifier = Modifier
                         .padding(5.dp),
-                    verticalArrangement = Arrangement.Center
+                    onClick = {
+                        onHomeActions(HomeActions.BKI)
+                    }
                 ) {
-                    /*Text(
-                        text = "Support us",
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.padding(5.dp)
-                    )*/
-                    Row(
-                        horizontalArrangement = Arrangement.Center,
+                    Column(
                         modifier = Modifier
+                            .padding(10.dp)
+                            .fillMaxWidth(),
+                        verticalArrangement = Arrangement.Center
                     ) {
-                        IconButton(onClick = { uriHandler.openUri("https://github.com/trinadhthatakula/Thor") }) {
-                            Icon(
-                                painterResource(R.drawable.brand_github),
-                                contentDescription = null,
+                        Text(
+                            text = "</> BetterKnownInstalled(BKI)",
+                            style = MaterialTheme.typography.titleLarge,
+                            modifier = Modifier.padding(5.dp)
+                        )
+                        if (commandExists("abx2xml") != "command not found") {
+                            Text(
+                                text = "ABX2XML Supported",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        } else {
+                            Text(
+                                text = "ABX2XML Not Supported",
+                                style = MaterialTheme.typography.bodySmall
                             )
                         }
-                        IconButton(onClick = { uriHandler.openUri("https://patreon.com/trinadh") }) {
-                            Icon(
-                                painterResource(R.drawable.brand_patreon),
-                                contentDescription = null,
-                            )
-                        }
-                        IconButton(onClick = { uriHandler.openUri("https://t.me/thorAppDev") }) {
-                            Icon(
-                                painterResource(R.drawable.brand_telegram),
-                                contentDescription = null,
-                            )
+                        Text(
+                            text = "use Better known installer script by T3SL4 to edit packages.xml",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+
+                }*/
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                ElevatedCard(
+                    modifier = Modifier
+                        .padding(5.dp)
+                        .align(Alignment.CenterHorizontally)
+                ) {
+                    val uriHandler = LocalUriHandler.current
+                    Column(
+                        modifier = Modifier
+                            .padding(5.dp),
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        /*Text(
+                            text = "Support us",
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.padding(5.dp)
+                        )*/
+                        Row(
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier
+                        ) {
+                            IconButton(onClick = { uriHandler.openUri("https://github.com/trinadhthatakula/Thor") }) {
+                                Icon(
+                                    painterResource(R.drawable.brand_github),
+                                    contentDescription = null,
+                                )
+                            }
+                            IconButton(onClick = { uriHandler.openUri("https://patreon.com/trinadh") }) {
+                                Icon(
+                                    painterResource(R.drawable.brand_patreon),
+                                    contentDescription = null,
+                                )
+                            }
+                            IconButton(onClick = { uriHandler.openUri("https://t.me/thorAppDev") }) {
+                                Icon(
+                                    painterResource(R.drawable.brand_telegram),
+                                    contentDescription = null,
+                                )
+                            }
                         }
                     }
                 }
             }
-        }
 
 
     }
