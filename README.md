@@ -23,7 +23,7 @@
 - Material 3 with dynamic colours
 - Displays App List while sorting them based on Installation source
 - Launch App Activities
-- Install/Uninstall Apk files
+- Install/Uninstall/Freeze/Unfreeze Apk files
 - Reinstall APKs/app with Google
 - Share App Apk file
 - Batch Reinstall/Uninstall/Kill Apps
@@ -31,13 +31,13 @@
 - AppState Indicator (frozen = disabled)
 - Kill Apps
 
-## Features in Testing
+## Features in Testing [(Pre - Release built)](https://github.com/trinadhthatakula/Thor/releases/tag/Thor_v1322)
 - New Home UI
 - Root Indicator
 - Integrity Indicator - Only checks for device integrity
 - Auto Reinstall - Reinstall any app installed outside play store without user interaction (turn on in Home Page)
-- Freeze/UnFreeze apps (enable/disable)
-- Batch Freeze/UnFreeze
+- Uninstall System Apps
+- Freeze/UnFreeze System apps
 - Play Integrity Indicator(Experimental)
 - Packages.xml editor based on [script]([url](https://github.com/Pixel-Props/BetterKnownInstalled?tab=readme-ov-file)) by T3SL4 @Pixel-Props
 
