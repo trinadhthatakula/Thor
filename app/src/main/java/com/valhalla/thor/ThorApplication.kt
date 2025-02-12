@@ -6,9 +6,7 @@ import android.content.Context
 import android.content.IntentFilter
 import android.util.Log
 import com.valhalla.thor.model.AppListener
-import com.valhalla.thor.model.getPermissions
 import com.valhalla.thor.model.initStandardIntegrityProvider
-import com.valhalla.thor.model.rootAvailable
 
 class ThorApplication : Application() {
 
@@ -18,15 +16,7 @@ class ThorApplication : Application() {
 
         initStandardIntegrityProvider()
 
-        if (rootAvailable())
-            getPermissions(
-                arrayOf(
-                    "android.permission.BROADCAST_PACKAGE_ADDED",
-                    "android.permission.BROADCAST_PACKAGE_CHANGED",
-                    "android.permission.BROADCAST_PACKAGE_REMOVED",
-                    "android.permission.BROADCAST_PACKAGE_REPLACED",
-                )
-            )
+
 
     }
 
@@ -46,11 +36,15 @@ class ThorApplication : Application() {
 }
 
 fun Context.registerReceiver(receiver: BroadcastReceiver) {
-    val intentFilter = IntentFilter()
-    intentFilter.addAction("android.intent.action.PACKAGE_INSTALL")
-    intentFilter.addAction("android.intent.action.PACKAGE_ADDED")
-    intentFilter.addAction("android.intent.action.PACKAGE_REPLACED")
-    intentFilter.addAction("android.intent.action.PACKAGE_REMOVED")
-    registerReceiver(receiver, intentFilter)
-    Log.d("ApplicationFile", "registerReceiver: registered receiver")
+    try {
+        val intentFilter = IntentFilter()
+        intentFilter.addAction("android.intent.action.PACKAGE_INSTALL")
+        intentFilter.addAction("android.intent.action.PACKAGE_ADDED")
+        intentFilter.addAction("android.intent.action.PACKAGE_REPLACED")
+        intentFilter.addAction("android.intent.action.PACKAGE_REMOVED")
+        registerReceiver(receiver, intentFilter)
+        Log.d("ApplicationFile", "registerReceiver: registered receiver")
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
 }

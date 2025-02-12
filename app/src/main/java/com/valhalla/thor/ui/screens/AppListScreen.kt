@@ -52,6 +52,7 @@ fun AppListScreen(
     modifier: Modifier = Modifier,
     title: String = "App List",
     icon: Int = R.drawable.thor_mono,
+    customSelection: AppListType? = null,
     userAppList: List<AppInfo>,
     systemAppList: List<AppInfo>,
     isRefreshing: Boolean = false,
@@ -74,10 +75,14 @@ fun AppListScreen(
         mutableStateOf(userAppList.sortedBy { it.appName })
     }
 
-    var selectedAppListType: AppListType by rememberSaveable { mutableStateOf(AppListType.USER)}
+    var selectedAppListType: AppListType by rememberSaveable {
+        mutableStateOf(
+            customSelection ?: AppListType.USER
+        )
+    }
 
     LaunchedEffect(selectedFilter, selectedAppListType, isRefreshing) {
-        if(selectedAppListType == AppListType.SYSTEM)
+        if (selectedAppListType == AppListType.SYSTEM)
             selectedFilter = "All"
         installers = if (selectedAppListType == AppListType.USER)
             userAppList.map { it.installerPackageName }.distinct().toMutableList()
@@ -85,7 +90,10 @@ fun AppListScreen(
         else {
             systemAppList.map { it.installerPackageName }.distinct()
         }
-        if(selectedFilter!=null && selectedFilter!="Unknown" && installers.contains(selectedFilter).not()) selectedFilter ="All"
+        if (selectedFilter != null && selectedFilter != "Unknown" && installers.contains(
+                selectedFilter
+            ).not()
+        ) selectedFilter = "All"
         filteredList = if (selectedFilter == "All") {
             if (selectedAppListType == AppListType.USER) userAppList.sortedBy { it.appName } else systemAppList.sortedBy { it.appName }
         } else {
@@ -110,7 +118,8 @@ fun AppListScreen(
             Icon(
                 painter = painterResource(icon),
                 title,
-                modifier = Modifier.padding(5.dp)
+                modifier = Modifier
+                    .padding(5.dp)
                     .size(48.dp)
                     .clip(CircleShape)
                     .clickable {
@@ -134,7 +143,13 @@ fun AppListScreen(
                         shape = SegmentedButtonDefaults.itemShape(index = index, count = 2),
                         selected = selectedAppListType == appListType,
                         onClick = {
-                            selectedAppListType = appListType
+                            if (selectedAppListType == appListType) return@SegmentedButton
+                            when (selectedAppListType) {
+                                AppListType.USER ->
+                                    if (userAppList.isNotEmpty()) selectedAppListType = appListType
+                                AppListType.SYSTEM ->
+                                    if (systemAppList.isNotEmpty()) selectedAppListType = appListType
+                            }
                         }
                     ) {
                         Icon(
@@ -176,9 +191,11 @@ fun AppListScreen(
 
     if (selectedAppInfo != null) {
         AppInfoDialog(
-            appInfo = selectedAppInfo!!, onDismiss = {
+            appInfo = selectedAppInfo!!,
+            onDismiss = {
                 selectedAppInfo = null
-            }, onAppAction = {
+            },
+            onAppAction = {
                 if (it is AppClickAction.Reinstall) {
                     reinstallAppInfo = it.appInfo
                 } else {
@@ -186,7 +203,7 @@ fun AppListScreen(
                 }
             },
 
-        )
+            )
     }
 
     if (reinstallAppInfo != null) {

@@ -161,6 +161,7 @@ class MainActivity : ComponentActivity() {
                         if (homeAction is HomeActions.ActiveApps) {
                             ///show Active Apps
                             AppListScreen(
+                                customSelection = (homeAction as HomeActions.ActiveApps).appListType,
                                 title = "Active Apps",
                                 userAppList = userApps.filter { it.enabled },
                                 systemAppList = systemApps.filter { it.enabled },
@@ -178,6 +179,7 @@ class MainActivity : ComponentActivity() {
                             )
                         } else {
                             AppListScreen(
+                                customSelection = (homeAction as HomeActions.FrozenApps).appListType,
                                 icon = R.drawable.frozen,
                                 title = "Frozen Apps",
                                 userAppList = userApps.filter { it.enabled.not() },
@@ -386,17 +388,21 @@ class MainActivity : ComponentActivity() {
                                     }
 
                                     is AppClickAction.Uninstall -> {
-                                        val it: AppClickAction.Uninstall =
-                                            appAction as AppClickAction.Uninstall
-                                        if (it.appInfo.isSystem) {
-                                            uninstallSystemApp(it.appInfo)
-                                        } else {
-                                            val appPackage = it.appInfo.packageName
-                                            val intent = Intent(Intent.ACTION_DELETE)
-                                            intent.data = "package:${appPackage}".toUri()
-                                            startActivity(intent)
+                                        try {
+                                            val it: AppClickAction.Uninstall =
+                                                appAction as AppClickAction.Uninstall
+                                            if (it.appInfo.isSystem) {
+                                                uninstallSystemApp(it.appInfo)
+                                            } else {
+                                                val appPackage = it.appInfo.packageName
+                                                val intent = Intent(Intent.ACTION_DELETE)
+                                                intent.data = "package:${appPackage}".toUri()
+                                                startActivity(intent)
+                                            }
+                                            isRefreshing = true
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
                                         }
-                                        isRefreshing = true
                                     }
                                 }
                             } catch (e: Exception) {
