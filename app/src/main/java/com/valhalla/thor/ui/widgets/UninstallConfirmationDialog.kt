@@ -35,7 +35,7 @@ fun UninstallConfirmationDialog(
             Text("Uninstall ${appInfo.appName}?")
         },
         text = {
-            Text("Are you sure you want to uninstall ${appInfo.appName}?")
+            Text("Are you sure you want to uninstall ${appInfo.appName}?${if (appInfo.isSystem) "\nthis is a system app it might be risky, you can freeze them instead" else ""}")
         }
     )
 }

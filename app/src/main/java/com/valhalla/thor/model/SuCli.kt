@@ -247,9 +247,7 @@ fun reInstallWithGoogle(appInfo: AppInfo, observer: (String) -> Unit, exit: () -
             e.printStackTrace()
         } finally {
             observer("\n")
-            observer("Special Thanks")
-            observer("CIT, citra_standalone")
-            observer("TSA")
+            observer("Done Reinstalling ")
             exit()
         }
     }
@@ -287,9 +285,6 @@ fun reInstallAppsWithGoogle(appInfos: List<AppInfo>, observer: (String) -> Unit,
         e.printStackTrace()
     } finally {
         observer("\n")
-        observer("Special Thanks")
-        observer("CIT, citra_standalone")
-        observer("TSA")
         exit()
     }
 
@@ -542,4 +537,10 @@ fun openAppInfoScreen(context: Context,appInfo: AppInfo){
     } catch (_: Exception) {
         context.startActivity(Intent(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS))
     }
+}
+
+fun uninstallSystemApp(appInfo: AppInfo): String{
+    val shell = getRootShell()
+    val currentUser = fastCmd(shell, "am get-current-user").trim()
+    return fastCmd(shell,"su -c pm uninstall -k --user $currentUser ${appInfo.packageName}")
 }
