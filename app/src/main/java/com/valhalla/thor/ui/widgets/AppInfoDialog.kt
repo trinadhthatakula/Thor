@@ -224,7 +224,7 @@ fun FloatingBar(
                 onAppAction(AppClickAction.Share(appInfo))
             }
 
-        if (rootAvailable() && appInfo.isSystem.not())
+        if (rootAvailable())
             AppActionItem(
                 icon = if (isFrozen) R.drawable.unfreeze else R.drawable.frozen,
                 text = if (isFrozen) "Unfreeze" else "Freeze",
@@ -248,6 +248,7 @@ fun FloatingBar(
             text = "Uninstall",
         ) {
             onAppAction(AppClickAction.Uninstall(appInfo))
+            onDismiss()
         }
 
     }

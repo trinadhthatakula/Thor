@@ -49,9 +49,11 @@ import com.valhalla.thor.ui.widgets.TypeWriterText
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun AppListScreen(
+    modifier: Modifier = Modifier,
+    title: String = "App List",
+    icon: Int = R.drawable.thor_mono,
     userAppList: List<AppInfo>,
     systemAppList: List<AppInfo>,
-    modifier: Modifier = Modifier,
     isRefreshing: Boolean = false,
     onAppAction: (AppClickAction) -> Unit = {},
     onRefresh: () -> Unit = {},
@@ -106,8 +108,8 @@ fun AppListScreen(
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
-                painter = painterResource(R.drawable.thor_mono),
-                "App Icon",
+                painter = painterResource(icon),
+                title,
                 modifier = Modifier.padding(5.dp)
                     .size(48.dp)
                     .clip(CircleShape)
@@ -117,7 +119,7 @@ fun AppListScreen(
                     .padding(8.dp)
             )
             TypeWriterText(
-                text = "App List",
+                text = title,
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
                     .padding(vertical = 10.dp)
