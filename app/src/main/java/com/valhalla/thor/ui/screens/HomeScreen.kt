@@ -405,7 +405,8 @@ fun HomeContent(
         Row(modifier = Modifier.padding(horizontal = 5.dp)) {
             ElevatedCard(
                 onClick = {
-                    onHomeActions(HomeActions.ActiveApps(appListType))
+                    if (activeAppsCount > 0)
+                        onHomeActions(HomeActions.ActiveApps(appListType))
                 },
                 modifier = Modifier
                     .weight(1f)
@@ -426,7 +427,8 @@ fun HomeContent(
             }
             ElevatedCard(
                 onClick = {
-                    onHomeActions(HomeActions.FrozenApps(appListType))
+                    if (frozenAppsCount > 0)
+                        onHomeActions(HomeActions.FrozenApps(appListType))
                 },
                 modifier = Modifier
                     .weight(1f)
