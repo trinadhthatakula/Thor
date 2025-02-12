@@ -388,21 +388,24 @@ class MainActivity : ComponentActivity() {
                                     }
 
                                     is AppClickAction.Uninstall -> {
-                                        try {
-                                            val it: AppClickAction.Uninstall =
-                                                appAction as AppClickAction.Uninstall
-                                            if (it.appInfo.isSystem) {
-                                                uninstallSystemApp(it.appInfo)
-                                            } else {
-                                                val appPackage = it.appInfo.packageName
-                                                val intent = Intent(Intent.ACTION_DELETE)
-                                                intent.data = "package:${appPackage}".toUri()
-                                                startActivity(intent)
+                                        lifecycleScope.launch {
+                                            try {
+                                                val it: AppClickAction.Uninstall =
+                                                    appAction as AppClickAction.Uninstall
+                                                if (it.appInfo.isSystem) {
+                                                    uninstallSystemApp(it.appInfo)
+                                                } else {
+                                                    val appPackage = it.appInfo.packageName
+                                                    val intent = Intent(Intent.ACTION_DELETE)
+                                                    intent.data = "package:${appPackage}".toUri()
+                                                    startActivity(intent)
+                                                }
+                                                isRefreshing = true
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
                                             }
-                                            isRefreshing = true
-                                        } catch (e: Exception) {
-                                            e.printStackTrace()
                                         }
+
                                     }
                                 }
                             } catch (e: Exception) {
@@ -412,6 +415,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
+
 
                     if (multiAction != null) {
 
