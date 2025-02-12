@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.MultiAppAction
+import com.valhalla.thor.model.rootAvailable
 
 @Composable
 fun MultiSelectToolBox(
@@ -43,19 +44,12 @@ fun MultiSelectToolBox(
         ) {
 
             Row {
-                if (!selected.first().isSystem) {
+                if (rootAvailable()) {
                     AppActionItem(
                         icon = R.drawable.apk_install,
                         text = "ReInstall",
                         onClick = {
                             onMultiAppAction(MultiAppAction.ReInstall(selected))
-                        }
-                    )
-                    AppActionItem(
-                        icon = R.drawable.delete_forever,
-                        text = "Uninstall",
-                        onClick = {
-                            onMultiAppAction(MultiAppAction.Uninstall(selected))
                         }
                     )
                     if (hasUnFrozen)
@@ -73,6 +67,13 @@ fun MultiSelectToolBox(
                             onMultiAppAction(MultiAppAction.UnFreeze(selected))
                         }
                 }
+                AppActionItem(
+                    icon = R.drawable.delete_forever,
+                    text = "Uninstall",
+                    onClick = {
+                        onMultiAppAction(MultiAppAction.Uninstall(selected))
+                    }
+                )
                 AppActionItem(
                     icon = R.drawable.share,
                     text = "Share",
