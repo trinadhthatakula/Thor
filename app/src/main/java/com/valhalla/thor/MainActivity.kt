@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
@@ -42,12 +43,13 @@ import com.valhalla.thor.model.reInstallAppsWithGoogle
 import com.valhalla.thor.model.reInstallWithGoogle
 import com.valhalla.thor.model.rootAvailable
 import com.valhalla.thor.model.shareApp
+import com.valhalla.thor.model.uninstallSystemApp
 import com.valhalla.thor.ui.screens.AppListScreen
 import com.valhalla.thor.ui.screens.HomeActions
 import com.valhalla.thor.ui.screens.HomeScreen
 import com.valhalla.thor.ui.theme.ThorTheme
 import com.valhalla.thor.ui.widgets.AppClickAction
-import com.valhalla.thor.ui.widgets.TermLogger
+import com.valhalla.thor.ui.widgets.TermLoggerDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -94,6 +96,9 @@ class MainActivity : ComponentActivity() {
             var logObserver by remember { mutableStateOf(emptyList<String>()) }
             var canExit by remember { mutableStateOf(false) }
 
+            var appAction: AppClickAction? by remember {
+                mutableStateOf(null)
+            }
             var multiAction: MultiAppAction? by remember {
                 mutableStateOf(null)
             }
@@ -118,63 +123,133 @@ class MainActivity : ComponentActivity() {
             }
 
             var termLoggerTitle by remember { mutableStateOf("Reinstalling..,") }
+            var homeAction: HomeActions? by remember { mutableStateOf(null) }
+
+            BackHandler {
+                if (homeAction != null) {
+                    homeAction = null
+                }
+            }
 
             ThorTheme {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     bottomBar = {
-                        NavigationBar {
-                            navBarItems.forEach {
-                                NavigationBarItem(
-                                    selected = selectedNavItem == it,
-                                    onClick = {
-                                        selectedNavItem = it
-                                    },
-                                    icon = {
-                                        Icon(
-                                            painterResource(if (selectedNavItem == it) it.selectedIcon else it.unselectedIcon),
-                                            it.title
-                                        )
-                                    },
-                                    label = {
-                                        Text(it.title)
-                                    }
-                                )
+                        if (homeAction == null)
+                            NavigationBar {
+                                navBarItems.forEach {
+                                    NavigationBarItem(
+                                        selected = selectedNavItem == it,
+                                        onClick = {
+                                            selectedNavItem = it
+                                        },
+                                        icon = {
+                                            Icon(
+                                                painterResource(if (selectedNavItem == it) it.selectedIcon else it.unselectedIcon),
+                                                it.title
+                                            )
+                                        },
+                                        label = {
+                                            Text(it.title)
+                                        }
+                                    )
+                                }
                             }
-                        }
                     }
                 ) { innerPadding ->
-                    if (selectedNavItem == navBarItems.first())
+                    if (homeAction != null) {
+                        if (homeAction is HomeActions.ActiveApps) {
+                            ///show Active Apps
+                            AppListScreen(
+                                title = "Active Apps",
+                                userAppList = userApps.filter { it.enabled },
+                                systemAppList = systemApps.filter { it.enabled },
+                                modifier = Modifier.padding(innerPadding),
+                                isRefreshing = isRefreshing,
+                                onRefresh = {
+                                    isRefreshing = true
+                                },
+                                onAppAction = {
+                                    appAction = it
+                                },
+                                onMultiAppAction = {
+                                    multiAction = it
+                                }
+                            )
+                        } else {
+                            AppListScreen(
+                                icon = R.drawable.frozen,
+                                title = "Frozen Apps",
+                                userAppList = userApps.filter { it.enabled.not() },
+                                systemAppList = systemApps.filter { it.enabled.not() },
+                                modifier = Modifier.padding(innerPadding),
+                                isRefreshing = isRefreshing,
+                                onRefresh = {
+                                    isRefreshing = true
+                                },
+                                onAppAction = {
+                                    appAction = it
+                                },
+                                onMultiAppAction = {
+                                    multiAction = it
+                                }
+                            )
+                        }
+                    } else if (selectedNavItem == navBarItems.first()) {
                         HomeScreen(
                             modifier = Modifier.padding(innerPadding),
                             userApps, systemApps
-                        ) { homeAction ->
+                        ) { hAction ->
 
-                            when(homeAction) {
-                                is HomeActions.ActiveApps ->{
+                            when (hAction) {
+                                is HomeActions.ActiveApps -> {
+                                    homeAction = hAction
                                 }
+
                                 is HomeActions.FrozenApps -> {
+                                    homeAction = hAction
                                 }
+
+                                is HomeActions.ReinstallAll -> {
+                                    multiAction =
+                                        MultiAppAction.ReInstall(userApps.filter { it.installerPackageName != "com.android.vending" })
+                                }
+
                                 else -> {}
                             }
 
                         }
-                    else {
+                    } else {
                         AppListScreen(
-                            userApps,
-                            systemApps,
+                            userAppList = userApps,
+                            systemAppList = systemApps,
                             isRefreshing = isRefreshing,
                             onRefresh = {
                                 isRefreshing = true
                             },
                             modifier = Modifier.padding(innerPadding),
                             onAppAction = {
-                                when (it) {
+                                appAction = it
+                            },
+                            onMultiAppAction = {
+                                multiAction = it
+                            }
+                        )
+                    }
+
+                    LaunchedEffect(appAction) {
+                        if (appAction != null) {
+                            try {
+                                when (appAction!!) {
                                     is AppClickAction.AppInfoSettings -> {
-                                        openAppInfoScreen(this, it.appInfo)
+                                        openAppInfoScreen(
+                                            this@MainActivity,
+                                            (appAction as AppClickAction.AppInfoSettings).appInfo
+                                        )
                                     }
 
                                     is AppClickAction.Kill -> {
+                                        val it: AppClickAction.Kill = appAction as AppClickAction.Kill
                                         lifecycleScope.launch(Dispatchers.IO) {
                                             val killResult = killApp(it.appInfo)
                                             withContext(Dispatchers.Main) {
@@ -200,6 +275,8 @@ class MainActivity : ComponentActivity() {
                                     }
 
                                     is AppClickAction.Freeze -> {
+                                        val it: AppClickAction.Freeze =
+                                            appAction as AppClickAction.Freeze
                                         lifecycleScope.launch(Dispatchers.IO) {
                                             disableApps(it.appInfo)
                                             isRefreshing = true
@@ -207,6 +284,8 @@ class MainActivity : ComponentActivity() {
                                     }
 
                                     is AppClickAction.UnFreeze -> {
+                                        val it: AppClickAction.UnFreeze =
+                                            appAction as AppClickAction.UnFreeze
                                         lifecycleScope.launch(Dispatchers.IO) {
                                             enableApps(it.appInfo)
                                             isRefreshing = true
@@ -214,6 +293,8 @@ class MainActivity : ComponentActivity() {
                                     }
 
                                     is AppClickAction.Reinstall -> {
+                                        val it: AppClickAction.Reinstall =
+                                            appAction as AppClickAction.Reinstall
                                         if (rootAvailable() || hasMagisk()) lifecycleScope.launch {
                                             termLoggerTitle = "Reinstalling Apps..,"
                                             logObserver = emptyList()
@@ -229,14 +310,18 @@ class MainActivity : ComponentActivity() {
                                                         isRefreshing = true
                                                     })
                                             }
-                                        } else Toast.makeText(
-                                            this,
-                                            "Root not available\nPlease grant root in manager app",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
+                                        } else runOnUiThread {
+                                            Toast.makeText(
+                                                this@MainActivity,
+                                                "Root not available\nPlease grant root in manager app",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
                                     }
 
                                     is AppClickAction.Launch -> {
+                                        val it: AppClickAction.Launch =
+                                            appAction as AppClickAction.Launch
                                         if (it.appInfo.enabled.not()) {
                                             if (rootAvailable()) {
                                                 lifecycleScope.launch {
@@ -258,7 +343,7 @@ class MainActivity : ComponentActivity() {
 
                                             } else {
                                                 Toast.makeText(
-                                                    this,
+                                                    this@MainActivity,
                                                     "App is Frozen",
                                                     Toast.LENGTH_SHORT
                                                 ).show()
@@ -267,44 +352,45 @@ class MainActivity : ComponentActivity() {
                                             if (rootAvailable() || hasMagisk())
                                                 launchApp(it.appInfo.packageName.toString()).let { result ->
                                                     if (!result.isSuccess) {
-                                                        Toast.makeText(
-                                                            this,
-                                                            "Failed to launch app",
-                                                            Toast.LENGTH_SHORT
-                                                        ).show()
+                                                        runOnUiThread {
+                                                            Toast.makeText(
+                                                                this@MainActivity,
+                                                                "Failed to launch app",
+                                                                Toast.LENGTH_SHORT
+                                                            ).show()
+                                                        }
                                                     }
                                                 }
                                             else
                                                 it.appInfo.packageName.let { appPackage ->
-                                                    this.packageManager.getLaunchIntentForPackage(
+                                                    this@MainActivity.packageManager.getLaunchIntentForPackage(
                                                         appPackage
-                                                    )
-                                                        ?.let {
+                                                    )?.let {
                                                             startActivity(it)
                                                         } ?: run {
-                                                        Toast.makeText(
-                                                            this,
-                                                            "Failed to launch app",
-                                                            Toast.LENGTH_SHORT
-                                                        ).show()
+                                                        runOnUiThread {
+                                                            Toast.makeText(
+                                                                this@MainActivity,
+                                                                "Failed to launch app",
+                                                                Toast.LENGTH_SHORT
+                                                            ).show()
+                                                        }
                                                     }
                                                 }
 
                                     }
 
                                     is AppClickAction.Share -> {
-                                        shareApp(it.appInfo, this)
+                                        val it: AppClickAction.Share = appAction as AppClickAction.Share
+                                        shareApp(it.appInfo, this@MainActivity)
                                     }
 
                                     is AppClickAction.Uninstall -> {
+                                        val it: AppClickAction.Uninstall =
+                                            appAction as AppClickAction.Uninstall
                                         if (it.appInfo.isSystem) {
-                                            Toast.makeText(
-                                                this,
-                                                "Cannot uninstall system app as of now",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                            return@AppListScreen
-                                        }else {
+                                            uninstallSystemApp(it.appInfo)
+                                        } else {
                                             val appPackage = it.appInfo.packageName
                                             val intent = Intent(Intent.ACTION_DELETE)
                                             intent.data = "package:${appPackage}".toUri()
@@ -313,119 +399,37 @@ class MainActivity : ComponentActivity() {
                                         isRefreshing = true
                                     }
                                 }
-                            },
-                            onMultiAppAction = {
-                                multiAction = it
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            } finally {
+                                appAction = null
                             }
-                        )
+                        }
                     }
-                }
 
-                if (multiAction != null) {
+                    if (multiAction != null) {
 
-                    when (multiAction) {
+                        when (multiAction) {
 
-                        is MultiAppAction.Kill -> {
-                            val appList =
-                                (multiAction as MultiAppAction.Kill).appList.toMutableList()
-                            val thorAppInfo =
-                                appList.firstOrNull { it.packageName == BuildConfig.APPLICATION_ID }
-                            if (thorAppInfo != null) {
-                                appList -= thorAppInfo
-                            }
-                            var hasAffirmation by remember { mutableStateOf(false) }
-                            LaunchedEffect(hasAffirmation) {
-                                if (hasAffirmation) {
-                                    termLoggerTitle = "Killing Apps..,"
-                                    logObserver = emptyList()
-                                    canExit = false
-                                    multiAction = null
-                                    reinstalling = true
-                                    withContext(Dispatchers.IO) {
-                                        killApps(
-                                            *appList.toTypedArray(),
-                                            observer = {
-                                                logObserver += it
-                                            },
-                                            exit = {
-                                                logObserver += "Exiting Shell"
-                                                canExit = true
-                                                isRefreshing = true
-                                            }
-                                        )
-                                    }
+                            is MultiAppAction.Kill -> {
+                                val appList =
+                                    (multiAction as MultiAppAction.Kill).appList.toMutableList()
+                                val thorAppInfo =
+                                    appList.firstOrNull { it.packageName == BuildConfig.APPLICATION_ID }
+                                if (thorAppInfo != null) {
+                                    appList -= thorAppInfo
                                 }
-                            }
-                            if (!hasAffirmation) AffirmationDialog(
-                                text = "This will kill ${appList.size} apps",
-                                onConfirm = { hasAffirmation = true },
-                                onRejected = { multiAction = null }
-                            )
-                        }
-
-                        is MultiAppAction.Uninstall -> {
-                            (multiAction as MultiAppAction.Uninstall).appList.forEach {
-                                val appPackage = it.packageName
-                                val intent = Intent(Intent.ACTION_DELETE)
-                                intent.data = "package:${appPackage}".toUri()
-                                startActivity(intent)
-                            }
-                        }
-
-                        is MultiAppAction.ReInstall -> {
-                            val appList =
-                                (multiAction as MultiAppAction.ReInstall).appList.toMutableList()
-                            val thorAppInfo =
-                                appList.firstOrNull { it.packageName == BuildConfig.APPLICATION_ID }
-                            if (thorAppInfo != null) {
-                                appList -= thorAppInfo
-                                appList += thorAppInfo
-                            }
-                            var hasAffirmation by remember { mutableStateOf(false) }
-                            LaunchedEffect(hasAffirmation) {
-                                if (hasAffirmation) {
-                                    termLoggerTitle = "Reinstalling Apps..,"
-                                    logObserver = emptyList()
-                                    canExit = false
-                                    multiAction = null
-                                    reinstalling = true
-                                    withContext(Dispatchers.IO) {
-                                        reInstallAppsWithGoogle(
-                                            appList,
-                                            observer = {
-                                                logObserver += it
-                                            },
-                                            exit = {
-                                                canExit = true
-                                                isRefreshing = true
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                            if (!hasAffirmation) AffirmationDialog(
-                                text = "This will reinstall ${appList.size} apps with Google Play",
-                                onConfirm = { hasAffirmation = true },
-                                onRejected = { multiAction = null }
-                            )
-                        }
-
-                        is MultiAppAction.UnFreeze -> {
-                            if (rootAvailable()) {
-                                val selectedAppInfos =
-                                    (multiAction as MultiAppAction.UnFreeze).appList
-                                val frozenApps = selectedAppInfos.filter { it.enabled.not() }
                                 var hasAffirmation by remember { mutableStateOf(false) }
                                 LaunchedEffect(hasAffirmation) {
                                     if (hasAffirmation) {
-                                        termLoggerTitle = "UnFreezing Apps..,"
+                                        termLoggerTitle = "Killing Apps..,"
                                         logObserver = emptyList()
                                         canExit = false
                                         multiAction = null
                                         reinstalling = true
                                         withContext(Dispatchers.IO) {
-                                            enableApps(
-                                                *frozenApps.toTypedArray(),
+                                            killApps(
+                                                *appList.toTypedArray(),
                                                 observer = {
                                                     logObserver += it
                                                 },
@@ -438,43 +442,57 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 }
-                                if (!hasAffirmation) {
-                                    AffirmationDialog(
-                                        text = "${frozenApps.size} of ${selectedAppInfos.size} apps are frozen do you want to unfreeze them?",
-                                        onConfirm = { hasAffirmation = true },
-                                        onRejected = { multiAction = null }
-                                    )
-                                }
-                            } else {
-                                Toast.makeText(this, "Root not available", Toast.LENGTH_SHORT)
-                                    .show()
+                                if (!hasAffirmation) AffirmationDialog(
+                                    text = "This will kill ${appList.size} apps",
+                                    onConfirm = { hasAffirmation = true },
+                                    onRejected = { multiAction = null }
+                                )
                             }
-                        }
 
-                        is MultiAppAction.Freeze -> {
-                            if (rootAvailable()) {
-                                val selectedAppInfos =
-                                    (multiAction as MultiAppAction.Freeze).appList
-                                val thorAppInfo =
-                                    selectedAppInfos.firstOrNull { it.packageName == BuildConfig.APPLICATION_ID }
-                                val activeApps =
-                                    selectedAppInfos.filter { it.enabled }.toMutableList()
-                                if (thorAppInfo != null) {
-                                    if (activeApps.contains(thorAppInfo)) {
-                                        activeApps -= thorAppInfo
+                            is MultiAppAction.Uninstall -> {
+                                (multiAction as MultiAppAction.Uninstall).appList.forEach {
+                                    try {
+                                        if (it.isSystem) {
+                                            termLoggerTitle = "Uninstalling Apps..,"
+                                            val result = uninstallSystemApp(it)
+                                            logObserver += if (result.isEmpty())
+                                                "Uninstalled ${it.appName}"
+                                            else
+                                                "Failed to uninstall ${it.appName}"
+                                        } else {
+                                            val appPackage = it.packageName
+                                            val intent = Intent(Intent.ACTION_DELETE)
+                                            intent.data = "package:${appPackage}".toUri()
+                                            startActivity(intent)
+                                        }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    } finally {
+                                        isRefreshing = true
                                     }
+                                }
+                            }
+
+                            is MultiAppAction.ReInstall -> {
+                                val appList =
+                                    (multiAction as MultiAppAction.ReInstall).appList.toMutableList()
+                                val thorAppInfo =
+                                    appList.firstOrNull { it.packageName == BuildConfig.APPLICATION_ID }
+                                if (thorAppInfo != null) {
+                                    appList -= thorAppInfo
+                                    appList += thorAppInfo
                                 }
                                 var hasAffirmation by remember { mutableStateOf(false) }
                                 LaunchedEffect(hasAffirmation) {
                                     if (hasAffirmation) {
-                                        termLoggerTitle = "Freezing Apps"
+                                        termLoggerTitle = "Reinstalling Apps..,"
                                         logObserver = emptyList()
                                         canExit = false
                                         multiAction = null
                                         reinstalling = true
                                         withContext(Dispatchers.IO) {
-                                            disableApps(
-                                                *activeApps.toTypedArray(),
+                                            reInstallAppsWithGoogle(
+                                                appList,
                                                 observer = {
                                                     logObserver += it
                                                 },
@@ -486,37 +504,122 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 }
-                                if (!hasAffirmation) {
-                                    AffirmationDialog(
-                                        text = "${activeApps.size} of ${selectedAppInfos.size} apps are not frozen do you want to freeze them?",
-                                        onConfirm = { hasAffirmation = true },
-                                        onRejected = { multiAction = null }
-                                    )
+                                if (!hasAffirmation) AffirmationDialog(
+                                    text = "This will reinstall ${appList.size} apps with Google Play",
+                                    onConfirm = { hasAffirmation = true },
+                                    onRejected = { multiAction = null }
+                                )
+                            }
+
+                            is MultiAppAction.UnFreeze -> {
+                                if (rootAvailable()) {
+                                    val selectedAppInfos =
+                                        (multiAction as MultiAppAction.UnFreeze).appList
+                                    val frozenApps = selectedAppInfos.filter { it.enabled.not() }
+                                    var hasAffirmation by remember { mutableStateOf(false) }
+                                    LaunchedEffect(hasAffirmation) {
+                                        if (hasAffirmation) {
+                                            termLoggerTitle = "UnFreezing Apps..,"
+                                            logObserver = emptyList()
+                                            canExit = false
+                                            multiAction = null
+                                            reinstalling = true
+                                            withContext(Dispatchers.IO) {
+                                                enableApps(
+                                                    *frozenApps.toTypedArray(),
+                                                    observer = {
+                                                        logObserver += it
+                                                    },
+                                                    exit = {
+                                                        logObserver += "Exiting Shell"
+                                                        canExit = true
+                                                        isRefreshing = true
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                    if (!hasAffirmation) {
+                                        AffirmationDialog(
+                                            text = "${frozenApps.size} of ${selectedAppInfos.size} apps are frozen do you want to unfreeze them?",
+                                            onConfirm = { hasAffirmation = true },
+                                            onRejected = { multiAction = null }
+                                        )
+                                    }
+                                } else {
+                                    Toast.makeText(this, "Root not available", Toast.LENGTH_SHORT)
+                                        .show()
                                 }
-                            } else {
-                                Toast.makeText(this, "Root not available", Toast.LENGTH_SHORT)
-                                    .show()
+                            }
+
+                            is MultiAppAction.Freeze -> {
+                                if (rootAvailable()) {
+                                    val selectedAppInfos =
+                                        (multiAction as MultiAppAction.Freeze).appList
+                                    val thorAppInfo =
+                                        selectedAppInfos.firstOrNull { it.packageName == BuildConfig.APPLICATION_ID }
+                                    val activeApps =
+                                        selectedAppInfos.filter { it.enabled }.toMutableList()
+                                    if (thorAppInfo != null) {
+                                        if (activeApps.contains(thorAppInfo)) {
+                                            activeApps -= thorAppInfo
+                                        }
+                                    }
+                                    var hasAffirmation by remember { mutableStateOf(false) }
+                                    LaunchedEffect(hasAffirmation) {
+                                        if (hasAffirmation) {
+                                            termLoggerTitle = "Freezing Apps"
+                                            logObserver = emptyList()
+                                            canExit = false
+                                            multiAction = null
+                                            reinstalling = true
+                                            withContext(Dispatchers.IO) {
+                                                disableApps(
+                                                    *activeApps.toTypedArray(),
+                                                    observer = {
+                                                        logObserver += it
+                                                    },
+                                                    exit = {
+                                                        canExit = true
+                                                        isRefreshing = true
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                    if (!hasAffirmation) {
+                                        AffirmationDialog(
+                                            text = "${activeApps.size} of ${selectedAppInfos.size} apps are not frozen do you want to freeze them?",
+                                            onConfirm = { hasAffirmation = true },
+                                            onRejected = { multiAction = null }
+                                        )
+                                    }
+                                } else {
+                                    Toast.makeText(this, "Root not available", Toast.LENGTH_SHORT)
+                                        .show()
+                                }
+                            }
+
+                            else -> {
+                                Toast.makeText(this, "Work in progress", Toast.LENGTH_SHORT).show()
                             }
                         }
 
-                        else -> {
-                            Toast.makeText(this, "Work in progress", Toast.LENGTH_SHORT).show()
-                        }
                     }
+                    if (reinstalling) {
+                        TermLoggerDialog(
+                            Modifier,
+                            termLoggerTitle,
+                            canExit,
+                            logObserver,
+                            doneReinstalling = {
+                                reinstalling = false
+                                canExit = false
+                            }
+                        )
+                    }
+                }
 
-                }
-                if (reinstalling) {
-                    TermLogger(
-                        Modifier,
-                        termLoggerTitle,
-                        canExit,
-                        logObserver,
-                        doneReinstalling = {
-                            reinstalling = false
-                            canExit = false
-                        }
-                    )
-                }
             }
         }
     }
