@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">Thor</string>
     <string name="title_activity_script_runner">ScriptRunner</string>
+    <string name="title_activity_home">HomeActivity</string>
 </resources>
