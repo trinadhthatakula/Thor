@@ -5,11 +5,10 @@
     <uses-permission
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
+
     <permission
         android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:ignore="ReservedSystemPermission" />
-
-    <!--permissions required to install apps-->
+        tools:ignore="ReservedSystemPermission" /> <!-- permissions required to install apps -->
     <uses-permission
         android:name="com.android.permission.INSTALL_EXISTING_PACKAGES"
         tools:ignore="ProtectedPermissions" />
@@ -19,14 +18,9 @@
     <uses-permission
         android:name="android.permission.INSTALL_PACKAGES"
         tools:ignore="ProtectedPermissions" />
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-
-    <!-- permissions to show and uninstall apps -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" /> <!-- permissions to show and uninstall apps -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
-
     <uses-permission android:name="android.permission.INTERNET" />
-
-
     <uses-permission android:name="android.permission.BROADCAST_PACKAGE_ADDED" />
     <uses-permission android:name="android.permission.BROADCAST_PACKAGE_CHANGED" />
     <uses-permission android:name="android.permission.BROADCAST_PACKAGE_INSTALL" />
@@ -43,13 +37,18 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Thor"
         tools:targetApi="31">
-
+        <activity
+            android:name=".HomeActivity"
+            android:exported="false"
+            android:label="@string/title_activity_home"
+            android:theme="@style/Theme.Thor" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:theme="@style/Theme.Thor">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
+
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
@@ -64,17 +63,18 @@
                 android:resource="@xml/provider_paths" />
         </provider>
 
-        <receiver android:name=".model.AppListener"
+        <receiver
+            android:name=".model.AppListener"
             android:exported="true">
             <intent-filter android:priority="999">
-                <action android:name="android.intent.action.PACKAGE_INSTALL"/>
-                <action android:name="android.intent.action.PACKAGE_ADDED"/>
-                <action android:name="android.intent.action.PACKAGE_REPLACED"/>
-                <action android:name="android.intent.action.PACKAGE_REMOVED"/>
-                <data android:scheme="package"/>
+                <action android:name="android.intent.action.PACKAGE_INSTALL" />
+                <action android:name="android.intent.action.PACKAGE_ADDED" />
+                <action android:name="android.intent.action.PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.PACKAGE_REMOVED" />
+
+                <data android:scheme="package" />
             </intent-filter>
         </receiver>
-
     </application>
 
 </manifest>

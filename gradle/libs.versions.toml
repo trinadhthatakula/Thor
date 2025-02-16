@@ -1,6 +1,8 @@
 [versions]
 accompanistDrawablepainter = "0.37.0"
 agp = "8.10.0-alpha05"
+koinAndroidxCompose = "4.0.0"
+navigationCompose = "2.9.0-alpha06"
 playIntegrity = "1.4.0"
 libsu = "6.0.0"
 kotlin = "2.1.10"
@@ -8,7 +10,7 @@ coreKtx = "1.15.0"
 junit = "4.13.2"
 junitVersion = "1.2.1"
 espressoCore = "3.6.1"
-lifecycleRuntimeKtx = "2.8.7"
+lifecycleRuntimeKtx = "2.9.0-alpha10"
 activityCompose = "1.10.0"
 composeBom = "2025.02.00"
 lottieCompose = "6.6.2"
@@ -25,7 +27,6 @@ play-integrity = { module = "com.google.android.play:integrity", version.ref = "
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
-androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 androidx-ui = { group = "androidx.compose.ui", name = "ui" }
@@ -36,14 +37,24 @@ androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-man
 androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
 
+androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigationCompose" }
+
+androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
+androidx-lifecycle-viewmodel-ktx = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-ktx", version.ref = "lifecycleRuntimeKtx" }
+androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycleRuntimeKtx" }
+androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycleRuntimeKtx" }
+
+koin-androidx-compose = { module = "io.insert-koin:koin-androidx-compose", version.ref = "koinAndroidxCompose" }
+koin-androidx-compose-navigation = { module = "io.insert-koin:koin-androidx-compose-navigation", version.ref = "koinAndroidxCompose" }
+
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinx-serialization-json" }
 
 lottie-compose = { module = "com.airbnb.android:lottie-compose", version.ref = "lottieCompose" }
 
 topjohnwu-libsu-core = { module = "com.github.topjohnwu.libsu:core", version.ref = "libsu" }
 
-shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku_version" }
-shizuku-provider = { module = "dev.rikka.shizuku:provider", version.ref = "shizuku_version" }
+#shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku_version" }
+#shizuku-provider = { module = "dev.rikka.shizuku:provider", version.ref = "shizuku_version" }
 
 #tabler-icon = { group = "io.github.lyxnx.compose.ui", name = "tabler-icons-android", version = "3.29.0" }
 
