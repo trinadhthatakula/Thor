@@ -37,18 +37,13 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Thor"
         tools:targetApi="31">
+
         <activity
             android:name=".HomeActivity"
-            android:exported="false"
-            android:label="@string/title_activity_home"
-            android:theme="@style/Theme.Thor" />
-        <activity
-            android:name=".MainActivity"
             android:exported="true"
             android:theme="@style/Theme.Thor">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>

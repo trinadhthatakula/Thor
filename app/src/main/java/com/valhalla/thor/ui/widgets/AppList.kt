@@ -269,7 +269,8 @@ fun AppList(
                             }
                         }, supportingContent = {
                             Text(
-                                it.packageName
+                                it.packageName,
+                                maxLines = 2
                             )
                         },
                         trailingContent = {

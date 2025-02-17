@@ -62,9 +62,7 @@ fun AppInfoDialog(
     onAppAction: (AppClickAction) -> Unit = {}
 ) {
     val context = LocalContext.current
-    var getConfirmation by remember {
-        mutableStateOf(false)
-    }
+    var getConfirmation by remember { mutableStateOf(false) }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         scrimColor = Color.Black.copy(alpha = 0.5f),

@@ -9,6 +9,9 @@ import android.os.Build
 @Suppress("DEPRECATION")
 class AppInfoGrabber(private val context: Context) {
 
+    val allApps
+        get() = getUserApps() + getSystemApps()
+
     @SuppressLint("QueryPermissionsNeeded")
     fun getUserApps(): List<AppInfo> {
         val res = ArrayList<AppInfo>()
