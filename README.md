@@ -31,7 +31,7 @@
 - AppState Indicator (frozen = disabled)
 - Kill Apps
 
-## Features in Testing [(Pre - Release built)](https://github.com/trinadhthatakula/Thor/releases/tag/Thor_v1322)
+## Features in Testing 
 - New Home UI
 - Root Indicator
 - Integrity Indicator - Only checks for device integrity
