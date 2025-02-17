@@ -20,31 +20,4 @@ class ThorApplication : Application() {
 
     }
 
-    override fun onTerminate() {
-        try {
-            if (getSharedPreferences("prefs", MODE_PRIVATE)
-                    .getBoolean("can_reinstall", false) == true
-            ) {
-                unregisterReceiver(AppListener.getInstance())
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        super.onTerminate()
-    }
-
-}
-
-fun Context.registerReceiver(receiver: BroadcastReceiver) {
-    try {
-        val intentFilter = IntentFilter()
-        intentFilter.addAction("android.intent.action.PACKAGE_INSTALL")
-        intentFilter.addAction("android.intent.action.PACKAGE_ADDED")
-        intentFilter.addAction("android.intent.action.PACKAGE_REPLACED")
-        intentFilter.addAction("android.intent.action.PACKAGE_REMOVED")
-        registerReceiver(receiver, intentFilter)
-        Log.d("ApplicationFile", "registerReceiver: registered receiver")
-    } catch (e: Exception) {
-        e.printStackTrace()
-    }
 }

@@ -32,7 +32,6 @@ import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
@@ -59,22 +58,18 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.core.content.edit
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.AppListType
-import com.valhalla.thor.model.AppListener
 import com.valhalla.thor.model.getTokenResponse
 import com.valhalla.thor.model.getVerdict
 import com.valhalla.thor.model.initStandardIntegrityProvider
 import com.valhalla.thor.model.parseIntegrityIcon
 import com.valhalla.thor.model.parseIntegrityStatus
 import com.valhalla.thor.model.rootAvailable
-import com.valhalla.thor.registerReceiver
 import com.valhalla.thor.ui.theme.greenDark
 import com.valhalla.thor.ui.theme.greenLight
 import com.valhalla.thor.ui.widgets.TypeWriterText
-
 
 sealed interface HomeActions {
     data class ShowToast(val text: String, val longDuration: Boolean = false) : HomeActions
@@ -142,44 +137,15 @@ fun HomeScreen(
         }
     }
 
-    var canReinstall by remember {
-        mutableStateOf(
-            context.getSharedPreferences("prefs", MODE_PRIVATE)
-                .getBoolean("can_reinstall", false) == true
-        )
-    }
-
     HomeContent(
         modifier,
         userAppList,
         systemAppList,
         integrityStatus,
         integrityIcon,
-        canReinstall
     ) { homeAction ->
         if (homeAction is HomeActions.ShowToast) {
             Toast.makeText(context, homeAction.text, Toast.LENGTH_SHORT).show()
-        } else if (homeAction is HomeActions.SwitchAutoReinstall) {
-            try {
-                context.getSharedPreferences("prefs", MODE_PRIVATE).edit {
-                    putBoolean(
-                        "can_reinstall",
-                        !canReinstall
-                    )
-                }
-                canReinstall = !canReinstall
-                if (canReinstall) {
-                    Toast.makeText(context, "trying to enable Auto Reinstall", Toast.LENGTH_SHORT)
-                        .show()
-                    context.registerReceiver(AppListener.getInstance())
-                    Toast.makeText(context, "Auto Reinstall Enabled", Toast.LENGTH_SHORT).show()
-                } else {
-                    context.unregisterReceiver(AppListener.getInstance())
-                    Toast.makeText(context, "Auto Reinstall Disabled", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
         } else onHomeActions(homeAction)
     }
 
@@ -195,7 +161,6 @@ fun HomeContent(
     systemAppList: List<AppInfo> = emptyList(),
     integrityStatus: String = "Checking Integrity",
     integrityIcon: Int = R.drawable.shield_countdown,
-    canReinstall: Boolean = false,
     onHomeActions: (HomeActions) -> Unit = {}
 ) {
 
@@ -455,46 +420,6 @@ fun HomeContent(
 
         if (rootAvailable())
             Column(modifier = Modifier.padding(horizontal = 5.dp, vertical = 10.dp)) {
-                ElevatedCard(
-                    modifier = Modifier
-                        .padding(5.dp)
-                ) {
-
-                    Row(
-                        modifier = Modifier
-                            .padding(10.dp)
-                            .fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(
-                            verticalArrangement = Arrangement.Center,
-                            modifier = Modifier
-                                .weight(1f)
-                        ) {
-                            Text(
-                                text = "Auto Reinstall",
-                                style = MaterialTheme.typography.titleLarge,
-                                maxLines = 1,
-                                modifier = Modifier
-                                    .padding(5.dp)
-                            )
-
-                            Text(
-                                text = "Thor listens to APP installation and tries to reinstall it with google",
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(horizontal = 5.dp)
-                            )
-                        }
-                        Switch(
-                            checked = canReinstall,
-                            onCheckedChange = {
-                                onHomeActions(HomeActions.SwitchAutoReinstall)
-                            },
-                            modifier = Modifier.padding(5.dp)
-                        )
-                    }
-
-                }
 
                 val unknownAppsCount by animateIntAsState(userAppList.count {
                     it.installerPackageName != "com.android.vending"
@@ -531,43 +456,6 @@ fun HomeContent(
                             )
                         }
                     }
-
-                /*ElevatedCard(
-                    modifier = Modifier
-                        .padding(5.dp),
-                    onClick = {
-                        onHomeActions(HomeActions.BKI)
-                    }
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .padding(10.dp)
-                            .fillMaxWidth(),
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = "</> BetterKnownInstalled(BKI)",
-                            style = MaterialTheme.typography.titleLarge,
-                            modifier = Modifier.padding(5.dp)
-                        )
-                        if (commandExists("abx2xml") != "command not found") {
-                            Text(
-                                text = "ABX2XML Supported",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        } else {
-                            Text(
-                                text = "ABX2XML Not Supported",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                        Text(
-                            text = "use Better known installer script by T3SL4 to edit packages.xml",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-
-                }*/
 
                 Spacer(modifier = Modifier.weight(1f))
 
