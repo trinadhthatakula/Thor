@@ -101,39 +101,46 @@ fun HomeScreen(
     var integrityIcon by remember { mutableIntStateOf(R.drawable.shield_countdown) }
 
     LaunchedEffect(Unit) {
-        if (deviceIntegrityJson.isEmpty())
-            context.initStandardIntegrityProvider { integrityTokenProvider ->
-                if (integrityTokenProvider.isSuccess) {
-                    integrityTokenProvider.getOrNull()?.let { provider ->
-                        getVerdict(provider) { tokenResponse ->
-                            if (tokenResponse.isSuccess) {
-                                tokenResponse.getOrNull()?.let { token ->
-                                    tokenString = token
+        try {
+            if (deviceIntegrityJson.isEmpty())
+                context.initStandardIntegrityProvider { integrityTokenProvider ->
+                    if (integrityTokenProvider.isSuccess) {
+                        integrityTokenProvider.getOrNull()?.let { provider ->
+                            getVerdict(provider) { tokenResponse ->
+                                if (tokenResponse.isSuccess) {
+                                    tokenResponse.getOrNull()?.let { token ->
+                                        tokenString = token
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     LaunchedEffect(tokenString) {
-        if (deviceIntegrityJson.isEmpty() && tokenString.isNotEmpty() && usedTokens.contains(
-                tokenString
-            ).not()
-        ) {
-            getTokenResponse(tokenString) { jsonResult ->
-                if (jsonResult.isSuccess) {
-                    jsonResult.getOrNull()?.let {
-                        Log.d("HomeScreen", "HomeScreen: token is $tokenString")
-                        deviceIntegrityJson = it
-                        deviceIntegrityJsonBackup = deviceIntegrityJson
+        try {
+            if (deviceIntegrityJson.isEmpty() && tokenString.isNotEmpty() && usedTokens.contains(
+                    tokenString
+                ).not()
+            ) {
+                getTokenResponse(tokenString) { jsonResult ->
+                    if (jsonResult.isSuccess) {
+                        jsonResult.getOrNull()?.let {
+                            deviceIntegrityJson = it
+                            deviceIntegrityJsonBackup = deviceIntegrityJson
+                        }
+                        usedTokens += tokenString
+                        integrityStatus = parseIntegrityStatus(deviceIntegrityJson)
+                        integrityIcon = parseIntegrityIcon(deviceIntegrityJson)
                     }
-                    usedTokens += tokenString
-                    integrityStatus = parseIntegrityStatus(deviceIntegrityJson)
-                    integrityIcon = parseIntegrityIcon(deviceIntegrityJson)
                 }
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 

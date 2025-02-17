@@ -86,7 +86,6 @@ suspend fun getTokenResponse(token: String, onVerdictResult: (Result<String>) ->
         if(BuildConfig.API_URL!="null") {
             try {
                 val url = URL(BuildConfig.API_URL + "api/check?token=$token")
-                Log.d("IntegrityUtils", "getTokenResponse: url = $url")
                 onVerdictResult(Result.success(url.readText()))
             } catch (e: Exception) {
                 e.printStackTrace()
