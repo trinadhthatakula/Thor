@@ -67,6 +67,11 @@ fun HomePage(
     var appAction: AppClickAction? by remember { mutableStateOf(null) }
     var multiAction: MultiAppAction? by remember { mutableStateOf(null) }
 
+    var reinstalling by remember { mutableStateOf(false) }
+    var canExit by remember { mutableStateOf(false) }
+    var logObserver by remember { mutableStateOf(emptyList<String>()) }
+    var termLoggerTitle by remember { mutableStateOf("") }
+
     LaunchedEffect(isRefreshing) {
         if (isRefreshing) {
             withContext(Dispatchers.IO) {
@@ -84,7 +89,8 @@ fun HomePage(
         if (selectedDestination != AppDestinations.HOME)
             selectedDestination = AppDestinations.HOME
         else {
-            getExitConfirmation = true
+            if (logObserver.isEmpty())
+                getExitConfirmation = true
         }
     }
 
@@ -174,10 +180,6 @@ fun HomePage(
 
     }
 
-    var reinstalling by remember { mutableStateOf(false) }
-    var canExit by remember { mutableStateOf(false) }
-    var logObserver by remember { mutableStateOf(emptyList<String>()) }
-    var termLoggerTitle by remember { mutableStateOf("") }
 
     LaunchedEffect(appAction) {
         reinstalling = false
