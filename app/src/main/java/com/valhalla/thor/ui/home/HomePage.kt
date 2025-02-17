@@ -24,6 +24,7 @@ import androidx.compose.ui.res.vectorResource
 import androidx.core.net.toUri
 import com.valhalla.thor.ui.widgets.AffirmationDialog
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.R
 import com.valhalla.thor.ui.widgets.MultiAppAffirmationDialog
 import com.valhalla.thor.model.AppInfoGrabber
 import com.valhalla.thor.model.MultiAppAction
@@ -118,6 +119,9 @@ fun HomePage(
                             )
                         },
                         onClick = {
+                            if(dest == AppDestinations.SETTINGS)
+                                Toast.makeText(context,"coming soon", Toast.LENGTH_SHORT).show()
+                            else
                             selectedDestination = dest
                         }
                     )
@@ -174,7 +178,21 @@ fun HomePage(
                 }
             )
 
-            AppDestinations.FREEZER -> Text("Freezer")
+            AppDestinations.FREEZER -> AppListScreen(
+                title = "Frozen Apps",
+                icon =R.drawable.frozen,
+                modifier = modifier.padding(it),
+                userAppList = userAppList.filter { it.enabled.not() },
+                systemAppList = systemAppList.filter{ it.enabled.not() },
+                isRefreshing = isRefreshing,
+                onRefresh = { isRefreshing = true },
+                onAppAction = {
+                    appAction = it
+                },
+                onMultiAppAction = {
+                    multiAction = it
+                }
+            )
             AppDestinations.SETTINGS -> Text("Settings")
         }
 

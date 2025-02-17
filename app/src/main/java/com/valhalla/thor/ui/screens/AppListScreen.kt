@@ -1,5 +1,6 @@
 package com.valhalla.thor.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -104,6 +105,14 @@ fun AppListScreen(
         }
     }
 
+    when(selectedAppListType){
+        AppListType.USER -> {
+            if(userAppList.isEmpty()) selectedAppListType = AppListType.SYSTEM
+        }
+        AppListType.SYSTEM -> {
+            if(systemAppList.isEmpty()) selectedAppListType = AppListType.USER
+        }
+    }
 
     var context = LocalContext.current
 
@@ -144,11 +153,29 @@ fun AppListScreen(
                         selected = selectedAppListType == appListType,
                         onClick = {
                             if (selectedAppListType == appListType) return@SegmentedButton
-                            when (selectedAppListType) {
-                                AppListType.USER ->
-                                    if (userAppList.isNotEmpty()) selectedAppListType = appListType
-                                AppListType.SYSTEM ->
-                                    if (systemAppList.isNotEmpty()) selectedAppListType = appListType
+                            when (appListType) {
+                                AppListType.USER -> {
+                                    if (userAppList.isNotEmpty()) {
+                                        selectedAppListType = appListType
+                                    }else {
+                                        Toast.makeText(
+                                            context,
+                                            "empty list",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }
+                                AppListType.SYSTEM -> {
+                                    if (systemAppList.isNotEmpty()) {
+                                        selectedAppListType = appListType
+                                    }else {
+                                        Toast.makeText(
+                                            context,
+                                            "empty list",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }
                             }
                         }
                     ) {
