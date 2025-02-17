@@ -4,6 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.ui.Modifier
+import com.valhalla.thor.ui.home.HomePage
 import com.valhalla.thor.ui.theme.ThorTheme
 
 class HomeActivity : ComponentActivity() {
@@ -12,7 +14,11 @@ class HomeActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             ThorTheme {
-
+                HomePage(
+                    modifier = Modifier
+                ) {
+                    finish()
+                }
             }
         }
     }
