@@ -104,12 +104,12 @@ fun TermLoggerDialog(
     title: String = "Reinstalling..,",
     canExit: Boolean = false,
     logObserver: List<String>,
-    doneReinstalling: () -> Unit
+    done: () -> Unit
 ) {
     Dialog(
         onDismissRequest = {
             if (canExit) {
-                doneReinstalling()
+                done()
             }
         },
         properties = DialogProperties(
@@ -169,7 +169,7 @@ fun TermLoggerDialog(
                     if (canExit)
                         Button(
                             onClick = {
-                                doneReinstalling()
+                                done()
                             }
                         ) {
                             Text("Close")
