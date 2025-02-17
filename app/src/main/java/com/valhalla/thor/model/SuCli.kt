@@ -102,8 +102,13 @@ fun reboot(reason: String = "") {
 }
 
 fun rootAvailable(): Boolean {
-    val shell = getRootShell()
-    return shell.isRoot
+    try {
+        val shell = getRootShell()
+        return shell.isRoot
+    } catch (e: Exception) {
+        e.printStackTrace()
+        return false
+    }
 }
 
 fun isAbDevice(): Boolean {
