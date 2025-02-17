@@ -2,11 +2,8 @@ package com.valhalla.thor.ui.home
 
 import android.content.Context
 import android.content.Intent
-import android.system.Os.remove
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.annotation.DrawableRes
-import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -28,7 +25,6 @@ import androidx.core.net.toUri
 import com.valhalla.thor.ui.widgets.AffirmationDialog
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.ui.widgets.MultiAppAffirmationDialog
-import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfoGrabber
 import com.valhalla.thor.model.MultiAppAction
 import com.valhalla.thor.model.disableApps
@@ -51,18 +47,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlin.collections.plus
-
-enum class AppDestinations(
-    @StringRes val label: Int,
-    @DrawableRes val icon: Int,
-    @DrawableRes val selectedIcon: Int,
-    @StringRes val contentDescription: Int
-) {
-    HOME(R.string.home, R.drawable.home_outline, R.drawable.home, R.string.home_desc),
-    APPS(R.string.apps, R.drawable.apps, R.drawable.apps, R.string.apps_desc),
-    FREEZER(R.string.freezer, R.drawable.frozen, R.drawable.frozen, R.string.freezer_desc),
-    SETTINGS(R.string.settings, R.drawable.settings, R.drawable.settings, R.string.settings_desc)
-}
 
 @Composable
 fun HomePage(

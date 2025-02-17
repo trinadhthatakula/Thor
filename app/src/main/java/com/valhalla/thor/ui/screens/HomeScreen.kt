@@ -594,23 +594,5 @@ fun PieChart(
             }
         }
     }
-    /*
-        LazyColumn(modifier = Modifier.fillMaxWidth()) {
-            items(data.toList().sortedBy { it.first }) { pair ->
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            text = pair.first
-                        )
-                    },
-                    trailingContent = {
-                        Text(
-                            text = pair.second.toString()
-                        )
-                    }
-                )
-            }
-
-        }*/
 
 }
