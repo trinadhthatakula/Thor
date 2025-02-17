@@ -22,10 +22,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.core.net.toUri
-import com.valhalla.thor.ui.widgets.AffirmationDialog
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
-import com.valhalla.thor.ui.widgets.MultiAppAffirmationDialog
 import com.valhalla.thor.model.AppInfoGrabber
 import com.valhalla.thor.model.MultiAppAction
 import com.valhalla.thor.model.disableApps
@@ -42,12 +40,13 @@ import com.valhalla.thor.model.uninstallSystemApp
 import com.valhalla.thor.ui.screens.AppListScreen
 import com.valhalla.thor.ui.screens.HomeActions
 import com.valhalla.thor.ui.screens.HomeScreen
+import com.valhalla.thor.ui.widgets.AffirmationDialog
 import com.valhalla.thor.ui.widgets.AppClickAction
+import com.valhalla.thor.ui.widgets.MultiAppAffirmationDialog
 import com.valhalla.thor.ui.widgets.TermLoggerDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import kotlin.collections.plus
 
 @Composable
 fun HomePage(
@@ -337,7 +336,7 @@ suspend fun processMultiAppAction(
 
             is MultiAppAction.ReInstall -> {
                 reInstallAppsWithGoogle(
-                    multiAction.appList.filter { it.installerPackageName != "com.google.vending" }
+                    multiAction.appList.filter { it.installerPackageName != "com.android.vending" }
                         .toMutableList().apply {
                             val thor = firstOrNull { it.packageName == BuildConfig.APPLICATION_ID }
                             if (thor != null) {
