@@ -1,7 +1,5 @@
 package com.valhalla.thor.ui.screens
 
-import android.content.Context.MODE_PRIVATE
-import android.util.Log
 import android.widget.Toast
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -196,8 +194,10 @@ fun HomeContent(
                 textAlign = TextAlign.Start
             )
 
-            val rootStatus =
-                if (rootAvailable()) "Root access granted" else "Root access not available"
+            val rootStatus = try{if (rootAvailable()) "Root access granted" else "Root access not available"}catch (e: Exception){
+                e.printStackTrace()
+                "Root access not available"
+            }
             TooltipBox(
                 positionProvider = TooltipDefaults.rememberTooltipPositionProvider(10.dp),
                 tooltip = {
@@ -326,7 +326,10 @@ fun HomeContent(
             Color.Green,
             Color.Yellow,
             Color.Red,
-            Color.Magenta
+            Color.Magenta,
+            Color.Blue,
+            Color.Cyan,
+            Color.Gray
         )
 
         Row(
@@ -345,11 +348,11 @@ fun HomeContent(
             Column(modifier = Modifier.weight(1f)) {
                 appsMapByInstaller.keys.forEachIndexed { index, key ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .background(color = colors[index], CircleShape)
-                        )
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .background(color = colors[index % colors.size], CircleShape)
+                            )
                         Text(
                             text = systemAppList.firstOrNull { it.packageName == key }?.appName
                                 ?: key,
