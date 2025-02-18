@@ -24,13 +24,13 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/thor_drawn_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Thor"
+        android:theme="@style/Theme.Thor.SplashScreen"
         tools:targetApi="31">
 
         <activity
             android:name=".HomeActivity"
             android:exported="true"
-            android:theme="@style/Theme.Thor">
+            android:theme="@style/Theme.Thor.SplashScreen">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
