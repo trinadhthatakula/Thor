@@ -64,6 +64,7 @@ import com.valhalla.thor.model.getVerdict
 import com.valhalla.thor.model.initStandardIntegrityProvider
 import com.valhalla.thor.model.parseIntegrityIcon
 import com.valhalla.thor.model.parseIntegrityStatus
+import com.valhalla.thor.model.readTargets
 import com.valhalla.thor.model.rootAvailable
 import com.valhalla.thor.ui.theme.greenDark
 import com.valhalla.thor.ui.theme.greenLight
@@ -428,46 +429,85 @@ fun HomeContent(
         }
 
 
-        if (rootAvailable())
             Column(modifier = Modifier.padding(horizontal = 5.dp, vertical = 10.dp)) {
 
                 val unknownAppsCount by animateIntAsState(userAppList.count {
                     it.installerPackageName != "com.android.vending"
                 })
 
-                if (unknownAppsCount > 0)
-                    ElevatedCard(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(5.dp),
-                        onClick = {
-                            onHomeActions(HomeActions.ReinstallAll)
-                        }
-                    ) {
-                        Column(
-                            verticalArrangement = Arrangement.Center,
+                if(rootAvailable()) {
+                    if (unknownAppsCount > 0 ) {
+                        ElevatedCard(
                             modifier = Modifier
-                                .padding(10.dp)
+                                .fillMaxWidth()
+                                .padding(5.dp),
+                            onClick = {
+                                onHomeActions(HomeActions.ReinstallAll)
+                            }
                         ) {
-                            Text(
-                                text = "Reinstall All",
-                                style = MaterialTheme.typography.titleLarge,
-                                maxLines = 1,
+                            Column(
+                                verticalArrangement = Arrangement.Center,
                                 modifier = Modifier
-                                    .padding(5.dp)
-                            )
+                                    .padding(10.dp)
+                            ) {
+                                Text(
+                                    text = "Reinstall All",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    maxLines = 1,
+                                    modifier = Modifier
+                                        .padding(5.dp)
+                                )
 
-                            Text(
-                                text = "$unknownAppsCount of ${userAppList.size} user apps are not installed from play store, try reinstalling them?",
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier
-                                    .padding(horizontal = 5.dp)
-                                    .padding(bottom = 5.dp)
-                            )
+                                Text(
+                                    text = "$unknownAppsCount of ${userAppList.size} user apps are not installed from play store, try reinstalling them?",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier
+                                        .padding(horizontal = 5.dp)
+                                        .padding(bottom = 5.dp)
+                                )
+                            }
                         }
                     }
 
+                    val context = LocalContext.current
+                    val trickyTargets = readTargets(context)
+                    if(trickyTargets.isNotEmpty()){
+                        ElevatedCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(5.dp),
+                            onClick = {
+                                onHomeActions(HomeActions.ReinstallAll)
+                            }
+                        ) {
+                            Column(
+                                verticalArrangement = Arrangement.Center,
+                                modifier = Modifier
+                                    .padding(10.dp)
+                            ) {
+                                Text(
+                                    text = "</> Edit Targets",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    maxLines = 1,
+                                    modifier = Modifier
+                                        .padding(5.dp)
+                                )
+
+                                Text(
+                                    text = "Add/Edit Targets for tricky store",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier
+                                        .padding(horizontal = 5.dp)
+                                        .padding(bottom = 5.dp)
+                                )
+                            }
+                        }
+                    }
+
+                }
+
                 Spacer(modifier = Modifier.weight(1f))
+
 
                 ElevatedCard(
                     modifier = Modifier
@@ -511,6 +551,7 @@ fun HomeContent(
                     }
                 }
             }
+
 
 
     }
