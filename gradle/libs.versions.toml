@@ -15,10 +15,12 @@ lottieCompose = "6.6.2"
 material3 = "1.4.0-alpha08"
 kotlinx-serialization-json = "1.8.0"
 uiTextGoogleFonts = "1.7.8"
+splashscreen = "1.0.1"
 
 [libraries]
 accompanist-drawablepainter = { module = "com.google.accompanist:accompanist-drawablepainter", version.ref = "accompanistDrawablepainter" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "splashscreen" }
 androidx-ui-text-google-fonts = { module = "androidx.compose.ui:ui-text-google-fonts", version.ref = "uiTextGoogleFonts" }
 play-integrity = { module = "com.google.android.play:integrity", version.ref = "playIntegrity" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }

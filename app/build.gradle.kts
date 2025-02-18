@@ -16,8 +16,8 @@ android {
         applicationId = "com.valhalla.thor"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1330
-        versionName = "1.330"
+        versionCode = 1331
+        versionName = "1.331"
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         val p = Properties()
@@ -56,6 +56,7 @@ android {
 
 dependencies {
 
+    implementation(libs.androidx.splashscreen)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
