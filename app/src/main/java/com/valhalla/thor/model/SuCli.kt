@@ -295,7 +295,11 @@ fun reInstallAppsWithGoogle(appInfos: List<AppInfo>, observer: (String) -> Unit,
 
 }
 
-fun Context.disableApps(vararg appInfos: AppInfo,observer: (String) -> Unit = {}, exit: () -> Unit = {}) {
+fun Context.disableApps(
+    vararg appInfos: AppInfo,
+    observer: (String) -> Unit = {},
+    exit: () -> Unit = {}
+) {
     try {
         observer("Freezing apps...")
         appInfos.forEach { appInfo ->
@@ -309,16 +313,20 @@ fun Context.disableApps(vararg appInfos: AppInfo,observer: (String) -> Unit = {}
     }
 }
 
-fun Context.enableApps(vararg appInfos: AppInfo, observer: (String) -> Unit = {}, exit: () -> Unit ={}) {
+fun Context.enableApps(
+    vararg appInfos: AppInfo,
+    observer: (String) -> Unit = {},
+    exit: () -> Unit = {}
+) {
     try {
         observer("UnFreezing apps...")
         appInfos.forEach { appInfo ->
             observer(fastCmd(getRootShell(), "su -c pm enable ${appInfo.packageName}"))
         }
-    }catch (e: Exception){
+    } catch (e: Exception) {
         e.printStackTrace()
         observer(e.message.toString())
-    }finally {
+    } finally {
         exit()
     }
 }
@@ -516,12 +524,19 @@ fun killApp(appInfo: AppInfo) = fastCmd(
 )
 
 
-fun killApps(vararg appInfos: AppInfo,observer: (String) -> Unit, exit: () -> Unit){
+fun killApps(vararg appInfos: AppInfo, observer: (String) -> Unit, exit: () -> Unit) {
     try {
         observer("Requesting War Machine to initialise Kill Apps")
         observer("War Machine identifies ${appInfos.size} targets")
         appInfos.forEach {
-            observer("Killing ${it.appName} ${fastCmd(getRootShell(),"am force-stop ${it.packageName}")}")
+            observer(
+                "Killing ${it.appName} ${
+                    fastCmd(
+                        getRootShell(),
+                        "am force-stop ${it.packageName}"
+                    )
+                }"
+            )
         }
     } catch (e: Exception) {
         e.printStackTrace()
@@ -533,7 +548,7 @@ fun killApps(vararg appInfos: AppInfo,observer: (String) -> Unit, exit: () -> Un
     }
 }
 
-fun openAppInfoScreen(context: Context,appInfo: AppInfo){
+fun openAppInfoScreen(context: Context, appInfo: AppInfo) {
     try {
         context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -544,8 +559,28 @@ fun openAppInfoScreen(context: Context,appInfo: AppInfo){
     }
 }
 
-fun uninstallSystemApp(appInfo: AppInfo): String{
+fun uninstallSystemApp(appInfo: AppInfo): String {
     val shell = getRootShell()
     val currentUser = fastCmd(shell, "am get-current-user").trim()
-    return fastCmd(shell,"su -c pm uninstall -k --user $currentUser ${appInfo.packageName}")
+    return fastCmd(shell, "su -c pm uninstall -k --user $currentUser ${appInfo.packageName}")
+}
+
+fun readTargets(context: Context): List<String> {
+    if(rootAvailable()) {
+        val filesDir = context.filesDir
+        val trickyFolder = File("/data/adb/tricky_store")
+        val trickyBackUp = File(filesDir,"tricky_store")
+        fastCmd(getRootShell(), "su -c cp -r ${trickyFolder.absolutePath} ${filesDir.absolutePath}")
+        if ((trickyBackUp).exists()) {
+            val trickyTarget = File(trickyBackUp, "target.txt")
+            if (trickyTarget.exists()) {
+                Log.d(TAG,"backup Created successfully")
+                return trickyTarget.readLines()
+            }
+        } else{
+            Log.d(TAG,"using original targets file without copying")
+            return fastCmd(getRootShell(), "su -c cat /data/adb/tricky_store/target.txt").split("\n")
+        }
+    }
+    return emptyList()
 }
