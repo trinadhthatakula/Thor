@@ -214,13 +214,12 @@ fun FloatingBar(
                 onAppAction(AppClickAction.Reinstall(appInfo))
             }
 
-        if (appInfo.isSystem.not())
-            AppActionItem(
-                icon = R.drawable.share,
-                text = "Share"
-            ) {
-                onAppAction(AppClickAction.Share(appInfo))
-            }
+        AppActionItem(
+            icon = R.drawable.share,
+            text = "Share"
+        ) {
+            onAppAction(AppClickAction.Share(appInfo))
+        }
 
         if (rootAvailable())
             AppActionItem(
