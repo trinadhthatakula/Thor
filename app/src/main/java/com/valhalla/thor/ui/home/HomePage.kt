@@ -118,10 +118,10 @@ fun HomePage(
                             )
                         },
                         onClick = {
-                            if(dest == AppDestinations.SETTINGS)
-                                Toast.makeText(context,"coming soon", Toast.LENGTH_SHORT).show()
+                            if (dest == AppDestinations.SETTINGS)
+                                Toast.makeText(context, "coming soon", Toast.LENGTH_SHORT).show()
                             else
-                            selectedDestination = dest
+                                selectedDestination = dest
                         }
                     )
                 }
@@ -179,10 +179,10 @@ fun HomePage(
 
             AppDestinations.FREEZER -> AppListScreen(
                 title = "Frozen Apps",
-                icon =R.drawable.frozen,
+                icon = R.drawable.frozen,
                 modifier = modifier.padding(it),
                 userAppList = userAppList.filter { it.enabled.not() },
-                systemAppList = systemAppList.filter{ it.enabled.not() },
+                systemAppList = systemAppList.filter { it.enabled.not() },
                 isRefreshing = isRefreshing,
                 onRefresh = { isRefreshing = true },
                 onAppAction = {
@@ -192,6 +192,7 @@ fun HomePage(
                     multiAction = it
                 }
             )
+
             AppDestinations.SETTINGS -> Text("Settings")
         }
 
@@ -349,7 +350,9 @@ suspend fun processMultiAppAction(
                 )
             }
 
-            is MultiAppAction.Share -> {}
+            is MultiAppAction.Share -> {
+
+            }
             is MultiAppAction.UnFreeze -> {
                 val selectedAppInfos = multiAction.appList
                 val frozenApps = selectedAppInfos.filter { it.enabled.not() }
@@ -394,6 +397,9 @@ suspend fun processAppAction(
 ) {
     withContext(Dispatchers.IO) {
         when (appAction) {
+            is AppClickAction.Share ->{
+                shareApp(appAction.appInfo,context)
+            }
             is AppClickAction.AppInfoSettings -> {
                 openAppInfoScreen(
                     context,
@@ -477,15 +483,15 @@ suspend fun processAppAction(
             }
 
             is AppClickAction.Uninstall -> {
-                val appInfo = appAction.appInfo
+                val it = appAction.appInfo
                 try {
-                    if (appInfo.isSystem) {
-                        val result = uninstallSystemApp(appInfo)
+                    if (it.isSystem) {
+                        val result = uninstallSystemApp(it)
                         observer(
-                            "Uninstalling ${appInfo.appName} : $result"
+                            "Uninstalling ${it.appName} : $result"
                         )
                     } else {
-                        val appPackage = appInfo.packageName
+                        val appPackage = it.packageName
                         val intent = Intent(Intent.ACTION_DELETE)
                         intent.data = "package:${appPackage}".toUri()
                         context.startActivity(intent)
@@ -496,6 +502,7 @@ suspend fun processAppAction(
                     exit()
                 }
             }
+
         }
     }
 
