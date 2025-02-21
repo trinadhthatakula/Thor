@@ -75,13 +75,6 @@ fun MultiSelectToolBox(
                     }
                 )
                 AppActionItem(
-                    icon = R.drawable.share,
-                    text = "Share",
-                    onClick = {
-                        onMultiAppAction(MultiAppAction.Share(selected))
-                    }
-                )
-                AppActionItem(
                     icon = R.drawable.danger,
                     text = "Kill Apps",
                     onClick = {
