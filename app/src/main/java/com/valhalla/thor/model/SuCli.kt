@@ -18,7 +18,14 @@ import com.topjohnwu.superuser.Shell
 import com.topjohnwu.superuser.ShellUtils
 import com.topjohnwu.superuser.ShellUtils.fastCmd
 import com.valhalla.thor.BuildConfig
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
 import java.io.File
+import java.io.FileInputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+import kotlin.io.path.Path
+import kotlin.io.path.name
 
 private const val TAG = "SuCli"
 
@@ -139,20 +146,111 @@ fun forceStopApp(packageName: String) {
     Log.i(TAG, "force stop $packageName result: $result")
 }
 
+
+fun shareSplitApks(
+    appInfo: AppInfo,
+    context: Context,
+    observer: (String) -> Unit,
+    exit: () -> Unit
+) {
+    appInfo.packageName.let { packageName ->
+        observer("Sharing ${appInfo.appName}")
+        observer("Split APKs found")
+        observer("generating .Apks file")
+        val tempFolder = File(context.filesDir, "shareApp")
+        val appFolder = File(tempFolder, appInfo.appName ?: "")
+        val apksFile = File(tempFolder,"${appInfo.appName}.apks")
+        val infoFile = File(appFolder, "info.json")
+        val iconFile = File(appFolder, "icon.png")
+        if (appFolder.exists() || appFolder.mkdirs()) {
+            apksMetadataGenerator.generateJson(appInfo, infoFile)
+            observer("App Metadata generated")
+            if(getAppIcon(appInfo.packageName,context)?.toFile(iconFile) == true)
+                observer("App Icon generated")
+            else observer("Failed to generate App Icon")
+            var copyCounter = 0
+            val splitPaths =
+                fastCmd("su -c pm path \"${packageName}\" | sed 's/package://' | tr '\\n' ' '")
+                    .trim()
+                    .split(" ")
+            splitPaths.forEach { path ->
+                if (fastCmd("su -c cp $path ${appFolder.absolutePath}/${Path(path).name}").isEmpty())
+                    copyCounter++
+                else
+                    observer("Failed to copy ${Path(path).name}")
+            }
+            if (copyCounter == splitPaths.size){
+                observer("Split apks copied")
+                observer("Compressing splits into single .Apks file")
+                ZipOutputStream(BufferedOutputStream(apksFile.outputStream())).use { out ->
+                    val data = ByteArray(1024)
+                    appFolder.listFiles()?.forEach { file ->
+                        FileInputStream(file).use { fi ->
+                            BufferedInputStream(fi).use { origin ->
+                                val entry = ZipEntry(file.name).apply {
+                                    method = ZipEntry.DEFLATED
+                                    size = file.length()
+                                    crc = calculateCrc32(file)
+                                    time = System.currentTimeMillis()
+                                }
+                                out.putNextEntry(entry)
+                                while (true) {
+                                    val readBytes = origin.read(data)
+                                    if (readBytes == -1) {
+                                        break
+                                    }
+                                    out.write(data, 0, readBytes)
+                                }
+                            }
+                        }
+                    }
+                }
+                observer("Apks file generated")
+                observer("Deleting temp files")
+                if(appFolder.deleteRecursively()!=true)
+                    observer("Failed to delete temp files")
+                observer("Calling Share Intent")
+                val intent = Intent(Intent.ACTION_SEND)
+                intent.type = "application/vnd.android.package-archive"
+                intent.putExtra(
+                    Intent.EXTRA_STREAM,
+                    FileProvider.getUriForFile(
+                        context,
+                        BuildConfig.APPLICATION_ID + ".provider",
+                        apksFile
+                    )
+                )
+                context.startActivity(
+                    Intent.createChooser(
+                        intent,
+                        "Share App using"
+                    )
+                )
+                observer("exiting runner")
+                exit()
+            }else {
+                observer("Failed to copy all splits")
+                observer("exiting runner")
+                exit()
+            }
+        }
+
+
+    }
+}
+
 fun shareApp(appInfo: AppInfo, context: Context) {
     appInfo.packageName.let { packageName ->
-        fastCmd("pm path \"${packageName}\" | sed 's/package://' | tr '\\n' ' '")
+        fastCmd("su -c pm path \"${packageName}\" | sed 's/package://' | tr '\\n' ' '")
             .trim()
             .split(" ")
-            .firstOrNull { it.contains("base.apk") }
+            .firstOrNull { it.contains("base.apk") || it.contains(appInfo.appName ?: "", true) }
             ?.let { baseApkPath ->
                 try {
                     Log.i(TAG, "shareApp: $baseApkPath")
-                    val file = File(baseApkPath)
-                    Log.d("TAG", "shareApp: ${file.parentFile?.list()?.joinToString(", ")}")
                     val tempFolder = File(context.filesDir, "shareApp")
                     val baseFile = File(tempFolder, "${appInfo.appName}_${appInfo.versionName}.apk")
-                    if (copyApk(file, baseFile)) {
+                    if (fastCmd("su -c cp $baseApkPath ${baseFile.absolutePath}").isEmpty()) {
                         val intent = Intent(Intent.ACTION_SEND)
                         intent.type = "application/vnd.android.package-archive"
                         intent.putExtra(
@@ -177,7 +275,7 @@ fun shareApp(appInfo: AppInfo, context: Context) {
                             FileProvider.getUriForFile(
                                 context,
                                 BuildConfig.APPLICATION_ID + ".provider",
-                                file
+                                File(baseApkPath)
                             )
                         )
                         context.startActivity(
@@ -518,10 +616,12 @@ fun getPermissions(permission: Array<String>) {
     }
 }
 
-fun killApp(appInfo: AppInfo) = fastCmd(
-    getRootShell(),
-    "am force-stop ${appInfo.packageName}"
-)
+fun killApp(appInfo: AppInfo): String {
+    return fastCmd(
+        getRootShell(),
+        "am force-stop ${appInfo.packageName}"
+    )
+}
 
 
 fun killApps(vararg appInfos: AppInfo, observer: (String) -> Unit, exit: () -> Unit) {
@@ -566,21 +666,27 @@ fun uninstallSystemApp(appInfo: AppInfo): String {
 }
 
 fun readTargets(context: Context): List<String> {
-    if(rootAvailable()) {
+    if (rootAvailable()) {
         val filesDir = context.filesDir
         val trickyFolder = File("/data/adb/tricky_store")
-        val trickyBackUp = File(filesDir,"tricky_store")
+        val trickyBackUp = File(filesDir, "tricky_store")
         fastCmd(getRootShell(), "su -c cp -r ${trickyFolder.absolutePath} ${filesDir.absolutePath}")
         if ((trickyBackUp).exists()) {
             val trickyTarget = File(trickyBackUp, "target.txt")
             if (trickyTarget.exists()) {
-                Log.d(TAG,"backup Created successfully")
+                Log.d(TAG, "backup Created successfully")
                 return trickyTarget.readLines()
             }
-        } else{
-            Log.d(TAG,"using original targets file without copying")
-            return fastCmd(getRootShell(), "su -c cat /data/adb/tricky_store/target.txt").split("\n")
+        } else {
+            Log.d(TAG, "using original targets file without copying")
+            return fastCmd(
+                getRootShell(),
+                "su -c cat /data/adb/tricky_store/target.txt"
+            ).split("\n")
         }
     }
     return emptyList()
 }
+
+
+

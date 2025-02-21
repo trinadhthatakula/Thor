@@ -36,6 +36,7 @@ import com.valhalla.thor.model.reInstallAppsWithGoogle
 import com.valhalla.thor.model.reInstallWithGoogle
 import com.valhalla.thor.model.rootAvailable
 import com.valhalla.thor.model.shareApp
+import com.valhalla.thor.model.shareSplitApks
 import com.valhalla.thor.model.uninstallSystemApp
 import com.valhalla.thor.ui.screens.AppListScreen
 import com.valhalla.thor.ui.screens.HomeActions
@@ -398,7 +399,9 @@ suspend fun processAppAction(
     withContext(Dispatchers.IO) {
         when (appAction) {
             is AppClickAction.Share ->{
+                if(appAction.appInfo.splitPublicSourceDirs.isEmpty())
                 shareApp(appAction.appInfo,context)
+                else shareSplitApks(appAction.appInfo,context,observer,exit)
             }
             is AppClickAction.AppInfoSettings -> {
                 openAppInfoScreen(
