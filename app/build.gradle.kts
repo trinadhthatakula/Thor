@@ -16,8 +16,8 @@ android {
         applicationId = "com.valhalla.thor"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1332
-        versionName = "1.332-alpha"
+        versionCode = 1350
+        versionName = "1.350-alpha"
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         val p = Properties()
