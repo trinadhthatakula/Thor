@@ -8,6 +8,8 @@ data class AppInfo(
     var packageName: String = "",
     var versionName: String? = "",
     var versionCode: Int = 0,
+    var minSdk: Int = 0,
+    var targetSdk: Int = 0,
     var isSystem: Boolean = false,
     var installerPackageName: String? = null,
     var publicSourceDir: String? = null,

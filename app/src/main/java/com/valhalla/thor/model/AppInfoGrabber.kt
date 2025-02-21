@@ -29,6 +29,8 @@ class AppInfoGrabber(private val context: Context) {
                     packageName = p.packageName
                     versionName = p.versionName
                     versionCode = p.versionCode
+                    minSdk = a.minSdkVersion
+                    targetSdk = a.targetSdkVersion
                     isSystem = false
                     installerPackageName =
                         context.packageManager.getInstallerPackageName(p.packageName)
