@@ -474,9 +474,6 @@ suspend fun processAppAction(
             }
 
             AppClickAction.ReinstallAll -> {}
-            is AppClickAction.Share -> {
-                shareApp(appAction.appInfo, context)
-            }
 
             is AppClickAction.UnFreeze -> {
                 context.enableApps(appAction.appInfo, exit = exit)
