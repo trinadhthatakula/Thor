@@ -2,7 +2,12 @@ package com.valhalla.thor.model
 
 import android.content.Context
 import android.graphics.drawable.Drawable
+import androidx.core.graphics.drawable.toBitmap
 import java.io.File
+import java.io.InputStream
+import java.util.zip.CRC32
+import java.util.zip.CheckedInputStream
+
 
 fun File.copyTo(file: File): Boolean {
     return try {
@@ -25,6 +30,40 @@ fun getAppIcon(packageName: String?, context: Context): Drawable? {
             null
         }
     }
+}
+
+fun Drawable.toFile(file: File): Boolean {
+    return try {
+        file.outputStream().use { output ->
+            this.toBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output)
+        }
+        true
+    }catch (e: Exception){
+        e.printStackTrace()
+        false
+    }
+}
+
+fun calculateCrc32(file:File?): Long {
+    val crc32 = CRC32()
+    val buffer = ByteArray(1024*50)
+    CheckedInputStream(file?.inputStream(), crc32).use { cis ->
+        @Suppress("ControlFlowWithEmptyBody")
+        while (cis.read(buffer) >= 0) {
+        }
+    }
+    return crc32.value
+}
+
+fun calculateCrc32(stream: InputStream?): Long {
+    val crc32 = CRC32()
+    val buffer = ByteArray(1024*50)
+    CheckedInputStream(stream, crc32).use { cis ->
+        @Suppress("ControlFlowWithEmptyBody")
+        while (cis.read(buffer) >= 0) {
+        }
+    }
+    return crc32.value
 }
 
 val popularInstallers = mapOf<String, String>(
