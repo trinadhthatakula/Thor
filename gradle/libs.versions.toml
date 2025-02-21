@@ -1,5 +1,5 @@
 [versions]
-accompanistDrawablepainter = "0.37.1"
+accompanistDrawablepainter = "0.37.2"
 agp = "8.10.0-alpha05"
 playIntegrity = "1.4.0"
 libsu = "6.0.0"
