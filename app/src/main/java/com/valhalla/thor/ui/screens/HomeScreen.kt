@@ -64,7 +64,6 @@ import com.valhalla.thor.model.getVerdict
 import com.valhalla.thor.model.initStandardIntegrityProvider
 import com.valhalla.thor.model.parseIntegrityIcon
 import com.valhalla.thor.model.parseIntegrityStatus
-import com.valhalla.thor.model.readTargets
 import com.valhalla.thor.model.rootAvailable
 import com.valhalla.thor.ui.theme.greenDark
 import com.valhalla.thor.ui.theme.greenLight
@@ -469,7 +468,7 @@ fun HomeContent(
                         }
                     }
 
-                    val context = LocalContext.current
+                    /*val context = LocalContext.current
                     val trickyTargets = readTargets(context)
                     if(trickyTargets.isNotEmpty()){
                         ElevatedCard(
@@ -502,7 +501,7 @@ fun HomeContent(
                                 )
                             }
                         }
-                    }
+                    }*/
 
                 }
 
