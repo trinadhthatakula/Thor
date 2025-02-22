@@ -27,6 +27,7 @@ import java.util.zip.ZipOutputStream
 import kotlin.io.path.Path
 import kotlin.io.path.name
 
+//pid=$(adb shell ps | grep <package name> | cut -c11-15) ; adb logcat | grep $pid
 private const val TAG = "SuCli"
 
 object SuCli {

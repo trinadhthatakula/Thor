@@ -235,7 +235,8 @@ fun AppList(
                                         .size(50.dp)
                                 )
                             }
-                        }, headlineContent = {
+                        },
+                        headlineContent = {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.horizontalScroll(rememberScrollState())
@@ -267,7 +268,8 @@ fun AppList(
                                     )
                                 }
                             }
-                        }, supportingContent = {
+                        },
+                        supportingContent = {
                             Text(
                                 it.packageName,
                                 maxLines = 1
