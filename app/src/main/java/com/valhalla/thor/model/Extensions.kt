@@ -2,6 +2,7 @@ package com.valhalla.thor.model
 
 import android.content.Context
 import android.graphics.drawable.Drawable
+import androidx.compose.ui.graphics.Color
 import androidx.core.graphics.drawable.toBitmap
 import java.io.File
 import java.io.InputStream
@@ -38,15 +39,44 @@ fun Drawable.toFile(file: File): Boolean {
             this.toBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output)
         }
         true
-    }catch (e: Exception){
+    } catch (e: Exception) {
         e.printStackTrace()
         false
     }
 }
 
-fun calculateCrc32(file:File?): Long {
+/**
+ * Generates a list of random [Color] objects.
+ *
+ * @param count The number of colors to generate.
+ * @param unique Whether the generated colors should be unique. Defaults to `true`.
+ * @param defColors A vararg of default colors (as Int) to include in the result list.
+ *                  These colors will be added to the list before generating random colors.
+ * @return A list of [Color] objects. The size of the list will be equal to `count`,
+ *         and if `unique` is true, all generated colors will be different. If `defColors` are provided,
+ *         they will be added to the beginning of the result list, then random colors will be generated
+ *         to complete the `count`. If `count` is less than the number of provided `defColors`,
+ *         only the first `count` `defColors` will be returned.
+ */
+fun generateRandomColors(count: Int, unique: Boolean = true, vararg defColors: Int): List<Color> {
+    val results = mutableListOf<Color>()
+    results.addAll(defColors.map { Color(it) })
+    while (results.size < count) {
+        val color = Color(
+            alpha = 255,
+            red = (1..255).random(),
+            green = (1..255).random(),
+            blue = (1..255).random()
+        )
+        if (!unique || results.contains(color).not())
+            results.add(color)
+    }
+    return results
+}
+
+fun calculateCrc32(file: File?): Long {
     val crc32 = CRC32()
-    val buffer = ByteArray(1024*50)
+    val buffer = ByteArray(1024 * 50)
     CheckedInputStream(file?.inputStream(), crc32).use { cis ->
         @Suppress("ControlFlowWithEmptyBody")
         while (cis.read(buffer) >= 0) {
@@ -57,7 +87,7 @@ fun calculateCrc32(file:File?): Long {
 
 fun calculateCrc32(stream: InputStream?): Long {
     val crc32 = CRC32()
-    val buffer = ByteArray(1024*50)
+    val buffer = ByteArray(1024 * 50)
     CheckedInputStream(stream, crc32).use { cis ->
         @Suppress("ControlFlowWithEmptyBody")
         while (cis.read(buffer) >= 0) {
