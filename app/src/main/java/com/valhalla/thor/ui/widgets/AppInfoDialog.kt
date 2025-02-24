@@ -240,13 +240,14 @@ fun FloatingBar(
             ) {
                 onAppAction(AppClickAction.Kill(appInfo))
             }
-        AppActionItem(
-            icon = R.drawable.delete_forever,
-            text = "Uninstall",
-        ) {
-            onAppAction(AppClickAction.Uninstall(appInfo))
-            onDismiss()
-        }
+        if (appInfo.isSystem.not())
+            AppActionItem(
+                icon = R.drawable.delete_forever,
+                text = "Uninstall",
+            ) {
+                onAppAction(AppClickAction.Uninstall(appInfo))
+                onDismiss()
+            }
 
     }
 }
