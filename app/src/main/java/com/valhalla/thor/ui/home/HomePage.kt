@@ -37,6 +37,7 @@ import com.valhalla.thor.model.reInstallWithGoogle
 import com.valhalla.thor.model.rootAvailable
 import com.valhalla.thor.model.shareApp
 import com.valhalla.thor.model.shareSplitApks
+import com.valhalla.thor.model.showLogs
 import com.valhalla.thor.model.uninstallSystemApp
 import com.valhalla.thor.ui.screens.AppListScreen
 import com.valhalla.thor.ui.screens.HomeActions
@@ -202,6 +203,7 @@ fun HomePage(
 
     LaunchedEffect(appAction) {
         reinstalling = false
+        canExit = false
         termLoggerTitle = when (appAction) {
             is AppClickAction.AppInfoSettings -> "Opening AppInfo"
             is AppClickAction.Freeze -> "Freezing"
@@ -220,6 +222,10 @@ fun HomePage(
             is AppClickAction.Share -> "Share App"
             is AppClickAction.UnFreeze -> "Defrosting"
             is AppClickAction.Uninstall -> "Uninstalling..,"
+            is AppClickAction.Logcat -> {
+                canExit = true
+                "Logs Meow"
+            }
             null -> {
                 logObserver = emptyList()
                 reinstalling = false
@@ -253,7 +259,6 @@ fun HomePage(
                     reinstalling = true
                     "Reinstalling Apps..,"
                 }
-
                 is MultiAppAction.Share -> "Share Apps"
                 is MultiAppAction.UnFreeze -> "UnFreezing Apps..,"
                 is MultiAppAction.Uninstall -> "Uninstalling Apps..,"
@@ -397,6 +402,13 @@ suspend fun processAppAction(
 ) {
     withContext(Dispatchers.IO) {
         when (appAction) {
+
+            is AppClickAction.Logcat -> {
+                appAction.appInfo.showLogs(
+                    observer,exit
+                )
+            }
+
             is AppClickAction.Share ->{
                 if(appAction.appInfo.splitPublicSourceDirs.isEmpty())
                 shareApp(appAction.appInfo,context)

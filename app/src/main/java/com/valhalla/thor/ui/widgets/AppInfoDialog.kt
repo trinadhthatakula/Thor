@@ -42,6 +42,7 @@ import com.valhalla.thor.model.getAppIcon
 import com.valhalla.thor.model.rootAvailable
 
 sealed interface AppClickAction {
+    data class Logcat(val appInfo: AppInfo): AppClickAction
     data class Launch(val appInfo: AppInfo) : AppClickAction
     data class Share(val appInfo: AppInfo) : AppClickAction
     data class Uninstall(val appInfo: AppInfo) : AppClickAction
@@ -74,19 +75,36 @@ fun AppInfoDialog(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            IconButton(
-                onClick = {
-                    onAppAction(AppClickAction.AppInfoSettings(appInfo))
-                },
-                modifier = Modifier
-                    .align(Alignment.End)
-                    .padding(end = 10.dp),
-            ) {
-                Icon(
-                    painterResource(R.drawable.settings),
-                    "Settings"
-                )
+
+            Row(modifier = Modifier.align(Alignment.End)){
+                /*IconButton(
+                    onClick = {
+                        onAppAction(AppClickAction.Logcat(appInfo))
+                    },
+                    modifier = Modifier
+                        .padding(end = 10.dp),
+                ) {
+                    Icon(
+                        painterResource(R.drawable.cat),
+                        "Logcat",
+                        tint = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.padding(5.dp)
+                    )
+                }*/
+                IconButton(
+                    onClick = {
+                        onAppAction(AppClickAction.AppInfoSettings(appInfo))
+                    },
+                    modifier = Modifier
+                        .padding(end = 10.dp),
+                ) {
+                    Icon(
+                        painterResource(R.drawable.settings),
+                        "Settings"
+                    )
+                }
             }
+
             Image(
                 painter = rememberDrawablePainter(getAppIcon(appInfo.packageName, context)),
                 contentDescription = appInfo.appName,
