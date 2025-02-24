@@ -77,7 +77,7 @@ fun AppInfoDialog(
         ) {
 
             Row(modifier = Modifier.align(Alignment.End)){
-                /*IconButton(
+                IconButton(
                     onClick = {
                         onAppAction(AppClickAction.Logcat(appInfo))
                     },
@@ -88,9 +88,9 @@ fun AppInfoDialog(
                         painterResource(R.drawable.cat),
                         "Logcat",
                         tint = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.padding(5.dp)
+                        modifier = Modifier.padding(10.dp)
                     )
-                }*/
+                }
                 IconButton(
                     onClick = {
                         onAppAction(AppClickAction.AppInfoSettings(appInfo))

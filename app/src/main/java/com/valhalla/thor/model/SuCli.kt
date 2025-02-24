@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.database.Cursor
 import android.net.Uri
+import android.os.Build
 import android.provider.OpenableColumns
 import android.provider.Settings
 import android.system.Os
@@ -689,7 +690,10 @@ fun readTargets(context: Context): List<String> {
     return emptyList()
 }
 
+var stopLogger: (()->Unit)? = null
+
 fun AppInfo.showLogs(observer: (String) -> Unit, exit: () -> Unit){
+
     observer("Log Cat search $packageName")
     observer("try getting pId")
     val pId = fastCmd(getRootShell(), "logcat -c",(if(rootAvailable())"su -c" else "")+"pidof $packageName").trim()
@@ -704,15 +708,32 @@ fun AppInfo.showLogs(observer: (String) -> Unit, exit: () -> Unit){
         observer("fallback to use packageName instead")
         "logcat | grep $packageName"
     }
-    getRootShell().newJob()
-        .add((if(rootAvailable())"su -c " else "")+logCommand)
-        .submit { cb ->
-            if(cb.isSuccess){
-                cb.out.forEach {
-                    observer(it?:"")
+    Runtime.getRuntime().exec("logcat -c")/// clear logcat
+    Runtime.getRuntime().exec(logCommand).let { process ->
+        stopLogger = {
+            if(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    process.isAlive
+                } else {
+                    true
                 }
+            ){
+                observer("stopping logcat")
+                exit()
+                process.destroy()
             }
         }
+        process.inputStream.use {
+            try {
+                it.bufferedReader().useLines { lines ->
+                    lines.forEach { line ->
+                        observer(line)
+                    }
+                }
+            }catch (e: Exception){
+                e.printStackTrace()
+            }
+        }
+    }
 }
 
 

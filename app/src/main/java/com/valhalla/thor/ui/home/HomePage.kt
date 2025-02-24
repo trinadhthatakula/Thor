@@ -38,6 +38,7 @@ import com.valhalla.thor.model.rootAvailable
 import com.valhalla.thor.model.shareApp
 import com.valhalla.thor.model.shareSplitApks
 import com.valhalla.thor.model.showLogs
+import com.valhalla.thor.model.stopLogger
 import com.valhalla.thor.model.uninstallSystemApp
 import com.valhalla.thor.ui.screens.AppListScreen
 import com.valhalla.thor.ui.screens.HomeActions
@@ -71,6 +72,7 @@ fun HomePage(
 
     var reinstalling by remember { mutableStateOf(false) }
     var canExit by remember { mutableStateOf(false) }
+    var showTerminate by remember { mutableStateOf(false) }
     var logObserver by remember { mutableStateOf(emptyList<String>()) }
     var termLoggerTitle by remember { mutableStateOf("") }
 
@@ -223,8 +225,9 @@ fun HomePage(
             is AppClickAction.UnFreeze -> "Defrosting"
             is AppClickAction.Uninstall -> "Uninstalling..,"
             is AppClickAction.Logcat -> {
-                canExit = true
-                "Logs Meow"
+                //canExit = true
+                showTerminate = true
+                "Neko Logger"
             }
             null -> {
                 logObserver = emptyList()
@@ -303,6 +306,14 @@ fun HomePage(
             canExit = canExit,
             title = termLoggerTitle,
             logObserver = logObserver,
+            showTerminate = showTerminate,
+            onTerminate = {
+                stopLogger?.invoke()
+                logObserver = emptyList()
+                appAction = null
+                multiAction = null
+                canExit = false
+            }
         ) {
             logObserver = emptyList()
             appAction = null
