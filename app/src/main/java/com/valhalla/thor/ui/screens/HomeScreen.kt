@@ -49,6 +49,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
@@ -59,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.AppListType
+import com.valhalla.thor.model.generateRandomColors
 import com.valhalla.thor.model.getTokenResponse
 import com.valhalla.thor.model.getVerdict
 import com.valhalla.thor.model.initStandardIntegrityProvider
@@ -194,7 +196,9 @@ fun HomeContent(
                 textAlign = TextAlign.Start
             )
 
-            val rootStatus = try{if (rootAvailable()) "Root access granted" else "Root access not available"}catch (e: Exception){
+            val rootStatus = try {
+                if (rootAvailable()) "Root access granted" else "Root access not available"
+            } catch (e: Exception) {
                 e.printStackTrace()
                 "Root access not available"
             }
@@ -318,18 +322,13 @@ fun HomeContent(
                 }.mapValues { it.value.size }
         }
 
-        val colors = listOf(
-            MaterialTheme.colorScheme.primary,
-            MaterialTheme.colorScheme.secondary,
-            MaterialTheme.colorScheme.tertiary,
-            MaterialTheme.colorScheme.error,
-            Color.Green,
-            Color.Yellow,
-            Color.Red,
-            Color.Magenta,
-            Color.Blue,
-            Color.Cyan,
-            Color.Gray
+        val colors = generateRandomColors(
+            appsMapByInstaller.keys.size,
+            true,
+            MaterialTheme.colorScheme.primary.toArgb(),
+            MaterialTheme.colorScheme.secondary.toArgb(),
+            MaterialTheme.colorScheme.tertiary.toArgb(),
+            MaterialTheme.colorScheme.error.toArgb(),
         )
 
         Row(
@@ -348,11 +347,11 @@ fun HomeContent(
             Column(modifier = Modifier.weight(1f)) {
                 appsMapByInstaller.keys.forEachIndexed { index, key ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(10.dp)
-                                    .background(color = colors[index % colors.size], CircleShape)
-                            )
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .background(color = colors[index % colors.size], CircleShape)
+                        )
                         Text(
                             text = systemAppList.firstOrNull { it.packageName == key }?.appName
                                 ?: key,
@@ -428,129 +427,128 @@ fun HomeContent(
         }
 
 
-            Column(modifier = Modifier.padding(horizontal = 5.dp, vertical = 10.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 5.dp, vertical = 10.dp)) {
 
-                val unknownAppsCount by animateIntAsState(userAppList.count {
-                    it.installerPackageName != "com.android.vending"
-                })
+            val unknownAppsCount by animateIntAsState(userAppList.count {
+                it.installerPackageName != "com.android.vending"
+            })
 
-                if(rootAvailable()) {
-                    if (unknownAppsCount > 0 ) {
-                        ElevatedCard(
+            if (rootAvailable()) {
+                if (unknownAppsCount > 0) {
+                    ElevatedCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(5.dp),
+                        onClick = {
+                            onHomeActions(HomeActions.ReinstallAll)
+                        }
+                    ) {
+                        Column(
+                            verticalArrangement = Arrangement.Center,
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(5.dp),
-                            onClick = {
-                                onHomeActions(HomeActions.ReinstallAll)
-                            }
+                                .padding(10.dp)
                         ) {
-                            Column(
-                                verticalArrangement = Arrangement.Center,
+                            Text(
+                                text = "Reinstall All",
+                                style = MaterialTheme.typography.titleLarge,
+                                maxLines = 1,
                                 modifier = Modifier
-                                    .padding(10.dp)
-                            ) {
-                                Text(
-                                    text = "Reinstall All",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    maxLines = 1,
-                                    modifier = Modifier
-                                        .padding(5.dp)
-                                )
+                                    .padding(5.dp)
+                            )
 
-                                Text(
-                                    text = "$unknownAppsCount of ${userAppList.size} user apps are not installed from play store, try reinstalling them?",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier
-                                        .padding(horizontal = 5.dp)
-                                        .padding(bottom = 5.dp)
-                                )
-                            }
+                            Text(
+                                text = "$unknownAppsCount of ${userAppList.size} user apps are not installed from play store, try reinstalling them?",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier
+                                    .padding(horizontal = 5.dp)
+                                    .padding(bottom = 5.dp)
+                            )
                         }
                     }
-
-                    /*val context = LocalContext.current
-                    val trickyTargets = readTargets(context)
-                    if(trickyTargets.isNotEmpty()){
-                        ElevatedCard(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(5.dp),
-                            onClick = {
-                                onHomeActions(HomeActions.ReinstallAll)
-                            }
-                        ) {
-                            Column(
-                                verticalArrangement = Arrangement.Center,
-                                modifier = Modifier
-                                    .padding(10.dp)
-                            ) {
-                                Text(
-                                    text = "</> Edit Targets",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    maxLines = 1,
-                                    modifier = Modifier
-                                        .padding(5.dp)
-                                )
-
-                                Text(
-                                    text = "Add/Edit Targets for tricky store",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier
-                                        .padding(horizontal = 5.dp)
-                                        .padding(bottom = 5.dp)
-                                )
-                            }
-                        }
-                    }*/
-
                 }
 
-                Spacer(modifier = Modifier.weight(1f))
-
-
-                ElevatedCard(
-                    modifier = Modifier
-                        .padding(5.dp)
-                        .align(Alignment.CenterHorizontally)
-                ) {
-                    val uriHandler = LocalUriHandler.current
-                    Column(
+                /*val context = LocalContext.current
+                val trickyTargets = readTargets(context)
+                if(trickyTargets.isNotEmpty()){
+                    ElevatedCard(
                         modifier = Modifier
+                            .fillMaxWidth()
                             .padding(5.dp),
-                        verticalArrangement = Arrangement.Center
+                        onClick = {
+                            onHomeActions(HomeActions.ReinstallAll)
+                        }
                     ) {
-                        /*Text(
-                            text = "Support us",
-                            style = MaterialTheme.typography.titleSmall,
-                            modifier = Modifier.padding(5.dp)
-                        )*/
-                        Row(
-                            horizontalArrangement = Arrangement.Center,
+                        Column(
+                            verticalArrangement = Arrangement.Center,
                             modifier = Modifier
+                                .padding(10.dp)
                         ) {
-                            IconButton(onClick = { uriHandler.openUri("https://github.com/trinadhthatakula/Thor") }) {
-                                Icon(
-                                    painterResource(R.drawable.brand_github),
-                                    contentDescription = null,
-                                )
-                            }
-                            IconButton(onClick = { uriHandler.openUri("https://patreon.com/trinadh") }) {
-                                Icon(
-                                    painterResource(R.drawable.brand_patreon),
-                                    contentDescription = null,
-                                )
-                            }
-                            IconButton(onClick = { uriHandler.openUri("https://t.me/thorAppDev") }) {
-                                Icon(
-                                    painterResource(R.drawable.brand_telegram),
-                                    contentDescription = null,
-                                )
-                            }
+                            Text(
+                                text = "</> Edit Targets",
+                                style = MaterialTheme.typography.titleLarge,
+                                maxLines = 1,
+                                modifier = Modifier
+                                    .padding(5.dp)
+                            )
+
+                            Text(
+                                text = "Add/Edit Targets for tricky store",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier
+                                    .padding(horizontal = 5.dp)
+                                    .padding(bottom = 5.dp)
+                            )
+                        }
+                    }
+                }*/
+
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+
+            ElevatedCard(
+                modifier = Modifier
+                    .padding(5.dp)
+                    .align(Alignment.CenterHorizontally)
+            ) {
+                val uriHandler = LocalUriHandler.current
+                Column(
+                    modifier = Modifier
+                        .padding(5.dp),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    /*Text(
+                        text = "Support us",
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(5.dp)
+                    )*/
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                    ) {
+                        IconButton(onClick = { uriHandler.openUri("https://github.com/trinadhthatakula/Thor") }) {
+                            Icon(
+                                painterResource(R.drawable.brand_github),
+                                contentDescription = null,
+                            )
+                        }
+                        IconButton(onClick = { uriHandler.openUri("https://patreon.com/trinadh") }) {
+                            Icon(
+                                painterResource(R.drawable.brand_patreon),
+                                contentDescription = null,
+                            )
+                        }
+                        IconButton(onClick = { uriHandler.openUri("https://t.me/thorAppDev") }) {
+                            Icon(
+                                painterResource(R.drawable.brand_telegram),
+                                contentDescription = null,
+                            )
                         }
                     }
                 }
             }
-
+        }
 
 
     }
@@ -573,7 +571,7 @@ fun PieChart(
     radiusOuter: Dp,
     chartBarWidth: Dp,
     innerPadding: PaddingValues = PaddingValues(chartBarWidth * 2),
-    gap: Int = 2,
+    gap: Float = 0.5f,
     animDuration: Int
 ) {
 
