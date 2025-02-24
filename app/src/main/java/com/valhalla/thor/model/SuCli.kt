@@ -689,5 +689,30 @@ fun readTargets(context: Context): List<String> {
     return emptyList()
 }
 
+fun AppInfo.showLogs(observer: (String) -> Unit, exit: () -> Unit){
+    observer("Log Cat search $packageName")
+    observer("try getting pId")
+    val pId = fastCmd(getRootShell(), "logcat -c",(if(rootAvailable())"su -c" else "")+"pidof $packageName").trim()
+    val logCommand = if(pId.isNotEmpty()){
+        observer("pId found")
+        observer("")
+        observer("")
+        "logcat | grep $pId"
+    }else {
+        observer("pId not found")
+        observer("")
+        observer("fallback to use packageName instead")
+        "logcat | grep $packageName"
+    }
+    getRootShell().newJob()
+        .add((if(rootAvailable())"su -c " else "")+logCommand)
+        .submit { cb ->
+            if(cb.isSuccess){
+                cb.out.forEach {
+                    observer(it?:"")
+                }
+            }
+        }
+}
 
 
