@@ -91,27 +91,30 @@ fun AppList(
 
         Column {
 
-            val searchTerm = rememberTextFieldState("")
-            searchTerm.edit {
-                filteredList = if (length>0) {
+            var query by remember { mutableStateOf("") }
+            LaunchedEffect(query, appList) {
+                filteredList = if (query.isNotEmpty()) {
                     appList.filter {
-                        it.appName?.contains(toString(), true) == true
-                                || it.packageName.contains(toString(), true)
+                        it.appName?.contains(query, true) == true
+                                || it.packageName.contains(query, true)
                     }
-                }else appList
+                } else appList
             }
 
-            Card (
+            Card(
                 modifier = Modifier
                     .padding(5.dp)
                     .fillMaxWidth(),
                 shape = RoundedCornerShape(50)
             ) {
                 BasicTextField(
-                    searchTerm,
-                    decorator = { tf ->
+                    value = query,
+                    onValueChange = {
+                        query = it
+                    },
+                    decorationBox = { tf ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = {}){
+                            IconButton(onClick = {}) {
                                 Icon(
                                     painterResource(R.drawable.round_search),
                                     "Search Icon",
@@ -123,16 +126,18 @@ fun AppList(
                                     .weight(1f),
                                 contentAlignment = Alignment.CenterStart
                             ) {
-                                if (searchTerm.text.isEmpty()) {
-                                    Text("Search any App",
-                                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
+                                if (query.isEmpty()) {
+                                    Text(
+                                        "Search any App",
+                                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+                                    )
                                 }
                                 tf()
                             }
-                            if (searchTerm.text.isNotEmpty())
+                            if (query.isNotEmpty())
                                 IconButton(
                                     onClick = {
-                                        searchTerm.clearText()
+                                        query = ""
                                     }
                                 ) {
                                     Icon(
@@ -150,10 +155,7 @@ fun AppList(
                         keyboardType = KeyboardType.Text,
                         capitalization = KeyboardCapitalization.Words,
                         imeAction = ImeAction.Search
-                    ),
-                    onKeyboardAction = {
-
-                    }
+                    )
                 )
             }
 
@@ -300,8 +302,7 @@ fun AppList(
                                             multiSelect += it
                                     }
                                 }, onLongClick = {
-                                    if (filteredList.size > 1)
-                                        multiSelect += it
+                                    multiSelect += it
                                 }
                             )
                     )
@@ -311,7 +312,7 @@ fun AppList(
         }
 
         if (multiSelect.isNotEmpty()) {
-            if(multiSelect.size == 1)
+            if (multiSelect.size == 1)
                 selectAll = false
             MultiSelectToolBox(
                 selected = multiSelect,
