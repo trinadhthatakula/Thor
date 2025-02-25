@@ -1,5 +1,6 @@
 package com.valhalla.thor.ui.widgets
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +35,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.valhalla.thor.R
 import com.valhalla.thor.ui.theme.firaMonoFontFamily
+import kotlinx.serialization.Serializable
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -103,6 +105,12 @@ fun TermLogger(
     }
 }
 
+@Serializable
+data class CustomAction(
+    @DrawableRes val icon: Int,
+    val action: String
+)
+
 @Composable
 fun TermLoggerDialog(
     modifier: Modifier = Modifier,
@@ -110,6 +118,8 @@ fun TermLoggerDialog(
     canExit: Boolean = false,
     logObserver: List<String>,
     showTerminate: Boolean = false,
+    customAction: CustomAction? = null,
+    onCustomActionClicked: (CustomAction) -> Unit = {},
     onTerminate: () -> Unit = {},
     done: () -> Unit
 ) {
@@ -153,6 +163,19 @@ fun TermLoggerDialog(
                             color = MaterialTheme.colorScheme.onBackground,
                             modifier = Modifier.weight(1f)
                         )
+                        if(customAction!=null){
+                            IconButton(
+                                onClick = {
+                                    onCustomActionClicked(customAction)
+                                }
+                            ) {
+                                Icon(
+                                    painterResource(customAction.icon),
+                                    customAction.action,
+                                    tint = MaterialTheme.colorScheme.onBackground
+                                )
+                            }
+                        }
                         if(showTerminate){
                             IconButton(
                                 onClick = {
