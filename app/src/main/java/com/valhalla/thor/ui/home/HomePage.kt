@@ -5,6 +5,7 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -21,6 +22,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
+import androidx.core.app.ShareCompat
+import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
@@ -45,11 +48,13 @@ import com.valhalla.thor.ui.screens.HomeActions
 import com.valhalla.thor.ui.screens.HomeScreen
 import com.valhalla.thor.ui.widgets.AffirmationDialog
 import com.valhalla.thor.ui.widgets.AppClickAction
+import com.valhalla.thor.ui.widgets.CustomAction
 import com.valhalla.thor.ui.widgets.MultiAppAffirmationDialog
 import com.valhalla.thor.ui.widgets.TermLoggerDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import java.io.File
 
 @Composable
 fun HomePage(
@@ -75,6 +80,7 @@ fun HomePage(
     var showTerminate by remember { mutableStateOf(false) }
     var logObserver by remember { mutableStateOf(emptyList<String>()) }
     var termLoggerTitle by remember { mutableStateOf("") }
+    var customAction: CustomAction? by remember { mutableStateOf(null) }
 
     LaunchedEffect(isRefreshing) {
         if (isRefreshing) {
@@ -204,6 +210,7 @@ fun HomePage(
 
 
     LaunchedEffect(appAction) {
+        customAction = null
         reinstalling = false
         canExit = false
         termLoggerTitle = when (appAction) {
@@ -226,9 +233,14 @@ fun HomePage(
             is AppClickAction.Uninstall -> "Uninstalling..,"
             is AppClickAction.Logcat -> {
                 //canExit = true
+                customAction = CustomAction(
+                    R.drawable.ios_share,
+                    "Export Logs"
+                )
                 showTerminate = true
                 "Neko Logger"
             }
+
             null -> {
                 logObserver = emptyList()
                 reinstalling = false
@@ -262,6 +274,7 @@ fun HomePage(
                     reinstalling = true
                     "Reinstalling Apps..,"
                 }
+
                 is MultiAppAction.Share -> "Share Apps"
                 is MultiAppAction.UnFreeze -> "UnFreezing Apps..,"
                 is MultiAppAction.Uninstall -> "Uninstalling Apps..,"
@@ -313,13 +326,45 @@ fun HomePage(
                 appAction = null
                 multiAction = null
                 canExit = false
+            },
+            customAction = customAction,
+            onCustomActionClicked = { customAction ->
+                if (customAction == CustomAction(R.drawable.ios_share, "Export Logs")) {
+                    logObserver.joinToString("\n").let { logString ->
+                        if (appAction is AppClickAction.Logcat) {
+                            val appInfo = (appAction as AppClickAction.Logcat).appInfo
+                            val logFile = File(
+                                context.filesDir,
+                                "logs/${appInfo.appName}.txt"
+                            )
+                            val parent = logFile.parentFile
+                            if (parent != null && (parent.exists() || parent.mkdirs())) {
+                                if (logFile.exists().not() || logFile.delete()) {
+                                    if (logFile.createNewFile())
+                                        logFile.writeText(logString)
+                                    ShareCompat.IntentBuilder(context)
+                                        .setType("text/plain")
+                                        .setText("Logs for ${appInfo.appName} shared via Thor's neko")
+                                        .setStream(
+                                            FileProvider.getUriForFile(
+                                                context,
+                                                BuildConfig.APPLICATION_ID + ".provider",
+                                                logFile
+                                            )
+                                        ).startChooser()
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            done = {
+                logObserver = emptyList()
+                appAction = null
+                multiAction = null
+                canExit = false
             }
-        ) {
-            logObserver = emptyList()
-            appAction = null
-            multiAction = null
-            canExit = false
-        }
+        )
     }
 
 }
@@ -369,6 +414,7 @@ suspend fun processMultiAppAction(
             is MultiAppAction.Share -> {
 
             }
+
             is MultiAppAction.UnFreeze -> {
                 val selectedAppInfos = multiAction.appList
                 val frozenApps = selectedAppInfos.filter { it.enabled.not() }
@@ -416,15 +462,16 @@ suspend fun processAppAction(
 
             is AppClickAction.Logcat -> {
                 appAction.appInfo.showLogs(
-                    observer,exit
+                    observer, exit
                 )
             }
 
-            is AppClickAction.Share ->{
-                if(appAction.appInfo.splitPublicSourceDirs.isEmpty())
-                shareApp(appAction.appInfo,context)
-                else shareSplitApks(appAction.appInfo,context,observer,exit)
+            is AppClickAction.Share -> {
+                if (appAction.appInfo.splitPublicSourceDirs.isEmpty())
+                    shareApp(appAction.appInfo, context)
+                else shareSplitApks(appAction.appInfo, context, observer, exit)
             }
+
             is AppClickAction.AppInfoSettings -> {
                 openAppInfoScreen(
                     context,
