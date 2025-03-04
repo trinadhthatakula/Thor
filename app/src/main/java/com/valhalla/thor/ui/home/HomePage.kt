@@ -513,16 +513,20 @@ suspend fun processAppAction(
                             observer("Failed to launch ${appInfo.appName}")
                         }
                     } else {
-                        if (rootAvailable())
+                        if (rootAvailable()) {
                             if (launchApp(appInfo.packageName).isSuccess.not()) {
                                 observer("Failed to launch ${appInfo.appName}")
-                            } else
-                                context.packageManager.getLaunchIntentForPackage(appInfo.packageName)
-                                    ?.let {
-                                        context.startActivity(it)
-                                    } ?: run {
-                                    observer("Failed to launch ${appInfo.appName}")
-                                }
+                            } else {
+                                observer("Launching ${appInfo.appName}")
+                            }
+                        } else {
+                            context.packageManager.getLaunchIntentForPackage(appInfo.packageName)
+                                ?.let {
+                                    context.startActivity(it)
+                                } ?: run {
+                                observer("Failed to launch ${appInfo.appName}")
+                            }
+                        }
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
