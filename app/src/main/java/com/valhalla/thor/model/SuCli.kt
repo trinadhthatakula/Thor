@@ -736,4 +736,23 @@ fun AppInfo.showLogs(observer: (String) -> Unit, exit: () -> Unit){
     }
 }
 
+fun Context.backUpAppData(appInfo: AppInfo, observer: (String) -> Unit, exit: () -> Unit) {
+    val dataDir = appInfo.dataDir
+    val deviceProtectedDataDir = appInfo.deviceProtectedDataDir
+    val sharedAppDir = appInfo.sharedDataDir
+    val obbDir = appInfo.obbFilePath
+    val hasSplits = appInfo.splitPublicSourceDirs.isNotEmpty()
+    observer("Backing up ${appInfo.appName} data")
+    observer("Data Dir: $dataDir")
+    observer("Device Protected Data Dir: $deviceProtectedDataDir")
+    observer("Shared App Dir: $sharedAppDir")
+    observer("Obb Dir: $obbDir")
+    observer("Has Splits: $hasSplits")
+    if(rootAvailable()){
+        observer("Root access found")
+    }else {
+        observer("Root access not found")
+    }
+    exit()
+}
 
