@@ -44,6 +44,7 @@ import com.valhalla.thor.model.rootAvailable
 sealed interface AppClickAction {
     data class Logcat(val appInfo: AppInfo): AppClickAction
     data class Launch(val appInfo: AppInfo) : AppClickAction
+    data class Backup(val appInfo: AppInfo) : AppClickAction
     data class Share(val appInfo: AppInfo) : AppClickAction
     data class Uninstall(val appInfo: AppInfo) : AppClickAction
     data class Reinstall(val appInfo: AppInfo) : AppClickAction
@@ -54,7 +55,7 @@ sealed interface AppClickAction {
     data object ReinstallAll : AppClickAction
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppInfoDialog(
     modifier: Modifier = Modifier,
@@ -147,7 +148,6 @@ fun AppInfoDialog(
                     )
             }
 
-
             Text(
                 appInfo.packageName,
                 style = MaterialTheme.typography.bodyMedium,
@@ -237,6 +237,14 @@ fun FloatingBar(
             text = "Share"
         ) {
             onAppAction(AppClickAction.Share(appInfo))
+        }
+
+        AppActionItem(
+            icon = R.drawable.settings_backup_restore,
+            text = "Backup"
+        ) {
+            onDismiss()
+            onAppAction(AppClickAction.Backup(appInfo))
         }
 
         if (rootAvailable())
