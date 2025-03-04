@@ -29,6 +29,7 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfoGrabber
 import com.valhalla.thor.model.MultiAppAction
+import com.valhalla.thor.model.backUpAppData
 import com.valhalla.thor.model.disableApps
 import com.valhalla.thor.model.enableApps
 import com.valhalla.thor.model.killApp
@@ -137,10 +138,10 @@ fun HomePage(
                 }
             }
         }
-    ) {
+    ) { paddingValues ->
         when (selectedDestination) {
             AppDestinations.HOME -> HomeScreen(
-                modifier = modifier.padding(it),
+                modifier = modifier.padding(paddingValues),
                 userAppList = userAppList,
                 systemAppList = systemAppList,
                 onHomeActions = { homeAction ->
@@ -174,32 +175,32 @@ fun HomePage(
             )
 
             AppDestinations.APPS -> AppListScreen(
-                modifier = modifier.padding(it),
+                modifier = modifier.padding(paddingValues),
                 userAppList = userAppList,
                 systemAppList = systemAppList,
                 isRefreshing = isRefreshing,
                 onRefresh = { isRefreshing = true },
-                onAppAction = {
-                    appAction = it
+                onAppAction = { action ->
+                    appAction = action
                 },
-                onMultiAppAction = {
-                    multiAction = it
+                onMultiAppAction = { mAction ->
+                    multiAction = mAction
                 }
             )
 
             AppDestinations.FREEZER -> AppListScreen(
                 title = "Frozen Apps",
                 icon = R.drawable.frozen,
-                modifier = modifier.padding(it),
+                modifier = modifier.padding(paddingValues),
                 userAppList = userAppList.filter { it.enabled.not() },
                 systemAppList = systemAppList.filter { it.enabled.not() },
                 isRefreshing = isRefreshing,
                 onRefresh = { isRefreshing = true },
-                onAppAction = {
-                    appAction = it
+                onAppAction = { action ->
+                    appAction = action
                 },
-                onMultiAppAction = {
-                    multiAction = it
+                onMultiAppAction = { mAction ->
+                    multiAction = mAction
                 }
             )
 
@@ -218,6 +219,11 @@ fun HomePage(
             is AppClickAction.Freeze -> "Freezing"
             is AppClickAction.Kill -> "War Machine"
             is AppClickAction.Launch -> "Launch Pad"
+
+            is AppClickAction.Backup -> {
+                "Backup App"
+            }
+
             is AppClickAction.Reinstall -> {
                 reinstalling = true
                 "Reinstalling App..,"
@@ -328,8 +334,8 @@ fun HomePage(
                 canExit = false
             },
             customAction = customAction,
-            onCustomActionClicked = { customAction ->
-                if (customAction == CustomAction(R.drawable.ios_share, "Export Logs")) {
+            onCustomActionClicked = { cAction ->
+                if (cAction == CustomAction(R.drawable.ios_share, "Export Logs")) {
                     logObserver.joinToString("\n").let { logString ->
                         if (appAction is AppClickAction.Logcat) {
                             val appInfo = (appAction as AppClickAction.Logcat).appInfo
@@ -459,6 +465,15 @@ suspend fun processAppAction(
 ) {
     withContext(Dispatchers.IO) {
         when (appAction) {
+
+            is AppClickAction.Backup -> {
+                /*val appInfo = appAction.appInfo
+                observer("Backing up ${appInfo.appName}")
+                context.backUpAppData(appInfo, observer, exit)*/
+                withContext(Dispatchers.Main){
+                    Toast.makeText(context, "Coming soon", Toast.LENGTH_SHORT).show()
+                }
+            }
 
             is AppClickAction.Logcat -> {
                 appAction.appInfo.showLogs(
