@@ -160,8 +160,8 @@ fun shareSplitApks(
         observer("Split APKs found")
         observer("generating .Apks file")
         val tempFolder = File(context.filesDir, "shareApp")
-        val appFolder = File(tempFolder, appInfo.appName ?: "")
-        val apksFile = File(tempFolder,"${appInfo.appName}.apks")
+        val appFolder = File(tempFolder, appInfo.formattedAppName())
+        val apksFile = File(tempFolder,"${appInfo.formattedAppName()}.apks")
         val infoFile = File(appFolder, "info.json")
         val iconFile = File(appFolder, "icon.png")
         if (appFolder.exists() || appFolder.mkdirs()) {
@@ -251,7 +251,7 @@ fun shareApp(appInfo: AppInfo, context: Context) {
                 try {
                     Log.i(TAG, "shareApp: $baseApkPath")
                     val tempFolder = File(context.filesDir, "shareApp")
-                    val baseFile = File(tempFolder, "${appInfo.appName}_${appInfo.versionName}.apk")
+                    val baseFile = File(tempFolder, "${appInfo.formattedAppName()}_${appInfo.versionName}.apk")
                     if (fastCmd("su -c cp $baseApkPath ${baseFile.absolutePath}").isEmpty()) {
                         val intent = Intent(Intent.ACTION_SEND)
                         intent.type = "application/vnd.android.package-archive"
