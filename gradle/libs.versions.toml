@@ -1,6 +1,6 @@
 [versions]
 accompanistDrawablepainter = "0.37.2"
-agp = "8.11.0-alpha06"
+agp = "8.11.0-alpha07"
 playIntegrity = "1.4.0"
 libsu = "6.0.0"
 kotlin = "2.1.20"
