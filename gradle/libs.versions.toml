@@ -1,6 +1,6 @@
 [versions]
 accompanistDrawablepainter = "0.37.3"
-agp = "8.11.0-alpha10"
+agp = "8.12.0-alpha01"
 playIntegrity = "1.4.0"
 libsu = "6.0.0"
 kotlin = "2.1.21"
@@ -10,11 +10,11 @@ junitVersion = "1.2.1"
 espressoCore = "3.6.1"
 lifecycleRuntimeKtx = "2.9.0"
 activityCompose = "1.10.1"
-composeBom = "2025.05.00"
+composeBom = "2025.05.01"
 lottieCompose = "6.6.6"
-material3 = "1.4.0-alpha14"
+material3 = "1.4.0-alpha15"
 kotlinx-serialization-json = "1.8.1"
-uiTextGoogleFonts = "1.8.1"
+uiTextGoogleFonts = "1.8.2"
 splashscreen = "1.0.1"
 
 [libraries]
