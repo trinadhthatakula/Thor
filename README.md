@@ -45,3 +45,16 @@
 - BackUp App Data
 - Option to choose installers when reinstalling
 - Many more
+
+## Credits
+- Portions of this app use code from [`libsu`](https://github.com/topjohnwu/libsu) by [topjohnwu](https://github.com/topjohnwu/), adapted and integrated as the [`suCore`](https://github.com/trinadhthatakula/Thor/tree/master/suCore) module.
+
+### Modifications to libsu
+- Fully converted the original Java-based `libsu` code to Kotlin for `suCore`
+- Refer SuCore [README](https://github.com/trinadhthatakula/Thor/blob/master/suCore/README.md) for more details
+
+## License
+This project is licensed under the GNU General Public License v3.0 (GPL-3.0).
+
+- `libsu` is also licensed under GPL v3.0. All modifications and usage comply with the original license.
+- See the [LICENSE](LICENSE) file for full license text.
