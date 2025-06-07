@@ -16,7 +16,7 @@
 * 100% Kotlin 
 * Material 3 Design 
 * Jetpack Compose
-* Smallest APK size (less than 2.0MB)
+* Smallest APK size (less than 2.20 MB)
 * FOSS - GPL-3.0
 
 ## Working Features
@@ -29,16 +29,12 @@
 - Batch Reinstall/Uninstall/Kill Apps
 - Split App Indicator
 - AppState Indicator (frozen = disabled)
-- Kill Apps
-
-## Features in Testing 
-- New Home UI
-- Root Indicator
-- Integrity Indicator - Only checks for device integrity
-- Auto Reinstall - Reinstall any app installed outside play store without user interaction (turn on in Home Page)
 - Uninstall System Apps
 - Freeze/UnFreeze System apps
-- Play Integrity Indicator(Experimental)
+- Sorting & filters
+
+## Features in Testing 
+- New Settings UI
 - Packages.xml editor based on [script]([url](https://github.com/Pixel-Props/BetterKnownInstalled?tab=readme-ov-file)) by T3SL4 @Pixel-Props
 
 ## Upcoming Features
@@ -46,8 +42,6 @@
 - Editing Packages.xml 
 - App Installer
 - Batch Install
-- Sorting & filters
 - BackUp App Data
 - Option to choose installers when reinstalling
-- De-bloater for system apps
 - Many more
