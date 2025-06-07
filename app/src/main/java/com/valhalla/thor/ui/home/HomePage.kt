@@ -5,7 +5,6 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -22,8 +21,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
-import androidx.core.app.ShareCompat
-import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
@@ -40,10 +37,10 @@ import com.valhalla.thor.model.reInstallWithGoogle
 import com.valhalla.thor.model.rootAvailable
 import com.valhalla.thor.model.shareApp
 import com.valhalla.thor.model.shareSplitApks
-import com.valhalla.thor.model.showLogs
 import com.valhalla.thor.model.stopLogger
 import com.valhalla.thor.model.uninstallSystemApp
 import com.valhalla.thor.ui.screens.AppListScreen
+import com.valhalla.thor.ui.screens.FreezerScreen
 import com.valhalla.thor.ui.screens.HomeActions
 import com.valhalla.thor.ui.screens.HomeScreen
 import com.valhalla.thor.ui.widgets.AffirmationDialog
@@ -54,7 +51,6 @@ import com.valhalla.thor.ui.widgets.TermLoggerDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import java.io.File
 
 @Composable
 fun HomePage(
@@ -128,9 +124,9 @@ fun HomePage(
                             )
                         },
                         onClick = {
-                            if (dest == AppDestinations.SETTINGS)
+                            /*if (dest == AppDestinations.SETTINGS)
                                 Toast.makeText(context, "coming soon", Toast.LENGTH_SHORT).show()
-                            else
+                            else*/
                                 selectedDestination = dest
                         }
                     )
@@ -179,20 +175,19 @@ fun HomePage(
                 systemAppList = systemAppList,
                 isRefreshing = isRefreshing,
                 onRefresh = { isRefreshing = true },
-                onAppAction = {
-                    appAction = it
+                onAppAction = { aAction ->
+                    appAction = aAction
                 },
-                onMultiAppAction = {
-                    multiAction = it
+                onMultiAppAction = { mAction ->
+                    multiAction = mAction
                 }
             )
 
-            AppDestinations.FREEZER -> AppListScreen(
-                title = "Frozen Apps",
+            AppDestinations.FREEZER -> FreezerScreen(
                 icon = R.drawable.frozen,
                 modifier = modifier.padding(it),
-                userAppList = userAppList.filter { it.enabled.not() },
-                systemAppList = systemAppList.filter { it.enabled.not() },
+                userAppList = userAppList,
+                systemAppList = systemAppList,
                 isRefreshing = isRefreshing,
                 onRefresh = { isRefreshing = true },
                 onAppAction = {
@@ -203,14 +198,13 @@ fun HomePage(
                 }
             )
 
-            AppDestinations.SETTINGS -> Text("Settings")
+            //AppDestinations.SETTINGS -> Text("Settings")
         }
 
     }
 
 
     LaunchedEffect(appAction) {
-        customAction = null
         reinstalling = false
         canExit = false
         termLoggerTitle = when (appAction) {
@@ -231,7 +225,7 @@ fun HomePage(
             is AppClickAction.Share -> "Share App"
             is AppClickAction.UnFreeze -> "Defrosting"
             is AppClickAction.Uninstall -> "Uninstalling..,"
-            is AppClickAction.Logcat -> {
+            /*is AppClickAction.Logcat -> {
                 //canExit = true
                 customAction = CustomAction(
                     R.drawable.ios_share,
@@ -239,7 +233,7 @@ fun HomePage(
                 )
                 showTerminate = true
                 "Neko Logger"
-            }
+            }*/
 
             null -> {
                 logObserver = emptyList()
@@ -256,6 +250,7 @@ fun HomePage(
                 exit = {
                     canExit = true
                     isRefreshing = true
+                    appAction = null
                 }
             )
         }
@@ -327,11 +322,11 @@ fun HomePage(
                 multiAction = null
                 canExit = false
             },
-            customAction = customAction,
+            /*customAction = customAction,
             onCustomActionClicked = { customAction ->
                 if (customAction == CustomAction(R.drawable.ios_share, "Export Logs")) {
                     logObserver.joinToString("\n").let { logString ->
-                        if (appAction is AppClickAction.Logcat) {
+                        *//*if (appAction is AppClickAction.Logcat) {
                             val appInfo = (appAction as AppClickAction.Logcat).appInfo
                             val logFile = File(
                                 context.filesDir,
@@ -354,10 +349,10 @@ fun HomePage(
                                         ).startChooser()
                                 }
                             }
-                        }
+                        }*//*
                     }
                 }
-            },
+            },*/
             done = {
                 logObserver = emptyList()
                 appAction = null
@@ -460,11 +455,11 @@ suspend fun processAppAction(
     withContext(Dispatchers.IO) {
         when (appAction) {
 
-            is AppClickAction.Logcat -> {
+           /* is AppClickAction.Logcat -> {
                 appAction.appInfo.showLogs(
                     observer, exit
                 )
-            }
+            }*/
 
             is AppClickAction.Share -> {
                 if (appAction.appInfo.splitPublicSourceDirs.isEmpty())

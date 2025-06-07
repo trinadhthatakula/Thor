@@ -40,7 +40,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,11 +60,6 @@ import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.AppListType
 import com.valhalla.thor.model.generateRandomColors
-import com.valhalla.thor.model.getTokenResponse
-import com.valhalla.thor.model.getVerdict
-import com.valhalla.thor.model.initStandardIntegrityProvider
-import com.valhalla.thor.model.parseIntegrityIcon
-import com.valhalla.thor.model.parseIntegrityStatus
 import com.valhalla.thor.model.rootAvailable
 import com.valhalla.thor.ui.theme.greenDark
 import com.valhalla.thor.ui.theme.greenLight
@@ -80,8 +74,6 @@ sealed interface HomeActions {
     data object BKI : HomeActions
 }
 
-var deviceIntegrityJsonBackup = ""
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -93,63 +85,10 @@ fun HomeScreen(
 
     val context = LocalContext.current
 
-    var usedTokens by remember { mutableStateOf(emptyList<String>()) }
-
-    var tokenString by rememberSaveable { mutableStateOf("") }
-    var deviceIntegrityJson by rememberSaveable { mutableStateOf(deviceIntegrityJsonBackup) }
-    var integrityStatus by remember { mutableStateOf("Checking Integrity") }
-    var integrityIcon by remember { mutableIntStateOf(R.drawable.shield_countdown) }
-
-    LaunchedEffect(Unit) {
-        try {
-            if (deviceIntegrityJson.isEmpty())
-                context.initStandardIntegrityProvider { integrityTokenProvider ->
-                    if (integrityTokenProvider.isSuccess) {
-                        integrityTokenProvider.getOrNull()?.let { provider ->
-                            getVerdict(provider) { tokenResponse ->
-                                if (tokenResponse.isSuccess) {
-                                    tokenResponse.getOrNull()?.let { token ->
-                                        tokenString = token
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    LaunchedEffect(tokenString) {
-        try {
-            if (deviceIntegrityJson.isEmpty() && tokenString.isNotEmpty() && usedTokens.contains(
-                    tokenString
-                ).not()
-            ) {
-                getTokenResponse(tokenString) { jsonResult ->
-                    if (jsonResult.isSuccess) {
-                        jsonResult.getOrNull()?.let {
-                            deviceIntegrityJson = it
-                            deviceIntegrityJsonBackup = deviceIntegrityJson
-                        }
-                        usedTokens += tokenString
-                        integrityStatus = parseIntegrityStatus(deviceIntegrityJson)
-                        integrityIcon = parseIntegrityIcon(deviceIntegrityJson)
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
     HomeContent(
         modifier,
         userAppList,
         systemAppList,
-        integrityStatus,
-        integrityIcon,
     ) { homeAction ->
         if (homeAction is HomeActions.ShowToast) {
             Toast.makeText(context, homeAction.text, Toast.LENGTH_SHORT).show()
@@ -166,8 +105,6 @@ fun HomeContent(
     modifier: Modifier = Modifier,
     userAppList: List<AppInfo> = emptyList(),
     systemAppList: List<AppInfo> = emptyList(),
-    integrityStatus: String = "Checking Integrity",
-    integrityIcon: Int = R.drawable.shield_countdown,
     onHomeActions: (HomeActions) -> Unit = {}
 ) {
 
@@ -227,29 +164,7 @@ fun HomeContent(
                         .padding(3.dp)
                 )
             }
-            TooltipBox(
-                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(10.dp),
-                tooltip = {
-                    PlainTooltip {
-                        Text(integrityStatus)
-                    }
-                },
-                state = rememberTooltipState()
-            ) {
-                Icon(
-                    painterResource(integrityIcon),
-                    "Integrity Indicator",
-                    modifier = Modifier
-                        .padding(vertical = 5.dp)
-                        .padding(end = 10.dp)
-                        .size(30.dp)
-                        .clip(CircleShape)
-                        .clickable {
-                            onHomeActions(HomeActions.ShowToast(integrityStatus))
-                        }
-                        .padding(3.dp)
-                )
-            }
+
         }
 
         var appListType by remember { mutableStateOf(AppListType.USER) }
@@ -426,14 +341,14 @@ fun HomeContent(
             }
         }
 
-
-        Column(modifier = Modifier.padding(horizontal = 5.dp, vertical = 10.dp)) {
+        val canReinstallAll = false
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 10.dp)) {
 
             val unknownAppsCount by animateIntAsState(userAppList.count {
                 it.installerPackageName != "com.android.vending"
             })
 
-            if (rootAvailable()) {
+            if (rootAvailable() && canReinstallAll) { ///disable this for now
                 if (unknownAppsCount > 0) {
                     ElevatedCard(
                         modifier = Modifier
@@ -468,39 +383,39 @@ fun HomeContent(
                 }
 
                 /*val context = LocalContext.current
-                val trickyTargets = readTargets(context)
-                if(trickyTargets.isNotEmpty()){
-                    ElevatedCard(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(5.dp),
-                        onClick = {
-                            onHomeActions(HomeActions.ReinstallAll)
-                        }
-                    ) {
-                        Column(
-                            verticalArrangement = Arrangement.Center,
-                            modifier = Modifier
-                                .padding(10.dp)
-                        ) {
-                            Text(
-                                text = "</> Edit Targets",
-                                style = MaterialTheme.typography.titleLarge,
-                                maxLines = 1,
+                        val trickyTargets = readTargets(context)
+                        if(trickyTargets.isNotEmpty()){
+                            ElevatedCard(
                                 modifier = Modifier
-                                    .padding(5.dp)
-                            )
+                                    .fillMaxWidth()
+                                    .padding(5.dp),
+                                onClick = {
+                                    onHomeActions(HomeActions.ReinstallAll)
+                                }
+                            ) {
+                                Column(
+                                    verticalArrangement = Arrangement.Center,
+                                    modifier = Modifier
+                                        .padding(10.dp)
+                                ) {
+                                    Text(
+                                        text = "</> Edit Targets",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        maxLines = 1,
+                                        modifier = Modifier
+                                            .padding(5.dp)
+                                    )
 
-                            Text(
-                                text = "Add/Edit Targets for tricky store",
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier
-                                    .padding(horizontal = 5.dp)
-                                    .padding(bottom = 5.dp)
-                            )
-                        }
-                    }
-                }*/
+                                    Text(
+                                        text = "Add/Edit Targets for tricky store",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier
+                                            .padding(horizontal = 5.dp)
+                                            .padding(bottom = 5.dp)
+                                    )
+                                }
+                            }
+                        }*/
 
             }
 
@@ -519,10 +434,10 @@ fun HomeContent(
                     verticalArrangement = Arrangement.Center
                 ) {
                     /*Text(
-                        text = "Support us",
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.padding(5.dp)
-                    )*/
+                                text = "Support us",
+                                style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.padding(5.dp)
+                            )*/
                     Row(
                         horizontalArrangement = Arrangement.Center,
                         modifier = Modifier
