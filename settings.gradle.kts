@@ -22,4 +22,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Thor"
 include(":app")
- 
+include(":suCore")

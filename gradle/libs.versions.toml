@@ -1,6 +1,7 @@
 [versions]
 accompanistDrawablepainter = "0.37.3"
 agp = "8.12.0-alpha04"
+annotation = "1.9.1"
 playIntegrity = "1.4.0"
 libsu = "6.0.0"
 kotlin = "2.1.21"
@@ -16,9 +17,11 @@ material3 = "1.4.0-alpha15"
 kotlinx-serialization-json = "1.8.1"
 uiTextGoogleFonts = "1.8.2"
 splashscreen = "1.0.1"
+annotationJvm = "1.9.1"
 
 [libraries]
 accompanist-drawablepainter = { module = "com.google.accompanist:accompanist-drawablepainter", version.ref = "accompanistDrawablepainter" }
+androidx-annotation = { module = "androidx.annotation:annotation", version.ref = "annotation" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "splashscreen" }
 androidx-ui-text-google-fonts = { module = "androidx.compose.ui:ui-text-google-fonts", version.ref = "uiTextGoogleFonts" }
@@ -43,6 +46,7 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 lottie-compose = { module = "com.airbnb.android:lottie-compose", version.ref = "lottieCompose" }
 
 topjohnwu-libsu-core = { module = "com.github.topjohnwu.libsu:core", version.ref = "libsu" }
+androidx-annotation-jvm = { group = "androidx.annotation", name = "annotation-jvm", version.ref = "annotationJvm" }
 
 #shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku_version" }
 #shizuku-provider = { module = "dev.rikka.shizuku:provider", version.ref = "shizuku_version" }

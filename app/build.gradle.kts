@@ -1,5 +1,3 @@
-import java.util.Properties
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -34,9 +32,8 @@ android {
             )
         }
         create("foss_release") {
-            versionNameSuffix = "foss"
+            versionNameSuffix = "_foss"
             isMinifyEnabled = false
-            isShrinkResources = true
         }
     }
     compileOptions {
@@ -53,6 +50,8 @@ android {
 }
 
 dependencies {
+
+    implementation(project(":suCore"))
 
     implementation(libs.androidx.splashscreen)
     implementation(libs.androidx.core.ktx)
@@ -77,7 +76,7 @@ dependencies {
     /// Kotlinx
     implementation(libs.kotlinx.serialization.json)
 
-    implementation(libs.topjohnwu.libsu.core)
+    //implementation(libs.topjohnwu.libsu.core)
     implementation(libs.lottie.compose)
 
     //implementation(libs.shizuku.api)
