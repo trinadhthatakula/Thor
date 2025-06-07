@@ -13,7 +13,7 @@ Original project: https://github.com/topjohnwu/libsu
 - Removed usage of Android `Context` as a static field to prevent potential memory leaks.
 - Refactored code to follow Kotlin best practices and idioms.
 
-#### ⚠️ Caution
+## ⚠️ Caution
 
 The changes made here are specifically to support the Thor project and may not be compatible with other use cases. please use the original [libsu](https://github.com/topjohnwu/libsu) project for all your purposes.
 
