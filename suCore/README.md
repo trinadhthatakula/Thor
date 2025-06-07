@@ -19,4 +19,6 @@ The changes made here are specifically to support the Thor project and may not b
 
 ## License
 
-This project inherits the license from the original [libsu](https://github.com/topjohnwu/libsu) project. Please refer to their [LICENSE](https://github.com/topjohnwu/libsu/blob/master/LICENSE) file for details.
+- The original [libsu](https://github.com/topjohnwu/libsu) project is licensed under the Apache License 2.0. All modifications and usage in this module comply with the Apache-2.0 requirements.
+- This module, as part of the Thor project, is distributed under the GNU General Public License v3.0 (GPL-3.0).
+- See the [LICENSE](../LICENSE) file for the full license text.

@@ -56,5 +56,6 @@
 ## License
 This project is licensed under the GNU General Public License v3.0 (GPL-3.0).
 
-- `libsu` is also licensed under GPL v3.0. All modifications and usage comply with the original license.
+- `libsu` is licensed under the Apache License 2.0. All modifications and usage in this project comply with the Apache-2.0 requirements.
+- This project as a whole is distributed under the GNU General Public License v3.0 (GPL-3.0).
 - See the [LICENSE](LICENSE) file for full license text.
