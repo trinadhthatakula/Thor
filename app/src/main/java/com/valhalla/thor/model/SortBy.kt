@@ -4,25 +4,23 @@ import com.valhalla.thor.R
 
 enum class SortBy {
     NAME,
-    SIZE,
+    //SIZE,
     INSTALL_DATE,
     LAST_UPDATED,
     VERSION_CODE,
     VERSION_NAME,
     TARGET_SDK_VERSION,
-    MIN_SDK_VERSION,
-    MAX_SDK_VERSION;
+    MIN_SDK_VERSION;
 
     fun asGeneralName(): String = when (this) {
         NAME -> "Name"
-        SIZE -> "Size"
+        //SIZE -> "Size"
         INSTALL_DATE -> "Install Date"
         LAST_UPDATED -> "Last Updated"
         VERSION_CODE -> "Version Code"
         VERSION_NAME -> "Version Name"
         TARGET_SDK_VERSION -> "Target SDK Version"
         MIN_SDK_VERSION -> "Min SDK Version"
-        MAX_SDK_VERSION -> "Max SDK Version"
     }
 }
 
@@ -30,9 +28,7 @@ fun SortBy.isDateBased(): Boolean = this == SortBy.INSTALL_DATE || this == SortB
 
 fun SortBy.isVersionBased(): Boolean = this == SortBy.VERSION_CODE || this == SortBy.VERSION_NAME
 
-fun SortBy.isSdkBased(): Boolean = this == SortBy.TARGET_SDK_VERSION || this == SortBy.MIN_SDK_VERSION || this == SortBy.MAX_SDK_VERSION
-
-fun SortBy.isSizeBased(): Boolean = this == SortBy.SIZE
+fun SortBy.isSdkBased(): Boolean = this == SortBy.TARGET_SDK_VERSION || this == SortBy.MIN_SDK_VERSION
 
 fun SortBy.isNameBased(): Boolean = this == SortBy.NAME
 
