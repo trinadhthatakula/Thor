@@ -22,7 +22,9 @@ data class AppInfo(
     var sharedLibraryFiles: List<String>? = emptyList(),
     var obbFilePath: String? = null,
     var sourceDir: String? = null,
-    var sharedDataDir: String = ""
+    var sharedDataDir: String = "",
+    var lastUpdateTime: Long = 0L,
+    var firstInstallTime: Long = 0L,
 )
 
 fun AppInfo.formattedAppName() = appName?.replace(" ", "_") ?: packageName

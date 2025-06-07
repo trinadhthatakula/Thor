@@ -1,5 +1,8 @@
 package com.valhalla.thor.ui.widgets
 
+import android.R.attr.onClick
+import android.R.attr.rotation
+import android.R.attr.text
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,14 +17,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonColors
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -42,7 +49,7 @@ import com.valhalla.thor.model.getAppIcon
 import com.valhalla.thor.model.rootAvailable
 
 sealed interface AppClickAction {
-    data class Logcat(val appInfo: AppInfo): AppClickAction
+    //data class Logcat(val appInfo: AppInfo): AppClickAction
     data class Launch(val appInfo: AppInfo) : AppClickAction
     data class Share(val appInfo: AppInfo) : AppClickAction
     data class Uninstall(val appInfo: AppInfo) : AppClickAction
@@ -77,7 +84,7 @@ fun AppInfoDialog(
         ) {
 
             Row(modifier = Modifier.align(Alignment.End)){
-                IconButton(
+                /*IconButton(
                     onClick = {
                         onAppAction(AppClickAction.Logcat(appInfo))
                     },
@@ -90,7 +97,7 @@ fun AppInfoDialog(
                         tint = MaterialTheme.colorScheme.onBackground,
                         modifier = Modifier.padding(10.dp)
                     )
-                }
+                }*/
                 IconButton(
                     onClick = {
                         onAppAction(AppClickAction.AppInfoSettings(appInfo))
@@ -171,8 +178,8 @@ fun AppInfoDialog(
                         if (appInfo.isSystem) {
                             getConfirmation = true
                         } else {
-                            onDismiss()
                             onAppAction(AppClickAction.Uninstall(appInfo))
+                            onDismiss()
                         }
                     } else {
                         onAppAction(it)
@@ -186,10 +193,35 @@ fun AppInfoDialog(
     }
 
     if (getConfirmation) {
-        UninstallConfirmationDialog(
-            appInfo = appInfo,
-            onDismiss = { getConfirmation = false },
-            onAppAction = onAppAction
+        AlertDialog(
+            onDismissRequest = {
+                getConfirmation = false
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onAppAction(AppClickAction.Uninstall(appInfo))
+                        getConfirmation = false
+                    }
+                ) {
+                    Text("Yes")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        getConfirmation = false
+                    }
+                ) {
+                    Text("No")
+                }
+            },
+            title = {
+                Text("Uninstall ${appInfo.appName}?")
+            },
+            text = {
+                Text("Are you sure you want to uninstall ${appInfo.appName}?${if (appInfo.isSystem) "\nthis is a system app it might be risky, you can freeze them instead" else ""}")
+            }
         )
     }
 
@@ -258,13 +290,12 @@ fun FloatingBar(
             ) {
                 onAppAction(AppClickAction.Kill(appInfo))
             }
-        if (appInfo.isSystem.not())
+        if (appInfo.packageName != "com.valhalla.thor" && appInfo.packageName !="com.android.vending")
             AppActionItem(
                 icon = R.drawable.delete_forever,
                 text = "Uninstall",
             ) {
                 onAppAction(AppClickAction.Uninstall(appInfo))
-                onDismiss()
             }
 
     }
@@ -292,10 +323,7 @@ fun AppActionItem(
             onClick = {
                 onClick()
             },
-            colors = IconButtonDefaults.iconButtonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            )
+            colors = IconButtonDefaults.filledIconButtonColors()
         ) {
             Icon(
                 painter = painterResource(id = icon),
@@ -304,6 +332,55 @@ fun AppActionItem(
                     .padding(2.dp)
                     .size(30.dp)
                     .padding(3.dp)
+            )
+        }
+        Text(
+            text,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            modifier = Modifier
+                .padding(horizontal = 5.dp)
+                .padding(bottom = 5.dp),
+            color = MaterialTheme.colorScheme.onBackground
+        )
+    }
+}
+
+
+@Preview(showBackground = true)
+@Composable
+fun RotatableActionItem(
+    modifier: Modifier = Modifier,
+    icon: Int = R.drawable.open_in_new,
+    rotation: Float = 0f,
+    text: String = "Launch",
+    colors: IconButtonColors = IconButtonDefaults.iconButtonColors(),
+    onClick: () -> Unit = {},
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier = modifier
+            .padding(horizontal = 2.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .clickable {
+                onClick()
+            }
+    ) {
+        IconButton(
+            onClick = {
+                onClick()
+            },
+            colors = colors
+        ) {
+            Icon(
+                painter = painterResource(id = icon),
+                text,
+                modifier = Modifier
+                    .padding(2.dp)
+                    .size(30.dp)
+                    .padding(3.dp)
+                    .rotate(rotation)
             )
         }
         Text(

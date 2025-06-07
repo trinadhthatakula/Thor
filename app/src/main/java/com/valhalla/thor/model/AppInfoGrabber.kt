@@ -63,6 +63,8 @@ class AppInfoGrabber(private val context: Context) {
                             Environment.getExternalStorageDirectory(),
                             "Android/data/${a.packageName}"
                         ).absolutePath
+                        lastUpdateTime = p.lastUpdateTime
+                        firstInstallTime = p.firstInstallTime
                     }
                 )
             }
@@ -125,6 +127,8 @@ class AppInfoGrabber(private val context: Context) {
                             Environment.getExternalStorageDirectory(),
                             "Android/data/${a.packageName}"
                         ).absolutePath
+                        lastUpdateTime = p.lastUpdateTime
+                        firstInstallTime = p.firstInstallTime
                     }
                 )
             }
