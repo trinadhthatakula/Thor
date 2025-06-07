@@ -2,40 +2,38 @@ package com.valhalla.thor.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.googlefonts.Font
-import androidx.compose.ui.text.googlefonts.GoogleFont
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import com.valhalla.thor.R
+import androidx.compose.ui.text.font.Font as ResFont
 
-/**
- * Downloadable fonts:
- * These fonts will be downloaded on user's end if they have internet connection
- */
-val provider = GoogleFont.Provider(
-    providerAuthority = "com.google.android.gms.fonts",
-    providerPackage = "com.google.android.gms",
-    certificates = R.array.com_google_android_gms_fonts_certs
-)
 
 val firaMonoFontFamily = FontFamily(
-    Font(
-        googleFont = GoogleFont("Fira Mono"),
-        fontProvider = provider,
-    )
+    ResFont(resId = R.font.firacode_variable)
 )
 
 val bodyFontFamily = FontFamily(
-    Font(
-        googleFont = GoogleFont("Outfit"),
-        fontProvider = provider,
-    )
+    ResFont(resId = R.font.outfit_regular, weight = FontWeight.Normal, style = FontStyle.Normal),
+    ResFont(resId = R.font.outfit_black, weight = FontWeight.Black, style = FontStyle.Normal),
+    ResFont(resId = R.font.outfit_bold, weight = FontWeight.Bold, style = FontStyle.Normal),
+    ResFont(resId = R.font.outfit_extrabold, weight = FontWeight.ExtraBold, style = FontStyle.Normal),
+    ResFont(resId = R.font.outfit_extralight, weight = FontWeight.ExtraLight, style = FontStyle.Normal),
+    ResFont(resId = R.font.outfit_light, weight = FontWeight.Light, style = FontStyle.Normal),
+    ResFont(resId = R.font.outfit_medium, weight = FontWeight.Medium, style = FontStyle.Normal),
+    ResFont(resId = R.font.outfit_semibold, weight = FontWeight.SemiBold, style = FontStyle.Normal),
+    ResFont(resId = R.font.outfit_thin, weight = FontWeight.Thin, style = FontStyle.Normal),
+    ResFont(resId = R.font.outfit_regular, weight = FontWeight.Normal, style = FontStyle.Italic),
+    ResFont(resId = R.font.outfit_black, weight = FontWeight.Black, style = FontStyle.Italic),
+    ResFont(resId = R.font.outfit_bold, weight = FontWeight.Bold, style = FontStyle.Italic),
+    ResFont(resId = R.font.outfit_extrabold, weight = FontWeight.ExtraBold, style = FontStyle.Italic),
+    ResFont(resId = R.font.outfit_extralight, weight = FontWeight.ExtraLight, style = FontStyle.Italic),
+    ResFont(resId = R.font.outfit_light, weight = FontWeight.Light, style = FontStyle.Italic),
+    ResFont(resId = R.font.outfit_medium, weight = FontWeight.Medium, style = FontStyle.Italic),
+    ResFont(resId = R.font.outfit_semibold, weight = FontWeight.SemiBold, style = FontStyle.Italic),
+    ResFont(resId = R.font.outfit_thin, weight = FontWeight.Thin, style = FontStyle.Italic),
 )
 
-val displayFontFamily = FontFamily(
-    Font(
-        googleFont = GoogleFont("Outfit"),
-        fontProvider = provider,
-    )
-)
+val displayFontFamily = bodyFontFamily
 
 // Default Material 3 typography values
 val baseline = Typography()

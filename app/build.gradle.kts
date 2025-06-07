@@ -10,14 +10,14 @@ plugins {
 android {
 
     namespace = "com.valhalla.thor"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.valhalla.thor"
         minSdk = 24
-        targetSdk = 35
-        versionCode = 1501
-        versionName = "1.501"
+        targetSdk = 36
+        versionCode = 1600
+        versionName = "1.600"
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         val p = Properties()
@@ -83,7 +83,7 @@ dependencies {
 
     implementation(libs.lottie.compose)
 
-    implementation(libs.androidx.ui.text.google.fonts)
+    //implementation(libs.androidx.ui.text.google.fonts)
     implementation(libs.play.integrity)
 
 
