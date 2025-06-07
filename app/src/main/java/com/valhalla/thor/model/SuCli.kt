@@ -14,10 +14,10 @@ import android.util.Log.e
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
-import com.topjohnwu.superuser.CallbackList
-import com.topjohnwu.superuser.Shell
-import com.topjohnwu.superuser.ShellUtils
-import com.topjohnwu.superuser.ShellUtils.fastCmd
+import com.valhalla.superuser.CallbackList
+import com.valhalla.superuser.Shell
+import com.valhalla.superuser.ShellUtils
+import com.valhalla.superuser.ShellUtils.fastCmd
 import com.valhalla.thor.BuildConfig
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
