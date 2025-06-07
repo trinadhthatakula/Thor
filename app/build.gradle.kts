@@ -20,13 +20,6 @@ android {
         versionName = "1.600"
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        val p = Properties()
-        p.load(project.rootProject.file("local.properties").reader())
-        buildConfigField(
-            type = "String",
-            name = "API_URL",
-            value = "\"${p.getProperty("API_URL")}\""
-        )
     }
     dependenciesInfo {
         includeInApk = false
@@ -39,6 +32,11 @@ android {
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             )
+        }
+        create("foss_release") {
+            versionNameSuffix = "foss"
+            isMinifyEnabled = false
+            isShrinkResources = true
         }
     }
     compileOptions {
@@ -80,12 +78,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     implementation(libs.topjohnwu.libsu.core)
-
     implementation(libs.lottie.compose)
-
-    //implementation(libs.androidx.ui.text.google.fonts)
-    implementation(libs.play.integrity)
-
 
     //implementation(libs.shizuku.api)
     //implementation(libs.shizuku.provider)
