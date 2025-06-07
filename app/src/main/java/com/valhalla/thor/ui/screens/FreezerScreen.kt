@@ -46,15 +46,19 @@ import com.valhalla.thor.model.SortBy
 import com.valhalla.thor.model.SortOrder
 import com.valhalla.thor.model.getAppIcon
 import com.valhalla.thor.ui.widgets.AppClickAction
+import com.valhalla.thor.ui.widgets.AppGrid
 import com.valhalla.thor.ui.widgets.AppInfoDialog
 import com.valhalla.thor.ui.widgets.AppList
 import com.valhalla.thor.ui.widgets.TypeWriterText
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlin.String
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun AppListScreen(
+fun FreezerScreen(
     modifier: Modifier = Modifier,
-    title: String = "App List",
+    title: String = "Freezer",
     icon: Int = R.drawable.thor_mono,
     customSelection: AppListType? = null,
     userAppList: List<AppInfo>,
@@ -62,7 +66,7 @@ fun AppListScreen(
     isRefreshing: Boolean = false,
     onAppAction: (AppClickAction) -> Unit = {},
     onRefresh: () -> Unit = {},
-    onMultiAppAction: (MultiAppAction) -> Unit = {}
+    onMultiAppAction: (MultiAppAction) -> Unit = {},
 ) {
 
     var installers by remember {
@@ -72,10 +76,10 @@ fun AppListScreen(
         )
     }
     var selectedFilterType: FilterType by remember {
-        mutableStateOf(FilterType.Source)
+        mutableStateOf(FilterType.State)
     }
     var selectedFilter: String? by remember {
-        mutableStateOf("All")
+        mutableStateOf("Frozen")
     }
     var selectedSortBy: SortBy by rememberSaveable {
         mutableStateOf(SortBy.NAME)
@@ -126,6 +130,7 @@ fun AppListScreen(
             }
 
             FilterType.State -> {
+
                 when (selectedFilter) {
                     "All" -> {
                         if (selectedAppListType == AppListType.USER) userAppList else systemAppList
@@ -239,6 +244,7 @@ fun AppListScreen(
             onRefresh = onRefresh,
             state = state
         ) {
+
             AppList(
                 appListType = selectedAppListType,
                 installers = installers,
@@ -247,11 +253,12 @@ fun AppListScreen(
                 sortBy = selectedSortBy,
                 sortOrder = selectedSortOrder,
                 appList = filteredList,
+                startAsGrid = true,
                 onFilterTypeChanged = {
                     selectedFilterType = it
                     selectedFilter = when (it) {
                         FilterType.Source -> "All"
-                        FilterType.State -> "All"
+                        FilterType.State -> "Frozen"
                     }
                 },
                 onSortByChanged = {
@@ -288,9 +295,9 @@ fun AppListScreen(
                 } else {
                     onAppAction(it)
                 }
-            }
+            },
 
-        )
+            )
     }
 
     if (reinstallAppInfo != null) {
@@ -335,32 +342,5 @@ fun AppListScreen(
         )
     }
 
-}
-
-fun List<AppInfo>.getSorted(
-    selectedSortBy: SortBy,
-    selectedSortOrder: SortOrder
-): List<AppInfo> {
-    return if (selectedSortOrder == SortOrder.ASCENDING) {
-        when (selectedSortBy) {
-            SortBy.NAME -> sortedBy { it.appName }
-            SortBy.INSTALL_DATE -> sortedBy { it.firstInstallTime }
-            SortBy.LAST_UPDATED -> sortedBy { it.lastUpdateTime }
-            SortBy.VERSION_CODE -> sortedBy { it.versionCode }
-            SortBy.VERSION_NAME -> sortedBy { it.versionName }
-            SortBy.TARGET_SDK_VERSION -> sortedBy { it.targetSdk }
-            SortBy.MIN_SDK_VERSION -> sortedBy { it.minSdk }
-        }
-    } else {
-        when (selectedSortBy) {
-            SortBy.NAME -> sortedByDescending { it.appName }
-            SortBy.INSTALL_DATE -> sortedByDescending { it.firstInstallTime }
-            SortBy.LAST_UPDATED -> sortedByDescending { it.lastUpdateTime }
-            SortBy.VERSION_CODE -> sortedByDescending { it.versionCode }
-            SortBy.VERSION_NAME -> sortedByDescending { it.versionName }
-            SortBy.TARGET_SDK_VERSION -> sortedByDescending { it.targetSdk }
-            SortBy.MIN_SDK_VERSION -> sortedByDescending { it.minSdk }
-        }
-    }
 }
 
