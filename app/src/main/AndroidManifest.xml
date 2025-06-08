@@ -10,9 +10,8 @@
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="ReservedSystemPermission" />
 
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"
-        tools:ignore="RequestInstallPackagesPolicy" />
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+
 
     <application
         android:name=".ThorApplication"
