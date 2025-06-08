@@ -3,8 +3,17 @@
   <img src="app/src/main/thor_drawn-playstore.png" alt="Thor Logo" height="192dp">
 </p>
 
-
 <h1 align="center">Thor App Manager</h1>
+
+<p align="center">
+  <a href="https://play.google.com/store/apps/details?id=com.valhalla.thor" target="_blank">
+    <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="60">
+  </a>
+  &nbsp;
+  <a href="https://apt.izzysoft.de/fdroid/index/apk/com.valhalla.thor" target="_blank">
+    <img src="https://gitlab.com/IzzyOnDroid/repo/-/raw/master/assets/IzzyOnDroid.png" alt="Get it on IzzyOnDroid" height="60">
+  </a>
+</p>
 
 <p align="center">
   <a href="https://t.me/thorAppDev">Telegram Channel</a>
