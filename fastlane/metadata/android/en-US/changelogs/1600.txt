@@ -1,40 +1,11 @@
-<h2>Thor v1.6</h2>
+Major backend improvements for root operations
+Initial support for Android 16
+New filters: filter apps by state or installation source
+Sorting options: sort apps by name, install date, last updated, version, etc.,
+Removed integrity checks, downloadable fonts, and unused dependencies
+Added new grid view for app lists
+Switched to Material Expressive Theme
+Frozen app icons are now greyed out
 
-<b>What's new:</b>
-<ul>
-  <li>Major backend improvements for root operations (migrated from <code>libsu</code> to in-app <code>suCore</code> module)</li>
-  <li>Initial support for Android 16</li>
-  <li>New filters: filter apps by state or installation source</li>
-  <li>Sorting options: sort apps by name, install date, last updated, version, etc., in ascending or descending order</li>
-  <li>Removed integrity checks, downloadable fonts, and unused dependencies</li>
-  <li>Added new grid view for app lists</li>
-  <li>Switched to Material Expressive Theme</li>
-  <li>Numerous UI tweaks</li>
-  <li>Frozen app icons are now greyed out</li>
-</ul>
-
-<b>Bug Fixes:</b>
-<ul>
-  <li>Fixed system app uninstaller bug; system apps can now be uninstalled individually</li>
-</ul>
-
-<b>Work In Progress:</b>
-<ul>
-  <li>Settings UI and more features coming soon</li>
-</ul>
-
-<b>APK Size:</b><br>
-Release Build -&gt; Less than 2.2MB<br>
-Foss Build -&gt; Around 9.1MB (no code and resource compression)
-
-<b>Credits:</b>
-<ul>
-  <li>This release includes code from <a href="https://github.com/topjohnwu/libsu">libsu</a> by @topjohnwu, which has been adapted and integrated as the <code>suCore</code> module in this app.</li>
-  <li><code>libsu</code> is licensed under Apache-2.0 license. All modifications and usage comply with the original license.</li>
-</ul>
-
-<b>Full Changelog:</b><br>
-<a href="https://github.com/trinadhthatakula/Thor/compare/Thor_v1501...Thor_v1600">Thor_v1501...Thor_v1600</a><br><br>
-
-<a href="https://play.google.com/store/apps/details?id=com.valhalla.thor">Play Store Release</a>
-<a href="https://t.me/c/2488326563/448">Telegram release</a>
+Bug Fixes:
+Fixed system app uninstaller bug; system apps can now be uninstalled individually
