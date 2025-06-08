@@ -1,1 +1,56 @@
-<p><i>Thor App Manager</i> is an Android App Manager and App Installer utility.</p><p><br><b>Features:</b></p><ul><li>Fully reproducible, copylefted libre software (GPLv3+)</li><li>Material 3 with dynamic colours</li><li>Displays App List while sorting them based on Installation source</li><li>Launch App Activities</li><li>Install/Uninstall Apk files</li><li>Reinstall APKs/app with Google</li><li>Share App Apk file</li><li>Batch Reinstall/Uninstall</li><li>Split App Indicator</li><li>AppState Indicator (frozen = disabled)</li></ul><p>More to come.</p>
+<p><b>Thor App Manager</b> is a modern, open-source Android app manager and installer, designed for power users and enthusiasts who value control, privacy, and efficiency.</p>
+
+<p>Thor is built 100% in Kotlin, following Material 3 design principles and leveraging Jetpack Compose for a smooth, responsive user experience. With a focus on minimalism, Thor delivers a full-featured app management suite in an APK smaller than 2.20 MB.</p>
+
+<p><b>Key Features:</b></p>
+<ul>
+  <li>Fully reproducible, copylefted libre software (GPLv3.0)</li>
+  <li>Material 3 UI with dynamic color support</li>
+  <li>Displays installed apps with advanced sorting and filtering (including by installation source)</li>
+  <li>Launch app activities directly</li>
+  <li>Install, uninstall, freeze, and unfreeze apps (including system apps)</li>
+  <li>Reinstall APKs or apps via Google Play</li>
+  <li>Share APK files easily</li>
+  <li>Batch operations: reinstall, uninstall, or kill multiple apps at once</li>
+  <li>Split APK indicator for apps using multiple APKs</li>
+  <li>App state indicator (e.g., frozen = disabled)</li>
+  <li>Uninstall and freeze/unfreeze system apps</li>
+  <li>Lightweight and fast, with a focus on privacy and no analytics or trackers</li>
+</ul>
+
+<p><b>Features in Testing:</b></p>
+<ul>
+  <li>New settings UI</li>
+  <li>Packages.xml editor (based on community scripts)</li>
+</ul>
+
+<p><b>Upcoming Features:</b></p>
+<ul>
+  <li>Overall application overview (new home UI)</li>
+  <li>Advanced Packages.xml editing</li>
+  <li>App installer and batch install</li>
+  <li>App data backup</li>
+  <li>Option to choose installers when reinstalling</li>
+  <li>And many more enhancements</li>
+</ul>
+
+<p><b>Technical Highlights:</b></p>
+<ul>
+  <li>100% Kotlin codebase for modern Android development</li>
+  <li>Smallest possible APK size for a full-featured app manager</li>
+  <li>Uses a modularized, fully Kotlin-converted version of <a href="https://github.com/topjohnwu/libsu">libsu</a> (as <i>suCore</i>) for root operations</li>
+</ul>
+
+<p><b>Credits:</b></p>
+<ul>
+  <li>Portions of this app use code from <a href="https://github.com/topjohnwu/libsu">libsu</a> by topjohnwu, adapted and integrated as the <a href="https://github.com/trinadhthatakula/Thor/tree/master/suCore">suCore</a> module.</li>
+  <li>libsu was fully converted from Java to Kotlin and modularized for Thor, with significant code size reduction and optimizations.</li>
+</ul>
+
+<p><b>License:</b></p>
+<ul>
+  <li>Thor App Manager is licensed under the GNU General Public License v3.0 (GPL-3.0).</li>
+  <li>libsu is licensed under the Apache License 2.0. All modifications and usage comply with Apache-2.0 requirements.</li>
+</ul>
+
+<p>No analytics, no trackers, no nonsense. Thor is free and open source—forever.</p>
