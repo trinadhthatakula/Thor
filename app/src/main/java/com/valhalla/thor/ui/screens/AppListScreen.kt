@@ -71,10 +71,10 @@ fun AppListScreen(
                 .apply { add(0, "All") }.toList()
         )
     }
-    var selectedFilterType: FilterType by remember {
+    var selectedFilterType: FilterType by rememberSaveable {
         mutableStateOf(FilterType.Source)
     }
-    var selectedFilter: String? by remember {
+    var selectedFilter: String? by rememberSaveable {
         mutableStateOf("All")
     }
     var selectedSortBy: SortBy by rememberSaveable {
