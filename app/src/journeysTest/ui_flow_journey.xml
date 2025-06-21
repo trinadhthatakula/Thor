@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<journey name="UI Flow Journey">
+    <description>Thor functionality</description>
+    <actions>
+        <action>tap on App List</action>
+        <action>Tap on first item in the list</action>
+        <action>Tap Back</action>
+        <action>Tap Home</action>
+        <action>Tap on the icon at top right corner and wait for the toast</action>
+        <action>Tap on Freezer</action>
+    </actions>
+</journey>
