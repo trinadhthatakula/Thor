@@ -1,7 +1,9 @@
 package com.valhalla.thor.model
 
 import com.valhalla.thor.R
+import kotlinx.serialization.Serializable
 
+@Serializable
 enum class SortBy {
     NAME,
     //SIZE,
@@ -32,6 +34,7 @@ fun SortBy.isSdkBased(): Boolean = this == SortBy.TARGET_SDK_VERSION || this == 
 
 fun SortBy.isNameBased(): Boolean = this == SortBy.NAME
 
+@Serializable
 enum class SortOrder {
     ASCENDING,
     DESCENDING;

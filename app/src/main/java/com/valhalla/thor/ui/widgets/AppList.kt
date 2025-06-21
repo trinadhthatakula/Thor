@@ -378,7 +378,8 @@ fun AppList(
                                             .size(30.dp)
                                     )
                             },
-                            modifier = Modifier.Companion
+                            modifier = Modifier
+                                .animateItem()
                                 .clip(RoundedCornerShape(10.dp))
                                 .clickable {
                                 }
@@ -407,6 +408,7 @@ fun AppList(
                             verticalArrangement = Arrangement.Center,
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
+                                .animateItem()
                                 .fillMaxWidth()
                                 .height(110.dp)
                                 .combinedClickable(

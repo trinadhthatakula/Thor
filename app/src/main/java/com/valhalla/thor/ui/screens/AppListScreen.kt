@@ -71,7 +71,7 @@ fun AppListScreen(
                 .apply { add(0, "All") }.toList()
         )
     }
-    var selectedFilterType: FilterType by rememberSaveable {
+    var selectedFilterType: FilterType by remember {
         mutableStateOf(FilterType.Source)
     }
     var selectedFilter: String? by rememberSaveable {

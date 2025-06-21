@@ -1,5 +1,6 @@
 package com.valhalla.thor.model
 
+import kotlinx.serialization.Serializable
 
 sealed interface FilterType {
     data object Source : FilterType
