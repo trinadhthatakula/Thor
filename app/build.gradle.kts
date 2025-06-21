@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlinSerialization)
+    alias(libs.plugins.baselineprofile)
 }
 
 android {
@@ -14,8 +15,8 @@ android {
         applicationId = "com.valhalla.thor"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1602
-        versionName = "1.602"
+        versionCode = 1605
+        versionName = "1.605"
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -31,10 +32,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             )
         }
-        create("foss_release") {
+        /*create("foss_release") {
             versionNameSuffix = "_foss"
             isMinifyEnabled = false
-        }
+        }*/
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
@@ -61,11 +62,13 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.profileinstaller)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
+    "baselineProfile"(project(":app:baselineprofile"))
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 

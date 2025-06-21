@@ -23,3 +23,4 @@ dependencyResolutionManagement {
 rootProject.name = "Thor"
 include(":app")
 include(":suCore")
+include(":app:baselineprofile")
