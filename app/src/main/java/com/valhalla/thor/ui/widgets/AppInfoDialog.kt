@@ -271,7 +271,7 @@ fun FloatingBar(
             onAppAction(AppClickAction.Share(appInfo))
         }
 
-        if (rootAvailable())
+        //if (rootAvailable())
             AppActionItem(
                 icon = if (isFrozen) R.drawable.unfreeze else R.drawable.frozen,
                 text = if (isFrozen) "Unfreeze" else "Freeze",

@@ -1,6 +1,5 @@
 package com.valhalla.thor.ui.widgets
 
-import android.R.attr.label
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -45,7 +44,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,7 +52,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.SolidColor
@@ -386,7 +383,7 @@ fun AppList(
                                 .combinedClickable(
                                     onClick = {
                                         if (multiSelect.isEmpty()) {
-                                            getSplits(it.packageName.toString())
+                                            getSplits(it.packageName)
                                             onAppInfoSelected(it)
                                         } else {
                                             if (multiSelect.contains(it))

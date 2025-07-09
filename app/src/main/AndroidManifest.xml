@@ -12,6 +12,8 @@
 
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
 
+    <uses-permission android:name="shizuku.permission.API_V23" />
+
     <application
         android:name=".ThorApplication"
         android:allowBackup="true"
@@ -44,13 +46,13 @@
                 android:resource="@xml/provider_paths" />
         </provider>
 
-        <!--<provider
+        <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="${applicationId}.shizuku"
             android:enabled="true"
             android:exported="true"
             android:multiprocess="false"
-            android:permission="shizuku.permission.API_V23" />-->
+            android:permission="shizuku.permission.API_V23" />
 
     </application>
 
