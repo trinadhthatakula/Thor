@@ -42,6 +42,7 @@
 - Uninstall System Apps
 - Freeze/UnFreeze System apps
 - Sorting & filters
+- Shizuku Support
 
 ## Features in Testing 
 - New Settings UI
