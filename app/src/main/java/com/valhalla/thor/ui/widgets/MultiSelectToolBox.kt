@@ -14,10 +14,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.MultiAppAction
 import com.valhalla.thor.model.rootAvailable
+import com.valhalla.thor.model.shizuku.ShizukuState
+import com.valhalla.thor.model.shizuku.shizukuManager
 
 @Composable
 fun MultiSelectToolBox(
@@ -28,6 +31,8 @@ fun MultiSelectToolBox(
 ) {
     var hasFrozen by remember { mutableStateOf(selected.any { it.enabled.not() }) }
     var hasUnFrozen by remember { mutableStateOf(selected.any { it.enabled }) }
+
+    val shizukuState by shizukuManager.shizukuState.collectAsStateWithLifecycle()
 
     LaunchedEffect(selected) {
         hasFrozen = selected.any { it.enabled.not() }
@@ -52,6 +57,8 @@ fun MultiSelectToolBox(
                             onMultiAppAction(MultiAppAction.ReInstall(selected))
                         }
                     )
+                }
+                if(rootAvailable() || shizukuState == ShizukuState.Ready) {
                     if (hasUnFrozen)
                         AppActionItem(
                             icon = R.drawable.frozen,
