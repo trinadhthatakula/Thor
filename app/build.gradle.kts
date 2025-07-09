@@ -26,8 +26,8 @@ android {
         applicationId = "com.valhalla.thor"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1605
-        versionName = "1.605"
+        versionCode = 1650
+        versionName = "1.650"
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -78,6 +78,7 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
 
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
 
     implementation(libs.accompanist.drawablepainter)
 
@@ -86,7 +87,8 @@ dependencies {
 
     implementation(libs.lottie.compose)
 
-    //implementation(libs.shizuku.api)
-    //implementation(libs.shizuku.provider)
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
+    implementation(libs.hiddenapibypass)
 
 }
