@@ -1,8 +1,6 @@
 [versions]
 accompanistDrawablepainter = "0.37.3"
 agp = "8.12.0-alpha08"
-annotation = "1.9.1"
-playIntegrity = "1.4.0"
 libsu = "6.0.0"
 kotlin = "2.2.0"
 coreKtx = "1.16.0"
@@ -15,21 +13,18 @@ composeBom = "2025.06.01"
 lottieCompose = "6.6.7"
 material3 = "1.4.0-alpha17"
 kotlinx-serialization-json = "1.9.0"
-uiTextGoogleFonts = "1.8.3"
 splashscreen = "1.0.1"
 annotationJvm = "1.9.1"
 uiautomator = "2.3.0"
 benchmarkMacroJunit4 = "1.3.4"
 baselineprofile = "1.3.4"
 profileinstaller = "1.4.1"
+#shizuku = "13.1.5"
 
 [libraries]
 accompanist-drawablepainter = { module = "com.google.accompanist:accompanist-drawablepainter", version.ref = "accompanistDrawablepainter" }
-androidx-annotation = { module = "androidx.annotation:annotation", version.ref = "annotation" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "splashscreen" }
-androidx-ui-text-google-fonts = { module = "androidx.compose.ui:ui-text-google-fonts", version.ref = "uiTextGoogleFonts" }
-play-integrity = { module = "com.google.android.play:integrity", version.ref = "playIntegrity" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
@@ -49,16 +44,14 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 
 lottie-compose = { module = "com.airbnb.android:lottie-compose", version.ref = "lottieCompose" }
 
-topjohnwu-libsu-core = { module = "com.github.topjohnwu.libsu:core", version.ref = "libsu" }
 androidx-annotation-jvm = { group = "androidx.annotation", name = "annotation-jvm", version.ref = "annotationJvm" }
 androidx-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
 androidx-benchmark-macro-junit4 = { group = "androidx.benchmark", name = "benchmark-macro-junit4", version.ref = "benchmarkMacroJunit4" }
 androidx-profileinstaller = { group = "androidx.profileinstaller", name = "profileinstaller", version.ref = "profileinstaller" }
 
-#shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku_version" }
-#shizuku-provider = { module = "dev.rikka.shizuku:provider", version.ref = "shizuku_version" }
+#shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku" }
+#shizuku-provider = { module = "dev.rikka.shizuku:provider", version.ref = "shizuku" }
 
-#tabler-icon = { group = "io.github.lyxnx.compose.ui", name = "tabler-icons-android", version = "3.29.0" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

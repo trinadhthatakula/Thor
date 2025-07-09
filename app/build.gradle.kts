@@ -1,9 +1,20 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlinSerialization)
     alias(libs.plugins.baselineprofile)
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_21)
+        optIn.add("kotlin.RequiresOptIn")
+        optIn.add("kotlin.time.ExperimentalTime")
+        optIn.add("androidx.compose.material3.ExperimentalMaterial3ExpressiveApi")
+    }
 }
 
 android {
@@ -32,18 +43,12 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             )
         }
-        /*create("foss_release") {
-            versionNameSuffix = "_foss"
-            isMinifyEnabled = false
-        }*/
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
     }
-    kotlinOptions {
-        jvmTarget = "21"
-    }
+
     buildFeatures {
         buildConfig = true
         compose = true
@@ -53,6 +58,7 @@ android {
 dependencies {
 
     implementation(project(":suCore"))
+    "baselineProfile"(project(":app:baselineprofile"))
 
     implementation(libs.androidx.splashscreen)
     implementation(libs.androidx.core.ktx)
@@ -68,7 +74,6 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
-    "baselineProfile"(project(":app:baselineprofile"))
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 
@@ -79,7 +84,6 @@ dependencies {
     /// Kotlinx
     implementation(libs.kotlinx.serialization.json)
 
-    //implementation(libs.topjohnwu.libsu.core)
     implementation(libs.lottie.compose)
 
     //implementation(libs.shizuku.api)
