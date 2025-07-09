@@ -21,6 +21,7 @@ import com.valhalla.superuser.ShellUtils.fastCmd
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.model.shizuku.ElevatableState
 import com.valhalla.thor.model.shizuku.Shizuku
+import com.valhalla.thor.model.shizuku.ShizukuState
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
@@ -409,12 +410,12 @@ suspend fun Context.disableApps(
         appInfos.forEach { appInfo ->
             if (elevatableState == ElevatableState.SU)
                 observer(fastCmd(getRootShell(), "su -c pm disable ${appInfo.packageName}"))
-            else{
+            else if (elevatableState == ElevatableState.SHIZUKU_RUNNING) {
                 if(Shizuku.setAppDisabled(
-                    this,
-                    appInfo.packageName,
-                    true
-                ).not()){
+                        this,
+                        appInfo.packageName,
+                        true
+                    ).not()){
                     observer("Failed to disable ${appInfo.appName}")
                 }else {
                     observer("Disabled ${appInfo.appName}")
@@ -440,12 +441,12 @@ suspend fun Context.enableApps(
         appInfos.forEach { appInfo ->
             if (elevatableState == ElevatableState.SU)
                 observer(fastCmd(getRootShell(), "su -c pm enable ${appInfo.packageName}"))
-            else {
+            else if (elevatableState == ElevatableState.SHIZUKU_RUNNING) {
                 if(Shizuku.setAppDisabled(
-                    this,
-                    appInfo.packageName,
-                    false
-                ).not()) {
+                        this,
+                        appInfo.packageName,
+                        false
+                    ).not()) {
                     observer("Failed to enable ${appInfo.appName}")
                 }else {
                     observer("Enabled ${appInfo.appName}")
@@ -768,5 +769,15 @@ fun AppInfo.showLogs(observer: (String) -> Unit, exit: () -> Unit) {
         }
     }
 }
+
+fun getRootStatusText(isRoot: Boolean, shizukuState: ShizukuState): String {
+    return if (isRoot) "Root access granted" else when (shizukuState) {
+        ShizukuState.NotInstalled -> "Root access is not available"
+        ShizukuState.NotRunning -> "Shizuku is not running"
+        ShizukuState.PermissionNeeded -> "Shizuku permission is needed"
+        ShizukuState.Ready -> "Shizuku is running"
+    }
+}
+
 
 

@@ -218,7 +218,7 @@ object Shizuku {
                 }
                 waitFor() to inputStream.text.ifBlank { errorStream.text }.also { destroy() }
             }
-    }.getOrElse { 0 to it.stackTraceToString() }
+    }.getOrElse { -1 to it.stackTraceToString() }
 
     private val ParcelFileDescriptor.text
         get() = ParcelFileDescriptor.AutoCloseInputStream(this).use { it.bufferedReader().readText() }

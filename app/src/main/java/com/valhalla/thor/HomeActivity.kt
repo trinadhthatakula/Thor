@@ -1,6 +1,7 @@
 package com.valhalla.thor
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -20,7 +21,9 @@ class HomeActivity : ComponentActivity() {
             if (rootAvailable().not() && shizukuManager.shizukuStateRaw == ShizukuState.PermissionNeeded) {
                 shizukuManager.requestPermission()
             }
-        }catch (_: Exception){ }
+        } catch (e: Exception) {
+            Log.e("HomeActivity", "Error requesting Shizuku permission", e)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

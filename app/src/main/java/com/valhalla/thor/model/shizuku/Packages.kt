@@ -67,7 +67,7 @@ class Packages(private val app : Context) {
         getApplicationInfoOrNull(packageName)?.sourceDir?.startsWith("/data") ?: false
 
     fun forceStopApp(packageName: String): Boolean = runCatching {
-        app.getSystemService<ActivityManager>()!!.let {
+        app.getSystemService<ActivityManager>()?.let {
             if (Targets.P) HiddenApiBypass.invoke(it::class.java, it, "forceStopPackage", packageName)
             else it::class.java.getMethod("forceStopPackage", String::class.java).invoke(it, packageName)
         }
@@ -94,7 +94,7 @@ class Packages(private val app : Context) {
 
     @RequiresApi(Build.VERSION_CODES.P)
     fun setAppRestricted(packageName: String, restricted: Boolean): Boolean = runCatching {
-        app.getSystemService<AppOpsManager>()!!.let {
+        app.getSystemService<AppOpsManager>()?.let {
             HiddenApiBypass.invoke(
                 it::class.java,
                 it,

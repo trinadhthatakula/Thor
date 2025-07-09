@@ -257,8 +257,7 @@ fun HomePage(
     LaunchedEffect(hasAffirmation) {
         if (hasAffirmation) {
             canExit = false
-            @Suppress("SimplifyBooleanWithConstants")
-            reinstalling == false
+            reinstalling = false
             termLoggerTitle = when (multiAction) {
                 is MultiAppAction.Freeze -> "Freezing Apps.,"
                 is MultiAppAction.Kill -> "Killing Apps..,"
@@ -500,7 +499,7 @@ suspend fun processAppAction(
                 val appInfo = appAction.appInfo
                 try {
                     if (appInfo.enabled.not()) {
-                        if (rootAvailable()) {
+                        if (elevatableState == ElevatableState.SU || elevatableState == ElevatableState.SHIZUKU_RUNNING) {
                             context.enableApps(appInfo, elevatableState = elevatableState) {
                                 if (launchApp(appInfo.packageName).isSuccess.not()) {
                                     observer("Failed to launch ${appInfo.appName}")

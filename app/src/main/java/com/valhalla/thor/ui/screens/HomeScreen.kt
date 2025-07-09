@@ -64,6 +64,7 @@ import com.valhalla.thor.model.AppListType
 import com.valhalla.thor.model.shizuku.ElevatableState
 import com.valhalla.thor.model.shizuku.ShizukuState
 import com.valhalla.thor.model.generateRandomColors
+import com.valhalla.thor.model.getRootStatusText
 import com.valhalla.thor.model.rootAvailable
 import com.valhalla.thor.model.shizuku.shizukuManager
 import com.valhalla.thor.ui.theme.greenDark
@@ -140,17 +141,7 @@ fun HomeContent(
 
             var rootStatus by remember {
                 mutableStateOf(
-                    try {
-                        if (rootAvailable()) "Root access granted" else when (shizukuState) {
-                            ShizukuState.NotInstalled -> "Root access is not available"
-                            ShizukuState.NotRunning -> "Shizuku is not running"
-                            ShizukuState.PermissionNeeded -> "Shizuku permission is needed"
-                            ShizukuState.Ready -> "Shizuku is running"
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        "Root access not available"
-                    }
+                    getRootStatusText(rootAvailable(),shizukuState)
                 )
             }
             var rootIcon by remember { mutableIntStateOf(R.drawable.magisk_icon) }
@@ -162,21 +153,11 @@ fun HomeContent(
                     }
                     elevatable = when(shizukuState){
                         ShizukuState.NotInstalled -> ElevatableState.SHIZUKU_NOT_INSTALLED
-                        ShizukuState.NotRunning -> ElevatableState.SHIZUKU_NOT_INSTALLED
+                        ShizukuState.NotRunning -> ElevatableState.SHIZUKU_NOT_RUNNING
                         ShizukuState.PermissionNeeded -> ElevatableState.SHIZUKU_PERMISSION_NEEDED
                         ShizukuState.Ready -> ElevatableState.SHIZUKU_RUNNING
                     }
-                    rootStatus = try {
-                        if (rootAvailable()) "Root access granted" else when (shizukuState) {
-                            ShizukuState.NotInstalled -> "Root access is not available"
-                            ShizukuState.NotRunning -> "Shizuku is not running"
-                            ShizukuState.PermissionNeeded -> "Shizuku permission is needed"
-                            ShizukuState.Ready -> "Shizuku is running"
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        "Root access not available"
-                    }
+                    rootStatus = getRootStatusText(rootAvailable(),shizukuState)
                 }else{
                     elevatable = ElevatableState.SU
                 }
