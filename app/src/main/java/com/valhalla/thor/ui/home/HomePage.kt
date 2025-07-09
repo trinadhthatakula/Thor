@@ -23,9 +23,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.core.net.toUri
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfoGrabber
+import com.valhalla.thor.model.shizuku.ElevatableState
 import com.valhalla.thor.model.MultiAppAction
 import com.valhalla.thor.model.disableApps
 import com.valhalla.thor.model.enableApps
@@ -46,9 +48,9 @@ import com.valhalla.thor.ui.screens.HomeActions
 import com.valhalla.thor.ui.screens.HomeScreen
 import com.valhalla.thor.ui.widgets.AffirmationDialog
 import com.valhalla.thor.ui.widgets.AppClickAction
-import com.valhalla.thor.ui.widgets.CustomAction
 import com.valhalla.thor.ui.widgets.MultiAppAffirmationDialog
 import com.valhalla.thor.ui.widgets.TermLoggerDialog
+import com.valhalla.thor.viewModel.HomeViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -56,6 +58,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun HomePage(
     modifier: Modifier = Modifier,
+    homeViewModel: HomeViewModel = viewModel(),
     onExit: () -> Unit
 ) {
 
@@ -190,11 +193,11 @@ fun HomePage(
                 systemAppList = systemAppList,
                 isRefreshing = isRefreshing,
                 onRefresh = { isRefreshing = true },
-                onAppAction = {
-                    appAction = it
+                onAppAction = { aAction ->
+                    appAction = aAction
                 },
-                onMultiAppAction = {
-                    multiAction = it
+                onMultiAppAction = { mAction ->
+                    multiAction = mAction
                 }
             )
 
@@ -225,17 +228,8 @@ fun HomePage(
             is AppClickAction.Share -> "Share App"
             is AppClickAction.UnFreeze -> "Defrosting"
             is AppClickAction.Uninstall -> "Uninstalling..,"
-            /*is AppClickAction.Logcat -> {
-                //canExit = true
-                customAction = CustomAction(
-                    R.drawable.ios_share,
-                    "Export Logs"
-                )
-                showTerminate = true
-                "Neko Logger"
-            }*/
 
-            null -> {
+            else -> {
                 logObserver = emptyList()
                 reinstalling = false
                 ""
@@ -243,7 +237,9 @@ fun HomePage(
         }
         if (appAction != null) {
             processAppAction(
-                context, appAction!!,
+                context,
+                homeViewModel.getElevatableState(),
+                appAction!!,
                 observer = {
                     logObserver += it
                 },
@@ -261,6 +257,7 @@ fun HomePage(
     LaunchedEffect(hasAffirmation) {
         if (hasAffirmation) {
             canExit = false
+            @Suppress("SimplifyBooleanWithConstants")
             reinstalling == false
             termLoggerTitle = when (multiAction) {
                 is MultiAppAction.Freeze -> "Freezing Apps.,"
@@ -282,6 +279,7 @@ fun HomePage(
             if (multiAction != null) {
                 processMultiAppAction(
                     context,
+                    elevatableState = homeViewModel.getElevatableState(),
                     multiAction!!,
                     observer = {
                         logObserver += it
@@ -366,6 +364,7 @@ fun HomePage(
 
 suspend fun processMultiAppAction(
     context: Context,
+    elevatableState: ElevatableState = ElevatableState.NONE,
     multiAction: MultiAppAction,
     observer: (String) -> Unit,
     exit: () -> Unit
@@ -379,7 +378,8 @@ suspend fun processMultiAppAction(
                 context.disableApps(
                     *activeApps.toTypedArray(),
                     observer = observer,
-                    exit = exit
+                    exit = exit,
+                    elevatableState = elevatableState
                 )
             }
 
@@ -415,6 +415,7 @@ suspend fun processMultiAppAction(
                 val frozenApps = selectedAppInfos.filter { it.enabled.not() }
                 context.enableApps(
                     *frozenApps.toTypedArray(),
+                    elevatableState = elevatableState,
                     observer = observer,
                     exit = exit
                 )
@@ -448,6 +449,7 @@ suspend fun processMultiAppAction(
 
 suspend fun processAppAction(
     context: Context,
+    elevatableState: ElevatableState = ElevatableState.NONE,
     appAction: AppClickAction,
     observer: (String) -> Unit,
     exit: () -> Unit
@@ -476,7 +478,7 @@ suspend fun processAppAction(
             }
 
             is AppClickAction.Freeze -> {
-                context.disableApps(appAction.appInfo, exit = exit)
+                context.disableApps(appAction.appInfo, exit = exit, elevatableState = elevatableState)
             }
 
             is AppClickAction.Kill -> {
@@ -499,11 +501,11 @@ suspend fun processAppAction(
                 try {
                     if (appInfo.enabled.not()) {
                         if (rootAvailable()) {
-                            context.enableApps(appInfo, exit = {
+                            context.enableApps(appInfo, elevatableState = elevatableState) {
                                 if (launchApp(appInfo.packageName).isSuccess.not()) {
                                     observer("Failed to launch ${appInfo.appName}")
                                 }
-                            })
+                            }
                         } else {
                             observer("Failed to launch ${appInfo.appName}")
                         }
@@ -547,7 +549,7 @@ suspend fun processAppAction(
             AppClickAction.ReinstallAll -> {}
 
             is AppClickAction.UnFreeze -> {
-                context.enableApps(appAction.appInfo, exit = exit)
+                context.enableApps(appAction.appInfo, elevatableState = elevatableState, exit = exit)
             }
 
             is AppClickAction.Uninstall -> {

@@ -19,6 +19,8 @@ import com.valhalla.superuser.Shell
 import com.valhalla.superuser.ShellUtils
 import com.valhalla.superuser.ShellUtils.fastCmd
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.model.shizuku.ElevatableState
+import com.valhalla.thor.model.shizuku.Shizuku
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
@@ -161,13 +163,13 @@ fun shareSplitApks(
         observer("generating .Apks file")
         val tempFolder = File(context.filesDir, "shareApp")
         val appFolder = File(tempFolder, appInfo.formattedAppName())
-        val apksFile = File(tempFolder,"${appInfo.formattedAppName()}.apks")
+        val apksFile = File(tempFolder, "${appInfo.formattedAppName()}.apks")
         val infoFile = File(appFolder, "info.json")
         val iconFile = File(appFolder, "icon.png")
         if (appFolder.exists() || appFolder.mkdirs()) {
             apksMetadataGenerator.generateJson(appInfo, infoFile)
             observer("App Metadata generated")
-            if(getAppIcon(appInfo.packageName,context)?.toFile(iconFile) == true)
+            if (getAppIcon(appInfo.packageName, context)?.toFile(iconFile) == true)
                 observer("App Icon generated")
             else observer("Failed to generate App Icon")
             var copyCounter = 0
@@ -181,7 +183,7 @@ fun shareSplitApks(
                 else
                     observer("Failed to copy ${Path(path).name}")
             }
-            if (copyCounter == splitPaths.size){
+            if (copyCounter == splitPaths.size) {
                 observer("Split apks copied")
                 observer("Compressing splits into single .Apks file")
                 ZipOutputStream(BufferedOutputStream(apksFile.outputStream())).use { out ->
@@ -209,7 +211,7 @@ fun shareSplitApks(
                 }
                 observer("Apks file generated")
                 observer("Deleting temp files")
-                if(appFolder.deleteRecursively()!=true)
+                if (appFolder.deleteRecursively() != true)
                     observer("Failed to delete temp files")
                 observer("Calling Share Intent")
                 val intent = Intent(Intent.ACTION_SEND)
@@ -230,7 +232,7 @@ fun shareSplitApks(
                 )
                 observer("exiting runner")
                 exit()
-            }else {
+            } else {
                 observer("Failed to copy all splits")
                 observer("exiting runner")
                 exit()
@@ -251,7 +253,8 @@ fun shareApp(appInfo: AppInfo, context: Context) {
                 try {
                     Log.i(TAG, "shareApp: $baseApkPath")
                     val tempFolder = File(context.filesDir, "shareApp")
-                    val baseFile = File(tempFolder, "${appInfo.formattedAppName()}_${appInfo.versionName}.apk")
+                    val baseFile =
+                        File(tempFolder, "${appInfo.formattedAppName()}_${appInfo.versionName}.apk")
                     if (fastCmd("su -c cp $baseApkPath ${baseFile.absolutePath}").isEmpty()) {
                         val intent = Intent(Intent.ACTION_SEND)
                         intent.type = "application/vnd.android.package-archive"
@@ -395,15 +398,28 @@ fun reInstallAppsWithGoogle(appInfos: List<AppInfo>, observer: (String) -> Unit,
 
 }
 
-fun Context.disableApps(
+suspend fun Context.disableApps(
     vararg appInfos: AppInfo,
     observer: (String) -> Unit = {},
-    exit: () -> Unit = {}
+    exit: () -> Unit = {},
+    elevatableState: ElevatableState = ElevatableState.NONE
 ) {
     try {
         observer("Freezing apps...")
         appInfos.forEach { appInfo ->
-            observer(fastCmd(getRootShell(), "su -c pm disable ${appInfo.packageName}"))
+            if (elevatableState == ElevatableState.SU)
+                observer(fastCmd(getRootShell(), "su -c pm disable ${appInfo.packageName}"))
+            else{
+                if(Shizuku.setAppDisabled(
+                    this,
+                    appInfo.packageName,
+                    true
+                ).not()){
+                    observer("Failed to disable ${appInfo.appName}")
+                }else {
+                    observer("Disabled ${appInfo.appName}")
+                }
+            }
         }
     } catch (e: Exception) {
         e.printStackTrace()
@@ -413,15 +429,28 @@ fun Context.disableApps(
     }
 }
 
-fun Context.enableApps(
+suspend fun Context.enableApps(
     vararg appInfos: AppInfo,
+    elevatableState: ElevatableState = ElevatableState.NONE,
     observer: (String) -> Unit = {},
     exit: () -> Unit = {}
 ) {
     try {
         observer("UnFreezing apps...")
         appInfos.forEach { appInfo ->
-            observer(fastCmd(getRootShell(), "su -c pm enable ${appInfo.packageName}"))
+            if (elevatableState == ElevatableState.SU)
+                observer(fastCmd(getRootShell(), "su -c pm enable ${appInfo.packageName}"))
+            else {
+                if(Shizuku.setAppDisabled(
+                    this,
+                    appInfo.packageName,
+                    false
+                ).not()) {
+                    observer("Failed to enable ${appInfo.appName}")
+                }else {
+                    observer("Enabled ${appInfo.appName}")
+                }
+            }
         }
     } catch (e: Exception) {
         e.printStackTrace()
@@ -690,19 +719,23 @@ fun readTargets(context: Context): List<String> {
     return emptyList()
 }
 
-var stopLogger: (()->Unit)? = null
+var stopLogger: (() -> Unit)? = null
 
-fun AppInfo.showLogs(observer: (String) -> Unit, exit: () -> Unit){
+fun AppInfo.showLogs(observer: (String) -> Unit, exit: () -> Unit) {
 
     observer("Log Cat search $packageName")
     observer("try getting pId")
-    val pId = fastCmd(getRootShell(), "logcat -c",(if(rootAvailable())"su -c" else "")+"pidof $packageName").trim()
-    val logCommand = if(pId.isNotEmpty()){
+    val pId = fastCmd(
+        getRootShell(),
+        "logcat -c",
+        (if (rootAvailable()) "su -c" else "") + "pidof $packageName"
+    ).trim()
+    val logCommand = if (pId.isNotEmpty()) {
         observer("pId found")
         observer("")
         observer("")
         "logcat | grep $pId"
-    }else {
+    } else {
         observer("pId not found")
         observer("")
         observer("fallback to use packageName instead")
@@ -711,12 +744,12 @@ fun AppInfo.showLogs(observer: (String) -> Unit, exit: () -> Unit){
     Runtime.getRuntime().exec("logcat -c")/// clear logcat
     Runtime.getRuntime().exec(logCommand).let { process ->
         stopLogger = {
-            if(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     process.isAlive
                 } else {
                     true
                 }
-            ){
+            ) {
                 observer("stopping logcat")
                 exit()
                 process.destroy()
@@ -729,7 +762,7 @@ fun AppInfo.showLogs(observer: (String) -> Unit, exit: () -> Unit){
                         observer(line)
                     }
                 }
-            }catch (e: Exception){
+            } catch (e: Exception) {
                 e.printStackTrace()
             }
         }

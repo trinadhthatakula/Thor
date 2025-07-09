@@ -56,14 +56,20 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.AppListType
+import com.valhalla.thor.model.shizuku.ElevatableState
+import com.valhalla.thor.model.shizuku.ShizukuState
 import com.valhalla.thor.model.generateRandomColors
 import com.valhalla.thor.model.rootAvailable
+import com.valhalla.thor.model.shizuku.shizukuManager
 import com.valhalla.thor.ui.theme.greenDark
 import com.valhalla.thor.ui.theme.greenLight
 import com.valhalla.thor.ui.widgets.TypeWriterText
+import com.valhalla.thor.viewModel.HomeViewModel
 
 sealed interface HomeActions {
     data class ShowToast(val text: String, val longDuration: Boolean = false) : HomeActions
@@ -95,7 +101,6 @@ fun HomeScreen(
         } else onHomeActions(homeAction)
     }
 
-
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -107,7 +112,7 @@ fun HomeContent(
     systemAppList: List<AppInfo> = emptyList(),
     onHomeActions: (HomeActions) -> Unit = {}
 ) {
-
+    val shizukuState by shizukuManager.shizukuState.collectAsStateWithLifecycle()
     Column(modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
@@ -133,11 +138,48 @@ fun HomeContent(
                 textAlign = TextAlign.Start
             )
 
-            val rootStatus = try {
-                if (rootAvailable()) "Root access granted" else "Root access not available"
-            } catch (e: Exception) {
-                e.printStackTrace()
-                "Root access not available"
+            var rootStatus by remember {
+                mutableStateOf(
+                    try {
+                        if (rootAvailable()) "Root access granted" else when (shizukuState) {
+                            ShizukuState.NotInstalled -> "Root access is not available"
+                            ShizukuState.NotRunning -> "Shizuku is not running"
+                            ShizukuState.PermissionNeeded -> "Shizuku permission is needed"
+                            ShizukuState.Ready -> "Shizuku is running"
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        "Root access not available"
+                    }
+                )
+            }
+            var rootIcon by remember { mutableIntStateOf(R.drawable.magisk_icon) }
+            var elevatable by remember { mutableStateOf(ElevatableState.NONE) }
+            LaunchedEffect(shizukuState) {
+                if (!rootAvailable()) {
+                    if(shizukuState == ShizukuState.Ready || shizukuState == ShizukuState.PermissionNeeded){
+                        rootIcon = R.drawable.shizuku
+                    }
+                    elevatable = when(shizukuState){
+                        ShizukuState.NotInstalled -> ElevatableState.SHIZUKU_NOT_INSTALLED
+                        ShizukuState.NotRunning -> ElevatableState.SHIZUKU_NOT_INSTALLED
+                        ShizukuState.PermissionNeeded -> ElevatableState.SHIZUKU_PERMISSION_NEEDED
+                        ShizukuState.Ready -> ElevatableState.SHIZUKU_RUNNING
+                    }
+                    rootStatus = try {
+                        if (rootAvailable()) "Root access granted" else when (shizukuState) {
+                            ShizukuState.NotInstalled -> "Root access is not available"
+                            ShizukuState.NotRunning -> "Shizuku is not running"
+                            ShizukuState.PermissionNeeded -> "Shizuku permission is needed"
+                            ShizukuState.Ready -> "Shizuku is running"
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        "Root access not available"
+                    }
+                }else{
+                    elevatable = ElevatableState.SU
+                }
             }
             TooltipBox(
                 positionProvider = TooltipDefaults.rememberTooltipPositionProvider(10.dp),
@@ -149,9 +191,9 @@ fun HomeContent(
                 state = rememberTooltipState()
             ) {
                 Icon(
-                    painterResource(R.drawable.magisk_icon),
+                    painterResource(rootIcon),
                     "Root Icon",
-                    tint = if (rootAvailable()) {
+                    tint = if (elevatable == ElevatableState.SU || elevatable == ElevatableState.SHIZUKU_RUNNING) {
                         if (isSystemInDarkTheme()) greenDark else greenLight
                     } else MaterialTheme.colorScheme.error,
                     modifier = Modifier
@@ -159,6 +201,9 @@ fun HomeContent(
                         .size(30.dp)
                         .clip(CircleShape)
                         .clickable {
+                            if(elevatable == ElevatableState.SHIZUKU_PERMISSION_NEEDED){
+                                shizukuManager.requestPermission()
+                            }
                             onHomeActions(HomeActions.ShowToast(rootStatus))
                         }
                         .padding(3.dp)
@@ -342,7 +387,9 @@ fun HomeContent(
         }
 
         val canReinstallAll = false
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 10.dp)) {
+        Column(modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 5.dp, vertical = 10.dp)) {
 
             val unknownAppsCount by animateIntAsState(userAppList.count {
                 it.installerPackageName != "com.android.vending"
