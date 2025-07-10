@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
+import android.util.Log
 import android.view.InputEvent
 import android.view.KeyEvent
 import androidx.annotation.RequiresApi
@@ -17,6 +18,7 @@ import org.lsposed.hiddenapibypass.HiddenApiBypass
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
+import java.lang.reflect.InvocationTargetException
 
 object Shizuku {
 
@@ -85,6 +87,23 @@ object Shizuku {
                 String::class.java
             ).invoke(pm, packageName, newState, 0, Packages(context).myUserId, BuildConfig.APPLICATION_ID)
         }.onFailure {
+            if(it is InvocationTargetException){
+                Shizuku.addBinderReceivedListener {
+                    if(Shizuku.pingBinder()){
+                        setAppDisabled(context,packageName,disabled)
+                    }else {
+                        Log.d("Shizuku", "setAppDisabled: failed to get shizuku ")
+                    }
+                }
+                Shizuku.addBinderDeadListener {
+                    if(Shizuku.pingBinder()){
+                        setAppDisabled(context,packageName,disabled)
+                    }else {
+                        Log.d("Shizuku", "setAppDisabled: failed to get shizuku ")
+                    }
+                }
+                Shizuku.requestPermission(1001)
+            }
             it.printStackTrace()
         }
         return Packages(context).isAppDisabled(packageName) == disabled

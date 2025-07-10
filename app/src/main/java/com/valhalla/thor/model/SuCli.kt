@@ -117,8 +117,7 @@ fun rootAvailable(): Boolean {
     try {
         val shell = getRootShell()
         return shell.isRoot
-    } catch (e: Exception) {
-        e.printStackTrace()
+    } catch (_: Exception) {
         return false
     }
 }
@@ -602,12 +601,12 @@ fun editPackagesABXML(
                 )
             )
             observer("Modifying installer, installInitiator string values (except those containing xiaomi or samsung) and removing installOriginator attribute...")
-            var editedPackagesXml = File(packagesXmlPath).exists() && processPackagesXml(
+            val editedPackagesXml = File(packagesXmlPath).exists() && processPackagesXml(
                 packagesXmlPath,
                 name = "packages.xml",
                 observer = observer
             )
-            var editedWarningsXml = File(warningsXmlPath).exists() && processPackagesXml(
+            val editedWarningsXml = File(warningsXmlPath).exists() && processPackagesXml(
                 warningsXmlPath,
                 name = "packages-warnings.xml",
                 observer = observer
