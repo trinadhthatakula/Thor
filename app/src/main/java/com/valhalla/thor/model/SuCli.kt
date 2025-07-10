@@ -771,7 +771,7 @@ fun AppInfo.showLogs(observer: (String) -> Unit, exit: () -> Unit) {
 
 fun getRootStatusText(isRoot: Boolean, shizukuState: ShizukuState): String {
     return if (isRoot) "Root access granted" else when (shizukuState) {
-        ShizukuState.NotInstalled -> "Root access is not available"
+        ShizukuState.NotInstalled -> "Shizuku is not installed"
         ShizukuState.NotRunning -> "Shizuku is not running"
         ShizukuState.PermissionNeeded -> "Shizuku permission is needed"
         ShizukuState.Ready -> "Shizuku is running"

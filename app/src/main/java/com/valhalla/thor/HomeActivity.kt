@@ -30,7 +30,7 @@ class HomeActivity : ComponentActivity() {
         try {
             if (rootAvailable().not()) {
                 Packages(this).getApplicationInfoOrNull(packageName = "moe.shizuku.privileged.api").let {
-                    if (it != null) {
+                    if (it == null) {
                         shizukuManager.updateState(ShizukuState.NotInstalled)
                     }else{
                         Shizuku.addBinderReceivedListener(shizukuBinderReceivedListener)
