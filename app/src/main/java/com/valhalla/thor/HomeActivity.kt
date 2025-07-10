@@ -13,6 +13,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.valhalla.thor.model.rootAvailable
+import com.valhalla.thor.model.shizuku.Packages
 import com.valhalla.thor.model.shizuku.ShizukuManager
 import com.valhalla.thor.model.shizuku.ShizukuState
 import com.valhalla.thor.ui.home.HomePage
@@ -26,29 +27,31 @@ class HomeActivity : ComponentActivity() {
     private val requestCode = 1001
 
     fun checkShizukuPermission() {
-        Shizuku.addBinderReceivedListener(shizukuBinderReceivedListener)
-        Shizuku.addBinderDeadListener (shizukuBinderDeadListener)
-        Shizuku.addRequestPermissionResultListener (shizukuPermissionListener)
         try {
             if (rootAvailable().not()) {
-                Log.d("HomeActivity", "root not found trying shizuku")
-                if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
-                    Shizuku.requestPermission(requestCode)
-                }else{
-                    shizukuManager.updateState(ShizukuState.Ready)
-                    Log.d("HomeActivity", "Shizuku permission granted")
+                Packages(this).getApplicationInfoOrNull(packageName = "moe.shizuku.privileged.api").let {
+                    if (it != null) {
+                        shizukuManager.updateState(ShizukuState.NotInstalled)
+                    }else{
+                        Shizuku.addBinderReceivedListener(shizukuBinderReceivedListener)
+                        Shizuku.addBinderDeadListener (shizukuBinderDeadListener)
+                        Shizuku.addRequestPermissionResultListener (shizukuPermissionListener)
+                        Log.d("HomeActivity", "root not found trying shizuku")
+                        if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
+                            Shizuku.requestPermission(requestCode)
+                        }else{
+                            shizukuManager.updateState(ShizukuState.Ready)
+                            Log.d("HomeActivity", "Shizuku permission granted")
+                        }
+                        shizukuManager.updateState(ShizukuState.NotRunning)
+                    }
                 }
             }else {
                 Log.d("HomeActivity", "checkShizukuPermission: root found")
             }
-        } catch (_: Exception) {
-            Log.d("HomeActivity", "root not found with exception")
-            if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
-                Log.d("HomeActivity", "requesting shizuku")
-                shizukuManager.requestPermission(requestCode){
-                    Log.d("HomeActivity", "checkShizukuPermission: need rationale")
-                }
-            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            shizukuManager.updateState(ShizukuState.NotRunning)
         }
     }
 

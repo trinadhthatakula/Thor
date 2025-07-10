@@ -15,9 +15,6 @@
     <uses-permission android:name="shizuku.permission.API_V23" />
 
     <uses-sdk tools:overrideLibrary="rikka.shizuku.api" />
-    <queries>
-        <package android:name="moe.shizuku.privileged.api" />
-    </queries>
 
 
     <application
