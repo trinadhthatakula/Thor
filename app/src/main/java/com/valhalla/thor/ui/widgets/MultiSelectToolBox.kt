@@ -15,17 +15,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.MultiAppAction
 import com.valhalla.thor.model.rootAvailable
+import com.valhalla.thor.model.shizuku.ShizukuManager
 import com.valhalla.thor.model.shizuku.ShizukuState
-import com.valhalla.thor.model.shizuku.shizukuManager
 
 @Composable
 fun MultiSelectToolBox(
     modifier: Modifier = Modifier,
     selected: List<AppInfo> = emptyList(),
+    shizukuManager : ShizukuManager = viewModel(),
     onCancel: () -> Unit = {},
     onMultiAppAction: (MultiAppAction) -> Unit = {}
 ) {

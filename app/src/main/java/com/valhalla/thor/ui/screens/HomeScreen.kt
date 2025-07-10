@@ -1,5 +1,6 @@
 package com.valhalla.thor.ui.screens
 
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -66,11 +67,10 @@ import com.valhalla.thor.model.shizuku.ShizukuState
 import com.valhalla.thor.model.generateRandomColors
 import com.valhalla.thor.model.getRootStatusText
 import com.valhalla.thor.model.rootAvailable
-import com.valhalla.thor.model.shizuku.shizukuManager
+import com.valhalla.thor.model.shizuku.ShizukuManager
 import com.valhalla.thor.ui.theme.greenDark
 import com.valhalla.thor.ui.theme.greenLight
 import com.valhalla.thor.ui.widgets.TypeWriterText
-import com.valhalla.thor.viewModel.HomeViewModel
 
 sealed interface HomeActions {
     data class ShowToast(val text: String, val longDuration: Boolean = false) : HomeActions
@@ -111,6 +111,7 @@ fun HomeContent(
     modifier: Modifier = Modifier,
     userAppList: List<AppInfo> = emptyList(),
     systemAppList: List<AppInfo> = emptyList(),
+    shizukuManager: ShizukuManager = viewModel(),
     onHomeActions: (HomeActions) -> Unit = {}
 ) {
     val shizukuState by shizukuManager.shizukuState.collectAsStateWithLifecycle()
@@ -147,6 +148,7 @@ fun HomeContent(
             var rootIcon by remember { mutableIntStateOf(R.drawable.magisk_icon) }
             var elevatable by remember { mutableStateOf(ElevatableState.NONE) }
             LaunchedEffect(shizukuState) {
+                Log.d("HomeScreen", "HomeContent: shizuku state changed to $shizukuState")
                 if (!rootAvailable()) {
                     if(shizukuState == ShizukuState.Ready || shizukuState == ShizukuState.PermissionNeeded){
                         rootIcon = R.drawable.shizuku
@@ -182,7 +184,7 @@ fun HomeContent(
                         .size(30.dp)
                         .clip(CircleShape)
                         .clickable {
-                            if(elevatable == ElevatableState.SHIZUKU_PERMISSION_NEEDED){
+                            if (elevatable == ElevatableState.SHIZUKU_PERMISSION_NEEDED) {
                                 shizukuManager.requestPermission()
                             }
                             onHomeActions(HomeActions.ShowToast(rootStatus))

@@ -40,6 +40,7 @@ import com.valhalla.thor.model.reInstallWithGoogle
 import com.valhalla.thor.model.rootAvailable
 import com.valhalla.thor.model.shareApp
 import com.valhalla.thor.model.shareSplitApks
+import com.valhalla.thor.model.shizuku.ShizukuManager
 import com.valhalla.thor.model.stopLogger
 import com.valhalla.thor.model.uninstallSystemApp
 import com.valhalla.thor.ui.screens.AppListScreen
@@ -50,7 +51,6 @@ import com.valhalla.thor.ui.widgets.AffirmationDialog
 import com.valhalla.thor.ui.widgets.AppClickAction
 import com.valhalla.thor.ui.widgets.MultiAppAffirmationDialog
 import com.valhalla.thor.ui.widgets.TermLoggerDialog
-import com.valhalla.thor.viewModel.HomeViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -58,7 +58,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun HomePage(
     modifier: Modifier = Modifier,
-    homeViewModel: HomeViewModel = viewModel(),
+    shizukuManager: ShizukuManager = viewModel(),
     onExit: () -> Unit
 ) {
 
@@ -238,7 +238,7 @@ fun HomePage(
         if (appAction != null) {
             processAppAction(
                 context,
-                homeViewModel.getElevatableState(),
+                shizukuManager.getElevatableState(),
                 appAction!!,
                 observer = {
                     logObserver += it
@@ -278,7 +278,7 @@ fun HomePage(
             if (multiAction != null) {
                 processMultiAppAction(
                     context,
-                    elevatableState = homeViewModel.getElevatableState(),
+                    elevatableState = shizukuManager.getElevatableState(),
                     multiAction!!,
                     observer = {
                         logObserver += it
@@ -477,7 +477,7 @@ suspend fun processAppAction(
             }
 
             is AppClickAction.Freeze -> {
-                context.disableApps(appAction.appInfo, exit = exit, elevatableState = elevatableState)
+                context.disableApps(appAction.appInfo, observer = observer, exit = exit, elevatableState = elevatableState)
             }
 
             is AppClickAction.Kill -> {
@@ -500,7 +500,7 @@ suspend fun processAppAction(
                 try {
                     if (appInfo.enabled.not()) {
                         if (elevatableState == ElevatableState.SU || elevatableState == ElevatableState.SHIZUKU_RUNNING) {
-                            context.enableApps(appInfo, elevatableState = elevatableState) {
+                            context.enableApps(appInfo, elevatableState = elevatableState, observer = observer) {
                                 if (launchApp(appInfo.packageName).isSuccess.not()) {
                                     observer("Failed to launch ${appInfo.appName}")
                                 }
@@ -548,7 +548,7 @@ suspend fun processAppAction(
             AppClickAction.ReinstallAll -> {}
 
             is AppClickAction.UnFreeze -> {
-                context.enableApps(appAction.appInfo, elevatableState = elevatableState, exit = exit)
+                context.enableApps(appAction.appInfo, elevatableState = elevatableState, observer = observer, exit = exit)
             }
 
             is AppClickAction.Uninstall -> {
