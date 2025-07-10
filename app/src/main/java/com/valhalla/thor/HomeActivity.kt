@@ -26,7 +26,7 @@ class HomeActivity : ComponentActivity() {
     private val shizukuManager : ShizukuManager by viewModels()
     private val requestCode = 1001
 
-    fun checkShizukuPermission() {
+    fun checkShizuku() {
         try {
             if (rootAvailable().not()) {
                 Packages(this).getApplicationInfoOrNull(packageName = "moe.shizuku.privileged.api").let {
@@ -43,7 +43,6 @@ class HomeActivity : ComponentActivity() {
                             shizukuManager.updateState(ShizukuState.Ready)
                             Log.d("HomeActivity", "Shizuku permission granted")
                         }
-                        shizukuManager.updateState(ShizukuState.NotRunning)
                     }
                 }
             }else {
@@ -82,9 +81,9 @@ class HomeActivity : ComponentActivity() {
         enableEdgeToEdge()
         lifecycleScope.launch {
             repeatOnLifecycle(
-                Lifecycle.State.CREATED
+                state = Lifecycle.State.RESUMED
             ){
-                checkShizukuPermission()
+                checkShizuku()
             }
         }
         setContent {
