@@ -87,14 +87,14 @@ private fun flashWithIO(
 ): Shell.Result {
 
     val stdoutCallback: CallbackList<String?> = object : CallbackList<String?>() {
-        override fun onAddElement(s: String?) {
-            onStdout(s ?: "")
+        override fun onAddElement(e: String?) {
+            onStdout(e ?: "")
         }
     }
 
     val stderrCallback: CallbackList<String?> = object : CallbackList<String?>() {
-        override fun onAddElement(s: String?) {
-            onStderr(s ?: "")
+        override fun onAddElement(e: String?) {
+            onStderr(e ?: "")
         }
     }
 

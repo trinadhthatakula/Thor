@@ -107,7 +107,7 @@ fun TermLogger(
 
 @Serializable
 data class CustomAction(
-    @DrawableRes val icon: Int,
+    val icon: Int,
     val action: String
 )
 
