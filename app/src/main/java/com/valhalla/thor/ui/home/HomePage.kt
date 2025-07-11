@@ -29,6 +29,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfoGrabber
 import com.valhalla.thor.model.shizuku.ElevatableState
 import com.valhalla.thor.model.MultiAppAction
+import com.valhalla.thor.model.clearCache
 import com.valhalla.thor.model.disableApps
 import com.valhalla.thor.model.enableApps
 import com.valhalla.thor.model.killApp
@@ -168,6 +169,17 @@ fun HomePage(
                         HomeActions.SwitchAutoReinstall -> {
 
                         }
+
+                        is HomeActions.ClearCache -> {
+                            val appInfo = homeAction.appInfo
+                            if(appInfo == null){
+                                multiAction = MultiAppAction.ClearCache((userAppList+systemAppList)
+                                    .filter { ap-> ap.packageName != BuildConfig.APPLICATION_ID })
+                            }else {
+                                appAction = AppClickAction.ClearCache(appInfo)
+                            }
+                        }
+
                     }
                 }
             )
@@ -238,7 +250,7 @@ fun HomePage(
         if (appAction != null) {
             processAppAction(
                 context,
-                shizukuManager.getElevatableState(),
+                shizukuManager.elevatableState,
                 appAction!!,
                 observer = {
                     logObserver += it
@@ -269,7 +281,8 @@ fun HomePage(
                 is MultiAppAction.Share -> "Share Apps"
                 is MultiAppAction.UnFreeze -> "UnFreezing Apps..,"
                 is MultiAppAction.Uninstall -> "Uninstalling Apps..,"
-                null -> {
+                is MultiAppAction.ClearCache -> "Clearing Cache..,"
+                else -> {
                     logObserver = emptyList()
                     reinstalling = false
                     ""
@@ -278,7 +291,7 @@ fun HomePage(
             if (multiAction != null) {
                 processMultiAppAction(
                     context,
-                    elevatableState = shizukuManager.getElevatableState(),
+                    elevatableState = shizukuManager.elevatableState,
                     multiAction!!,
                     observer = {
                         logObserver += it
@@ -319,37 +332,6 @@ fun HomePage(
                 multiAction = null
                 canExit = false
             },
-            /*customAction = customAction,
-            onCustomActionClicked = { customAction ->
-                if (customAction == CustomAction(R.drawable.ios_share, "Export Logs")) {
-                    logObserver.joinToString("\n").let { logString ->
-                        *//*if (appAction is AppClickAction.Logcat) {
-                            val appInfo = (appAction as AppClickAction.Logcat).appInfo
-                            val logFile = File(
-                                context.filesDir,
-                                "logs/${appInfo.appName}.txt"
-                            )
-                            val parent = logFile.parentFile
-                            if (parent != null && (parent.exists() || parent.mkdirs())) {
-                                if (logFile.exists().not() || logFile.delete()) {
-                                    if (logFile.createNewFile())
-                                        logFile.writeText(logString)
-                                    ShareCompat.IntentBuilder(context)
-                                        .setType("text/plain")
-                                        .setText("Logs for ${appInfo.appName} shared via Thor's neko")
-                                        .setStream(
-                                            FileProvider.getUriForFile(
-                                                context,
-                                                BuildConfig.APPLICATION_ID + ".provider",
-                                                logFile
-                                            )
-                                        ).startChooser()
-                                }
-                            }
-                        }*//*
-                    }
-                }
-            },*/
             done = {
                 logObserver = emptyList()
                 appAction = null
@@ -370,6 +352,16 @@ suspend fun processMultiAppAction(
 ) {
     withContext(Dispatchers.IO) {
         when (multiAction) {
+            is MultiAppAction.ClearCache ->{
+                val appList = multiAction.appList.filter { it.packageName != BuildConfig.APPLICATION_ID }
+                clearCache(
+                    *appList.toTypedArray(),
+                    elevatableState = elevatableState,
+                    observer = observer,
+                    exit = exit
+                )
+            }
+
             is MultiAppAction.Freeze -> {
                 val selectedAppInfos = multiAction.appList
                 val activeApps =
@@ -461,6 +453,15 @@ suspend fun processAppAction(
                     observer, exit
                 )
             }*/
+
+            is AppClickAction.ClearCache ->{
+                clearCache(
+                    appAction.appInfo,
+                    observer = observer,
+                    elevatableState = elevatableState,
+                    exit = exit
+                )
+            }
 
             is AppClickAction.Share -> {
                 if (appAction.appInfo.splitPublicSourceDirs.isEmpty())
