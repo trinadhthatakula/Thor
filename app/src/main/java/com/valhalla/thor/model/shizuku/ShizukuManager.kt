@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.update
 import rikka.shizuku.Shizuku
 
 
-class ShizukuManager: ViewModel() {
+class ShizukuManager : ViewModel() {
 
     private val _shizukuState = MutableStateFlow<ShizukuState>(ShizukuState.NotInstalled)
     val shizukuState = _shizukuState.asStateFlow()
@@ -25,27 +25,29 @@ class ShizukuManager: ViewModel() {
         }
 
         shizukuStateRaw = ShizukuState.Ready
-        _shizukuState.update { shizukuStateRaw}
+        _shizukuState.update { shizukuStateRaw }
     }
 
-    fun requestPermission( requestCode: Int=1001, onRationaleNeeded: () -> Unit = {}) {
+    fun requestPermission(requestCode: Int = 1001, onRationaleNeeded: () -> Unit = {}) {
         if (Shizuku.shouldShowRequestPermissionRationale()) {
             onRationaleNeeded()
-        }else
-        Shizuku.requestPermission(requestCode)
+        } else
+            Shizuku.requestPermission(requestCode)
     }
 
 
-    fun getElevatableState() = if(rootAvailable()) ElevatableState.SU else when(shizukuStateRaw){
-        ShizukuState.NotInstalled -> ElevatableState.SHIZUKU_NOT_INSTALLED
-        ShizukuState.NotRunning -> ElevatableState.SHIZUKU_NOT_RUNNING
-        ShizukuState.PermissionNeeded -> ElevatableState.SHIZUKU_PERMISSION_NEEDED
-        ShizukuState.Ready -> ElevatableState.SHIZUKU_RUNNING
-    }
+    val elevatableState
+        get() = if (rootAvailable()) ElevatableState.SU
+        else when (shizukuStateRaw) {
+            ShizukuState.NotInstalled -> ElevatableState.SHIZUKU_NOT_INSTALLED
+            ShizukuState.NotRunning -> ElevatableState.SHIZUKU_NOT_RUNNING
+            ShizukuState.PermissionNeeded -> ElevatableState.SHIZUKU_PERMISSION_NEEDED
+            ShizukuState.Ready -> ElevatableState.SHIZUKU_RUNNING
+        }
 
     fun updateState(state: ShizukuState) {
         shizukuStateRaw = state
-        _shizukuState.update { shizukuStateRaw}
+        _shizukuState.update { shizukuStateRaw }
     }
 
 
