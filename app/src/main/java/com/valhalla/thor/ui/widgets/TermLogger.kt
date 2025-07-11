@@ -183,6 +183,19 @@ fun TermLoggerDialog(
                                 }
                             ) {
                                 Icon(
+                                    painterResource(R.drawable.danger),
+                                    "terminate process",
+                                    tint = MaterialTheme.colorScheme.onBackground
+                                )
+                            }
+                        }
+                        if(canExit){
+                            IconButton(
+                                onClick = {
+                                    done()
+                                }
+                            ) {
+                                Icon(
                                     painterResource(R.drawable.force_close),
                                     "terminate process",
                                     tint = MaterialTheme.colorScheme.onBackground

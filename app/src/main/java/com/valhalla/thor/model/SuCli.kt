@@ -1,5 +1,6 @@
 package com.valhalla.thor.model
 
+import android.annotation.SuppressLint
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
@@ -22,6 +23,8 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.model.shizuku.ElevatableState
 import com.valhalla.thor.model.shizuku.Shizuku
 import com.valhalla.thor.model.shizuku.ShizukuState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
@@ -301,14 +304,15 @@ fun shareApp(appInfo: AppInfo, context: Context) {
 
 fun copyApk(source: File, destination: File): Boolean {
     try {
-        if (!source.exists()) throw Exception("Source file does not exist")
-        destination.parentFile?.let { parentFile ->
-            return if (parentFile.mkdirs()) {
-                if (destination.exists() || destination.createNewFile())
-                    source.copyTo(destination)
-                else false
-            } else false
-        } ?: return false
+        if (source.exists() || source.createNewFile()) {
+            destination.parentFile?.let { parentFile ->
+                return if (parentFile.mkdirs()) {
+                    if (destination.exists() || destination.createNewFile())
+                        source.copyTo(destination)
+                    else false
+                } else false
+            } ?: return false
+        } else return false
     } catch (e: Exception) {
         e.printStackTrace()
         return false
@@ -398,6 +402,51 @@ fun reInstallAppsWithGoogle(appInfos: List<AppInfo>, observer: (String) -> Unit,
 
 }
 
+@SuppressLint("SdCardPath")
+suspend fun clearCache(
+    vararg appInfos: AppInfo,
+    observer: (String) -> Unit = {},
+    exit: () -> Unit = {},
+    elevatableState: ElevatableState = ElevatableState.NONE
+) {
+    Log.d(
+        TAG,
+        "clearCache: apps to clear = ${appInfos.size} with elevated state = $elevatableState"
+    )
+    withContext(Dispatchers.IO) {
+        try {
+            appInfos.forEach {
+                if (elevatableState == ElevatableState.SU) {
+                    Log.d(
+                        TAG,
+                        "clearCache: found private data dir for ${it.appName}, clearing it"
+                    )
+                    val res = fastCmd(
+                        getRootShell(),
+                        "su -c rm -rf /data/data/${it.packageName}/cache"
+                    )
+                    if (res.isEmpty())
+                        observer("Cleared cache for ${it.appName}")
+                    else Log.d(
+                        TAG,
+                        "clearCache: failed to clear cache for ${it.appName} reason: $res"
+                    )
+                } else if (elevatableState == ElevatableState.SHIZUKU_RUNNING) {
+                    if (Shizuku.clearCache(it.packageName)) {
+                        observer("Cleared cache for ${it.appName}")
+                    } else {
+                        observer("Failed to clear cache for ${it.appName}")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            observer(e.message ?: "something went wrong")
+        } finally {
+            exit()
+        }
+    }
+}
+
 suspend fun Context.disableApps(
     vararg appInfos: AppInfo,
     observer: (String) -> Unit = {},
@@ -410,13 +459,14 @@ suspend fun Context.disableApps(
             if (elevatableState == ElevatableState.SU)
                 observer(fastCmd(getRootShell(), "su -c pm disable ${appInfo.packageName}"))
             else if (elevatableState == ElevatableState.SHIZUKU_RUNNING) {
-                if(Shizuku.setAppDisabled(
+                if (Shizuku.setAppDisabled(
                         this,
                         appInfo.packageName,
                         true
-                    ).not()){
+                    ).not()
+                ) {
                     observer("Failed to disable ${appInfo.appName}")
-                }else {
+                } else {
                     observer("Disabled ${appInfo.appName}")
                 }
             }
@@ -441,13 +491,14 @@ suspend fun Context.enableApps(
             if (elevatableState == ElevatableState.SU)
                 observer(fastCmd(getRootShell(), "su -c pm enable ${appInfo.packageName}"))
             else if (elevatableState == ElevatableState.SHIZUKU_RUNNING) {
-                if(Shizuku.setAppDisabled(
+                if (Shizuku.setAppDisabled(
                         this,
                         appInfo.packageName,
                         false
-                    ).not()) {
+                    ).not()
+                ) {
                     observer("Failed to enable ${appInfo.appName}")
-                }else {
+                } else {
                     observer("Enabled ${appInfo.appName}")
                 }
             }

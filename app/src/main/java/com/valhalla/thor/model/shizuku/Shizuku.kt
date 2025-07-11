@@ -205,6 +205,34 @@ object Shizuku {
             HiddenApiBypass.invoke(it::class.java, it, "build")
         }
 
+    @SuppressLint("PrivateApi")
+    fun clearCache(packageName: String): Boolean {
+        return try {
+            val pm = asInterface("android.content.pm.IPackageManager", "package")
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                HiddenApiBypass.invoke(
+                    pm::class.java,
+                    pm,
+                    "deleteApplicationCacheFiles",
+                    packageName,
+                    null /* IPackageDataObserver */
+                )
+            } else {
+                val method = pm::class.java.getMethod(
+                    "deleteApplicationCacheFiles",
+                    String::class.java,
+                    Class.forName("android.content.pm.IPackageDataObserver")
+                )
+                method.invoke(pm, packageName, null)
+            }
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
     @RequiresApi(Build.VERSION_CODES.P)
     fun setAppRestricted(context: Context, packageName: String, restricted: Boolean): Boolean = runCatching {
         val appops = asInterface("com.android.internal.app.IAppOpsService", Context.APP_OPS_SERVICE)
