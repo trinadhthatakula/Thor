@@ -7,7 +7,6 @@ import androidx.compose.ui.text.font.FontWeight
 import com.valhalla.thor.R
 import androidx.compose.ui.text.font.Font as ResFont
 
-
 val firaMonoFontFamily = FontFamily(
     ResFont(resId = R.font.firacode_variable)
 )
