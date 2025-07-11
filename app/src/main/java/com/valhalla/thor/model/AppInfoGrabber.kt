@@ -3,6 +3,7 @@ package com.valhalla.thor.model
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Environment
@@ -134,6 +135,64 @@ class AppInfoGrabber(private val context: Context) {
             }
         }
         return res
+    }
+
+    fun getAppInfo(packageName: String) = allApps.filter { it.packageName == packageName }
+
+    fun getApkInfo(apkPath: String): ApkDetails?{
+        val packageManager = context.packageManager
+
+        // Specify flags to get the information you need, especially GET_PERMISSIONS.
+        val flags = PackageManager.GET_PERMISSIONS
+
+        val packageInfo: PackageInfo? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getPackageArchiveInfo(apkPath, PackageManager.PackageInfoFlags.of(flags.toLong()))
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getPackageArchiveInfo(apkPath, flags)
+        }
+
+        if (packageInfo == null) {
+            // The APK is likely corrupt or invalid.
+            return null
+        }
+
+        // The ApplicationInfo object holds most of the metadata.
+        // It needs to be updated with the APK path for resources like the icon and label to be loaded correctly.
+        val appInfo: ApplicationInfo? = packageInfo.applicationInfo?.apply {
+            this.sourceDir = apkPath
+            publicSourceDir = apkPath
+        }
+
+        return if(appInfo!=null) {
+            // Extract all the details.
+            val appName = packageManager.getApplicationLabel(appInfo).toString()
+            val appIcon = packageManager.getApplicationIcon(appInfo)
+            val packageName = packageInfo.packageName
+            val versionName = packageInfo.versionName
+
+            val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                packageInfo.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                packageInfo.versionCode.toLong()
+            }
+
+            val permissions = packageInfo.requestedPermissions?.toList()
+            val minSdk = appInfo.minSdkVersion
+            val targetSdk = appInfo.targetSdkVersion
+
+             ApkDetails(
+                appName = appName,
+                packageName = packageName,
+                versionName = versionName,
+                versionCode = versionCode,
+                appIcon = appIcon,
+                permissions = permissions,
+                minSdk = minSdk,
+                targetSdk = targetSdk
+            )
+        }else null
     }
 
 }
