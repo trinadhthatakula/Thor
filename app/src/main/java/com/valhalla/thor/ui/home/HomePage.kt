@@ -353,7 +353,7 @@ suspend fun processMultiAppAction(
     withContext(Dispatchers.IO) {
         when (multiAction) {
             is MultiAppAction.ClearCache ->{
-                val appList = multiAction.appList.filter { it.packageName != BuildConfig.APPLICATION_ID }
+                val appList = multiAction.appList.filter { it.packageName != BuildConfig.APPLICATION_ID && it.packageName!="com.android.vending" }
                 clearCache(
                     *appList.toTypedArray(),
                     elevatableState = elevatableState,
@@ -455,12 +455,14 @@ suspend fun processAppAction(
             }*/
 
             is AppClickAction.ClearCache ->{
-                clearCache(
-                    appAction.appInfo,
-                    observer = observer,
-                    elevatableState = elevatableState,
-                    exit = exit
-                )
+                if(appAction.appInfo.packageName != BuildConfig.APPLICATION_ID && appAction.appInfo.packageName !="com.android.vending" ) {
+                    clearCache(
+                        appAction.appInfo,
+                        observer = observer,
+                        elevatableState = elevatableState,
+                        exit = exit
+                    )
+                }
             }
 
             is AppClickAction.Share -> {
