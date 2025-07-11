@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.Thor.SplashScreen" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenAnimatedIcon">@drawable/thor_animated</item>
+        <item name="android:windowSplashScreenBackground">#000</item>
+        <item name="postSplashScreenTheme">@style/Theme.Thor</item>
+    </style>
+</resources>

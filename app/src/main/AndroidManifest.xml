@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <uses-sdk tools:overrideLibrary="rikka.shizuku.api" />
+
     <uses-permission
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="PackageVisibilityPolicy,QueryAllPackagesPermission" />
@@ -11,22 +13,18 @@
         tools:ignore="ReservedSystemPermission" />
 
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
-
     <uses-permission android:name="shizuku.permission.API_V23" />
-
-    <uses-sdk tools:overrideLibrary="rikka.shizuku.api" />
-
 
     <application
         android:name=".ThorApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
+        android:enableOnBackInvokedCallback="true"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/thor_drawn"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/thor_drawn_round"
         android:supportsRtl="true"
-        android:enableOnBackInvokedCallback="true"
         android:theme="@style/Theme.Thor.SplashScreen"
         tools:targetApi="33">
 
@@ -36,6 +34,7 @@
             android:theme="@style/Theme.Thor.SplashScreen">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
+
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
@@ -53,9 +52,9 @@
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="${applicationId}.shizuku"
-            android:multiprocess="false"
             android:enabled="true"
             android:exported="true"
+            android:multiprocess="false"
             android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
     </application>

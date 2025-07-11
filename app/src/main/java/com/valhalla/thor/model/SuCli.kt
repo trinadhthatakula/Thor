@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
 import android.os.Build
@@ -400,6 +401,30 @@ fun reInstallAppsWithGoogle(appInfos: List<AppInfo>, observer: (String) -> Unit,
         exit()
     }
 
+}
+
+fun getPackageNameFromApk(context: Context, apkPath: String): String? {
+    val packageManager = context.packageManager
+    // The flag GET_META_DATA is sufficient for what we need.
+    val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        packageManager.getPackageArchiveInfo(apkPath, PackageManager.PackageInfoFlags.of(0))
+    } else {
+        @Suppress("DEPRECATION")
+        packageManager.getPackageArchiveInfo(apkPath, 0)
+    }
+    return packageInfo?.packageName
+}
+
+fun installWithRoot(apkPath: String, observer: (String) -> Unit, onCompleted: (Result<Boolean>) -> Unit) {
+    val command = "pm install -r -g '$apkPath'"
+    val result = fastCmd(getRootShell(),command)
+    if (result.isEmpty()) {
+        observer("Installed $apkPath")
+        onCompleted(Result.success(true))
+    } else {
+        observer("Failed to install $apkPath")
+        onCompleted(Result.failure(Exception("Failed to install $apkPath")))
+    }
 }
 
 @SuppressLint("SdCardPath")
