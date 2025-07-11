@@ -1,10 +1,13 @@
 package com.valhalla.thor.ui.widgets
 
+import android.graphics.drawable.Icon
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import com.valhalla.thor.model.MultiAppAction
 
 @Composable
@@ -12,6 +15,7 @@ fun AffirmationDialog(
     modifier: Modifier = Modifier,
     title: String = "Are you sure?",
     text: String = "Some Message",
+    icon: Int? = null,
     onConfirm: () -> Unit,
     onRejected: () -> Unit
 ) {
@@ -34,6 +38,14 @@ fun AffirmationDialog(
                 }
             ) {
                 Text("No")
+            }
+        },
+        icon = {
+            icon?.let {
+                Icon(
+                    painter = painterResource(it),
+                    ""
+                )
             }
         },
         title = {
@@ -80,6 +92,12 @@ fun MultiAppAffirmationDialog(
         text = {
             Text(
                 when (multiAppAction) {
+
+                    is MultiAppAction.ClearCache -> {
+                        val appCount = multiAppAction.appList.size -1
+                        "This will clear Cache of $appCount apps, Do you want to continue?"
+                    }
+
                 is MultiAppAction.Freeze -> {
                     val activeAppsCount = multiAppAction.appList.count { it.enabled }
                     "$activeAppsCount of ${multiAppAction.appList.size} apps are active, Do you want to freeze them?"

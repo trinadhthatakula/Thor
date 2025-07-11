@@ -25,10 +25,14 @@
 * 100% Kotlin 
 * Material 3 Design 
 * Jetpack Compose
-* Smallest APK size (less than 2.20 MB)
+* PlayStore Download Size (less than 2.0 MB)
+* Smallest APK size (less than 2.50 MB)
 * FOSS - GPL-3.0
+* Fully Offline
+* No Ads/Trackers
 
 ## Working Features
+- Shizuku Support
 - Fully reproducible, copylefted libre software (GPLv3.0)
 - Material 3 with dynamic colours
 - Displays App List while sorting them based on Installation source
@@ -42,18 +46,15 @@
 - Uninstall System Apps
 - Freeze/UnFreeze System apps
 - Sorting & filters
-- Shizuku Support
 
 ## Features in Testing 
-- New Settings UI
-- Packages.xml editor based on [script]([url](https://github.com/Pixel-Props/BetterKnownInstalled?tab=readme-ov-file)) by T3SL4 @Pixel-Props
+- Clear Data/Cache
 
 ## Upcoming Features
-- Overall Application Overview (New Home UI)
+- BackUp App Data
 - Editing Packages.xml 
 - App Installer
 - Batch Install
-- BackUp App Data
 - Option to choose installers when reinstalling
 - Many more
 
