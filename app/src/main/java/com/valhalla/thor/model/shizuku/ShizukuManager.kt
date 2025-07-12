@@ -2,6 +2,8 @@ package com.valhalla.thor.model.shizuku
 
 import android.content.pm.PackageManager
 import androidx.lifecycle.ViewModel
+import com.valhalla.thor.model.formatBytesToReadable
+import com.valhalla.thor.model.getTotalCacheSize
 import com.valhalla.thor.model.rootAvailable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,7 +16,14 @@ class ShizukuManager : ViewModel() {
     private val _shizukuState = MutableStateFlow<ShizukuState>(ShizukuState.NotInstalled)
     val shizukuState = _shizukuState.asStateFlow()
 
+    private val _cacheSize = MutableStateFlow("")
+    val cacheSize = _cacheSize.asStateFlow()
+
     var shizukuStateRaw: ShizukuState = ShizukuState.NotInstalled
+
+    fun updateCacheSize() {
+        _cacheSize.update { formatBytesToReadable(getTotalCacheSize(elevatableState)) }
+    }
 
     fun checkState() {
 
