@@ -19,6 +19,8 @@ import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
 import java.lang.reflect.InvocationTargetException
+import java.text.NumberFormat
+import java.util.Locale
 
 object Shizuku {
 
@@ -231,6 +233,29 @@ object Shizuku {
             e.printStackTrace()
             false
         }
+    }
+
+    fun getTotalCacheSizeWithShizuku(): Long {
+        var totalCacheBytes = 0L
+        // Assuming you have a function to execute shell commands via Shizuku
+        val result = execute("dumpsys diskstats")
+
+        result.second?.lines()?.forEach { line ->
+            val trimmedLine = line.trim()
+            if (trimmedLine.startsWith("Cache Size:")) {
+                try {
+                    // Example line: "Cache Size: 1,234,567"
+                    val sizeString = trimmedLine.substringAfter(":").trim()
+                    // Use NumberFormat to handle commas in the string
+                    val bytes = NumberFormat.getNumberInstance(Locale.US).parse(sizeString)?.toLong() ?: 0L
+                    totalCacheBytes += bytes
+                } catch (e: Exception) {
+                    // Log error if parsing fails for a line
+                    e.printStackTrace()
+                }
+            }
+        }
+        return totalCacheBytes
     }
 
     @RequiresApi(Build.VERSION_CODES.P)

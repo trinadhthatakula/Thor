@@ -427,6 +427,31 @@ fun installWithRoot(apkPath: String, observer: (String) -> Unit, onCompleted: (R
     }
 }
 
+fun getTotalCacheSize(elevatableState: ElevatableState):Long {
+    return when (elevatableState) {
+        ElevatableState.SU -> {
+            getTotalCacheSizeWithRoot()
+        }
+        ElevatableState.SHIZUKU_RUNNING -> {
+            Shizuku.getTotalCacheSizeWithShizuku()
+        }
+        else -> 0L
+    }
+}
+
+fun getTotalCacheSizeWithRoot(): Long {
+    val command = "du -sc /data/data/*/cache | grep total"
+    val result = fastCmd(getRootShell(), command)
+    return try {
+        // The size is the first value on the line, in kilobytes.
+        val kilobytes =  result.trim().split("\\s+".toRegex()).firstOrNull()?.toLong() ?: 0L
+        kilobytes * 1024 // Convert kilobytes to bytes
+    } catch (e: Exception) {
+        e.printStackTrace()
+        0L
+    }
+}
+
 @SuppressLint("SdCardPath")
 suspend fun clearCache(
     vararg appInfos: AppInfo,
