@@ -22,17 +22,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
@@ -58,6 +61,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.valhalla.thor.R
@@ -71,7 +75,6 @@ import com.valhalla.thor.model.shizuku.ShizukuManager
 import com.valhalla.thor.model.shizuku.ShizukuState
 import com.valhalla.thor.ui.theme.greenDark
 import com.valhalla.thor.ui.theme.greenLight
-import com.valhalla.thor.ui.widgets.AffirmationDialog
 import com.valhalla.thor.ui.widgets.TypeWriterText
 
 sealed interface HomeActions {
@@ -82,7 +85,7 @@ sealed interface HomeActions {
     data object ReinstallAll : HomeActions
     data object BKI : HomeActions
 
-    data class ClearCache(val appInfo: AppInfo? = null) : HomeActions
+    data class ClearCache(var appInfos: List<AppInfo> = emptyList()) : HomeActions
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -119,6 +122,7 @@ fun HomeContent(
     onHomeActions: (HomeActions) -> Unit = {}
 ) {
     val shizukuState by shizukuManager.shizukuState.collectAsStateWithLifecycle()
+    val cacheSize by shizukuManager.cacheSize.collectAsStateWithLifecycle()
     var cacheClearRequested by remember { mutableStateOf(false) }
     Column(modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -147,7 +151,7 @@ fun HomeContent(
 
             var rootStatus by remember {
                 mutableStateOf(
-                    getRootStatusText(rootAvailable(),shizukuState)
+                    getRootStatusText(rootAvailable(), shizukuState)
                 )
             }
             var rootIcon by remember { mutableIntStateOf(R.drawable.magisk_icon) }
@@ -155,17 +159,17 @@ fun HomeContent(
             LaunchedEffect(shizukuState) {
                 Log.d("HomeScreen", "HomeContent: shizuku state changed to $shizukuState")
                 if (!rootAvailable()) {
-                    if(shizukuState == ShizukuState.Ready || shizukuState == ShizukuState.PermissionNeeded){
+                    if (shizukuState == ShizukuState.Ready || shizukuState == ShizukuState.PermissionNeeded) {
                         rootIcon = R.drawable.shizuku
                     }
-                    elevatable = when(shizukuState){
+                    elevatable = when (shizukuState) {
                         ShizukuState.NotInstalled -> ElevatableState.SHIZUKU_NOT_INSTALLED
                         ShizukuState.NotRunning -> ElevatableState.SHIZUKU_NOT_RUNNING
                         ShizukuState.PermissionNeeded -> ElevatableState.SHIZUKU_PERMISSION_NEEDED
                         ShizukuState.Ready -> ElevatableState.SHIZUKU_RUNNING
                     }
-                    rootStatus = getRootStatusText(rootAvailable(),shizukuState)
-                }else{
+                    rootStatus = getRootStatusText(rootAvailable(), shizukuState)
+                } else {
                     elevatable = ElevatableState.SU
                 }
             }
@@ -374,146 +378,160 @@ fun HomeContent(
             }
         }
 
-        Row(modifier = Modifier.padding( horizontal = 5.dp, 10.dp)) {
+        if (rootAvailable() || shizukuState == ShizukuState.Ready)
+            Row(modifier = Modifier.padding(horizontal = 5.dp, 10.dp)) {
 
-            ElevatedCard(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 5.dp)
-            ) {
-                Column(
+                ElevatedCard(
                     modifier = Modifier
-                        .padding(10.dp)
-                        .clickable {
-                            when (shizukuManager.elevatableState) {
-                                ElevatableState.SU,
-                                ElevatableState.SHIZUKU_RUNNING -> {
-                                    cacheClearRequested = true
-                                }
-
-                                ElevatableState.SHIZUKU_NOT_RUNNING -> {
-                                    onHomeActions(
-                                        HomeActions.ShowToast(
-                                            "Shizuku not running",
-                                            true
-                                        )
-                                    )
-                                }
-
-                                ElevatableState.SHIZUKU_PERMISSION_NEEDED -> {
-                                    onHomeActions(
-                                        HomeActions.ShowToast(
-                                            "Shizuku permission needed",
-                                            true
-                                        )
-                                    )
-                                }
-
-                                ElevatableState.SHIZUKU_NOT_INSTALLED,
-                                ElevatableState.NONE -> {
-                                    onHomeActions(
-                                        HomeActions.ShowToast(
-                                            "Shizuku not installed",
-                                            true
-                                        )
-                                    )
-                                }
-                            }
-                        },
-                    verticalArrangement = Arrangement.Center
+                        .weight(1f)
+                        .padding(horizontal = 5.dp)
                 ) {
-                    IconButton(
-                        onClick = {
-                            when (shizukuManager.elevatableState) {
-                                ElevatableState.SU,
-                                ElevatableState.SHIZUKU_RUNNING -> {
-                                    cacheClearRequested = true
-                                }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                when (shizukuManager.elevatableState) {
+                                    ElevatableState.SU,
+                                    ElevatableState.SHIZUKU_RUNNING -> {
+                                        cacheClearRequested = true
+                                    }
 
-                                ElevatableState.SHIZUKU_NOT_RUNNING -> {
-                                    onHomeActions(
-                                        HomeActions.ShowToast(
-                                            "Shizuku not running",
-                                            true
+                                    ElevatableState.SHIZUKU_NOT_RUNNING -> {
+                                        onHomeActions(
+                                            HomeActions.ShowToast(
+                                                "Shizuku not running",
+                                                true
+                                            )
                                         )
-                                    )
-                                }
+                                    }
 
-                                ElevatableState.SHIZUKU_PERMISSION_NEEDED -> {
-                                    onHomeActions(
-                                        HomeActions.ShowToast(
-                                            "Shizuku permission needed",
-                                            true
+                                    ElevatableState.SHIZUKU_PERMISSION_NEEDED -> {
+                                        onHomeActions(
+                                            HomeActions.ShowToast(
+                                                "Shizuku permission needed",
+                                                true
+                                            )
                                         )
-                                    )
-                                }
+                                    }
 
-                                ElevatableState.SHIZUKU_NOT_INSTALLED,
-                                ElevatableState.NONE -> {
-                                    onHomeActions(
-                                        HomeActions.ShowToast(
-                                            "Shizuku not installed",
-                                            true
+                                    ElevatableState.SHIZUKU_NOT_INSTALLED,
+                                    ElevatableState.NONE -> {
+                                        onHomeActions(
+                                            HomeActions.ShowToast(
+                                                "Shizuku not installed",
+                                                true
+                                            )
                                         )
-                                    )
+                                    }
                                 }
                             }
-                        },
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.Center
                     ) {
-                        Icon(
-                            painterResource(R.drawable.clear_all),
-                            "Clear All",
-                            modifier = Modifier
-                        )
-                    }
 
-                    Text(
-                        text = "Clear Cache (All apps)",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(horizontal = 5.dp)
-                    )
-                }
-            }
-            ElevatedCard(
-                onClick = {
-                    onHomeActions(
-                        HomeActions.ShowToast(
-                            "Work in Progress",
-                            true
-                        )
-                    )
-                },
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 5.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(10.dp),
-                    verticalArrangement = Arrangement.Center
-                ) {
+                        Row {
+                            if (rootAvailable())
+                                Text(
+                                    cacheSize,
+                                    style = MaterialTheme.typography.headlineLarge,
+                                    modifier = Modifier
+                                        .padding(horizontal = 5.dp)
+                                        .weight(1f)
+                                )
+                            IconButton(
+                                onClick = {
+                                    when (shizukuManager.elevatableState) {
+                                        ElevatableState.SU,
+                                        ElevatableState.SHIZUKU_RUNNING -> {
+                                            cacheClearRequested = true
+                                        }
 
-                    IconButton(
-                        onClick = {
+                                        ElevatableState.SHIZUKU_NOT_RUNNING -> {
+                                            onHomeActions(
+                                                HomeActions.ShowToast(
+                                                    "Shizuku not running",
+                                                    true
+                                                )
+                                            )
+                                        }
 
+                                        ElevatableState.SHIZUKU_PERMISSION_NEEDED -> {
+                                            onHomeActions(
+                                                HomeActions.ShowToast(
+                                                    "Shizuku permission needed",
+                                                    true
+                                                )
+                                            )
+                                        }
+
+                                        ElevatableState.SHIZUKU_NOT_INSTALLED,
+                                        ElevatableState.NONE -> {
+                                            onHomeActions(
+                                                HomeActions.ShowToast(
+                                                    "Shizuku not installed",
+                                                    true
+                                                )
+                                            )
+                                        }
+                                    }
+                                },
+                            ) {
+                                Icon(
+                                    painterResource(R.drawable.clear_all),
+                                    "Clear All",
+                                    modifier = Modifier
+                                )
+                            }
                         }
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.delete),
-                            "Recycle Bin"
+
+                        Text(
+                            text = "Clear Cache",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(horizontal = 5.dp)
                         )
                     }
-                    Text(
-                        text = "Recycle Bin",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(horizontal = 5.dp)
-                    )
+                }
+                ElevatedCard(
+                    onClick = {
+                        onHomeActions(
+                            HomeActions.ShowToast(
+                                "Work in Progress",
+                                true
+                            )
+                        )
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 5.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        IconButton(
+                            onClick = {
+
+                            }
+                        ) {
+                            Icon(
+                                painterResource(R.drawable.delete),
+                                "Recycle Bin"
+                            )
+                        }
+                        Text(
+                            text = "Recycle Bin",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(horizontal = 5.dp)
+                        )
+                    }
                 }
             }
-        }
         val canReinstallAll = false
-        Column(modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 5.dp, vertical = 10.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 5.dp, vertical = 10.dp)
+        ) {
 
             val unknownAppsCount by animateIntAsState(userAppList.count {
                 it.installerPackageName != "com.android.vending"
@@ -635,18 +653,65 @@ fun HomeContent(
 
     }
 
-    if(cacheClearRequested){
-        AffirmationDialog(
-            onConfirm = {
+    if (cacheClearRequested) {
+        Dialog(
+            onDismissRequest = {
                 cacheClearRequested = false
-                onHomeActions(HomeActions.ClearCache())
-            },
-            onRejected = {
-                cacheClearRequested = false
-            },
-            icon = R.drawable.clear_all,
-            text = "This will clear cache of all apps, do you still want to clear?"
-        )
+            }
+        ) {
+            Card(shape = RoundedCornerShape(15.dp)) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(5.dp)
+                ) {
+                    LoadingIndicator(modifier = Modifier.padding(5.dp))
+                    Text(
+                        "Clear Cache!",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(10.dp),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.titleLargeEmphasized
+                    )
+                    Text(
+                        "Which apps would you like to clear?",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(10.dp),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodyLargeEmphasized
+                    )
+                    Row(modifier = Modifier.padding(10.dp)) {
+                        TextButton(
+                            onClick = {
+                                cacheClearRequested = false
+                            }
+                        ) {
+                            Text("Cancel")
+                        }
+                        Spacer(modifier = Modifier.weight(1f))
+                        Button(
+                            onClick = {
+                                onHomeActions(HomeActions.ClearCache(systemAppList))
+                                cacheClearRequested = false
+                            },
+                            modifier = Modifier.padding(2.dp)
+                        ) {
+                            Text("System")
+                        }
+                        Button(
+                            onClick = {
+                                onHomeActions(HomeActions.ClearCache(userAppList))
+                                cacheClearRequested = false
+                            },
+                            modifier = Modifier.padding(2.dp)
+                        ) {
+                            Text("User")
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

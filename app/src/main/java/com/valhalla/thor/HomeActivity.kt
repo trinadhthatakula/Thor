@@ -41,11 +41,13 @@ class HomeActivity : ComponentActivity() {
                             Shizuku.requestPermission(requestCode)
                         }else{
                             shizukuManager.updateState(ShizukuState.Ready)
+                            shizukuManager.updateCacheSize()
                             Log.d("HomeActivity", "Shizuku permission granted")
                         }
                     }
                 }
             }else {
+                shizukuManager.updateCacheSize()
                 Log.d("HomeActivity", "checkShizukuPermission: root found")
             }
         } catch (e: Exception) {
@@ -69,6 +71,7 @@ class HomeActivity : ComponentActivity() {
                 if (grantResult == PackageManager.PERMISSION_GRANTED) {
                     Log.d("HomeActivity", "Shizuku permission granted")
                     shizukuManager.updateState(ShizukuState.Ready)
+                    shizukuManager.updateCacheSize()
                 } else {
                     Log.d("HomeActivity", "Shizuku permission denied")
                 }

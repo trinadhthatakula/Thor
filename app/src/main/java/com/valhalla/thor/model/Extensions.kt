@@ -9,6 +9,10 @@ import java.io.InputStream
 import java.util.zip.CRC32
 import java.util.zip.CheckedInputStream
 
+import java.text.DecimalFormat
+import kotlin.math.log10
+import kotlin.math.pow
+
 
 fun File.copyTo(file: File): Boolean {
     return try {
@@ -94,6 +98,28 @@ fun calculateCrc32(stream: InputStream?): Long {
         }
     }
     return crc32.value
+}
+
+/**
+ * Formats a given number of bytes into a human-readable string with appropriate units (B, KB, MB, GB, etc.).
+ *
+ * @param bytes The number of bytes to format.
+ * @return A human-readable string representation of the bytes, e.g., "1.5 MB".
+ */
+fun formatBytesToReadable(bytes: Long): String {
+    // Handles the edge case of zero bytes.
+    if (bytes <= 0) return "0 B"
+
+    // Array of units. We start from B and go up.
+    val units = arrayOf("B", "KB", "MB", "GB", "TB", "PB", "EB")
+
+    // Calculate the digit group. This determines which unit to use.
+    // e.g., log10(1500) / log10(1024) = 3.17 / 3.01 = 1 (for KB)
+    val digitGroups = (log10(bytes.toDouble()) / log10(1024.0)).toInt()
+
+    // Format the number to one decimal place and append the correct unit.
+    // e.g., 1500 / 1024^1 = 1.46, which is formatted to "1.5 KB"
+    return DecimalFormat("#,##0.#").format(bytes / 1024.0.pow(digitGroups.toDouble())) + " " + units[digitGroups]
 }
 
 val popularInstallers = mapOf<String, String>(

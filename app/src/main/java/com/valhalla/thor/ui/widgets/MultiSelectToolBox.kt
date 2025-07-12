@@ -77,6 +77,13 @@ fun MultiSelectToolBox(
                         }
                 }
                 AppActionItem(
+                    icon = R.drawable.clear_all,
+                    text = "Cache",
+                    onClick = {
+                        onMultiAppAction(MultiAppAction.ClearCache(selected))
+                    }
+                )
+                AppActionItem(
                     icon = R.drawable.delete_forever,
                     text = "Uninstall",
                     onClick = {

@@ -27,7 +27,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfoGrabber
-import com.valhalla.thor.model.shizuku.ElevatableState
 import com.valhalla.thor.model.MultiAppAction
 import com.valhalla.thor.model.clearCache
 import com.valhalla.thor.model.disableApps
@@ -41,6 +40,7 @@ import com.valhalla.thor.model.reInstallWithGoogle
 import com.valhalla.thor.model.rootAvailable
 import com.valhalla.thor.model.shareApp
 import com.valhalla.thor.model.shareSplitApks
+import com.valhalla.thor.model.shizuku.ElevatableState
 import com.valhalla.thor.model.shizuku.ShizukuManager
 import com.valhalla.thor.model.stopLogger
 import com.valhalla.thor.model.uninstallSystemApp
@@ -131,7 +131,7 @@ fun HomePage(
                             /*if (dest == AppDestinations.SETTINGS)
                                 Toast.makeText(context, "coming soon", Toast.LENGTH_SHORT).show()
                             else*/
-                                selectedDestination = dest
+                            selectedDestination = dest
                         }
                     )
                 }
@@ -171,13 +171,10 @@ fun HomePage(
                         }
 
                         is HomeActions.ClearCache -> {
-                            val appInfo = homeAction.appInfo
-                            if(appInfo == null){
-                                multiAction = MultiAppAction.ClearCache((userAppList+systemAppList)
-                                    .filter { ap-> ap.packageName != BuildConfig.APPLICATION_ID })
-                            }else {
-                                appAction = AppClickAction.ClearCache(appInfo)
-                            }
+                            val appInfo = homeAction.appInfos
+                            multiAction = MultiAppAction.ClearCache(
+                                appInfo.filter { ap -> ap.packageName != BuildConfig.APPLICATION_ID }
+                            )
                         }
 
                     }
@@ -256,6 +253,7 @@ fun HomePage(
                     logObserver += it
                 },
                 exit = {
+                    shizukuManager.updateCacheSize()
                     canExit = true
                     isRefreshing = true
                     appAction = null
@@ -297,6 +295,7 @@ fun HomePage(
                         logObserver += it
                     },
                     exit = {
+                        shizukuManager.updateCacheSize()
                         logObserver += "exiting shell"
                         canExit = true
                         isRefreshing = true
@@ -352,8 +351,9 @@ suspend fun processMultiAppAction(
 ) {
     withContext(Dispatchers.IO) {
         when (multiAction) {
-            is MultiAppAction.ClearCache ->{
-                val appList = multiAction.appList.filter { it.packageName != BuildConfig.APPLICATION_ID && it.packageName!="com.android.vending" }
+            is MultiAppAction.ClearCache -> {
+                val appList =
+                    multiAction.appList.filter { it.packageName != BuildConfig.APPLICATION_ID && it.packageName != "com.android.vending" }
                 clearCache(
                     *appList.toTypedArray(),
                     elevatableState = elevatableState,
@@ -448,14 +448,14 @@ suspend fun processAppAction(
     withContext(Dispatchers.IO) {
         when (appAction) {
 
-           /* is AppClickAction.Logcat -> {
-                appAction.appInfo.showLogs(
-                    observer, exit
-                )
-            }*/
+            /* is AppClickAction.Logcat -> {
+                 appAction.appInfo.showLogs(
+                     observer, exit
+                 )
+             }*/
 
-            is AppClickAction.ClearCache ->{
-                if(appAction.appInfo.packageName != BuildConfig.APPLICATION_ID && appAction.appInfo.packageName !="com.android.vending" ) {
+            is AppClickAction.ClearCache -> {
+                if (appAction.appInfo.packageName != BuildConfig.APPLICATION_ID && appAction.appInfo.packageName != "com.android.vending") {
                     clearCache(
                         appAction.appInfo,
                         observer = observer,
@@ -480,7 +480,12 @@ suspend fun processAppAction(
             }
 
             is AppClickAction.Freeze -> {
-                context.disableApps(appAction.appInfo, observer = observer, exit = exit, elevatableState = elevatableState)
+                context.disableApps(
+                    appAction.appInfo,
+                    observer = observer,
+                    exit = exit,
+                    elevatableState = elevatableState
+                )
             }
 
             is AppClickAction.Kill -> {
@@ -503,7 +508,11 @@ suspend fun processAppAction(
                 try {
                     if (appInfo.enabled.not()) {
                         if (elevatableState == ElevatableState.SU || elevatableState == ElevatableState.SHIZUKU_RUNNING) {
-                            context.enableApps(appInfo, elevatableState = elevatableState, observer = observer) {
+                            context.enableApps(
+                                appInfo,
+                                elevatableState = elevatableState,
+                                observer = observer
+                            ) {
                                 if (launchApp(appInfo.packageName).isSuccess.not()) {
                                     observer("Failed to launch ${appInfo.appName}")
                                 }
@@ -551,7 +560,12 @@ suspend fun processAppAction(
             AppClickAction.ReinstallAll -> {}
 
             is AppClickAction.UnFreeze -> {
-                context.enableApps(appAction.appInfo, elevatableState = elevatableState, observer = observer, exit = exit)
+                context.enableApps(
+                    appAction.appInfo,
+                    elevatableState = elevatableState,
+                    observer = observer,
+                    exit = exit
+                )
             }
 
             is AppClickAction.Uninstall -> {

@@ -284,7 +284,12 @@ fun FloatingBar(
                     onAppAction(AppClickAction.Freeze(appInfo))
                 onDismiss()
             }
-
+        AppActionItem(
+            icon = R.drawable.clear_all,
+            text = "Cache",
+        ) {
+            onAppAction(AppClickAction.ClearCache(appInfo))
+        }
         if (appInfo.enabled)
             AppActionItem(
                 icon = R.drawable.danger,
