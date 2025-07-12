@@ -46,8 +46,6 @@
 - Uninstall System Apps
 - Freeze/UnFreeze System apps
 - Sorting & filters
-
-## Features in Testing 
 - Clear Data/Cache
 
 ## Upcoming Features
