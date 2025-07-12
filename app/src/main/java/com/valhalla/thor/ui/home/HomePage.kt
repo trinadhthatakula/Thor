@@ -175,6 +175,7 @@ fun HomePage(
                             multiAction = MultiAppAction.ClearCache(
                                 appInfo.filter { ap -> ap.packageName != BuildConfig.APPLICATION_ID }
                             )
+
                         }
 
                     }
@@ -267,12 +268,10 @@ fun HomePage(
     LaunchedEffect(hasAffirmation) {
         if (hasAffirmation) {
             canExit = false
-            reinstalling = false
             termLoggerTitle = when (multiAction) {
                 is MultiAppAction.Freeze -> "Freezing Apps.,"
                 is MultiAppAction.Kill -> "Killing Apps..,"
                 is MultiAppAction.ReInstall -> {
-                    reinstalling = true
                     "Reinstalling Apps..,"
                 }
 
@@ -282,7 +281,6 @@ fun HomePage(
                 is MultiAppAction.ClearCache -> "Clearing Cache..,"
                 else -> {
                     logObserver = emptyList()
-                    reinstalling = false
                     ""
                 }
             }
@@ -295,10 +293,12 @@ fun HomePage(
                         logObserver += it
                     },
                     exit = {
+                        multiAction = null
                         shizukuManager.updateCacheSize()
                         logObserver += "exiting shell"
                         canExit = true
                         isRefreshing = true
+                        hasAffirmation = false
                     }
                 )
             }
