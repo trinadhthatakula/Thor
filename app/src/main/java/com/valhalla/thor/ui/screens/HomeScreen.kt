@@ -434,6 +434,7 @@ fun HomeContent(
                                 Text(
                                     cacheSize,
                                     style = MaterialTheme.typography.headlineLarge,
+                                    maxLines = 1,
                                     modifier = Modifier
                                         .padding(horizontal = 5.dp)
                                         .weight(1f)

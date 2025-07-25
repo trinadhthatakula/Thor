@@ -5,6 +5,8 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -13,10 +15,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -54,6 +59,7 @@ import com.valhalla.thor.ui.widgets.MultiAppAffirmationDialog
 import com.valhalla.thor.ui.widgets.TermLoggerDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
@@ -63,9 +69,18 @@ fun HomePage(
     onExit: () -> Unit
 ) {
 
-    var selectedDestination: AppDestinations by rememberSaveable {
-        mutableStateOf(AppDestinations.HOME)
+    var selectedDestinationIndex by rememberSaveable {
+        mutableIntStateOf(AppDestinations.HOME.ordinal)
     }
+    val pagerState = rememberPagerState {
+        AppDestinations.entries.size
+    }
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.currentPage }.collect {
+            selectedDestinationIndex = it
+        }
+    }
+    val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
     val grabber = AppInfoGrabber(context)
@@ -76,7 +91,6 @@ fun HomePage(
     var appAction: AppClickAction? by remember { mutableStateOf(null) }
     var multiAction: MultiAppAction? by remember { mutableStateOf(null) }
 
-    var reinstalling by remember { mutableStateOf(false) }
     var canExit by remember { mutableStateOf(false) }
     var showTerminate by remember { mutableStateOf(false) }
     var logObserver by remember { mutableStateOf(emptyList<String>()) }
@@ -96,8 +110,8 @@ fun HomePage(
     var getExitConfirmation by remember { mutableStateOf(false) }
 
     BackHandler {
-        if (selectedDestination != AppDestinations.HOME)
-            selectedDestination = AppDestinations.HOME
+        if (selectedDestinationIndex != AppDestinations.HOME.ordinal)
+            selectedDestinationIndex = AppDestinations.HOME.ordinal
         else {
             if (logObserver.isEmpty())
                 getExitConfirmation = true
@@ -117,108 +131,115 @@ fun HomePage(
             NavigationBar {
                 AppDestinations.entries.forEach { dest ->
                     NavigationBarItem(
-                        selected = selectedDestination == dest,
+                        selected = selectedDestinationIndex == dest.ordinal,
                         label = {
                             Text(stringResource(dest.label))
                         },
                         icon = {
                             Icon(
-                                imageVector = ImageVector.vectorResource(if (selectedDestination == dest) dest.selectedIcon else dest.icon),
+                                imageVector = ImageVector.vectorResource(if (selectedDestinationIndex == dest.ordinal) dest.selectedIcon else dest.icon),
                                 stringResource(dest.label)
                             )
                         },
                         onClick = {
-                            /*if (dest == AppDestinations.SETTINGS)
-                                Toast.makeText(context, "coming soon", Toast.LENGTH_SHORT).show()
-                            else*/
-                            selectedDestination = dest
+
+                            scope.launch {
+                                pagerState.animateScrollToPage(dest.ordinal)
+                            }
                         }
                     )
                 }
             }
         }
-    ) {
-        when (selectedDestination) {
-            AppDestinations.HOME -> HomeScreen(
-                modifier = modifier.padding(it),
-                userAppList = userAppList,
-                systemAppList = systemAppList,
-                onHomeActions = { homeAction ->
-                    when (homeAction) {
-                        is HomeActions.ActiveApps -> {
-                            selectedDestination = AppDestinations.APPS
+    ) { paddingValues ->
+        HorizontalPager(pagerState) { page ->
+            when (page) {
+                AppDestinations.HOME.ordinal -> HomeScreen(
+                    modifier = modifier.padding(paddingValues),
+                    userAppList = userAppList,
+                    systemAppList = systemAppList,
+                    onHomeActions = { homeAction ->
+                        when (homeAction) {
+                            is HomeActions.ActiveApps -> {
+                                scope.launch {
+                                    pagerState.animateScrollToPage(AppDestinations.APPS.ordinal)
+                                }
+                            }
+
+                            HomeActions.BKI -> {}
+                            is HomeActions.FrozenApps -> {
+                                scope.launch {
+                                    pagerState.animateScrollToPage(AppDestinations.FREEZER.ordinal)
+                                }
+                            }
+
+                            HomeActions.ReinstallAll -> {
+                                multiAction = MultiAppAction.ReInstall(userAppList)
+                            }
+
+                            is HomeActions.ShowToast -> {
+                                Toast.makeText(
+                                    context,
+                                    homeAction.text,
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+
+                            HomeActions.SwitchAutoReinstall -> {
+
+                            }
+
+                            is HomeActions.ClearCache -> {
+                                val appInfo = homeAction.appInfos
+                                multiAction = MultiAppAction.ClearCache(
+                                    appInfo.filter { ap -> ap.packageName != BuildConfig.APPLICATION_ID }
+                                )
+
+                            }
+
                         }
-
-                        HomeActions.BKI -> {}
-                        is HomeActions.FrozenApps -> {
-                            selectedDestination = AppDestinations.FREEZER
-                        }
-
-                        HomeActions.ReinstallAll -> {
-                            multiAction = MultiAppAction.ReInstall(userAppList)
-                        }
-
-                        is HomeActions.ShowToast -> {
-                            Toast.makeText(
-                                context,
-                                homeAction.text,
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-
-                        HomeActions.SwitchAutoReinstall -> {
-
-                        }
-
-                        is HomeActions.ClearCache -> {
-                            val appInfo = homeAction.appInfos
-                            multiAction = MultiAppAction.ClearCache(
-                                appInfo.filter { ap -> ap.packageName != BuildConfig.APPLICATION_ID }
-                            )
-
-                        }
-
                     }
-                }
-            )
+                )
 
-            AppDestinations.APPS -> AppListScreen(
-                modifier = modifier.padding(it),
-                userAppList = userAppList,
-                systemAppList = systemAppList,
-                isRefreshing = isRefreshing,
-                onRefresh = { isRefreshing = true },
-                onAppAction = { aAction ->
-                    appAction = aAction
-                },
-                onMultiAppAction = { mAction ->
-                    multiAction = mAction
-                }
-            )
+                AppDestinations.APPS.ordinal -> AppListScreen(
+                    modifier = modifier.padding(paddingValues),
+                    userAppList = userAppList,
+                    systemAppList = systemAppList,
+                    isRefreshing = isRefreshing,
+                    onRefresh = { isRefreshing = true },
+                    onAppAction = { aAction ->
+                        appAction = aAction
+                    },
+                    onMultiAppAction = { mAction ->
+                        multiAction = mAction
+                    }
+                )
 
-            AppDestinations.FREEZER -> FreezerScreen(
-                icon = R.drawable.frozen,
-                modifier = modifier.padding(it),
-                userAppList = userAppList,
-                systemAppList = systemAppList,
-                isRefreshing = isRefreshing,
-                onRefresh = { isRefreshing = true },
-                onAppAction = { aAction ->
-                    appAction = aAction
-                },
-                onMultiAppAction = { mAction ->
-                    multiAction = mAction
-                }
-            )
+                AppDestinations.FREEZER.ordinal -> FreezerScreen(
+                    icon = R.drawable.frozen,
+                    modifier = modifier.padding(paddingValues),
+                    userAppList = userAppList,
+                    systemAppList = systemAppList,
+                    isRefreshing = isRefreshing,
+                    onRefresh = { isRefreshing = true },
+                    onAppAction = { aAction ->
+                        appAction = aAction
+                    },
+                    onMultiAppAction = { mAction ->
+                        multiAction = mAction
+                    }
+                )
 
-            //AppDestinations.SETTINGS -> Text("Settings")
+                else -> {}
+
+                //AppDestinations.SETTINGS -> Text("Settings")
+            }
         }
 
     }
 
 
     LaunchedEffect(appAction) {
-        reinstalling = false
         canExit = false
         termLoggerTitle = when (appAction) {
             is AppClickAction.AppInfoSettings -> "Opening AppInfo"
@@ -226,12 +247,10 @@ fun HomePage(
             is AppClickAction.Kill -> "War Machine"
             is AppClickAction.Launch -> "Launch Pad"
             is AppClickAction.Reinstall -> {
-                reinstalling = true
                 "Reinstalling App..,"
             }
 
             AppClickAction.ReinstallAll -> {
-                reinstalling = true
                 "Reinstalling Apps..,"
             }
 
@@ -241,7 +260,6 @@ fun HomePage(
 
             else -> {
                 logObserver = emptyList()
-                reinstalling = false
                 ""
             }
         }

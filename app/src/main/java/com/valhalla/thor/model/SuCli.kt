@@ -178,11 +178,11 @@ fun shareSplitApks(
             else observer("Failed to generate App Icon")
             var copyCounter = 0
             val splitPaths =
-                fastCmd("su -c pm path \"${packageName}\" | sed 's/package://' | tr '\\n' ' '")
+                fastCmd(getRootShell(),"pm path \"${packageName}\" | sed 's/package://' | tr '\\n' ' '")
                     .trim()
                     .split(" ")
             splitPaths.forEach { path ->
-                if (fastCmd("su -c cp $path ${appFolder.absolutePath}/${Path(path).name}").isEmpty())
+                if (fastCmd(getRootShell(),"cp $path ${appFolder.absolutePath}/${Path(path).name}").isEmpty())
                     copyCounter++
                 else
                     observer("Failed to copy ${Path(path).name}")
@@ -215,7 +215,7 @@ fun shareSplitApks(
                 }
                 observer("Apks file generated")
                 observer("Deleting temp files")
-                if (appFolder.deleteRecursively() != true)
+                if (!appFolder.deleteRecursively())
                     observer("Failed to delete temp files")
                 observer("Calling Share Intent")
                 val intent = Intent(Intent.ACTION_SEND)
@@ -249,7 +249,7 @@ fun shareSplitApks(
 
 fun shareApp(appInfo: AppInfo, context: Context) {
     appInfo.packageName.let { packageName ->
-        fastCmd("su -c pm path \"${packageName}\" | sed 's/package://' | tr '\\n' ' '")
+        fastCmd(getRootShell(),"pm path \"${packageName}\" | sed 's/package://' | tr '\\n' ' '")
             .trim()
             .split(" ")
             .firstOrNull { it.contains("base.apk") || it.contains(appInfo.appName ?: "", true) }
@@ -259,7 +259,7 @@ fun shareApp(appInfo: AppInfo, context: Context) {
                     val tempFolder = File(context.filesDir, "shareApp")
                     val baseFile =
                         File(tempFolder, "${appInfo.formattedAppName()}_${appInfo.versionName}.apk")
-                    if (fastCmd("su -c cp $baseApkPath ${baseFile.absolutePath}").isEmpty()) {
+                    if (fastCmd(getRootShell(),"cp $baseApkPath ${baseFile.absolutePath}").isEmpty()) {
                         val intent = Intent(Intent.ACTION_SEND)
                         intent.type = "application/vnd.android.package-archive"
                         intent.putExtra(
@@ -312,8 +312,9 @@ fun copyApk(source: File, destination: File): Boolean {
                         source.copyTo(destination)
                     else false
                 } else false
-            } ?: return false
-        } else return false
+            }
+        }
+        return false
     } catch (e: Exception) {
         e.printStackTrace()
         return false
@@ -328,8 +329,6 @@ fun getSplits(packageName: String) {
 
 fun reInstallWithGoogle(appInfo: AppInfo, observer: (String) -> Unit, exit: () -> Unit) {
     appInfo.packageName.let { packageName ->
-        var failCounter = 0
-        var successCounter = 0
         try {
             observer("Reinstalling with Google...")
             observer("Package: $packageName")
@@ -346,13 +345,11 @@ fun reInstallWithGoogle(appInfo: AppInfo, observer: (String) -> Unit, exit: () -
             else if (apkFilePaths.size == 1)
                 observer("Found apk file at ${apkFilePaths.first()}")
             shell.newJob()
-                .add("su -c pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 \"$combinedPath\" > /dev/null")
+                .add("pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 \"$combinedPath\" > /dev/null")
                 .exec().let {
                     if (!it.isSuccess) {
-                        failCounter++
                         observer("Failed to reinstall ${appInfo.appName}")
                     } else {
-                        successCounter++
                         observer("Reinstalled ${appInfo.appName}")
                     }
                 }
@@ -375,23 +372,18 @@ fun reInstallAppsWithGoogle(appInfos: List<AppInfo>, observer: (String) -> Unit,
     try {
         appInfos.forEach { appInfo ->
             appInfo.packageName.let { packageName ->
-                var failCounter = 0
-                var successCounter = 0
                 val combinedPath =
-                    fastCmd("pm path \"$packageName\" | sed 's/package://' | tr '\\n' ' '")
+                    fastCmd(getRootShell(),"pm path \"$packageName\" | sed 's/package://' | tr '\\n' ' '")
                         .trim()
                 shell.newJob()
-                    .add("su -c pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 \"$combinedPath\" > /dev/null")
+                    .add("pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 \"$combinedPath\" > /dev/null")
                     .exec().let {
                         if (!it.isSuccess) {
-                            failCounter++
                             observer("Failed to reinstall ${appInfo.appName}")
                         } else {
-                            successCounter++
                             observer("Reinstalled ${appInfo.appName}")
                         }
                     }
-
             }
         }
     } catch (e: Exception) {
@@ -473,7 +465,7 @@ suspend fun clearCache(
                     )
                     val res = fastCmd(
                         getRootShell(),
-                        "su -c rm -rf /data/data/${it.packageName}/cache"
+                        "rm -rf /data/data/${it.packageName}/cache"
                     )
                     if (res.isEmpty())
                         observer("Cleared cache for ${it.appName}")
@@ -507,7 +499,7 @@ suspend fun Context.disableApps(
         observer("Freezing apps...")
         appInfos.forEach { appInfo ->
             if (elevatableState == ElevatableState.SU)
-                observer(fastCmd(getRootShell(), "su -c pm disable ${appInfo.packageName}"))
+                observer(fastCmd(getRootShell(), "pm disable ${appInfo.packageName}"))
             else if (elevatableState == ElevatableState.SHIZUKU_RUNNING) {
                 if (Shizuku.setAppDisabled(
                         this,
@@ -539,7 +531,7 @@ suspend fun Context.enableApps(
         observer("UnFreezing apps...")
         appInfos.forEach { appInfo ->
             if (elevatableState == ElevatableState.SU)
-                observer(fastCmd(getRootShell(), "su -c pm enable ${appInfo.packageName}"))
+                observer(fastCmd(getRootShell(), "pm enable ${appInfo.packageName}"))
             else if (elevatableState == ElevatableState.SHIZUKU_RUNNING) {
                 if (Shizuku.setAppDisabled(
                         this,
@@ -794,7 +786,7 @@ fun openAppInfoScreen(context: Context, appInfo: AppInfo) {
 fun uninstallSystemApp(appInfo: AppInfo): String {
     val shell = getRootShell()
     val currentUser = fastCmd(shell, "am get-current-user").trim()
-    return fastCmd(shell, "su -c pm uninstall -k --user $currentUser ${appInfo.packageName}")
+    return fastCmd(shell, "pm uninstall -k --user $currentUser ${appInfo.packageName}")
 }
 
 fun readTargets(context: Context): List<String> {
@@ -802,7 +794,7 @@ fun readTargets(context: Context): List<String> {
         val filesDir = context.filesDir
         val trickyFolder = File("/data/adb/tricky_store")
         val trickyBackUp = File(filesDir, "tricky_store")
-        fastCmd(getRootShell(), "su -c cp -r ${trickyFolder.absolutePath} ${filesDir.absolutePath}")
+        fastCmd(getRootShell(), "cp -r ${trickyFolder.absolutePath} ${filesDir.absolutePath}")
         if ((trickyBackUp).exists()) {
             val trickyTarget = File(trickyBackUp, "target.txt")
             if (trickyTarget.exists()) {
@@ -813,7 +805,7 @@ fun readTargets(context: Context): List<String> {
             Log.d(TAG, "using original targets file without copying")
             return fastCmd(
                 getRootShell(),
-                "su -c cat /data/adb/tricky_store/target.txt"
+                "cat /data/adb/tricky_store/target.txt"
             ).split("\n")
         }
     }
@@ -828,8 +820,7 @@ fun AppInfo.showLogs(observer: (String) -> Unit, exit: () -> Unit) {
     observer("try getting pId")
     val pId = fastCmd(
         getRootShell(),
-        "logcat -c",
-        (if (rootAvailable()) "su -c" else "") + "pidof $packageName"
+        "logcat -c", "pidof $packageName"
     ).trim()
     val logCommand = if (pId.isNotEmpty()) {
         observer("pId found")
