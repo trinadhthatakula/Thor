@@ -303,7 +303,7 @@ fun shareApp(appInfo: AppInfo, context: Context) {
 
 }
 
-fun copyApk(source: File, destination: File): Boolean {
+fun copyFile(source: File, destination: File): Boolean {
     try {
         if (source.exists() || source.createNewFile()) {
             destination.parentFile?.let { parentFile ->
