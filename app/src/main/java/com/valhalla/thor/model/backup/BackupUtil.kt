@@ -4,6 +4,10 @@ import android.annotation.SuppressLint
 import android.content.pm.ApplicationInfo
 import com.valhalla.superuser.ShellUtils.fastCmd
 import com.valhalla.thor.model.getRootShell
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.text.SimpleDateFormat
@@ -13,9 +17,23 @@ import java.util.TimeZone
 
 
 /**
+ * Sealed class representing the various states of a backup or restore operation.
+ * This allows for granular updates to the UI.
+ */
+sealed class BackupOperationState {
+    data object Idle : BackupOperationState()
+    data class Progress(val percentage: Int, val message: String) : BackupOperationState()
+    data class Success(val backupInfo: AppBackupInfo) : BackupOperationState()
+    data class Error(val message: String, val cause: Throwable? = null) : BackupOperationState()
+    data class Warning(val message: String) : BackupOperationState() // For non-fatal issues
+}
+
+
+/**
  * Object class providing utility functions for file paths and (future) zip/unzip operations.
  * This class encapsulates logic for determining standard Android app data paths.
  */
+@SuppressLint("SdCardPath")
 object BackupUtil {
 
     // Base paths for various app data locations.
@@ -272,17 +290,18 @@ object BackupUtil {
     /**
      * Backs up an application's selected parts to a dedicated directory in a public folder.
      * This backup is uncompressed by default. Handles system app limitations (only APK backup).
+     * Emits states via a Flow for UI updates.
      *
      * @param appInfo The AppInfo object of the application to backup.
      * @param selectedParts The set of BackupPart enums to include in the backup.
-     * @param onWarning A callback function to notify the UI about warnings (e.g., system app limitations).
-     * @return An AppBackupInfo object if backup is successful, null otherwise.
+     * @return A Flow emitting BackupOperationState objects (Progress, Success, Error, Warning).
      */
     fun backupApp(
         appInfo: com.valhalla.thor.model.AppInfo, // Use the full qualified name for AppInfo
-        selectedParts: Set<BackupPart>,
-        onWarning: (message: String) -> Unit // Callback for warnings
-    ): AppBackupInfo? {
+        selectedParts: Set<BackupPart>
+    ): Flow<BackupOperationState> = flow {
+        emit(BackupOperationState.Progress(0, "Starting backup for ${appInfo.appName}..."))
+
         val packageName = appInfo.packageName
         val appName = appInfo.appName ?: packageName
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
@@ -292,19 +311,22 @@ object BackupUtil {
         val actualBackedUpParts = mutableSetOf<BackupPart>()
 
         // 1. Create the base backup directory in public storage
+        emit(BackupOperationState.Progress(5, "Creating backup directory..."))
         var mkdirResult = fastCmd(getRootShell(),"mkdir -p \"$backupAppBaseDir\"")
         if (mkdirResult.isNotEmpty()) {
-            println("Error creating public backup directory '$backupAppBaseDir': $mkdirResult")
-            return null
+            val errorMessage = "Error creating public backup directory '$backupAppBaseDir': $mkdirResult"
+            println(errorMessage)
+            emit(BackupOperationState.Error(errorMessage))
+            return@flow
         }
 
         // Determine parts to backup based on system app status
         val partsToProcess = if (isSystemApp(appInfo.toApplicationInfo())) {
             if (selectedParts.contains(BackupPart.APK)) {
-                onWarning("Warning: Only APK can be backed up for system app '$appName'. Other selected parts will be ignored.")
+                emit(BackupOperationState.Warning("Only APK can be backed up for system app '$appName'. Other selected parts will be ignored."))
                 setOf(BackupPart.APK)
             } else {
-                onWarning("Warning: System app '$appName' can only have its APK backed up. No parts selected, so no backup will be created.")
+                emit(BackupOperationState.Warning("System app '$appName' can only have its APK backed up. No parts selected, so no backup will be created."))
                 emptySet()
             }
         } else {
@@ -312,31 +334,40 @@ object BackupUtil {
         }
 
         if (partsToProcess.isEmpty()) {
-            println("No valid parts selected for backup of app '$appName'. Aborting.")
+            val message = "No valid parts selected for backup of app '$appName'. Aborting."
+            println(message)
             fastCmd(getRootShell(), "rm -rf \"$backupAppBaseDir\"") // Clean up empty backup dir
-            return null
+            emit(BackupOperationState.Error(message)) // Consider this an error as no backup was made
+            return@flow
         }
 
         // 2. Copy selected parts into subdirectories within backupAppBaseDir
+        val totalParts = partsToProcess.size
+        var partsCompleted = 0
+
         partsToProcess.forEach { part ->
+            val partProgress = 10 + (partsCompleted * 80 / totalParts) // Allocate 80% for copying parts
+            emit(BackupOperationState.Progress(partProgress, "Backing up ${part.name} for ${appName}..."))
+
             when (part) {
                 BackupPart.APK -> {
                     val apkDestDir = "$backupAppBaseDir/apk"
                     val createApkDirResult = fastCmd(getRootShell(), "mkdir -p \"$apkDestDir\"")
                     if (createApkDirResult.isNotEmpty()) {
-                        println("Error creating APK destination directory '$apkDestDir': $createApkDirResult")
-                        onWarning("Failed to create APK directory for '$appName'. APK backup might be incomplete.")
+                        val warningMessage = "Failed to create APK directory '$apkDestDir' for '$appName'. APK backup might be incomplete."
+                        println("Error: $warningMessage")
+                        emit(BackupOperationState.Warning(warningMessage))
                         return@forEach // Skip this part
                     }
-                    getAppApkPaths(appInfo.toApplicationInfo()).forEachIndexed { index, apkPath ->
+                    getAppApkPaths(appInfo.toApplicationInfo()).forEach { apkPath ->
                         val apkFileName = File(apkPath).name
                         val destPath = "$apkDestDir/$apkFileName"
                         val copyCmd = "cp -f \"$apkPath\" \"$destPath\""
-                        println("Copying APK: $copyCmd")
                         val result = fastCmd(getRootShell(), copyCmd)
                         if (result.isNotEmpty()) {
-                            println("Error copying APK '$apkPath': $result")
-                            onWarning("Failed to copy APK for '$appName'. Backup might be incomplete.")
+                            val warningMessage = "Error copying APK '$apkPath': $result. Backup might be incomplete."
+                            println(warningMessage)
+                            emit(BackupOperationState.Warning(warningMessage))
                         } else {
                             actualBackedUpParts.add(BackupPart.APK)
                         }
@@ -347,18 +378,19 @@ object BackupUtil {
                     val dataDestDir = "$backupAppBaseDir/data"
                     val createDataDirResult = fastCmd(getRootShell(), "mkdir -p \"$dataDestDir\"")
                     if (createDataDirResult.isNotEmpty()) {
-                        println("Error creating DATA destination directory '$dataDestDir': $createDataDirResult")
-                        onWarning("Failed to create DATA directory for '$appName'. Data backup might be incomplete.")
+                        val warningMessage = "Failed to create DATA directory '$dataDestDir' for '$appName'. Data backup might be incomplete."
+                        println("Error: $warningMessage")
+                        emit(BackupOperationState.Warning(warningMessage))
                         return@forEach
                     }
                     // Use tar for internal data to preserve permissions and ownership
                     val destTarPath = "$dataDestDir/${packageName}_data.tar" // Tar file inside data subdir
                     val tarCommand = "cd \"${File(dataPath).parentFile?.absolutePath ?: "/"}\" && tar -cf \"$destTarPath\" \"${File(dataPath).name}\""
-                    println("Archiving internal data: $tarCommand")
                     val result = fastCmd(getRootShell(), tarCommand)
                     if (result.isNotEmpty()) {
-                        println("Error archiving internal data '$dataPath': $result")
-                        onWarning("Failed to backup internal data for '$appName'. Backup might be incomplete.")
+                        val warningMessage = "Error archiving internal data '$dataPath': $result. Backup might be incomplete."
+                        println(warningMessage)
+                        emit(BackupOperationState.Warning(warningMessage))
                     } else {
                         actualBackedUpParts.add(BackupPart.DATA)
                     }
@@ -368,16 +400,17 @@ object BackupUtil {
                     val extDataDestDir = "$backupAppBaseDir/ext_data"
                     val createExtDataDirResult = fastCmd(getRootShell(), "mkdir -p \"$extDataDestDir\"")
                     if (createExtDataDirResult.isNotEmpty()) {
-                        println("Error creating EXT_DATA destination directory '$extDataDestDir': $createExtDataDirResult")
-                        onWarning("Failed to create EXT_DATA directory for '$appName'. External data backup might be incomplete.")
+                        val warningMessage = "Failed to create EXT_DATA directory '$extDataDestDir' for '$appName'. External data backup might be incomplete."
+                        println("Error: $warningMessage")
+                        emit(BackupOperationState.Warning(warningMessage))
                         return@forEach
                     }
                     val copyCmd = "cp -r \"$extDataPath\" \"$extDataDestDir/\""
-                    println("Copying external data: $copyCmd")
                     val result = fastCmd(getRootShell(), copyCmd)
                     if (result.isNotEmpty()) {
-                        println("Error copying external data '$extDataPath': $result")
-                        onWarning("Failed to backup external data for '$appName'. Backup might be incomplete.")
+                        val warningMessage = "Error copying external data '$extDataPath': $result. Backup might be incomplete."
+                        println(warningMessage)
+                        emit(BackupOperationState.Warning(warningMessage))
                     } else {
                         actualBackedUpParts.add(BackupPart.EXT_DATA)
                     }
@@ -387,16 +420,17 @@ object BackupUtil {
                     val obbDestDir = "$backupAppBaseDir/obb"
                     val createObbDirResult = fastCmd(getRootShell(), "mkdir -p \"$obbDestDir\"")
                     if (createObbDirResult.isNotEmpty()) {
-                        println("Error creating OBB destination directory '$obbDestDir': $createObbDirResult")
-                        onWarning("Failed to create OBB directory for '$appName'. OBB backup might be incomplete.")
+                        val warningMessage = "Failed to create OBB directory '$obbDestDir' for '$appName'. OBB backup might be incomplete."
+                        println("Error: $warningMessage")
+                        emit(BackupOperationState.Warning(warningMessage))
                         return@forEach
                     }
                     val copyCmd = "cp -r \"$obbPath\" \"$obbDestDir/\""
-                    println("Copying OBB: $copyCmd")
                     val result = fastCmd(getRootShell(), copyCmd)
                     if (result.isNotEmpty()) {
-                        println("Error copying OBB '$obbPath': $result")
-                        onWarning("Failed to backup OBB for '$appName'. Backup might be incomplete.")
+                        val warningMessage = "Error copying OBB '$obbPath': $result. Backup might be incomplete."
+                        println(warningMessage)
+                        emit(BackupOperationState.Warning(warningMessage))
                     } else {
                         actualBackedUpParts.add(BackupPart.OBB)
                     }
@@ -405,34 +439,39 @@ object BackupUtil {
                     val mediaDestDir = "$backupAppBaseDir/media"
                     val createMediaDirResult = fastCmd(getRootShell(), "mkdir -p \"$mediaDestDir\"")
                     if (createMediaDirResult.isNotEmpty()) {
-                        println("Error creating MEDIA destination directory '$mediaDestDir': $createMediaDirResult")
-                        onWarning("Failed to create MEDIA directory for '$appName'. Media backup might be incomplete.")
+                        val warningMessage = "Failed to create MEDIA directory '$mediaDestDir' for '$appName'. Media backup might be incomplete."
+                        println("Error: $warningMessage")
+                        emit(BackupOperationState.Warning(warningMessage))
                         return@forEach
                     }
                     getAppMediaPaths(packageName).forEach { mediaPath ->
                         val mediaDirName = File(mediaPath).name
                         val copyCmd = "cp -r \"$mediaPath\" \"$mediaDestDir/$mediaDirName\""
-                        println("Copying media: $copyCmd")
                         val result = fastCmd(getRootShell(), copyCmd)
                         if (result.isNotEmpty()) {
-                            println("Error copying media '$mediaPath': $result")
-                            onWarning("Failed to copy media for '$appName'. Backup might be incomplete.")
+                            val warningMessage = "Error copying media '$mediaPath': $result. Backup might be incomplete."
+                            println(warningMessage)
+                            emit(BackupOperationState.Warning(warningMessage))
                         } else {
                             actualBackedUpParts.add(BackupPart.MEDIA)
                         }
                     }
                 }
             }
+            partsCompleted++
         }
 
         // Check if any parts were successfully copied
         if (actualBackedUpParts.isEmpty()) {
-            println("No parts were successfully backed up for app '$appName'. Aborting.")
+            val message = "No parts were successfully backed up for app '$appName'. Aborting."
+            println(message)
             fastCmd(getRootShell(), "rm -rf \"$backupAppBaseDir\"") // Clean up empty backup dir
-            return null
+            emit(BackupOperationState.Error(message))
+            return@flow
         }
 
         // 3. Calculate final backup size (of the uncompressed directory)
+        emit(BackupOperationState.Progress(90, "Calculating backup size..."))
         val backupSizeResult = fastCmd(getRootShell(), "du -sb \"$backupAppBaseDir\" | awk '{print \$1}'")
         val backupSize = backupSizeResult.trim().toLongOrNull() ?: 0L
 
@@ -451,43 +490,50 @@ object BackupUtil {
             archiveFilePath = null // Initially null, will be set if compressed later
         )
 
+        emit(BackupOperationState.Progress(95, "Saving backup metadata..."))
         if (!saveBackupMetadata(newBackupInfo)) {
-            println("Error: Failed to save backup metadata for '$appName'. Deleting backup directory.")
+            val errorMessage = "Error: Failed to save backup metadata for '$appName'. Deleting backup directory."
+            println(errorMessage)
             fastCmd(getRootShell(), "rm -rf \"$backupAppBaseDir\"")
-            return null
+            emit(BackupOperationState.Error(errorMessage))
+            return@flow
         }
 
         println("Successfully created uncompressed backup for '$appName' at '$backupAppBaseDir'")
-        return newBackupInfo
-    }
+        emit(BackupOperationState.Success(newBackupInfo))
+    }.flowOn(Dispatchers.IO) // Run the heavy operations on IO dispatcher
 
     /**
      * Compresses an existing uncompressed app backup directory into a .tar.xz archive.
+     * Emits states via a Flow for UI updates.
      *
      * @param backupInfo The AppBackupInfo object of the uncompressed backup.
-     * @param onProgress A callback to report compression progress (optional).
-     * @return The updated AppBackupInfo object with archiveFilePath set, or null if compression fails.
+     * @return A Flow emitting BackupOperationState objects (Progress, Success, Error, Warning).
      */
     fun compressBackup(
         backupInfo: AppBackupInfo,
-        onProgress: ((progress: Int, message: String) -> Unit)? = null
-    ): AppBackupInfo? {
+    ): Flow<BackupOperationState> = flow {
         if (backupInfo.archiveFilePath != null) {
-            println("Backup for '${backupInfo.appName}' is already compressed.")
-            return backupInfo
+            val message = "Backup for '${backupInfo.appName}' is already compressed."
+            println(message)
+            emit(BackupOperationState.Warning(message))
+            emit(BackupOperationState.Success(backupInfo)) // Still a success, but with a warning
+            return@flow
         }
+
+        emit(BackupOperationState.Progress(0, "Starting compression for ${backupInfo.appName}..."))
 
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).apply {
             timeZone = TimeZone.getDefault()
         }.format(Date())
         val archiveFileName = "${backupInfo.packageName}_${timestamp}.tar.xz"
-        val archiveFilePath = File(backupInfo.backupLocation).parentFile?.absolutePath + "/$archiveFileName" // Place archive in parent dir of backup dir
-
-        onProgress?.invoke(0, "Starting compression for ${backupInfo.appName}...")
+        // Place archive in the parent directory of the original backup directory
+        val archiveFilePath = File(backupInfo.backupLocation).parentFile?.absolutePath + "/$archiveFileName"
 
         val zipSuccess = zipDirectory(backupInfo.backupLocation, archiveFilePath)
 
         if (zipSuccess) {
+            emit(BackupOperationState.Progress(80, "Compression successful. Updating metadata..."))
             // Update backupInfo with archive path and new size
             val newBackupSizeResult = fastCmd(getRootShell(), "du -sb \"$archiveFilePath\" | awk '{print \$1}'")
             val newBackupSize = newBackupSizeResult.trim().toLongOrNull() ?: 0L
@@ -499,25 +545,29 @@ object BackupUtil {
             // Remove the original uncompressed directory after successful compression
             val rmResult = fastCmd(getRootShell(), "rm -rf \"${backupInfo.backupLocation}\"")
             if (rmResult.isNotEmpty()) {
-                println("Warning: Failed to remove uncompressed backup directory after compression: $rmResult")
+                val warningMessage = "Warning: Failed to remove uncompressed backup directory after compression: $rmResult"
+                println(warningMessage)
+                emit(BackupOperationState.Warning(warningMessage))
             }
 
-            if (saveBackupMetadata(updatedBackupInfo)) { // Save updated metadata
-                onProgress?.invoke(100, "Compression complete!")
-                return updatedBackupInfo
+            if (saveBackupMetadata(updatedBackupInfo)) { // Save updated metadata next to the new archive
+                emit(BackupOperationState.Progress(100, "Compression complete!"))
+                emit(BackupOperationState.Success(updatedBackupInfo))
             } else {
-                println("Error: Failed to save updated metadata after compression. Keeping both compressed and uncompressed.")
-                onProgress?.invoke(100, "Compression complete with metadata save error.")
-                return null // Or return original backupInfo if you want to keep it as uncompressed
+                val errorMessage = "Error: Failed to save updated metadata after compression. Keeping both compressed and uncompressed."
+                println(errorMessage)
+                emit(BackupOperationState.Error(errorMessage))
+                // Clean up potentially incomplete archive if metadata save failed
+                fastCmd(getRootShell(), "rm -f \"$archiveFilePath\"")
             }
         } else {
-            println("Compression failed for '${backupInfo.appName}'.")
-            onProgress?.invoke(-1, "Compression failed.")
+            val errorMessage = "Compression failed for '${backupInfo.appName}'."
+            println(errorMessage)
+            emit(BackupOperationState.Error(errorMessage))
             // Clean up potentially incomplete archive
             fastCmd(getRootShell(), "rm -f \"$archiveFilePath\"")
-            return null
         }
-    }
+    }.flowOn(Dispatchers.IO) // Run on IO dispatcher
 
     /**
      * Scans the public backup directory and returns a list of all detected AppBackupInfo objects.
@@ -533,24 +583,34 @@ object BackupUtil {
             return emptyList()
         }
 
-        // Use 'ls' command to list directories, as direct File.listFiles() might have permission issues
-        // or be slow for large numbers of files/directories.
-        val lsResult = fastCmd(getRootShell(), "ls -d \"$PUBLIC_BACKUP_BASE_DIR\"/*/ \"$PUBLIC_BACKUP_BASE_DIR\"/*.tar.xz")
+        // Use 'ls' command to list directories and .tar.xz files
+        // This command will list all directories and .tar.xz files directly under PUBLIC_BACKUP_BASE_DIR
+        val lsCommand = "ls -d \"$PUBLIC_BACKUP_BASE_DIR\"/*/ \"$PUBLIC_BACKUP_BASE_DIR\"/*.tar.xz 2>/dev/null" // Redirect stderr to /dev/null
+        val lsResult = fastCmd(getRootShell(), lsCommand)
+
         if (lsResult.isNotEmpty()) {
             val paths = lsResult.lines().filter { it.isNotBlank() }
             paths.forEach { path ->
                 if (path.endsWith(".tar.xz")) {
-                    // This is a compressed archive. We need to find its metadata.
-                    // This implies metadata for compressed archives should be stored elsewhere
-                    // or embedded in the archive itself (more complex).
-                    // For now, let's assume if it's a .tar.xz, its metadata is in a sibling .json file
-                    // or we'll need a different strategy for compressed backup metadata.
-                    // A simpler approach for now: if it's a .tar.xz, we can't easily get AppBackupInfo
-                    // without decompressing or having a separate metadata file.
-                    // Let's assume for now, metadata.json is always inside the *original* backup directory.
-                    // If it's a compressed file, its metadata should have been saved before compression.
-                    // For now, we'll skip direct .tar.xz files in listBackups unless they have a sibling metadata file.
-                    println("Found compressed archive '$path'. Skipping for now as metadata strategy for compressed files needs refinement.")
+                    // This is a compressed archive. Its metadata.json should be a sibling file.
+                    val metadataFile = File(path.substringBeforeLast(".tar.xz") + ".json")
+                    if (metadataFile.exists()) {
+                        try {
+                            val readCommand = "cat \"${metadataFile.absolutePath}\""
+                            val metadataJson = fastCmd(getRootShell(), readCommand)
+                            if (metadataJson.isNotEmpty()) {
+                                json.decodeFromString<AppBackupInfo>(metadataJson)?.let { backupInfo ->
+                                    backups.add(backupInfo)
+                                }
+                            } else {
+                                println("Error reading metadata for compressed archive '$path': Empty content.")
+                            }
+                        } catch (e: Exception) {
+                            println("Exception loading metadata for compressed archive '$path': ${e.message}")
+                        }
+                    } else {
+                        println("Found compressed archive '$path' but no sibling metadata.json file. Skipping.")
+                    }
                 } else {
                     // This is an uncompressed backup directory
                     loadBackupMetadata(path)?.let { backupInfo ->
@@ -561,43 +621,241 @@ object BackupUtil {
         } else {
             println("No backups found in '$PUBLIC_BACKUP_BASE_DIR' or error listing directory.")
         }
-        return backups
+        return backups.sortedByDescending { it.backupTime } // Sort by most recent backup
     }
 
     /**
      * Restores an application from a backup.
+     * Emits states via a Flow for UI updates.
      *
      * @param backupInfo The AppBackupInfo object of the backup to restore.
      * @param partsToRestore The specific parts to restore from the backup.
      * @param overrideExistingInstallation If true, will attempt to override an existing app installation.
-     * @param onProgress A callback to report restoration progress (optional).
      * @param onConfirmation A callback to request user confirmation for actions like overriding.
      * Returns true if user confirms, false otherwise.
-     * @return True if restoration is successful, false otherwise.
+     * @return A Flow emitting BackupOperationState objects (Progress, Success, Error, Warning).
      */
     fun restoreApp(
         backupInfo: AppBackupInfo,
         partsToRestore: Set<BackupPart>,
         overrideExistingInstallation: Boolean,
-        onProgress: ((progress: Int, message: String) -> Unit)? = null,
         onConfirmation: ((message: String) -> Boolean)? = null // Callback for user confirmation
-    ): Boolean {
-        println("STUB: Restoring app '${backupInfo.appName}' from backup.")
-        onProgress?.invoke(0, "Starting restoration...")
+    ): Flow<BackupOperationState> = flow {
+        emit(BackupOperationState.Progress(0, "Starting restoration for ${backupInfo.appName}..."))
 
-        // Logic to handle:
-        // 1. Check if app is installed.
-        // 2. If installed and overrideExistingInstallation is false, prompt user or abort.
-        // 3. If backupInfo.archiveFilePath is not null, first unzip it to a temporary location.
-        // 4. For each part in partsToRestore:
-        //    a. Restore APK: pm install (with -r for override)
-        //    b. Restore DATA: force-stop app, delete existing /data/data/<pkg>, copy/untar data.tar, set permissions/ownership, restart app.
-        //    c. Restore EXT_DATA, OBB, MEDIA: copy files.
-        // 5. Clean up temporary unzipped directories if applicable.
+        val packageName = backupInfo.packageName
+        val appName = backupInfo.appName
 
-        onProgress?.invoke(100, "Restoration complete (STUB).")
-        return false // Placeholder
-    }
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).apply {
+            timeZone = TimeZone.getDefault()
+        }.format(Date())
+
+        // Determine the source directory for restoration (uncompressed backup or temporary unzipped)
+        var sourceBackupDir = backupInfo.backupLocation
+        var tempUnzipDir: String? = null
+
+        // 1. If the backup is compressed, unzip it first
+        if (backupInfo.archiveFilePath != null) {
+            emit(BackupOperationState.Progress(5, "Decompressing backup archive..."))
+            tempUnzipDir = "/data/local/tmp/thor_restore_staging/${packageName}_${System.currentTimeMillis()}_restore"
+            val unzipSuccess = unzipFile(backupInfo.archiveFilePath, tempUnzipDir)
+            if (!unzipSuccess) {
+                val errorMessage = "Failed to decompress archive '${backupInfo.archiveFilePath}'."
+                println(errorMessage)
+                emit(BackupOperationState.Error(errorMessage))
+                // Clean up temp dir if created
+                fastCmd(getRootShell(), "rm -rf \"$tempUnzipDir\"")
+                return@flow
+            }
+            sourceBackupDir = tempUnzipDir // Use the unzipped directory as the source
+        }
+
+        // 2. Check if app is currently installed
+        val isAppInstalled = fastCmd(getRootShell(), "pm path $packageName").isNotEmpty()
+
+        if (isAppInstalled && !overrideExistingInstallation) {
+            val message = "App '$appName' is already installed. Do you want to override it?"
+            val confirmed = onConfirmation?.invoke(message) ?: false
+            if (!confirmed) {
+                val errorMessage = "Restoration aborted by user: App '$appName' already installed."
+                println(errorMessage)
+                // Clean up temp dir if created
+                tempUnzipDir?.let { fastCmd(getRootShell(), "rm -rf \"$it\"") }
+                emit(BackupOperationState.Error(errorMessage))
+                return@flow
+            }
+        }
+
+        // 3. Force stop the app if it's installed, especially for data restoration
+        if (isAppInstalled) {
+            emit(BackupOperationState.Progress(10, "Force stopping app '${appName}'..."))
+            val forceStopResult = fastCmd(getRootShell(), "am force-stop $packageName")
+            if (forceStopResult.isNotEmpty()) {
+                val warningMessage = "Warning: Failed to force stop app '$appName': $forceStopResult. Data restoration might be unstable."
+                println(warningMessage)
+                emit(BackupOperationState.Warning(warningMessage))
+            }
+        }
+
+        // 4. Restore selected parts
+        val totalParts = partsToRestore.size
+        var partsRestored = 0
+
+        partsToRestore.forEach { part ->
+            val partProgress = 15 + (partsRestored * 70 / totalParts) // Allocate 70% for restoring parts
+            emit(BackupOperationState.Progress(partProgress, "Restoring ${part.name} for ${appName}..."))
+
+            when (part) {
+                BackupPart.APK -> {
+                    val apkSourceDir = "$sourceBackupDir/apk"
+                    val apkFilesResult = fastCmd(getRootShell(), "ls \"$apkSourceDir\"/*.apk")
+                    if (apkFilesResult.isNotEmpty()) {
+                        val apkPaths = apkFilesResult.lines().filter { it.isNotBlank() }
+                        val installCommand = if (apkPaths.size > 1) {
+                            "pm install-multiple ${if (overrideExistingInstallation) "-r " else ""}${apkPaths.joinToString(" ")}"
+                        } else {
+                            "pm install ${if (overrideExistingInstallation) "-r " else ""}\"${apkPaths.first()}\""
+                        }
+                        println("Installing APK: $installCommand")
+                        val installResult = fastCmd(getRootShell(), installCommand)
+                        if (installResult.isNotEmpty() && !installResult.contains("Success")) { // pm install outputs "Success" on stdout
+                            val errorMessage = "Failed to install APK for '$appName': $installResult"
+                            println(errorMessage)
+                            emit(BackupOperationState.Error(errorMessage))
+                            // Don't return@flow here, try to restore other parts if possible
+                        } else {
+                            println("APK installed successfully for '$appName'.")
+                        }
+                    } else {
+                        val warningMessage = "No APK files found in backup for '$appName'."
+                        println(warningMessage)
+                        emit(BackupOperationState.Warning(warningMessage))
+                    }
+                }
+                BackupPart.DATA -> {
+                    val dataTarPath = "$sourceBackupDir/data/${packageName}_data.tar"
+                    if (File(dataTarPath).exists()) {
+                        // Delete existing app data directory before restoring
+                        val deleteDataCmd = "rm -rf \"${getAppDataPath(packageName)}\""
+                        val deleteResult = fastCmd(getRootShell(), deleteDataCmd)
+                        if (deleteResult.isNotEmpty()) {
+                            val warningMessage = "Warning: Failed to clear existing app data for '$appName': $deleteResult. Restoration might be incomplete."
+                            println(warningMessage)
+                            emit(BackupOperationState.Warning(warningMessage))
+                        }
+
+                        // Untar the data
+                        val untarCommand = "tar -xf \"$dataTarPath\" -C \"${File(getAppDataPath(packageName)).parentFile?.absolutePath ?: "/"}\""
+                        println("Untarring internal data: $untarCommand")
+                        val untarResult = fastCmd(getRootShell(), untarCommand)
+                        if (untarResult.isNotEmpty()) {
+                            val errorMessage = "Failed to restore internal data for '$appName': $untarResult"
+                            println(errorMessage)
+                            emit(BackupOperationState.Error(errorMessage))
+                        } else {
+                            // Set correct permissions and ownership. Find app's UID/GID.
+                            // This is crucial for app to function correctly after data restore.
+                            val uidResult = fastCmd(getRootShell(), "stat -c '%u:%g' \"${getAppDataPath(packageName)}\"")
+                            val uidGid = uidResult.trim()
+                            if (uidGid.isNotEmpty()) {
+                                val chownCmd = "chown -R $uidGid \"${getAppDataPath(packageName)}\""
+                                val chmodCmd = "chmod -R 771 \"${getAppDataPath(packageName)}\"" // Common permissions for app data
+                                val chownResult = fastCmd(getRootShell(), chownCmd)
+                                val chmodResult = fastCmd(getRootShell(), chmodCmd)
+                                if (chownResult.isNotEmpty() || chmodResult.isNotEmpty()) {
+                                    val warningMessage = "Warning: Failed to set permissions/ownership for '$appName' data. App might not function correctly. Chown: $chownResult, Chmod: $chmodResult"
+                                    println(warningMessage)
+                                    emit(BackupOperationState.Warning(warningMessage))
+                                } else {
+                                    println("Permissions/ownership set for '$appName' data.")
+                                }
+                            } else {
+                                val warningMessage = "Warning: Could not determine UID/GID for '$appName'. Permissions/ownership not set."
+                                println(warningMessage)
+                                emit(BackupOperationState.Warning(warningMessage))
+                            }
+                        }
+                    } else {
+                        val warningMessage = "Internal data archive not found for '$appName'."
+                        println(warningMessage)
+                        emit(BackupOperationState.Warning(warningMessage))
+                    }
+                }
+                BackupPart.EXT_DATA -> {
+                    val extDataSourceDir = "$sourceBackupDir/ext_data/${packageName}" // Assuming ext_data contains a folder with package name
+                    val extDataDestPath = getAppExternalDataPath(packageName)
+                    if (File(extDataSourceDir).exists()) {
+                        val copyCmd = "cp -r \"$extDataSourceDir\" \"${File(extDataDestPath).parentFile?.absolutePath}/\""
+                        val result = fastCmd(getRootShell(), copyCmd)
+                        if (result.isNotEmpty()) {
+                            val errorMessage = "Failed to restore external data for '$appName': $result"
+                            println(errorMessage)
+                            emit(BackupOperationState.Error(errorMessage))
+                        }
+                    } else {
+                        val warningMessage = "External data not found in backup for '$appName'."
+                        println(warningMessage)
+                        emit(BackupOperationState.Warning(warningMessage))
+                    }
+                }
+                BackupPart.OBB -> {
+                    val obbSourceDir = "$sourceBackupDir/obb/${packageName}" // Assuming obb contains a folder with package name
+                    val obbDestPath = getAppObbPath(packageName)
+                    if (File(obbSourceDir).exists()) {
+                        val copyCmd = "cp -r \"$obbSourceDir\" \"${File(obbDestPath).parentFile?.absolutePath}/\""
+                        val result = fastCmd(getRootShell(), copyCmd)
+                        if (result.isNotEmpty()) {
+                            val errorMessage = "Failed to restore OBB for '$appName': $result"
+                            println(errorMessage)
+                            emit(BackupOperationState.Error(errorMessage))
+                        }
+                    } else {
+                        val warningMessage = "OBB files not found in backup for '$appName'."
+                        println(warningMessage)
+                        emit(BackupOperationState.Warning(warningMessage))
+                    }
+                }
+                BackupPart.MEDIA -> {
+                    val mediaSourceDir = "$sourceBackupDir/media"
+                    // Media restoration is tricky as original paths are varied.
+                    // For simplicity, copy to a general media folder or prompt user.
+                    // For now, let's copy to a subfolder in Pictures.
+                    val destMediaDir = "/sdcard/Pictures/ThorRestoredMedia/${appName.replace(" ", "_")}_${timestamp}"
+                    val createMediaDestDir = fastCmd(getRootShell(), "mkdir -p \"$destMediaDir\"")
+                    if (createMediaDestDir.isNotEmpty()) {
+                        val warningMessage = "Failed to create destination media directory '$destMediaDir': $createMediaDestDir. Media restoration might be incomplete."
+                        println(warningMessage)
+                        emit(BackupOperationState.Warning(warningMessage))
+                    } else {
+                        val copyCmd = "cp -r \"$mediaSourceDir\"/* \"$destMediaDir/\"" // Copy contents
+                        val result = fastCmd(getRootShell(), copyCmd)
+                        if (result.isNotEmpty()) {
+                            val errorMessage = "Failed to restore media for '$appName': $result"
+                            println(errorMessage)
+                            emit(BackupOperationState.Error(errorMessage))
+                        } else {
+                            emit(BackupOperationState.Warning("Media for '$appName' restored to '$destMediaDir'. Please check manually."))
+                        }
+                    }
+                }
+            }
+            partsRestored++
+        }
+
+        // 5. Clean up temporary unzipped directories if applicable
+        tempUnzipDir?.let {
+            emit(BackupOperationState.Progress(95, "Cleaning up temporary files..."))
+            val cleanupResult = fastCmd(getRootShell(), "rm -rf \"$it\"")
+            if (cleanupResult.isNotEmpty()) {
+                val warningMessage = "Warning: Failed to clean up temporary directory '$it': $cleanupResult"
+                println(warningMessage)
+                emit(BackupOperationState.Warning(warningMessage))
+            }
+        }
+
+        emit(BackupOperationState.Progress(100, "Restoration complete!"))
+        emit(BackupOperationState.Success(backupInfo)) // Emit the original backup info on success
+    }.flowOn(Dispatchers.IO) // Ensure heavy operations run on IO dispatcher
 
 
     // Extension function to convert your AppInfo to Android's ApplicationInfo
