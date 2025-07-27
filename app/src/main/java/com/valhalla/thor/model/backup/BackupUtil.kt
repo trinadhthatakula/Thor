@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.pm.ApplicationInfo
 import com.valhalla.superuser.ShellUtils.fastCmd
 import com.valhalla.thor.model.getRootShell
+import kotlinx.serialization.json.Json
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -25,6 +26,7 @@ object BackupUtil {
     private const val SDCARD_ANDROID_OBB_DIR = "/sdcard/Android/obb"
     // Note: "/sdcard" is often a symlink to "/storage/emulated/0" on modern Android devices.
     private const val PUBLIC_BACKUP_BASE_DIR = "/sdcard/thor/backup" // Publicly accessible backup folder
+    private val json = Json { prettyPrint = true } // For pretty printing JSON metadata
 
     /**
      * Determines the path(s) to an application's APK file(s).
@@ -215,8 +217,61 @@ object BackupUtil {
     }
 
     /**
-     * Backs up an application's selected parts to a .tar.xz archive in a public directory.
-     * Handles system app limitations (only APK backup).
+     * Saves the AppBackupInfo metadata to a JSON file within the backup directory.
+     *
+     * @param backupInfo The AppBackupInfo object to save.
+     * @return True if metadata was saved successfully, false otherwise.
+     */
+    private fun saveBackupMetadata(backupInfo: AppBackupInfo): Boolean {
+        val metadataFile = File(backupInfo.backupLocation, "metadata.json")
+        return try {
+            val jsonString = json.encodeToString(backupInfo)
+            // Use root command to write to file to ensure permissions
+            val writeCommand = "echo \"$jsonString\" > \"${metadataFile.absolutePath}\""
+            val result = fastCmd(getRootShell(), writeCommand)
+            if (result.isNotEmpty()) {
+                println("Error saving metadata to '${metadataFile.absolutePath}': $result")
+                false
+            } else {
+                println("Metadata saved to '${metadataFile.absolutePath}'")
+                true
+            }
+        } catch (e: Exception) {
+            println("Exception saving metadata: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Loads AppBackupInfo metadata from a JSON file within a backup directory.
+     *
+     * @param backupDirPath The absolute path to the backup directory.
+     * @return The AppBackupInfo object if loaded successfully, null otherwise.
+     */
+    private fun loadBackupMetadata(backupDirPath: String): AppBackupInfo? {
+        val metadataFile = File(backupDirPath, "metadata.json")
+        if (!metadataFile.exists()) {
+            println("Metadata file not found at '${metadataFile.absolutePath}'")
+            return null
+        }
+        return try {
+            val readCommand = "cat \"${metadataFile.absolutePath}\""
+            val result = fastCmd(getRootShell(), readCommand)
+            if (result.isNotEmpty()) { // If there's an error reading
+                println("Error reading metadata from '${metadataFile.absolutePath}': $result")
+                null
+            } else {
+                json.decodeFromString<AppBackupInfo>(result)
+            }
+        } catch (e: Exception) {
+            println("Exception loading metadata from '${metadataFile.absolutePath}': ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Backs up an application's selected parts to a dedicated directory in a public folder.
+     * This backup is uncompressed by default. Handles system app limitations (only APK backup).
      *
      * @param appInfo The AppInfo object of the application to backup.
      * @param selectedParts The set of BackupPart enums to include in the backup.
@@ -230,13 +285,9 @@ object BackupUtil {
     ): AppBackupInfo? {
         val packageName = appInfo.packageName
         val appName = appInfo.appName ?: packageName
-        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).apply {
-            timeZone = TimeZone.getDefault()
-        }.format(Date())
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         val backupDirName = "${appName.replace(" ", "_")}_${timestamp}"
-        val backupAppBaseDir = "$PUBLIC_BACKUP_BASE_DIR/$backupDirName"
-        val archiveFilePath = "$backupAppBaseDir/${packageName}_${timestamp}.tar.xz"
-        val stagingDir = "/data/local/tmp/thor_backup_staging/${packageName}_${timestamp}_staging"
+        val backupAppBaseDir = "$PUBLIC_BACKUP_BASE_DIR/$backupDirName" // This is now the backup location
 
         val actualBackedUpParts = mutableSetOf<BackupPart>()
 
@@ -247,44 +298,40 @@ object BackupUtil {
             return null
         }
 
-        // 2. Create the staging directory
-        mkdirResult = fastCmd(getRootShell(),"mkdir -p \"$stagingDir\"")
-        if (mkdirResult.isNotEmpty()) {
-            println("Error creating staging directory '$stagingDir': $mkdirResult")
-            // Attempt cleanup of created public backup dir
-            fastCmd(getRootShell(), "rm -rf \"$backupAppBaseDir\"")
-            return null
-        }
-
         // Determine parts to backup based on system app status
-        val partsToProcess = if (isSystemApp(appInfo.toApplicationInfo())) { // Convert your AppInfo to Android's ApplicationInfo
+        val partsToProcess = if (isSystemApp(appInfo.toApplicationInfo())) {
             if (selectedParts.contains(BackupPart.APK)) {
                 onWarning("Warning: Only APK can be backed up for system app '$appName'. Other selected parts will be ignored.")
                 setOf(BackupPart.APK)
             } else {
                 onWarning("Warning: System app '$appName' can only have its APK backed up. No parts selected, so no backup will be created.")
-                emptySet() // No APK selected, so no backup for system app
+                emptySet()
             }
         } else {
-            selectedParts // For user apps, process all selected parts
+            selectedParts
         }
 
         if (partsToProcess.isEmpty()) {
             println("No valid parts selected for backup of app '$appName'. Aborting.")
-            fastCmd(getRootShell(), "rm -rf \"$stagingDir\"") // Clean up staging
-            fastCmd(getRootShell(), "rm -rf \"$backupAppBaseDir\"") // Clean up public backup dir
+            fastCmd(getRootShell(), "rm -rf \"$backupAppBaseDir\"") // Clean up empty backup dir
             return null
         }
 
-
-        // 3. Copy selected parts to staging directory
+        // 2. Copy selected parts into subdirectories within backupAppBaseDir
         partsToProcess.forEach { part ->
             when (part) {
                 BackupPart.APK -> {
+                    val apkDestDir = "$backupAppBaseDir/apk"
+                    val createApkDirResult = fastCmd(getRootShell(), "mkdir -p \"$apkDestDir\"")
+                    if (createApkDirResult.isNotEmpty()) {
+                        println("Error creating APK destination directory '$apkDestDir': $createApkDirResult")
+                        onWarning("Failed to create APK directory for '$appName'. APK backup might be incomplete.")
+                        return@forEach // Skip this part
+                    }
                     getAppApkPaths(appInfo.toApplicationInfo()).forEachIndexed { index, apkPath ->
                         val apkFileName = File(apkPath).name
-                        val destPath = "$stagingDir/apk/$apkFileName"
-                        val copyCmd = "mkdir -p \"$stagingDir/apk\" && cp -f \"$apkPath\" \"$destPath\""
+                        val destPath = "$apkDestDir/$apkFileName"
+                        val copyCmd = "cp -f \"$apkPath\" \"$destPath\""
                         println("Copying APK: $copyCmd")
                         val result = fastCmd(getRootShell(), copyCmd)
                         if (result.isNotEmpty()) {
@@ -297,8 +344,15 @@ object BackupUtil {
                 }
                 BackupPart.DATA -> {
                     val dataPath = getAppDataPath(packageName)
+                    val dataDestDir = "$backupAppBaseDir/data"
+                    val createDataDirResult = fastCmd(getRootShell(), "mkdir -p \"$dataDestDir\"")
+                    if (createDataDirResult.isNotEmpty()) {
+                        println("Error creating DATA destination directory '$dataDestDir': $createDataDirResult")
+                        onWarning("Failed to create DATA directory for '$appName'. Data backup might be incomplete.")
+                        return@forEach
+                    }
                     // Use tar for internal data to preserve permissions and ownership
-                    val destTarPath = "$stagingDir/data.tar" // Temporary tar file inside staging
+                    val destTarPath = "$dataDestDir/${packageName}_data.tar" // Tar file inside data subdir
                     val tarCommand = "cd \"${File(dataPath).parentFile?.absolutePath ?: "/"}\" && tar -cf \"$destTarPath\" \"${File(dataPath).name}\""
                     println("Archiving internal data: $tarCommand")
                     val result = fastCmd(getRootShell(), tarCommand)
@@ -311,8 +365,14 @@ object BackupUtil {
                 }
                 BackupPart.EXT_DATA -> {
                     val extDataPath = getAppExternalDataPath(packageName)
-                    val destPath = "$stagingDir/ext_data"
-                    val copyCmd = "mkdir -p \"$destPath\" && cp -r \"$extDataPath\" \"$destPath/\""
+                    val extDataDestDir = "$backupAppBaseDir/ext_data"
+                    val createExtDataDirResult = fastCmd(getRootShell(), "mkdir -p \"$extDataDestDir\"")
+                    if (createExtDataDirResult.isNotEmpty()) {
+                        println("Error creating EXT_DATA destination directory '$extDataDestDir': $createExtDataDirResult")
+                        onWarning("Failed to create EXT_DATA directory for '$appName'. External data backup might be incomplete.")
+                        return@forEach
+                    }
+                    val copyCmd = "cp -r \"$extDataPath\" \"$extDataDestDir/\""
                     println("Copying external data: $copyCmd")
                     val result = fastCmd(getRootShell(), copyCmd)
                     if (result.isNotEmpty()) {
@@ -324,8 +384,14 @@ object BackupUtil {
                 }
                 BackupPart.OBB -> {
                     val obbPath = getAppObbPath(packageName)
-                    val destPath = "$stagingDir/obb"
-                    val copyCmd = "mkdir -p \"$destPath\" && cp -r \"$obbPath\" \"$destPath/\""
+                    val obbDestDir = "$backupAppBaseDir/obb"
+                    val createObbDirResult = fastCmd(getRootShell(), "mkdir -p \"$obbDestDir\"")
+                    if (createObbDirResult.isNotEmpty()) {
+                        println("Error creating OBB destination directory '$obbDestDir': $createObbDirResult")
+                        onWarning("Failed to create OBB directory for '$appName'. OBB backup might be incomplete.")
+                        return@forEach
+                    }
+                    val copyCmd = "cp -r \"$obbPath\" \"$obbDestDir/\""
                     println("Copying OBB: $copyCmd")
                     val result = fastCmd(getRootShell(), copyCmd)
                     if (result.isNotEmpty()) {
@@ -336,15 +402,21 @@ object BackupUtil {
                     }
                 }
                 BackupPart.MEDIA -> {
+                    val mediaDestDir = "$backupAppBaseDir/media"
+                    val createMediaDirResult = fastCmd(getRootShell(), "mkdir -p \"$mediaDestDir\"")
+                    if (createMediaDirResult.isNotEmpty()) {
+                        println("Error creating MEDIA destination directory '$mediaDestDir': $createMediaDirResult")
+                        onWarning("Failed to create MEDIA directory for '$appName'. Media backup might be incomplete.")
+                        return@forEach
+                    }
                     getAppMediaPaths(packageName).forEach { mediaPath ->
                         val mediaDirName = File(mediaPath).name
-                        val destPath = "$stagingDir/media/$mediaDirName"
-                        val copyCmd = "mkdir -p \"$destPath\" && cp -r \"$mediaPath\" \"$destPath/\""
+                        val copyCmd = "cp -r \"$mediaPath\" \"$mediaDestDir/$mediaDirName\""
                         println("Copying media: $copyCmd")
                         val result = fastCmd(getRootShell(), copyCmd)
                         if (result.isNotEmpty()) {
                             println("Error copying media '$mediaPath': $result")
-                            onWarning("Failed to backup media for '$appName'. Backup might be incomplete.")
+                            onWarning("Failed to copy media for '$appName'. Backup might be incomplete.")
                         } else {
                             actualBackedUpParts.add(BackupPart.MEDIA)
                         }
@@ -353,52 +425,180 @@ object BackupUtil {
             }
         }
 
-        // Check if any parts were successfully copied to staging
+        // Check if any parts were successfully copied
         if (actualBackedUpParts.isEmpty()) {
-            println("No parts were successfully staged for backup of app '$appName'. Aborting.")
-            fastCmd(getRootShell(), "rm -rf \"$stagingDir\"") // Clean up staging
-            fastCmd(getRootShell(), "rm -rf \"$backupAppBaseDir\"") // Clean up public backup dir
+            println("No parts were successfully backed up for app '$appName'. Aborting.")
+            fastCmd(getRootShell(), "rm -rf \"$backupAppBaseDir\"") // Clean up empty backup dir
             return null
         }
 
-        // 4. Zip the staging directory
-        println("Zipping staging directory '$stagingDir' to '$archiveFilePath'")
-        val zipSuccess = zipDirectory(stagingDir, archiveFilePath)
-
-        // 5. Clean up staging directory
-        val cleanupResult = fastCmd(getRootShell(),"rm -rf \"$stagingDir\"")
-        if (cleanupResult.isNotEmpty()) {
-            println("Warning: Failed to clean up staging directory '$stagingDir': $cleanupResult")
-            onWarning("Failed to clean up temporary files. Manual cleanup might be required.")
-        }
-
-        if (!zipSuccess) {
-            println("Final zip operation failed for '$appName'. Aborting.")
-            fastCmd(getRootShell(), "rm -rf \"$archiveFilePath\"") // Remove incomplete archive
-            fastCmd(getRootShell(), "rm -rf \"$backupAppBaseDir\"") // Remove empty backup dir
-            return null
-        }
-
-        // 6. Calculate final backup size
-        val backupSizeResult = fastCmd(getRootShell(),
-            "du -sb \"$archiveFilePath\" | awk '{print $1}'"
-        )
+        // 3. Calculate final backup size (of the uncompressed directory)
+        val backupSizeResult = fastCmd(getRootShell(), "du -sb \"$backupAppBaseDir\" | awk '{print \$1}'")
         val backupSize = backupSizeResult.trim().toLongOrNull() ?: 0L
 
-        // 7. Create and return AppBackupInfo
-        return AppBackupInfo(
+        // 4. Create AppBackupInfo and save its metadata
+        val newBackupInfo = AppBackupInfo(
             packageName = packageName,
             appName = appName,
-            versionCode = appInfo.versionCode.toLong(), // Assuming AppInfo.versionCode is Int, convert to Long
+            versionCode = appInfo.versionCode.toLong(),
             versionName = appInfo.versionName ?: "N/A",
             backupTime = System.currentTimeMillis(),
-            backupLocation = archiveFilePath,
+            backupLocation = backupAppBaseDir, // Now points to the directory
             backedUpParts = actualBackedUpParts,
             backupSize = backupSize,
-            isSystemApp = isSystemApp(appInfo.toApplicationInfo()), // Re-check system app status
-            isSplitApk = appInfo.splitPublicSourceDirs.isNotEmpty()
+            isSystemApp = isSystemApp(appInfo.toApplicationInfo()),
+            isSplitApk = appInfo.splitPublicSourceDirs.isNotEmpty(),
+            archiveFilePath = null // Initially null, will be set if compressed later
         )
+
+        if (!saveBackupMetadata(newBackupInfo)) {
+            println("Error: Failed to save backup metadata for '$appName'. Deleting backup directory.")
+            fastCmd(getRootShell(), "rm -rf \"$backupAppBaseDir\"")
+            return null
+        }
+
+        println("Successfully created uncompressed backup for '$appName' at '$backupAppBaseDir'")
+        return newBackupInfo
     }
+
+    /**
+     * Compresses an existing uncompressed app backup directory into a .tar.xz archive.
+     *
+     * @param backupInfo The AppBackupInfo object of the uncompressed backup.
+     * @param onProgress A callback to report compression progress (optional).
+     * @return The updated AppBackupInfo object with archiveFilePath set, or null if compression fails.
+     */
+    fun compressBackup(
+        backupInfo: AppBackupInfo,
+        onProgress: ((progress: Int, message: String) -> Unit)? = null
+    ): AppBackupInfo? {
+        if (backupInfo.archiveFilePath != null) {
+            println("Backup for '${backupInfo.appName}' is already compressed.")
+            return backupInfo
+        }
+
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).apply {
+            timeZone = TimeZone.getDefault()
+        }.format(Date())
+        val archiveFileName = "${backupInfo.packageName}_${timestamp}.tar.xz"
+        val archiveFilePath = File(backupInfo.backupLocation).parentFile?.absolutePath + "/$archiveFileName" // Place archive in parent dir of backup dir
+
+        onProgress?.invoke(0, "Starting compression for ${backupInfo.appName}...")
+
+        val zipSuccess = zipDirectory(backupInfo.backupLocation, archiveFilePath)
+
+        if (zipSuccess) {
+            // Update backupInfo with archive path and new size
+            val newBackupSizeResult = fastCmd(getRootShell(), "du -sb \"$archiveFilePath\" | awk '{print \$1}'")
+            val newBackupSize = newBackupSizeResult.trim().toLongOrNull() ?: 0L
+
+            val updatedBackupInfo = backupInfo.copy(
+                archiveFilePath = archiveFilePath,
+                backupSize = newBackupSize
+            )
+            // Remove the original uncompressed directory after successful compression
+            val rmResult = fastCmd(getRootShell(), "rm -rf \"${backupInfo.backupLocation}\"")
+            if (rmResult.isNotEmpty()) {
+                println("Warning: Failed to remove uncompressed backup directory after compression: $rmResult")
+            }
+
+            if (saveBackupMetadata(updatedBackupInfo)) { // Save updated metadata
+                onProgress?.invoke(100, "Compression complete!")
+                return updatedBackupInfo
+            } else {
+                println("Error: Failed to save updated metadata after compression. Keeping both compressed and uncompressed.")
+                onProgress?.invoke(100, "Compression complete with metadata save error.")
+                return null // Or return original backupInfo if you want to keep it as uncompressed
+            }
+        } else {
+            println("Compression failed for '${backupInfo.appName}'.")
+            onProgress?.invoke(-1, "Compression failed.")
+            // Clean up potentially incomplete archive
+            fastCmd(getRootShell(), "rm -f \"$archiveFilePath\"")
+            return null
+        }
+    }
+
+    /**
+     * Scans the public backup directory and returns a list of all detected AppBackupInfo objects.
+     * This function reads the metadata.json file within each backup directory.
+     *
+     * @return A list of AppBackupInfo objects found.
+     */
+    fun listBackups(): List<AppBackupInfo> {
+        val backups = mutableListOf<AppBackupInfo>()
+        val backupBaseDirFile = File(PUBLIC_BACKUP_BASE_DIR)
+        if (!backupBaseDirFile.exists()) {
+            println("Backup base directory does not exist: $PUBLIC_BACKUP_BASE_DIR")
+            return emptyList()
+        }
+
+        // Use 'ls' command to list directories, as direct File.listFiles() might have permission issues
+        // or be slow for large numbers of files/directories.
+        val lsResult = fastCmd(getRootShell(), "ls -d \"$PUBLIC_BACKUP_BASE_DIR\"/*/ \"$PUBLIC_BACKUP_BASE_DIR\"/*.tar.xz")
+        if (lsResult.isNotEmpty()) {
+            val paths = lsResult.lines().filter { it.isNotBlank() }
+            paths.forEach { path ->
+                if (path.endsWith(".tar.xz")) {
+                    // This is a compressed archive. We need to find its metadata.
+                    // This implies metadata for compressed archives should be stored elsewhere
+                    // or embedded in the archive itself (more complex).
+                    // For now, let's assume if it's a .tar.xz, its metadata is in a sibling .json file
+                    // or we'll need a different strategy for compressed backup metadata.
+                    // A simpler approach for now: if it's a .tar.xz, we can't easily get AppBackupInfo
+                    // without decompressing or having a separate metadata file.
+                    // Let's assume for now, metadata.json is always inside the *original* backup directory.
+                    // If it's a compressed file, its metadata should have been saved before compression.
+                    // For now, we'll skip direct .tar.xz files in listBackups unless they have a sibling metadata file.
+                    println("Found compressed archive '$path'. Skipping for now as metadata strategy for compressed files needs refinement.")
+                } else {
+                    // This is an uncompressed backup directory
+                    loadBackupMetadata(path)?.let { backupInfo ->
+                        backups.add(backupInfo)
+                    }
+                }
+            }
+        } else {
+            println("No backups found in '$PUBLIC_BACKUP_BASE_DIR' or error listing directory.")
+        }
+        return backups
+    }
+
+    /**
+     * Restores an application from a backup.
+     *
+     * @param backupInfo The AppBackupInfo object of the backup to restore.
+     * @param partsToRestore The specific parts to restore from the backup.
+     * @param overrideExistingInstallation If true, will attempt to override an existing app installation.
+     * @param onProgress A callback to report restoration progress (optional).
+     * @param onConfirmation A callback to request user confirmation for actions like overriding.
+     * Returns true if user confirms, false otherwise.
+     * @return True if restoration is successful, false otherwise.
+     */
+    fun restoreApp(
+        backupInfo: AppBackupInfo,
+        partsToRestore: Set<BackupPart>,
+        overrideExistingInstallation: Boolean,
+        onProgress: ((progress: Int, message: String) -> Unit)? = null,
+        onConfirmation: ((message: String) -> Boolean)? = null // Callback for user confirmation
+    ): Boolean {
+        println("STUB: Restoring app '${backupInfo.appName}' from backup.")
+        onProgress?.invoke(0, "Starting restoration...")
+
+        // Logic to handle:
+        // 1. Check if app is installed.
+        // 2. If installed and overrideExistingInstallation is false, prompt user or abort.
+        // 3. If backupInfo.archiveFilePath is not null, first unzip it to a temporary location.
+        // 4. For each part in partsToRestore:
+        //    a. Restore APK: pm install (with -r for override)
+        //    b. Restore DATA: force-stop app, delete existing /data/data/<pkg>, copy/untar data.tar, set permissions/ownership, restart app.
+        //    c. Restore EXT_DATA, OBB, MEDIA: copy files.
+        // 5. Clean up temporary unzipped directories if applicable.
+
+        onProgress?.invoke(100, "Restoration complete (STUB).")
+        return false // Placeholder
+    }
+
 
     // Extension function to convert your AppInfo to Android's ApplicationInfo
     // This is a simplified conversion and might need more fields depending on usage.
@@ -414,7 +614,4 @@ object BackupUtil {
         // Add other relevant fields if needed by getAppApkPaths or isSystemApp
         return appInfo
     }
-
-
-
 }
