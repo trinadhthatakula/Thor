@@ -312,7 +312,7 @@ object BackupUtil {
 
         // 1. Create the base backup directory in public storage
         emit(BackupOperationState.Progress(5, "Creating backup directory..."))
-        var mkdirResult = fastCmd(getRootShell(),"mkdir -p \"$backupAppBaseDir\"")
+        val mkdirResult = fastCmd(getRootShell(),"mkdir -p \"$backupAppBaseDir\"")
         if (mkdirResult.isNotEmpty()) {
             val errorMessage = "Error creating public backup directory '$backupAppBaseDir': $mkdirResult"
             println(errorMessage)
