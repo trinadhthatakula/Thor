@@ -110,9 +110,11 @@ fun HomePage(
     var getExitConfirmation by remember { mutableStateOf(false) }
 
     BackHandler {
-        if (selectedDestinationIndex != AppDestinations.HOME.ordinal)
-            selectedDestinationIndex = AppDestinations.HOME.ordinal
-        else {
+        if (selectedDestinationIndex != AppDestinations.HOME.ordinal) {
+            scope.launch {
+                pagerState.animateScrollToPage(AppDestinations.HOME.ordinal)
+            }
+        } else {
             if (logObserver.isEmpty())
                 getExitConfirmation = true
         }

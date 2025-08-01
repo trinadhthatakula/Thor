@@ -207,16 +207,18 @@ fun AppList(
 
             AnimatedVisibility(multiSelect.isEmpty()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        painterResource(R.drawable.filter_list),
-                        "Filter",
-                        modifier = Modifier
-                            .size(24.dp)
-                            .clip(CircleShape)
-                            .clickable {
-                                showFilters = true
-                            }
-                    )
+                    IconButton(
+                        onClick = {
+                            showFilters = true
+
+                        }
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.filter_list),
+                            "Filter"
+                        )
+                    }
+
                     Row(
                         modifier = Modifier.Companion
                             .weight(1f)
@@ -249,17 +251,16 @@ fun AppList(
                                 )
                             }
                     }
-
-                    Icon(
-                        painterResource(if (isGrid) R.drawable.view_stream else R.drawable.grid_view),
-                        "Filter",
-                        modifier = Modifier
-                            .size(24.dp)
-                            .clip(CircleShape)
-                            .clickable {
-                                isGrid = !isGrid
-                            }
-                    )
+                    IconButton(
+                        onClick = {
+                            isGrid = !isGrid
+                        }
+                    ) {
+                        Icon(
+                            painterResource(if (isGrid) R.drawable.view_stream else R.drawable.grid_view),
+                            "Filter",
+                        )
+                    }
                 }
 
             }
