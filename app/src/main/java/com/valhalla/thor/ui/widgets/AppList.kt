@@ -38,6 +38,7 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -517,7 +518,8 @@ fun AppList(
                     RotatableActionItem (
                         icon = R.drawable.arrow_upward,
                         rotation = rotation,
-                        text = sortOrder.asGeneralName()
+                        text = sortOrder.asGeneralName(),
+                        colors = IconButtonDefaults.filledIconButtonColors()
                     ) {
                         onSortOrderSelected(sortOrder.flip())
                     }
