@@ -1,3 +1,5 @@
+@file:Suppress("unused")
+
 package com.valhalla.thor.model.backup
 
 import android.annotation.SuppressLint
@@ -472,7 +474,9 @@ object BackupUtil {
 
         // 3. Calculate final backup size (of the uncompressed directory)
         emit(BackupOperationState.Progress(90, "Calculating backup size..."))
-        val backupSizeResult = fastCmd(getRootShell(), "du -sb \"$backupAppBaseDir\" | awk '{print \$1}'")
+        val backupSizeResult = fastCmd(getRootShell(),
+            "du -sb \"$backupAppBaseDir\" | awk '{print $1}'"
+        )
         val backupSize = backupSizeResult.trim().toLongOrNull() ?: 0L
 
         // 4. Create AppBackupInfo and save its metadata
@@ -529,18 +533,25 @@ object BackupUtil {
         val archiveFileName = "${backupInfo.packageName}_${timestamp}.tar.xz"
         // Place archive in the parent directory of the original backup directory
         val archiveFilePath = File(backupInfo.backupLocation).parentFile?.absolutePath + "/$archiveFileName"
+        val metadataFilePath = File(backupInfo.backupLocation).parentFile?.absolutePath + "/${backupInfo.packageName}_${timestamp}.json"
+
 
         val zipSuccess = zipDirectory(backupInfo.backupLocation, archiveFilePath)
 
         if (zipSuccess) {
             emit(BackupOperationState.Progress(80, "Compression successful. Updating metadata..."))
             // Update backupInfo with archive path and new size
-            val newBackupSizeResult = fastCmd(getRootShell(), "du -sb \"$archiveFilePath\" | awk '{print \$1}'")
+            val newBackupSizeResult = fastCmd(getRootShell(),
+                "du -sb \"$archiveFilePath\" | awk '{print $1}'"
+            )
             val newBackupSize = newBackupSizeResult.trim().toLongOrNull() ?: 0L
 
             val updatedBackupInfo = backupInfo.copy(
                 archiveFilePath = archiveFilePath,
-                backupSize = newBackupSize
+                backupSize = newBackupSize,
+                // The backupLocation for the AppBackupInfo now points to the compressed file
+                // and we will clean up the directory, so we should null out the location
+                backupLocation = metadataFilePath.substringBeforeLast(".json")
             )
             // Remove the original uncompressed directory after successful compression
             val rmResult = fastCmd(getRootShell(), "rm -rf \"${backupInfo.backupLocation}\"")
@@ -550,7 +561,11 @@ object BackupUtil {
                 emit(BackupOperationState.Warning(warningMessage))
             }
 
-            if (saveBackupMetadata(updatedBackupInfo)) { // Save updated metadata next to the new archive
+            // Save the updated metadata to the new location (next to the .tar.xz file)
+            val jsonString = json.encodeToString(updatedBackupInfo)
+            val saveResult = fastCmd(getRootShell(), "echo \"$jsonString\" > \"$metadataFilePath\"")
+
+            if (saveResult.isEmpty()) {
                 emit(BackupOperationState.Progress(100, "Compression complete!"))
                 emit(BackupOperationState.Success(updatedBackupInfo))
             } else {
@@ -578,50 +593,46 @@ object BackupUtil {
     fun listBackups(): List<AppBackupInfo> {
         val backups = mutableListOf<AppBackupInfo>()
         val backupBaseDirFile = File(PUBLIC_BACKUP_BASE_DIR)
-        if (!backupBaseDirFile.exists()) {
-            println("Backup base directory does not exist: $PUBLIC_BACKUP_BASE_DIR")
+        if (!backupBaseDirFile.exists() || !backupBaseDirFile.isDirectory) {
+            println("Backup base directory does not exist or is not a directory: $PUBLIC_BACKUP_BASE_DIR")
             return emptyList()
         }
 
-        // Use 'ls' command to list directories and .tar.xz files
-        // This command will list all directories and .tar.xz files directly under PUBLIC_BACKUP_BASE_DIR
-        val lsCommand = "ls -d \"$PUBLIC_BACKUP_BASE_DIR\"/*/ \"$PUBLIC_BACKUP_BASE_DIR\"/*.tar.xz 2>/dev/null" // Redirect stderr to /dev/null
-        val lsResult = fastCmd(getRootShell(), lsCommand)
-
+        // We can use a combination of File.listFiles() and `fastCmd` for robust metadata retrieval.
+        // File.listFiles() is faster, but `fastCmd` might be needed for hidden/inaccessible files.
+        // Let's use a combination to be safe.
+        val lsResult = fastCmd(getRootShell(), "ls -a \"$PUBLIC_BACKUP_BASE_DIR\"")
         if (lsResult.isNotEmpty()) {
-            val paths = lsResult.lines().filter { it.isNotBlank() }
-            paths.forEach { path ->
-                if (path.endsWith(".tar.xz")) {
-                    // This is a compressed archive. Its metadata.json should be a sibling file.
-                    val metadataFile = File(path.substringBeforeLast(".tar.xz") + ".json")
-                    if (metadataFile.exists()) {
+            val fileNames = lsResult.lines().filter { it.isNotBlank() }
+            fileNames.forEach { fileName ->
+                val fullPath = "$PUBLIC_BACKUP_BASE_DIR/$fileName"
+                if (fileName.endsWith(".json")) {
+                    val archiveFilePath = fullPath.substringBeforeLast(".json") + ".tar.xz"
+                    val archiveFile = File(archiveFilePath)
+                    if (archiveFile.exists()) {
+                        // Found a metadata file for a compressed archive
                         try {
-                            val readCommand = "cat \"${metadataFile.absolutePath}\""
+                            val readCommand = "cat \"$fullPath\""
                             val metadataJson = fastCmd(getRootShell(), readCommand)
                             if (metadataJson.isNotEmpty()) {
-                                json.decodeFromString<AppBackupInfo>(metadataJson)?.let { backupInfo ->
-                                    backups.add(backupInfo)
+                                json.decodeFromString<AppBackupInfo>(metadataJson).let { backupInfo ->
+                                    // Ensure the AppBackupInfo has the correct path to the archive file
+                                    backups.add(backupInfo.copy(archiveFilePath = archiveFilePath))
                                 }
-                            } else {
-                                println("Error reading metadata for compressed archive '$path': Empty content.")
                             }
                         } catch (e: Exception) {
-                            println("Exception loading metadata for compressed archive '$path': ${e.message}")
+                            println("Error loading metadata from '$fullPath': ${e.message}")
                         }
-                    } else {
-                        println("Found compressed archive '$path' but no sibling metadata.json file. Skipping.")
                     }
-                } else {
-                    // This is an uncompressed backup directory
-                    loadBackupMetadata(path)?.let { backupInfo ->
+                } else if (File(fullPath).isDirectory) {
+                    // Found an uncompressed backup directory
+                    loadBackupMetadata(fullPath)?.let { backupInfo ->
                         backups.add(backupInfo)
                     }
                 }
             }
-        } else {
-            println("No backups found in '$PUBLIC_BACKUP_BASE_DIR' or error listing directory.")
         }
-        return backups.sortedByDescending { it.backupTime } // Sort by most recent backup
+        return backups.sortedByDescending { it.backupTime }
     }
 
     /**
