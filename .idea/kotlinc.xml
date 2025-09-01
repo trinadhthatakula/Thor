@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
+  <component name="Kotlin2JsCompilerArguments">
+    <option name="moduleKind" value="plain" />
+  </component>
+  <component name="Kotlin2JvmCompilerArguments">
+    <option name="jvmTarget" value="21" />
+  </component>
+  <component name="KotlinCommonCompilerArguments">
+    <option name="apiVersion" value="2.2" />
+    <option name="languageVersion" value="2.2" />
+  </component>
   <component name="KotlinJpsPluginSettings">
-    <option name="version" value="2.1.10" />
+    <option name="version" value="2.2.10" />
   </component>
 </project>
