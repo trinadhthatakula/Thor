@@ -22,12 +22,13 @@ import com.valhalla.thor.model.MultiAppAction
 import com.valhalla.thor.model.rootAvailable
 import com.valhalla.thor.model.shizuku.ShizukuManager
 import com.valhalla.thor.model.shizuku.ShizukuState
+import org.koin.androidx.compose.koinViewModel
 
 @Composable
 fun MultiSelectToolBox(
     modifier: Modifier = Modifier,
     selected: List<AppInfo> = emptyList(),
-    shizukuManager : ShizukuManager = viewModel(),
+    shizukuManager : ShizukuManager = koinViewModel(),
     onCancel: () -> Unit = {},
     onMultiAppAction: (MultiAppAction) -> Unit = {}
 ) {

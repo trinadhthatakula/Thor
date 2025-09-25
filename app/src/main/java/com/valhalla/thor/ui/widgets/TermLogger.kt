@@ -1,6 +1,5 @@
 package com.valhalla.thor.ui.widgets
 
-import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -16,7 +15,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,10 +32,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.valhalla.thor.R
+import com.valhalla.thor.ui.home.HomeUiState
 import com.valhalla.thor.ui.theme.firaMonoFontFamily
 import kotlinx.serialization.Serializable
 
-@OptIn(ExperimentalMaterial3Api::class)
+@Suppress("unused")
 @Composable
 fun TermLogger(
     modifier: Modifier = Modifier,
@@ -114,10 +113,7 @@ data class CustomAction(
 @Composable
 fun TermLoggerDialog(
     modifier: Modifier = Modifier,
-    title: String = "Reinstalling..,",
-    canExit: Boolean = false,
-    logObserver: List<String>,
-    showTerminate: Boolean = false,
+    uiState: HomeUiState,
     customAction: CustomAction? = null,
     onCustomActionClicked: (CustomAction) -> Unit = {},
     onTerminate: () -> Unit = {},
@@ -125,7 +121,7 @@ fun TermLoggerDialog(
 ) {
     Dialog(
         onDismissRequest = {
-            if (canExit) {
+            if (uiState.exitPermitted) {
                 done()
             }
         },
@@ -150,7 +146,7 @@ fun TermLoggerDialog(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        if (!canExit)
+                        if (!uiState.exitPermitted)
                             AnimateLottieRaw(
                                 resId = R.raw.rearrange,
                                 shouldLoop = true,
@@ -159,7 +155,7 @@ fun TermLoggerDialog(
                                 contentScale = ContentScale.Crop
                             )
                         Text(
-                            if (!canExit) title else "",
+                            if (!uiState.exitPermitted) uiState.termLoggerTitle else "",
                             color = MaterialTheme.colorScheme.onBackground,
                             modifier = Modifier.weight(1f)
                         )
@@ -176,7 +172,7 @@ fun TermLoggerDialog(
                                 )
                             }
                         }
-                        if(showTerminate){
+                        if(uiState.showTerminate){
                             IconButton(
                                 onClick = {
                                     onTerminate()
@@ -189,7 +185,7 @@ fun TermLoggerDialog(
                                 )
                             }
                         }
-                        if(canExit){
+                        if(uiState.exitPermitted){
                             IconButton(
                                 onClick = {
                                     done()
@@ -205,8 +201,8 @@ fun TermLoggerDialog(
                     }
 
                     val lazyListState = rememberLazyListState()
-                    LaunchedEffect(logObserver) {
-                        lazyListState.animateScrollToItem(logObserver.size)
+                    LaunchedEffect(uiState.logObserver) {
+                        lazyListState.animateScrollToItem(uiState.logObserver.size)
                     }
                     LazyColumn(
                         state = lazyListState,
@@ -214,7 +210,7 @@ fun TermLoggerDialog(
                             .padding(10.dp)
                             .horizontalScroll(rememberScrollState())
                     ) {
-                        items(logObserver) { logTxt ->
+                        items(uiState.logObserver) { logTxt ->
                             Column(modifier = Modifier.fillMaxWidth()) {
                                 Text(
                                     text = "* $logTxt",
@@ -232,7 +228,7 @@ fun TermLoggerDialog(
                         }
                     }
 
-                    if (canExit)
+                    if (uiState.exitPermitted)
                         Button(
                             onClick = {
                                 done()
