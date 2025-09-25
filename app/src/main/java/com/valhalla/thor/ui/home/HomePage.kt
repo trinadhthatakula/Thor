@@ -10,8 +10,13 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TooltipAnchorPosition
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -138,10 +143,18 @@ fun HomePage(
                             Text(stringResource(dest.label))
                         },
                         icon = {
-                            Icon(
-                                imageVector = ImageVector.vectorResource(if (selectedDestinationIndex == dest.ordinal) dest.selectedIcon else dest.icon),
-                                stringResource(dest.label)
-                            )
+                            TooltipBox(
+                                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(
+                                    TooltipAnchorPosition.Above
+                                ),
+                                tooltip = { PlainTooltip { Text(stringResource(dest.contentDescription)) } },
+                                state = rememberTooltipState(),
+                            ) {
+                                Icon(
+                                    imageVector = ImageVector.vectorResource(if (selectedDestinationIndex == dest.ordinal) dest.selectedIcon else dest.icon),
+                                    stringResource(dest.label)
+                                )
+                            }
                         },
                         onClick = {
 

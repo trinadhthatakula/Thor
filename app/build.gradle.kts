@@ -13,7 +13,9 @@ kotlin {
         jvmTarget.set(JvmTarget.JVM_21)
         optIn.add("kotlin.RequiresOptIn")
         optIn.add("kotlin.time.ExperimentalTime")
+        optIn.add("org.koin.core.annotation.KoinExperimentalAPI")
         optIn.add("androidx.compose.material3.ExperimentalMaterial3ExpressiveApi")
+        optIn.add("androidx.compose.material3.ExperimentalMaterial3Api")
     }
 }
 
@@ -93,5 +95,7 @@ dependencies {
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
     implementation(libs.hiddenapibypass)
+
+    implementation(libs.bundles.koin)
 
 }

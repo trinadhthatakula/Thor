@@ -3,7 +3,7 @@
     <string name="title_activity_script_runner">ScriptRunner</string>
     <string name="title_activity_home">HomeActivity</string>
     <string name="home">Home</string>
-    <string name="home_desc">Home description</string>
+    <string name="home_desc">Home Page</string>
     <string name="apps_desc">Shows A list of all apps available</string>
     <string name="apps">App List</string>
     <string name="freezer_desc">Freeze/Unfreeze apps from here</string>

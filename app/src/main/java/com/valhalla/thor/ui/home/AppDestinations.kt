@@ -1,7 +1,5 @@
 package com.valhalla.thor.ui.home
 
-import androidx.annotation.DrawableRes
-import androidx.annotation.StringRes
 import com.valhalla.thor.R
 import kotlinx.serialization.Serializable
 
