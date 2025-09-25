@@ -19,11 +19,12 @@ import com.valhalla.thor.model.shizuku.ShizukuState
 import com.valhalla.thor.ui.home.HomePage
 import com.valhalla.thor.ui.theme.ThorTheme
 import kotlinx.coroutines.launch
+import org.koin.androidx.viewmodel.ext.android.viewModel
 import rikka.shizuku.Shizuku
 
 class HomeActivity : ComponentActivity() {
 
-    private val shizukuManager : ShizukuManager by viewModels()
+    private val shizukuManager : ShizukuManager by viewModel()
     private val requestCode = 1001
 
     fun checkShizuku() {

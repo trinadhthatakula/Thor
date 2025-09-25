@@ -36,6 +36,7 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TooltipAnchorPosition
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
@@ -63,7 +64,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.AppListType
@@ -76,6 +76,7 @@ import com.valhalla.thor.model.shizuku.ShizukuState
 import com.valhalla.thor.ui.theme.greenDark
 import com.valhalla.thor.ui.theme.greenLight
 import com.valhalla.thor.ui.widgets.TypeWriterText
+import org.koin.androidx.compose.koinViewModel
 
 sealed interface HomeActions {
     data class ShowToast(val text: String, val longDuration: Boolean = false) : HomeActions
@@ -118,7 +119,7 @@ fun HomeContent(
     modifier: Modifier = Modifier,
     userAppList: List<AppInfo> = emptyList(),
     systemAppList: List<AppInfo> = emptyList(),
-    shizukuManager: ShizukuManager = viewModel(),
+    shizukuManager: ShizukuManager = koinViewModel(),
     onHomeActions: (HomeActions) -> Unit = {}
 ) {
     val shizukuState by shizukuManager.shizukuState.collectAsStateWithLifecycle()
@@ -174,7 +175,10 @@ fun HomeContent(
                 }
             }
             TooltipBox(
-                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(10.dp),
+                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(
+                    TooltipAnchorPosition.Above,
+                    10.dp
+                ),
                 tooltip = {
                     PlainTooltip {
                         Text(rootStatus)

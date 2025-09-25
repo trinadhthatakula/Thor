@@ -17,7 +17,6 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
-
 /**
  * Sealed class representing the various states of a backup or restore operation.
  * This allows for granular updates to the UI.
