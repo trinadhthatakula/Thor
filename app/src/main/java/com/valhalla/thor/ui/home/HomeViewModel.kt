@@ -26,7 +26,8 @@ import com.valhalla.thor.model.uninstallSystemApp
 import com.valhalla.thor.ui.widgets.AppClickAction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -42,13 +43,26 @@ data class HomeUiState(
     val logObserver: List<String> = emptyList(),
     val showTerminate: Boolean = false,
     val showConfirmation: Boolean = false,
-    val selectedDestinationIndex : Int = AppDestinations.HOME.ordinal
+    val selectedDestinationIndex: Int = AppDestinations.HOME.ordinal
 )
 
 class HomeViewModel(val appInfoGrabber: AppInfoGrabber) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
-    val uiState = _uiState.asStateFlow()
+    val uiState = combine(
+        _uiState,
+        appInfoGrabber.systemApps,
+        appInfoGrabber.userApps
+    ) { state, systemApps, userApps ->
+        state.copy(
+            userApps = userApps,
+            systemApps = systemApps
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000),
+        initialValue = MutableStateFlow(HomeUiState()).value
+    )
 
     init {
         refreshAppList()
@@ -61,27 +75,17 @@ class HomeViewModel(val appInfoGrabber: AppInfoGrabber) : ViewModel() {
             )
         }
         viewModelScope.launch {
-            val userApps = appInfoGrabber.getUserApps()
-            val systemApps = appInfoGrabber.getSystemApps()
+            appInfoGrabber.getSystemApps()
+            appInfoGrabber.getUserApps()
             _uiState.update {
                 it.copy(
-                    userApps = userApps,
-                    systemApps = systemApps,
                     isRefreshing = false
                 )
             }
         }
     }
 
-    fun selectDestination(destinations: AppDestinations){
-        _uiState.update {
-            it.copy(
-                selectedDestinationIndex = destinations.ordinal
-            )
-        }
-    }
-
-    fun selectDestination(pos: Int){
+    fun selectDestination(pos: Int) {
         _uiState.update {
             it.copy(
                 selectedDestinationIndex = pos

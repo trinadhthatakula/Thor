@@ -7,23 +7,30 @@ import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Environment
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 
 @Suppress("DEPRECATION")
 class AppInfoGrabber(private val context: Context) {
 
-    val allApps
-        get() = getUserApps() + getSystemApps()
+    private val _systemApps = MutableStateFlow(emptyList<AppInfo>())
+    val systemApps = _systemApps.asStateFlow()
+
+    private val _userApps = MutableStateFlow(emptyList<AppInfo>())
+    val userApps = _userApps.asStateFlow()
 
     @SuppressLint("QueryPermissionsNeeded")
-    fun getUserApps(): List<AppInfo> {
+    fun getUserApps() {
+        _userApps.value = emptyList()
         val res = ArrayList<AppInfo>()
         val packs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.packageManager.getInstalledPackages(PackageManager.PackageInfoFlags.of(0L))
         } else {
             context.packageManager.getInstalledPackages(0)
         }
-        packs.indices.forEach { i ->
+        val batchSize = 5
+        packs.indices.forEachIndexed { index, i ->
             val p = packs[i]
             val a = p.applicationInfo
             if (p != null && a != null && (a.flags and ApplicationInfo.FLAG_SYSTEM == 0)) {
@@ -39,7 +46,8 @@ class AppInfoGrabber(private val context: Context) {
                         installerPackageName =
                             context.packageManager.getInstallerPackageName(p.packageName)
                         publicSourceDir = a.publicSourceDir
-                        splitPublicSourceDirs = a.splitPublicSourceDirs?.map { it } ?: emptyList()
+                        splitPublicSourceDirs =
+                            a.splitPublicSourceDirs?.map { it } ?: emptyList()
                         enabled = a.enabled
                         enabledState =
                             context.packageManager.getApplicationEnabledSetting(p.packageName)
@@ -69,8 +77,12 @@ class AppInfoGrabber(private val context: Context) {
                     }
                 )
             }
+
+            if (index % batchSize == 0 || index == packs.size - 1) {
+                _userApps.value = (res)
+            }
+
         }
-        return res
     }
 
     private fun processSharedLibraryFiles(sharedLibraryFiles: Array<String>?): List<String> {
@@ -82,14 +94,16 @@ class AppInfoGrabber(private val context: Context) {
     }
 
     @SuppressLint("QueryPermissionsNeeded")
-    fun getSystemApps(): List<AppInfo> {
+    fun getSystemApps() {
+        _systemApps.value = emptyList()
         val res = ArrayList<AppInfo>()
         val packs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.packageManager.getInstalledPackages(PackageManager.PackageInfoFlags.of(0L))
         } else {
             context.packageManager.getInstalledPackages(0)
         }
-        packs.indices.forEach { i ->
+        val batchSize = 5
+        packs.indices.forEachIndexed { index, i ->
             val p = packs[i]
             val a = p.applicationInfo
             if (p != null && a != null && (a.flags and ApplicationInfo.FLAG_SYSTEM == 1)) {
@@ -103,7 +117,8 @@ class AppInfoGrabber(private val context: Context) {
                         installerPackageName =
                             context.packageManager.getInstallerPackageName(p.packageName)
                         publicSourceDir = a.publicSourceDir
-                        splitPublicSourceDirs = a.splitPublicSourceDirs?.map { it } ?: emptyList()
+                        splitPublicSourceDirs =
+                            a.splitPublicSourceDirs?.map { it } ?: emptyList()
                         enabled = a.enabled
                         enabledState =
                             context.packageManager.getApplicationEnabledSetting(p.packageName)
@@ -133,20 +148,29 @@ class AppInfoGrabber(private val context: Context) {
                     }
                 )
             }
+
+
+            if (index % batchSize == 0 || index == packs.size - 1) {
+                _systemApps.value = (res)
+            }
+
         }
-        return res
+
+
     }
 
-    fun getAppInfo(packageName: String) = allApps.filter { it.packageName == packageName }
 
-    fun getApkInfo(apkPath: String): ApkDetails?{
+    fun getApkInfo(apkPath: String): ApkDetails? {
         val packageManager = context.packageManager
 
         // Specify flags to get the information you need, especially GET_PERMISSIONS.
         val flags = PackageManager.GET_PERMISSIONS
 
         val packageInfo: PackageInfo? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            packageManager.getPackageArchiveInfo(apkPath, PackageManager.PackageInfoFlags.of(flags.toLong()))
+            packageManager.getPackageArchiveInfo(
+                apkPath,
+                PackageManager.PackageInfoFlags.of(flags.toLong())
+            )
         } else {
             @Suppress("DEPRECATION")
             packageManager.getPackageArchiveInfo(apkPath, flags)
@@ -164,7 +188,7 @@ class AppInfoGrabber(private val context: Context) {
             publicSourceDir = apkPath
         }
 
-        return if(appInfo!=null) {
+        return if (appInfo != null) {
             // Extract all the details.
             val appName = packageManager.getApplicationLabel(appInfo).toString()
             val appIcon = packageManager.getApplicationIcon(appInfo)
@@ -182,7 +206,7 @@ class AppInfoGrabber(private val context: Context) {
             val minSdk = appInfo.minSdkVersion
             val targetSdk = appInfo.targetSdkVersion
 
-             ApkDetails(
+            ApkDetails(
                 appName = appName,
                 packageName = packageName,
                 versionName = versionName,
@@ -192,7 +216,7 @@ class AppInfoGrabber(private val context: Context) {
                 minSdk = minSdk,
                 targetSdk = targetSdk
             )
-        }else null
+        } else null
     }
 
 }
