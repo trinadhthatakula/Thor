@@ -180,13 +180,12 @@ fun AppListScreen(
                     }
                     .padding(8.dp)
             )
-            TypeWriterText(
+            Text(
                 text = title,
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
                     .padding(vertical = 10.dp)
                     .weight(1f),
-                delay = 25,
                 style = MaterialTheme.typography.titleLarge,
                 textAlign = TextAlign.Start
             )

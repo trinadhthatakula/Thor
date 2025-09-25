@@ -25,7 +25,9 @@ import com.valhalla.thor.model.shizuku.ElevatableState
 import com.valhalla.thor.model.uninstallSystemApp
 import com.valhalla.thor.ui.widgets.AppClickAction
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -60,7 +62,7 @@ class HomeViewModel(val appInfoGrabber: AppInfoGrabber) : ViewModel() {
         )
     }.stateIn(
         scope = viewModelScope,
-        started = kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.WhileSubscribed(5000),
         initialValue = MutableStateFlow(HomeUiState()).value
     )
 
@@ -77,6 +79,7 @@ class HomeViewModel(val appInfoGrabber: AppInfoGrabber) : ViewModel() {
         viewModelScope.launch {
             appInfoGrabber.getSystemApps()
             appInfoGrabber.getUserApps()
+            delay(1000)
             _uiState.update {
                 it.copy(
                     isRefreshing = false
