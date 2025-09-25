@@ -160,7 +160,6 @@ fun HomePage(
                                     )
                                 )
                             }
-
                         }
                     }
                 )
@@ -183,11 +182,6 @@ fun HomePage(
                                     permitExit()
                                     clearLogger()
                                 }
-                                Toast.makeText(
-                                    context,
-                                    "done",
-                                    Toast.LENGTH_SHORT
-                                ).show()
                             }
                         )
                     },

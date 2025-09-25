@@ -22,7 +22,6 @@ class AppInfoGrabber(private val context: Context) {
 
     @SuppressLint("QueryPermissionsNeeded")
     fun getUserApps() {
-        _userApps.value = emptyList()
         val res = ArrayList<AppInfo>()
         val packs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.packageManager.getInstalledPackages(PackageManager.PackageInfoFlags.of(0L))
@@ -95,7 +94,6 @@ class AppInfoGrabber(private val context: Context) {
 
     @SuppressLint("QueryPermissionsNeeded")
     fun getSystemApps() {
-        _systemApps.value = emptyList()
         val res = ArrayList<AppInfo>()
         val packs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.packageManager.getInstalledPackages(PackageManager.PackageInfoFlags.of(0L))
