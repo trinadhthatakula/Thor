@@ -1,4 +1,4 @@
-package com.valhalla.thor.ui.screens
+package com.valhalla.thor.ui.appList
 
 import android.widget.Toast
 import androidx.compose.foundation.Image
@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -30,6 +29,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,7 +37,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.google.accompanist.drawablepainter.rememberDrawablePainter
+import coil3.compose.rememberAsyncImagePainter
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.AppListType
@@ -49,7 +49,6 @@ import com.valhalla.thor.model.getAppIcon
 import com.valhalla.thor.ui.widgets.AppClickAction
 import com.valhalla.thor.ui.widgets.AppInfoDialog
 import com.valhalla.thor.ui.widgets.AppList
-import com.valhalla.thor.ui.widgets.TypeWriterText
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -85,8 +84,8 @@ fun AppListScreen(
         mutableStateOf(SortOrder.ASCENDING)
     }
 
-    var filteredList by remember {
-        mutableStateOf(userAppList.sortedBy { it.appName })
+    var filteredList = remember {
+        (userAppList.sortedBy { it.appName }).toMutableStateList()
     }
 
     var selectedAppListType: AppListType by rememberSaveable {
@@ -144,7 +143,7 @@ fun AppListScreen(
                 }
             }
 
-        }.getSorted(selectedSortBy, selectedSortOrder)
+        }.getSorted(selectedSortBy, selectedSortOrder).toMutableStateList()
 
     }
 
@@ -280,7 +279,6 @@ fun AppListScreen(
         AppInfoDialog(
             appInfo = selectedAppInfo!!,
             onDismiss = {
-                selectedAppInfo = null
             },
             onAppAction = {
                 if (it is AppClickAction.Reinstall) {
@@ -297,7 +295,7 @@ fun AppListScreen(
         AlertDialog(
             icon = {
                 Image(
-                    painter = rememberDrawablePainter(
+                    painter = rememberAsyncImagePainter(
                         getAppIcon(
                             reinstallAppInfo!!.packageName,
                             context

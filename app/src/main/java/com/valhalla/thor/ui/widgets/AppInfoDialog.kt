@@ -42,6 +42,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import coil3.compose.rememberAsyncImagePainter
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfo
@@ -115,7 +116,7 @@ fun AppInfoDialog(
             }
 
             Image(
-                painter = rememberDrawablePainter(getAppIcon(appInfo.packageName, context)),
+                painter = rememberAsyncImagePainter(getAppIcon(appInfo.packageName, context)),
                 contentDescription = appInfo.appName,
                 modifier = Modifier
                     .padding(5.dp)

@@ -1,4 +1,4 @@
-package com.valhalla.thor.ui.screens
+package com.valhalla.thor.ui.home
 
 import android.util.Log
 import android.widget.Toast

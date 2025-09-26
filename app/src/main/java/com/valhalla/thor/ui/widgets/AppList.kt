@@ -25,7 +25,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -40,6 +39,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -63,7 +63,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.google.accompanist.drawablepainter.rememberDrawablePainter
+import coil3.compose.AsyncImage
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.AppListType
@@ -221,7 +221,7 @@ fun AppList(
                     }
 
                     Row(
-                        modifier = Modifier.Companion
+                        modifier = Modifier
                             .weight(1f)
                             .padding(5.dp)
                             .horizontalScroll(rememberScrollState())
@@ -236,7 +236,7 @@ fun AppList(
                                             text = popularInstallers[it] ?: it
                                             ?: if (appListType != AppListType.SYSTEM) "Others" else "System"
                                         )
-                                    }, modifier = Modifier.Companion.padding(horizontal = 5.dp)
+                                    }, modifier = Modifier.padding(horizontal = 5.dp)
                                 )
                             }
                         else if (filterType == FilterType.State)
@@ -248,7 +248,7 @@ fun AppList(
                                         Text(
                                             text = it
                                         )
-                                    }, modifier = Modifier.Companion.padding(horizontal = 5.dp)
+                                    }, modifier = Modifier.padding(horizontal = 5.dp)
                                 )
                             }
                     }
@@ -309,24 +309,33 @@ fun AppList(
                     items(filteredList) {
                         ListItem(
                             leadingContent = {
-                                Box {
-                                    Image(
-                                        painter = rememberDrawablePainter(
-                                            getAppIcon(
-                                                it.packageName,
-                                                context
-                                            )
+                                var isLoading by remember {
+                                    mutableStateOf(true)
+                                }
+                                Box(contentAlignment = Alignment.Center) {
+                                    AsyncImage(
+                                        model = getAppIcon(
+                                            it.packageName,
+                                            context
                                         ),
                                         "App Icon",
-                                        modifier = Modifier.Companion
+                                        modifier = Modifier
                                             .padding(5.dp)
                                             .size(50.dp),
                                         colorFilter = if (it.enabled) null else ColorFilter.colorMatrix(
                                             ColorMatrix().apply {
                                                 setToSaturation(0f)
                                             }
-                                        )
+                                        ),
+                                        error = painterResource(R.drawable.android),
+                                        onSuccess = {isLoading = false},
+                                        onError = {isLoading = false}
                                     )
+                                    if(isLoading){
+                                        LoadingIndicator(
+                                            modifier = Modifier.size(50.dp)
+                                        )
+                                    }
                                 }
                             },
                             headlineContent = {
@@ -426,24 +435,33 @@ fun AppList(
                                     }
                                 )
                         ) {
-                            Box {
-                                Image(
-                                    painter = rememberDrawablePainter(
-                                        getAppIcon(
-                                            it.packageName,
-                                            context
-                                        )
+                            var isLoading by remember {
+                                mutableStateOf(true)
+                            }
+                            Box(contentAlignment = Alignment.Center) {
+                                AsyncImage(
+                                    model = getAppIcon(
+                                        it.packageName,
+                                        context
                                     ),
                                     "App Icon",
-                                    modifier = Modifier.Companion
+                                    modifier = Modifier
                                         .padding(5.dp)
                                         .size(50.dp),
                                     colorFilter = if (it.enabled) null else ColorFilter.colorMatrix(
                                         ColorMatrix().apply {
                                             setToSaturation(0f)
                                         }
-                                    )
+                                    ),
+                                    error = painterResource(R.drawable.android),
+                                    onSuccess = {isLoading = false},
+                                    onError = {isLoading = false}
                                 )
+                                if(isLoading){
+                                    LoadingIndicator(
+                                        modifier = Modifier.size(50.dp)
+                                    )
+                                }
 
                                 if (multiSelect.contains(it))
                                     Image(
@@ -515,7 +533,7 @@ fun AppList(
                         targetValue = sortOrder.angle(),
                         label = "Sort Order Rotation"
                     )
-                    RotatableActionItem (
+                    RotatableActionItem(
                         icon = R.drawable.arrow_upward,
                         rotation = rotation,
                         text = sortOrder.asGeneralName(),
@@ -638,7 +656,8 @@ fun AppList(
                     onClick = {
                         showFilters = false
                     },
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
                         .padding(bottom = 10.dp)
                 ) {
                     Text("Apply")

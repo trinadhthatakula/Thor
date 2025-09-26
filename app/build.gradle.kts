@@ -97,6 +97,8 @@ dependencies {
     implementation(libs.shizuku.provider)
     implementation(libs.hiddenapibypass)
 
+    implementation(libs.coil.compose)
+
     implementation(libs.bundles.koin)
 
 }

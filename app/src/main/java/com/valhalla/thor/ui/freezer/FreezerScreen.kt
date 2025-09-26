@@ -1,4 +1,4 @@
-package com.valhalla.thor.ui.screens
+package com.valhalla.thor.ui.freezer
 
 import android.widget.Toast
 import androidx.compose.foundation.Image
@@ -36,7 +36,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.google.accompanist.drawablepainter.rememberDrawablePainter
+import coil3.compose.rememberAsyncImagePainter
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfo
 import com.valhalla.thor.model.AppListType
@@ -45,13 +45,10 @@ import com.valhalla.thor.model.MultiAppAction
 import com.valhalla.thor.model.SortBy
 import com.valhalla.thor.model.SortOrder
 import com.valhalla.thor.model.getAppIcon
+import com.valhalla.thor.ui.appList.getSorted
 import com.valhalla.thor.ui.widgets.AppClickAction
-import com.valhalla.thor.ui.widgets.AppGrid
 import com.valhalla.thor.ui.widgets.AppInfoDialog
 import com.valhalla.thor.ui.widgets.AppList
-import com.valhalla.thor.ui.widgets.TypeWriterText
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlin.String
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
@@ -303,7 +300,7 @@ fun FreezerScreen(
         AlertDialog(
             icon = {
                 Image(
-                    painter = rememberDrawablePainter(
+                    painter = rememberAsyncImagePainter(
                         getAppIcon(
                             reinstallAppInfo!!.packageName,
                             context

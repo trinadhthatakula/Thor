@@ -46,7 +46,7 @@ fun MultiSelectToolBox(
         modifier = modifier
     ) {
         Column(
-            modifier = Modifier.Companion
+            modifier = Modifier
                 .padding(5.dp)
                 .horizontalScroll(rememberScrollState())
         ) {

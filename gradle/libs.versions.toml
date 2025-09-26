@@ -21,6 +21,7 @@ profileinstaller = "1.4.1"
 shizuku = "13.1.5"
 hiddenapibypass = "6.1"
 koin = "4.1.1"
+coil3 = "3.3.0"
 
 [libraries]
 accompanist-drawablepainter = { module = "com.google.accompanist:accompanist-drawablepainter", version.ref = "accompanistDrawablepainter" }
@@ -59,6 +60,8 @@ hiddenapibypass = { module = "org.lsposed.hiddenapibypass:hiddenapibypass", vers
 koin-android = { module = "io.insert-koin:koin-android", version.ref = "koin" }
 koin-androidx-compose = { module = "io.insert-koin:koin-androidx-compose", version.ref = "koin" }
 koin-androidx-startup = { module = "io.insert-koin:koin-androidx-startup", version.ref = "koin" }
+
+coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil3" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

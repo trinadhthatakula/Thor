@@ -31,10 +31,8 @@ import com.valhalla.thor.R
 import com.valhalla.thor.model.MultiAppAction
 import com.valhalla.thor.model.shizuku.ShizukuManager
 import com.valhalla.thor.model.stopLogger
-import com.valhalla.thor.ui.screens.AppListScreen
-import com.valhalla.thor.ui.screens.FreezerScreen
-import com.valhalla.thor.ui.screens.HomeActions
-import com.valhalla.thor.ui.screens.HomeScreen
+import com.valhalla.thor.ui.appList.AppListScreen
+import com.valhalla.thor.ui.freezer.FreezerScreen
 import com.valhalla.thor.ui.widgets.AffirmationDialog
 import com.valhalla.thor.ui.widgets.MultiAppAffirmationDialog
 import com.valhalla.thor.ui.widgets.TermLoggerDialog

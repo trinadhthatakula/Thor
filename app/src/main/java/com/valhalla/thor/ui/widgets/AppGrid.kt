@@ -65,6 +65,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import coil3.compose.rememberAsyncImagePainter
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import com.valhalla.thor.R
 import com.valhalla.thor.model.AppInfo
@@ -218,7 +219,7 @@ fun AppGrid(
                             }
                     )
                     Row(
-                        modifier = Modifier.Companion
+                        modifier = Modifier
                             .fillMaxWidth()
                             .padding(5.dp)
                             .horizontalScroll(rememberScrollState())
@@ -233,7 +234,7 @@ fun AppGrid(
                                             text = popularInstallers[it] ?: it
                                             ?: if (appListType != AppListType.SYSTEM) "Others" else "System"
                                         )
-                                    }, modifier = Modifier.Companion.padding(horizontal = 5.dp)
+                                    }, modifier = Modifier.padding(horizontal = 5.dp)
                                 )
                             }
                         else if (filterType == FilterType.State)
@@ -245,7 +246,7 @@ fun AppGrid(
                                         Text(
                                             text = it
                                         )
-                                    }, modifier = Modifier.Companion.padding(horizontal = 5.dp)
+                                    }, modifier = Modifier.padding(horizontal = 5.dp)
                                 )
                             }
                     }
@@ -318,14 +319,14 @@ fun AppGrid(
                     ) {
                         Box {
                             Image(
-                                painter = rememberDrawablePainter(
+                                painter = rememberAsyncImagePainter(
                                     getAppIcon(
                                         it.packageName,
                                         context
                                     )
                                 ),
                                 "App Icon",
-                                modifier = Modifier.Companion
+                                modifier = Modifier
                                     .padding(5.dp)
                                     .size(50.dp),
                                 colorFilter = if (it.enabled) null else ColorFilter.colorMatrix(
