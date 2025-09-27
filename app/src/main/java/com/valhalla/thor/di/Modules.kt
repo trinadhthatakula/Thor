@@ -2,6 +2,7 @@ package com.valhalla.thor.di
 
 import com.valhalla.thor.model.AppInfoGrabber
 import com.valhalla.thor.model.shizuku.ShizukuManager
+import com.valhalla.thor.ui.appList.AppListViewmodel
 import com.valhalla.thor.ui.home.HomeViewModel
 import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModelOf
@@ -17,4 +18,5 @@ val shizukuModule = module {
 
 val commonModule = module {
     viewModelOf(::HomeViewModel)
+    viewModelOf(::AppListViewmodel)
 }

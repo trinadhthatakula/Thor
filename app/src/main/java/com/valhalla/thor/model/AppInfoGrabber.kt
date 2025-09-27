@@ -217,4 +217,9 @@ class AppInfoGrabber(private val context: Context) {
         } else null
     }
 
+    fun loadApps() {
+        getUserApps()
+        getSystemApps()
+    }
+
 }
