@@ -1,7 +1,6 @@
 package com.valhalla.thor.data.source.local.shizuku
 
 import android.annotation.SuppressLint
-import android.content.Context
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -11,7 +10,8 @@ import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
 import java.lang.reflect.Method
 
-class ShizukuReflector(private val context: Context) {
+@SuppressLint("PrivateApi")
+class ShizukuReflector() {
 
     private val myUserId: Int
         get() = android.os.Process.myUserHandle().hashCode()
@@ -34,8 +34,8 @@ class ShizukuReflector(private val context: Context) {
             }
             method.invoke(null, shizukuBinder)!!
         } catch (e: Exception) {
-            Log.e("ShizukuReflector", "Failed to create IPackageManager proxy", e)
-            throw RuntimeException("Failed to create IPackageManager proxy", e)
+            if (BuildConfig.DEBUG)
+                Log.e("ShizukuReflector", "Failed to create IPackageManager proxy", e)
         }
     }
 
@@ -66,9 +66,8 @@ class ShizukuReflector(private val context: Context) {
             }
 
         } catch (e: Exception) {
-            Log.e("ShizukuReflector", "clearCache failed: ${e.message}")
-            // Don't crash the app, just log and rethrow specific message so UI can show toast
-            throw Exception("Clear Cache failed. Android 14+ restricts this Shizuku action.", e)
+            if (BuildConfig.DEBUG)
+                Log.e("ShizukuReflector", "clearCache failed: ${e.message}")
         }
     }
 
@@ -101,8 +100,8 @@ class ShizukuReflector(private val context: Context) {
             method.invoke(am, packageName, myUserId)
 
         } catch (e: Exception) {
-            Log.e("ShizukuReflector", "forceStop failed", e)
-            throw RuntimeException("Shizuku forceStop failed", e)
+            if (BuildConfig.DEBUG)
+                Log.e("ShizukuReflector", "forceStop failed", e)
         }
     }
 
@@ -129,25 +128,36 @@ class ShizukuReflector(private val context: Context) {
             ) ?: throw NoSuchMethodException("setApplicationEnabledSetting not found")
 
             if (method.parameterCount == 5) {
-                method.invoke(packageManager, packageName, newState, 0, myUserId, BuildConfig.APPLICATION_ID)
+                method.invoke(
+                    packageManager,
+                    packageName,
+                    newState,
+                    0,
+                    myUserId,
+                    BuildConfig.APPLICATION_ID
+                )
             } else {
                 method.invoke(packageManager, packageName, newState, 0, myUserId)
             }
         } catch (e: Exception) {
-            Log.e("ShizukuReflector", "setAppEnabled failed", e)
-            throw RuntimeException("Shizuku setAppEnabled failed", e)
+            if (BuildConfig.DEBUG)
+                Log.e("ShizukuReflector", "setAppEnabled failed", e)
         }
     }
 
     // Helper to find method using standard reflection OR Bypass
-    private fun findMethod(clazz: Class<*>, name: String, vararg parameterTypes: Class<*>): Method? {
+    private fun findMethod(
+        clazz: Class<*>,
+        name: String,
+        vararg parameterTypes: Class<*>
+    ): Method? {
         return try {
             clazz.getMethod(name, *parameterTypes)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 try {
                     HiddenApiBypass.getDeclaredMethod(clazz, name, *parameterTypes)
-                } catch (e2: Exception) {
+                } catch (_: Exception) {
                     null
                 }
             } else null

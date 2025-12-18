@@ -232,7 +232,7 @@ fun FloatingBar(
     onDismiss: () -> Unit = {}
 ) {
 
-    val isFrozen by remember { mutableStateOf(appInfo.enabled.not()) }
+    val isFrozen by remember(appInfo.enabled) { mutableStateOf(appInfo.enabled.not()) }
     val hasPrivilege = isRoot || isShizuku
 
     Row(
