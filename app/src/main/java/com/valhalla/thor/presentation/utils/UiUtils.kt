@@ -2,19 +2,21 @@ package com.valhalla.thor.presentation.utils
 
 import android.content.Context
 import android.graphics.drawable.Drawable
+import com.valhalla.thor.BuildConfig
 
 fun getAppIcon(packageName: String?, context: Context): Drawable? {
     return packageName?.let {
         try {
             context.packageManager.getApplicationIcon(packageName)
         } catch (e: Exception) {
-            e.printStackTrace()
+            if (BuildConfig.DEBUG)
+                e.printStackTrace()
             null
         }
     }
 }
 
-val popularInstallers = mapOf<String, String>(
+val popularInstallers = mapOf(
     "com.android.vending" to "Google Play Store",
     "com.sec.android.app.samsungapps" to "Samsung Store",
     "com.huawei.appmarket" to "Huawei Store",

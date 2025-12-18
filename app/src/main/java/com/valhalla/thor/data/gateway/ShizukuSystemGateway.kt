@@ -2,6 +2,7 @@ package com.valhalla.thor.data.gateway
 
 import android.content.Context
 import android.content.pm.PackageManager
+import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
 import com.valhalla.thor.domain.gateway.SystemGateway
 import rikka.shizuku.Shizuku
@@ -63,8 +64,8 @@ class ShizukuSystemGateway(
             action()
             Result.success(Unit)
         } catch (e: Exception) {
-            // Log this strictly in DEBUG
-            e.printStackTrace()
+            if (BuildConfig.DEBUG)
+                e.printStackTrace()
             Result.failure(e)
         }
     }

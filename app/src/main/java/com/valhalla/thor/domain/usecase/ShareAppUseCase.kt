@@ -23,76 +23,78 @@ class ShareAppUseCase(
     private val apksMetadataGenerator: ApksMetadataGenerator
 ) {
 
-    suspend operator fun invoke(appInfo: AppInfo): Result<android.net.Uri> = withContext(Dispatchers.IO) {
-        try {
-            // 1. Prepare Cache Directory
-            val cacheDir = File(context.cacheDir, "share_temp")
-            if (cacheDir.exists()) cacheDir.deleteRecursively()
-            cacheDir.mkdirs()
+    suspend operator fun invoke(appInfo: AppInfo): Result<android.net.Uri> =
+        withContext(Dispatchers.IO) {
+            try {
+                // 1. Prepare Cache Directory
+                val cacheDir = File(context.cacheDir, "share_temp")
+                if (cacheDir.exists()) cacheDir.deleteRecursively()
+                cacheDir.mkdirs()
 
-            val finalFile: File
+                val finalFile: File
 
-            // 2. Check for Splits
-            if (appInfo.splitPublicSourceDirs.isNullOrEmpty()) {
-                // --- Single APK Mode ---
-                val sourcePath = appInfo.publicSourceDir ?: appInfo.sourceDir
-                ?: return@withContext Result.failure(Exception("No source path found"))
+                // 2. Check for Splits
+                if (appInfo.splitPublicSourceDirs.isNullOrEmpty()) {
+                    // --- Single APK Mode ---
+                    val sourcePath = appInfo.publicSourceDir ?: appInfo.sourceDir
+                    ?: return@withContext Result.failure(Exception("No source path found"))
 
-                val fileName = "${appInfo.formattedAppName()}_${appInfo.versionName}.apk"
-                finalFile = File(cacheDir, fileName)
+                    val fileName = "${appInfo.formattedAppName()}_${appInfo.versionName}.apk"
+                    finalFile = File(cacheDir, fileName)
 
-                if (!copyFileSafely(sourcePath, finalFile)) {
-                    return@withContext Result.failure(Exception("Failed to copy base APK"))
+                    if (!copyFileSafely(sourcePath, finalFile)) {
+                        return@withContext Result.failure(Exception("Failed to copy base APK"))
+                    }
+
+                } else {
+                    // --- Split APK Mode (Zip/APKS) ---
+                    val fileName = "${appInfo.formattedAppName()}_${appInfo.versionName}.apks"
+                    finalFile = File(cacheDir, fileName)
+
+                    // Temp staging folder for individual parts
+                    val tempSplitDir = File(cacheDir, "splits_staging")
+                    tempSplitDir.mkdirs()
+
+                    // A. Gather APK Paths
+                    val allPaths = mutableListOf<String>()
+                    appInfo.sourceDir?.let { allPaths.add(it) }
+                    allPaths.addAll(appInfo.splitPublicSourceDirs)
+
+                    // B. Copy APKs to staging
+                    val filesToZip = allPaths.mapNotNull { path ->
+                        val name = path.substringAfterLast("/")
+                        val destFile = File(tempSplitDir, name)
+                        if (copyFileSafely(path, destFile)) destFile else null
+                    }.toMutableList()
+
+                    if (filesToZip.isEmpty()) {
+                        return@withContext Result.failure(Exception("Failed to copy any APK files"))
+                    }
+
+                    // C. GENERATE METADATA (The Missing Piece)
+                    // We generate "metadata.json" so installers know what this bundle is.
+                    val metadataFile = File(tempSplitDir, "metadata.json")
+                    apksMetadataGenerator.generateJson(appInfo, metadataFile)
+                    filesToZip.add(metadataFile)
+
+                    // D. Zip Everything (APKs + JSON)
+                    zipFiles(filesToZip, finalFile)
                 }
 
-            } else {
-                // --- Split APK Mode (Zip/APKS) ---
-                val fileName = "${appInfo.formattedAppName()}_${appInfo.versionName}.apks"
-                finalFile = File(cacheDir, fileName)
+                // 3. Generate URI
+                val uri = FileProvider.getUriForFile(
+                    context,
+                    "${BuildConfig.APPLICATION_ID}.provider",
+                    finalFile
+                )
+                Result.success(uri)
 
-                // Temp staging folder for individual parts
-                val tempSplitDir = File(cacheDir, "splits_staging")
-                tempSplitDir.mkdirs()
-
-                // A. Gather APK Paths
-                val allPaths = mutableListOf<String>()
-                appInfo.sourceDir?.let { allPaths.add(it) }
-                allPaths.addAll(appInfo.splitPublicSourceDirs)
-
-                // B. Copy APKs to staging
-                val filesToZip = allPaths.mapNotNull { path ->
-                    val name = path.substringAfterLast("/")
-                    val destFile = File(tempSplitDir, name)
-                    if (copyFileSafely(path, destFile)) destFile else null
-                }.toMutableList()
-
-                if (filesToZip.isEmpty()) {
-                    return@withContext Result.failure(Exception("Failed to copy any APK files"))
-                }
-
-                // C. GENERATE METADATA (The Missing Piece)
-                // We generate "metadata.json" so installers know what this bundle is.
-                val metadataFile = File(tempSplitDir, "metadata.json")
-                apksMetadataGenerator.generateJson(appInfo, metadataFile)
-                filesToZip.add(metadataFile)
-
-                // D. Zip Everything (APKs + JSON)
-                zipFiles(filesToZip, finalFile)
+            } catch (e: Exception) {
+                if (BuildConfig.DEBUG)
+                    e.printStackTrace()
+                Result.failure(e)
             }
-
-            // 3. Generate URI
-            val uri = FileProvider.getUriForFile(
-                context,
-                "${BuildConfig.APPLICATION_ID}.provider",
-                finalFile
-            )
-            Result.success(uri)
-
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Result.failure(e)
         }
-    }
 
     /**
      * Tries standard copy, falls back to Root if permission denied.
@@ -101,9 +103,7 @@ class ShareAppUseCase(
         return try {
             File(sourcePath).copyTo(destFile, overwrite = true)
             true
-        } catch (_: SecurityException) {
-            systemRepository.copyFileWithRoot(sourcePath, destFile.absolutePath).isSuccess
-        } catch (_: Exception) {
+        }  catch (_: Exception) {
             systemRepository.copyFileWithRoot(sourcePath, destFile.absolutePath).isSuccess
         }
     }
