@@ -1,110 +1,61 @@
 package com.valhalla.thor
 
-import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.ui.Modifier
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
-import com.valhalla.thor.model.rootAvailable
-import com.valhalla.thor.model.shizuku.Packages
-import com.valhalla.thor.model.shizuku.ShizukuManager
-import com.valhalla.thor.model.shizuku.ShizukuState
-import com.valhalla.thor.ui.home.HomePage
-import com.valhalla.thor.ui.theme.ThorTheme
-import kotlinx.coroutines.launch
-import org.koin.androidx.viewmodel.ext.android.viewModel
-import rikka.shizuku.Shizuku
+import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.presentation.common.ShizukuPermissionHandler
+import com.valhalla.thor.presentation.main.MainScreen
+import com.valhalla.thor.presentation.theme.ThorTheme
+import org.koin.android.ext.android.inject
 
 class HomeActivity : ComponentActivity() {
 
-    private val shizukuManager : ShizukuManager by viewModel()
+    private val systemRepository: SystemRepository by inject()
     private val requestCode = 1001
 
-    fun checkShizuku() {
-        try {
-            if (rootAvailable().not()) {
-                Packages(this).getApplicationInfoOrNull(packageName = "moe.shizuku.privileged.api").let {
-                    if (it == null) {
-                        shizukuManager.updateState(ShizukuState.NotInstalled)
-                    }else{
-                        Shizuku.addBinderReceivedListener(shizukuBinderReceivedListener)
-                        Shizuku.addBinderDeadListener (shizukuBinderDeadListener)
-                        Shizuku.addRequestPermissionResultListener (shizukuPermissionListener)
-                        Log.d("HomeActivity", "root not found trying shizuku")
-                        if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
-                            Shizuku.requestPermission(requestCode)
-                        }else{
-                            shizukuManager.updateState(ShizukuState.Ready)
-                            shizukuManager.updateCacheSize()
-                            Log.d("HomeActivity", "Shizuku permission granted")
-                        }
-                    }
-                }
-            }else {
-                shizukuManager.updateCacheSize()
-                Log.d("HomeActivity", "checkShizukuPermission: root found")
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            shizukuManager.updateState(ShizukuState.NotRunning)
+    private val shizukuHandler = ShizukuPermissionHandler(
+        onPermissionGranted = {
+            Log.d("HomeActivity", "Shizuku Ready")
+        },
+        onBinderDead = {
+            Log.w("HomeActivity", "Shizuku Binder Died")
         }
-    }
-
-    val shizukuBinderDeadListener = Shizuku.OnBinderDeadListener {
-        Log.d("HomeActivity", "Shizuku binder dead")
-        shizukuManager.checkState()
-    }
-
-    val shizukuBinderReceivedListener = Shizuku.OnBinderReceivedListener {
-        Log.d("HomeActivity", "Shizuku binder received")
-        shizukuManager.updateState(ShizukuState.NotRunning)
-    }
-
-    val shizukuPermissionListener = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
-            if(requestCode == 1001){
-                if (grantResult == PackageManager.PERMISSION_GRANTED) {
-                    Log.d("HomeActivity", "Shizuku permission granted")
-                    shizukuManager.updateState(ShizukuState.Ready)
-                    shizukuManager.updateCacheSize()
-                } else {
-                    Log.d("HomeActivity", "Shizuku permission denied")
-                }
-            }
-        }
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         installSplashScreen()
         enableEdgeToEdge()
-        lifecycleScope.launch {
-            repeatOnLifecycle(
-                state = Lifecycle.State.RESUMED
-            ){
-                checkShizuku()
-            }
-        }
+
+        // 1. Register listeners immediately
+        shizukuHandler.register()
+
         setContent {
             ThorTheme {
-                HomePage(
-                    modifier = Modifier
-                ) {
-                    finish()
-                }
+                MainScreen(
+                    onExit = { finish() }
+                )
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Only bother with Shizuku if we don't have Root.
+        // We do this in onResume so if the user comes back from the Shizuku manager,
+        // we catch the permission grant immediately.
+        if (!systemRepository.isRootAvailable()) {
+            shizukuHandler.checkAndRequestPermission(requestCode)
         }
     }
 
     override fun onDestroy() {
-        Shizuku.removeBinderDeadListener(shizukuBinderDeadListener)
-        Shizuku.removeBinderReceivedListener(shizukuBinderReceivedListener)
-        Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener)
+        // 3. Clean up to prevent leaks
+        shizukuHandler.unregister()
         super.onDestroy()
     }
-
 }

@@ -1,9 +1,9 @@
 package com.valhalla.thor
 
 import android.app.Application
-import com.valhalla.thor.di.appGrabber
+import com.valhalla.thor.di.coreModule
 import com.valhalla.thor.di.commonModule
-import com.valhalla.thor.di.shizukuModule
+import com.valhalla.thor.di.presentationModule
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.androix.startup.KoinStartup
@@ -15,9 +15,9 @@ class ThorApplication : Application(), KoinStartup {
         androidContext(this@ThorApplication)
         androidLogger()
         modules(
-            appGrabber,
-            shizukuModule,
-            commonModule
+            coreModule,
+            commonModule,
+            presentationModule
         )
     }
 

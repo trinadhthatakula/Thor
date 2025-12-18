@@ -1,0 +1,169 @@
+package com.valhalla.thor.presentation.home
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.presentation.home.components.AppDistributionChart
+import com.valhalla.thor.presentation.home.components.DashboardHeader
+import com.valhalla.thor.presentation.home.components.SummaryStatRow
+import org.koin.androidx.compose.koinViewModel
+
+@Composable
+fun HomeScreen(
+    onNavigateToApps: () -> Unit,
+    onNavigateToFreezer: () -> Unit,
+    onReinstallAll: () -> Unit,
+    onClearAllCache: (AppListType) -> Unit,
+    viewModel: HomeViewModel = koinViewModel()
+) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    var showCacheDialog by remember { mutableStateOf(false) }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+    ) {
+        // 1. Header
+        DashboardHeader(
+            isRoot = state.isRootAvailable,
+            isShizuku = state.isShizukuAvailable
+        )
+
+        Spacer(Modifier.height(16.dp))
+
+        // 2. Summary Cards
+        SummaryStatRow(
+            activeCount = state.activeAppCount,
+            frozenCount = state.frozenAppCount,
+            onActiveClick = onNavigateToApps,
+            onFrozenClick = onNavigateToFreezer
+        )
+
+        Spacer(Modifier.height(24.dp))
+
+        if (state.isRootAvailable ) {
+            ActionCard(
+                title = "Clear All Cache",
+                subtitle = "Free up space by cleaning app caches",
+                icon = R.drawable.clear_all,
+                onClick = { showCacheDialog = true }
+            )
+        }
+
+        // B. Reinstall All Card (Visible only if needed and Root available)
+        if (state.isRootAvailable && state.unknownInstallerCount > 0) {
+            ActionCard(
+                title = "Reinstall All",
+                subtitle = "${state.unknownInstallerCount} apps not from Play Store. Fix them?",
+                icon = R.drawable.apk_install,
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                onClick = onReinstallAll
+            )
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        // 3. Distribution Chart
+        if (state.distributionData.isNotEmpty()) {
+            Text(
+                text = "App Distribution",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+            Spacer(Modifier.height(16.dp))
+            // Reuse your existing PieChart logic, but wrapped cleanly
+            AppDistributionChart(
+                data = state.distributionData,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(250.dp)
+            )
+        }
+
+        // 4. Quick Actions (Placeholder for now)
+        // QuickActionGrid(...)
+    }
+
+
+    if (showCacheDialog) {
+        AlertDialog(
+            onDismissRequest = { showCacheDialog = false },
+            icon = { Icon(painterResource(R.drawable.clear_all), null) },
+            title = { Text("Clear All Cache") },
+            text = { Text("Which apps would you like to clear?") },
+            confirmButton = {
+                Button(onClick = {
+                    onClearAllCache(AppListType.USER)
+                    showCacheDialog = false
+                }) { Text("User Apps") }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = {
+                    onClearAllCache(AppListType.SYSTEM)
+                    showCacheDialog = false
+                }) { Text("System Apps") }
+            }
+        )
+    }
+}
+
+@Composable
+private fun ActionCard(
+    title: String,
+    subtitle: String,
+    icon: Int,
+    containerColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    onClick: () -> Unit
+) {
+    Card(
+        onClick = onClick,
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = null,
+                modifier = Modifier.size(32.dp)
+            )
+            Spacer(Modifier.width(16.dp))
+            Column {
+                Text(text = title, style = MaterialTheme.typography.titleMedium)
+                Text(text = subtitle, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
