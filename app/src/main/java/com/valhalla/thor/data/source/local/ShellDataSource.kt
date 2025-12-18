@@ -21,7 +21,7 @@ class ShellDataSource {
 
     suspend fun isRootAvailable(): Boolean = withContext(Dispatchers.IO) {
         // LibSu caches this, so it's safe to call.
-        Shell.rootAccess()
+        Shell.isAppGrantedRoot == true || Shell.shell.isRoot
     }
 
     /**

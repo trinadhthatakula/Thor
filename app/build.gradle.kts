@@ -1,4 +1,6 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+import java.io.FileInputStream
 
 plugins {
     alias(libs.plugins.android.application)
@@ -19,6 +21,12 @@ kotlin {
     }
 }
 
+val keystorePropertiesFile = rootProject.file("jks.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
 android {
 
     namespace = "com.valhalla.thor"
@@ -28,8 +36,8 @@ android {
         applicationId = "com.valhalla.thor"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1666
-        versionName = "1.66.6"
+        versionCode = 1700
+        versionName = "1.70.0"
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
@@ -40,13 +48,48 @@ android {
         includeInApk = false
         includeInBundle = false
     }
+
+    signingConfigs {
+        create("release") {
+            if (keystorePropertiesFile.exists()) {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            } else {
+                // Fallback for when you haven't set up the file yet (e.g. initial clone)
+                println("⚠️ keystore.properties not found. Release build will not be signed properly.")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("release")
+        }
+        debug {
+            applicationIdSuffix = ".debug"
+        }
+    }
+
+    flavorDimensions += "distribution"
+
+    productFlavors {
+        create("store") {
+            dimension = "distribution"
+        }
+
+        create("foss") {
+            dimension = "distribution"
+            applicationIdSuffix = ".foss"
+            versionNameSuffix = "-foss"
+            proguardFile("proguard-rules-foss.pro")
         }
     }
     compileOptions {
