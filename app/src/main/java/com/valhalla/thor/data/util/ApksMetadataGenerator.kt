@@ -19,17 +19,9 @@ class ApksMetadataGenerator {
         @SerialName("target_sdk") val targetSdkVersion: Int,
     )
 
-    companion object {
-        var INSTANCE: ApksMetadataGenerator? = null
 
-        fun getInstance() = INSTANCE ?: synchronized(this) {
-            val instance = ApksMetadataGenerator()
-            INSTANCE = instance
-            instance
-        }
-    }
 
-    fun generateJson(appInfo: AppInfo) = Json.Default.encodeToString(
+    fun generateJson(appInfo: AppInfo) = Json.encodeToString(
         ApksMetadata(
             packageName = appInfo.packageName,
             displayName = appInfo.appName ?: "",

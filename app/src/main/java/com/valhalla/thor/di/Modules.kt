@@ -6,6 +6,7 @@ import com.valhalla.thor.data.repository.AppRepositoryImpl
 import com.valhalla.thor.data.repository.SystemRepositoryImpl
 import com.valhalla.thor.data.source.local.ShellDataSource
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
+import com.valhalla.thor.data.util.ApksMetadataGenerator
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
@@ -17,17 +18,19 @@ import com.valhalla.thor.presentation.freezer.FreezerViewModel
 import com.valhalla.thor.presentation.home.HomeViewModel
 import com.valhalla.thor.presentation.main.MainViewModel
 import org.koin.android.ext.koin.androidContext
+import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.bind
 import org.koin.dsl.module
 
 val commonModule = module {
+    singleOf(::ApksMetadataGenerator)
     single<AppRepository> { AppRepositoryImpl(androidContext()) }
     factory { GetInstalledAppsUseCase(get()) }
     factory { GetAppDetailsUseCase(get()) }
     factory { ManageAppUseCase(get()) }
-    factory { ShareAppUseCase(androidContext(), get()) }
+    factoryOf(::ShareAppUseCase)
 }
 
 val presentationModule = module {

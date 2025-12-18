@@ -19,7 +19,8 @@ import java.util.zip.ZipOutputStream
 
 class ShareAppUseCase(
     private val context: Context,
-    private val systemRepository: SystemRepository
+    private val systemRepository: SystemRepository,
+    private val apksMetadataGenerator: ApksMetadataGenerator
 ) {
 
     suspend operator fun invoke(appInfo: AppInfo): Result<android.net.Uri> = withContext(Dispatchers.IO) {
@@ -72,7 +73,7 @@ class ShareAppUseCase(
                 // C. GENERATE METADATA (The Missing Piece)
                 // We generate "metadata.json" so installers know what this bundle is.
                 val metadataFile = File(tempSplitDir, "metadata.json")
-                ApksMetadataGenerator.getInstance().generateJson(appInfo, metadataFile)
+                apksMetadataGenerator.generateJson(appInfo, metadataFile)
                 filesToZip.add(metadataFile)
 
                 // D. Zip Everything (APKs + JSON)
