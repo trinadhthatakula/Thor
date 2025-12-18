@@ -22,6 +22,7 @@ shizuku = "13.1.5"
 hiddenapibypass = "6.1"
 koin = "4.1.1"
 coil3 = "3.3.0"
+navigationCompose = "2.9.6"
 
 [libraries]
 accompanist-drawablepainter = { module = "com.google.accompanist:accompanist-drawablepainter", version.ref = "accompanistDrawablepainter" }
@@ -62,6 +63,7 @@ koin-androidx-compose = { module = "io.insert-koin:koin-androidx-compose", versi
 koin-androidx-startup = { module = "io.insert-koin:koin-androidx-startup", version.ref = "koin" }
 
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil3" }
+androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

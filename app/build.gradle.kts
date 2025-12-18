@@ -63,6 +63,7 @@ android {
 dependencies {
 
     implementation(project(":suCore"))
+    implementation(libs.androidx.navigation.compose)
     "baselineProfile"(project(":app:baselineprofile"))
 
     implementation(libs.androidx.splashscreen)
