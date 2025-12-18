@@ -2,13 +2,13 @@ package com.valhalla.thor.presentation.main
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
-import com.valhalla.thor.domain.usecase.ManageAppUseCase
-import com.valhalla.thor.domain.usecase.ShareAppUseCase
+import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.MultiAppAction
-import com.valhalla.thor.domain.model.AppClickAction
+import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
+import com.valhalla.thor.domain.usecase.ManageAppUseCase
+import com.valhalla.thor.domain.usecase.ShareAppUseCase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -75,7 +75,13 @@ class MainViewModel(
 
     private fun startLogger(title: String) {
         _uiState.update {
-            it.copy(loggerState = LoggerState(isVisible = true, title = title, logs = listOf("Initializing...")))
+            it.copy(
+                loggerState = LoggerState(
+                    isVisible = true,
+                    title = title,
+                    logs = listOf("Initializing...")
+                )
+            )
         }
     }
 
@@ -130,7 +136,8 @@ class MainViewModel(
                         // Using Toast here for speed.
                         _uiState.update { it.copy(actionMessage = "Unfreezing ${action.appInfo.appName}...") }
 
-                        val result = manageAppUseCase.setAppDisabled(action.appInfo.packageName, false)
+                        val result =
+                            manageAppUseCase.setAppDisabled(action.appInfo.packageName, false)
                         if (result.isSuccess) {
                             _effect.send(MainSideEffect.LaunchApp(action.appInfo.packageName))
                         } else {
@@ -170,7 +177,8 @@ class MainViewModel(
                     addLog("Applying Google Play Store signature...")
 
                     withContext(Dispatchers.IO) {
-                        val result = manageAppUseCase.reinstallAppWithGoogle(action.appInfo.packageName)
+                        val result =
+                            manageAppUseCase.reinstallAppWithGoogle(action.appInfo.packageName)
                         if (result.isSuccess) addLog("✔ Reinstall successful")
                         else addLog("✘ Failed: ${result.exceptionOrNull()?.message}")
                     }
@@ -216,8 +224,20 @@ class MainViewModel(
 
                 // 7. QUICK ACTIONS (Kill, Freeze, Unfreeze, Cache) -> Toast
                 is AppClickAction.Kill -> quickAction(action) { manageAppUseCase.forceStop(it.packageName) }
-                is AppClickAction.Freeze -> quickAction(action) { manageAppUseCase.setAppDisabled(it.packageName, true) }
-                is AppClickAction.UnFreeze -> quickAction(action) { manageAppUseCase.setAppDisabled(it.packageName, false) }
+                is AppClickAction.Freeze -> quickAction(action) {
+                    manageAppUseCase.setAppDisabled(
+                        it.packageName,
+                        true
+                    )
+                }
+
+                is AppClickAction.UnFreeze -> quickAction(action) {
+                    manageAppUseCase.setAppDisabled(
+                        it.packageName,
+                        false
+                    )
+                }
+
                 is AppClickAction.ClearCache -> quickAction(action) { manageAppUseCase.clearCache(it.packageName) }
             }
         }
@@ -228,24 +248,45 @@ class MainViewModel(
     fun onMultiAppAction(action: MultiAppAction) {
         viewModelScope.launch {
             when (action) {
-                is MultiAppAction.ReInstall -> performLoggedMultiAction("Reinstalling Apps", action.appList) {
+                is MultiAppAction.ReInstall -> performLoggedMultiAction(
+                    "Reinstalling Apps",
+                    action.appList
+                ) {
                     manageAppUseCase.reinstallAppWithGoogle(it.packageName)
                 }
-                is MultiAppAction.Freeze -> performLoggedMultiAction("Freezing Apps", action.appList) {
-                    manageAppUseCase.setAppDisabled(it.packageName, disable = true)
+
+                is MultiAppAction.Freeze -> performLoggedMultiAction(
+                    "Freezing Apps",
+                    action.appList
+                ) {
+                    manageAppUseCase.setAppDisabled(it.packageName, disabled = true)
                 }
-                is MultiAppAction.UnFreeze -> performLoggedMultiAction("Unfreezing Apps", action.appList) {
-                    manageAppUseCase.setAppDisabled(it.packageName, disable = false)
+
+                is MultiAppAction.UnFreeze -> performLoggedMultiAction(
+                    "Unfreezing Apps",
+                    action.appList
+                ) {
+                    manageAppUseCase.setAppDisabled(it.packageName, disabled = false)
                 }
+
                 is MultiAppAction.Kill -> performLoggedMultiAction("Killing Apps", action.appList) {
                     manageAppUseCase.forceStop(it.packageName)
                 }
-                is MultiAppAction.ClearCache -> performLoggedMultiAction("Clearing Caches", action.appList) {
+
+                is MultiAppAction.ClearCache -> performLoggedMultiAction(
+                    "Clearing Caches",
+                    action.appList
+                ) {
                     manageAppUseCase.clearCache(it.packageName)
                 }
-                is MultiAppAction.Uninstall -> performLoggedMultiAction("Uninstalling Apps", action.appList) {
+
+                is MultiAppAction.Uninstall -> performLoggedMultiAction(
+                    "Uninstalling Apps",
+                    action.appList
+                ) {
                     manageAppUseCase.uninstallApp(it.packageName)
                 }
+
                 else -> {
                     _uiState.update { it.copy(actionMessage = "Batch Share not supported yet") }
                 }
@@ -283,17 +324,23 @@ class MainViewModel(
     /**
      * Executes a quick single action and shows a Toast on completion.
      */
-    private suspend fun quickAction(action: AppClickAction, block: suspend (AppInfo) -> Result<Unit>) {
+    private suspend fun quickAction(
+        action: AppClickAction,
+        block: suspend (AppInfo) -> Result<Unit>
+    ) {
         val app = action.appInfo()
         val actionName = action.javaClass.simpleName
-
-        block(app)
-            .onSuccess {
-                _uiState.update { it.copy(actionMessage = "$actionName ${app.appName}") }
-            }
-            .onFailure { e ->
-                _uiState.update { it.copy(actionMessage = "Error: ${e.message}") }
-            }
+        if (app != null)
+            block(app)
+                .onSuccess {
+                    _uiState.update { it.copy(actionMessage = "$actionName ${app.appName}") }
+                }
+                .onFailure { e ->
+                    _uiState.update { it.copy(actionMessage = "Error: ${e.message}") }
+                }
+        else {
+            _uiState.update { it.copy(actionMessage = "Error: App info missing for action") }
+        }
     }
 
     // Helper to extract AppInfo from the sealed interface safely
