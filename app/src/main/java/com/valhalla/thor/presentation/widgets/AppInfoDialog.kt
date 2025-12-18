@@ -48,8 +48,8 @@ import com.valhalla.thor.presentation.utils.getAppIcon
 fun AppInfoDialog(
     modifier: Modifier = Modifier,
     appInfo: AppInfo,
-    isRoot: Boolean = false,    // <--- NEW PARAM
-    isShizuku: Boolean = false, // <--- NEW PARAM
+    isRoot: Boolean = false,
+    isShizuku: Boolean = false,
     onDismiss: () -> Unit,
     onAppAction: (AppClickAction) -> Unit = {}
 ) {
@@ -246,7 +246,7 @@ fun FloatingBar(
         }
 
         // Cache: Root OR Shizuku
-        if (hasPrivilege) {
+        if (isRoot) {
             AppActionItem(
                 icon = R.drawable.clear_all,
                 text = "Cache",

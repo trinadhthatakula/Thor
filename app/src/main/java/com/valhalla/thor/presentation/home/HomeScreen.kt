@@ -69,7 +69,7 @@ fun HomeScreen(
 
         Spacer(Modifier.height(24.dp))
 
-        if (state.isRootAvailable || state.isShizukuAvailable) {
+        if (state.isRootAvailable ) {
             ActionCard(
                 title = "Clear All Cache",
                 subtitle = "Free up space by cleaning app caches",

@@ -2,133 +2,155 @@ package com.valhalla.thor.data.source.local.shizuku
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.pm.PackageManager
 import android.os.Build
-import android.os.UserHandle
+import android.os.IBinder
+import android.util.Log
 import com.valhalla.thor.BuildConfig
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
 import java.lang.reflect.Method
-import kotlin.jvm.java
 
-/**
- * ISOLATION CHAMBER
- * * This class handles all the ugly reflection and AIDL stub wrapping required
- * to make system calls via Shizuku.
- * * If code breaks because Android 16 changed an API, YOU FIX IT HERE ONLY.
- */
 class ShizukuReflector(private val context: Context) {
 
     private val myUserId: Int
         get() = android.os.Process.myUserHandle().hashCode()
 
-    // --- Helpers to get System Services via Shizuku ---
-
-    private fun getPackageManager(): Any {
+    // Cache the IPackageManager instance
+    private val packageManager: Any by lazy {
         val binder = SystemServiceHelper.getSystemService("package")
-        val pmBinder = ShizukuBinderWrapper(binder)
-        // IPackageManager.Stub.asInterface(pmBinder)
-        return Class.forName("android.content.pm.IPackageManager\$Stub")
-            .getMethod("asInterface", android.os.IBinder::class.java)
-            .invoke(null, pmBinder)!!
-    }
-
-    private fun getActivityManager(): Any {
-        val binder = SystemServiceHelper.getSystemService("activity")
-        val amBinder = ShizukuBinderWrapper(binder)
-        // IActivityManager.Stub.asInterface(amBinder)
-        return Class.forName("android.app.IActivityManager\$Stub")
-            .getMethod("asInterface", android.os.IBinder::class.java)
-            .invoke(null, amBinder)!!
-    }
-
-    // --- Implementation of Actions ---
-
-    fun forceStop(packageName: String) {
-        val am = getActivityManager()
-
-        // Method signature changed in newer Android versions if I recall,
-        // but your old code used a consistent one. We stick to reflection to be safe.
-
-        // void forceStopPackage(String packageName, int userId)
-        val method = am.javaClass.getMethod("forceStopPackage", String::class.java, Int::class.javaPrimitiveType)
-        method.invoke(am, packageName, myUserId)
-    }
-
-    fun setAppEnabled(packageName: String, enabled: Boolean) {
-        val pm = getPackageManager()
-        val newState = if (enabled) PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-        else PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
-
-        // setApplicationEnabledSetting(String appPackageName, int newState, int flags, int userId, String callingPackage)
-        // Note: The signature varies slightly by Android version regarding the callingPackage or userId order.
-        // Your old code handled this via "Targets". I'm simplifying to the standard modern signature.
+        val shizukuBinder = ShizukuBinderWrapper(binder)
 
         try {
-            // Try standard signature first
-            val method = pm.javaClass.getMethod(
-                "setApplicationEnabledSetting",
-                String::class.java,
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType,
-                String::class.java
-            )
-            method.invoke(pm, packageName, newState, 0, myUserId, BuildConfig.APPLICATION_ID)
-        } catch (e: NoSuchMethodException) {
-            // Fallback for older APIs (Pre-Android 10/Q often lacked the callingPackage or had different order)
-            val method = pm.javaClass.getMethod(
-                "setApplicationEnabledSetting",
-                String::class.java,
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType
-            )
-            method.invoke(pm, packageName, newState, 0, myUserId)
+            val stubClass = Class.forName("android.content.pm.IPackageManager\$Stub")
+            // Try standard reflection first
+            val method = try {
+                stubClass.getMethod("asInterface", IBinder::class.java)
+            } catch (e: Exception) {
+                // If hidden, find via Bypass
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    HiddenApiBypass.getDeclaredMethod(stubClass, "asInterface", IBinder::class.java)
+                } else throw e
+            }
+            method.invoke(null, shizukuBinder)!!
+        } catch (e: Exception) {
+            Log.e("ShizukuReflector", "Failed to create IPackageManager proxy", e)
+            throw RuntimeException("Failed to create IPackageManager proxy", e)
         }
     }
 
     @SuppressLint("PrivateApi")
     fun clearCache(packageName: String) {
-        val pm = getPackageManager()
+        try {
+            val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
 
-        // 1. Get the Hidden Class Reference
-        val observerClass = try {
-            Class.forName("android.content.pm.IPackageDataObserver")
-        } catch (e: ClassNotFoundException) {
-            // Should never happen on standard Android, but good to know
-            throw RuntimeException("Target Android version removed IPackageDataObserver")
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            try {
-                // 2. Look up the method using the Class reference, NOT the type
-                val method = pm.javaClass.getMethod(
-                    "deleteApplicationCacheFiles",
-                    String::class.java,
-                    observerClass // <--- This was your error. Use the class object we looked up.
-                )
-                // 3. Invoke it. We pass 'null' for the observer because we don't need the callback yet.
-                method.invoke(pm, packageName, null)
-            } catch (e: Exception) {
-                // Fallback to Bypass if strict reflection fails
-                HiddenApiBypass.invoke(
-                    pm.javaClass,
-                    pm,
-                    "deleteApplicationCacheFiles",
-                    packageName,
-                    null
-                )
-            }
-        } else {
-            // Older versions logic
-            val method = pm.javaClass.getMethod(
+            // 1. Find Method (using Bypass if needed)
+            val method = findMethod(
+                packageManager.javaClass,
                 "deleteApplicationCacheFiles",
                 String::class.java,
                 observerClass
-            )
-            method.invoke(pm, packageName, null)
+            ) ?: findMethod( // Fallback for some ROMs
+                packageManager.javaClass,
+                "deleteApplicationCacheFilesAsUser",
+                String::class.java,
+                Integer.TYPE, // Replaced Int::class.javaPrimitiveType
+                observerClass
+            ) ?: throw NoSuchMethodException("deleteApplicationCacheFiles not found")
+
+            // 2. Invoke (Standard Java Invoke)
+            if (method.parameterCount == 2) {
+                method.invoke(packageManager, packageName, null)
+            } else {
+                method.invoke(packageManager, packageName, myUserId, null)
+            }
+
+        } catch (e: Exception) {
+            Log.e("ShizukuReflector", "clearCache failed: ${e.message}")
+            // Don't crash the app, just log and rethrow specific message so UI can show toast
+            throw Exception("Clear Cache failed. Android 14+ restricts this Shizuku action.", e)
+        }
+    }
+
+    fun forceStop(packageName: String) {
+        val amBinder = SystemServiceHelper.getSystemService("activity")
+        val shizukuBinder = ShizukuBinderWrapper(amBinder)
+
+        try {
+            val stubClass = Class.forName("android.app.IActivityManager\$Stub")
+
+            // 1. Get Interface
+            val asInterface = try {
+                stubClass.getMethod("asInterface", IBinder::class.java)
+            } catch (e: Exception) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    HiddenApiBypass.getDeclaredMethod(stubClass, "asInterface", IBinder::class.java)
+                } else throw e
+            }
+            val am = asInterface.invoke(null, shizukuBinder)!!
+
+            // 2. Find forceStopPackage
+            val method = findMethod(
+                am.javaClass,
+                "forceStopPackage",
+                String::class.java,
+                Integer.TYPE
+            ) ?: throw NoSuchMethodException("forceStopPackage not found")
+
+            // 3. Invoke
+            method.invoke(am, packageName, myUserId)
+
+        } catch (e: Exception) {
+            Log.e("ShizukuReflector", "forceStop failed", e)
+            throw RuntimeException("Shizuku forceStop failed", e)
+        }
+    }
+
+    fun setAppEnabled(packageName: String, enabled: Boolean) {
+        try {
+            val newState = if (enabled) 1 else 2 // ENABLED vs DISABLED
+
+            // Signature: setApplicationEnabledSetting(String appPackageName, int newState, int flags, int userId, String callingPackage)
+            val method = findMethod(
+                packageManager.javaClass,
+                "setApplicationEnabledSetting",
+                String::class.java,
+                Integer.TYPE,
+                Integer.TYPE,
+                Integer.TYPE,
+                String::class.java
+            ) ?: findMethod( // Fallback for older APIs
+                packageManager.javaClass,
+                "setApplicationEnabledSetting",
+                String::class.java,
+                Integer.TYPE,
+                Integer.TYPE,
+                Integer.TYPE
+            ) ?: throw NoSuchMethodException("setApplicationEnabledSetting not found")
+
+            if (method.parameterCount == 5) {
+                method.invoke(packageManager, packageName, newState, 0, myUserId, BuildConfig.APPLICATION_ID)
+            } else {
+                method.invoke(packageManager, packageName, newState, 0, myUserId)
+            }
+        } catch (e: Exception) {
+            Log.e("ShizukuReflector", "setAppEnabled failed", e)
+            throw RuntimeException("Shizuku setAppEnabled failed", e)
+        }
+    }
+
+    // Helper to find method using standard reflection OR Bypass
+    private fun findMethod(clazz: Class<*>, name: String, vararg parameterTypes: Class<*>): Method? {
+        return try {
+            clazz.getMethod(name, *parameterTypes)
+        } catch (e: Exception) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                try {
+                    HiddenApiBypass.getDeclaredMethod(clazz, name, *parameterTypes)
+                } catch (e2: Exception) {
+                    null
+                }
+            } else null
         }
     }
 }
