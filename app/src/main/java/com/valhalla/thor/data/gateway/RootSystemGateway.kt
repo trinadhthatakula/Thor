@@ -85,7 +85,7 @@ class RootSystemGateway(
             // -r: Reinstall
             // -d: Downgrade (allow version downgrade)
             // -i: Installer Package Name (This is the key!)
-            val command = "pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 \"$combinedPath\""
+            val command = "pm install-multiple -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 $combinedPath"
 
             runCommand(command)
         } catch (e: Exception) {
