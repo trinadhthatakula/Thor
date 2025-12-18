@@ -297,7 +297,7 @@ class MainViewModel(
     }
 
     // Helper to extract AppInfo from the sealed interface safely
-    private fun AppClickAction.appInfo(): AppInfo = when (this) {
+    private fun AppClickAction.appInfo(): AppInfo? = when (this) {
         is AppClickAction.Kill -> appInfo
         is AppClickAction.Freeze -> appInfo
         is AppClickAction.UnFreeze -> appInfo
@@ -307,6 +307,6 @@ class MainViewModel(
         is AppClickAction.Share -> appInfo
         is AppClickAction.Reinstall -> appInfo
         is AppClickAction.AppInfoSettings -> appInfo
-        AppClickAction.ReinstallAll -> throw IllegalArgumentException("ReinstallAll has no single app info")
+        else -> null
     }
 }
