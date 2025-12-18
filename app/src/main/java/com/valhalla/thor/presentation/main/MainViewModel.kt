@@ -1,5 +1,7 @@
 package com.valhalla.thor.presentation.main
 
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.model.AppClickAction
@@ -50,7 +52,8 @@ data class MainUiState(
 class MainViewModel(
     private val manageAppUseCase: ManageAppUseCase,
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
-    private val shareAppUseCase: ShareAppUseCase
+    private val shareAppUseCase: ShareAppUseCase,
+    private val packageManager: PackageManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MainUiState())
@@ -251,8 +254,25 @@ class MainViewModel(
                 is MultiAppAction.ReInstall -> performLoggedMultiAction(
                     "Reinstalling Apps",
                     action.appList
-                ) {
-                    manageAppUseCase.reinstallAppWithGoogle(it.packageName)
+                ) { appInfo ->
+                    val result = manageAppUseCase.reinstallAppWithGoogle(appInfo.packageName)
+                    if (result.isSuccess) {
+                        result
+                    } else {
+                        try {
+                            packageManager.getPackageInfo(appInfo.packageName, 0).applicationInfo?.let { appInfo ->
+                                val isDebuggable = (appInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+                                if (isDebuggable) {
+                                    Result.failure(Exception("App is Debuggable (Signature mismatch likely)"))
+                                } else {
+                                    result // Return original error
+                                }
+                            }?:result
+
+                        } catch (_: Exception) {
+                            result // Return original error if package check fails
+                        }
+                    }
                 }
 
                 is MultiAppAction.Freeze -> performLoggedMultiAction(

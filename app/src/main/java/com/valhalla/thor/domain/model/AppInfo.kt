@@ -26,6 +26,7 @@ data class AppInfo(
     var sharedDataDir: String = "",
     var lastUpdateTime: Long = 0L,
     var firstInstallTime: Long = 0L,
+    val isDebuggable: Boolean = false,
 )
 
 fun AppInfo.formattedAppName() = appName?.replace(" ", "_") ?: packageName

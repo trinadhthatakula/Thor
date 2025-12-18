@@ -71,9 +71,6 @@ fun TermLoggerDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     if (!isOperationComplete) {
-                        // Use a standard loader if Lottie isn't available or lightweight
-                        // CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                        // Or keep your Lottie if configured:
                         AnimateLottieRaw(
                             resId = R.raw.rearrange,
                             shouldLoop = true,
@@ -120,9 +117,8 @@ fun TermLoggerDialog(
                 LazyColumn(
                     state = lazyListState,
                     modifier = Modifier
+                        .fillMaxWidth()
                         .padding(top = 10.dp)
-                        .weight(1f, fill = false) // Limit height
-                        .horizontalScroll(rememberScrollState())
                 ) {
                     items(logs) { logTxt ->
                         Text(

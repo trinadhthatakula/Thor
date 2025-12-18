@@ -1,5 +1,6 @@
 package com.valhalla.thor.di
 
+import android.content.pm.PackageManager
 import com.valhalla.thor.data.gateway.RootSystemGateway
 import com.valhalla.thor.data.gateway.ShizukuSystemGateway
 import com.valhalla.thor.data.repository.AppRepositoryImpl
@@ -25,6 +26,7 @@ import org.koin.dsl.bind
 import org.koin.dsl.module
 
 val commonModule = module {
+    single<PackageManager>{ androidContext().packageManager }
     singleOf(::ApksMetadataGenerator)
     single<AppRepository> { AppRepositoryImpl(androidContext()) }
     factory { GetInstalledAppsUseCase(get()) }

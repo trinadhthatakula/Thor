@@ -54,7 +54,9 @@ fun AppInfoDialog(
     onAppAction: (AppClickAction) -> Unit = {}
 ) {
     val context = LocalContext.current
-    var getConfirmation by remember { mutableStateOf(false) }
+    var showUninstallConfirmation by remember { mutableStateOf(false) }
+    // New State for Reinstall Warning
+    var showReinstallWarning by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -96,7 +98,6 @@ fun AppInfoDialog(
                 modifier = Modifier.padding(horizontal = 5.dp)
             )
 
-            // Chips Row
             Row {
                 if (appInfo.splitPublicSourceDirs.isNotEmpty())
                     Text(
@@ -143,40 +144,78 @@ fun AppInfoDialog(
 
             FloatingBar(
                 appInfo = appInfo,
-                isRoot = isRoot,          // PASS DOWN
-                isShizuku = isShizuku,    // PASS DOWN
+                isRoot = isRoot,
+                isShizuku = isShizuku,
                 onDismiss = { onDismiss() },
-                onAppAction = {
-                    if (it is AppClickAction.Uninstall) {
-                        if (appInfo.isSystem) {
-                            getConfirmation = true
-                        } else {
-                            onAppAction(AppClickAction.Uninstall(appInfo))
-                            onDismiss()
+                onAppAction = { action ->
+                    when(action) {
+                        is AppClickAction.Uninstall -> {
+                            if (appInfo.isSystem) {
+                                showUninstallConfirmation = true
+                            } else {
+                                onAppAction(AppClickAction.Uninstall(appInfo))
+                                onDismiss()
+                            }
                         }
-                    } else {
-                        onAppAction(it)
+                        is AppClickAction.Reinstall -> {
+                            // Logic: Show warning if it looks like a debug/test app or just warn generally?
+                            // Since we might not have `isDebuggable` in the model yet, let's warn EVERYONE
+                            // who tries this on non-Play Store apps just to be safe, or just check
+                            // if we can infer it.
+
+                            // For now, let's trigger the warning dialog unconditionally for safety,
+                            // or rely on the fact that if it fails, it fails.
+                            // BUT, you asked to inform user. So we show the dialog.
+                            showReinstallWarning = true
+                        }
+                        else -> onAppAction(action)
                     }
                 }
             )
         }
     }
 
-    if (getConfirmation) {
+    if (showUninstallConfirmation) {
         AlertDialog(
-            onDismissRequest = { getConfirmation = false },
+            onDismissRequest = { showUninstallConfirmation = false },
             confirmButton = {
                 TextButton(onClick = {
                     onAppAction(AppClickAction.Uninstall(appInfo))
-                    getConfirmation = false
+                    showUninstallConfirmation = false
                 }) { Text("Yes") }
             },
             dismissButton = {
-                TextButton(onClick = { getConfirmation = false }) { Text("No") }
+                TextButton(onClick = { showUninstallConfirmation = false }) { Text("No") }
             },
             title = { Text("Uninstall ${appInfo.appName}?") },
             text = {
                 Text("Are you sure you want to uninstall ${appInfo.appName}?${if (appInfo.isSystem) "\nthis is a system app it might be risky, you can freeze them instead" else ""}")
+            }
+        )
+    }
+
+    // --- REINSTALL WARNING DIALOG ---
+    if (showReinstallWarning) {
+        AlertDialog(
+            icon = { Icon(painterResource(R.drawable.warning), null, tint = MaterialTheme.colorScheme.error) },
+            onDismissRequest = { showReinstallWarning = false },
+            title = { Text("Risk Warning") },
+            text = {
+                Text(
+                    "This action forces the installer record to 'Google Play Store'.\n\n" +
+                            "⚠️ If this app is a DEBUG build or signed with TEST keys, updates from Play Store will FAIL.\n\n" +
+                            "Only proceed if this is a genuine release build."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onAppAction(AppClickAction.Reinstall(appInfo))
+                    showReinstallWarning = false
+                    onDismiss()
+                }) { Text("Proceed") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showReinstallWarning = false }) { Text("Cancel") }
             }
         )
     }
@@ -187,14 +226,13 @@ fun AppInfoDialog(
 fun FloatingBar(
     modifier: Modifier = Modifier,
     appInfo: AppInfo = AppInfo(),
-    isRoot: Boolean = false,    // <--- NEW PARAM
-    isShizuku: Boolean = false, // <--- NEW PARAM
+    isRoot: Boolean = false,
+    isShizuku: Boolean = false,
     onAppAction: (AppClickAction) -> Unit = {},
     onDismiss: () -> Unit = {}
 ) {
 
     val isFrozen by remember { mutableStateOf(appInfo.enabled.not()) }
-    // Logic: Actions available if Root OR Shizuku is present
     val hasPrivilege = isRoot || isShizuku
 
     Row(
@@ -213,13 +251,13 @@ fun FloatingBar(
             onAppAction(AppClickAction.Launch(appInfo))
         }
 
-        // Reinstall: STRICTLY Root only (Google Play Hack requirement)
         if (!appInfo.isSystem && appInfo.installerPackageName != "com.android.vending" && isRoot) {
             AppActionItem(
                 icon = R.drawable.apk_install,
                 text = "ReInstall"
             ) {
-                onDismiss()
+                // We don't dismiss here immediately because the dialog needs to show the warning
+                // onDismiss() passed to the parent handler logic above
                 onAppAction(AppClickAction.Reinstall(appInfo))
             }
         }
@@ -231,7 +269,6 @@ fun FloatingBar(
             onAppAction(AppClickAction.Share(appInfo))
         }
 
-        // Freeze/Unfreeze: Root OR Shizuku
         if (hasPrivilege) {
             AppActionItem(
                 icon = if (isFrozen) R.drawable.unfreeze else R.drawable.frozen,
@@ -245,7 +282,6 @@ fun FloatingBar(
             }
         }
 
-        // Cache: Root OR Shizuku
         if (isRoot) {
             AppActionItem(
                 icon = R.drawable.clear_all,
@@ -255,7 +291,6 @@ fun FloatingBar(
             }
         }
 
-        // Kill: Root OR Shizuku (Recommended, though simple kill might work without)
         if (appInfo.enabled && hasPrivilege) {
             AppActionItem(
                 icon = R.drawable.danger,
@@ -265,7 +300,6 @@ fun FloatingBar(
             }
         }
 
-        // Uninstall
         if (appInfo.packageName != "com.valhalla.thor" && appInfo.packageName !="com.android.vending") {
             AppActionItem(
                 icon = R.drawable.delete_forever,
@@ -277,7 +311,6 @@ fun FloatingBar(
     }
 }
 
-// ... (AppActionItem and RotatableActionItem remain unchanged) ...
 @Composable
 fun AppActionItem(
     modifier: Modifier = Modifier,
@@ -285,7 +318,6 @@ fun AppActionItem(
     text: String,
     onClick: () -> Unit
 ) {
-    // ... [Same implementation as before]
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,

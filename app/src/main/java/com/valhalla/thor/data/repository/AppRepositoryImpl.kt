@@ -5,6 +5,7 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Environment
+import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.model.AppInfo
 import kotlinx.coroutines.Dispatchers
@@ -37,23 +38,25 @@ class AppRepositoryImpl(
         emit(list)
     }.flowOn(Dispatchers.IO)
 
-    override suspend fun getAppDetails(packageName: String): AppInfo? = withContext(Dispatchers.IO) {
-        try {
-            val flags = (PackageManager.MATCH_UNINSTALLED_PACKAGES).toLong()
-            val packInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                pm.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(flags))
-            } else {
-                pm.getPackageInfo(packageName, PackageManager.MATCH_UNINSTALLED_PACKAGES)
-            }
-            val appInfo = packInfo.applicationInfo ?: return@withContext null
+    override suspend fun getAppDetails(packageName: String): AppInfo? =
+        withContext(Dispatchers.IO) {
+            try {
+                val flags = (PackageManager.MATCH_UNINSTALLED_PACKAGES).toLong()
+                val packInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    pm.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(flags))
+                } else {
+                    pm.getPackageInfo(packageName, PackageManager.MATCH_UNINSTALLED_PACKAGES)
+                }
+                val appInfo = packInfo.applicationInfo ?: return@withContext null
 
-            // mapToAppInfo with isLightweight = false triggers the OBB/Data checks
-            mapToAppInfo(packInfo, appInfo, isLightweight = false)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
+                // mapToAppInfo with isLightweight = false triggers the OBB/Data checks
+                mapToAppInfo(packInfo, appInfo, isLightweight = false)
+            } catch (e: Exception) {
+                if (BuildConfig.DEBUG)
+                    e.printStackTrace()
+                null
+            }
         }
-    }
 
     override suspend fun getApkDetails(apkPath: String): AppInfo? = withContext(Dispatchers.IO) {
         val flags = PackageManager.GET_PERMISSIONS
@@ -85,6 +88,7 @@ class AppRepositoryImpl(
         appInfo: ApplicationInfo,
         isLightweight: Boolean
     ): AppInfo {
+        val isDebuggable = (appInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
         @Suppress("DEPRECATION") val mapped = AppInfo(
             appName = appInfo.loadLabel(pm).toString(),
             packageName = packInfo.packageName,
@@ -103,7 +107,8 @@ class AppRepositoryImpl(
             deviceProtectedDataDir = appInfo.deviceProtectedDataDir,
             sourceDir = appInfo.sourceDir,
             lastUpdateTime = packInfo.lastUpdateTime,
-            firstInstallTime = packInfo.firstInstallTime
+            firstInstallTime = packInfo.firstInstallTime,
+            isDebuggable = isDebuggable
         )
 
         // The "Heavy" Logic - Only run if explicitly requested
@@ -111,13 +116,19 @@ class AppRepositoryImpl(
             mapped.sharedLibraryFiles = appInfo.sharedLibraryFiles?.toList() ?: emptyList()
 
             // OBB Check
-            val obbFile = File(Environment.getExternalStorageDirectory(), "Android/obb/${appInfo.packageName}")
+            val obbFile = File(
+                Environment.getExternalStorageDirectory(),
+                "Android/obb/${appInfo.packageName}"
+            )
             if (obbFile.exists()) {
                 mapped.obbFilePath = obbFile.absolutePath
             }
 
             // Data Dir Check
-            val dataFile = File(Environment.getExternalStorageDirectory(), "Android/data/${appInfo.packageName}")
+            val dataFile = File(
+                Environment.getExternalStorageDirectory(),
+                "Android/data/${appInfo.packageName}"
+            )
             mapped.sharedDataDir = dataFile.absolutePath
         }
 
