@@ -3,7 +3,7 @@ package com.valhalla.thor.domain.usecase
 import com.valhalla.thor.data.repository.SystemRepositoryImpl
 
 class ManageAppUseCase(
-    private val systemRepository: SystemRepositoryImpl
+    private val systemRepository: com.valhalla.thor.domain.repository.SystemRepository
 ) {
     suspend fun forceStop(packageName: String): Result<Unit> =
         systemRepository.forceStopApp(packageName)
