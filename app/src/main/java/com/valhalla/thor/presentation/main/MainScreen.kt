@@ -53,6 +53,7 @@ fun MainScreen(
     // --- Safety Gates (Dialog State) ---
     var pendingMultiAction by remember { mutableStateOf<MultiAppAction?>(null) }
     var pendingSingleAction by remember { mutableStateOf<AppClickAction?>(null) }
+    var showExitConfirmation by remember { mutableStateOf(false) }
 
     // 1. Pager State
     val pagerState = rememberPagerState(
@@ -72,7 +73,7 @@ fun MainScreen(
     }
     // Secondary BackHandler for Home tab to Exit
     BackHandler(enabled = pagerState.currentPage == AppDestinations.HOME.ordinal) {
-        onExit()
+        showExitConfirmation = true
     }
 
     // 4. Handle Side Effects
@@ -226,6 +227,19 @@ fun MainScreen(
                     logs = state.loggerState.logs,
                     isOperationComplete = state.loggerState.isComplete,
                     onDismiss = { mainViewModel.dismissLogger() }
+                )
+            }
+
+            if (showExitConfirmation) {
+                AffirmationDialog(
+                    title = "Exit Thor?",
+                    text = "Are you sure you want to close the application?",
+                    icon = R.drawable.warning,
+                    onConfirm = {
+                        showExitConfirmation = false
+                        onExit()
+                    },
+                    onRejected = { showExitConfirmation = false }
                 )
             }
         }
