@@ -24,6 +24,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -77,6 +78,12 @@ fun AppListScreen(
             }
             .crossfade(true)
             .build()
+    }
+
+    LaunchedEffect(Unit) {
+        if (state.allUserApps.isEmpty() && state.allSystemApps.isEmpty() && state.isLoading) {
+            viewModel.loadApps()
+        }
     }
 
     // UI-Specific State (Dialogs that don't need to persist in VM)

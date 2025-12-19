@@ -11,11 +11,14 @@ import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class FreezerUiState(
     val isLoading: Boolean = true,
@@ -51,27 +54,32 @@ class FreezerViewModel(
         FreezerUiState()
     )
 
-    init {
-        loadApps()
-    }
+    private var filterJob: Job? = null
+
+    // RUTHLESS: Removed init { loadApps() } to prevent navigation jank.
 
     fun loadApps() {
-        viewModelScope.launch {
+        // RUTHLESS: IO Dispatcher for heavy data fetching
+        viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isLoading = true) }
             // Check privileges
             val hasRoot = systemRepository.isRootAvailable()
             val hasShizuku = systemRepository.isShizukuAvailable()
+
             getInstalledAppsUseCase().collect { (user, system) ->
-                _state.update {
-                    val newState = it.copy(
-                        isLoading = false,
-                        isRoot = hasRoot,
-                        isShizuku = hasShizuku,
-                        allUserApps = user,
-                        allSystemApps = system
-                    )
-                    processList(newState)
-                }
+                // Data arrived on IO.
+                val partialState = _state.value.copy(
+                    isLoading = false,
+                    isRoot = hasRoot,
+                    isShizuku = hasShizuku,
+                    allUserApps = user,
+                    allSystemApps = system
+                )
+
+                // Switch to Default (CPU) for sorting
+                val finalState = processListState(partialState)
+
+                _state.update { finalState }
             }
         }
     }
@@ -85,11 +93,7 @@ class FreezerViewModel(
 
             result.onSuccess {
                 _state.update { s -> s.copy(actionMessage = "${if(shouldFreeze) "Frozen" else "Unfrozen"} ${app.appName}") }
-                // Note: The list update happens automatically because GetInstalledAppsUseCase
-                // should emit new values if the repo observes changes,
-                // OR we need to manually trigger a reload if the flow isn't hot on package changes.
-                // For now, let's assume we might need a manual refresh or the flow updates.
-                loadApps()
+                // Note: The list update happens automatically because GetInstalledAppsUseCase flow
             }.onFailure { e ->
                 _state.update { s -> s.copy(actionMessage = "Error: ${e.message}") }
             }
@@ -111,7 +115,8 @@ class FreezerViewModel(
                     _state.update { it.copy(actionMessage = "Action not supported in Freezer yet") }
                 }
             }
-            loadApps()
+            // Flow should update automatically, but if manual refresh needed:
+            // loadApps()
         }
     }
 
@@ -119,29 +124,39 @@ class FreezerViewModel(
         _state.update { it.copy(actionMessage = null) }
     }
 
-    // --- Filter / Sort Updates (Boilerplate similar to AppList, but essential for independence) ---
+    // --- Filter / Sort Updates (Async) ---
 
     fun updateListType(type: AppListType) {
-        _state.update { processList(it.copy(appListType = type)) }
+        triggerAsyncUpdate { it.copy(appListType = type) }
     }
 
     fun updateFilter(filter: String) {
-        _state.update { processList(it.copy(selectedFilter = filter)) }
+        triggerAsyncUpdate { it.copy(selectedFilter = filter) }
     }
 
     fun updateFilterType(type: FilterType) {
-        _state.update { processList(it.copy(filterType = type, selectedFilter = if(type == FilterType.State) "Frozen" else "All")) }
+        triggerAsyncUpdate { it.copy(filterType = type, selectedFilter = if(type == FilterType.State) "Frozen" else "All") }
     }
 
     fun updateSort(sortBy: SortBy) {
-        _state.update { processList(it.copy(sortBy = sortBy)) }
+        triggerAsyncUpdate { it.copy(sortBy = sortBy) }
     }
 
     fun updateSortOrder(order: SortOrder) {
-        _state.update { processList(it.copy(sortOrder = order)) }
+        triggerAsyncUpdate { it.copy(sortOrder = order) }
     }
 
-    private fun processList(state: FreezerUiState): FreezerUiState {
+    private fun triggerAsyncUpdate(reducer: (FreezerUiState) -> FreezerUiState) {
+        filterJob?.cancel()
+        filterJob = viewModelScope.launch(Dispatchers.Default) {
+            val pendingState = reducer(_state.value)
+            val finalState = processListState(pendingState)
+            _state.update { finalState }
+        }
+    }
+
+    // --- Core Logic (CPU Bound) ---
+    private suspend fun processListState(state: FreezerUiState): FreezerUiState = withContext(Dispatchers.Default) {
         val rawList = if (state.appListType == AppListType.USER) state.allUserApps else state.allSystemApps
 
         // Filter
@@ -166,7 +181,7 @@ class FreezerViewModel(
         val installers = rawList.mapNotNull { it.installerPackageName }.distinct().sorted().toMutableList()
         installers.add(0, "All")
 
-        return state.copy(
+        state.copy(
             displayedApps = sorted,
             availableInstallers = installers
         )

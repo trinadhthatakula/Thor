@@ -53,8 +53,6 @@ import org.koin.androidx.compose.koinViewModel
 @Composable
 fun FreezerScreen(
     modifier: Modifier = Modifier,
-    // Note: We removed userAppList/systemAppList params because the ViewModel manages data now.
-    // Ensure you update HomePage to remove those arguments when calling this.
     viewModel: FreezerViewModel = koinViewModel(),
     onAppAction: (AppClickAction) -> Unit = {},
     onMultiAppAction: (MultiAppAction) -> Unit = {}
@@ -66,8 +64,13 @@ fun FreezerScreen(
     var selectedAppInfo by remember { mutableStateOf<AppInfo?>(null) }
     var reinstallCandidate by remember { mutableStateOf<AppInfo?>(null) }
 
+    LaunchedEffect(Unit) {
+        if (state.allUserApps.isEmpty() && state.allSystemApps.isEmpty() && state.isLoading) {
+            viewModel.loadApps()
+        }
+    }
+
     // Create a custom ImageLoader that knows how to fetch App Icons in the background.
-    // We use 'remember' so we don't recreate the loader on every recomposition.
     val imageLoader = remember(context) {
         ImageLoader.Builder(context)
             .components {
@@ -164,7 +167,6 @@ fun FreezerScreen(
                 onAppInfoSelected = { app ->
                     selectedAppInfo = app
                 }
-                // Note: onAppAction is NOT passed here, as AppList doesn't handle clicks anymore.
             )
         }
     }

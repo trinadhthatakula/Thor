@@ -10,29 +10,35 @@ import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class AppListUiState(
     val isLoading: Boolean = true,
-    // Privileges
     val isRoot: Boolean = false,
     val isShizuku: Boolean = false,
-    // Raw Data
+
+    // Raw Data (Cache)
     val allUserApps: List<AppInfo> = emptyList(),
     val allSystemApps: List<AppInfo> = emptyList(),
+
     // Filter State
     val appListType: AppListType = AppListType.USER,
     val filterType: FilterType = FilterType.Source,
     val selectedFilter: String = "All",
     val sortBy: SortBy = SortBy.NAME,
     val sortOrder: SortOrder = SortOrder.ASCENDING,
+
     // Display Data
     val displayedApps: List<AppInfo> = emptyList(),
     val availableInstallers: List<String> = listOf("All"),
+
     // Detail View State
     val selectedAppDetails: AppInfo? = null,
     val isLoadingDetails: Boolean = false
@@ -45,35 +51,37 @@ class AppListViewModel(
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AppListUiState())
-
-    // Combine state changes to automatically trigger filtering/sorting
     val uiState = _state.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
         AppListUiState()
     )
 
-    init {
-        loadApps()
-    }
+    private var filterJob: Job? = null
+
 
     fun loadApps() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isLoading = true) }
+
             val hasRoot = systemRepository.isRootAvailable()
             val hasShizuku = systemRepository.isShizukuAvailable()
+
             getInstalledAppsUseCase().collect { (user, system) ->
-                _state.update { currentState ->
-                    val newState = currentState.copy(
-                        isLoading = false,
-                        isRoot = hasRoot,
-                        isShizuku = hasShizuku,
-                        allUserApps = user,
-                        allSystemApps = system
-                    )
-                    // Apply filters immediately after loading
-                    processList(newState)
-                }
+                // Data arrived on IO thread.
+                // Prepare the state update
+                val partialState = _state.value.copy(
+                    isLoading = false,
+                    isRoot = hasRoot,
+                    isShizuku = hasShizuku,
+                    allUserApps = user,
+                    allSystemApps = system
+                )
+
+                // Switch to Default (CPU) for sorting/filtering the initial list
+                val finalState = processListState(partialState)
+
+                _state.update { finalState }
             }
         }
     }
@@ -81,7 +89,7 @@ class AppListViewModel(
     // --- Actions ---
 
     fun selectApp(packageName: String) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) { // App details are heavy (Disk I/O)
             _state.update { it.copy(isLoadingDetails = true, selectedAppDetails = null) }
 
             getAppDetailsUseCase(packageName).onSuccess { fullDetails ->
@@ -96,28 +104,43 @@ class AppListViewModel(
         _state.update { it.copy(selectedAppDetails = null) }
     }
 
+    // --- Async Filter/Sort Updates ---
+    // Every time user clicks a filter/sort button, we run logic on background
+    // to keep the button click instant (ripple effect) without lag.
+
     fun updateListType(type: AppListType) {
-        _state.update { processList(it.copy(appListType = type, selectedFilter = "All")) }
+        triggerAsyncUpdate { it.copy(appListType = type, selectedFilter = "All") }
     }
 
     fun updateFilter(filter: String) {
-        _state.update { processList(it.copy(selectedFilter = filter)) }
+        triggerAsyncUpdate { it.copy(selectedFilter = filter) }
     }
 
     fun updateFilterType(type: FilterType) {
-        _state.update { processList(it.copy(filterType = type, selectedFilter = "All")) }
+        triggerAsyncUpdate { it.copy(filterType = type, selectedFilter = "All") }
     }
 
     fun updateSort(sortBy: SortBy) {
-        _state.update { processList(it.copy(sortBy = sortBy)) }
+        triggerAsyncUpdate { it.copy(sortBy = sortBy) }
     }
 
     fun updateSortOrder(order: SortOrder) {
-        _state.update { processList(it.copy(sortOrder = order)) }
+        triggerAsyncUpdate { it.copy(sortOrder = order) }
     }
 
-    // --- The Core Logic Engine ---
-    private fun processList(state: AppListUiState): AppListUiState {
+    private fun triggerAsyncUpdate(reducer: (AppListUiState) -> AppListUiState) {
+        // Cancel previous calculation if user taps quickly
+        filterJob?.cancel()
+        filterJob = viewModelScope.launch(Dispatchers.Default) {
+            val pendingState = reducer(_state.value)
+            val finalState = processListState(pendingState)
+            _state.update { finalState }
+        }
+    }
+
+    // --- The Core Logic Engine (CPU Intensive) ---
+    // Runs on Dispatchers.Default context via callers
+    private suspend fun processListState(state: AppListUiState): AppListUiState = withContext(Dispatchers.Default) {
         // 1. Pick Source
         val rawList = if (state.appListType == AppListType.USER) state.allUserApps else state.allSystemApps
 
@@ -139,11 +162,11 @@ class AppListViewModel(
         // 3. Sort
         val sorted = getSortedList(filtered, state.sortBy, state.sortOrder)
 
-        // 4. Calculate Installers (Metadata)
+        // 4. Calculate Installers
         val installers = rawList.mapNotNull { it.installerPackageName }.distinct().sorted().toMutableList()
         installers.add(0, "All")
 
-        return state.copy(
+        state.copy(
             displayedApps = sorted,
             availableInstallers = installers
         )
