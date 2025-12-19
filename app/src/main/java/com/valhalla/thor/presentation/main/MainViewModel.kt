@@ -11,6 +11,7 @@ import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.domain.usecase.ShareAppUseCase
+import com.valhalla.thor.presentation.home.AppDestinations
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,7 +47,8 @@ data class LoggerState(
  */
 data class MainUiState(
     val actionMessage: String? = null, // For transient Toasts
-    val loggerState: LoggerState = LoggerState() // For persistent Logs
+    val loggerState: LoggerState = LoggerState(), // For persistent Logs
+    val selectedDestination: AppDestinations = AppDestinations.HOME // For Bottom Nav
 )
 
 class MainViewModel(
@@ -74,6 +76,10 @@ class MainViewModel(
 
     fun dismissLogger() {
         _uiState.update { it.copy(loggerState = LoggerState(isVisible = false)) }
+    }
+
+    fun onDestinationSelected(destination: AppDestinations) {
+        _uiState.update { it.copy(selectedDestination = destination) }
     }
 
     private fun startLogger(title: String) {

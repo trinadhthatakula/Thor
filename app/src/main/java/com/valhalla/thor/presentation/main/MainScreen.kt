@@ -3,9 +3,12 @@ package com.valhalla.thor.presentation.main
 import android.content.Intent
 import android.provider.Settings
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -16,61 +19,80 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.NavGraph.Companion.findStartDestination
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.compose.rememberNavController
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.presentation.appList.AppListScreen
 import com.valhalla.thor.presentation.freezer.FreezerScreen
 import com.valhalla.thor.presentation.home.AppDestinations
 import com.valhalla.thor.presentation.home.HomeScreen
 import com.valhalla.thor.presentation.widgets.AffirmationDialog
-import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.presentation.widgets.MultiAppAffirmationDialog
 import com.valhalla.thor.presentation.widgets.TermLoggerDialog
+import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
-import androidx.core.net.toUri
 
 @Composable
 fun MainScreen(
     onExit: () -> Unit
 ) {
-    val navController = rememberNavController()
     val mainViewModel: MainViewModel = koinViewModel()
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     // --- Safety Gates (Dialog State) ---
     var pendingMultiAction by remember { mutableStateOf<MultiAppAction?>(null) }
     var pendingSingleAction by remember { mutableStateOf<AppClickAction?>(null) }
 
-    // 1. Handle One-Time Side Effects (Navigation/Intents)
+    // 1. Pager State
+    val pagerState = rememberPagerState(
+        pageCount = { AppDestinations.entries.size }
+    )
+
+    // 2. Sync Pager -> ViewModel (Update Bottom Bar when Swiping)
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.currentPage }.collect { page ->
+            mainViewModel.onDestinationSelected(AppDestinations.entries[page])
+        }
+    }
+
+    // 3. Handle Back Button (Return to Home before Exiting)
+    BackHandler(enabled = pagerState.currentPage != AppDestinations.HOME.ordinal) {
+        scope.launch { pagerState.animateScrollToPage(AppDestinations.HOME.ordinal) }
+    }
+    // Secondary BackHandler for Home tab to Exit
+    BackHandler(enabled = pagerState.currentPage == AppDestinations.HOME.ordinal) {
+        onExit()
+    }
+
+    // 4. Handle Side Effects
     LaunchedEffect(Unit) {
         mainViewModel.effect.collect { effect ->
             when (effect) {
                 is MainSideEffect.LaunchApp -> {
-                    val intent = context.packageManager.getLaunchIntentForPackage(effect.packageName)
-                    if (intent != null) {
-                        context.startActivity(intent)
-                    } else {
-                        Toast.makeText(context, "Cannot launch app", Toast.LENGTH_SHORT).show()
-                    }
+                    val intent =
+                        context.packageManager.getLaunchIntentForPackage(effect.packageName)
+                    if (intent != null) context.startActivity(intent)
+                    else Toast.makeText(context, "Cannot launch app", Toast.LENGTH_SHORT).show()
                 }
+
                 is MainSideEffect.OpenAppSettings -> {
                     val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                         data = "package:${effect.packageName}".toUri()
                     }
                     context.startActivity(intent)
                 }
+
                 is MainSideEffect.ShareApp -> {
                     val intent = Intent(Intent.ACTION_SEND).apply {
                         type = "application/vnd.android.package-archive"
@@ -83,7 +105,6 @@ fun MainScreen(
         }
     }
 
-    // 2. Handle Feedback (Toasts)
     LaunchedEffect(state.actionMessage) {
         state.actionMessage?.let { msg ->
             Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
@@ -94,25 +115,18 @@ fun MainScreen(
     Scaffold(
         bottomBar = {
             NavigationBar {
-                val navBackStackEntry by navController.currentBackStackEntryAsState()
-                val currentRoute = navBackStackEntry?.destination?.route
-
                 AppDestinations.entries.forEach { dest ->
                     NavigationBarItem(
                         icon = {
                             Icon(
-                                painterResource(if (currentRoute == dest.name) dest.selectedIcon else dest.icon),
+                                painterResource(if (state.selectedDestination == dest) dest.selectedIcon else dest.icon),
                                 contentDescription = null
                             )
                         },
                         label = { Text(stringResource(dest.label)) },
-                        selected = currentRoute == dest.name,
+                        selected = state.selectedDestination == dest,
                         onClick = {
-                            navController.navigate(dest.name) {
-                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
+                            scope.launch { pagerState.animateScrollToPage(dest.ordinal) }
                         }
                     )
                 }
@@ -120,57 +134,57 @@ fun MainScreen(
         }
     ) { innerPadding ->
 
-        Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+        Box(
+            modifier = Modifier
+            .padding(innerPadding)
+            .fillMaxSize()
+        ) {
 
-            NavHost(
-                navController = navController,
-                startDestination = AppDestinations.HOME.name
-            ) {
-                composable(AppDestinations.HOME.name) {
-                    HomeScreen(
-                        onNavigateToApps = { navController.navigate(AppDestinations.APPS.name) },
-                        onNavigateToFreezer = { navController.navigate(AppDestinations.FREEZER.name) },
-                        onReinstallAll = {
-                            // Reinstall All is a "Safe" action (it scans first), so we let it pass to VM directly.
-                            // The VM will show a Logger which acts as confirmation.
-                            mainViewModel.onAppAction(AppClickAction.ReinstallAll)
-                        },
-                        onClearAllCache = { type ->
-                            // Batch Cache Clear is safe enough to just show the Logger,
-                            // but if you wanted a dialog, you'd add a pendingAction here.
-                            mainViewModel.clearAllCache(type)
-                        }
-                    )
-                }
+            HorizontalPager(
+                state = pagerState,
+                beyondViewportPageCount = 1,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                when (page) {
+                    AppDestinations.HOME.ordinal -> {
+                        HomeScreen(
+                            // FIX: Use Pager scrolling instead of NavController
+                            onNavigateToApps = {
+                                scope.launch { pagerState.animateScrollToPage(AppDestinations.APPS.ordinal) }
+                            },
+                            onNavigateToFreezer = {
+                                scope.launch { pagerState.animateScrollToPage(AppDestinations.FREEZER.ordinal) }
+                            },
+                            onReinstallAll = { mainViewModel.onAppAction(AppClickAction.ReinstallAll) },
+                            onClearAllCache = { type -> mainViewModel.clearAllCache(type) }
+                        )
+                    }
 
-                composable(AppDestinations.APPS.name) {
-                    AppListScreen(
-                        // Intercept actions for safety check
-                        onAppAction = { action ->
-                            checkAndProcessAction(action, { pendingSingleAction = it }) {
-                                mainViewModel.onAppAction(it)
-                            }
-                        },
-                        // Intercept Multi-Actions for Confirmation Dialog
-                        onMultiAppAction = { pendingMultiAction = it }
-                    )
-                }
+                    AppDestinations.APPS.ordinal -> {
+                        AppListScreen(
+                            onAppAction = { action ->
+                                checkAndProcessAction(action, { pendingSingleAction = it }) {
+                                    mainViewModel.onAppAction(it)
+                                }
+                            },
+                            onMultiAppAction = { pendingMultiAction = it }
+                        )
+                    }
 
-                composable(AppDestinations.FREEZER.name) {
-                    FreezerScreen(
-                        onAppAction = { action ->
-                            checkAndProcessAction(action, { pendingSingleAction = it }) {
-                                mainViewModel.onAppAction(it)
-                            }
-                        },
-                        onMultiAppAction = { pendingMultiAction = it }
-                    )
+                    AppDestinations.FREEZER.ordinal -> {
+                        FreezerScreen(
+                            onAppAction = { action ->
+                                checkAndProcessAction(action, { pendingSingleAction = it }) {
+                                    mainViewModel.onAppAction(it)
+                                }
+                            },
+                            onMultiAppAction = { pendingMultiAction = it }
+                        )
+                    }
                 }
             }
 
-            // --- GLOBAL OVERLAYS ---
-
-            // 1. Batch Confirmation Dialog
+            // --- GLOBAL OVERLAYS (Unchanged) ---
             if (pendingMultiAction != null) {
                 MultiAppAffirmationDialog(
                     multiAppAction = pendingMultiAction!!,
@@ -178,18 +192,19 @@ fun MainScreen(
                         mainViewModel.onMultiAppAction(pendingMultiAction!!)
                         pendingMultiAction = null
                     },
-                    onRejected = {
-                        pendingMultiAction = null
-                    }
+                    onRejected = { pendingMultiAction = null }
                 )
             }
 
-            // 2. Single Action Confirmation Dialog (For risky actions like Kill)
             if (pendingSingleAction != null) {
                 val action = pendingSingleAction!!
-                // Determine text based on action type
-                val (title, text, icon) = when(action) {
-                    is AppClickAction.Kill -> Triple("Kill App?", "Force stop ${action.appInfo.appName}? This may cause data loss.", R.drawable.danger)
+                val (title, text, icon) = when (action) {
+                    is AppClickAction.Kill -> Triple(
+                        "Kill App?",
+                        "Force stop ${action.appInfo.appName}? This may cause data loss.",
+                        R.drawable.danger
+                    )
+
                     else -> Triple("Confirm", "Are you sure?", R.drawable.thor_mono)
                 }
 
@@ -201,13 +216,10 @@ fun MainScreen(
                         mainViewModel.onAppAction(action)
                         pendingSingleAction = null
                     },
-                    onRejected = {
-                        pendingSingleAction = null
-                    }
+                    onRejected = { pendingSingleAction = null }
                 )
             }
 
-            // 3. Terminal Logger (For Heavy Tasks)
             if (state.loggerState.isVisible) {
                 TermLoggerDialog(
                     title = state.loggerState.title,
@@ -220,24 +232,13 @@ fun MainScreen(
     }
 }
 
-/**
- * Decides if a single app action needs manual confirmation (Dialog) or can execute immediately.
- */
 private fun checkAndProcessAction(
     action: AppClickAction,
     onRequireConfirmation: (AppClickAction) -> Unit,
     onExecute: (AppClickAction) -> Unit
 ) {
     when (action) {
-        // KILL is risky -> Confirm
         is AppClickAction.Kill -> onRequireConfirmation(action)
-
-        // REINSTALL is risky but AppListScreen already handles confirmation locally for now.
-        // If we moved that logic here, we'd add it case.
-
-        // UNINSTALL (System) is risky, but AppInfoDialog handles that locally too.
-
-        // OTHERS (Launch, Share, Freeze, ClearCache) -> Execute immediately
         else -> onExecute(action)
     }
 }
