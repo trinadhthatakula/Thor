@@ -47,22 +47,28 @@ fun HomeScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showCacheDialog by remember { mutableStateOf(false) }
 
+    // Dialog state for "Restricted Access" refresh
+    var showPrivilegeDialog by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
     ) {
-        // 1. Updated Header with Switcher & Minimal Status
+        // 1. Updated Header
         DashboardHeader(
             isRoot = state.isRootAvailable,
             isShizuku = state.isShizukuAvailable,
             selectedType = state.selectedAppType,
-            onTypeChanged = viewModel::updateAppListType
+            onTypeChanged = {
+                viewModel.updateAppListType(it)
+            },
+            onRestrictedStatusClick = { showPrivilegeDialog = true } // Bubble up event
         )
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(16.dp))
 
-        // 2. Summary Cards (now animated)
+        // 2. Summary Cards
         SummaryStatRow(
             activeCount = state.activeAppCount,
             frozenCount = state.frozenAppCount,
@@ -72,7 +78,7 @@ fun HomeScreen(
 
         Spacer(Modifier.height(24.dp))
 
-        if (state.isRootAvailable ) {
+        if (state.isRootAvailable) {
             ActionCard(
                 title = "Clear All Cache",
                 subtitle = "Free up space by cleaning app caches",
@@ -82,12 +88,10 @@ fun HomeScreen(
         }
 
         // B. Reinstall All Card
-        // Logic: Show if we have unknown installers AND we are currently viewing the list that has them (or global)
-        // Usually mostly relevant for User apps.
         if (state.isRootAvailable && state.unknownInstallerCount > 0) {
             ActionCard(
                 title = "Reinstall All",
-                subtitle = "${state.unknownInstallerCount} ${state.selectedAppType.name.lowercase()} apps not from Play Store.",
+                subtitle = "${state.unknownInstallerCount} apps not from Play Store. Fix them?",
                 icon = R.drawable.apk_install,
                 containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                 onClick = onReinstallAll
@@ -99,7 +103,7 @@ fun HomeScreen(
         // 3. Distribution Chart
         if (state.distributionData.isNotEmpty()) {
             Text(
-                text = "App Distribution (${state.selectedAppType.name})",
+                text = "App Distribution",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
@@ -113,6 +117,7 @@ fun HomeScreen(
         }
     }
 
+    // --- Dialogs ---
 
     if (showCacheDialog) {
         AlertDialog(
@@ -131,6 +136,32 @@ fun HomeScreen(
                     onClearAllCache(AppListType.SYSTEM)
                     showCacheDialog = false
                 }) { Text("System Apps") }
+            }
+        )
+    }
+
+    if (showPrivilegeDialog) {
+        AlertDialog(
+            onDismissRequest = { showPrivilegeDialog = false },
+            icon = { Icon(painterResource(R.drawable.privacy_tip), null) },
+            title = { Text("Privilege Check") },
+            text = {
+                Text("Thor requires Root or Shizuku access to function correctly.\n\nPlease grant access in your manager app and click Refresh.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.loadDashboardData()
+                        showPrivilegeDialog = false
+                    }
+                ) {
+                    Text("Refresh")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showPrivilegeDialog = false }) {
+                    Text("Cancel")
+                }
             }
         )
     }

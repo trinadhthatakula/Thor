@@ -24,7 +24,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -39,6 +38,7 @@ fun DashboardHeader(
     isShizuku: Boolean,
     selectedType: AppListType,
     onTypeChanged: (AppListType) -> Unit,
+    onRestrictedStatusClick: () -> Unit, // Renamed for clarity: Triggers parent dialog
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -73,8 +73,12 @@ fun DashboardHeader(
 
         // RIGHT: Controls (Status Icon + Switcher)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // 1. Minimal Status Icon with Tooltip
-            StatusIcon(isRoot, isShizuku)
+            // 1. Status Icon with Tooltip
+            StatusIcon(
+                isRoot = isRoot,
+                isShizuku = isShizuku,
+                onClick = onRestrictedStatusClick
+            )
 
             Spacer(Modifier.width(12.dp))
 
@@ -100,33 +104,59 @@ fun DashboardHeader(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun StatusIcon(isRoot: Boolean, isShizuku: Boolean) {
+private fun StatusIcon(
+    isRoot: Boolean,
+    isShizuku: Boolean,
+    onClick: () -> Unit
+) {
+
     val (icon, color, tooltip) = when {
-        isRoot -> Triple(R.drawable.magisk_icon, Color(0xFF4CAF50), "Root Access Granted")
-        isShizuku -> Triple(R.drawable.shizuku, Color(0xFF00B0FF), "Shizuku Access Granted")
-        else -> Triple(R.drawable.round_close, MaterialTheme.colorScheme.error, "Restricted Mode")
+        isRoot -> Triple(
+            R.drawable.magisk_icon,
+            MaterialTheme.colorScheme.onPrimaryContainer,
+            "Root Access Granted"
+        )
+
+        isShizuku -> Triple(
+            R.drawable.shizuku,
+            MaterialTheme.colorScheme.onPrimaryContainer,
+            "Shizuku Access Granted"
+        )
+
+        else -> Triple(
+            R.drawable.round_close,
+            MaterialTheme.colorScheme.error,
+            "Restricted Mode"
+        )
     }
 
     val scope = rememberCoroutineScope()
     val tooltipState = rememberTooltipState()
 
     TooltipBox(
-        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below),
         tooltip = { Text(tooltip) },
         state = tooltipState
     ) {
-        IconButton(onClick = {
-            scope.launch {
-                if (!tooltipState.isVisible) {
-                    tooltipState.show()
+        IconButton(
+            onClick = {
+                if (!isRoot && !isShizuku) {
+                    // If restricted, notify parent to show dialog
+                    onClick()
+                } else {
+                    // If granted, just show the tooltip locally
+                    scope.launch {
+                        if (!tooltipState.isVisible) {
+                            tooltipState.show()
+                        }
+                    }
                 }
             }
-        }) {
+        ) {
             Icon(
                 painter = painterResource(icon),
                 contentDescription = tooltip,
-                tint = color,
-                modifier = Modifier.size(24.dp)
+                tint = color
             )
         }
     }

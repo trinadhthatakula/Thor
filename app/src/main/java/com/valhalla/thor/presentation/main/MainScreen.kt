@@ -234,7 +234,7 @@ fun MainScreen(
                 AffirmationDialog(
                     title = "Exit Thor?",
                     text = "Are you sure you want to close the application?",
-                    icon = R.drawable.warning,
+                    icon = R.drawable.exit_to_app,
                     onConfirm = {
                         showExitConfirmation = false
                         onExit()
