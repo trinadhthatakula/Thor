@@ -30,6 +30,19 @@ android {
 
     targetProjectPath = ":app"
 
+    // --- FIX: FLAVOR DIMENSIONS ---
+    // The 'app' module uses flavors (store/foss). The baseline profile module
+    // must define the same structure so Gradle can match variants
+    // (e.g., storeBenchmarkRelease).
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("store") {
+            dimension = "distribution"
+        }
+        create("foss") {
+            dimension = "distribution"
+        }
+    }
 }
 
 // This is the configuration block for the Baseline Profile plugin.
@@ -43,7 +56,6 @@ dependencies {
     implementation(libs.androidx.espresso.core)
     implementation(libs.androidx.uiautomator)
     implementation(libs.androidx.benchmark.macro.junit4)
-    implementation(libs.androidx.core.ktx)
 }
 
 androidComponents {
