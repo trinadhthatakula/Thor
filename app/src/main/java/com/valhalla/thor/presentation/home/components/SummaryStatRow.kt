@@ -33,7 +33,7 @@ fun SummaryStatRow(
         StatCard(
             title = "Active",
             count = activeCount,
-            icon = R.drawable.apps, // Ensure you have this drawable
+            icon = R.drawable.apps,
             color = MaterialTheme.colorScheme.primaryContainer,
             modifier = Modifier.weight(1f),
             onClick = onActiveClick
@@ -66,7 +66,13 @@ fun StatCard(
         Column(modifier = Modifier.padding(16.dp)) {
             Icon(painterResource(icon), null)
             Spacer(Modifier.height(8.dp))
-            Text(text = count.toString(), style = MaterialTheme.typography.displaySmall)
+
+            // USE THE ANIMATED COUNTER HERE
+            AnimatedCounter(
+                count = count,
+                style = MaterialTheme.typography.displaySmall
+            )
+
             Text(text = title, style = MaterialTheme.typography.bodyMedium)
         }
     }

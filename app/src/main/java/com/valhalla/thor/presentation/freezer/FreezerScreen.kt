@@ -34,12 +34,16 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.ImageLoader
 import coil3.compose.rememberAsyncImagePainter
+import coil3.request.crossfade
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.AppClickAction
+import com.valhalla.thor.presentation.utils.AppIconFetcher
+import com.valhalla.thor.presentation.utils.AppIconKeyer
 import com.valhalla.thor.presentation.utils.getAppIcon
 import com.valhalla.thor.presentation.widgets.AppList
 import com.valhalla.thor.presentation.widgets.AppInfoDialog
@@ -61,6 +65,18 @@ fun FreezerScreen(
     // Local State for Dialogs
     var selectedAppInfo by remember { mutableStateOf<AppInfo?>(null) }
     var reinstallCandidate by remember { mutableStateOf<AppInfo?>(null) }
+
+    // Create a custom ImageLoader that knows how to fetch App Icons in the background.
+    // We use 'remember' so we don't recreate the loader on every recomposition.
+    val imageLoader = remember(context) {
+        ImageLoader.Builder(context)
+            .components {
+                add(AppIconKeyer())
+                add(AppIconFetcher.Factory(context))
+            }
+            .crossfade(true)
+            .build()
+    }
 
     // Handle Feedback (Toasts from ViewModel actions)
     LaunchedEffect(state.actionMessage) {
@@ -130,6 +146,7 @@ fun FreezerScreen(
                 appList = state.displayedApps,
                 isRoot = state.isRoot,
                 isShizuku = state.isShizuku,
+                imageLoader = imageLoader,
                 // Filtering / Sorting Actions
                 onFilterTypeChanged = viewModel::updateFilterType,
                 onSortByChanged = viewModel::updateSort,

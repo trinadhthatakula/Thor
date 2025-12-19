@@ -23,6 +23,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,12 +37,17 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.ImageLoader
+import coil3.compose.LocalAsyncImagePreviewHandler
 import coil3.compose.rememberAsyncImagePainter
+import coil3.request.crossfade
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.AppClickAction
+import com.valhalla.thor.presentation.utils.AppIconFetcher
+import com.valhalla.thor.presentation.utils.AppIconKeyer
 import com.valhalla.thor.presentation.utils.getAppIcon
 import com.valhalla.thor.presentation.widgets.AppInfoDialog
 import com.valhalla.thor.presentation.widgets.AppList
@@ -60,6 +66,18 @@ fun AppListScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    // Create a custom ImageLoader that knows how to fetch App Icons in the background.
+    // We use 'remember' so we don't recreate the loader on every recomposition.
+    val imageLoader = remember(context) {
+        ImageLoader.Builder(context)
+            .components {
+                add(AppIconKeyer())
+                add(AppIconFetcher.Factory(context))
+            }
+            .crossfade(true)
+            .build()
+    }
 
     // UI-Specific State (Dialogs that don't need to persist in VM)
     var reinstallCandidate: AppInfo? by remember { mutableStateOf(null) }
@@ -124,6 +142,8 @@ fun AppListScreen(
                 appList = state.displayedApps,
                 isRoot = state.isRoot,
                 isShizuku = state.isShizuku,
+                startAsGrid = true,
+                imageLoader = imageLoader,
                 // Actions forwarded to ViewModel
                 onFilterTypeChanged = viewModel::updateFilterType,
                 onSortByChanged = viewModel::updateSort,

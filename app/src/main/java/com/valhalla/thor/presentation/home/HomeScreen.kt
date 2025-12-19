@@ -46,20 +46,23 @@ fun HomeScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showCacheDialog by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
     ) {
-        // 1. Header
+        // 1. Updated Header with Switcher & Minimal Status
         DashboardHeader(
             isRoot = state.isRootAvailable,
-            isShizuku = state.isShizukuAvailable
+            isShizuku = state.isShizukuAvailable,
+            selectedType = state.selectedAppType,
+            onTypeChanged = viewModel::updateAppListType
         )
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(8.dp))
 
-        // 2. Summary Cards
+        // 2. Summary Cards (now animated)
         SummaryStatRow(
             activeCount = state.activeAppCount,
             frozenCount = state.frozenAppCount,
@@ -78,11 +81,13 @@ fun HomeScreen(
             )
         }
 
-        // B. Reinstall All Card (Visible only if needed and Root available)
+        // B. Reinstall All Card
+        // Logic: Show if we have unknown installers AND we are currently viewing the list that has them (or global)
+        // Usually mostly relevant for User apps.
         if (state.isRootAvailable && state.unknownInstallerCount > 0) {
             ActionCard(
                 title = "Reinstall All",
-                subtitle = "${state.unknownInstallerCount} apps not from Play Store. Fix them?",
+                subtitle = "${state.unknownInstallerCount} ${state.selectedAppType.name.lowercase()} apps not from Play Store.",
                 icon = R.drawable.apk_install,
                 containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                 onClick = onReinstallAll
@@ -94,12 +99,11 @@ fun HomeScreen(
         // 3. Distribution Chart
         if (state.distributionData.isNotEmpty()) {
             Text(
-                text = "App Distribution",
+                text = "App Distribution (${state.selectedAppType.name})",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
             Spacer(Modifier.height(16.dp))
-            // Reuse your existing PieChart logic, but wrapped cleanly
             AppDistributionChart(
                 data = state.distributionData,
                 modifier = Modifier
@@ -107,9 +111,6 @@ fun HomeScreen(
                     .height(250.dp)
             )
         }
-
-        // 4. Quick Actions (Placeholder for now)
-        // QuickActionGrid(...)
     }
 
 

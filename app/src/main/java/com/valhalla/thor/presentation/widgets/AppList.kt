@@ -6,7 +6,18 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -17,22 +28,41 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
@@ -43,25 +73,23 @@ import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.asGeneralName
 import com.valhalla.thor.domain.model.filterTypes
-import com.valhalla.thor.presentation.utils.getAppIcon
+import com.valhalla.thor.presentation.utils.AppIconModel
 import com.valhalla.thor.presentation.utils.popularInstallers
 
 @Composable
 fun AppList(
     modifier: Modifier = Modifier,
-    // Data & Config
     appListType: AppListType,
     installers: List<String?>,
     appList: List<AppInfo>,
-    // Filter/Sort State
     selectedFilter: String?,
     filterType: FilterType = FilterType.Source,
     sortBy: SortBy = SortBy.NAME,
     sortOrder: SortOrder = SortOrder.ASCENDING,
-    startAsGrid: Boolean = false,
+    startAsGrid: Boolean = true,
     isRoot: Boolean = false,
     isShizuku: Boolean = false,
-    // Callbacks
+    imageLoader: ImageLoader, // <--- ACCEPT THE LOADER
     onSortOrderSelected: (SortOrder) -> Unit = {},
     onSortByChanged: (SortBy) -> Unit = {},
     onFilterSelected: (String?) -> Unit,
@@ -136,6 +164,7 @@ fun AppList(
                 list = displayedList,
                 isGrid = isGrid,
                 multiSelection = multiSelection,
+                imageLoader = imageLoader, // Pass it down
                 onAppClick = { app ->
                     if (isMultiSelectMode) {
                         multiSelection = toggleSelection(multiSelection, app)
@@ -156,7 +185,7 @@ fun AppList(
                 modifier = Modifier
                     .padding(16.dp)
                     .align(Alignment.BottomEnd),
-                isRoot = isRoot,       // Passed down
+                isRoot = isRoot,
                 isShizuku = isShizuku,
                 onCancel = { multiSelection = emptyList() },
                 onMultiAppAction = { action ->
@@ -180,9 +209,7 @@ fun AppList(
     }
 }
 
-// --- Sub-Components (Unchanged from previous turn) ---
-// (Paste AppSearchBar, AppControlBar, MultiSelectHeader, AppListContent, etc. here)
-// Ensure AppListContent uses the same renderers as before.
+// ... Keep your helpers (AppSearchBar, AppControlBar, MultiSelectHeader, etc) ...
 
 @Composable
 private fun AppSearchBar(
@@ -331,18 +358,20 @@ private fun AppListContent(
     list: List<AppInfo>,
     isGrid: Boolean,
     multiSelection: List<AppInfo>,
+    imageLoader: ImageLoader,
     onAppClick: (AppInfo) -> Unit,
     onAppLongClick: (AppInfo) -> Unit
 ) {
     if (isGrid) {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 100.dp),
-            contentPadding = PaddingValues(bottom = 80.dp) // Space for floating bar
+            contentPadding = PaddingValues(bottom = 80.dp)
         ) {
             items(list, key = { it.packageName }) { app ->
                 AppItemGrid(
                     app = app,
                     isSelected = multiSelection.contains(app),
+                    imageLoader = imageLoader,
                     onClick = { onAppClick(app) },
                     onLongClick = { onAppLongClick(app) }
                 )
@@ -356,6 +385,7 @@ private fun AppListContent(
                 AppItemList(
                     app = app,
                     isSelected = multiSelection.contains(app),
+                    imageLoader = imageLoader,
                     onClick = { onAppClick(app) },
                     onLongClick = { onAppLongClick(app) }
                 )
@@ -369,17 +399,21 @@ private fun AppListContent(
 private fun AppItemList(
     app: AppInfo,
     isSelected: Boolean,
+    imageLoader: ImageLoader,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    val context = LocalContext.current
-
     ListItem(
         modifier = Modifier
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .background(if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f) else MaterialTheme.colorScheme.surface),
         leadingContent = {
-            AppIcon(packageName = app.packageName, isEnabled = app.enabled, size = 48.dp)
+            AppIcon(
+                packageName = app.packageName,
+                isEnabled = app.enabled,
+                size = 48.dp,
+                imageLoader = imageLoader
+            )
         },
         headlineContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -412,6 +446,7 @@ private fun AppItemList(
 private fun AppItemGrid(
     app: AppInfo,
     isSelected: Boolean,
+    imageLoader: ImageLoader,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
@@ -425,7 +460,12 @@ private fun AppItemGrid(
             .padding(12.dp)
     ) {
         Box {
-            AppIcon(packageName = app.packageName, isEnabled = app.enabled, size = 56.dp)
+            AppIcon(
+                packageName = app.packageName,
+                isEnabled = app.enabled,
+                size = 56.dp,
+                imageLoader = imageLoader
+            )
             if (isSelected) {
                 Icon(
                     painterResource(R.drawable.check_circle),
@@ -447,24 +487,25 @@ private fun AppItemGrid(
     }
 }
 
+// --- COIL 3 COMPATIBLE ---
 @Composable
-private fun AppIcon(packageName: String, isEnabled: Boolean, size: androidx.compose.ui.unit.Dp) {
-    val context = LocalContext.current
-    var isLoading by remember { mutableStateOf(true) }
+private fun AppIcon(
+    packageName: String,
+    isEnabled: Boolean,
+    size: androidx.compose.ui.unit.Dp,
+    imageLoader: ImageLoader
+) {
+    val colorMatrix = remember { ColorMatrix().apply { setToSaturation(0f) } }
 
     Box(contentAlignment = Alignment.Center) {
         AsyncImage(
-            model = getAppIcon(packageName, context),
+            model = AppIconModel(packageName),
+            imageLoader = imageLoader, // <--- EXPLICITLY USE OUR CUSTOM LOADER
             contentDescription = null,
             modifier = Modifier.size(size),
-            colorFilter = if (!isEnabled) ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }) else null,
-            onSuccess = { isLoading = false },
-            onError = { isLoading = false },
+            colorFilter = if (!isEnabled) ColorFilter.colorMatrix(colorMatrix) else null,
             error = painterResource(R.drawable.android)
         )
-        if (isLoading) {
-            CircularProgressIndicator(modifier = Modifier.size(size * 0.5f), strokeWidth = 2.dp)
-        }
     }
 }
 
@@ -487,14 +528,13 @@ private fun AppFilterSheet(
     onSortByChanged: (SortBy) -> Unit,
     onSortOrderChanged: (SortOrder) -> Unit
 ) {
-    var viewState by remember { mutableStateOf(0) } // 0 = Filters, 1 = Sort
+    var viewState by remember { mutableStateOf(0) }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("Configuration", style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(16.dp))
 
-            // Tabs
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 SegmentedButton(
                     selected = viewState == 0,
@@ -511,7 +551,6 @@ private fun AppFilterSheet(
             Spacer(Modifier.height(16.dp))
 
             if (viewState == 0) {
-                // Filter Types
                 filterTypes.forEach { type ->
                     ListItem(
                         headlineContent = { Text(type.asGeneralName()) },
@@ -524,7 +563,6 @@ private fun AppFilterSheet(
                     )
                 }
             } else {
-                // Sorting
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Order:", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.width(8.dp))
