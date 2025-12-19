@@ -87,7 +87,6 @@ android {
 
         create("foss") {
             dimension = "distribution"
-            applicationIdSuffix = ".foss"
             versionNameSuffix = "-foss"
             proguardFile("proguard-rules-foss.pro")
         }
