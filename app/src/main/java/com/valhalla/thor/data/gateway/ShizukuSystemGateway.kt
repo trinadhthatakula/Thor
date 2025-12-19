@@ -11,7 +11,7 @@ class ShizukuSystemGateway(
     private val reflector: ShizukuReflector // Injected!
 ) : SystemGateway {
 
-    override fun isRootAvailable(): Boolean = false
+    override val isRootAvailable: Boolean = false
 
     override fun isShizukuAvailable(): Boolean {
         return try {

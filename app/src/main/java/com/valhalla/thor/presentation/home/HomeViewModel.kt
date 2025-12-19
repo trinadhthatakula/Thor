@@ -57,7 +57,7 @@ class HomeViewModel(
     fun loadDashboardData() {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true) }
-            val hasRoot = systemRepository.isRootAvailable()
+            val hasRoot = systemRepository.isRootAvailable
             val hasShizuku = systemRepository.isShizukuAvailable()
 
             _state.update { it.copy(isRootAvailable = hasRoot, isShizukuAvailable = hasShizuku) }

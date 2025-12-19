@@ -4,7 +4,7 @@ import com.valhalla.thor.domain.model.AppInfo
 
 interface SystemRepository {
     // Privilege Checks
-    fun isRootAvailable(): Boolean
+    val isRootAvailable: Boolean
     fun isShizukuAvailable(): Boolean
 
     // App Actions

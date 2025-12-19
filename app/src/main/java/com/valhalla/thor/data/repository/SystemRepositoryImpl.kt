@@ -10,14 +10,15 @@ class SystemRepositoryImpl(
     private val shizukuGateway: ShizukuSystemGateway,
 ) : SystemRepository {
 
-    override fun isRootAvailable(): Boolean = rootGateway.isRootAvailable()
+    override val isRootAvailable
+        get() = rootGateway.isRootAvailable
 
     override fun isShizukuAvailable(): Boolean = shizukuGateway.isShizukuAvailable()
 
     // Dynamic Resolution Strategy: Prefer Root -> Fallback to Shizuku -> Fail
     private fun getActiveGateway(): SystemGateway {
         return when {
-            rootGateway.isRootAvailable() -> rootGateway
+            rootGateway.isRootAvailable -> rootGateway
             shizukuGateway.isShizukuAvailable() -> shizukuGateway
             else -> throw IllegalStateException("No privileged gateway available (Root or Shizuku required)")
         }
@@ -37,7 +38,7 @@ class SystemRepositoryImpl(
 
     override suspend fun rebootDevice(reason: String): Result<Unit> {
         // Shizuku cannot reboot, so strictly check Root
-        return if (rootGateway.isRootAvailable()) {
+        return if (rootGateway.isRootAvailable) {
             rootGateway.rebootDevice(reason)
         } else {
             Result.failure(Exception("Reboot requires Root access"))
@@ -58,7 +59,7 @@ class SystemRepositoryImpl(
     }
 
     override suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> {
-        return if (rootGateway.isRootAvailable()) {
+        return if (rootGateway.isRootAvailable) {
             rootGateway.reinstallAppWithGoogle(packageName)
         } else {
             // If you want to try with Shizuku, you'd need to implement similar logic in ShizukuGateway,
@@ -68,8 +69,11 @@ class SystemRepositoryImpl(
         }
     }
 
-    override suspend fun copyFileWithRoot(sourcePath: String, destinationPath: String): Result<Unit> {
-        return if (rootGateway.isRootAvailable()) {
+    override suspend fun copyFileWithRoot(
+        sourcePath: String,
+        destinationPath: String
+    ): Result<Unit> {
+        return if (rootGateway.isRootAvailable) {
             try {
                 rootGateway.copyFile(sourcePath, destinationPath)
                 Result.success(Unit)
@@ -84,7 +88,7 @@ class SystemRepositoryImpl(
     override suspend fun getAppPaths(packageName: String): Result<List<String>> {
         return try {
             // Prefer Root for accuracy with splits/system apps, fall back if needed
-            if (rootGateway.isRootAvailable()) {
+            if (rootGateway.isRootAvailable) {
                 val paths = rootGateway.getAppPaths(packageName)
                 if (paths.isNotEmpty()) Result.success(paths)
                 else Result.failure(Exception("No paths found"))

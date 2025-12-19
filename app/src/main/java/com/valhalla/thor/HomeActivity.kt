@@ -20,7 +20,7 @@ class HomeActivity : ComponentActivity() {
     private val homeViewModel: HomeViewModel by viewModel()
 
     private val requestCode = 1001
-    private var hasRequestedShizuku = false // Prevent infinite loops
+    private var hasRequestedShizuku = false
 
     private val shizukuHandler = ShizukuPermissionHandler(
         onPermissionGranted = {
@@ -54,8 +54,9 @@ class HomeActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        homeViewModel.loadDashboardData()
         // Only ask automatically ONCE per session if not rooted.
-        if (!systemRepository.isRootAvailable() && !hasRequestedShizuku) {
+        if (!systemRepository.isRootAvailable && !hasRequestedShizuku) {
             hasRequestedShizuku = true
             shizukuHandler.checkAndRequestPermission(requestCode)
         }

@@ -63,7 +63,7 @@ class FreezerViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isLoading = true) }
             // Check privileges
-            val hasRoot = systemRepository.isRootAvailable()
+            val hasRoot = systemRepository.isRootAvailable
             val hasShizuku = systemRepository.isShizukuAvailable()
 
             getInstalledAppsUseCase().collect { (user, system) ->

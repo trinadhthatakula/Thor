@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.Flow
 interface SystemGateway {
 
     // Status Checks
-    fun isRootAvailable(): Boolean
+    val isRootAvailable: Boolean
     fun isShizukuAvailable(): Boolean
 
     // Core Actions

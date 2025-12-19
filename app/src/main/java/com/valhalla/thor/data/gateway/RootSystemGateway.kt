@@ -9,13 +9,8 @@ class RootSystemGateway(
     private val shellDataSource: ShellDataSource
 ) : SystemGateway {
 
-    override fun isRootAvailable(): Boolean {
-        // We can't suspend here if the interface is blocking,
-        // but checking Shell.rootAccess() is generally fast/cached.
-        // Ideally, change your Interface to 'suspend' for this check,
-        // or rely on LibSu's internal cache.
-        return Shell.isAppGrantedRoot?: Shell.shell.isRoot
-    }
+    override val isRootAvailable
+        get() = Shell.isAppGrantedRoot == true || Shell.shell.isRoot
 
     override fun isShizukuAvailable(): Boolean = false
 
@@ -47,7 +42,8 @@ class RootSystemGateway(
 
     override suspend fun getAppCacheSize(packageName: String): Long {
         return try {
-            val output = shellDataSource.executeRootCommandWithOutput("du -s /data/data/$packageName/cache")
+            val output =
+                shellDataSource.executeRootCommandWithOutput("du -s /data/data/$packageName/cache")
             // Output format is usually "12345   /path/to/file"
             val sizeInBlocks = output.split("\\s+".toRegex()).firstOrNull()?.toLongOrNull() ?: 0L
             // du usually returns 1k blocks
@@ -66,7 +62,7 @@ class RootSystemGateway(
     }
 
     suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> {
-        if(packageName == BuildConfig.APPLICATION_ID)
+        if (packageName == BuildConfig.APPLICATION_ID)
             return Result.failure(Exception("Cannot reinstall Thor"))
         return try {
             // 1. Get the APK path(s)
@@ -88,7 +84,8 @@ class RootSystemGateway(
             // -r: Reinstall
             // -d: Downgrade (allow version downgrade)
             // -i: Installer Package Name (This is the key!)
-            val command = "pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 $combinedPath"
+            val command =
+                "pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 $combinedPath"
 
             runCommand(command)
         } catch (e: Exception) {
