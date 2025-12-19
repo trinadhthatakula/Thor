@@ -33,6 +33,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.presentation.home.components.AppDistributionChart
 import com.valhalla.thor.presentation.home.components.DashboardHeader
+import com.valhalla.thor.presentation.home.components.SocialLinksRow
 import com.valhalla.thor.presentation.home.components.SummaryStatRow
 import org.koin.androidx.compose.koinViewModel
 
@@ -115,6 +116,10 @@ fun HomeScreen(
                     .height(250.dp)
             )
         }
+
+        Spacer(Modifier.weight(1f))
+        SocialLinksRow()
+        Spacer(Modifier.height(5.dp))
     }
 
     // --- Dialogs ---

@@ -5,22 +5,15 @@ import rikka.shizuku.Shizuku
 
 /**
  * Handles the messy boilerplate of listening to Shizuku's binder and requesting permissions.
- *
- * Usage in Activity:
- * 1. Initialize: val shizukuHandler = ShizukuPermissionHandler(...)
- * 2. onCreate: shizukuHandler.register()
- * 3. onDestroy: shizukuHandler.unregister()
- * 4. onResume: shizukuHandler.checkAndRequestPermission(code)
  */
 class ShizukuPermissionHandler(
     private val onPermissionGranted: () -> Unit = {},
+    private val onPermissionDenied: () -> Unit = {},
     private val onBinderDead: () -> Unit = {}
 ) {
 
-    /**
-     * Listener for when Shizuku service starts/binds.
-     * We immediately check permission when this happens.
-     */
+    private var isRequestInProgress = false
+
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
         if (checkPermission()) {
             onPermissionGranted()
@@ -31,13 +24,13 @@ class ShizukuPermissionHandler(
         onBinderDead()
     }
 
-    /**
-     * Callback for the permission dialog result.
-     */
     private val requestPermissionResultListener =
         Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
+            isRequestInProgress = false // Reset flag
             if (grantResult == PackageManager.PERMISSION_GRANTED) {
                 onPermissionGranted()
+            } else {
+                onPermissionDenied()
             }
         }
 
@@ -59,7 +52,6 @@ class ShizukuPermissionHandler(
      */
     fun checkAndRequestPermission(requestCode: Int): Boolean {
         // If binder isn't ready, we can't do anything yet.
-        // The binderReceivedListener will handle it when it wakes up.
         if (!Shizuku.pingBinder()) {
             return false
         }
@@ -69,15 +61,17 @@ class ShizukuPermissionHandler(
             return true
         }
 
-        // Logic to request permission
+        // Prevent spamming requests if one is already pending
+        if (isRequestInProgress) return false
+
         try {
             if (Shizuku.shouldShowRequestPermissionRationale()) {
-                // Ideally, show a UI explanation here before requesting.
-                // For now, we proceed to request.
+                // Ideally show UI rationale here.
             }
+            isRequestInProgress = true // Set flag
             Shizuku.requestPermission(requestCode)
-        } catch (e: Exception) {
-            // Shizuku server might be acting up or version mismatch
+        } catch (_: Exception) {
+            isRequestInProgress = false
             return false
         }
         return false
