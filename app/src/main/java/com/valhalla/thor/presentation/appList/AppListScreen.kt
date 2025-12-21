@@ -196,7 +196,11 @@ fun AppListScreen(
                     // Don't dismiss main dialog yet? Or dismiss it?
                     // Typically we dismiss the info dialog to show the alert
                     viewModel.clearSelection()
-                } else {
+                } else if (action is AppClickAction.Freeze){
+                    viewModel.freezeApp(action.appInfo.packageName, true)
+                }else if (action is AppClickAction.UnFreeze){
+                    viewModel.freezeApp(action.appInfo.packageName, false)
+                }else {
                     // Forward all other actions (Freeze, Kill, etc)
                     onAppAction(action)
                     viewModel.clearSelection()

@@ -45,7 +45,7 @@ val presentationModule = module {
 val coreModule = module {
 
     single { ShellDataSource() }
-    single { ShizukuReflector() }
+    singleOf(::ShizukuReflector)
     // Singletons for the Gateways
     single { RootSystemGateway(get()) }
     single { ShizukuSystemGateway(get()) }

@@ -8,8 +8,10 @@ import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
+import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
+import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,7 +49,8 @@ data class AppListUiState(
 class AppListViewModel(
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val getAppDetailsUseCase: GetAppDetailsUseCase,
-    private val systemRepository: SystemRepository
+    private val systemRepository: SystemRepository,
+    private val manageAppUseCase: ManageAppUseCase
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AppListUiState())
@@ -96,6 +99,14 @@ class AppListViewModel(
                 _state.update { it.copy(isLoadingDetails = false, selectedAppDetails = fullDetails) }
             }.onFailure {
                 _state.update { it.copy(isLoadingDetails = false) }
+            }
+        }
+    }
+
+    fun freezeApp(packageName: String, freeze: Boolean){
+        viewModelScope.launch(Dispatchers.IO) {
+            if(manageAppUseCase.setAppDisabled(packageName, freeze).isSuccess){
+                loadApps()
             }
         }
     }
@@ -185,4 +196,6 @@ class AppListViewModel(
         return if (order == SortOrder.ASCENDING) list.sortedWith(comparator)
         else list.sortedWith(comparator).reversed()
     }
+
+
 }

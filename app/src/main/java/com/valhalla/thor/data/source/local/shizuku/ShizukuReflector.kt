@@ -80,32 +80,9 @@ class ShizukuReflector(
     }
 
     fun forceStop(packageName: String) {
-        val amBinder = SystemServiceHelper.getSystemService("activity")
-        val shizukuBinder = ShizukuBinderWrapper(amBinder)
 
         try {
-            val stubClass = Class.forName("android.app.IActivityManager\$Stub")
-
-            // 1. Get Interface
-            val asInterface = try {
-                stubClass.getMethod("asInterface", IBinder::class.java)
-            } catch (e: Exception) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    HiddenApiBypass.getDeclaredMethod(stubClass, "asInterface", IBinder::class.java)
-                } else throw e
-            }
-            val am = asInterface.invoke(null, shizukuBinder)!!
-
-            // 2. Find forceStopPackage
-            val method = findMethod(
-                am.javaClass,
-                "forceStopPackage",
-                String::class.java,
-                Integer.TYPE
-            ) ?: throw NoSuchMethodException("forceStopPackage not found")
-
-            // 3. Invoke
-            method.invoke(am, packageName, myUserId)
+            Shizuku.forceStopApp(context, packageName)
 
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
@@ -115,7 +92,7 @@ class ShizukuReflector(
 
     fun setAppEnabled(packageName: String, enabled: Boolean) {
         try {
-            setAppDisabled(packageName,!enabled)
+            Shizuku.setAppDisabled(context, packageName, !enabled)
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
                 Log.e("ShizukuReflector", "setAppEnabled failed", e)

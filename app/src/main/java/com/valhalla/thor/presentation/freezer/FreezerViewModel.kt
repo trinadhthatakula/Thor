@@ -93,7 +93,7 @@ class FreezerViewModel(
 
             result.onSuccess {
                 _state.update { s -> s.copy(actionMessage = "${if(shouldFreeze) "Frozen" else "Unfrozen"} ${app.appName}") }
-                // Note: The list update happens automatically because GetInstalledAppsUseCase flow
+                loadApps()
             }.onFailure { e ->
                 _state.update { s -> s.copy(actionMessage = "Error: ${e.message}") }
             }
@@ -115,8 +115,7 @@ class FreezerViewModel(
                     _state.update { it.copy(actionMessage = "Action not supported in Freezer yet") }
                 }
             }
-            // Flow should update automatically, but if manual refresh needed:
-            // loadApps()
+            loadApps()
         }
     }
 

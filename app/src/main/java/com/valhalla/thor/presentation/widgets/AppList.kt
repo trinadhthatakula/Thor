@@ -1,5 +1,6 @@
 package com.valhalla.thor.presentation.widgets
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -105,6 +106,10 @@ fun AppList(
     // 2. Multi-Select State
     var multiSelection by rememberSaveable { mutableStateOf(emptyList<AppInfo>()) }
     val isMultiSelectMode = multiSelection.isNotEmpty()
+
+    BackHandler(multiSelection.isNotEmpty()) {
+        multiSelection = emptyList()
+    }
 
     // 3. Local Search Filtering
     val displayedList = remember(appList, searchQuery) {
