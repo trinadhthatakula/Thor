@@ -8,8 +8,6 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlinSerialization)
     //alias(libs.plugins.baselineprofile)
-    alias(libs.plugins.room)
-    alias(libs.plugins.ksp)
 }
 
 kotlin {
@@ -21,10 +19,6 @@ kotlin {
         optIn.add("androidx.compose.material3.ExperimentalMaterial3ExpressiveApi")
         optIn.add("androidx.compose.material3.ExperimentalMaterial3Api")
     }
-}
-
-room {
-    schemaDirectory("$projectDir/schemas")
 }
 
 val keystorePropertiesFile = rootProject.file("jks.properties")
@@ -106,6 +100,25 @@ android {
         buildConfig = true
         compose = true
     }
+
+    configurations.all {
+        exclude(group = "com.intellij", module = "annotations")
+    }
+
+    packaging {
+        resources {
+            excludes += "/specs/**"
+            excludes += "**/*.dll"
+            excludes += "**/*.dylib"
+            excludes += "**/x64/**"
+            excludes += "**/x86_64/*.dll"
+            excludes += "**/META-INF/*.{kotlin_module,dot}"
+            excludes += "META-INF/services/javax.annotation.processing.Processor"
+            excludes += "META-INF/DEPENDENCIES"
+            excludes += "META-INF/LICENSE*"
+            excludes += "META-INF/NOTICE*"
+        }
+    }
 }
 
 dependencies {
@@ -150,7 +163,5 @@ dependencies {
     implementation(libs.bundles.coil)
 
     implementation(libs.bundles.koin)
-    implementation(libs.bundles.room)
-    ksp(libs.room.compiler)
 
 }

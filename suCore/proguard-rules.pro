@@ -20,6 +20,9 @@
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
 
+# Ignore missing service definitions that are not relevant for Android runtime
+-dontwarn javax.annotation.processing.Processor
+-dontwarn javax.annotation.Nullable
 
 # Make sure R8/Proguard don't break things
 -keep,allowobfuscation class * extends com.valhalla.superuser.Shell$Initializer { *; }

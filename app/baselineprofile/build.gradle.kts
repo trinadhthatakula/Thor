@@ -1,24 +1,17 @@
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
 plugins {
     alias(libs.plugins.android.test)
     alias(libs.plugins.baselineprofile)
-    // alias(libs.plugins.kotlin.android)
-}
-
-kotlin {
-    compilerOptions {
-        jvmTarget.set(JvmTarget.JVM_21)
-    }
 }
 
 android {
     namespace = "com.valhalla.thor.baselineprofile"
-    compileSdk = 36
+    compileSdk {
+        version = release(36)
+    }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_21
-        targetCompatibility = JavaVersion.VERSION_21
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
     }
 
     defaultConfig {
@@ -30,19 +23,12 @@ android {
 
     targetProjectPath = ":app"
 
-    // --- FIX: FLAVOR DIMENSIONS ---
-    // The 'app' module uses flavors (store/foss). The baseline profile module
-    // must define the same structure so Gradle can match variants
-    // (e.g., storeBenchmarkRelease).
-    flavorDimensions += "distribution"
+    flavorDimensions += listOf("distribution")
     productFlavors {
-        create("store") {
-            dimension = "distribution"
-        }
-        create("foss") {
-            dimension = "distribution"
-        }
+        create("store") { dimension = "distribution" }
+        create("foss") { dimension = "distribution" }
     }
+
 }
 
 // This is the configuration block for the Baseline Profile plugin.

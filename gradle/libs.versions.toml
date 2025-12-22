@@ -60,7 +60,6 @@ androidx-profileinstaller = { group = "androidx.profileinstaller", name = "profi
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
-room-paging = { module = "androidx.room:room-paging", version.ref = "room" }
 #Kotlin
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDateTime" }
@@ -99,6 +98,5 @@ coil = [
 room = [
     "room-runtime",
     "room-ktx",
-    "room-compiler",
-    "room-paging"
+    "room-compiler"
 ]
