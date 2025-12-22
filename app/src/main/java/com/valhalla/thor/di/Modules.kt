@@ -23,6 +23,7 @@ import com.valhalla.thor.domain.usecase.ShareAppUseCase
 import com.valhalla.thor.presentation.appList.AppListViewModel
 import com.valhalla.thor.presentation.freezer.FreezerViewModel
 import com.valhalla.thor.presentation.home.HomeViewModel
+import com.valhalla.thor.presentation.installer.InstallerViewModel
 import com.valhalla.thor.presentation.main.MainViewModel
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.factoryOf
@@ -62,6 +63,7 @@ val presentationModule = module {
     viewModelOf(::HomeViewModel)
     viewModelOf(::AppListViewModel)
     viewModelOf(::FreezerViewModel)
+    viewModelOf(::InstallerViewModel)
 }
 
 val coreModule = module {
