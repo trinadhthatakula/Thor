@@ -12,14 +12,13 @@ internal abstract class StreamGobbler<T>(
     protected val list: MutableList<String?>?
 ) : Callable<T?> {
     private fun outputAndCheck(line: String?): Boolean {
-        var line = line
-        if (line == null) return false
+        var line = line ?: return false
 
         val len = line.length
         val end = line.startsWith(JobTask.END_UUID, len - JobTask.UUID_LEN)
         if (end) {
             if (len == JobTask.UUID_LEN) return false
-            line = line.substring(0, len - JobTask.UUID_LEN)
+            line = line.take(len - JobTask.UUID_LEN)
         }
         if (list != null) {
             list.add(line)

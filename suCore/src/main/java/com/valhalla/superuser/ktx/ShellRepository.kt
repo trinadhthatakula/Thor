@@ -51,11 +51,3 @@ class RealShellRepository : ShellRepository {
         }
     }
 }
-
-/*
- * Koin Module Suggestion:
- *
- * val shellModule = module {
- * single<ShellRepository> { RealShellRepository() }
- * }
- */

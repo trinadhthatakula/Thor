@@ -5,6 +5,7 @@ import android.os.Looper
 import com.valhalla.superuser.ShellUtils.onMainThread
 import java.util.concurrent.Executor
 
+@Suppress("unused")
 object UiThreadHandler {
     val handler: Handler = Handler(Looper.getMainLooper())
     val executor: Executor = Executor { obj: Runnable -> run(obj) }

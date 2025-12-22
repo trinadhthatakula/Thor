@@ -49,7 +49,7 @@ internal abstract class JobTask : Shell.Job(), Shell.Task {
         if (outList != null && outList === errList && !Utils.isSynchronized(outList)) {
             // Synchronize the list internally only if both lists are the same and are not
             // already synchronized by the user
-            val list = Collections.synchronizedList<String?>(outList)
+            val list = Collections.synchronizedList(outList)
             outList = list
             errList = list
         }
@@ -120,8 +120,8 @@ internal abstract class JobTask : Shell.Job(), Shell.Task {
         @JvmField
         val END_UUID: String = UUID.randomUUID().toString()
         const val UUID_LEN: Int = 36
-        private val END_CMD: ByteArray? =
-            String.format("__RET=$?;echo %1\$s;echo %1\$s >&2;echo \$__RET;unset __RET\n", END_UUID)
+        private val END_CMD: ByteArray =
+            String.format($$"__RET=$?;echo %1$s;echo %1$s >&2;echo $__RET;unset __RET\n", END_UUID)
                 .toByteArray(
                     StandardCharsets.UTF_8
                 )

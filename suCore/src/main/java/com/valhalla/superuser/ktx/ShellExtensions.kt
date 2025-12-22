@@ -5,9 +5,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
-import java.io.IOException
 import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 /**
  * Suspends until the Shell Job is complete and returns the result.
@@ -26,7 +24,7 @@ suspend fun Shell.Job.await(): Shell.Result = suspendCancellableCoroutine { cont
 
 /**
  * Converts a Shell Job's output into a reactive Flow.
- * Replaces the "CallbackList" abomination.
+ * Replaces the "CallbackList".
  *
  * Usage:
  * Shell.cmd("logcat").asFlow().collect { line -> ... }

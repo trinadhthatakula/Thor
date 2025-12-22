@@ -2,7 +2,6 @@
 
 package com.valhalla.superuser
 
-import android.content.Context
 import androidx.annotation.IntDef
 import com.valhalla.superuser.internal.BuilderImpl
 import com.valhalla.superuser.internal.MainShell
