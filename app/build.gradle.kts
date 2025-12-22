@@ -8,6 +8,8 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlinSerialization)
     //alias(libs.plugins.baselineprofile)
+    alias(libs.plugins.room)
+    alias(libs.plugins.ksp)
 }
 
 kotlin {
@@ -19,6 +21,10 @@ kotlin {
         optIn.add("androidx.compose.material3.ExperimentalMaterial3ExpressiveApi")
         optIn.add("androidx.compose.material3.ExperimentalMaterial3Api")
     }
+}
+
+room {
+    schemaDirectory("$projectDir/schemas")
 }
 
 val keystorePropertiesFile = rootProject.file("jks.properties")
@@ -36,8 +42,8 @@ android {
         applicationId = "com.valhalla.thor"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1702
-        versionName = "1.70.2"
+        versionCode = 1705
+        versionName = "1.70.5"
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
@@ -131,7 +137,8 @@ dependencies {
 
     implementation(libs.accompanist.drawablepainter)
 
-    /// Kotlinx
+    ///Kotlinx
+    implementation(libs.kotlinx.datetime)
     implementation(libs.kotlinx.serialization.json)
 
     implementation(libs.lottie.compose)
@@ -143,5 +150,7 @@ dependencies {
     implementation(libs.bundles.coil)
 
     implementation(libs.bundles.koin)
+    implementation(libs.bundles.room)
+    ksp(libs.room.compiler)
 
 }
