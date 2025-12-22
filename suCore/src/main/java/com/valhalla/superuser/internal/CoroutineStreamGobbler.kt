@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets
 /**
  * Reads streams using Coroutines on the IO dispatcher.
  * Replaces the legacy 'StreamGobbler' class.
+ * Under development.
  */
 internal abstract class CoroutineStreamGobbler(
     private val inputStream: InputStream,
