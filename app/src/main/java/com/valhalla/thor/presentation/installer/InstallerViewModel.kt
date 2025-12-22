@@ -7,10 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.model.AppMetadata
-import com.valhalla.thor.domain.model.HistoryRecord
-import com.valhalla.thor.domain.model.OperationType
 import com.valhalla.thor.domain.repository.AppAnalyzer
-import com.valhalla.thor.domain.repository.HistoryRepository
 import com.valhalla.thor.domain.repository.InstallerRepository
 import kotlinx.coroutines.launch
 import kotlin.collections.firstOrNull
@@ -21,8 +18,7 @@ class InstallerViewModel(
     private val repository: InstallerRepository,
     private val analyzer: AppAnalyzer,
     private val eventBus: InstallerEventBus,
-    private val packageManager: PackageManager,
-    private val historyRepository: HistoryRepository
+    private val packageManager: PackageManager
 ) : ViewModel() {
 
     val installState = eventBus.events
@@ -43,14 +39,14 @@ class InstallerViewModel(
             viewModelScope.launch { eventBus.emit(InstallState.Idle) }
         }
 
-        // Listen for SUCCESS to save history
+        /*// Listen for SUCCESS to save history
         viewModelScope.launch {
             eventBus.events.collect { state ->
                 if (state is InstallState.Success) {
                     saveHistoryRecord()
                 }
             }
-        }
+        }*/
     }
 
     fun installFile(uri: Uri) {
@@ -84,27 +80,6 @@ class InstallerViewModel(
         val uri = pendingUri ?: return
         viewModelScope.launch {
             repository.installPackage(uri)
-        }
-    }
-
-    private fun saveHistoryRecord() {
-        val meta = pendingMetadata ?: return
-        val uri = pendingUri
-
-        viewModelScope.launch {
-            historyRepository.addRecord(
-                HistoryRecord(
-                    packageName = meta.packageName,
-                    label = meta.label,
-                    version = meta.version,
-                    timestamp = System.currentTimeMillis(),
-                    type = if (isUpdateOperation) OperationType.UPDATE else OperationType.INSTALL,
-                    path = uri?.toString() ?: "Unknown"
-                )
-            )
-            // Cleanup
-            pendingUri = null
-            pendingMetadata = null
         }
     }
 
