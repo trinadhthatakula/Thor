@@ -129,7 +129,7 @@ abstract class Shell : Closeable {
     fun waitAndClose() {
         while (true) {
             try {
-                if (waitAndClose(Long.Companion.MAX_VALUE, TimeUnit.NANOSECONDS)) break
+                if (waitAndClose(Long.MAX_VALUE, TimeUnit.NANOSECONDS)) break
             } catch (ignored: InterruptedException) {
             }
         }

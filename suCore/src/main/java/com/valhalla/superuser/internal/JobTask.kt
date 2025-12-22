@@ -56,8 +56,8 @@ internal abstract class JobTask : Shell.Job(), Shell.Task {
 
         val outGobbler = FutureTask(OUT(stdout, outList))
         val errGobbler = FutureTask(ERR(stderr, errList))
-        Shell.Companion.EXECUTOR.execute(outGobbler)
-        Shell.Companion.EXECUTOR.execute(errGobbler)
+        Shell.EXECUTOR.execute(outGobbler)
+        Shell.EXECUTOR.execute(errGobbler)
 
         val result = ResultImpl()
         try {

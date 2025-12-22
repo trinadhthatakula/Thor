@@ -47,7 +47,7 @@ object MainShell {
             returnShell(shell, executor, callback)
         } else {
             // Else we get shell in worker thread and call the callback when we get a Shell
-            Shell.Companion.EXECUTOR.execute {
+            Shell.EXECUTOR.execute {
                 try {
                     returnShell(get(), executor, callback)
                 } catch (e: NoShellException) {

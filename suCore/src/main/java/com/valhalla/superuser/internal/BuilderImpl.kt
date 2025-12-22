@@ -53,7 +53,7 @@ class BuilderImpl : Shell.Builder() {
         var shell: ShellImpl? = null
 
         // Root mount master
-        if (!hasFlags(Shell.Companion.FLAG_NON_ROOT_SHELL) && hasFlags(Shell.Companion.FLAG_MOUNT_MASTER)) {
+        if (!hasFlags(Shell.FLAG_NON_ROOT_SHELL) && hasFlags(Shell.FLAG_MOUNT_MASTER)) {
             try {
                 shell = exec("su", "--mount-master")
                 if (!shell.isRoot) shell = null
@@ -62,7 +62,7 @@ class BuilderImpl : Shell.Builder() {
         }
 
         // Normal root shell
-        if (shell == null && !hasFlags(Shell.Companion.FLAG_NON_ROOT_SHELL)) {
+        if (shell == null && !hasFlags(Shell.FLAG_NON_ROOT_SHELL)) {
             try {
                 shell = exec("su")
                 if (!shell.isRoot) {
@@ -74,7 +74,7 @@ class BuilderImpl : Shell.Builder() {
 
         // Try normal non-root shell
         if (shell == null) {
-            if (!hasFlags(Shell.Companion.FLAG_NON_ROOT_SHELL)) {
+            if (!hasFlags(Shell.FLAG_NON_ROOT_SHELL)) {
                 Utils.setConfirmedRootState(false)
             }
             shell = exec("sh")
@@ -106,7 +106,7 @@ class BuilderImpl : Shell.Builder() {
             throw NoShellException("Unable to create a shell!", e)
         }
         @Suppress("DEPRECATION")
-        if (hasFlags(Shell.Companion.FLAG_REDIRECT_STDERR)) {
+        if (hasFlags(Shell.FLAG_REDIRECT_STDERR)) {
             Shell.enableLegacyStderrRedirection = true
         }
         MainShell.cached = (shell)

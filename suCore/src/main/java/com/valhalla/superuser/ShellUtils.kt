@@ -31,7 +31,7 @@ object ShellUtils {
      * @return the last line of the output of the command, empty string if no output is available.
      */
     fun fastCmd(vararg commands: String?): String {
-        return fastCmd(Shell.Companion.shell, *commands)
+        return fastCmd(Shell.shell, *commands)
     }
 
     /**
@@ -57,7 +57,7 @@ object ShellUtils {
      * @return `true` if the commands succeed.
      */
     fun fastCmdResult(vararg commands: String?): Boolean {
-        return fastCmdResult(Shell.Companion.shell, *commands)
+        return fastCmdResult(Shell.shell, *commands)
     }
 
     /**

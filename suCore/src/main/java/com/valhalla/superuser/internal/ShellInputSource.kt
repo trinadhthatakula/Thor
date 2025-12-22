@@ -23,7 +23,7 @@ internal class InputStreamSource(private val `in`: InputStream) : ShellInputSour
         Utils.pump(`in`, out)
         `in`.close()
         out.write('\n'.code)
-        Utils.log(ShellInputSource.Companion.TAG, "<InputStream>")
+        Utils.log(ShellInputSource.TAG, "<InputStream>")
     }
 
     override fun close() {
@@ -40,7 +40,7 @@ internal class CommandSource(private val cmd: Array<out String>) : ShellInputSou
         for (command in cmd) {
             out.write(command.toByteArray(StandardCharsets.UTF_8))
             out.write('\n'.code)
-            Utils.log(ShellInputSource.Companion.TAG, command)
+            Utils.log(ShellInputSource.TAG, command)
         }
     }
 }

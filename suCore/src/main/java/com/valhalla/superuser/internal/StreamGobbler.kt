@@ -16,10 +16,10 @@ internal abstract class StreamGobbler<T>(
         if (line == null) return false
 
         val len = line.length
-        val end = line.startsWith(JobTask.Companion.END_UUID, len - JobTask.Companion.UUID_LEN)
+        val end = line.startsWith(JobTask.END_UUID, len - JobTask.UUID_LEN)
         if (end) {
-            if (len == JobTask.Companion.UUID_LEN) return false
-            line = line.substring(0, len - JobTask.Companion.UUID_LEN)
+            if (len == JobTask.UUID_LEN) return false
+            line = line.substring(0, len - JobTask.UUID_LEN)
         }
         if (list != null) {
             list.add(line)
