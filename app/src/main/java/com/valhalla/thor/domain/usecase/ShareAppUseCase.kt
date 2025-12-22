@@ -3,10 +3,10 @@ package com.valhalla.thor.domain.usecase
 import android.content.Context
 import androidx.core.content.FileProvider
 import com.valhalla.thor.BuildConfig
-import com.valhalla.thor.domain.repository.SystemRepository
-import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.data.util.ApksMetadataGenerator
+import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.formattedAppName
+import com.valhalla.thor.domain.repository.SystemRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
@@ -103,7 +103,7 @@ class ShareAppUseCase(
         return try {
             File(sourcePath).copyTo(destFile, overwrite = true)
             true
-        }  catch (_: Exception) {
+        } catch (_: Exception) {
             systemRepository.copyFileWithRoot(sourcePath, destFile.absolutePath).isSuccess
         }
     }

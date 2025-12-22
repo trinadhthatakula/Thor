@@ -1,7 +1,7 @@
 package com.valhalla.thor.domain.usecase
 
-import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.repository.AppRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 

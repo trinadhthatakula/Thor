@@ -266,14 +266,18 @@ class MainViewModel(
                         result
                     } else {
                         try {
-                            packageManager.getPackageInfo(appInfo.packageName, 0).applicationInfo?.let { appInfo ->
-                                val isDebuggable = (appInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+                            packageManager.getPackageInfo(
+                                appInfo.packageName,
+                                0
+                            ).applicationInfo?.let { appInfo ->
+                                val isDebuggable =
+                                    (appInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
                                 if (isDebuggable) {
                                     Result.failure(Exception("App is Debuggable (Signature mismatch likely)"))
                                 } else {
                                     result // Return original error
                                 }
-                            }?:result
+                            } ?: result
 
                         } catch (_: Exception) {
                             result // Return original error if package check fails

@@ -37,12 +37,13 @@ class ShellDataSource {
      * Executes a command and returns the output (STDOUT).
      * Useful for things like getting file paths or disk stats.
      */
-    suspend fun executeRootCommandWithOutput(command: String): String = withContext(Dispatchers.IO) {
-        val result = Shell.cmd(command).exec()
-        if (result.isSuccess) {
-            result.out.joinToString("\n")
-        } else {
-            throw Exception("Command failed: $command | Error: ${result.err.joinToString("\n")}")
+    suspend fun executeRootCommandWithOutput(command: String): String =
+        withContext(Dispatchers.IO) {
+            val result = Shell.cmd(command).exec()
+            if (result.isSuccess) {
+                result.out.joinToString("\n")
+            } else {
+                throw Exception("Command failed: $command | Error: ${result.err.joinToString("\n")}")
+            }
         }
-    }
 }

@@ -120,21 +120,27 @@ class ShizukuReflector(
 
     fun packageUri(packageName: String) = "package:$packageName"
 
-    fun packageUid(packageName: String) = if (Build.VERSION.SDK_INT>= Build.VERSION_CODES.TIRAMISU) context.packageManager.getPackageUid(
-        packageName, PackageManager.PackageInfoFlags.of(PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong())
-    ) else context.packageManager.getPackageUid(packageName, PackageManager.MATCH_UNINSTALLED_PACKAGES)
+    fun packageUid(packageName: String) =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) context.packageManager.getPackageUid(
+            packageName,
+            PackageManager.PackageInfoFlags.of(PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong())
+        ) else context.packageManager.getPackageUid(
+            packageName,
+            PackageManager.MATCH_UNINSTALLED_PACKAGES
+        )
 
 
     fun getApplicationInfoOrNull(
-        packageName: String, flags: Int =PackageManager.MATCH_UNINSTALLED_PACKAGES
+        packageName: String, flags: Int = PackageManager.MATCH_UNINSTALLED_PACKAGES
     ) = runCatching {
-        if (Build.VERSION.SDK_INT>= Build.VERSION_CODES.TIRAMISU) context.packageManager.getApplicationInfo(
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) context.packageManager.getApplicationInfo(
             packageName, PackageManager.ApplicationInfoFlags.of(flags.toLong())
         )
         else context.packageManager.getApplicationInfo(packageName, flags)
     }.getOrNull()
 
-    fun isAppDisabled(packageName: String): Boolean = getApplicationInfoOrNull(packageName)?.enabled?.not() ?: false
+    fun isAppDisabled(packageName: String): Boolean =
+        getApplicationInfoOrNull(packageName)?.enabled?.not() ?: false
 
     fun isAppHidden(packageName: String): Boolean = getApplicationInfoOrNull(packageName)?.let {
         (ApplicationInfo::class.java.getField("privateFlags").get(it) as Int) and 1 == 1

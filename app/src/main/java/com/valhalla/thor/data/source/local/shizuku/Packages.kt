@@ -11,14 +11,15 @@ import androidx.annotation.RequiresApi
 import androidx.core.content.getSystemService
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 
-class Packages(private val app : Context) {
+class Packages(private val app: Context) {
 
     val myUserId get() = Process.myUserHandle().hashCode()
 
     fun packageUri(packageName: String) = "package:$packageName"
 
     fun packageUid(packageName: String) = if (Targets.T) app.packageManager.getPackageUid(
-        packageName, PackageManager.PackageInfoFlags.of(PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong())
+        packageName,
+        PackageManager.PackageInfoFlags.of(PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong())
     ) else app.packageManager.getPackageUid(packageName, PackageManager.MATCH_UNINSTALLED_PACKAGES)
 
     fun getInstalledApplications(flags: Int = PackageManager.MATCH_UNINSTALLED_PACKAGES): List<ApplicationInfo> =
@@ -37,7 +38,7 @@ class Packages(private val app : Context) {
     }.getOrNull()
 
     fun getApplicationInfoOrNull(
-        packageName: String, flags: Int =PackageManager.MATCH_UNINSTALLED_PACKAGES
+        packageName: String, flags: Int = PackageManager.MATCH_UNINSTALLED_PACKAGES
     ) = runCatching {
         if (Targets.T) app.packageManager.getApplicationInfo(
             packageName, PackageManager.ApplicationInfoFlags.of(flags.toLong())
@@ -45,7 +46,8 @@ class Packages(private val app : Context) {
         else app.packageManager.getApplicationInfo(packageName, flags)
     }.getOrNull()
 
-    fun isAppDisabled(packageName: String): Boolean = getApplicationInfoOrNull(packageName)?.enabled?.not() ?: false
+    fun isAppDisabled(packageName: String): Boolean =
+        getApplicationInfoOrNull(packageName)?.enabled?.not() ?: false
 
     fun isAppHidden(packageName: String): Boolean = getApplicationInfoOrNull(packageName)?.let {
         (ApplicationInfo::class.java.getField("privateFlags").get(it) as Int) and 1 == 1
@@ -68,8 +70,14 @@ class Packages(private val app : Context) {
 
     fun forceStopApp(packageName: String): Boolean = runCatching {
         app.getSystemService<ActivityManager>()?.let {
-            if (Targets.P) HiddenApiBypass.invoke(it::class.java, it, "forceStopPackage", packageName)
-            else it::class.java.getMethod("forceStopPackage", String::class.java).invoke(it, packageName)
+            if (Targets.P) HiddenApiBypass.invoke(
+                it::class.java,
+                it,
+                "forceStopPackage",
+                packageName
+            )
+            else it::class.java.getMethod("forceStopPackage", String::class.java)
+                .invoke(it, packageName)
         }
         true
     }.getOrElse {

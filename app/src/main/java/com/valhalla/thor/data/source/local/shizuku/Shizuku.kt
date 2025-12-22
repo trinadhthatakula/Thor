@@ -27,10 +27,19 @@ object Shizuku {
     val isRoot get() = Shizuku.getUid() == 0
     private val callerPackage get() = if (isRoot) BuildConfig.APPLICATION_ID else "com.android.shell"
 
-    private fun asInterface(className: String, original: IBinder): Any = Class.forName("$className\$Stub").run {
-        if (Targets.P) HiddenApiBypass.invoke(this, null, "asInterface", ShizukuBinderWrapper(original))
-        else getMethod("asInterface", IBinder::class.java).invoke(null, ShizukuBinderWrapper(original))
-    }
+    private fun asInterface(className: String, original: IBinder): Any =
+        Class.forName("$className\$Stub").run {
+            if (Targets.P) HiddenApiBypass.invoke(
+                this,
+                null,
+                "asInterface",
+                ShizukuBinderWrapper(original)
+            )
+            else getMethod("asInterface", IBinder::class.java).invoke(
+                null,
+                ShizukuBinderWrapper(original)
+            )
+        }
 
     private fun asInterface(className: String, serviceName: String): Any =
         asInterface(className, SystemServiceHelper.getSystemService(serviceName))
@@ -54,7 +63,7 @@ object Shizuku {
             false
         }
 
-    fun forceStopApp(context: Context,packageName: String): Boolean = runCatching {
+    fun forceStopApp(context: Context, packageName: String): Boolean = runCatching {
         asInterface("android.app.IActivityManager", Context.ACTIVITY_SERVICE).let {
             if (Targets.P) HiddenApiBypass.invoke(
                 it::class.java, it, "forceStopPackage", packageName, Packages(context).myUserId
@@ -72,7 +81,7 @@ object Shizuku {
 
     fun setAppDisabled(context: Context, packageName: String, disabled: Boolean): Boolean {
         Packages(context).getApplicationInfoOrNull(packageName) ?: return false
-        if (disabled) forceStopApp(context,packageName)
+        if (disabled) forceStopApp(context, packageName)
         runCatching {
             val pm = asInterface("android.content.pm.IPackageManager", "package")
             val newState = when {
@@ -87,20 +96,27 @@ object Shizuku {
                 Int::class.java,
                 Int::class.java,
                 String::class.java
-            ).invoke(pm, packageName, newState, 0, Packages(context).myUserId, BuildConfig.APPLICATION_ID)
+            ).invoke(
+                pm,
+                packageName,
+                newState,
+                0,
+                Packages(context).myUserId,
+                BuildConfig.APPLICATION_ID
+            )
         }.onFailure {
-            if(it is InvocationTargetException){
+            if (it is InvocationTargetException) {
                 Shizuku.addBinderReceivedListener {
-                    if(Shizuku.pingBinder()){
-                        setAppDisabled(context,packageName,disabled)
-                    }else {
+                    if (Shizuku.pingBinder()) {
+                        setAppDisabled(context, packageName, disabled)
+                    } else {
                         Log.d("Shizuku", "setAppDisabled: failed to get shizuku ")
                     }
                 }
                 Shizuku.addBinderDeadListener {
-                    if(Shizuku.pingBinder()){
-                        setAppDisabled(context,packageName,disabled)
-                    }else {
+                    if (Shizuku.pingBinder()) {
+                        setAppDisabled(context, packageName, disabled)
+                    } else {
                         Log.d("Shizuku", "setAppDisabled: failed to get shizuku ")
                     }
                 }
@@ -111,13 +127,16 @@ object Shizuku {
         return Packages(context).isAppDisabled(packageName) == disabled
     }
 
-    fun setAppHidden(context: Context,packageName: String, hidden: Boolean): Boolean {
+    fun setAppHidden(context: Context, packageName: String, hidden: Boolean): Boolean {
         Packages(context).getApplicationInfoOrNull(packageName) ?: return false
-        if (hidden) forceStopApp(context,packageName)
+        if (hidden) forceStopApp(context, packageName)
         return runCatching {
             val pm = asInterface("android.content.pm.IPackageManager", "package")
             pm::class.java.getMethod(
-                "setApplicationHiddenSettingAsUser", String::class.java, Boolean::class.java, Int::class.java
+                "setApplicationHiddenSettingAsUser",
+                String::class.java,
+                Boolean::class.java,
+                Int::class.java
             ).invoke(pm, packageName, hidden, Packages(context).myUserId) as Boolean
         }.getOrElse {
             it.printStackTrace()
@@ -128,7 +147,7 @@ object Shizuku {
     fun setAppSuspended(context: Context, packageName: String, suspended: Boolean): Boolean {
         Packages(context).getApplicationInfoOrNull(packageName) ?: return false
         if (Targets.P) setAppRestricted(context, packageName, suspended)
-        if (suspended) forceStopApp(context,packageName)
+        if (suspended) forceStopApp(context, packageName)
         return runCatching {
             val pm = asInterface("android.content.pm.IPackageManager", "package")
             (when {
@@ -148,18 +167,28 @@ object Shizuku {
                         Packages(context).myUserId /*targetUserId*/
                     )
                 }.getOrElse {
-                    if (it is NoSuchMethodException) setPackagesSuspendedAsUserSinceQ(context,pm, packageName, suspended)
+                    if (it is NoSuchMethodException) setPackagesSuspendedAsUserSinceQ(
+                        context,
+                        pm,
+                        packageName,
+                        suspended
+                    )
                     else throw it
                 }
 
                 Targets.Q -> runCatching {
-                    setPackagesSuspendedAsUserSinceQ(context,pm, packageName, suspended)
+                    setPackagesSuspendedAsUserSinceQ(context, pm, packageName, suspended)
                 }.getOrElse {
-                    if (it is NoSuchMethodException) setPackagesSuspendedAsUserSinceP(context,pm, packageName, suspended)
+                    if (it is NoSuchMethodException) setPackagesSuspendedAsUserSinceP(
+                        context,
+                        pm,
+                        packageName,
+                        suspended
+                    )
                     else throw it
                 }
 
-                Targets.P -> setPackagesSuspendedAsUserSinceP(context,pm, packageName, suspended)
+                Targets.P -> setPackagesSuspendedAsUserSinceP(context, pm, packageName, suspended)
 
                 else -> return false
             } as Array<*>).isEmpty()
@@ -170,7 +199,12 @@ object Shizuku {
     }
 
     @RequiresApi(Build.VERSION_CODES.Q)
-    private fun setPackagesSuspendedAsUserSinceQ(context: Context,pm: Any, packageName: String, suspended: Boolean): Any =
+    private fun setPackagesSuspendedAsUserSinceQ(
+        context: Context,
+        pm: Any,
+        packageName: String,
+        suspended: Boolean
+    ): Any =
         HiddenApiBypass.invoke(
             pm::class.java,
             pm,
@@ -185,7 +219,12 @@ object Shizuku {
         )
 
     @RequiresApi(Build.VERSION_CODES.P)
-    private fun setPackagesSuspendedAsUserSinceP(context: Context,pm: Any, packageName: String, suspended: Boolean): Any =
+    private fun setPackagesSuspendedAsUserSinceP(
+        context: Context,
+        pm: Any,
+        packageName: String,
+        suspended: Boolean
+    ): Any =
         HiddenApiBypass.invoke(
             pm::class.java,
             pm,
@@ -203,7 +242,12 @@ object Shizuku {
         @RequiresApi(Build.VERSION_CODES.Q) @SuppressLint("PrivateApi") get() = HiddenApiBypass.newInstance(
             Class.forName("android.content.pm.SuspendDialogInfo\$Builder")
         ).let {
-            HiddenApiBypass.invoke(it::class.java, it, "setNeutralButtonAction", 1 /*BUTTON_ACTION_UNSUSPEND*/)
+            HiddenApiBypass.invoke(
+                it::class.java,
+                it,
+                "setNeutralButtonAction",
+                1 /*BUTTON_ACTION_UNSUSPEND*/
+            )
             HiddenApiBypass.invoke(it::class.java, it, "build")
         }
 
@@ -247,7 +291,8 @@ object Shizuku {
                     // Example line: "Cache Size: 1,234,567"
                     val sizeString = trimmedLine.substringAfter(":").trim()
                     // Use NumberFormat to handle commas in the string
-                    val bytes = NumberFormat.getNumberInstance(Locale.US).parse(sizeString)?.toLong() ?: 0L
+                    val bytes =
+                        NumberFormat.getNumberInstance(Locale.US).parse(sizeString)?.toLong() ?: 0L
                     totalCacheBytes += bytes
                 } catch (e: Exception) {
                     // Log error if parsing fails for a line
@@ -259,31 +304,39 @@ object Shizuku {
     }
 
     @RequiresApi(Build.VERSION_CODES.P)
-    fun setAppRestricted(context: Context, packageName: String, restricted: Boolean): Boolean = runCatching {
-        val appops = asInterface("com.android.internal.app.IAppOpsService", Context.APP_OPS_SERVICE)
-        HiddenApiBypass.invoke(
-            appops::class.java,
-            appops,
-            "setMode",
-            HiddenApiBypass.invoke(AppOpsManager::class.java, null, "strOpToOp", "android:run_any_in_background"),
-            Packages(context).packageUid(packageName),
-            packageName,
-            if (restricted) AppOpsManager.MODE_IGNORED else AppOpsManager.MODE_ALLOWED
-        )
-        true
-    }.getOrElse {
-        it.printStackTrace()
-        false
-    }
+    fun setAppRestricted(context: Context, packageName: String, restricted: Boolean): Boolean =
+        runCatching {
+            val appops =
+                asInterface("com.android.internal.app.IAppOpsService", Context.APP_OPS_SERVICE)
+            HiddenApiBypass.invoke(
+                appops::class.java,
+                appops,
+                "setMode",
+                HiddenApiBypass.invoke(
+                    AppOpsManager::class.java,
+                    null,
+                    "strOpToOp",
+                    "android:run_any_in_background"
+                ),
+                Packages(context).packageUid(packageName),
+                packageName,
+                if (restricted) AppOpsManager.MODE_IGNORED else AppOpsManager.MODE_ALLOWED
+            )
+            true
+        }.getOrElse {
+            it.printStackTrace()
+            false
+        }
 
-    fun uninstallApp(context: Context,packageName: String): Boolean =
+    fun uninstallApp(context: Context, packageName: String): Boolean =
         execute("pm ${if (Packages(context).canUninstallNormally(packageName)) "uninstall" else "uninstall --user current"} $packageName").first == 0
 
     fun reinstallApp(packageName: String): Boolean =
         execute("pm install-existing --user current $packageName").first == 0
 
     fun execute(command: String, root: Boolean = isRoot): Pair<Int, String?> = runCatching {
-        IShizukuService.Stub.asInterface(Shizuku.getBinder()).newProcess(arrayOf(if (root) "su" else "sh"), null, null)
+        IShizukuService.Stub.asInterface(Shizuku.getBinder())
+            .newProcess(arrayOf(if (root) "su" else "sh"), null, null)
             .run {
                 ParcelFileDescriptor.AutoCloseOutputStream(outputStream).use {
                     it.write(command.toByteArray())
@@ -293,5 +346,6 @@ object Shizuku {
     }.getOrElse { -1 to it.stackTraceToString() }
 
     private val ParcelFileDescriptor.text
-        get() = ParcelFileDescriptor.AutoCloseInputStream(this).use { it.bufferedReader().readText() }
+        get() = ParcelFileDescriptor.AutoCloseInputStream(this)
+            .use { it.bufferedReader().readText() }
 }

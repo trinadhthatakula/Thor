@@ -23,7 +23,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,14 +38,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.ImageLoader
-import coil3.compose.LocalAsyncImagePreviewHandler
 import coil3.compose.rememberAsyncImagePainter
 import coil3.request.crossfade
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.MultiAppAction
-import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.presentation.utils.AppIconFetcher
 import com.valhalla.thor.presentation.utils.AppIconKeyer
 import com.valhalla.thor.presentation.utils.getAppIcon
@@ -155,9 +153,11 @@ fun AppListScreen(
                 onFilterTypeChanged = viewModel::updateFilterType,
                 onSortByChanged = viewModel::updateSort,
                 onSortOrderSelected = viewModel::updateSortOrder,
-                onFilterSelected ={it?.let { filter ->
-                    viewModel.updateFilter(filter)
-                }},
+                onFilterSelected = {
+                    it?.let { filter ->
+                        viewModel.updateFilter(filter)
+                    }
+                },
                 onAppInfoSelected = { appInfo ->
                     viewModel.selectApp(appInfo.packageName)
                 },
@@ -196,11 +196,11 @@ fun AppListScreen(
                     // Don't dismiss main dialog yet? Or dismiss it?
                     // Typically we dismiss the info dialog to show the alert
                     viewModel.clearSelection()
-                } else if (action is AppClickAction.Freeze){
+                } else if (action is AppClickAction.Freeze) {
                     viewModel.freezeApp(action.appInfo.packageName, true)
-                }else if (action is AppClickAction.UnFreeze){
+                } else if (action is AppClickAction.UnFreeze) {
                     viewModel.freezeApp(action.appInfo.packageName, false)
-                }else {
+                } else {
                     // Forward all other actions (Freeze, Kill, etc)
                     onAppAction(action)
                     viewModel.clearSelection()

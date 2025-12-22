@@ -36,7 +36,7 @@ fun TypeWriterText(
 
     var textCharList by remember {
         mutableStateOf(
-           emptyList<String>()
+            emptyList<String>()
         )
     }
 

@@ -38,15 +38,15 @@ import coil3.ImageLoader
 import coil3.compose.rememberAsyncImagePainter
 import coil3.request.crossfade
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.MultiAppAction
-import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.presentation.utils.AppIconFetcher
 import com.valhalla.thor.presentation.utils.AppIconKeyer
 import com.valhalla.thor.presentation.utils.getAppIcon
-import com.valhalla.thor.presentation.widgets.AppList
 import com.valhalla.thor.presentation.widgets.AppInfoDialog
+import com.valhalla.thor.presentation.widgets.AppList
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -154,7 +154,7 @@ fun FreezerScreen(
                 onFilterTypeChanged = viewModel::updateFilterType,
                 onSortByChanged = viewModel::updateSort,
                 onSortOrderSelected = viewModel::updateSortOrder,
-                onFilterSelected ={ it?.let { filter-> viewModel.updateFilter(filter) }},
+                onFilterSelected = { it?.let { filter -> viewModel.updateFilter(filter) } },
                 // Multi-Selection Actions
                 onMultiAppAction = { action ->
                     if (action is MultiAppAction.Freeze || action is MultiAppAction.UnFreeze) {
@@ -187,6 +187,7 @@ fun FreezerScreen(
                         viewModel.toggleAppFreezeState(action.appInfo)
                         selectedAppInfo = null
                     }
+
                     is AppClickAction.UnFreeze -> {
                         viewModel.toggleAppFreezeState(action.appInfo)
                         selectedAppInfo = null

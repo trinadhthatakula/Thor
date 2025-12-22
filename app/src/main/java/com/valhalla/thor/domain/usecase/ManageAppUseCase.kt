@@ -1,7 +1,5 @@
 package com.valhalla.thor.domain.usecase
 
-import com.valhalla.thor.data.repository.SystemRepositoryImpl
-
 class ManageAppUseCase(
     private val systemRepository: com.valhalla.thor.domain.repository.SystemRepository
 ) {

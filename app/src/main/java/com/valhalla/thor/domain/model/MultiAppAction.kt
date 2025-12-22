@@ -8,5 +8,5 @@ sealed interface MultiAppAction {
     data class Share(val appList: List<AppInfo>) : MultiAppAction
     data class Kill(val appList: List<AppInfo>) : MultiAppAction
 
-    data class ClearCache(val appList: List<AppInfo>): MultiAppAction
+    data class ClearCache(val appList: List<AppInfo>) : MultiAppAction
 }

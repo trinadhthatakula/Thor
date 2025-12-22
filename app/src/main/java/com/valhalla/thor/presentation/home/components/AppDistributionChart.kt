@@ -60,7 +60,9 @@ fun AppDistributionChart(
     }.toMap()
 
     Row(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 10.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {

@@ -20,7 +20,6 @@ class ApksMetadataGenerator {
     )
 
 
-
     fun generateJson(appInfo: AppInfo) = Json.encodeToString(
         ApksMetadata(
             packageName = appInfo.packageName,
@@ -32,7 +31,7 @@ class ApksMetadataGenerator {
         )
     )
 
-    fun generateJson(appInfo: AppInfo, targetFile: File){
+    fun generateJson(appInfo: AppInfo, targetFile: File) {
         targetFile.writeText(generateJson(appInfo))
     }
 

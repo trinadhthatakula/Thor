@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class SortBy {
     NAME,
+
     //SIZE,
     INSTALL_DATE,
     LAST_UPDATED,
@@ -30,7 +31,8 @@ fun SortBy.isDateBased(): Boolean = this == SortBy.INSTALL_DATE || this == SortB
 
 fun SortBy.isVersionBased(): Boolean = this == SortBy.VERSION_CODE || this == SortBy.VERSION_NAME
 
-fun SortBy.isSdkBased(): Boolean = this == SortBy.TARGET_SDK_VERSION || this == SortBy.MIN_SDK_VERSION
+fun SortBy.isSdkBased(): Boolean =
+    this == SortBy.TARGET_SDK_VERSION || this == SortBy.MIN_SDK_VERSION
 
 fun SortBy.isNameBased(): Boolean = this == SortBy.NAME
 

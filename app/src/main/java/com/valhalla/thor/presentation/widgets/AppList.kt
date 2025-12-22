@@ -300,11 +300,15 @@ private fun AppControlBar(
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            val chips = if (filterType == FilterType.Source) installers else (filterType as? FilterType.State)?.types ?: emptyList()
+            val chips =
+                if (filterType == FilterType.Source) installers else (filterType as? FilterType.State)?.types
+                    ?: emptyList()
 
             chips.forEach { item ->
                 val label = when {
-                    filterType == FilterType.Source -> popularInstallers[item] ?: item ?: if (appListType != AppListType.SYSTEM) "Others" else "System"
+                    filterType == FilterType.Source -> popularInstallers[item] ?: item
+                    ?: if (appListType != AppListType.SYSTEM) "Others" else "System"
+
                     else -> item ?: ""
                 }
 
@@ -353,7 +357,11 @@ private fun MultiSelectHeader(
                 .padding(start = 8.dp)
         )
         IconButton(onClick = onClear) {
-            Icon(painterResource(R.drawable.round_close), "Close", tint = MaterialTheme.colorScheme.onSecondaryContainer)
+            Icon(
+                painterResource(R.drawable.round_close),
+                "Close",
+                tint = MaterialTheme.colorScheme.onSecondaryContainer
+            )
         }
     }
 }
@@ -427,7 +435,9 @@ private fun AppItemList(
                     Icon(
                         painterResource(R.drawable.frozen),
                         "Frozen",
-                        modifier = Modifier.size(16.dp).padding(start = 4.dp),
+                        modifier = Modifier
+                            .size(16.dp)
+                            .padding(start = 4.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -476,9 +486,12 @@ private fun AppItemGrid(
                     painterResource(R.drawable.check_circle),
                     "Selected",
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.align(Alignment.TopEnd).background(MaterialTheme.colorScheme.surface,
-                        CircleShape
-                    )
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .background(
+                            MaterialTheme.colorScheme.surface,
+                            CircleShape
+                        )
                 )
             }
         }
@@ -560,7 +573,10 @@ private fun AppFilterSheet(
                     ListItem(
                         headlineContent = { Text(type.asGeneralName()) },
                         trailingContent = {
-                            if (filterType == type) Icon(painterResource(R.drawable.check_circle), null)
+                            if (filterType == type) Icon(
+                                painterResource(R.drawable.check_circle),
+                                null
+                            )
                         },
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
@@ -591,7 +607,10 @@ private fun AppFilterSheet(
                         ListItem(
                             headlineContent = { Text(item.asGeneralName()) },
                             trailingContent = {
-                                if (sortBy == item) Icon(painterResource(R.drawable.check_circle), null)
+                                if (sortBy == item) Icon(
+                                    painterResource(R.drawable.check_circle),
+                                    null
+                                )
                             },
                             modifier = Modifier
                                 .clip(RoundedCornerShape(12.dp))

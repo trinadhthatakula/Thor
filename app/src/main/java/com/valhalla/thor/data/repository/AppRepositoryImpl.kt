@@ -6,8 +6,8 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Environment
 import com.valhalla.thor.BuildConfig
-import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.repository.AppRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow

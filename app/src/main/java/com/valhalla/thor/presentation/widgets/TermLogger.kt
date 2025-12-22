@@ -1,7 +1,6 @@
 package com.valhalla.thor.presentation.widgets
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -138,7 +136,9 @@ fun TermLoggerDialog(
                 if (isOperationComplete) {
                     Button(
                         onClick = onDismiss,
-                        modifier = Modifier.padding(top = 16.dp).fillMaxWidth()
+                        modifier = Modifier
+                            .padding(top = 16.dp)
+                            .fillMaxWidth()
                     ) {
                         Text("Close")
                     }

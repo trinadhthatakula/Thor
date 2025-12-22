@@ -70,7 +70,7 @@ fun AppInfoDialog(
             verticalArrangement = Arrangement.Center
         ) {
 
-            Row(modifier = Modifier.align(Alignment.End)){
+            Row(modifier = Modifier.align(Alignment.End)) {
                 IconButton(
                     onClick = {
                         onAppAction(AppClickAction.AppInfoSettings(appInfo))
@@ -148,7 +148,7 @@ fun AppInfoDialog(
                 isShizuku = isShizuku,
                 onDismiss = { onDismiss() },
                 onAppAction = { action ->
-                    when(action) {
+                    when (action) {
                         is AppClickAction.Uninstall -> {
                             if (appInfo.isSystem) {
                                 showUninstallConfirmation = true
@@ -157,6 +157,7 @@ fun AppInfoDialog(
                                 onDismiss()
                             }
                         }
+
                         is AppClickAction.Reinstall -> {
                             // Logic: Show warning if it looks like a debug/test app or just warn generally?
                             // Since we might not have `isDebuggable` in the model yet, let's warn EVERYONE
@@ -168,6 +169,7 @@ fun AppInfoDialog(
                             // BUT, you asked to inform user. So we show the dialog.
                             showReinstallWarning = true
                         }
+
                         else -> onAppAction(action)
                     }
                 }
@@ -197,7 +199,13 @@ fun AppInfoDialog(
     // --- REINSTALL WARNING DIALOG ---
     if (showReinstallWarning) {
         AlertDialog(
-            icon = { Icon(painterResource(R.drawable.warning), null, tint = MaterialTheme.colorScheme.error) },
+            icon = {
+                Icon(
+                    painterResource(R.drawable.warning),
+                    null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
             onDismissRequest = { showReinstallWarning = false },
             title = { Text("Risk Warning") },
             text = {
@@ -300,7 +308,7 @@ fun FloatingBar(
             }
         }
 
-        if (appInfo.packageName != "com.valhalla.thor" && appInfo.packageName !="com.android.vending") {
+        if (appInfo.packageName != "com.valhalla.thor" && appInfo.packageName != "com.android.vending") {
             AppActionItem(
                 icon = R.drawable.delete_forever,
                 text = "Uninstall",

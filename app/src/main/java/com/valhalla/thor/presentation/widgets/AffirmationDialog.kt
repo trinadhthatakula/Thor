@@ -93,33 +93,33 @@ fun MultiAppAffirmationDialog(
                 when (multiAppAction) {
 
                     is MultiAppAction.ClearCache -> {
-                        val appCount = multiAppAction.appList.size -1
+                        val appCount = multiAppAction.appList.size - 1
                         "This will clear Cache of $appCount apps, Do you want to continue?"
                     }
 
-                is MultiAppAction.Freeze -> {
-                    val activeAppsCount = multiAppAction.appList.count { it.enabled }
-                    "$activeAppsCount of ${multiAppAction.appList.size} apps are active, Do you want to freeze them?"
-                }
+                    is MultiAppAction.Freeze -> {
+                        val activeAppsCount = multiAppAction.appList.count { it.enabled }
+                        "$activeAppsCount of ${multiAppAction.appList.size} apps are active, Do you want to freeze them?"
+                    }
 
-                is MultiAppAction.Kill -> {
-                    "You want to kill ${multiAppAction.appList.size} apps?"
-                }
+                    is MultiAppAction.Kill -> {
+                        "You want to kill ${multiAppAction.appList.size} apps?"
+                    }
 
-                is MultiAppAction.ReInstall -> {
-                    val otherApps =
-                        multiAppAction.appList.filter { it.installerPackageName != "com.android.vending" }
-                    "${otherApps.size} of ${multiAppAction.appList.size} are not installed from Play store, you want to reinstall them with Google Play store?"
-                }
+                    is MultiAppAction.ReInstall -> {
+                        val otherApps =
+                            multiAppAction.appList.filter { it.installerPackageName != "com.android.vending" }
+                        "${otherApps.size} of ${multiAppAction.appList.size} are not installed from Play store, you want to reinstall them with Google Play store?"
+                    }
 
-                is MultiAppAction.Share -> "You want to share ${multiAppAction.appList.size} apps?"
-                is MultiAppAction.UnFreeze -> {
-                    val frozenAppsCount = multiAppAction.appList.count { it.enabled.not() }
-                    "$frozenAppsCount of ${multiAppAction.appList.size} apps are frozen, Do you want to un freeze them?"
-                }
+                    is MultiAppAction.Share -> "You want to share ${multiAppAction.appList.size} apps?"
+                    is MultiAppAction.UnFreeze -> {
+                        val frozenAppsCount = multiAppAction.appList.count { it.enabled.not() }
+                        "$frozenAppsCount of ${multiAppAction.appList.size} apps are frozen, Do you want to un freeze them?"
+                    }
 
-                is MultiAppAction.Uninstall -> "You want to Uninstall ${multiAppAction.appList.size} apps?"
-            })
+                    is MultiAppAction.Uninstall -> "You want to Uninstall ${multiAppAction.appList.size} apps?"
+                })
         }
     )
 }

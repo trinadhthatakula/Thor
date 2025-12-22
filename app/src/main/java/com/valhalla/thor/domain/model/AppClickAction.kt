@@ -12,5 +12,5 @@ sealed interface AppClickAction {
     data class AppInfoSettings(val appInfo: AppInfo) : AppClickAction
     data object ReinstallAll : AppClickAction
 
-    data class ClearCache(val appInfo: AppInfo): AppClickAction
+    data class ClearCache(val appInfo: AppInfo) : AppClickAction
 }

@@ -137,8 +137,8 @@ fun MainScreen(
 
         Box(
             modifier = Modifier
-            .padding(innerPadding)
-            .fillMaxSize()
+                .padding(innerPadding)
+                .fillMaxSize()
         ) {
 
             HorizontalPager(

@@ -15,8 +15,16 @@ val bodyFontFamily = FontFamily(
     ResFont(resId = R.font.outfit_regular, weight = FontWeight.Normal, style = FontStyle.Normal),
     ResFont(resId = R.font.outfit_black, weight = FontWeight.Black, style = FontStyle.Normal),
     ResFont(resId = R.font.outfit_bold, weight = FontWeight.Bold, style = FontStyle.Normal),
-    ResFont(resId = R.font.outfit_extrabold, weight = FontWeight.ExtraBold, style = FontStyle.Normal),
-    ResFont(resId = R.font.outfit_extralight, weight = FontWeight.ExtraLight, style = FontStyle.Normal),
+    ResFont(
+        resId = R.font.outfit_extrabold,
+        weight = FontWeight.ExtraBold,
+        style = FontStyle.Normal
+    ),
+    ResFont(
+        resId = R.font.outfit_extralight,
+        weight = FontWeight.ExtraLight,
+        style = FontStyle.Normal
+    ),
     ResFont(resId = R.font.outfit_light, weight = FontWeight.Light, style = FontStyle.Normal),
     ResFont(resId = R.font.outfit_medium, weight = FontWeight.Medium, style = FontStyle.Normal),
     ResFont(resId = R.font.outfit_semibold, weight = FontWeight.SemiBold, style = FontStyle.Normal),
@@ -24,8 +32,16 @@ val bodyFontFamily = FontFamily(
     ResFont(resId = R.font.outfit_regular, weight = FontWeight.Normal, style = FontStyle.Italic),
     ResFont(resId = R.font.outfit_black, weight = FontWeight.Black, style = FontStyle.Italic),
     ResFont(resId = R.font.outfit_bold, weight = FontWeight.Bold, style = FontStyle.Italic),
-    ResFont(resId = R.font.outfit_extrabold, weight = FontWeight.ExtraBold, style = FontStyle.Italic),
-    ResFont(resId = R.font.outfit_extralight, weight = FontWeight.ExtraLight, style = FontStyle.Italic),
+    ResFont(
+        resId = R.font.outfit_extrabold,
+        weight = FontWeight.ExtraBold,
+        style = FontStyle.Italic
+    ),
+    ResFont(
+        resId = R.font.outfit_extralight,
+        weight = FontWeight.ExtraLight,
+        style = FontStyle.Italic
+    ),
     ResFont(resId = R.font.outfit_light, weight = FontWeight.Light, style = FontStyle.Italic),
     ResFont(resId = R.font.outfit_medium, weight = FontWeight.Medium, style = FontStyle.Italic),
     ResFont(resId = R.font.outfit_semibold, weight = FontWeight.SemiBold, style = FontStyle.Italic),
