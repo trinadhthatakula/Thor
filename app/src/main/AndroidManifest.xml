@@ -5,6 +5,11 @@
     <uses-sdk tools:overrideLibrary="rikka.shizuku.api" />
 
     <uses-permission
+        android:name="android.permission.REQUEST_INSTALL_PACKAGES"
+        tools:ignore="RequestInstallPackagesPolicy" />
+    <!-- Needed if targeting Android 11+ for certain file types, but we use strict Stream access -->
+
+    <uses-permission
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="PackageVisibilityPolicy,QueryAllPackagesPermission" />
 
@@ -38,6 +43,51 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".presentation.installer.PortableInstallerActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+
+            <!-- 1. Standard APKs (MIME-based) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/vnd.android.package-archive" />
+            </intent-filter>
+
+            <!-- 2. ZIP/XAPK by MIME Type -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/x-zip-compressed" />
+            </intent-filter>
+
+            <!-- 3. XAPK/APKS by Extension -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:pathPattern=".*\\.xapk" />
+                <data android:pathPattern=".*\\.apks" />
+                <data android:pathPattern=".*\\.XAPK" />
+                <data android:pathPattern=".*\\.APKS" />
+            </intent-filter>
+        </activity>
+
+
+        <receiver
+            android:name=".data.receivers.InstallReceiver"
+            android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
