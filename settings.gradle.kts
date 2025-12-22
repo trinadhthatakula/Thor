@@ -20,7 +20,13 @@ dependencyResolutionManagement {
     }
 }
 
+buildCache {
+    local {
+        isEnabled = true
+    }
+}
+
 rootProject.name = "Thor"
 include(":app")
 include(":suCore")
-include(":app:baselineprofile")
+//include(":app:baselineprofile")

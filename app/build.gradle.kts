@@ -4,10 +4,10 @@ import java.io.FileInputStream
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
+    //alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlinSerialization)
-    alias(libs.plugins.baselineprofile)
+    //alias(libs.plugins.baselineprofile)
 }
 
 kotlin {
@@ -106,7 +106,7 @@ dependencies {
 
     implementation(project(":suCore"))
     implementation(libs.androidx.navigation.compose)
-    "baselineProfile"(project(":app:baselineprofile"))
+    //"baselineProfile"(project(":app:baselineprofile"))
 
     implementation(libs.androidx.splashscreen)
     implementation(libs.androidx.core.ktx)
@@ -116,7 +116,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-    implementation(libs.androidx.profileinstaller)
+    //implementation(libs.androidx.profileinstaller)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
