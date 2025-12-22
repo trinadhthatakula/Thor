@@ -1,11 +1,12 @@
 package com.valhalla.thor.di
 
 import android.content.pm.PackageManager
+import com.valhalla.superuser.repository.RealShellRepository
+import com.valhalla.superuser.repository.ShellRepository
 import com.valhalla.thor.data.gateway.RootSystemGateway
 import com.valhalla.thor.data.gateway.ShizukuSystemGateway
 import com.valhalla.thor.data.repository.AppRepositoryImpl
 import com.valhalla.thor.data.repository.SystemRepositoryImpl
-import com.valhalla.thor.data.source.local.ShellDataSource
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
 import com.valhalla.thor.data.util.ApksMetadataGenerator
 import com.valhalla.thor.domain.repository.AppRepository
@@ -26,7 +27,7 @@ import org.koin.dsl.bind
 import org.koin.dsl.module
 
 val commonModule = module {
-    single<PackageManager>{ androidContext().packageManager }
+    single<PackageManager> { androidContext().packageManager }
     singleOf(::ApksMetadataGenerator)
     single<AppRepository> { AppRepositoryImpl(androidContext()) }
     factory { GetInstalledAppsUseCase(get()) }
@@ -43,8 +44,7 @@ val presentationModule = module {
 }
 
 val coreModule = module {
-
-    single { ShellDataSource() }
+    singleOf(::RealShellRepository).bind<ShellRepository>()
     singleOf(::ShizukuReflector)
     // Singletons for the Gateways
     single { RootSystemGateway(get()) }

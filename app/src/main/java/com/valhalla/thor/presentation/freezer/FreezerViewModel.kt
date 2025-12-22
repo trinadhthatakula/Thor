@@ -2,15 +2,15 @@ package com.valhalla.thor.presentation.freezer
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.valhalla.thor.domain.repository.SystemRepository
-import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
-import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
+import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
+import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -63,7 +63,7 @@ class FreezerViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isLoading = true) }
             // Check privileges
-            val hasRoot = systemRepository.isRootAvailable
+            val hasRoot = systemRepository.isRootAvailable()
             val hasShizuku = systemRepository.isShizukuAvailable()
 
             getInstalledAppsUseCase().collect { (user, system) ->
@@ -92,7 +92,7 @@ class FreezerViewModel(
             val result = manageAppUseCase.setAppDisabled(app.packageName, shouldFreeze)
 
             result.onSuccess {
-                _state.update { s -> s.copy(actionMessage = "${if(shouldFreeze) "Frozen" else "Unfrozen"} ${app.appName}") }
+                _state.update { s -> s.copy(actionMessage = "${if (shouldFreeze) "Frozen" else "Unfrozen"} ${app.appName}") }
                 loadApps()
             }.onFailure { e ->
                 _state.update { s -> s.copy(actionMessage = "Error: ${e.message}") }
@@ -107,10 +107,17 @@ class FreezerViewModel(
                     action.appList.forEach { manageAppUseCase.setAppDisabled(it.packageName, true) }
                     _state.update { it.copy(actionMessage = "Froze ${action.appList.size} apps") }
                 }
+
                 is MultiAppAction.UnFreeze -> {
-                    action.appList.forEach { manageAppUseCase.setAppDisabled(it.packageName, false) }
+                    action.appList.forEach {
+                        manageAppUseCase.setAppDisabled(
+                            it.packageName,
+                            false
+                        )
+                    }
                     _state.update { it.copy(actionMessage = "Unfrozen ${action.appList.size} apps") }
                 }
+
                 else -> {
                     _state.update { it.copy(actionMessage = "Action not supported in Freezer yet") }
                 }
@@ -134,7 +141,12 @@ class FreezerViewModel(
     }
 
     fun updateFilterType(type: FilterType) {
-        triggerAsyncUpdate { it.copy(filterType = type, selectedFilter = if(type == FilterType.State) "Frozen" else "All") }
+        triggerAsyncUpdate {
+            it.copy(
+                filterType = type,
+                selectedFilter = if (type == FilterType.State) "Frozen" else "All"
+            )
+        }
     }
 
     fun updateSort(sortBy: SortBy) {
@@ -155,38 +167,46 @@ class FreezerViewModel(
     }
 
     // --- Core Logic (CPU Bound) ---
-    private suspend fun processListState(state: FreezerUiState): FreezerUiState = withContext(Dispatchers.Default) {
-        val rawList = if (state.appListType == AppListType.USER) state.allUserApps else state.allSystemApps
+    private suspend fun processListState(state: FreezerUiState): FreezerUiState =
+        withContext(Dispatchers.Default) {
+            val rawList =
+                if (state.appListType == AppListType.USER) state.allUserApps else state.allSystemApps
 
-        // Filter
-        val filtered = when (state.filterType) {
-            FilterType.State -> {
-                when (state.selectedFilter) {
-                    "Frozen" -> rawList.filter { !it.enabled }
-                    "Active" -> rawList.filter { it.enabled }
-                    else -> rawList
+            // Filter
+            val filtered = when (state.filterType) {
+                FilterType.State -> {
+                    when (state.selectedFilter) {
+                        "Frozen" -> rawList.filter { !it.enabled }
+                        "Active" -> rawList.filter { it.enabled }
+                        else -> rawList
+                    }
+                }
+
+                FilterType.Source -> {
+                    if (state.selectedFilter == "All") rawList
+                    else rawList.filter { it.installerPackageName == state.selectedFilter }
                 }
             }
-            FilterType.Source -> {
-                if (state.selectedFilter == "All") rawList
-                else rawList.filter { it.installerPackageName == state.selectedFilter }
-            }
+
+            // Sort
+            val sorted = getSortedList(filtered, state.sortBy, state.sortOrder)
+
+            // Metadata
+            val installers =
+                rawList.mapNotNull { it.installerPackageName }.distinct().sorted().toMutableList()
+            installers.add(0, "All")
+
+            state.copy(
+                displayedApps = sorted,
+                availableInstallers = installers
+            )
         }
 
-        // Sort
-        val sorted = getSortedList(filtered, state.sortBy, state.sortOrder)
-
-        // Metadata
-        val installers = rawList.mapNotNull { it.installerPackageName }.distinct().sorted().toMutableList()
-        installers.add(0, "All")
-
-        state.copy(
-            displayedApps = sorted,
-            availableInstallers = installers
-        )
-    }
-
-    private fun getSortedList(list: List<AppInfo>, sortBy: SortBy, order: SortOrder): List<AppInfo> {
+    private fun getSortedList(
+        list: List<AppInfo>,
+        sortBy: SortBy,
+        order: SortOrder
+    ): List<AppInfo> {
         val comparator = when (sortBy) {
             SortBy.NAME -> compareBy<AppInfo> { it.appName?.lowercase() }
             SortBy.INSTALL_DATE -> compareBy { it.firstInstallTime }

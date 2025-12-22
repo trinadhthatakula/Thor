@@ -6,11 +6,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.lifecycleScope
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.presentation.common.ShizukuPermissionHandler
 import com.valhalla.thor.presentation.home.HomeViewModel
 import com.valhalla.thor.presentation.main.MainScreen
 import com.valhalla.thor.presentation.theme.ThorTheme
+import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 import org.koin.androidx.viewmodel.ext.android.viewModel
 
@@ -55,10 +57,12 @@ class HomeActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         homeViewModel.loadDashboardData()
-        // Only ask automatically ONCE per session if not rooted.
-        if (!systemRepository.isRootAvailable && !hasRequestedShizuku) {
-            hasRequestedShizuku = true
-            shizukuHandler.checkAndRequestPermission(requestCode)
+        lifecycleScope.launch {
+            // Only ask automatically ONCE per session if not rooted.
+            if (!systemRepository.isRootAvailable() && !hasRequestedShizuku) {
+                hasRequestedShizuku = true
+                shizukuHandler.checkAndRequestPermission(requestCode)
+            }
         }
     }
 

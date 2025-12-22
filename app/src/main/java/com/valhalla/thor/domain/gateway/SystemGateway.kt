@@ -1,7 +1,5 @@
 package com.valhalla.thor.domain.gateway
 
-import kotlinx.coroutines.flow.Flow
-
 /**
  * The Contract: This defines every privileged action Thor can perform.
  * No Android dependencies (Context, Toast, Intent) allowed here.
@@ -9,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
 interface SystemGateway {
 
     // Status Checks
-    val isRootAvailable: Boolean
+    suspend fun isRootAvailable(): Boolean
     fun isShizukuAvailable(): Boolean
 
     // Core Actions

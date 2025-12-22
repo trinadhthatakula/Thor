@@ -2,10 +2,10 @@ package com.valhalla.thor.presentation.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
-import com.valhalla.thor.domain.model.AppInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -57,7 +57,7 @@ class HomeViewModel(
     fun loadDashboardData() {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true) }
-            val hasRoot = systemRepository.isRootAvailable
+            val hasRoot = systemRepository.isRootAvailable()
             val hasShizuku = systemRepository.isShizukuAvailable()
 
             _state.update { it.copy(isRootAvailable = hasRoot, isShizukuAvailable = hasShizuku) }
@@ -97,7 +97,7 @@ class HomeViewModel(
                 .groupBy { it.installerPackageName ?: "Unknown" }
                 .mapValues { it.value.size }
                 .mapKeys { (key, _) ->
-                    when(key) {
+                    when (key) {
                         "com.android.vending" -> "Play Store"
                         "com.google.android.packageinstaller" -> "Package Installer"
                         "null" -> "Unknown"

@@ -1,10 +1,9 @@
 package com.valhalla.thor.domain.repository
 
-import com.valhalla.thor.domain.model.AppInfo
-
 interface SystemRepository {
-    // Privilege Checks
-    val isRootAvailable: Boolean
+
+    // Privilege Checks - Updated to Suspend to handle I/O
+    suspend fun isRootAvailable(): Boolean
     fun isShizukuAvailable(): Boolean
 
     // App Actions

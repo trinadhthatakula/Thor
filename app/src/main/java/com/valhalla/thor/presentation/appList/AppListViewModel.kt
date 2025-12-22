@@ -2,15 +2,14 @@ package com.valhalla.thor.presentation.appList
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.valhalla.thor.domain.repository.SystemRepository
-import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
-import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
-import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
+import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
+import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -67,7 +66,7 @@ class AppListViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isLoading = true) }
 
-            val hasRoot = systemRepository.isRootAvailable
+            val hasRoot = systemRepository.isRootAvailable()
             val hasShizuku = systemRepository.isShizukuAvailable()
 
             getInstalledAppsUseCase().collect { (user, system) ->
@@ -96,16 +95,21 @@ class AppListViewModel(
             _state.update { it.copy(isLoadingDetails = true, selectedAppDetails = null) }
 
             getAppDetailsUseCase(packageName).onSuccess { fullDetails ->
-                _state.update { it.copy(isLoadingDetails = false, selectedAppDetails = fullDetails) }
+                _state.update {
+                    it.copy(
+                        isLoadingDetails = false,
+                        selectedAppDetails = fullDetails
+                    )
+                }
             }.onFailure {
                 _state.update { it.copy(isLoadingDetails = false) }
             }
         }
     }
 
-    fun freezeApp(packageName: String, freeze: Boolean){
+    fun freezeApp(packageName: String, freeze: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
-            if(manageAppUseCase.setAppDisabled(packageName, freeze).isSuccess){
+            if (manageAppUseCase.setAppDisabled(packageName, freeze).isSuccess) {
                 loadApps()
             }
         }
@@ -151,39 +155,47 @@ class AppListViewModel(
 
     // --- The Core Logic Engine (CPU Intensive) ---
     // Runs on Dispatchers.Default context via callers
-    private suspend fun processListState(state: AppListUiState): AppListUiState = withContext(Dispatchers.Default) {
-        // 1. Pick Source
-        val rawList = if (state.appListType == AppListType.USER) state.allUserApps else state.allSystemApps
+    private suspend fun processListState(state: AppListUiState): AppListUiState =
+        withContext(Dispatchers.Default) {
+            // 1. Pick Source
+            val rawList =
+                if (state.appListType == AppListType.USER) state.allUserApps else state.allSystemApps
 
-        // 2. Filter
-        val filtered = when (state.filterType) {
-            FilterType.Source -> {
-                if (state.selectedFilter == "All") rawList
-                else rawList.filter { it.installerPackageName == state.selectedFilter }
-            }
-            FilterType.State -> {
-                when (state.selectedFilter) {
-                    "Active" -> rawList.filter { it.enabled }
-                    "Frozen" -> rawList.filter { !it.enabled }
-                    else -> rawList
+            // 2. Filter
+            val filtered = when (state.filterType) {
+                FilterType.Source -> {
+                    if (state.selectedFilter == "All") rawList
+                    else rawList.filter { it.installerPackageName == state.selectedFilter }
+                }
+
+                FilterType.State -> {
+                    when (state.selectedFilter) {
+                        "Active" -> rawList.filter { it.enabled }
+                        "Frozen" -> rawList.filter { !it.enabled }
+                        else -> rawList
+                    }
                 }
             }
+
+            // 3. Sort
+            val sorted = getSortedList(filtered, state.sortBy, state.sortOrder)
+
+            // 4. Calculate Installers
+            val installers =
+                rawList.mapNotNull { it.installerPackageName }.distinct().sorted().toMutableList()
+            installers.add(0, "All")
+
+            state.copy(
+                displayedApps = sorted,
+                availableInstallers = installers
+            )
         }
 
-        // 3. Sort
-        val sorted = getSortedList(filtered, state.sortBy, state.sortOrder)
-
-        // 4. Calculate Installers
-        val installers = rawList.mapNotNull { it.installerPackageName }.distinct().sorted().toMutableList()
-        installers.add(0, "All")
-
-        state.copy(
-            displayedApps = sorted,
-            availableInstallers = installers
-        )
-    }
-
-    private fun getSortedList(list: List<AppInfo>, sortBy: SortBy, order: SortOrder): List<AppInfo> {
+    private fun getSortedList(
+        list: List<AppInfo>,
+        sortBy: SortBy,
+        order: SortOrder
+    ): List<AppInfo> {
         val comparator = when (sortBy) {
             SortBy.NAME -> compareBy<AppInfo> { it.appName?.lowercase() }
             SortBy.INSTALL_DATE -> compareBy { it.firstInstallTime }
