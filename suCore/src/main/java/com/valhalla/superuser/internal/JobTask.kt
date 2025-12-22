@@ -1,17 +1,17 @@
 package com.valhalla.superuser.internal
 
 import com.valhalla.superuser.Shell
-import com.valhalla.superuser.internal.StreamGobbler.ERR
-import com.valhalla.superuser.internal.StreamGobbler.OUT
-import java.io.IOException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import java.io.InputStream
 import java.io.OutputStream
 import java.nio.charset.StandardCharsets
 import java.util.Collections
 import java.util.UUID
-import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executor
-import java.util.concurrent.FutureTask
 
 internal abstract class JobTask : Shell.Job(), Shell.Task {
     private val sources: MutableList<ShellInputSource> = ArrayList()
@@ -46,37 +46,52 @@ internal abstract class JobTask : Shell.Job(), Shell.Task {
         var errList =
             if (noErr) (if (Shell.enableLegacyStderrRedirection) outList else null) else err
 
+        // Legacy compatibility: synchronize if lists are the same and not thread-safe
         if (outList != null && outList === errList && !Utils.isSynchronized(outList)) {
-            // Synchronize the list internally only if both lists are the same and are not
-            // already synchronized by the user
             val list = Collections.synchronizedList(outList)
             outList = list
             errList = list
         }
 
-        val outGobbler = FutureTask(OUT(stdout, outList))
-        val errGobbler = FutureTask(ERR(stderr, errList))
-        Shell.EXECUTOR.execute(outGobbler)
-        Shell.EXECUTOR.execute(errGobbler)
-
         val result = ResultImpl()
-        try {
-            for (src in sources) src.serve(stdin)
-            stdin.write(END_CMD)
-            stdin.flush()
 
-            val code: Int = outGobbler.get()!!
-            errGobbler.get()
+        // BRIDGE: We use runBlocking here because ShellImpl expects this method to block
+        // until the task is finished. Inside, we use structured concurrency for I/O.
+        runBlocking {
+            // 1. Start reading STDOUT asynchronously
+            val outJob = async(Dispatchers.IO) {
+                CoroutineStreamGobbler.Out(stdout, outList).readCode()
+            }
 
-            result.code = code
-            result.out = outList?: mutableListOf()
-            result.err = (if (noErr) null else err)?: mutableListOf()
-        } catch (e: IOException) {
-            Utils.err(e)
-        } catch (e: ExecutionException) {
-            Utils.err(e)
-        } catch (e: InterruptedException) {
-            Utils.err(e)
+            // 2. Start reading STDERR asynchronously
+            val errJob = launch(Dispatchers.IO) {
+                CoroutineStreamGobbler.Err(stderr, errList).drain()
+            }
+
+            try {
+                // 3. Write inputs to STDIN
+                // We perform this on IO dispatcher to avoid blocking the main shell thread
+                // (which called this method) on pipe writes.
+                withContext(Dispatchers.IO) {
+                    for (src in sources) src.serve(stdin)
+                    stdin.write(END_CMD)
+                    stdin.flush()
+                }
+
+                // 4. Wait for the exit code (UUID marker) from STDOUT
+                val code = outJob.await()
+
+                // 5. Ensure STDERR is fully drained
+                errJob.join()
+
+                result.code = code
+                result.out = outList ?: mutableListOf()
+                result.err = (if (noErr) null else err) ?: mutableListOf()
+
+            } catch (e: Exception) {
+                Utils.err(e)
+                // Result code remains JOB_NOT_EXECUTED (-1)
+            }
         }
 
         close()
@@ -120,14 +135,10 @@ internal abstract class JobTask : Shell.Job(), Shell.Task {
         @JvmField
         val END_UUID: String = UUID.randomUUID().toString()
         const val UUID_LEN: Int = 36
+
+        // Corrected format string syntax
         private val END_CMD: ByteArray =
-            String.format($$"__RET=$?;echo %1$s;echo %1$s >&2;echo $__RET;unset __RET\n", END_UUID)
-                .toByteArray(
-                    StandardCharsets.UTF_8
-                )
-        
-        //private static final byte[] END_CMD = String
-        //            .format("__RET=$?;echo %1$s;echo %1$s >&2;echo $__RET;unset __RET\n", END_UUID)
-        //            .getBytes(UTF_8);
+            String.format("__RET=\$?;echo %1\$s;echo %1\$s >&2;echo \$__RET;unset __RET\n", END_UUID)
+                .toByteArray(StandardCharsets.UTF_8)
     }
 }
