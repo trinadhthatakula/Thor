@@ -37,11 +37,11 @@ class ShizukuSystemGateway(
     }
 
     override suspend fun uninstallApp(packageName: String): Result<Unit> {
-        // Shizuku uninstall involves creating a PackageInstaller session.
-        // Use the standard Android PackageInstaller API, passing the Shizuku Installer wrapper if needed,
-        // or strictly use the "pm uninstall" via shell approach if simpler.
-        // For now, fail to keep this slice focused.
-        return Result.failure(Exception("Uninstall not implemented in this slice."))
+        return if(reflector.uninstallApp(packageName)){
+            Result.success(Unit)
+        } else {
+            Result.failure(Exception("Uninstall failed"))
+        }
     }
 
     override suspend fun installApp(apkPath: String): Result<Unit> {

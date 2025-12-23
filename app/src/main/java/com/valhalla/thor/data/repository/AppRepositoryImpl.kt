@@ -93,7 +93,7 @@ class AppRepositoryImpl(
             appName = appInfo.loadLabel(pm).toString(),
             packageName = packInfo.packageName,
             versionName = packInfo.versionName,
-            versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) packInfo.longVersionCode.toInt() else packInfo.versionCode,
+            versionCode = packInfo.longVersionCode.toInt(),
             minSdk = appInfo.minSdkVersion,
             targetSdk = appInfo.targetSdkVersion,
             isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0,

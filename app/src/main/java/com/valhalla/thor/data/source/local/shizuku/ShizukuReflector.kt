@@ -2,8 +2,13 @@ package com.valhalla.thor.data.source.local.shizuku
 
 import android.annotation.SuppressLint
 import android.app.AppOpsManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ApplicationInfo
+import android.content.pm.IPackageInstaller
+import android.content.pm.IPackageManager
+import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
@@ -24,27 +29,19 @@ class ShizukuReflector(
     private val myUserId: Int
         get() = android.os.Process.myUserHandle().hashCode()
 
-    // Cache the IPackageManager instance
-    private val packageManager: Any by lazy {
-        val binder = SystemServiceHelper.getSystemService("package")
-        val shizukuBinder = ShizukuBinderWrapper(binder)
+    private val packageManager: IPackageManager by lazy {
+        // This is needed to access hidden methods in IPackageManager
+        HiddenApiBypass.addHiddenApiExemptions(
+            "Landroid/content/pm"
+        )
 
-        try {
-            val stubClass = Class.forName("android.content.pm.IPackageManager\$Stub")
-            // Try standard reflection first
-            val method = try {
-                stubClass.getMethod("asInterface", IBinder::class.java)
-            } catch (e: Exception) {
-                // If hidden, find via Bypass
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    HiddenApiBypass.getDeclaredMethod(stubClass, "asInterface", IBinder::class.java)
-                } else throw e
-            }
-            method.invoke(null, shizukuBinder)!!
-        } catch (e: Exception) {
-            if (BuildConfig.DEBUG)
-                Log.e("ShizukuReflector", "Failed to create IPackageManager proxy", e)
-        }
+        IPackageManager.Stub.asInterface(
+            ShizukuBinderWrapper(
+                SystemServiceHelper.getSystemService(
+                    "package"
+                )
+            )
+        )
     }
 
     @SuppressLint("PrivateApi")
@@ -80,7 +77,6 @@ class ShizukuReflector(
     }
 
     fun forceStop(packageName: String) {
-
         try {
             Shizuku.forceStopApp(context, packageName)
 
@@ -108,13 +104,11 @@ class ShizukuReflector(
         return try {
             clazz.getMethod(name, *parameterTypes)
         } catch (_: Exception) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                try {
-                    HiddenApiBypass.getDeclaredMethod(clazz, name, *parameterTypes)
-                } catch (_: Exception) {
-                    null
-                }
-            } else null
+            try {
+                HiddenApiBypass.getDeclaredMethod(clazz, name, *parameterTypes)
+            } catch (_: Exception) {
+                null
+            }
         }
     }
 
@@ -171,7 +165,6 @@ class ShizukuReflector(
         return isAppDisabled(packageName) == disabled
     }
 
-    @RequiresApi(Build.VERSION_CODES.P)
     fun setAppRestricted(packageName: String, restricted: Boolean): Boolean = runCatching {
         context.getSystemService<AppOpsManager>()?.let {
             HiddenApiBypass.invoke(
@@ -188,6 +181,123 @@ class ShizukuReflector(
     }.getOrElse {
         it.printStackTrace()
         false
+    }
+
+    fun uninstallApp(packageName: String, resetToFactory: Boolean = false): Boolean {
+        val packageInfo = context.packageManager.getInfoForPackage(packageName) ?: return false
+        val isSystem = (packageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+        val hasUpdates =
+            (packageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+
+        val shouldReset = resetToFactory && isSystem && hasUpdates
+        val broadcastIntent = Intent("io.github.samolego.canta.UNINSTALL_RESULT_ACTION")
+        val intent = PendingIntent.getBroadcast(
+            context,
+            0,
+            broadcastIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val packageInstaller = getPackageInstaller()
+
+        // 0x00000004 = PackageManager.DELETE_SYSTEM_APP
+        // 0x00000002 = PackageManager.DELETE_ALL_USERS
+        val flags = if (isSystem) 0x00000004 else 0x00000002
+
+        if (shouldReset) {
+            try {
+
+                HiddenApiBypass.invoke(
+                    PackageInstaller::class.java,
+                    packageInstaller,
+                    "uninstall",
+                    packageName,
+                    flags,
+                    intent.intentSender
+                )
+
+                try {
+                    val updatedPackageInfo =
+                        context.packageManager.getInfoForPackage(packageName) ?: return false
+                    val stillHasUpdates =
+                        (updatedPackageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+
+
+        return try {
+            HiddenApiBypass.invoke(
+                PackageInstaller::class.java,
+                packageInstaller,
+                "uninstall",
+                packageName,
+                flags,
+                intent.intentSender
+            )
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    /**
+     * Reinstalls app using Shizuku. See <a
+     * href="https://cs.android.com/android/platform/superproject/main/+/main:frameworks/base/services/core/java/com/android/server/pm/PackageManagerShellCommand.java;drc=bcb2b436bde55ee40050400783a9c083e77ce2fe;l=1408>PackageManagerShellCommand.java</a>
+     * @param packageName package name of the app to reinstall (must pre-install on the phone)
+     */
+    private fun reinstallApp(packageName: String): Boolean {
+        val broadcastIntent = Intent("io.github.samolego.canta.INSTALL_RESULT_ACTION")
+        val intent =
+            PendingIntent.getBroadcast(
+                context,
+                0,
+                broadcastIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+
+        // PackageManager.INSTALL_ALL_WHITELIST_RESTRICTED_PERMISSIONS
+        val installFlags = 0x00400000
+
+        return try {
+            val installReason = PackageManager.INSTALL_REASON_UNKNOWN
+            HiddenApiBypass.invoke(
+                IPackageInstaller::class.java,
+                ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller(),
+                "installExistingPackage",
+                packageName,
+                installFlags,
+                installReason,
+                intent.intentSender,
+                0,
+                null
+            )
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    fun getPackageInstaller(): PackageInstaller {
+        val iPackageInstaller = ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller()
+        val root = rikka.shizuku.Shizuku.getUid() == 0
+        val userId = if (root) android.os.Process.myUserHandle().hashCode() else 0
+
+        // The reason for use "com.android.shell" as installer package under adb is that
+        // getMySessions will check installer package's owner
+        return ShizukuPackageInstallerUtils.createPackageInstaller(
+            iPackageInstaller,
+            "com.android.shell",
+            userId
+        )
     }
 
 }
