@@ -21,7 +21,7 @@ kotlin {
     }
 }
 
-val keystorePropertiesFile = rootProject.file("jks.properties")
+val keystorePropertiesFile: File = rootProject.file("jks.properties")
 val keystoreProperties = Properties()
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
@@ -34,10 +34,10 @@ android {
 
     defaultConfig {
         applicationId = "com.valhalla.thor"
-        minSdk = 24
+        minSdk = 28
         targetSdk = 36
-        versionCode = 1705
-        versionName = "1.70.5"
+        versionCode = 1706
+        versionName = "1.70.6"
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {

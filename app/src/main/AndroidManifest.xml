@@ -79,8 +79,11 @@
                 <data android:host="*" />
                 <data android:pathPattern=".*\\.xapk" />
                 <data android:pathPattern=".*\\.apks" />
+                <data android:pathPattern=".*\\.apkm" />
+                <data android:pathPattern=".*\\.APKM" />
                 <data android:pathPattern=".*\\.XAPK" />
                 <data android:pathPattern=".*\\.APKS" />
+                <data android:pathPattern=".*\\.splits" />
             </intent-filter>
         </activity>
 
