@@ -14,7 +14,6 @@ composeBom = "2025.12.01"
 lottieCompose = "6.7.1"
 material3 = "1.5.0-alpha11"
 kotlinxSerializationJson = "1.9.0"
-kotlinxDateTime = "0.7.1-0.6.x-compat"
 splashscreen = "1.2.0"
 annotationJvm = "1.9.1"
 uiautomator = "2.3.0"
@@ -62,7 +61,6 @@ room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 #Kotlin
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
-kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDateTime" }
 #Lottie
 lottie-compose = { module = "com.airbnb.android:lottie-compose", version.ref = "lottieCompose" }
 #Shizuku

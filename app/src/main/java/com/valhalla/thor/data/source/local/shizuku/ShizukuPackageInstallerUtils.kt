@@ -19,11 +19,9 @@ import kotlin.jvm.java
 object ShizukuPackageInstallerUtils {
     private val PACKAGE_MANAGER: IPackageManager by lazy {
         // This is needed to access hidden methods in IPackageManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            HiddenApiBypass.addHiddenApiExemptions(
-                "Landroid/content/pm"
-            )
-        }
+        HiddenApiBypass.addHiddenApiExemptions(
+            "Landroid/content/pm"
+        )
 
         IPackageManager.Stub.asInterface(
             ShizukuBinderWrapper(
