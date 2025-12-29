@@ -6,6 +6,7 @@ import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
+import com.valhalla.thor.presentation.utils.CacheScanner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -28,7 +29,7 @@ data class HomeUiState(
     val unknownInstallerCount: Int = 0,
 
     val distributionData: Map<String, Int> = emptyMap(),
-
+    val cacheSize: String = "Calculating...",
     // Status
     val isRootAvailable: Boolean = false,
     val isShizukuAvailable: Boolean = false
@@ -46,6 +47,8 @@ class HomeViewModel(
         HomeUiState()
     )
 
+    private val cacheScanner = CacheScanner(systemRepository)
+
     // Cache raw data to allow instant filtering
     private var cachedUserApps: List<AppInfo> = emptyList()
     private var cachedSystemApps: List<AppInfo> = emptyList()
@@ -60,6 +63,12 @@ class HomeViewModel(
             val hasRoot = systemRepository.isRootAvailable()
             val hasShizuku = systemRepository.isShizukuAvailable()
 
+            if (hasRoot) {
+                scanCache()
+            } else {
+                _state.update { it.copy(cacheSize = "") } // Hide if not root
+            }
+
             _state.update { it.copy(isRootAvailable = hasRoot, isShizukuAvailable = hasShizuku) }
 
             getInstalledAppsUseCase().collect { (userApps, systemApps) ->
@@ -69,6 +78,13 @@ class HomeViewModel(
                 // Process with currently selected type
                 recalculateStats(_state.value.selectedAppType)
             }
+        }
+    }
+
+    private fun scanCache() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val size = cacheScanner.getTotalCacheSize()
+            _state.update { it.copy(cacheSize = size) }
         }
     }
 

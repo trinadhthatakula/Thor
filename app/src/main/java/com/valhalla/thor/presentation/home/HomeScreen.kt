@@ -80,9 +80,16 @@ fun HomeScreen(
         Spacer(Modifier.height(24.dp))
 
         if (state.isRootAvailable) {
+            // Dynamic subtitle based on calculation
+            val cacheSubtitle = if (state.cacheSize.isNotBlank() && state.cacheSize != "0 B") {
+                "~${state.cacheSize} recoverable space"
+            } else {
+                "Free up space by cleaning app caches"
+            }
+
             ActionCard(
                 title = "Clear All Cache",
-                subtitle = "Free up space by cleaning app caches",
+                subtitle = cacheSubtitle,
                 icon = R.drawable.clear_all,
                 onClick = { showCacheDialog = true }
             )
