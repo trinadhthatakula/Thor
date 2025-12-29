@@ -190,20 +190,28 @@ fun AppListScreen(
             isRoot = state.isRoot,
             isShizuku = state.isShizuku,
             onAppAction = { action ->
-                if (action is AppClickAction.Reinstall) {
-                    // Intercept Reinstall to show confirmation locally
-                    reinstallCandidate = action.appInfo
-                    // Don't dismiss main dialog yet? Or dismiss it?
-                    // Typically we dismiss the info dialog to show the alert
-                    viewModel.clearSelection()
-                } else if (action is AppClickAction.Freeze) {
-                    viewModel.freezeApp(action.appInfo.packageName, true)
-                } else if (action is AppClickAction.UnFreeze) {
-                    viewModel.freezeApp(action.appInfo.packageName, false)
-                } else {
-                    // Forward all other actions (Freeze, Kill, etc)
-                    onAppAction(action)
-                    viewModel.clearSelection()
+                when (action) {
+                    is AppClickAction.Reinstall -> {
+                        // Intercept Reinstall to show confirmation locally
+                        reinstallCandidate = action.appInfo
+                        // Don't dismiss main dialog yet? Or dismiss it?
+                        // Typically, we dismiss the info dialog to show the alert
+                        viewModel.clearSelection()
+                    }
+
+                    is AppClickAction.Freeze -> {
+                        viewModel.freezeApp(action.appInfo.packageName, true)
+                    }
+
+                    is AppClickAction.UnFreeze -> {
+                        viewModel.freezeApp(action.appInfo.packageName, false)
+                    }
+
+                    else -> {
+                        // Forward all other actions (Freeze, Kill, etc)
+                        onAppAction(action)
+                        viewModel.clearSelection()
+                    }
                 }
             }
         )

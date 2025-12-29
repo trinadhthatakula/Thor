@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,12 +59,16 @@ fun AppInfoDialog(
     // New State for Reinstall Warning
     var showReinstallWarning by remember { mutableStateOf(false) }
 
+    val sheetState = rememberModalBottomSheetState()
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         scrimColor = Color.Black.copy(alpha = 0.5f),
+        sheetState = sheetState,
+        modifier = modifier
     ) {
         Column(
-            modifier = modifier
+            modifier = Modifier
                 .fillMaxWidth()
                 .padding(5.dp),
             horizontalAlignment = Alignment.CenterHorizontally,

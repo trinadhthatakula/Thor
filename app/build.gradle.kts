@@ -36,8 +36,8 @@ android {
         applicationId = "com.valhalla.thor"
         minSdk = 28
         targetSdk = 36
-        versionCode = 1706
-        versionName = "1.70.6"
+        versionCode = 1707
+        versionName = "1.70.7"
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
