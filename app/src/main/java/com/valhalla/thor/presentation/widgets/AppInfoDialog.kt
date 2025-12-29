@@ -47,7 +47,6 @@ import com.valhalla.thor.presentation.utils.getAppIcon
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun AppInfoDialog(
-    modifier: Modifier = Modifier,
     appInfo: AppInfo,
     isRoot: Boolean = false,
     isShizuku: Boolean = false,
@@ -64,13 +63,12 @@ fun AppInfoDialog(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         scrimColor = Color.Black.copy(alpha = 0.5f),
-        sheetState = sheetState,
-        modifier = modifier
+        sheetState = sheetState
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(5.dp),
+                .padding(5.dp)
+                .align(Alignment.CenterHorizontally),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {

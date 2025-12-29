@@ -122,7 +122,10 @@ fun PortableInstaller(
 
     // The Bottom Sheet
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            viewModel.resetState()
+            onDismiss()
+        },
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
         dragHandle = null // Optional: remove handle for cleaner look
@@ -263,7 +266,10 @@ fun PortableInstaller(
 
                         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                             OutlinedButton(
-                                onClick = onDismiss,
+                                onClick = {
+                                    viewModel.resetState()
+                                    onDismiss()
+                                },
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text("Done")
@@ -275,6 +281,7 @@ fun PortableInstaller(
                                         launchIntent?.let {
                                             it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                             context.startActivity(it)
+                                            viewModel.resetState()
                                             onDismiss()
                                         }
                                     },

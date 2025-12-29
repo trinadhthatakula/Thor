@@ -14,7 +14,9 @@ class PortableInstallerActivity : ComponentActivity() {
         setContent {
             ThorTheme {
                 PortableInstaller(
-                    onDismiss = { finishAffinity() }
+                    onDismiss = {
+                        finish()
+                    }
                 )
             }
         }

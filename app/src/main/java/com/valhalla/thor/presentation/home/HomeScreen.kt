@@ -206,7 +206,9 @@ fun HomeScreen(
 
     if (showInstallerSheet) {
         PortableInstaller(
-            onDismiss = { showInstallerSheet = false },
+            onDismiss = {
+                showInstallerSheet = false
+            },
             viewModel = installerViewModel // Pass the shared instance
         )
     }
