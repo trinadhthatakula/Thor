@@ -1,5 +1,7 @@
 package com.valhalla.thor.presentation.home
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -35,6 +37,8 @@ import com.valhalla.thor.presentation.home.components.AppDistributionChart
 import com.valhalla.thor.presentation.home.components.DashboardHeader
 import com.valhalla.thor.presentation.home.components.SocialLinksRow
 import com.valhalla.thor.presentation.home.components.SummaryStatRow
+import com.valhalla.thor.presentation.installer.InstallerViewModel
+import com.valhalla.thor.presentation.installer.PortableInstaller
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
@@ -43,13 +47,25 @@ fun HomeScreen(
     onNavigateToFreezer: () -> Unit,
     onReinstallAll: () -> Unit,
     onClearAllCache: (AppListType) -> Unit,
-    viewModel: HomeViewModel = koinViewModel()
+    viewModel: HomeViewModel = koinViewModel(),
+    installerViewModel: InstallerViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showCacheDialog by remember { mutableStateOf(false) }
 
     // Dialog state for "Restricted Access" refresh
     var showPrivilegeDialog by remember { mutableStateOf(false) }
+
+    var showInstallerSheet by remember { mutableStateOf(false) }
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let {
+            // Manually trigger the installation logic
+            installerViewModel.installFile(it)
+            showInstallerSheet = true
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -105,6 +121,16 @@ fun HomeScreen(
                 onClick = onReinstallAll
             )
         }
+
+        ActionCard(
+            title = "Install from File",
+            subtitle = "Install APK, XAPK, APKS or Split bundles",
+            icon = R.drawable.apk_install, // Reusing existing icon, replace if you have specific file icon
+            onClick = {
+                // Launch picker for all file types (filtering logic handled by VM/Installer)
+                filePickerLauncher.launch(arrayOf("*/*"))
+            }
+        )
 
         Spacer(Modifier.height(24.dp))
 
@@ -175,6 +201,13 @@ fun HomeScreen(
                     Text("Cancel")
                 }
             }
+        )
+    }
+
+    if (showInstallerSheet) {
+        PortableInstaller(
+            onDismiss = { showInstallerSheet = false },
+            viewModel = installerViewModel // Pass the shared instance
         )
     }
 }
