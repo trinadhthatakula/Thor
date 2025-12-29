@@ -2,6 +2,8 @@ package com.valhalla.thor.presentation.widgets
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -94,7 +96,7 @@ fun AppList(
     startAsGrid: Boolean = true,
     isRoot: Boolean = false,
     isShizuku: Boolean = false,
-    imageLoader: ImageLoader, // <--- ACCEPT THE LOADER
+    imageLoader: ImageLoader,
     onSortOrderSelected: (SortOrder) -> Unit = {},
     onSortByChanged: (SortBy) -> Unit = {},
     onFilterSelected: (String?) -> Unit,
@@ -102,20 +104,17 @@ fun AppList(
     onAppInfoSelected: (AppInfo) -> Unit,
     onMultiAppAction: (MultiAppAction) -> Unit = {}
 ) {
-    // 1. Local UI State
+    // 1. Local State
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var isGrid by rememberSaveable { mutableStateOf(startAsGrid) }
     var showFilterSheet by rememberSaveable { mutableStateOf(false) }
-
-    // 2. Multi-Select State
     var multiSelection by rememberSaveable { mutableStateOf(emptyList<AppInfo>()) }
+
     val isMultiSelectMode = multiSelection.isNotEmpty()
 
-    BackHandler(multiSelection.isNotEmpty()) {
-        multiSelection = emptyList()
-    }
+    // 2. Logic
+    BackHandler(isMultiSelectMode) { multiSelection = emptyList() }
 
-    // 3. Local Search Filtering
     val displayedList = remember(appList, searchQuery) {
         if (searchQuery.isBlank()) appList
         else appList.filter {
@@ -124,56 +123,69 @@ fun AppList(
         }
     }
 
-    LaunchedEffect(appListType) {
-        multiSelection = emptyList()
-    }
+    LaunchedEffect(appListType) { multiSelection = emptyList() }
 
+    // 3. UI Layout
     Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
 
+            // Search Bar
             AppSearchBar(
                 query = searchQuery,
                 onQueryChange = { searchQuery = it }
             )
 
+            // System App Warning
             if (appListType == AppListType.SYSTEM) {
                 Text(
                     text = "⚠\uFE0E System Apps",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-                    modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp)
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp)
                 )
             }
 
-            AnimatedVisibility(visible = !isMultiSelectMode) {
-                AppControlBar(
-                    installers = installers,
-                    selectedFilter = selectedFilter,
-                    filterType = filterType,
-                    appListType = appListType,
-                    isGrid = isGrid,
-                    onToggleView = { isGrid = !isGrid },
-                    onOpenFilters = { showFilterSheet = true },
-                    onFilterSelected = onFilterSelected
-                )
+            // Headers (Control Bar or MultiSelect Header)
+            Box {
+                this@Column.AnimatedVisibility(
+                    visible = !isMultiSelectMode,
+                    enter = expandVertically(),
+                    exit = shrinkVertically()
+                ) {
+                    AppControlBar(
+                        installers = installers,
+                        selectedFilter = selectedFilter,
+                        filterType = filterType,
+                        appListType = appListType,
+                        isGrid = isGrid,
+                        onToggleView = { isGrid = !isGrid },
+                        onOpenFilters = { showFilterSheet = true },
+                        onFilterSelected = onFilterSelected
+                    )
+                }
+
+                this@Column.AnimatedVisibility(
+                    visible = isMultiSelectMode,
+                    enter = expandVertically(),
+                    exit = shrinkVertically()
+                ) {
+                    MultiSelectHeader(
+                        count = multiSelection.size,
+                        isAllSelected = multiSelection.size == displayedList.size && displayedList.isNotEmpty(),
+                        onSelectAll = { selectAll ->
+                            multiSelection = if (selectAll) displayedList else emptyList()
+                        },
+                        onClear = { multiSelection = emptyList() }
+                    )
+                }
             }
 
-            AnimatedVisibility(visible = isMultiSelectMode) {
-                MultiSelectHeader(
-                    count = multiSelection.size,
-                    isAllSelected = multiSelection.size == displayedList.size && displayedList.isNotEmpty(),
-                    onSelectAll = { selectAll ->
-                        multiSelection = if (selectAll) displayedList else emptyList()
-                    },
-                    onClear = { multiSelection = emptyList() }
-                )
-            }
-
+            // App Content (Grid or List)
             AppListContent(
                 list = displayedList,
                 isGrid = isGrid,
                 multiSelection = multiSelection,
-                imageLoader = imageLoader, // Pass it down
+                imageLoader = imageLoader,
                 onAppClick = { app ->
                     if (isMultiSelectMode) {
                         multiSelection = toggleSelection(multiSelection, app)
@@ -184,10 +196,10 @@ fun AppList(
                 onAppLongClick = { app ->
                     multiSelection = toggleSelection(multiSelection, app)
                 }
-
             )
         }
 
+        // Floating Action Toolbar (Multi-Select)
         if (isMultiSelectMode) {
             MultiSelectToolBox(
                 selected = multiSelection,
@@ -218,7 +230,7 @@ fun AppList(
     }
 }
 
-// ... Keep your helpers (AppSearchBar, AppControlBar, MultiSelectHeader, etc) ...
+// --- SUB-COMPONENTS ---
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -227,20 +239,18 @@ private fun AppSearchBar(
     onQueryChange: (String) -> Unit
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
-    // This correctly detects if the keyboard (IME) is currently visible on screen
     val isImeVisible = WindowInsets.isImeVisible
 
-    // Intercept back press ONLY if keyboard is visible
     BackHandler(enabled = isImeVisible || query.isNotEmpty()) {
-        if (isImeVisible)
-            keyboardController?.hide()
+        if (isImeVisible) keyboardController?.hide()
         else onQueryChange("")
     }
+
     Card(
         modifier = Modifier
-            .padding(8.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
             .fillMaxWidth(),
-        shape = RoundedCornerShape(50),
+        shape = RoundedCornerShape(24.dp), // More rounded modern look
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
     ) {
         BasicTextField(
@@ -249,9 +259,7 @@ private fun AppSearchBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(12.dp),
-            textStyle = MaterialTheme.typography.titleSmallEmphasized.copy(
-                color = MaterialTheme.colorScheme.onSurface
-            ),
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.Text,
@@ -268,10 +276,7 @@ private fun AppSearchBar(
                     Spacer(modifier = Modifier.width(12.dp))
                     Box(modifier = Modifier.weight(1f)) {
                         if (query.isEmpty()) {
-                            Text(
-                                "Search apps...",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Text("Search apps...", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         innerTextField()
                     }
@@ -281,12 +286,9 @@ private fun AppSearchBar(
                             contentDescription = "Clear",
                             tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier
-                                .padding(horizontal = 5.dp)
-                                .size(24.dp)
                                 .clip(CircleShape)
-                                .clickable {
-                                    onQueryChange("")
-                                }
+                                .clickable { onQueryChange("") }
+                                .padding(4.dp)
                         )
                     }
                 }
@@ -308,7 +310,7 @@ private fun AppControlBar(
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(horizontal = 8.dp)
+        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
         IconButton(onClick = onOpenFilters) {
             Icon(painterResource(R.drawable.filter_list), "Filters")
@@ -320,15 +322,13 @@ private fun AppControlBar(
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            val chips =
-                if (filterType == FilterType.Source) installers else (filterType as? FilterType.State)?.types
-                    ?: emptyList()
+            val chips = if (filterType == FilterType.Source) installers
+            else (filterType as? FilterType.State)?.types ?: emptyList()
 
             chips.forEach { item ->
                 val label = when {
                     filterType == FilterType.Source -> popularInstallers[item] ?: item
                     ?: if (appListType != AppListType.SYSTEM) "Others" else "System"
-
                     else -> item ?: ""
                 }
 
@@ -360,9 +360,9 @@ private fun MultiSelectHeader(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(8.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
             .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(12.dp))
-            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
         Checkbox(
             checked = isAllSelected,
@@ -372,9 +372,7 @@ private fun MultiSelectHeader(
             text = "$count Selected",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSecondaryContainer,
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 8.dp)
+            modifier = Modifier.weight(1f).padding(start = 8.dp)
         )
         IconButton(onClick = onClear) {
             Icon(
@@ -395,10 +393,13 @@ private fun AppListContent(
     onAppClick: (AppInfo) -> Unit,
     onAppLongClick: (AppInfo) -> Unit
 ) {
+    // Shared padding for list/grid
+    val padding = PaddingValues(bottom = 100.dp, top = 8.dp)
+
     if (isGrid) {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 100.dp),
-            contentPadding = PaddingValues(bottom = 80.dp)
+            contentPadding = padding
         ) {
             items(list, key = { it.packageName }) { app ->
                 AppItemGrid(
@@ -411,9 +412,7 @@ private fun AppListContent(
             }
         }
     } else {
-        LazyColumn(
-            contentPadding = PaddingValues(bottom = 80.dp)
-        ) {
+        LazyColumn(contentPadding = padding) {
             items(list, key = { it.packageName }) { app ->
                 AppItemList(
                     app = app,
@@ -439,14 +438,12 @@ private fun AppItemList(
     ListItem(
         modifier = Modifier
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .background(if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f) else MaterialTheme.colorScheme.surface),
+            .background(
+                if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+                else MaterialTheme.colorScheme.surface
+            ),
         leadingContent = {
-            AppIcon(
-                packageName = app.packageName,
-                isEnabled = app.enabled,
-                size = 48.dp,
-                imageLoader = imageLoader
-            )
+            AppIcon(app.packageName, app.enabled, 48.dp, imageLoader)
         },
         headlineContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -455,9 +452,7 @@ private fun AppItemList(
                     Icon(
                         painterResource(R.drawable.frozen),
                         "Frozen",
-                        modifier = Modifier
-                            .size(16.dp)
-                            .padding(start = 4.dp),
+                        modifier = Modifier.size(16.dp).padding(start = 4.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -466,11 +461,7 @@ private fun AppItemList(
         supportingContent = { Text(app.packageName, maxLines = 1) },
         trailingContent = {
             if (isSelected) {
-                Icon(
-                    painterResource(R.drawable.check_circle),
-                    "Selected",
-                    tint = MaterialTheme.colorScheme.primary
-                )
+                Icon(painterResource(R.drawable.check_circle), "Selected", tint = MaterialTheme.colorScheme.primary)
             }
         }
     )
@@ -490,28 +481,21 @@ private fun AppItemGrid(
         modifier = Modifier
             .padding(4.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f) else MaterialTheme.colorScheme.surfaceContainerLow)
+            .background(
+                if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+                else MaterialTheme.colorScheme.surfaceContainerLow
+            )
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(12.dp)
     ) {
         Box {
-            AppIcon(
-                packageName = app.packageName,
-                isEnabled = app.enabled,
-                size = 56.dp,
-                imageLoader = imageLoader
-            )
+            AppIcon(app.packageName, app.enabled, 56.dp, imageLoader)
             if (isSelected) {
                 Icon(
                     painterResource(R.drawable.check_circle),
                     "Selected",
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .background(
-                            MaterialTheme.colorScheme.surface,
-                            CircleShape
-                        )
+                    modifier = Modifier.align(Alignment.TopEnd).background(MaterialTheme.colorScheme.surface, CircleShape)
                 )
             }
         }
@@ -525,7 +509,6 @@ private fun AppItemGrid(
     }
 }
 
-// --- COIL 3 COMPATIBLE ---
 @Composable
 private fun AppIcon(
     packageName: String,
@@ -534,11 +517,10 @@ private fun AppIcon(
     imageLoader: ImageLoader
 ) {
     val colorMatrix = remember { ColorMatrix().apply { setToSaturation(0f) } }
-
     Box(contentAlignment = Alignment.Center) {
         AsyncImage(
             model = AppIconModel(packageName),
-            imageLoader = imageLoader, // <--- EXPLICITLY USE OUR CUSTOM LOADER
+            imageLoader = imageLoader,
             contentDescription = null,
             modifier = Modifier.size(size),
             colorFilter = if (!isEnabled) ColorFilter.colorMatrix(colorMatrix) else null,
@@ -548,12 +530,10 @@ private fun AppIcon(
 }
 
 private fun toggleSelection(currentSelection: List<AppInfo>, item: AppInfo): List<AppInfo> {
-    return if (currentSelection.contains(item)) {
-        currentSelection - item
-    } else {
-        currentSelection + item
-    }
+    return if (currentSelection.contains(item)) currentSelection - item else currentSelection + item
 }
+
+private enum class SheetTab { FILTERS, SORT }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -566,7 +546,7 @@ private fun AppFilterSheet(
     onSortByChanged: (SortBy) -> Unit,
     onSortOrderChanged: (SortOrder) -> Unit
 ) {
-    var viewState by remember { mutableStateOf(0) }
+    var activeTab by remember { mutableStateOf(SheetTab.FILTERS) }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -575,67 +555,66 @@ private fun AppFilterSheet(
 
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 SegmentedButton(
-                    selected = viewState == 0,
-                    onClick = { viewState = 0 },
+                    selected = activeTab == SheetTab.FILTERS,
+                    onClick = { activeTab = SheetTab.FILTERS },
                     shape = SegmentedButtonDefaults.itemShape(0, 2)
                 ) { Text("Filters") }
                 SegmentedButton(
-                    selected = viewState == 1,
-                    onClick = { viewState = 1 },
+                    selected = activeTab == SheetTab.SORT,
+                    onClick = { activeTab = SheetTab.SORT },
                     shape = SegmentedButtonDefaults.itemShape(1, 2)
                 ) { Text("Sort By") }
             }
 
             Spacer(Modifier.height(16.dp))
 
-            if (viewState == 0) {
-                filterTypes.forEach { type ->
-                    ListItem(
-                        headlineContent = { Text(type.asGeneralName()) },
-                        trailingContent = {
-                            if (filterType == type) Icon(
-                                painterResource(R.drawable.check_circle),
-                                null
+            when (activeTab) {
+                SheetTab.FILTERS -> {
+                    LazyColumn {
+                        items(filterTypes) { type ->
+                            ListItem(
+                                headlineContent = { Text(type.asGeneralName()) },
+                                trailingContent = {
+                                    if (filterType == type) Icon(painterResource(R.drawable.check_circle), null)
+                                },
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { onFilterTypeChanged(type) }
                             )
-                        },
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { onFilterTypeChanged(type) }
-                    )
+                        }
+                    }
                 }
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Order:", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.width(8.dp))
-                    FilterChip(
-                        selected = sortOrder == SortOrder.ASCENDING,
-                        onClick = { onSortOrderChanged(SortOrder.ASCENDING) },
-                        label = { Text("Ascending") },
-                        leadingIcon = { Icon(painterResource(R.drawable.arrow_upward), null) }
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    FilterChip(
-                        selected = sortOrder == SortOrder.DESCENDING,
-                        onClick = { onSortOrderChanged(SortOrder.DESCENDING) },
-                        label = { Text("Descending") },
-                        leadingIcon = { Icon(painterResource(R.drawable.arrow_downward), null) }
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                LazyColumn {
-                    items(SortBy.entries) { item ->
-                        ListItem(
-                            headlineContent = { Text(item.asGeneralName()) },
-                            trailingContent = {
-                                if (sortBy == item) Icon(
-                                    painterResource(R.drawable.check_circle),
-                                    null
-                                )
-                            },
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { onSortByChanged(item) }
+                SheetTab.SORT -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Order:", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.width(8.dp))
+                        FilterChip(
+                            selected = sortOrder == SortOrder.ASCENDING,
+                            onClick = { onSortOrderChanged(SortOrder.ASCENDING) },
+                            label = { Text("Ascending") },
+                            leadingIcon = { Icon(painterResource(R.drawable.arrow_upward), null) }
                         )
+                        Spacer(Modifier.width(8.dp))
+                        FilterChip(
+                            selected = sortOrder == SortOrder.DESCENDING,
+                            onClick = { onSortOrderChanged(SortOrder.DESCENDING) },
+                            label = { Text("Descending") },
+                            leadingIcon = { Icon(painterResource(R.drawable.arrow_downward), null) }
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    LazyColumn {
+                        items(SortBy.entries) { item ->
+                            ListItem(
+                                headlineContent = { Text(item.asGeneralName()) },
+                                trailingContent = {
+                                    if (sortBy == item) Icon(painterResource(R.drawable.check_circle), null)
+                                },
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { onSortByChanged(item) }
+                            )
+                        }
                     }
                 }
             }
@@ -643,9 +622,7 @@ private fun AppFilterSheet(
             Button(
                 onClick = onDismiss,
                 modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Done")
-            }
+            ) { Text("Done") }
         }
     }
 }

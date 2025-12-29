@@ -11,6 +11,8 @@ import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
+import com.valhalla.thor.domain.usecase.ManageAppUseCase
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
@@ -45,6 +47,7 @@ class AppListViewModel(
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val getAppDetailsUseCase: GetAppDetailsUseCase,
     private val systemRepository: SystemRepository,
+    private val manageAppUseCase: ManageAppUseCase,
     private val preferenceRepository: PreferenceRepository // Injected
 ) : ViewModel() {
 
@@ -84,6 +87,14 @@ class AppListViewModel(
                         allSystemApps = system
                     )
                 }
+            }
+        }
+    }
+
+    fun freezeApp(packageName: String, freeze: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (manageAppUseCase.setAppDisabled(packageName, freeze).isSuccess) {
+                loadApps()
             }
         }
     }
