@@ -49,7 +49,6 @@
             android:exported="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar">
 
-            <!-- 1. Standard APKs (MIME-based) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -59,31 +58,35 @@
                 <data android:mimeType="application/vnd.android.package-archive" />
             </intent-filter>
 
-            <!-- 2. ZIP/XAPK by MIME Type -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="content" />
+                <data android:scheme="file" />
                 <data android:mimeType="application/octet-stream" />
                 <data android:mimeType="application/zip" />
                 <data android:mimeType="application/x-zip-compressed" />
+                <data android:mimeType="application/x-apks" />
+                <data android:mimeType="application/x-xapk" />
+                <data android:mimeType="application/x-apkm" />
             </intent-filter>
 
-            <!-- 3. XAPK/APKS by Extension -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="file" />
+
+                <data android:scheme="content" />
                 <data android:host="*" />
+                <data android:mimeType="*/*" />
+
                 <data android:pathPattern=".*\\.xapk" />
+                <data android:pathPattern=".*\\.XAPK" />
                 <data android:pathPattern=".*\\.apks" />
+                <data android:pathPattern=".*\\.APKS" />
                 <data android:pathPattern=".*\\.apkm" />
                 <data android:pathPattern=".*\\.APKM" />
-                <data android:pathPattern=".*\\.XAPK" />
-                <data android:pathPattern=".*\\.APKS" />
-                <data android:pathPattern=".*\\.splits" />
             </intent-filter>
         </activity>
 
