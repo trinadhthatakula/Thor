@@ -2,56 +2,50 @@ package com.valhalla.thor.presentation.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.valhalla.thor.domain.model.AppInfo
-import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.domain.repository.PreferenceRepository // Injected
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
-import com.valhalla.thor.presentation.utils.CacheScanner
-import kotlinx.coroutines.Dispatchers
+import com.valhalla.thor.domain.model.AppInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 data class HomeUiState(
     val isLoading: Boolean = true,
-    // Filter
-    val selectedAppType: AppListType = AppListType.USER,
-
-    // Derived Stats (depend on selectedAppType)
-    val displayedAppCount: Int = 0,
+    // Stats
+    val userAppCount: Int = 0,
+    val systemAppCount: Int = 0,
     val activeAppCount: Int = 0,
     val frozenAppCount: Int = 0,
-
-    // Specific Warnings (Always User Apps usually, or dependent on context)
     val unknownInstallerCount: Int = 0,
-
     val distributionData: Map<String, Int> = emptyMap(),
-    val cacheSize: String = "",
     // Status
     val isRootAvailable: Boolean = false,
-    val isShizukuAvailable: Boolean = false
+    val isShizukuAvailable: Boolean = false,
+
+    // Preferences
+    val showReinstallCard: Boolean = true // <--- Controlled by DataStore
 )
 
 class HomeViewModel(
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
-    private val systemRepository: SystemRepository
+    private val systemRepository: SystemRepository,
+    private val preferenceRepository: PreferenceRepository // Injected
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(HomeUiState())
-    val state = _state.stateIn(
+    private val _internalState = MutableStateFlow(HomeUiState())
+
+    // Combine internal data processing with user preferences
+    val state = combine(_internalState, preferenceRepository.userPreferences) { internal, prefs ->
+        internal.copy(showReinstallCard = prefs.showReinstallAllCard)
+    }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
         HomeUiState()
     )
-
-    private val cacheScanner = CacheScanner(systemRepository)
-
-    // Cache raw data to allow instant filtering
-    private var cachedUserApps: List<AppInfo> = emptyList()
-    private var cachedSystemApps: List<AppInfo> = emptyList()
 
     init {
         loadDashboardData()
@@ -59,84 +53,61 @@ class HomeViewModel(
 
     fun loadDashboardData() {
         viewModelScope.launch {
-            _state.update { it.copy(isLoading = true) }
+            _internalState.update { it.copy(isLoading = true) }
             val hasRoot = systemRepository.isRootAvailable()
             val hasShizuku = systemRepository.isShizukuAvailable()
 
-            _state.update { it.copy(isRootAvailable = hasRoot, isShizukuAvailable = hasShizuku) }
-
             getInstalledAppsUseCase().collect { (userApps, systemApps) ->
-                cachedUserApps = userApps
-                cachedSystemApps = systemApps
-
-                // Process with currently selected type
-                recalculateStats(_state.value.selectedAppType)
+                processData(userApps, systemApps, hasRoot, hasShizuku)
             }
         }
     }
 
-    private fun scanCache(allApps: List<AppInfo>) {
-        viewModelScope.launch(Dispatchers.IO) {
-            // Filter: Only count cache for apps we currently know about.
-            val packageNames = allApps.map { it.packageName }
-            val size = cacheScanner.getCacheSize(packageNames)
-            _state.update { it.copy(cacheSize = size) }
+    fun dismissReinstallCard() {
+        viewModelScope.launch {
+            preferenceRepository.setReinstallAllCardVisibility(false)
         }
     }
 
-    fun updateAppListType(type: AppListType) {
-        _state.update { it.copy(selectedAppType = type) }
-        recalculateStats(type)
-    }
+    private fun processData(
+        userApps: List<AppInfo>,
+        systemApps: List<AppInfo>,
+        hasRoot: Boolean,
+        hasShizuku: Boolean
+    ) {
+        val allApps = userApps + systemApps
+        val activeCount = allApps.count { it.enabled }
+        val frozenCount = allApps.count { !it.enabled }
 
-    private fun recalculateStats(type: AppListType) {
-        val targetList = if (type == AppListType.USER) cachedUserApps else cachedSystemApps
+        val unknownCount = userApps.count {
+            it.installerPackageName != "com.android.vending" &&
+                    it.installerPackageName != "com.google.android.packageinstaller"
+        }
 
-        // Calculate on Default dispatcher to avoid UI jank if list is huge
-        viewModelScope.launch(Dispatchers.Default) {
-
-            val hasRoot = _state.value.isRootAvailable
-            if (hasRoot) {
-                scanCache(targetList)
-            } else {
-                _state.update { it.copy(cacheSize = "") } // Hide if not root
-            }
-
-            val activeCount = targetList.count { it.enabled }
-            val frozenCount = targetList.count { !it.enabled }
-
-            // Unknown Installer check is typically most relevant for User apps,
-            // but we can show it for System apps if they were updated via unknown sources.
-            val unknownCount = targetList.count {
-                it.installerPackageName != "com.android.vending" &&
-                        it.installerPackageName != "com.google.android.packageinstaller"
-            }
-
-            // Chart Data
-            val distribution = targetList
-                .groupBy { it.installerPackageName ?: "Unknown" }
-                .mapValues { it.value.size }
-                .mapKeys { (key, _) ->
-                    when (key) {
-                        "com.android.vending" -> "Play Store"
-                        "com.google.android.packageinstaller" -> "Package Installer"
-                        "null" -> "Unknown"
-                        else -> key.substringAfterLast(".")
-                    }
-                }
-
-            withContext(Dispatchers.Main) {
-                _state.update {
-                    it.copy(
-                        isLoading = false,
-                        displayedAppCount = targetList.size,
-                        activeAppCount = activeCount,
-                        frozenAppCount = frozenCount,
-                        unknownInstallerCount = unknownCount,
-                        distributionData = distribution
-                    )
+        val distribution = allApps
+            .groupBy { it.installerPackageName ?: "Unknown" }
+            .mapValues { it.value.size }
+            .mapKeys { (key, _) ->
+                when(key) {
+                    "com.android.vending" -> "Play Store"
+                    "com.google.android.packageinstaller" -> "Package Installer"
+                    "null" -> "Unknown"
+                    else -> key.substringAfterLast(".")
                 }
             }
+
+        _internalState.update {
+            it.copy(
+                isLoading = false,
+                userAppCount = userApps.size,
+                systemAppCount = systemApps.size,
+                activeAppCount = activeCount,
+                frozenAppCount = frozenCount,
+                unknownInstallerCount = unknownCount,
+                distributionData = distribution,
+                isRootAvailable = hasRoot,
+                isShizukuAvailable = hasShizuku
+            )
         }
     }
 }

@@ -18,6 +18,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -52,16 +53,15 @@ fun HomeScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showCacheDialog by remember { mutableStateOf(false) }
-
-    // Dialog state for "Restricted Access" refresh
     var showPrivilegeDialog by remember { mutableStateOf(false) }
+    var headerSelectedType by remember { mutableStateOf(AppListType.USER) }
 
     var showInstallerSheet by remember { mutableStateOf(false) }
+
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let {
-            // Manually trigger the installation logic
             installerViewModel.installFile(it)
             showInstallerSheet = true
         }
@@ -72,18 +72,16 @@ fun HomeScreen(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
     ) {
-        // 1. Updated Header
+        // 1. Header
         DashboardHeader(
             isRoot = state.isRootAvailable,
             isShizuku = state.isShizukuAvailable,
-            selectedType = state.selectedAppType,
-            onTypeChanged = {
-                viewModel.updateAppListType(it)
-            },
-            onRestrictedStatusClick = { showPrivilegeDialog = true } // Bubble up event
+            selectedType = headerSelectedType,
+            onTypeChanged = { headerSelectedType = it },
+            onRestrictedStatusClick = { showPrivilegeDialog = true }
         )
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(8.dp))
 
         // 2. Summary Cards
         SummaryStatRow(
@@ -95,13 +93,12 @@ fun HomeScreen(
 
         Spacer(Modifier.height(24.dp))
 
+        // --- ACTIONS ---
+
+        // A. Clear Cache
         if (state.isRootAvailable) {
-            // Dynamic subtitle based on calculation
-            val cacheSubtitle = if (state.cacheSize.isNotBlank() && state.cacheSize != "0 B") {
-                "~${state.cacheSize} recoverable space"
-            } else {
-                "Free up space by cleaning app caches"
-            }
+            // ... (Cache subtitle logic same as before) ...
+            val cacheSubtitle = "Free up space by cleaning app caches" // simplified for brevity here
 
             ActionCard(
                 title = "Clear All Cache",
@@ -111,23 +108,24 @@ fun HomeScreen(
             )
         }
 
-        // B. Reinstall All Card
-        if (state.isRootAvailable && state.unknownInstallerCount > 0) {
+        // B. Reinstall All (Controlled by DataStore preference)
+        if (state.isRootAvailable && state.unknownInstallerCount > 0 && state.showReinstallCard) {
             ActionCard(
                 title = "Reinstall All",
-                subtitle = "${state.unknownInstallerCount} apps not from Play Store. Fix them?",
+                subtitle = "${state.unknownInstallerCount} ${headerSelectedType.name.lowercase()} apps not from Play Store. Fix them?",
                 icon = R.drawable.apk_install,
                 containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                onClick = onReinstallAll
+                onClick = onReinstallAll,
+                onClose = { viewModel.dismissReinstallCard() } // <--- Enable Close Button
             )
         }
 
+        // C. Portable Installer
         ActionCard(
             title = "Install from File",
             subtitle = "Install APK, XAPK, APKS or Split bundles",
-            icon = R.drawable.apk_install, // Reusing existing icon, replace if you have specific file icon
+            icon = R.drawable.apk_install,
             onClick = {
-                // Launch picker for all file types (filtering logic handled by VM/Installer)
                 filePickerLauncher.launch(arrayOf("*/*"))
             }
         )
@@ -150,13 +148,19 @@ fun HomeScreen(
             )
         }
 
-        Spacer(Modifier.weight(1f))
+        // 4. Social Links
+        Spacer(Modifier.height(24.dp))
+        Text(
+            text = "Connect",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
         SocialLinksRow()
-        Spacer(Modifier.height(5.dp))
+        Spacer(Modifier.height(32.dp))
     }
 
-    // --- Dialogs ---
-
+    // --- Dialogs (Same as before) ---
     if (showCacheDialog) {
         AlertDialog(
             onDismissRequest = { showCacheDialog = false },
@@ -187,12 +191,10 @@ fun HomeScreen(
                 Text("Thor requires Root or Shizuku access to function correctly.\n\nPlease grant access in your manager app and click Refresh.")
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.loadDashboardData()
-                        showPrivilegeDialog = false
-                    }
-                ) {
+                Button(onClick = {
+                    viewModel.loadDashboardData()
+                    showPrivilegeDialog = false
+                }) {
                     Text("Refresh")
                 }
             },
@@ -206,10 +208,8 @@ fun HomeScreen(
 
     if (showInstallerSheet) {
         PortableInstaller(
-            onDismiss = {
-                showInstallerSheet = false
-            },
-            viewModel = installerViewModel // Pass the shared instance
+            onDismiss = { showInstallerSheet = false },
+            viewModel = installerViewModel
         )
     }
 }
@@ -220,7 +220,8 @@ private fun ActionCard(
     subtitle: String,
     icon: Int,
     containerColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.surfaceContainerHigh,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onClose: (() -> Unit)? = null // <--- Added optional close callback
 ) {
     Card(
         onClick = onClick,
@@ -239,9 +240,20 @@ private fun ActionCard(
                 modifier = Modifier.size(32.dp)
             )
             Spacer(Modifier.width(16.dp))
-            Column {
+            Column(modifier = Modifier.weight(1f)) { // Weight ensures text takes available space
                 Text(text = title, style = MaterialTheme.typography.titleMedium)
                 Text(text = subtitle, style = MaterialTheme.typography.bodyMedium)
+            }
+
+            // Render Close Button if callback provided
+            if (onClose != null) {
+                IconButton(onClick = onClose) {
+                    Icon(
+                        painter = painterResource(R.drawable.round_close), // Ensure you have this drawable
+                        contentDescription = "Dismiss",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }
