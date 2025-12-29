@@ -5,6 +5,7 @@ import com.valhalla.thor.core.ThorShellConfig
 import com.valhalla.thor.di.commonModule
 import com.valhalla.thor.di.coreModule
 import com.valhalla.thor.di.installerModule
+import com.valhalla.thor.di.preferenceModule
 import com.valhalla.thor.di.presentationModule
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
@@ -19,6 +20,7 @@ class ThorApplication : Application(), KoinStartup {
         modules(
             coreModule,
             installerModule,
+            preferenceModule,
             commonModule,
             presentationModule
         )
