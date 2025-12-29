@@ -26,7 +26,8 @@ class RootSystemGateway(
     }
 
     override suspend fun clearCache(packageName: String): Result<Unit> {
-        return runCommand("rm -rf /data/data/$packageName/cache")
+        val command = "rm -rf /data/data/$packageName/cache /sdcard/Android/data/$packageName/cache"
+        return runCommand(command)
     }
 
     override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> {

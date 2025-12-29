@@ -5,36 +5,59 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.util.Locale
-import kotlin.math.log10
-import kotlin.math.pow
 
 class CacheScanner(
     private val systemRepository: SystemRepository
 ) {
 
-    suspend fun getTotalCacheSize(): String = withContext(Dispatchers.IO) {
+    /**
+     * Scans cache sizes using Root.
+     * @param filterPackageNames If provided, only calculates cache for these specific packages.
+     * This filters out "zombie" folders from uninstalled apps.
+     */
+    suspend fun getCacheSize(filterPackageNames: List<String>? = null): String = withContext(Dispatchers.IO) {
         if (!systemRepository.isRootAvailable()) {
             return@withContext "N/A"
         }
 
         try {
-            // Command explanation:
-            // du: disk usage
-            // -k: block-size=1K
-            // -S: separate-dirs (do not include size of subdirectories) - actually we want total, so maybe not -S.
-            // -c: produce a grand total
-            // We check common cache locations.
-            // Note: This is an estimation.
-            val command = "du -k -c /data/data/*/cache /data/user_de/0/*/cache /sdcard/Android/data/*/cache 2>/dev/null | tail -1 | awk '{print $1}'"
+            // Command: List summary (-s) in KB (-k) for all directories in standard cache locations.
+            // 2>/dev/null suppresses "Permission denied" or "No such file" errors
+            val command = "du -k -s /data/data/*/cache /sdcard/Android/data/*/cache 2>/dev/null"
 
             val process = Runtime.getRuntime().exec(arrayOf("su", "-c", command))
             val reader = BufferedReader(InputStreamReader(process.inputStream))
-            val output = reader.readLine()
+
+            var totalSizeKb = 0L
+            val filterSet = filterPackageNames?.toSet()
+
+            var line: String? = reader.readLine()
+            while (line != null) {
+                // Output format: "1234   /data/data/com.package/cache"
+                val parts = line.trim().split("\\s+".toRegex())
+
+                if (parts.size >= 2) {
+                    val size = parts[0].toLongOrNull() ?: 0L
+                    val path = parts[1]
+
+                    if (filterSet != null) {
+                        // Robustly extract package name.
+                        // It's the segment immediately preceding "/cache"
+                        val packageName = path.substringBeforeLast("/cache").substringAfterLast("/")
+
+                        if (packageName in filterSet) {
+                            totalSizeKb += size
+                        }
+                    } else {
+                        // No filter -> Add everything
+                        totalSizeKb += size
+                    }
+                }
+                line = reader.readLine()
+            }
             process.waitFor()
 
-            val sizeInKb = output?.toLongOrNull() ?: 0L
-            formatSize(sizeInKb * 1024) // Convert KB to Bytes then format
+            formatSize(totalSizeKb * 1024)
         } catch (e: Exception) {
             e.printStackTrace()
             "Error"
@@ -44,11 +67,7 @@ class CacheScanner(
     private fun formatSize(sizeBytes: Long): String {
         if (sizeBytes <= 0) return "0 B"
         val units = arrayOf("B", "KB", "MB", "GB", "TB")
-        val digitGroups = (log10(sizeBytes.toDouble()) / log10(1024.0)).toInt()
-        return String.format(
-            Locale.ENGLISH,
-            "%.1f %s",
-            sizeBytes / 1024.0.pow(digitGroups.toDouble()), units[digitGroups]
-        )
+        val digitGroups = (Math.log10(sizeBytes.toDouble()) / Math.log10(1024.0)).toInt()
+        return String.format("%.1f %s", sizeBytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
     }
 }

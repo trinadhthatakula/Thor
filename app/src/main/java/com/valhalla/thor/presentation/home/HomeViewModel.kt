@@ -29,7 +29,7 @@ data class HomeUiState(
     val unknownInstallerCount: Int = 0,
 
     val distributionData: Map<String, Int> = emptyMap(),
-    val cacheSize: String = "Calculating...",
+    val cacheSize: String = "",
     // Status
     val isRootAvailable: Boolean = false,
     val isShizukuAvailable: Boolean = false
@@ -63,12 +63,6 @@ class HomeViewModel(
             val hasRoot = systemRepository.isRootAvailable()
             val hasShizuku = systemRepository.isShizukuAvailable()
 
-            if (hasRoot) {
-                scanCache()
-            } else {
-                _state.update { it.copy(cacheSize = "") } // Hide if not root
-            }
-
             _state.update { it.copy(isRootAvailable = hasRoot, isShizukuAvailable = hasShizuku) }
 
             getInstalledAppsUseCase().collect { (userApps, systemApps) ->
@@ -81,9 +75,11 @@ class HomeViewModel(
         }
     }
 
-    private fun scanCache() {
+    private fun scanCache(allApps: List<AppInfo>) {
         viewModelScope.launch(Dispatchers.IO) {
-            val size = cacheScanner.getTotalCacheSize()
+            // Filter: Only count cache for apps we currently know about.
+            val packageNames = allApps.map { it.packageName }
+            val size = cacheScanner.getCacheSize(packageNames)
             _state.update { it.copy(cacheSize = size) }
         }
     }
@@ -98,6 +94,14 @@ class HomeViewModel(
 
         // Calculate on Default dispatcher to avoid UI jank if list is huge
         viewModelScope.launch(Dispatchers.Default) {
+
+            val hasRoot = _state.value.isRootAvailable
+            if (hasRoot) {
+                scanCache(targetList)
+            } else {
+                _state.update { it.copy(cacheSize = "") } // Hide if not root
+            }
+
             val activeCount = targetList.count { it.enabled }
             val frozenCount = targetList.count { !it.enabled }
 
