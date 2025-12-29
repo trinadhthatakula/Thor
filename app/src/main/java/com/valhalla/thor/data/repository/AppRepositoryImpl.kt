@@ -1,6 +1,9 @@
 package com.valhalla.thor.data.repository
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
@@ -9,9 +12,13 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.repository.AppRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -21,23 +28,77 @@ class AppRepositoryImpl(
 
     private val pm = context.packageManager
 
-    override fun getAllApps(): Flow<List<AppInfo>> = flow {
-        // ... (Previous lightweight implementation) ...
-        // I will include the full method here for completeness in your file
-        val flags = PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong()
-        val installedPackages = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(flags))
-        } else {
-            pm.getInstalledPackages(PackageManager.MATCH_UNINSTALLED_PACKAGES)
+    /**
+     * RUTHLESS OPTIMIZATION V2:
+     * We debounce the TRIGGER to prevent heavy package scanning during batch operations.
+     */
+    override fun getAllApps(): Flow<List<AppInfo>> = callbackFlow {
+
+        // A conflated channel acts as a signal buffer.
+        // If 50 broadcasts come in, we only keep the latest "refresh needed" flag.
+        val triggerChannel = Channel<Unit>(Channel.CONFLATED)
+
+        // The Worker: Consumes triggers, waits for quiet, then fetches ONCE.
+        val worker = launch(Dispatchers.IO) {
+            // Initial load
+            triggerChannel.send(Unit)
+
+            for (signal in triggerChannel) {
+                // Wait for the broadcast storm to settle (e.g. 500ms after last signal)
+                delay(500L)
+
+                // Drain any extra signals that arrived while we were waiting
+                while (triggerChannel.tryReceive().isSuccess) {
+                    // Do nothing, just consume them so we don't loop immediately again
+                }
+
+                // Now Perform the Heavy Fetch ONE time
+                try {
+                    val flags = PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong()
+                    val installedPackages = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(flags))
+                    } else {
+                        pm.getInstalledPackages(PackageManager.MATCH_UNINSTALLED_PACKAGES)
+                    }
+
+                    val list = installedPackages.mapNotNull { packInfo ->
+                        val appInfo = packInfo.applicationInfo ?: return@mapNotNull null
+                        mapToAppInfo(packInfo, appInfo, isLightweight = true)
+                    }
+
+                    trySend(list)
+                } catch (e: Exception) {
+                    if (BuildConfig.DEBUG) e.printStackTrace()
+                }
+            }
         }
 
-        val list = installedPackages.mapNotNull { packInfo ->
-            val appInfo = packInfo.applicationInfo ?: return@mapNotNull null
-            mapToAppInfo(packInfo, appInfo, isLightweight = true)
+        // Register Receiver
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                // Signal the worker to refresh. Non-blocking.
+                triggerChannel.trySend(Unit)
+            }
         }
-        emit(list)
+
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_FULLY_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_REPLACED)
+            addAction(Intent.ACTION_PACKAGE_CHANGED)
+            addDataScheme("package")
+        }
+
+        context.registerReceiver(receiver, filter)
+
+        awaitClose {
+            context.unregisterReceiver(receiver)
+            worker.cancel()
+        }
     }.flowOn(Dispatchers.IO)
 
+    // ... (rest of the file remains unchanged) ...
     override suspend fun getAppDetails(packageName: String): AppInfo? =
         withContext(Dispatchers.IO) {
             try {
@@ -49,7 +110,6 @@ class AppRepositoryImpl(
                 }
                 val appInfo = packInfo.applicationInfo ?: return@withContext null
 
-                // mapToAppInfo with isLightweight = false triggers the OBB/Data checks
                 mapToAppInfo(packInfo, appInfo, isLightweight = false)
             } catch (e: Exception) {
                 if (BuildConfig.DEBUG)
@@ -73,16 +133,10 @@ class AppRepositoryImpl(
         } ?: return@withContext null
 
         mapToAppInfo(packInfo, appInfo, isLightweight = false).apply {
-            // Override with specific APK metadata
             this.appName = pm.getApplicationLabel(appInfo).toString()
-            // Note: Icons usually need to be loaded into an ImageView directly or cached,
-            // storing the Drawable in a data class is bad practice (memory leaks).
-            // We store the path or URI usually. For now, sticking to your String-based model.
         }
     }
 
-    // --- The Mapper ---
-    // Single source of truth for converting Android objects to Thor objects
     private fun mapToAppInfo(
         packInfo: android.content.pm.PackageInfo,
         appInfo: ApplicationInfo,
@@ -101,7 +155,6 @@ class AppRepositoryImpl(
             publicSourceDir = appInfo.publicSourceDir,
             splitPublicSourceDirs = appInfo.splitPublicSourceDirs?.toList() ?: emptyList(),
             enabled = appInfo.enabled,
-            // enabledState = pm.getApplicationEnabledSetting(packInfo.packageName), // Warning: This can be slow, use cautiously
             dataDir = appInfo.dataDir,
             nativeLibraryDir = appInfo.nativeLibraryDir,
             deviceProtectedDataDir = appInfo.deviceProtectedDataDir,
@@ -111,11 +164,8 @@ class AppRepositoryImpl(
             isDebuggable = isDebuggable
         )
 
-        // The "Heavy" Logic - Only run if explicitly requested
         if (!isLightweight) {
             mapped.sharedLibraryFiles = appInfo.sharedLibraryFiles?.toList() ?: emptyList()
-
-            // OBB Check
             val obbFile = File(
                 Environment.getExternalStorageDirectory(),
                 "Android/obb/${appInfo.packageName}"
@@ -123,8 +173,6 @@ class AppRepositoryImpl(
             if (obbFile.exists()) {
                 mapped.obbFilePath = obbFile.absolutePath
             }
-
-            // Data Dir Check
             val dataFile = File(
                 Environment.getExternalStorageDirectory(),
                 "Android/data/${appInfo.packageName}"
