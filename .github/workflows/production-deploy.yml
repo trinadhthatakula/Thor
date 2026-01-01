@@ -2,14 +2,14 @@ name: Production Release & Distribute
 
 on:
   push:
-    branches: [ "production" ] # Runs ONLY when you promote to production
+    branches: [ "production" ]
   workflow_dispatch:
 
 jobs:
   release-distribute:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # Required for creating GitHub Releases
 
     steps:
       - name: Checkout code
@@ -31,6 +31,7 @@ jobs:
       - name: Install Fastlane
         run: gem install fastlane
 
+      # --- SECRET DECODING ---
       - name: Decode Keystore
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -44,32 +45,32 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      # --- FASTLANE (Builds & Uploads to Play Store) ---
+      # --- FASTLANE EXECUTION ---
+      # This step builds the app, uploads to Play Store, and writes version_name.txt
       - name: Run Fastlane (Build & Distribute)
         env:
           SUPPLY_JSON_KEY: ${{ github.workspace }}/app/google-play-api.json
+          # Secrets passed to env so Gradle (called by Fastlane) can sign the app
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEYSTORE_FILE_PATH: ${{ github.workspace }}/app/release.jks
         run: fastlane android distribute
 
-      # --- Extract app version from Gradle for tagging ---
-      - name: Get app version name
+      # --- VERSION SYNC ---
+      # We read the file Fastlane created to get the exact version name (e.g., 1.71.0)
+      - name: Read Version Name
         id: get_app_version
         run: |
-          VERSION_NAME=$(grep -m1 'versionName' app/build.gradle | sed 's/.*versionName[[:space:]]*"\(.*\)".*/\1/')
-          if [ -z "$VERSION_NAME" ]; then
-            echo "Failed to determine VERSION_NAME from app/build.gradle" >&2
-            exit 1
-          fi
+          VERSION_NAME=$(cat version_name.txt)
+          echo "Detected Dynamic Version: $VERSION_NAME"
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
 
       # --- GITHUB RELEASE (FOSS APK for IzzyOnDroid, a FOSS Android app repo that pulls from GitHub releases: https://apt.izzysoft.de/fdroid/) ---
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          # Tag and release name based on actual app version
+          # Tag is now perfectly synced with the Play Store release
           tag_name: v${{ steps.get_app_version.outputs.version_name }}
           name: Release v${{ steps.get_app_version.outputs.version_name }}
           files: app/build/outputs/apk/foss/release/foss-release.apk

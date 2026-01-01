@@ -125,10 +125,14 @@ android {
 androidComponents {
     onVariants(selector().withFlavor("distribution", "foss")) { variant ->
         if (variant.buildType == "release") {
+            val apkDir = variant.artifacts.get(SingleArtifact.APK)
             tasks.register<Copy>("copyFossReleaseApk") {
-                from(variant.artifacts.get(SingleArtifact.APK))
+                dependsOn("assembleFossRelease")
+                from(apkDir) {
+                    include("*.apk")
+                }
                 into(layout.buildDirectory.dir("outputs/apk/foss/release"))
-                rename { "foss-release.apk" }
+                rename(".*\\.apk", "foss-release.apk")
             }
         }
     }

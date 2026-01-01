@@ -4,32 +4,43 @@ platform :android do
   desc "Build and Distribute with Auto-Incremented Version Code"
   lane :distribute do
 
-    # Validate SUPPLY_JSON_KEY environment variable
-    json_key_path = ENV["SUPPLY_JSON_KEY"]
-    if json_key_path.to_s.strip.empty?
-      UI.user_error!("Environment variable SUPPLY_JSON_KEY must be set to the path of your Google Play service account JSON key file.")
-    elsif !File.file?(json_key_path)
-      UI.user_error!("The file specified by SUPPLY_JSON_KEY does not exist or is not a regular file: #{json_key_path}")
-    end
-
+    # ---------------------------------------------------------
     # 1. FETCH LATEST VERSION FROM GOOGLE PLAY
-    # We look at the 'internal' track. Change to 'production' if that's your baseline.
+    # ---------------------------------------------------------
+    # We check the 'internal' track. Change to 'production' if that is your baseline.
     begin
       latest_version = google_play_track_version_codes(
         track: "internal",
         package_name: "com.valhalla.thor",
-        json_key: json_key_path
+        json_key: ENV["SUPPLY_JSON_KEY"]
       ).max
     rescue => ex
-      # Fallback if it's the first upload ever or connection fails
       UI.error("Could not fetch version from Play Store: #{ex}")
+      # Fallback for fresh apps
       latest_version = 1709
     end
 
     new_version_code = (latest_version || 1709) + 1
-    UI.message("🚀 Preparing to build Version Code: #{new_version_code}")
 
-    # 2. BUILD STORE AAB (With new version code)
+    # ---------------------------------------------------------
+    # 2. CALCULATE VERSION NAME (Must match Gradle logic)
+    # Logic: 1710 -> 1.71.0
+    # ---------------------------------------------------------
+    major = new_version_code / 1000
+    minor = (new_version_code % 1000) / 10
+    patch = new_version_code % 10
+    new_version_name = "#{major}.#{minor}.#{patch}"
+
+    UI.message("🚀 Preparing to build Version: #{new_version_name} (Code: #{new_version_code})")
+
+    # CRITICAL: Write version name to a file so GitHub Actions can read it later
+    File.write("../version_name.txt", new_version_name)
+
+    # ---------------------------------------------------------
+    # 3. BUILD ARTIFACTS (Injected with new version code)
+    # ---------------------------------------------------------
+
+    # Build Store AAB
     gradle(
       task: "bundleStoreRelease",
       properties: {
@@ -37,8 +48,7 @@ platform :android do
       }
     )
 
-    # 3. BUILD FOSS APK (With new version code)
-    # This ensures your GitHub Release matches your Play Store version
+    # Build FOSS APK (Synced version)
     gradle(
       task: "copyFossReleaseApk",
       properties: {
@@ -46,19 +56,17 @@ platform :android do
       }
     )
 
+    # ---------------------------------------------------------
     # 4. UPLOAD TO PLAY STORE
+    # ---------------------------------------------------------
     upload_to_play_store(
-      track: 'alpha', # Change to 'production' when ready
-      release_status: 'completed',
+      track: 'internal',
+      release_status: 'completed', # 'completed' = immediate rollout to testers. Use 'draft' to manually review.
       aab: '../app/build/outputs/bundle/storeRelease/app-store-release.aab',
       skip_upload_metadata: true,
       skip_upload_images: true,
       skip_upload_screenshots: true,
-      skip_upload_apk: true
+      skip_upload_apk: true # We only upload AAB to Play Store
     )
-
-    # NOTE: We don't upload to GitHub here.
-    # The artifact 'foss-release.apk' is now sitting in the build folder,
-    # ready for the GitHub Action to pick it up in the next step.
   end
 end
