@@ -1,0 +1,2 @@
+json_key_file("../app/google-play-api.json") # The file we decoded in the Action
+package_name("com.valhalla.thor")

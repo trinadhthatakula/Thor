@@ -1,0 +1,56 @@
+default_platform(:android)
+
+platform :android do
+  desc "Build and Distribute with Auto-Incremented Version Code"
+  lane :distribute do
+
+    # 1. FETCH LATEST VERSION FROM GOOGLE PLAY
+    # We look at the 'internal' track. Change to 'production' if that's your baseline.
+    begin
+      latest_version = google_play_track_version_codes(
+        track: "internal",
+        package_name: "com.valhalla.thor",
+        json_key: ENV["SUPPLY_JSON_KEY"]
+      ).max
+    rescue => ex
+      # Fallback if it's the first upload ever or connection fails
+      UI.error("Could not fetch version from Play Store: #{ex}")
+      latest_version = 1709
+    end
+
+    new_version_code = (latest_version || 1709) + 1
+    UI.message("🚀 Preparing to build Version Code: #{new_version_code}")
+
+    # 2. BUILD STORE AAB (With new version code)
+    gradle(
+      task: "bundleStoreRelease",
+      properties: {
+        "versionCode" => new_version_code
+      }
+    )
+
+    # 3. BUILD FOSS APK (With new version code)
+    # This ensures your GitHub Release matches your Play Store version
+    gradle(
+      task: "copyFossReleaseApk",
+      properties: {
+        "versionCode" => new_version_code
+      }
+    )
+
+    # 4. UPLOAD TO PLAY STORE
+    upload_to_play_store(
+      track: 'alpha', # Change to 'production' when ready
+      release_status: 'completed',
+      aab: '../app/build/outputs/bundle/storeRelease/app-store-release.aab',
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      skip_upload_apk: true
+    )
+
+    # NOTE: We don't upload to GitHub here.
+    # The artifact 'foss-release.apk' is now sitting in the build folder,
+    # ready for the GitHub Action to pick it up in the next step.
+  end
+end
