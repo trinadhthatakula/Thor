@@ -4,13 +4,21 @@ platform :android do
   desc "Build and Distribute with Auto-Incremented Version Code"
   lane :distribute do
 
+    # Validate SUPPLY_JSON_KEY environment variable
+    json_key_path = ENV["SUPPLY_JSON_KEY"]
+    if json_key_path.to_s.strip.empty?
+      UI.user_error!("Environment variable SUPPLY_JSON_KEY must be set to the path of your Google Play service account JSON key file.")
+    elsif !File.file?(json_key_path)
+      UI.user_error!("The file specified by SUPPLY_JSON_KEY does not exist or is not a regular file: #{json_key_path}")
+    end
+
     # 1. FETCH LATEST VERSION FROM GOOGLE PLAY
     # We look at the 'internal' track. Change to 'production' if that's your baseline.
     begin
       latest_version = google_play_track_version_codes(
         track: "internal",
-        package_name: CredentialsManager::AppfileConfig.try_fetch_value(:app_identifier),
-        json_key: ENV["SUPPLY_JSON_KEY"]
+        package_name: "com.valhalla.thor",
+        json_key: json_key_path
       ).max
     rescue => ex
       # Fallback if it's the first upload ever or connection fails
