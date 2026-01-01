@@ -26,6 +26,24 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+fun calculateVersionName(code: Int): String {
+    // Logic: 1709 -> 1.70.9
+    val major = code / 1000
+    val minor = (code % 1000) / 10
+    val patch = code % 10
+    return "$major.$minor.$patch"
+}
+
+// Helper task for Fastlane to retrieve the version name
+tasks.register("printVersionName") {
+    // Read the -PversionCode property passed from command line
+    val code = (project.findProperty("versionCode") as? String)?.toIntOrNull() ?: 1709
+    doLast {
+        // Output ONLY the version name to stdout
+        println(calculateVersionName(code))
+    }
+}
+
 android {
     namespace = "com.valhalla.thor"
     compileSdk = 36
@@ -36,10 +54,7 @@ android {
         targetSdk = 36
         val code = (project.findProperty("versionCode") as? String)?.toIntOrNull() ?: 1709
         versionCode = code
-        val major = code / 1000
-        val minor = (code % 1000) / 10
-        val patch = code % 10
-        versionName = "$major.$minor.$patch"
+        versionName = calculateVersionName(code)
         println("🔨 Building Version: $versionName (Code: $versionCode)")
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

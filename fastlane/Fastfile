@@ -4,40 +4,35 @@ platform :android do
   desc "Build and Distribute with Auto-Incremented Version Code"
   lane :distribute do
 
-    # ---------------------------------------------------------
     # 0. SETUP CONTEXT
-    # ---------------------------------------------------------
     app_id = CredentialsManager::AppfileConfig.try_fetch_value(:package_name)
     UI.message("🚀 Starting Distribution for: #{app_id}")
 
-    # ---------------------------------------------------------
     # 1. FETCH LATEST VERSION
-    # ---------------------------------------------------------
     begin
-      # Fastlane automatically pulls package_name and json_key from Appfile
       latest_version = google_play_track_version_codes(
         track: "internal"
       ).max
     rescue FastlaneCore::Interface::FastlaneError => ex
-      # Only catch specific Fastlane errors (e.g., track not found, first run)
       UI.error("⚠️ Could not fetch version from Play Store: #{ex}")
-      # Fallback if the app is brand new
       latest_version = 1709
     end
 
     new_version_code = (latest_version || 1709) + 1
 
     # ---------------------------------------------------------
-    # 2. CALCULATE VERSION NAME
+    # 2. CALCULATE VERSION NAME (Via Gradle SSOT)
     # ---------------------------------------------------------
-    major = new_version_code / 1000
-    minor = (new_version_code % 1000) / 10
-    patch = new_version_code % 10
-    new_version_name = "#{major}.#{minor}.#{patch}"
+    UI.message("Run Gradle to calculate Version Name for Code: #{new_version_code}...")
 
-    UI.message("🔨 Building Version: #{new_version_name} (Code: #{new_version_code})")
+    # We call the task we just created.
+    # -q (quiet) suppresses Gradle logs so we only get the println output
+    # -PversionCode passes the new number to Gradle
+    new_version_name = sh("../gradlew -q app:printVersionName -PversionCode=#{new_version_code}").strip
 
-    # CRITICAL: Write version name to a file so GitHub Actions can read it
+    UI.message("✅ Gradle returned Version Name: #{new_version_name}")
+
+    # Write to file for GitHub Actions
     File.write("../version_name.txt", new_version_name)
 
     # ---------------------------------------------------------
@@ -52,11 +47,9 @@ platform :android do
       }
     )
 
-    # DYNAMIC PATH RETRIEVAL
     generated_aab_path = lane_context[SharedValues::GRADLE_AAB_OUTPUT_PATH]
-
     unless generated_aab_path
-      UI.user_error!("❌ Gradle failed to return an AAB path. Check the build logs.")
+      UI.user_error!("❌ Gradle failed to return an AAB path.")
     end
 
     # Build FOSS APK
@@ -78,7 +71,6 @@ platform :android do
       skip_upload_images: true,
       skip_upload_screenshots: true,
       skip_upload_apk: true
-      # package_name and json_key are inherited from Appfile implicitly
     )
   end
 end

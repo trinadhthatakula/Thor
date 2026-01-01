@@ -2,14 +2,14 @@ name: Production Release & Distribute
 
 on:
   push:
-    branches: [ "production" ]
-  workflow_dispatch:
+    branches: [ "production" ] # Runs ONLY when you push/merge to production
+  workflow_dispatch: # Allows manual trigger from GitHub UI
 
 jobs:
   release-distribute:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Required for creating GitHub Releases
+      contents: write # REQUIRED for creating GitHub Releases
 
     steps:
       - name: Checkout code
@@ -32,11 +32,13 @@ jobs:
         run: gem install fastlane
 
       # --- SECRET DECODING ---
+      # 1. Decode the Keystore File
       - name: Decode Keystore
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > app/release.jks
 
+      # 2. Decode the Google Play Service Account JSON
       - name: Decode Google Play Service Account
         env:
           PLAY_STORE_JSON_KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
@@ -46,11 +48,18 @@ jobs:
         run: chmod +x gradlew
 
       # --- FASTLANE EXECUTION ---
-      # This step builds the app, uploads to Play Store, and writes version_name.txt
+      # This step:
+      # 1. Fetches version from Play Store
+      # 2. Builds Store AAB & FOSS APK (with synced version codes)
+      # 3. Uploads AAB to Internal Track
+      # 4. Writes 'version_name.txt' for the next step
       - name: Run Fastlane (Build & Distribute)
         env:
-          SUPPLY_JSON_KEY: ${{ github.workspace }}/app/google-play-api.json
-          # Secrets passed to env so Gradle (called by Fastlane) can sign the app
+          # Path Configuration
+          JSON_KEY_FILE: ${{ github.workspace }}/app/google-play-api.json
+          SUPPLY_JSON_KEY: ${{ github.workspace }}/app/google-play-api.json # Legacy fallback
+
+          # Signing Secrets (Passed to Gradle via Fastlane)
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -66,7 +75,7 @@ jobs:
           echo "Detected Dynamic Version: $VERSION_NAME"
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
 
-      # --- GITHUB RELEASE (FOSS APK for IzzyOnDroid, a FOSS Android app repo that pulls from GitHub releases: https://apt.izzysoft.de/fdroid/) ---
+      # --- GITHUB RELEASE (For FOSS/IzzyOnDroid) ---
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:

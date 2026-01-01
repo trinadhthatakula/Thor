@@ -4,11 +4,13 @@
       <w>Appfile</w>
       <w>chown</w>
       <w>dcim</w>
+      <w>fastlane</w>
       <w>fira</w>
       <w>hmmss</w>
       <w>shellout</w>
       <w>shizuku</w>
       <w>xapk</w>
+      <w>zulu</w>
     </words>
   </dictionary>
 </component>

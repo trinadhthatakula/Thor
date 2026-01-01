@@ -1,6 +1,6 @@
-# The "Global Context" for all Android Lanes
 package_name("com.valhalla.thor")
 
-# Path to the JSON key (Relative to the 'fastlane' folder)
-# This works for both Local runs (if you have the file) and CI (where we create it)
-json_key_file("../app/google-play-api.json")
+# DYNAMIC KEY PATH
+# 1. Tries to use the Environment Variable (Great for CI or Custom paths)
+# 2. Falls back to the relative path (Great for local defaults)
+json_key_file(ENV["JSON_KEY_FILE"] || "../app/google-play-api.json")
