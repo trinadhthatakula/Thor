@@ -54,13 +54,24 @@ jobs:
           KEYSTORE_FILE_PATH: ${{ github.workspace }}/app/release.jks
         run: fastlane android distribute
 
+      # --- Extract app version from Gradle for tagging ---
+      - name: Get app version name
+        id: get_app_version
+        run: |
+          VERSION_NAME=$(grep -m1 'versionName' app/build.gradle | sed 's/.*versionName[[:space:]]*"\(.*\)".*/\1/')
+          if [ -z "$VERSION_NAME" ]; then
+            echo "Failed to determine VERSION_NAME from app/build.gradle" >&2
+            exit 1
+          fi
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+
       # --- GITHUB RELEASE (For FOSS/IzzyOnDroid) ---
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          # Use the run number to ensure uniqueness
-          tag_name: v1.70.${{ github.run_number }}
-          name: Release v1.70.${{ github.run_number }}
+          # Tag and release name based on actual app version
+          tag_name: v${{ steps.get_app_version.outputs.version_name }}
+          name: Release v${{ steps.get_app_version.outputs.version_name }}
           files: app/build/outputs/apk/foss/release/foss-release.apk
           draft: false
           prerelease: false
