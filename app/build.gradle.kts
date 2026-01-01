@@ -34,8 +34,7 @@ android {
         applicationId = "com.valhalla.thor"
         minSdk = 28
         targetSdk = 36
-        val fallbackCode = providers.gradleProperty("initialVersionCode").getOrElse("1709").toInt()
-        val code = (project.findProperty("versionCode") as? String)?.toIntOrNull() ?: fallbackCode
+        val code = resolveVersionCode()
         versionCode = code
         versionName = calculateVersionName(code)
         println("🔨 Building Version: $versionName (Code: $versionCode)")
@@ -167,6 +166,10 @@ dependencies {
     implementation(libs.bundles.koin)
 }
 
+private fun resolveVersionCode(): Int {
+    val fallbackCode = providers.gradleProperty("initialVersionCode").getOrElse("1709").toInt()
+    return (project.findProperty("versionCode") as? String)?.toIntOrNull() ?: fallbackCode
+}
 
 fun calculateVersionName(code: Int): String {
     // Logic: 1709 -> 1.70.9
@@ -178,11 +181,8 @@ fun calculateVersionName(code: Int): String {
 
 // Helper task for Fastlane to retrieve the version name
 tasks.register("printVersionName") {
-    // Read the -PversionCode property passed from command line
-    val fallbackCode = providers.gradleProperty("initialVersionCode").getOrElse("1709").toInt()
-    val code = (project.findProperty("versionCode") as? String)?.toIntOrNull() ?: fallbackCode
     doLast {
         // Output ONLY the version name to stdout
-        println(calculateVersionName(code))
+        println(calculateVersionName(resolveVersionCode()))
     }
 }

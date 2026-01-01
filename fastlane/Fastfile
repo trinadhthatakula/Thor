@@ -8,12 +8,17 @@ platform :android do
     app_id = CredentialsManager::AppfileConfig.try_fetch_value(:package_name)
     UI.message("🚀 Starting Distribution for: #{app_id}")
 
-    # 1. READ FALLBACK CONFIG
+    # 1. READ FALLBACK CONFIG (Robust Parsing)
     properties_path = "../gradle.properties"
     initial_version_code = 1709
 
     if File.exist?(properties_path)
-      properties = File.foreach(properties_path).grep(/=/).map { |l| l.strip.split('=') }.to_h
+      properties = File.readlines(properties_path)
+        .map(&:strip)
+        .reject { |l| l.start_with?('#') || l.empty? }
+        .map { |l| l.split('=', 2).map(&:strip) }
+        .to_h
+
       if properties["initialVersionCode"]
         initial_version_code = properties["initialVersionCode"].to_i
         UI.message("Found initialVersionCode: #{initial_version_code}")
@@ -50,6 +55,7 @@ platform :android do
       UI.user_error!("❌ Gradle failed to return an AAB path.")
     end
 
+    # Note: 'copyFossReleaseApk' dependsOn 'assembleFossRelease' internally in Gradle
     gradle(
       task: "copyFossReleaseApk",
       properties: { "versionCode" => new_version_code }
