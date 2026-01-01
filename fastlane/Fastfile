@@ -8,43 +8,53 @@ platform :android do
     app_id = CredentialsManager::AppfileConfig.try_fetch_value(:package_name)
     UI.message("🚀 Starting Distribution for: #{app_id}")
 
-    # 1. FETCH LATEST VERSION
+    # ---------------------------------------------------------
+    # 1. READ CONFIGURATION (Single Source of Truth)
+    # ---------------------------------------------------------
+    # Helper to read gradle.properties
+    properties_path = "../gradle.properties"
+    initial_version_code = 1709 # Absolute fallback safety
+
+    if File.exist?(properties_path)
+      properties = File.foreach(properties_path).grep(/=/).map { |l| l.strip.split('=') }.to_h
+      if properties["initialVersionCode"]
+        initial_version_code = properties["initialVersionCode"].to_i
+        UI.message("Found initialVersionCode in gradle.properties: #{initial_version_code}")
+      end
+    end
+
+    # ---------------------------------------------------------
+    # 2. FETCH LATEST VERSION
+    # ---------------------------------------------------------
     begin
-      latest_version = google_play_track_version_codes(
+      latest_version_from_store = google_play_track_version_codes(
         track: "internal"
       ).max
     rescue FastlaneCore::Interface::FastlaneError => ex
       UI.error("⚠️ Could not fetch version from Play Store: #{ex}")
-      latest_version = 1709
+      latest_version_from_store = nil
     end
 
-    new_version_code = (latest_version || 1709) + 1
+    # LOGIC REFACTOR (Cleaner & Explicit)
+    # Use store version if available, otherwise fallback to property file
+    latest_version = latest_version_from_store || initial_version_code
+    new_version_code = latest_version + 1
 
     # ---------------------------------------------------------
-    # 2. CALCULATE VERSION NAME (Via Gradle SSOT)
+    # 3. CALCULATE VERSION NAME (Via Gradle SSOT)
     # ---------------------------------------------------------
     UI.message("Run Gradle to calculate Version Name for Code: #{new_version_code}...")
 
-    # We call the task we just created.
-    # -q (quiet) suppresses Gradle logs so we only get the println output
-    # -PversionCode passes the new number to Gradle
     new_version_name = sh("../gradlew -q app:printVersionName -PversionCode=#{new_version_code}").strip
-
     UI.message("✅ Gradle returned Version Name: #{new_version_name}")
-
-    # Write to file for GitHub Actions
     File.write("../version_name.txt", new_version_name)
 
     # ---------------------------------------------------------
-    # 3. BUILD ARTIFACTS
+    # 4. BUILD ARTIFACTS
     # ---------------------------------------------------------
-
-    # Build Store AAB
     gradle(
       task: "bundleStoreRelease",
-      properties: {
-        "versionCode" => new_version_code
-      }
+      properties: { "versionCode" => new_version_code }
     )
 
     generated_aab_path = lane_context[SharedValues::GRADLE_AAB_OUTPUT_PATH]
@@ -52,16 +62,13 @@ platform :android do
       UI.user_error!("❌ Gradle failed to return an AAB path.")
     end
 
-    # Build FOSS APK
     gradle(
       task: "copyFossReleaseApk",
-      properties: {
-        "versionCode" => new_version_code
-      }
+      properties: { "versionCode" => new_version_code }
     )
 
     # ---------------------------------------------------------
-    # 4. UPLOAD TO PLAY STORE
+    # 5. UPLOAD TO PLAY STORE
     # ---------------------------------------------------------
     upload_to_play_store(
       track: 'internal',
