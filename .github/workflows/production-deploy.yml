@@ -65,7 +65,7 @@ jobs:
           fi
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
 
-      # --- GITHUB RELEASE (For FOSS/IzzyOnDroid) ---
+      # --- GITHUB RELEASE (FOSS APK for IzzyOnDroid, a FOSS Android app repo that pulls from GitHub releases: https://apt.izzysoft.de/fdroid/) ---
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
