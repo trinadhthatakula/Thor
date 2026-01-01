@@ -9,7 +9,7 @@ platform :android do
     begin
       latest_version = google_play_track_version_codes(
         track: "internal",
-        package_name: "com.valhalla.thor",
+        package_name: CredentialsManager::AppfileConfig.try_fetch_value(:app_identifier),
         json_key: ENV["SUPPLY_JSON_KEY"]
       ).max
     rescue => ex
