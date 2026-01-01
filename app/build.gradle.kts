@@ -1,13 +1,12 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.FileInputStream
 import java.util.Properties
+import com.android.build.api.artifact.SingleArtifact // REQUIRED IMPORT
 
 plugins {
     alias(libs.plugins.android.application)
-    //alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlinSerialization)
-    //alias(libs.plugins.baselineprofile)
 }
 
 kotlin {
@@ -28,7 +27,6 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-
     namespace = "com.valhalla.thor"
     compileSdk = 36
 
@@ -36,17 +34,15 @@ android {
         applicationId = "com.valhalla.thor"
         minSdk = 28
         targetSdk = 36
-        versionCode = 1709
-        versionName = "1.70.9"
+        val code = resolveVersionCode()
+        versionCode = code
+        versionName = calculateVersionName(code)
+        println("🔨 Building Version: $versionName (Code: $versionCode)")
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             debugSymbolLevel = "SYMBOL_TABLE"
         }
-    }
-    dependenciesInfo {
-        includeInApk = false
-        includeInBundle = false
     }
 
     signingConfigs {
@@ -56,9 +52,14 @@ android {
                 keyPassword = keystoreProperties["keyPassword"] as String
                 storeFile = file(keystoreProperties["storeFile"] as String)
                 storePassword = keystoreProperties["storePassword"] as String
+            } else if (System.getenv("KEY_ALIAS") != null) {
+                // CI/CD Build (GitHub Actions)
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                storeFile = file(System.getenv("KEYSTORE_FILE_PATH") ?: "release.jks")
             } else {
-                // Fallback for when you haven't set up the file yet (e.g. initial clone)
-                println("⚠️ keystore.properties not found. Release build will not be signed properly.")
+                println("⚠️ keystore.properties not found or environment variables not set. Release build will not be signed properly.")
             }
         }
     }
@@ -91,6 +92,7 @@ android {
             proguardFile("proguard-rules-foss.pro")
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
@@ -99,10 +101,6 @@ android {
     buildFeatures {
         buildConfig = true
         compose = true
-    }
-
-    configurations.all {
-        exclude(group = "com.intellij", module = "annotations")
     }
 
     packaging {
@@ -121,12 +119,24 @@ android {
     }
 }
 
+androidComponents {
+    onVariants(selector().withFlavor("distribution", "foss")) { variant ->
+        if (variant.buildType == "release") {
+            val apkDir = variant.artifacts.get(SingleArtifact.APK)
+            tasks.register<Copy>("copyFossReleaseApk") {
+                dependsOn("assembleFossRelease")
+                from(apkDir) {
+                    include("*.apk")
+                }
+                into(layout.buildDirectory.dir("outputs/apk/foss/release"))
+                rename(".*\\.apk", "foss-release.apk")
+            }
+        }
+    }
+}
+
 dependencies {
-
     implementation(project(":suCore"))
-    //implementation(libs.androidx.navigation.compose)
-    //"baselineProfile"(project(":app:baselineprofile"))
-
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.splashscreen)
     implementation(libs.androidx.core.ktx)
@@ -143,24 +153,36 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
-
     implementation(libs.accompanist.drawablepainter)
-
-    ///Kotlinx
     implementation(libs.kotlinx.serialization.json)
-
     implementation(libs.lottie.compose)
-
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
     implementation(libs.hiddenapibypass)
-
     implementation(libs.bundles.coil)
-
     implementation(libs.bundles.koin)
+}
 
+private fun resolveVersionCode(): Int {
+    val fallbackCode = providers.gradleProperty("initialVersionCode").getOrElse("1709").toInt()
+    return (project.findProperty("versionCode") as? String)?.toIntOrNull() ?: fallbackCode
+}
+
+fun calculateVersionName(code: Int): String {
+    // Logic: 1709 -> 1.70.9
+    val major = code / 1000
+    val minor = (code % 1000) / 10
+    val patch = code % 10
+    return "$major.$minor.$patch"
+}
+
+// Helper task for Fastlane to retrieve the version name
+tasks.register("printVersionName") {
+    doLast {
+        // Output ONLY the version name to stdout
+        println(calculateVersionName(resolveVersionCode()))
+    }
 }

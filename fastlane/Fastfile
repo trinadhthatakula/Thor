@@ -1,0 +1,82 @@
+default_platform(:android)
+
+platform :android do
+  desc "Build and Distribute with Auto-Incremented Version Code"
+  lane :distribute do
+
+    # 0. SETUP
+    app_id = CredentialsManager::AppfileConfig.try_fetch_value(:package_name)
+    UI.message("🚀 Starting Distribution for: #{app_id}")
+
+    # 1. READ CONFIGURATION (Strict Mode)
+    properties_path = "../gradle.properties"
+
+    # STRICT CHECK: Fail if the Source of Truth is missing
+    unless File.exist?(properties_path)
+      UI.user_error!("❌ gradle.properties not found at #{properties_path}. Cannot determine version code.")
+    end
+
+    # ROBUST PARSING
+    properties = File.readlines(properties_path)
+      .map(&:strip)
+      .reject { |l| l.start_with?('#') || l.empty? }
+      .map { |l| l.split('=', 2).map(&:strip) }
+      .to_h
+
+    # STRICT CHECK: Fail if the property is missing
+    unless properties["initialVersionCode"]
+      UI.user_error!("❌ 'initialVersionCode' not found in gradle.properties. Please define it.")
+    end
+
+    initial_version_code = properties["initialVersionCode"].to_i
+    UI.message("✅ Loaded initialVersionCode: #{initial_version_code}")
+
+    # 2. FETCH LATEST VERSION
+    begin
+      latest_version_from_store = google_play_track_version_codes(
+        track: "internal"
+      ).max
+    rescue FastlaneCore::Interface::FastlaneError => ex
+      UI.error("⚠️ Could not fetch version from Play Store: #{ex}")
+      latest_version_from_store = nil
+    end
+
+    # Logic: Use store version if available, otherwise strictly use the property file
+    latest_version = latest_version_from_store || initial_version_code
+    new_version_code = latest_version + 1
+
+    # 3. CALCULATE VERSION NAME (Call Gradle)
+    UI.message("Calculating Version Name for Code: #{new_version_code}...")
+    new_version_name = sh("../gradlew -q app:printVersionName -PversionCode=#{new_version_code}").strip
+    UI.message("✅ Gradle returned: #{new_version_name}")
+    File.write("../version_name.txt", new_version_name)
+
+    # 4. BUILD ARTIFACTS
+    gradle(
+      task: "bundleStoreRelease",
+      properties: { "versionCode" => new_version_code }
+    )
+
+    generated_aab_path = lane_context[SharedValues::GRADLE_AAB_OUTPUT_PATH]
+    unless generated_aab_path
+      UI.user_error!("❌ Gradle failed to return an AAB path.")
+    end
+
+    # Note: 'copyFossReleaseApk' dependsOn 'assembleFossRelease'
+    gradle(
+      task: "copyFossReleaseApk",
+      properties: { "versionCode" => new_version_code }
+    )
+
+    # 5. UPLOAD
+    upload_to_play_store(
+      track: 'internal',
+      release_status: 'completed',
+      aab: generated_aab_path,
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      skip_upload_apk: true
+    )
+  end
+end
