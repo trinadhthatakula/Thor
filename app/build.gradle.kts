@@ -124,7 +124,7 @@ android {
 }
 
 androidComponents {
-    onVariants(selector().withFlavor(Pair("distribution", "foss"))) { variant ->
+    onVariants(selector().withFlavor("distribution", "foss")) { variant ->
         if (variant.buildType == "release") {
             tasks.register<Copy>("copyFossReleaseApk") {
                 from(variant.artifacts.get(SingleArtifact.APK))
