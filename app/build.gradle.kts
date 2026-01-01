@@ -61,7 +61,7 @@ android {
                 keyPassword = System.getenv("KEY_PASSWORD")
                 storePassword = System.getenv("KEYSTORE_PASSWORD")
                 storeFile = file(System.getenv("KEYSTORE_FILE_PATH") ?: "release.jks")
-            }else{
+            } else {
                 println("⚠️ keystore.properties not found or environment variables not set. Release build will not be signed properly.")
             }
         }
