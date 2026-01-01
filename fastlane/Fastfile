@@ -4,28 +4,23 @@ platform :android do
   desc "Build and Distribute with Auto-Incremented Version Code"
   lane :distribute do
 
-    # 0. SETUP CONTEXT
+    # 0. SETUP
     app_id = CredentialsManager::AppfileConfig.try_fetch_value(:package_name)
     UI.message("🚀 Starting Distribution for: #{app_id}")
 
-    # ---------------------------------------------------------
-    # 1. READ CONFIGURATION (Single Source of Truth)
-    # ---------------------------------------------------------
-    # Helper to read gradle.properties
+    # 1. READ FALLBACK CONFIG
     properties_path = "../gradle.properties"
-    initial_version_code = 1709 # Absolute fallback safety
+    initial_version_code = 1709
 
     if File.exist?(properties_path)
       properties = File.foreach(properties_path).grep(/=/).map { |l| l.strip.split('=') }.to_h
       if properties["initialVersionCode"]
         initial_version_code = properties["initialVersionCode"].to_i
-        UI.message("Found initialVersionCode in gradle.properties: #{initial_version_code}")
+        UI.message("Found initialVersionCode: #{initial_version_code}")
       end
     end
 
-    # ---------------------------------------------------------
     # 2. FETCH LATEST VERSION
-    # ---------------------------------------------------------
     begin
       latest_version_from_store = google_play_track_version_codes(
         track: "internal"
@@ -35,23 +30,16 @@ platform :android do
       latest_version_from_store = nil
     end
 
-    # LOGIC REFACTOR (Cleaner & Explicit)
-    # Use store version if available, otherwise fallback to property file
     latest_version = latest_version_from_store || initial_version_code
     new_version_code = latest_version + 1
 
-    # ---------------------------------------------------------
-    # 3. CALCULATE VERSION NAME (Via Gradle SSOT)
-    # ---------------------------------------------------------
-    UI.message("Run Gradle to calculate Version Name for Code: #{new_version_code}...")
-
+    # 3. CALCULATE VERSION NAME (Call Gradle)
+    UI.message("Calculating Version Name for Code: #{new_version_code}...")
     new_version_name = sh("../gradlew -q app:printVersionName -PversionCode=#{new_version_code}").strip
-    UI.message("✅ Gradle returned Version Name: #{new_version_name}")
+    UI.message("✅ Gradle returned: #{new_version_name}")
     File.write("../version_name.txt", new_version_name)
 
-    # ---------------------------------------------------------
     # 4. BUILD ARTIFACTS
-    # ---------------------------------------------------------
     gradle(
       task: "bundleStoreRelease",
       properties: { "versionCode" => new_version_code }
@@ -67,9 +55,7 @@ platform :android do
       properties: { "versionCode" => new_version_code }
     )
 
-    # ---------------------------------------------------------
-    # 5. UPLOAD TO PLAY STORE
-    # ---------------------------------------------------------
+    # 5. UPLOAD
     upload_to_play_store(
       track: 'internal',
       release_status: 'completed',
