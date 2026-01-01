@@ -40,7 +40,7 @@ platform :android do
     # 3. BUILD FOSS APK (With new version code)
     # This ensures your GitHub Release matches your Play Store version
     gradle(
-      task: "copyFossReleaseApk",
+      task: "assembleFossRelease copyFossReleaseApk",
       properties: {
         "versionCode" => new_version_code
       }
