@@ -1,2 +1,6 @@
-json_key_file("../app/google-play-api.json") # The file we decoded in the Action
+# The "Global Context" for all Android Lanes
 package_name("com.valhalla.thor")
+
+# Path to the JSON key (Relative to the 'fastlane' folder)
+# This works for both Local runs (if you have the file) and CI (where we create it)
+json_key_file("../app/google-play-api.json")
