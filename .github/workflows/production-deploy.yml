@@ -67,7 +67,7 @@ jobs:
 
       # --- GITHUB RELEASE (FOSS APK for IzzyOnDroid, a FOSS Android app repo that pulls from GitHub releases: https://apt.izzysoft.de/fdroid/) ---
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           # Tag and release name based on actual app version
           tag_name: v${{ steps.get_app_version.outputs.version_name }}
