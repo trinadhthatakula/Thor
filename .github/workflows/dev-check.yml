@@ -46,10 +46,10 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEYSTORE_FILE_PATH: ${{ github.workspace }}/app/release.jks
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleStoreDebug
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: dev-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: dev-debug-signed
+          path: app/build/outputs/apk/store/debug/app-store-debug.apk
