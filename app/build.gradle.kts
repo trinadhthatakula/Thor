@@ -1,13 +1,12 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.FileInputStream
 import java.util.Properties
+import com.android.build.api.artifact.SingleArtifact // REQUIRED IMPORT
 
 plugins {
     alias(libs.plugins.android.application)
-    //alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlinSerialization)
-    //alias(libs.plugins.baselineprofile)
 }
 
 kotlin {
@@ -28,7 +27,6 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-
     namespace = "com.valhalla.thor"
     compileSdk = 36
 
@@ -36,17 +34,18 @@ android {
         applicationId = "com.valhalla.thor"
         minSdk = 28
         targetSdk = 36
-        versionCode = 1709
-        versionName = "1.70.9"
+        val code = (project.findProperty("versionCode") as? String)?.toIntOrNull() ?: 1709
+        versionCode = code
+        val major = code / 1000
+        val minor = (code % 1000) / 10
+        val patch = code % 10
+        versionName = "$major.$minor.$patch"
+        println("🔨 Building Version: $versionName (Code: $versionCode)")
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             debugSymbolLevel = "SYMBOL_TABLE"
         }
-    }
-    dependenciesInfo {
-        includeInApk = false
-        includeInBundle = false
     }
 
     signingConfigs {
@@ -56,9 +55,14 @@ android {
                 keyPassword = keystoreProperties["keyPassword"] as String
                 storeFile = file(keystoreProperties["storeFile"] as String)
                 storePassword = keystoreProperties["storePassword"] as String
-            } else {
-                // Fallback for when you haven't set up the file yet (e.g. initial clone)
-                println("⚠️ keystore.properties not found. Release build will not be signed properly.")
+            } else if (System.getenv("KEY_ALIAS") != null) {
+                // CI/CD Build (GitHub Actions)
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                storeFile = file(System.getenv("KEYSTORE_FILE_PATH") ?: "release.jks")
+            }else{
+                println("⚠️ keystore.properties not found or environment variables not set. Release build will not be signed properly.")
             }
         }
     }
@@ -75,6 +79,7 @@ android {
         }
         debug {
             applicationIdSuffix = ".debug"
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
@@ -91,6 +96,7 @@ android {
             proguardFile("proguard-rules-foss.pro")
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
@@ -99,10 +105,6 @@ android {
     buildFeatures {
         buildConfig = true
         compose = true
-    }
-
-    configurations.all {
-        exclude(group = "com.intellij", module = "annotations")
     }
 
     packaging {
@@ -121,12 +123,20 @@ android {
     }
 }
 
+androidComponents {
+    onVariants(selector().withFlavor(Pair("distribution", "foss"))) { variant ->
+        if (variant.buildType == "release") {
+            tasks.register<Copy>("copyFossReleaseApk") {
+                from(variant.artifacts.get(SingleArtifact.APK))
+                into(layout.buildDirectory.dir("outputs/apk/foss/release"))
+                rename { "foss-release.apk" }
+            }
+        }
+    }
+}
+
 dependencies {
-
     implementation(project(":suCore"))
-    //implementation(libs.androidx.navigation.compose)
-    //"baselineProfile"(project(":app:baselineprofile"))
-
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.splashscreen)
     implementation(libs.androidx.core.ktx)
@@ -143,24 +153,15 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
-
     implementation(libs.accompanist.drawablepainter)
-
-    ///Kotlinx
     implementation(libs.kotlinx.serialization.json)
-
     implementation(libs.lottie.compose)
-
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
     implementation(libs.hiddenapibypass)
-
     implementation(libs.bundles.coil)
-
     implementation(libs.bundles.koin)
-
 }
