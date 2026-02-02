@@ -41,9 +41,15 @@ platform :android do
       latest_version_from_store = nil
     end
 
-    # Logic: Use store version if available, otherwise strictly use the property file
-    latest_version = latest_version_from_store || initial_version_code
-    new_version_code = latest_version + 1
+    # Logic:
+    # - If a store version exists, increment from the higher of store and initialVersionCode
+    # - If no store version exists, use initialVersionCode as-is for the first release
+    if latest_version_from_store.nil?
+      new_version_code = initial_version_code
+    else
+      latest_version = [latest_version_from_store, initial_version_code].max
+      new_version_code = latest_version + 1
+    end
 
     # 3. CALCULATE VERSION NAME (Call Gradle)
     UI.message("Calculating Version Name for Code: #{new_version_code}...")

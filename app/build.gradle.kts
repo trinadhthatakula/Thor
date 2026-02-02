@@ -167,8 +167,9 @@ dependencies {
 }
 
 private fun resolveVersionCode(): Int {
-    val fallbackCode = providers.gradleProperty("initialVersionCode").getOrElse("1709").toInt()
-    return (project.findProperty("versionCode") as? String)?.toIntOrNull() ?: fallbackCode
+    val initialVersionCode = providers.gradleProperty("initialVersionCode").orNull
+        ?: throw GradleException("Required Gradle property 'initialVersionCode' is missing. Define it in gradle.properties.")
+    return (project.findProperty("versionCode") as? String)?.toIntOrNull() ?: initialVersionCode.toInt()
 }
 
 fun calculateVersionName(code: Int): String {
