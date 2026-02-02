@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">Thor</string>
+    <string name="title_activity_script_runner">脚本运行器</string>
+    <string name="title_activity_home">主页</string>
+    <string name="home">主页</string>
+    <string name="home_desc">主页</string>
+    <string name="apps_desc">显示所有可用应用程序的列表</string>
+    <string name="apps">应用列表</string>
+    <string name="freezer_desc">从这里冻结/解冻应用程序</string>
+    <string name="freezer">应用冻结</string>
+    <string name="settings">设置</string>
+    <string name="settings_desc">设置页面以更改应用设置</string>
+</resources>
