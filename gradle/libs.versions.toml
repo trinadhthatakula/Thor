@@ -1,8 +1,8 @@
 [versions]
 accompanistDrawablepainter = "0.37.3"
-agp = "9.1.0-alpha07"
+agp = "9.1.0-alpha08"
 datastorePreferences = "1.2.0"
-kotlin = "2.3.0"
+kotlin = "2.3.10"
 coreKtx = "1.17.0"
 junit = "4.13.2"
 room = "2.8.4"
