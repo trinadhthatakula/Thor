@@ -34,3 +34,31 @@ jobs:
         with:
           name: store-debug-apk
           path: app/build/outputs/apk/store/debug/app-store-debug.apk
+
+      - name: Send APK to Telegram
+        if: success()
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          APK_PATH="app/build/outputs/apk/store/debug/app-store-debug.apk"
+          
+          if [ ! -f "$APK_PATH" ]; then
+            echo "Error: APK not found at $APK_PATH"
+            exit 1
+          fi
+
+          echo "Sending $APK_PATH to Telegram..."
+          
+          # Create a caption with commit details
+          CAPTION="🚀 *Thor (Valhalla) Dev Build*
+          
+          branch: ${{ github.ref_name }}
+          author: ${{ github.actor }}
+          event: ${{ github.event_name }}"
+
+          curl -v -F "chat_id=$TELEGRAM_CHAT_ID" \
+               -F "document=@$APK_PATH" \
+               -F "caption=$CAPTION" \
+               -F "parse_mode=Markdown" \
+               "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendDocument"
