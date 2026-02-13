@@ -445,7 +445,7 @@ private fun AppItemList(
             .animateExpressiveResize()
             // 2. Makes the card squish slightly when touched
             .expressivePress(interactionSource)
-            .combinedClickable(interactionSource = interactionSource,onClick = onClick, onLongClick = onLongClick)
+            .combinedClickable(interactionSource = interactionSource, onClick = onClick, onLongClick = onLongClick)
             .background(
                 if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
                 else MaterialTheme.colorScheme.surface

@@ -37,7 +37,6 @@ android {
         val code = resolveVersionCode()
         versionCode = code
         versionName = calculateVersionName(code)
-        println("🔨 Building Version: $versionName (Code: $versionCode)")
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
@@ -59,7 +58,7 @@ android {
                 storePassword = System.getenv("KEYSTORE_PASSWORD")
                 storeFile = file(System.getenv("KEYSTORE_FILE_PATH") ?: "release.jks")
             } else {
-                println("⚠️ keystore.properties not found or environment variables not set. Release build will not be signed properly.")
+                logger.warn("⚠️ keystore.properties not found or environment variables not set. Release build will not be signed properly.")
             }
         }
     }
