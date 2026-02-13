@@ -58,8 +58,8 @@ platform :android do
 
     UI.message("✅ Calculated Version Name: #{new_version_name}")
 
-    # Save version name for the GitHub Actions workflow to pick up
-    version_name_file = File.join(fastlane_dir, "version_name.txt")
+    # Save version name for the GitHub Actions workflow to pick up (in project root for GitHub Actions)
+    version_name_file = File.join(project_root, "version_name.txt")
     File.write(version_name_file, new_version_name)
 
     # --- 4. BUILD ARTIFACTS ---
