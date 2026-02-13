@@ -30,9 +30,9 @@ fun Modifier.animateExpressiveResize(): Modifier {
  * Best for Cards, Boxes, or custom Buttons that need tactile feedback.
  */
 fun Modifier.expressivePress(
+    interactionSource: MutableInteractionSource,
     scaleOnPress: Float = 0.95f
 ): Modifier = composed {
-    val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
     // Use 'fastSpatialSpec' for micro-interactions like touches
@@ -46,8 +46,5 @@ fun Modifier.expressivePress(
         .graphicsLayer {
             scaleX = scale
             scaleY = scale
-        }
-        .clickable(interactionSource = interactionSource, indication = null) {
-            // Handle click logic here or chain another clickable
         }
 }

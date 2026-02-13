@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -437,13 +438,14 @@ private fun AppItemList(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     ListItem(
         modifier = Modifier
             // 1. Makes the height change fluid and bouncy
             .animateExpressiveResize()
             // 2. Makes the card squish slightly when touched
-            .expressivePress()
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .expressivePress(interactionSource)
+            .combinedClickable(interactionSource = interactionSource,onClick = onClick, onLongClick = onLongClick)
             .background(
                 if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
                 else MaterialTheme.colorScheme.surface
@@ -482,6 +484,7 @@ private fun AppItemGrid(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
@@ -489,13 +492,13 @@ private fun AppItemGrid(
             // 1. Makes the height change fluid and bouncy
             .animateExpressiveResize()
             // 2. Makes the card squish slightly when touched
-            .expressivePress()
+            .expressivePress(interactionSource)
             .clip(RoundedCornerShape(12.dp))
             .background(
                 if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
                 else MaterialTheme.colorScheme.surfaceContainerLow
             )
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .combinedClickable(interactionSource = interactionSource, onClick = onClick, onLongClick = onLongClick)
             .padding(12.dp)
     ) {
         Box {
