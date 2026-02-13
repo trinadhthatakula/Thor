@@ -80,6 +80,8 @@ import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.asGeneralName
 import com.valhalla.thor.domain.model.filterTypes
+import com.valhalla.thor.presentation.theme.animateExpressiveResize
+import com.valhalla.thor.presentation.theme.expressivePress
 import com.valhalla.thor.presentation.utils.AppIconModel
 import com.valhalla.thor.presentation.utils.popularInstallers
 
@@ -437,6 +439,10 @@ private fun AppItemList(
 ) {
     ListItem(
         modifier = Modifier
+            // 1. Makes the height change fluid and bouncy
+            .animateExpressiveResize()
+            // 2. Makes the card squish slightly when touched
+            .expressivePress()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .background(
                 if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
@@ -480,6 +486,10 @@ private fun AppItemGrid(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .padding(4.dp)
+            // 1. Makes the height change fluid and bouncy
+            .animateExpressiveResize()
+            // 2. Makes the card squish slightly when touched
+            .expressivePress()
             .clip(RoundedCornerShape(12.dp))
             .background(
                 if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
