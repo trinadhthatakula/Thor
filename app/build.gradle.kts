@@ -129,7 +129,8 @@ androidComponents {
                 from(apkDir) {
                     include("*.apk")
                 }
-                into(layout.buildDirectory.dir("outputs/apk/foss/release"))
+                // CHANGED: Move output to a separate 'distribution' folder to avoid locking issues
+                into(layout.buildDirectory.dir("distribution/foss"))
                 rename(".*\\.apk", "foss-release.apk")
             }
         }

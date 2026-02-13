@@ -67,7 +67,7 @@ jobs:
         with:
           tag_name: v${{ steps.get_app_version.outputs.version_name }}
           name: Release v${{ steps.get_app_version.outputs.version_name }}
-          files: app/build/outputs/apk/foss/release/foss-release.apk
+          files: app/build/distribution/foss/foss-release.apk
           draft: false
           prerelease: false
         env:
