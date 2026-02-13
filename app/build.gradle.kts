@@ -167,24 +167,31 @@ dependencies {
     implementation(libs.bundles.koin)
 }
 
+val currentVersionCode = resolveVersionCode()
+val currentVersionName = calculateVersionName(currentVersionCode)
+
 private fun resolveVersionCode(): Int {
     val initialVersionCode = providers.gradleProperty("initialVersionCode").orNull
         ?: throw GradleException("Required Gradle property 'initialVersionCode' is missing. Define it in gradle.properties.")
-    return (project.findProperty("versionCode") as? String)?.toIntOrNull() ?: initialVersionCode.toInt()
+
+    // access project.findProperty strictly during configuration
+    return (project.findProperty("versionCode") as? String)?.toIntOrNull()
+        ?: initialVersionCode.toInt()
 }
 
 fun calculateVersionName(code: Int): String {
-    // Logic: 1709 -> 1.70.9
     val major = code / 1000
     val minor = (code % 1000) / 10
     val patch = code % 10
     return "$major.$minor.$patch"
 }
 
-// Helper task for Fastlane to retrieve the version name
 tasks.register("printVersionName") {
+    // 2. Capture the CALCULATED value, not the function
+    val vName = currentVersionName
+
     doLast {
-        // Output ONLY the version name to stdout
-        println(calculateVersionName(resolveVersionCode()))
+        // 3. Now this block only holds a String, which is serializable. Safe!
+        println(vName)
     }
 }
