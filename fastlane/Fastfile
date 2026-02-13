@@ -78,7 +78,7 @@ platform :android do
 
     # Build the APK for the GitHub Release (FOSS flavor)
     gradle(
-      task: "assembleFossRelease",
+      task: "copyFossReleaseApk",
       project_dir: project_root,
       properties: { "versionCode" => new_version_code }
     )
