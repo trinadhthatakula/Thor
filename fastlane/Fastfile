@@ -1,23 +1,20 @@
 default_platform(:android)
 
 platform :android do
-  desc "Build and Distribute with Auto-Incremented Version Code"
-  lane :distribute do
 
-    # --- 0. PREPARATION ---
-    # Define roots to avoid relative path confusion later
+  # --- HELPER: Common Build Logic ---
+  def prepare_release_artifacts(upload_to_store: false)
+    # 1. PREPARATION
     fastlane_dir = Dir.pwd
     project_root = File.expand_path("..", fastlane_dir)
     gradle_properties_path = File.join(project_root, "gradle.properties")
 
-    # --- 1. CONFIGURATION ---
-    UI.message("📝 Reading configuration from: #{gradle_properties_path}")
-
+    # 2. CONFIGURATION & CHECKS
+    UI.message("📝 Reading configuration...")
     unless File.exist?(gradle_properties_path)
       UI.user_error!("❌ gradle.properties not found at #{gradle_properties_path}")
     end
 
-    # Robust Property Parsing (Handles spaces, comments, and empty lines)
     properties = File.readlines(gradle_properties_path)
                      .map(&:strip)
                      .reject { |l| l.empty? || l.start_with?('#') }
@@ -25,74 +22,83 @@ platform :android do
                      .to_h
 
     initial_version_code = properties["initialVersionCode"]&.to_i
-    UI.user_error!("❌ 'initialVersionCode' missing in gradle.properties") unless initial_version_code
+    UI.user_error!("❌ 'initialVersionCode' missing") unless initial_version_code
 
-    # --- 2. VERSION MANAGEMENT ---
+    # 3. VERSION MANAGEMENT (From Play Store)
     UI.message("🔎 Fetching latest version from Play Store (Internal Track)...")
-
     begin
-      # Fetch all version codes from the track to find the max
       latest_store_codes = google_play_track_version_codes(track: "internal")
       latest_version_from_store = latest_store_codes.max
-    rescue StandardError => ex
-      UI.important("⚠️  Could not fetch version from Play Store (First run?): #{ex.message}")
+    rescue => ex
+      UI.important("⚠️  Could not fetch version: #{ex.message}")
       latest_version_from_store = nil
     end
 
     if latest_version_from_store.nil?
       new_version_code = initial_version_code
-      UI.message("🆕 No existing Store version found. Starting with initial: #{new_version_code}")
+      UI.message("🆕 Starting with initial: #{new_version_code}")
     else
-      # Ensure we never go backwards, even if initialVersionCode is lower than Store
       new_version_code = [latest_version_from_store, initial_version_code].max + 1
       UI.message("⬆️  Incrementing version: #{latest_version_from_store} -> #{new_version_code}")
     end
 
-    # --- 3. VERSION NAME CALCULATION ---
-    # CRITICAL FIX: Run this command specifically from the project root
+    # 4. CALCULATE VERSION NAME
     new_version_name = ""
     Dir.chdir(project_root) do
-      # We use -q (quiet) to ensure we only capture the print output
       new_version_name = sh("./gradlew -q app:printVersionName -PversionCode=#{new_version_code}").strip
     end
 
-    UI.message("✅ Calculated Version Name: #{new_version_name}")
+    UI.message("✅ Version Name: #{new_version_name}")
+    File.write(File.join(project_root, "version_name.txt"), new_version_name)
+    File.write(File.join(project_root, "version_code.txt"), new_version_code.to_s)
 
-    # Save version name for the GitHub Actions workflow to pick up (in project root for GitHub Actions)
-    version_name_file = File.join(project_root, "version_name.txt")
-    File.write(version_name_file, new_version_name)
+    # 5. BUILD ARTIFACTS
+    # We build:
+    # - Store Bundle (AAB) -> For Play Store Upload
+    # - Store APK -> For GitHub Release / Manual Testing
+    # - FOSS APK -> For GitHub Release / Manual Testing
+    build_tasks = "clean copyStoreReleaseApk copyFossReleaseApk"
 
-    # --- 4. BUILD ARTIFACTS ---
-    # Clean is mandatory for production builds to avoid caching issues
+    # Only build the bundle if we intend to upload, or if we want it as an artifact
+    build_tasks += " bundleStoreRelease"
+
     gradle(
-      task: "clean bundleStoreRelease",
-      project_dir: project_root, # Explicitly tell Fastlane where the root is
+      task: build_tasks,
+      project_dir: project_root,
       properties: {
-        "versionCode" => new_version_code
+        "versionCode" => new_version_code,
+        "android.injected.version.code" => new_version_code
       }
     )
 
-    generated_aab_path = lane_context[SharedValues::GRADLE_AAB_OUTPUT_PATH]
-    UI.user_error!("❌ Gradle failed to return an AAB path.") unless generated_aab_path
+    # 6. DEPLOY (Conditional)
+    if upload_to_store
+      generated_aab_path = lane_context[SharedValues::GRADLE_AAB_OUTPUT_PATH]
+      UI.user_error!("❌ No AAB generated") unless generated_aab_path
 
-    # Build the APK for the GitHub Release (FOSS flavor)
-    gradle(
-      task: "copyFossReleaseApk",
-      project_dir: project_root,
-      properties: { "versionCode" => new_version_code }
-    )
-
-    # --- 5. DEPLOY ---
-    upload_to_play_store(
-      track: 'internal',
-      release_status: 'completed',
-      aab: generated_aab_path,
-      skip_upload_metadata: true,
-      skip_upload_images: true,
-      skip_upload_screenshots: true,
-      skip_upload_apk: true
-    )
-
-    UI.success("🚀 Successfully deployed version #{new_version_name} (#{new_version_code})!")
+      upload_to_play_store(
+        track: 'internal',
+        release_status: 'completed',
+        aab: generated_aab_path,
+        skip_upload_metadata: true,
+        skip_upload_images: true,
+        skip_upload_screenshots: true,
+        skip_upload_apk: true
+      )
+      UI.success("🚀 Deployed to Play Store!")
+    else
+      UI.success("📦 Artifacts built successfully (Upload skipped)")
+    end
   end
+
+  desc "Build and Distribute to Play Store + GitHub"
+  lane :distribute do
+    prepare_release_artifacts(upload_to_store: true)
+  end
+
+  desc "Build Release Candidates Only (No Play Store Upload)"
+  lane :build_release_candidates do
+    prepare_release_artifacts(upload_to_store: false)
+  end
+
 end

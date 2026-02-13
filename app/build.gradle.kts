@@ -121,17 +121,28 @@ android {
 }
 
 androidComponents {
+    // 1. Existing FOSS Copy Task
     onVariants(selector().withFlavor("distribution", "foss")) { variant ->
         if (variant.buildType == "release") {
             val apkDir = variant.artifacts.get(SingleArtifact.APK)
             tasks.register<Copy>("copyFossReleaseApk") {
                 dependsOn("assembleFossRelease")
-                from(apkDir) {
-                    include("*.apk")
-                }
-                // CHANGED: Move output to a separate 'distribution' folder to avoid locking issues
+                from(apkDir) { include("*.apk") }
                 into(layout.buildDirectory.dir("distribution/foss"))
                 rename(".*\\.apk", "foss-release.apk")
+            }
+        }
+    }
+
+    // 2. NEW: Store Copy Task (Added for GitHub Releases)
+    onVariants(selector().withFlavor("distribution", "store")) { variant ->
+        if (variant.buildType == "release") {
+            val apkDir = variant.artifacts.get(SingleArtifact.APK)
+            tasks.register<Copy>("copyStoreReleaseApk") {
+                dependsOn("assembleStoreRelease")
+                from(apkDir) { include("*.apk") }
+                into(layout.buildDirectory.dir("distribution/store"))
+                rename(".*\\.apk", "store-release.apk")
             }
         }
     }

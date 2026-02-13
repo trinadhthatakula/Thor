@@ -1,15 +1,13 @@
-name: Production Release & Distribute
+name: Manual Build (No Upload)
 
 on:
-  push:
-    branches: [ "production" ]
   workflow_dispatch:
 
 jobs:
-  release-distribute:
+  build-only:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - name: Checkout code
@@ -30,7 +28,7 @@ jobs:
       - name: Install Fastlane
         run: gem install fastlane
 
-      # --- SECRET DECODING ---
+      # --- SECRET DECODING (Required for Play Store Version Check & Signing) ---
       - name: Decode Keystore
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -45,7 +43,7 @@ jobs:
         run: chmod +x gradlew
 
       # --- FASTLANE ---
-      - name: Run Fastlane (Build & Distribute)
+      - name: Run Fastlane (Build Candidates)
         env:
           JSON_KEY_FILE: ${{ github.workspace }}/app/google-play-api.json
           SUPPLY_JSON_KEY: ${{ github.workspace }}/app/google-play-api.json
@@ -53,27 +51,22 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEYSTORE_FILE_PATH: ${{ github.workspace }}/app/release.jks
-        run: fastlane android distribute
+        run: fastlane android build_release_candidates
 
-      # --- SYNC & RELEASE ---
-      - name: Read Version Name
-        id: get_app_version
+      # --- ARTIFACT UPLOAD ---
+      - name: Read Version Info
+        id: version_info
         run: |
-          VERSION_NAME=$(cat version_name.txt)
-          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "VERSION_NAME=$(cat version_name.txt)" >> $GITHUB_ENV
+          echo "VERSION_CODE=$(cat version_code.txt)" >> $GITHUB_ENV
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload APKs to GitHub Actions
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: v${{ steps.get_app_version.outputs.version_name }}
-          name: Release v${{ steps.get_app_version.outputs.version_name }}
-          files: |
+          name: Thor-v${{ env.VERSION_NAME }}-Build-${{ env.VERSION_CODE }}
+          path: |
             app/build/distribution/foss/foss-release.apk
             app/build/distribution/store/store-release.apk
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # --- SECURITY CLEANUP ---
       - name: Cleanup sensitive files
