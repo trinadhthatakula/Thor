@@ -68,8 +68,7 @@ platform :android do
       task: "clean bundleStoreRelease",
       project_dir: project_root, # Explicitly tell Fastlane where the root is
       properties: {
-        "versionCode" => new_version_code,
-        "android.injected.version.code" => new_version_code # Safety injection
+        "versionCode" => new_version_code
       }
     )
 
