@@ -39,7 +39,7 @@ jobs:
       - name: Decode Google Play Service Account
         env:
           PLAY_STORE_JSON_KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
-        run: echo "$PLAY_STORE_JSON_KEY" > app/google-play-api.json
+        run: echo "$PLAY_STORE_JSON_KEY" | base64 --decode > app/google-play-api.json
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew

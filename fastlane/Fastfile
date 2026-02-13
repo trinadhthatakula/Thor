@@ -9,7 +9,7 @@ platform :android do
     UI.message("🚀 Starting Distribution for: #{app_id}")
 
     # 1. READ CONFIGURATION (Strict Mode)
-    properties_path = "../gradle.properties"
+    properties_path = File.expand_path("../gradle.properties", __dir__)
 
     # STRICT CHECK: Fail if the Source of Truth is missing
     unless File.exist?(properties_path)
@@ -53,9 +53,11 @@ platform :android do
 
     # 3. CALCULATE VERSION NAME (Call Gradle)
     UI.message("Calculating Version Name for Code: #{new_version_code}...")
-    new_version_name = sh("../gradlew -q app:printVersionName -PversionCode=#{new_version_code}").strip
+    gradlew_path = File.expand_path("../gradlew", __dir__)
+    new_version_name = sh("#{gradlew_path} -q app:printVersionName -PversionCode=#{new_version_code}").strip
     UI.message("✅ Gradle returned: #{new_version_name}")
-    File.write("../version_name.txt", new_version_name)
+    version_name_path = File.expand_path("../version_name.txt", __dir__)
+    File.write(version_name_path, new_version_name)
 
     # 4. BUILD ARTIFACTS
     gradle(

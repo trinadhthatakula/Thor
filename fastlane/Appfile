@@ -2,5 +2,8 @@ package_name("com.valhalla.thor")
 
 # DYNAMIC KEY PATH
 # 1. Tries to use ENV["JSON_KEY_FILE"] (CI/CD)
-# 2. Falls back to relative path (Local)
-json_key_file(ENV["JSON_KEY_FILE"] || "../app/google-play-api.json")
+# 2. Falls back to path relative to this file (Local)
+json_key_file(
+  ENV["JSON_KEY_FILE"] ||
+  File.expand_path("../app/google-play-api.json", __dir__)
+)
