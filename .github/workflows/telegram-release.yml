@@ -2,6 +2,16 @@ name: Telegram Release
 
 on:
   workflow_dispatch:
+    inputs:
+      version_code:
+        description: 'Specific Version Code (Leave empty to use latest Store version)'
+        required: false
+        type: string
+      increment:
+        description: 'Increment Version? (Only used if Version Code is empty)'
+        required: true
+        type: boolean
+        default: false
 
 jobs:
   build-and-announce:
@@ -43,6 +53,7 @@ jobs:
         run: chmod +x gradlew
 
       # --- BUILD ARTIFACTS ---
+      # Updated to pass inputs to Fastlane
       - name: Run Fastlane (Build Candidates)
         env:
           JSON_KEY_FILE: ${{ github.workspace }}/app/google-play-api.json
@@ -51,7 +62,16 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEYSTORE_FILE_PATH: ${{ github.workspace }}/app/release.jks
-        run: fastlane android build_release_candidates
+          # Map inputs to Env Vars (cleaner than passing directly in run command string)
+          INPUT_VERSION_CODE: ${{ inputs.version_code }}
+          INPUT_INCREMENT: ${{ inputs.increment }}
+        run: |
+          # Pass arguments to the lane using key:value syntax
+          # If INPUT_VERSION_CODE is empty, Fastlane receives nil/empty string and logic handles it
+          
+          fastlane android build_release_candidates \
+            version_code:"$INPUT_VERSION_CODE" \
+            increment:"$INPUT_INCREMENT"
 
       # --- PREPARE ANNOUNCEMENT ---
       - name: Read Version Info
@@ -81,7 +101,7 @@ jobs:
       - name: Publish to Telegram Channel
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_RELEASE_CHAT_ID }} # Make sure to set this Secret!
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_RELEASE_CHAT_ID }}
           RELEASE_URL: ${{ steps.check_release.outputs.release_url }}
           HAS_RELEASE: ${{ steps.check_release.outputs.has_release }}
         run: |
