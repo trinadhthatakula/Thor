@@ -149,11 +149,12 @@ private fun PieChartVisual(
                 }
         ) {
             var startAngle = -90f // Start from top
+            val arcGap = 2f // Gap between slices in degrees
             slices.forEach { slice ->
                 drawArc(
                     color = slice.color,
                     startAngle = startAngle,
-                    sweepAngle = slice.sweepAngle.coerceAtLeast(2f) - 2f, // Ensure small gap
+                    sweepAngle = maxOf(0f, slice.sweepAngle - arcGap), // Ensure small gap
                     useCenter = false,
                     style = Stroke(chartBarWidth.toPx(), cap = StrokeCap.Butt)
                 )
