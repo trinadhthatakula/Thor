@@ -4,12 +4,17 @@ import android.content.Intent
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -35,17 +40,20 @@ import com.valhalla.thor.presentation.appList.AppListScreen
 import com.valhalla.thor.presentation.freezer.FreezerScreen
 import com.valhalla.thor.presentation.home.AppDestinations
 import com.valhalla.thor.presentation.home.HomeScreen
+import com.valhalla.thor.presentation.home.HomeViewModel
 import com.valhalla.thor.presentation.widgets.AffirmationDialog
 import com.valhalla.thor.presentation.widgets.MultiAppAffirmationDialog
 import com.valhalla.thor.presentation.widgets.TermLoggerDialog
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
 fun MainScreen(
+    mainViewModel: MainViewModel = koinViewModel(),
+    homeViewModel: HomeViewModel = koinViewModel(),
     onExit: () -> Unit
 ) {
-    val mainViewModel: MainViewModel = koinViewModel()
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -149,6 +157,7 @@ fun MainScreen(
                 when (page) {
                     AppDestinations.HOME.ordinal -> {
                         HomeScreen(
+                            viewModel = homeViewModel,
                             // FIX: Use Pager scrolling instead of NavController
                             onNavigateToApps = {
                                 scope.launch { pagerState.animateScrollToPage(AppDestinations.APPS.ordinal) }
@@ -244,6 +253,7 @@ fun MainScreen(
             }
         }
     }
+
 }
 
 private fun checkAndProcessAction(

@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -46,22 +47,26 @@ class FreezerViewModel(
     private val systemRepository: SystemRepository
 ) : ViewModel() {
 
-    val uiState: StateFlow<FreezerUiState>
-        field = MutableStateFlow(FreezerUiState())
+    private val _uiState = MutableStateFlow(FreezerUiState())
+    val uiState: StateFlow<FreezerUiState> = _uiState.asStateFlow()
 
     private var filterJob: Job? = null
+
+    init {
+        loadApps()
+    }
 
     fun loadApps() {
         // RUTHLESS: IO Dispatcher for heavy data fetching
         viewModelScope.launch(Dispatchers.IO) {
-            uiState.update { it.copy(isLoading = true) }
+            _uiState.update { it.copy(isLoading = true) }
             // Check privileges
             val hasRoot = systemRepository.isRootAvailable()
             val hasShizuku = systemRepository.isShizukuAvailable()
 
             getInstalledAppsUseCase().collect { (user, system) ->
                 // Data arrived on IO.
-                val partialState = uiState.value.copy(
+                val partialState = _uiState.value.copy(
                     isLoading = false,
                     isRoot = hasRoot,
                     isShizuku = hasShizuku,
@@ -72,7 +77,7 @@ class FreezerViewModel(
                 // Switch to Default (CPU) for sorting
                 val finalState = processListState(partialState)
 
-                uiState.update { finalState }
+                _uiState.update { finalState }
             }
         }
     }
@@ -82,12 +87,14 @@ class FreezerViewModel(
     fun toggleAppFreezeState(app: AppInfo) {
         viewModelScope.launch {
             val shouldFreeze = app.enabled // If enabled, we freeze. If disabled, we unfreeze.
+            // Note: We are using packageName, assuming ManageAppUseCase handles it correctly.
             val result = manageAppUseCase.setAppDisabled(app.packageName, shouldFreeze)
 
             result.onSuccess {
-                uiState.update { s -> s.copy(actionMessage = "${if (shouldFreeze) "Frozen" else "Unfrozen"} ${app.appName}") }
+                _uiState.update { s -> s.copy(actionMessage = "${if (shouldFreeze) "Frozen" else "Unfrozen"} ${app.appName}") }
+                // No need to reload manually, repository flow triggers update
             }.onFailure { e ->
-                uiState.update { s -> s.copy(actionMessage = "Error: ${e.message}") }
+                _uiState.update { s -> s.copy(actionMessage = "Error: ${e.message}") }
             }
         }
     }
@@ -97,28 +104,25 @@ class FreezerViewModel(
             when (action) {
                 is MultiAppAction.Freeze -> {
                     action.appList.forEach { manageAppUseCase.setAppDisabled(it.packageName, true) }
-                    uiState.update { it.copy(actionMessage = "Froze ${action.appList.size} apps") }
+                    _uiState.update { it.copy(actionMessage = "Froze ${action.appList.size} apps") }
                 }
 
                 is MultiAppAction.UnFreeze -> {
                     action.appList.forEach {
-                        manageAppUseCase.setAppDisabled(
-                            it.packageName,
-                            false
-                        )
+                        manageAppUseCase.setAppDisabled(it.packageName, false)
                     }
-                    uiState.update { it.copy(actionMessage = "Unfrozen ${action.appList.size} apps") }
+                    _uiState.update { it.copy(actionMessage = "Unfrozen ${action.appList.size} apps") }
                 }
 
                 else -> {
-                    uiState.update { it.copy(actionMessage = "Action not supported in Freezer yet") }
+                    _uiState.update { it.copy(actionMessage = "Action not supported in Freezer yet") }
                 }
             }
         }
     }
 
     fun dismissMessage() {
-        uiState.update { it.copy(actionMessage = null) }
+        _uiState.update { it.copy(actionMessage = null) }
     }
 
     // --- Filter / Sort Updates (Async) ---
@@ -151,9 +155,11 @@ class FreezerViewModel(
     private fun triggerAsyncUpdate(reducer: (FreezerUiState) -> FreezerUiState) {
         filterJob?.cancel()
         filterJob = viewModelScope.launch(Dispatchers.Default) {
-            val pendingState = reducer(uiState.value)
+            // Apply the change to the CURRENT state
+            val pendingState = reducer(_uiState.value)
+            // Re-process list
             val finalState = processListState(pendingState)
-            uiState.update { finalState }
+            _uiState.update { finalState }
         }
     }
 
