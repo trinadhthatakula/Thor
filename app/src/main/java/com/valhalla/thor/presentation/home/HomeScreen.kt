@@ -42,7 +42,6 @@ import com.valhalla.thor.presentation.home.components.SummaryStatRow
 import com.valhalla.thor.presentation.installer.InstallerViewModel
 import com.valhalla.thor.presentation.installer.PortableInstaller
 import org.koin.androidx.compose.koinViewModel
-import org.koin.compose.koinInject
 
 @Composable
 fun HomeScreen(
@@ -50,7 +49,7 @@ fun HomeScreen(
     onNavigateToFreezer: () -> Unit,
     onReinstallAll: () -> Unit,
     onClearAllCache: (AppListType) -> Unit,
-    viewModel: HomeViewModel = koinInject(),
+    viewModel: HomeViewModel = koinViewModel(),
     installerViewModel: InstallerViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
