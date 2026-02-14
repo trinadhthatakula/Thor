@@ -51,14 +51,18 @@ class FreezerViewModel(
     val uiState: StateFlow<FreezerUiState> = _uiState.asStateFlow()
 
     private var filterJob: Job? = null
+    private var loadAppsJob: Job? = null
 
     init {
         loadApps()
     }
 
     fun loadApps() {
+        // Cancel any existing collection to prevent duplicates
+        loadAppsJob?.cancel()
+        
         // RUTHLESS: IO Dispatcher for heavy data fetching
-        viewModelScope.launch(Dispatchers.IO) {
+        loadAppsJob = viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(isLoading = true) }
             // Check privileges
             val hasRoot = systemRepository.isRootAvailable()
