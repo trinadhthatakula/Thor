@@ -47,11 +47,12 @@ fun AppDistributionChart(
     modifier: Modifier = Modifier
 ) {
     // 1. Prepare Data & Colors (Memoized)
+    val colorScheme = MaterialTheme.colorScheme
     val baseColors = listOf(
-        MaterialTheme.colorScheme.primary,
-        MaterialTheme.colorScheme.secondary,
-        MaterialTheme.colorScheme.tertiary,
-        MaterialTheme.colorScheme.error,
+        colorScheme.primary,
+        colorScheme.secondary,
+        colorScheme.tertiary,
+        colorScheme.error,
         Color(0xFF8BC34A), // Light Green
         Color(0xFFFFC107), // Amber
         Color(0xFF00BCD4), // Cyan
@@ -60,7 +61,7 @@ fun AppDistributionChart(
         Color(0xFF3F51B5)  // Indigo
     )
 
-    val chartSlices = remember(data) {
+    val chartSlices = remember(data, colorScheme) {
         val totalSum = data.values.sum().toFloat()
         val sortedKeys = data.keys.sorted() // Stable order
 
