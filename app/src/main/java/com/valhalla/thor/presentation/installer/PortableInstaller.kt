@@ -5,23 +5,33 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import androidx.activity.ComponentActivity
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SplitButtonDefaults
+import androidx.compose.material3.SplitButtonLayout
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -36,16 +46,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.valhalla.thor.R
 import com.valhalla.thor.domain.InstallState
+import com.valhalla.thor.domain.repository.InstallMode
 import kotlinx.coroutines.delay
 import org.koin.androidx.compose.koinViewModel
-import kotlin.apply
-import kotlin.let
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,6 +71,9 @@ fun PortableInstaller(
     viewModel: InstallerViewModel = koinViewModel()
 ) {
     val state by viewModel.installState.collectAsState(initial = InstallState.Idle)
+    val availableModes by viewModel.availableModes.collectAsStateWithLifecycle()
+    val installerMode by viewModel.installMode.collectAsStateWithLifecycle()
+
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
 
@@ -204,15 +224,107 @@ fun PortableInstaller(
                         }
                     }
 
-                    Button(
-                        onClick = { viewModel.confirmInstall() },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        )
-                    ) {
-                        Text(if (s.isUpdate) "UPDATE" else "INSTALL")
+                    if (availableModes.size == 1) {
+                        Button(
+                            onClick = { viewModel.confirmInstall() },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            )
+                        ) {
+                            Text(if (s.isUpdate) "UPDATE" else "INSTALL")
+                        }
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                        ) {
+                            var checked by remember { mutableStateOf(false) }
+                            SplitButtonLayout(
+                                leadingButton = {
+                                    SplitButtonDefaults.ElevatedLeadingButton(
+                                        onClick = { viewModel.confirmInstall() },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    ) {
+                                        Icon(
+                                            painterResource(
+                                                if (installerMode == InstallMode.ROOT)
+                                                    R.drawable.magisk_icon
+                                                else R.drawable.shizuku
+                                            ),
+                                            modifier = Modifier.size(SplitButtonDefaults.LeadingIconSize),
+                                            contentDescription = "Install Mode Icon",
+                                        )
+                                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                                        Text(if (s.isUpdate) "Update" else "Install")
+                                    }
+                                },
+                                trailingButton = {
+                                    val description =
+                                        "Install Options: " + availableModes.joinToString(", ") { mode ->
+                                            when (mode) {
+                                                InstallMode.NORMAL -> "Normal"
+                                                InstallMode.SHIZUKU -> "Shizuku"
+                                                InstallMode.ROOT -> "Root"
+                                            }
+                                        }
+                                    SplitButtonDefaults.ElevatedTrailingButton(
+                                        checked = checked,
+                                        onCheckedChange = { checked = it },
+                                        modifier =
+                                            Modifier.semantics {
+                                                stateDescription =
+                                                    if (checked) "Expanded" else "Collapsed"
+                                                this.contentDescription = description
+                                            },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    ) {
+                                        val rotation: Float by
+                                        animateFloatAsState(
+                                            targetValue = if (checked) 180f else 0f,
+                                            label = "Trailing Icon Rotation",
+                                        )
+                                        Icon(
+                                            painterResource(R.drawable.arrow_drop_down),
+                                            modifier =
+                                                Modifier
+                                                    .size(SplitButtonDefaults.TrailingIconSize)
+                                                    .graphicsLayer {
+                                                        this.rotationZ = rotation
+                                                    },
+                                            contentDescription = "Localized description",
+                                        )
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            DropdownMenu(expanded = checked, onDismissRequest = { checked = false }) {
+                                availableModes.forEach { mode ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                when (mode) {
+                                                    InstallMode.NORMAL -> "Normal ${if(s.isUpdate)"Update" else "Install"}"
+                                                    InstallMode.SHIZUKU -> "${if (s.isUpdate) "Update" else "Install"} via Shizuku"
+                                                    InstallMode.ROOT -> "${if (s.isUpdate) "Update" else "Install"} with Root"
+                                                }
+                                            )
+                                        },
+                                        onClick = {
+                                            viewModel.setInstallModeAlsoInstall(mode)
+                                            checked = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 

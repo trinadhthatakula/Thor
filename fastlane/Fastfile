@@ -3,8 +3,10 @@ default_platform(:android)
 platform :android do
 
   # --- HELPER: Common Build Logic ---
-  # Added 'version_code' and 'increment' arguments
-  def prepare_release_artifacts(upload_to_store: false, version_code: nil, increment: true)
+  # REPRODUCIBILITY UPDATE:
+  # This lane now strictly uses gradle.properties as the source of truth.
+  # The 'version_code' argument is preserved only for manual overrides (re-building old commits).
+  def prepare_release_artifacts(upload_to_store: false, version_code: nil)
     # 1. PREPARATION
     fastlane_dir = Dir.pwd
     project_root = File.expand_path("..", fastlane_dir)
@@ -16,73 +18,50 @@ platform :android do
       UI.user_error!("❌ gradle.properties not found at #{gradle_properties_path}")
     end
 
+    # Parse properties
     properties = File.readlines(gradle_properties_path)
                      .map(&:strip)
                      .reject { |l| l.empty? || l.start_with?('#') }
                      .map { |l| l.split('=', 2).map(&:strip) }
                      .to_h
 
-    initial_version_code = properties["initialVersionCode"]&.to_i
-    UI.user_error!("❌ 'initialVersionCode' missing") unless initial_version_code
-
-    # 3. VERSION MANAGEMENT
-    new_version_code = nil
+    # 3. DETERMINE VERSION CODE (Source of Truth Logic)
+    final_version_code = nil
 
     if version_code
-      # A. Specific version passed manually
-      new_version_code = version_code.to_i
-      UI.message("🔧 Using manual specific version code: #{new_version_code}")
+      # A. Manual Override (e.g., triggering a build for a specific historical version)
+      final_version_code = version_code.to_i
+      UI.important("⚠️  Using MANUAL version code override: #{final_version_code}")
     else
-      # B. Fetch from Store
-      UI.message("🔎 Fetching latest version from Play Store (Internal Track)...")
-      begin
-        latest_store_codes = google_play_track_version_codes(track: "internal")
-        latest_version_from_store = latest_store_codes.max
-      rescue => ex
-        UI.important("⚠️  Could not fetch version: #{ex.message}")
-        latest_version_from_store = nil
-      end
-
-      if latest_version_from_store.nil?
-        new_version_code = initial_version_code
-        UI.message("🆕 No existing Store version. Using initial: #{new_version_code}")
-      else
-        if increment
-          # Auto-increment (Default for Production)
-          new_version_code = [latest_version_from_store, initial_version_code].max + 1
-          UI.message("⬆️  Incrementing version: #{latest_version_from_store} -> #{new_version_code}")
-        else
-          # Re-build existing (Default for Manual)
-          new_version_code = latest_version_from_store
-          UI.message("🔄 Re-building existing Store version: #{new_version_code}")
-        end
-      end
+      # B. Standard: Read from File (Reproducible)
+      final_version_code = properties["versionCode"]&.to_i
+      UI.user_error!("❌ 'versionCode' missing in gradle.properties") unless final_version_code
+      UI.message("✅ Using defined version code from properties: #{final_version_code}")
     end
 
-    # 4. CALCULATE VERSION NAME
+    # 4. GET VERSION NAME
+    # We let Gradle calculate the name based on the code we just determined
     new_version_name = ""
     Dir.chdir(project_root) do
-      new_version_name = sh("./gradlew -q app:printVersionName -PversionCode=#{new_version_code}").strip
+      new_version_name = sh("./gradlew -q app:printVersionName -PversionCode=#{final_version_code}").strip
     end
 
-    UI.message("✅ Version Name: #{new_version_name}")
+    UI.message("📦 Build Target: v#{new_version_name} (#{final_version_code})")
+
+    # Save for GitHub Actions steps
     File.write(File.join(project_root, "version_name.txt"), new_version_name)
-    File.write(File.join(project_root, "version_code.txt"), new_version_code.to_s)
+    File.write(File.join(project_root, "version_code.txt"), final_version_code.to_s)
 
     # 5. BUILD ARTIFACTS
     build_tasks = "clean copyStoreReleaseApk copyFossReleaseApk"
-
-    # Only build bundle if uploading or if we explicitly want it
-    if upload_to_store
-      build_tasks += " bundleStoreRelease"
-    end
+    build_tasks += " bundleStoreRelease" if upload_to_store
 
     gradle(
       task: build_tasks,
       project_dir: project_root,
       properties: {
-        "versionCode" => new_version_code,
-        "android.injected.version.code" => new_version_code
+        "versionCode" => final_version_code,
+        "android.injected.version.code" => final_version_code
       }
     )
 
@@ -108,22 +87,16 @@ platform :android do
 
   desc "Build and Distribute to Play Store + GitHub"
   lane :distribute do
-    # Production always auto-increments
-    prepare_release_artifacts(upload_to_store: true, increment: true)
+    # No arguments needed, it trusts the repo state
+    prepare_release_artifacts(upload_to_store: true)
   end
 
   desc "Build Release Candidates Only (No Play Store Upload)"
   lane :build_release_candidates do |options|
-    # Manual builds default to NOT incrementing, unless specific logic applies
-    # Inputs come as strings from CLI
-    specific_code = options[:version_code]
-    should_inc = options[:increment] == "true"
-
+    # Allows manual override if needed via "fastlane ... version_code:123"
     prepare_release_artifacts(
         upload_to_store: false,
-        version_code: specific_code,
-        increment: should_inc
+        version_code: options[:version_code]
     )
   end
-
 end

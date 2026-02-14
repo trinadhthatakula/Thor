@@ -1,4 +1,4 @@
-name: Production Release & Distribute
+name: 2. Production Build & Distribute
 
 on:
   push:
@@ -45,7 +45,7 @@ jobs:
         run: chmod +x gradlew
 
       # --- FASTLANE ---
-      - name: Run Fastlane (Build & Distribute)
+      - name: Run Fastlane (Distribute)
         env:
           JSON_KEY_FILE: ${{ github.workspace }}/app/google-play-api.json
           SUPPLY_JSON_KEY: ${{ github.workspace }}/app/google-play-api.json
@@ -53,6 +53,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEYSTORE_FILE_PATH: ${{ github.workspace }}/app/release.jks
+        # No extra flags needed. Fastlane will use the version defined in the commit.
         run: fastlane android distribute
 
       # --- SYNC & RELEASE ---

@@ -51,7 +51,9 @@ val installerModule = module {
     single<InstallerRepository> {
         InstallerRepositoryImpl(
             context = androidContext(),
-            eventBus = get()
+            eventBus = get(),
+            rootGateway = get(),
+            shizukuReflector = get()
         )
     }
     single<PackageManager>{

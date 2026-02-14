@@ -78,8 +78,8 @@ class ShizukuReflector(
 
     fun forceStop(packageName: String) {
         try {
+            // Use the local Shizuku object helper
             Shizuku.forceStopApp(context, packageName)
-
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
                 Log.e("ShizukuReflector", "forceStop failed", e)
@@ -88,6 +88,7 @@ class ShizukuReflector(
 
     fun setAppEnabled(packageName: String, enabled: Boolean) {
         try {
+            // Use the local Shizuku object helper
             Shizuku.setAppDisabled(context, packageName, !enabled)
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
@@ -241,6 +242,24 @@ class ShizukuReflector(
                 intent.intentSender
             )
             true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    /**
+     * Installs an APK using the 'pm install' command via Shizuku.
+     * Note: The file at [apkPath] must be readable by the shell user (e.g. /sdcard/).
+     *
+     * @param apkPath Absolute path to the APK file.
+     * @return true if installation command exited with 0 (Success).
+     */
+    fun installPackage(apkPath: String): Boolean {
+        return try {
+            val command = "pm install -r -g \"$apkPath\""
+            val result = Shizuku.execute(command)
+            result.first == 0
         } catch (e: Exception) {
             e.printStackTrace()
             false

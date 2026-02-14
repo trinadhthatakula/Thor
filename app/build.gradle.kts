@@ -1,7 +1,7 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.FileInputStream
 import java.util.Properties
-import com.android.build.api.artifact.SingleArtifact // REQUIRED IMPORT
+import com.android.build.api.artifact.SingleArtifact
 
 plugins {
     alias(libs.plugins.android.application)
@@ -12,6 +12,7 @@ plugins {
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_21)
+        freeCompilerArgs.add("-Xexplicit-backing-fields")
         optIn.add("kotlin.RequiresOptIn")
         optIn.add("kotlin.time.ExperimentalTime")
         optIn.add("org.koin.core.annotation.KoinExperimentalAPI")
@@ -26,6 +27,36 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+// --- VERSIONING HELPERS (Private & Modernized) ---
+
+// 1. Resolve Code: Checks property 'versionCode' first, falls back to 'initialVersionCode'
+private fun resolveVersionCode(): Int {
+    val initial = providers.gradleProperty("initialVersionCode")
+        .orNull
+        ?.toIntOrNull()
+        ?: throw GradleException("Required 'initialVersionCode' missing in gradle.properties")
+
+    val override = providers.gradleProperty("versionCode")
+        .orNull
+        ?.toIntOrNull()
+
+    return override ?: initial
+}
+
+// 2. Calculate Name: The math logic (1712 -> 1.71.2)
+private fun calculateVersionName(code: Int): String {
+    val major = code / 1000
+    val minor = (code % 1000) / 10
+    val patch = code % 10
+    return "$major.$minor.$patch"
+}
+
+// 3. Resolve Name: Checks property 'versionName' first, falls back to math
+private fun resolveVersionName(code: Int): String {
+    return providers.gradleProperty("versionName").orNull
+        ?: calculateVersionName(code)
+}
+
 android {
     namespace = "com.valhalla.thor"
     compileSdk = 36
@@ -34,9 +65,12 @@ android {
         applicationId = "com.valhalla.thor"
         minSdk = 28
         targetSdk = 36
+
+        // Calculate versions using the private helpers
         val code = resolveVersionCode()
         versionCode = code
-        versionName = calculateVersionName(code)
+        versionName = resolveVersionName(code)
+
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
@@ -134,7 +168,7 @@ androidComponents {
         }
     }
 
-    // 2. NEW: Store Copy Task (Added for GitHub Releases)
+    // 2. Store Copy Task
     onVariants(selector().withFlavor("distribution", "store")) { variant ->
         if (variant.buildType == "release") {
             val apkDir = variant.artifacts.get(SingleArtifact.APK)
@@ -179,31 +213,13 @@ dependencies {
     implementation(libs.bundles.koin)
 }
 
+// These rely on the private functions above, which is allowed in the same file scope
 val currentVersionCode = resolveVersionCode()
-val currentVersionName = calculateVersionName(currentVersionCode)
-
-private fun resolveVersionCode(): Int {
-    val initialVersionCode = providers.gradleProperty("initialVersionCode").orNull
-        ?: throw GradleException("Required Gradle property 'initialVersionCode' is missing. Define it in gradle.properties.")
-
-    // access project.findProperty strictly during configuration
-    return (project.findProperty("versionCode") as? String)?.toIntOrNull()
-        ?: initialVersionCode.toInt()
-}
-
-fun calculateVersionName(code: Int): String {
-    val major = code / 1000
-    val minor = (code % 1000) / 10
-    val patch = code % 10
-    return "$major.$minor.$patch"
-}
+val currentVersionName = resolveVersionName(currentVersionCode)
 
 tasks.register("printVersionName") {
-    // 2. Capture the CALCULATED value, not the function
     val vName = currentVersionName
-
     doLast {
-        // 3. Now this block only holds a String, which is serializable. Safe!
         println(vName)
     }
 }

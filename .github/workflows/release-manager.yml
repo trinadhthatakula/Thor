@@ -1,0 +1,88 @@
+name: 1. Release Manager (Bump Version)
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version Bump Type (affects Version Name)'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - none (code only)
+
+jobs:
+  bump-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Use a PAT if you want this push to trigger the 'production-deploy' workflow automatically.
+          # If you use the default token, you must trigger production-deploy manually.
+          token: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
+          ref: production
+
+      - name: Setup Java (for property parsing if needed, or simple bash)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: Bump Version in gradle.properties
+        run: |
+          PROPS_FILE="gradle.properties"
+          
+          # 1. Read Current Values
+          CURRENT_CODE=$(grep "versionCode" $PROPS_FILE | cut -d'=' -f2)
+          CURRENT_NAME=$(grep "versionName" $PROPS_FILE | cut -d'=' -f2)
+          
+          echo "Current Version: $CURRENT_NAME ($CURRENT_CODE)"
+          
+          # 2. Increment Version Code (Always +1 for release)
+          NEW_CODE=$((CURRENT_CODE + 1))
+          
+          # 3. Increment Version Name
+          # Split version name X.Y.Z
+          IFS='.' read -r -a parts <<< "$CURRENT_NAME"
+          major=${parts[0]}
+          minor=${parts[1]}
+          patch=${parts[2]}
+          
+          case "${{ inputs.bump_type }}" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+            *) echo "Skipping name bump";;
+          esac
+          
+          NEW_NAME="$major.$minor.$patch"
+          
+          echo "New Version: $NEW_NAME ($NEW_CODE)"
+          
+          # 4. Write back to file (Linux sed)
+          sed -i "s/versionCode=.*/versionCode=$NEW_CODE/" $PROPS_FILE
+          sed -i "s/versionName=.*/versionName=$NEW_NAME/" $PROPS_FILE
+          
+          # 5. Output for next steps
+          echo "NEW_NAME=$NEW_NAME" >> $GITHUB_ENV
+          echo "NEW_CODE=$NEW_CODE" >> $GITHUB_ENV
+
+      - name: Commit and Push
+        run: |
+          git config --global user.name "GitHub Actions CI"
+          git config --global user.email "actions@github.com"
+          
+          git add gradle.properties
+          git commit -m "chore(release): bump version to v${{ env.NEW_NAME }} ($NEW_CODE) [skip ci]"
+          
+          # Tagging is optional here, usually better done after successful deploy
+          # git tag -a "v${{ env.NEW_NAME }}" -m "Release v${{ env.NEW_NAME }}"
+          
+          git push origin production

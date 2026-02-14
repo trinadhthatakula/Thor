@@ -10,9 +10,12 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Log
 import com.valhalla.thor.data.ACTION_INSTALL_STATUS
+import com.valhalla.thor.data.gateway.RootSystemGateway
 import com.valhalla.thor.data.receivers.InstallReceiver
+import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.InstallState
+import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,13 +29,76 @@ import kotlin.jvm.java
 
 class InstallerRepositoryImpl(
     private val context: Context,
-    private val eventBus: InstallerEventBus
+    private val eventBus: InstallerEventBus,
+    private val rootGateway: RootSystemGateway,
+    private val shizukuReflector: ShizukuReflector
 ) : InstallerRepository {
 
-    private val packageInstaller = context.packageManager.packageInstaller
+    private val defaultInstaller = context.packageManager.packageInstaller
+
+    override suspend fun installPackage(uri: Uri, mode: InstallMode) = withContext(Dispatchers.IO) {
+        try {
+            when (mode) {
+                InstallMode.ROOT -> {
+                    installWithRoot(uri)
+                }
+                InstallMode.SHIZUKU -> {
+                    val shizukuInstaller = try {
+                         shizukuReflector.getPackageInstaller()
+                    } catch (e: Exception) {
+                        eventBus.emit(InstallState.Error("Failed to get Shizuku installer: ${e.message}"))
+                        return@withContext
+                    }
+                    performPackageInstallerInstall(uri, shizukuInstaller)
+                }
+                InstallMode.NORMAL -> {
+                    performPackageInstallerInstall(uri, defaultInstaller)
+                }
+            }
+        } catch (e: Exception) {
+            eventBus.emit(InstallState.Error(e.message ?: "Unknown error during installation"))
+        }
+    }
+
+    private suspend fun installWithRoot(uri: Uri) {
+        eventBus.emit(InstallState.Installing(0f))
+        
+        val tempFile = File(context.cacheDir, "install_temp_${System.currentTimeMillis()}.apk")
+        
+        try {
+            // Copy uri to temp file
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(tempFile).use { output ->
+                    input.copyTo(output)
+                }
+            } ?: run {
+                eventBus.emit(InstallState.Error("Failed to read input file"))
+                return
+            }
+
+            eventBus.emit(InstallState.Installing(0.5f))
+            
+            // Execute root install
+            val result = rootGateway.installApp(tempFile.absolutePath)
+            
+            if (result.isSuccess) {
+                 eventBus.emit(InstallState.Installing(1.0f))
+                 eventBus.emit(InstallState.Success)
+            } else {
+                 eventBus.emit(InstallState.Error(result.exceptionOrNull()?.message ?: "Root install failed"))
+            }
+
+        } catch (e: Exception) {
+            eventBus.emit(InstallState.Error("Root install error: ${e.message}"))
+        } finally {
+            if (tempFile.exists()) {
+                tempFile.delete()
+            }
+        }
+    }
 
     @SuppressLint("RequestInstallPackagesPolicy")
-    override suspend fun installPackage(uri: Uri) = withContext(Dispatchers.IO) {
+    private suspend fun performPackageInstallerInstall(uri: Uri, packageInstaller: PackageInstaller) {
         val totalBytes = getFileSize(uri)
         var bytesProcessed = 0L
         var lastProgressEmitted = 0
@@ -48,14 +114,14 @@ class InstallerRepositoryImpl(
             packageInstaller.createSession(params)
         } catch (e: Exception) {
             eventBus.emit(InstallState.Error("Failed to create session: ${e.message}"))
-            return@withContext
+            return
         }
 
         val session = try {
             packageInstaller.openSession(sessionId)
         } catch (e: Exception) {
             eventBus.emit(InstallState.Error("Failed to open session: ${e.message}"))
-            return@withContext
+            return
         }
 
         // Helper to track progress across different streams
@@ -91,14 +157,9 @@ class InstallerRepositoryImpl(
 
         try {
             // ATTEMPT 1: Try as Bundle (XAPK/APKS)
-            // We assume it's a zip and look for nested .apk files
             var bundleStream: InputStream? = context.contentResolver.openInputStream(uri)
 
             if (bundleStream != null) {
-                // We don't track progress on the Zip scan itself to avoid double counting if we fail back
-                // or we can track it but reset bytesProcessed if we switch to fallback.
-                // For simplicity, let's just try to read it.
-
                 try {
                     ZipInputStream(bundleStream).use { zipStream ->
                         var entry = zipStream.nextEntry
@@ -110,7 +171,6 @@ class InstallerRepositoryImpl(
 
                                 if (size == -1L) {
                                     // Unknown size in Zip: Buffer to temp
-                                    Log.w("thor", "Entry $name has unknown size. Buffering...")
                                     val tempFile = File(context.cacheDir, "temp_${System.currentTimeMillis()}_$name")
                                     FileOutputStream(tempFile).use { fos -> zipStream.copyTo(fos) }
 
@@ -137,18 +197,14 @@ class InstallerRepositoryImpl(
                         }
                     }
                 } catch (e: Exception) {
-                    // Zip processing failed, likely not a zip file or corrupt.
-                    // We will fall through to check !filesWritten
                     Log.d("thor", "Not a valid bundle zip, trying fallback.")
                 }
             }
 
             // ATTEMPT 2: Fallback to Monolithic APK
-            // If the zip scan found nothing (or failed), we treat the file itself as the APK.
             if (!filesWritten) {
                 Log.d("thor", "Fallback: Treating stream as monolithic base.apk")
 
-                // Reset progress for the actual stream
                 bytesProcessed = 0
                 lastProgressEmitted = 0
 
@@ -156,18 +212,13 @@ class InstallerRepositoryImpl(
                 if (rawStream == null) {
                     session.abandon()
                     eventBus.emit(InstallState.Error("Could not open file stream."))
-                    return@withContext
+                    return
                 }
 
-                // Wrap in progress tracker
                 val trackedStream = getTrackedStream(rawStream)
 
                 trackedStream.use { input ->
-                    // For standard APKs, we generally know the totalBytes from the query earlier.
-                    // If totalBytes is -1, session.openWrite requires a valid size or -1 if supported.
-                    // Most content providers give size. If not, we might need to buffer, but let's try direct.
                     val size = if (totalBytes > 0) totalBytes else -1L
-
                     val outStream = session.openWrite("base.apk", 0, size)
                     input.copyTo(outStream)
                     session.fsync(outStream)
@@ -179,10 +230,9 @@ class InstallerRepositoryImpl(
             if (!filesWritten) {
                 session.abandon()
                 eventBus.emit(InstallState.Error("No valid APK files found. Is this a supported file type?"))
-                return@withContext
+                return
             }
 
-            // Finalize
             eventBus.emit(InstallState.Installing(1.0f))
 
             val intent = Intent(context, InstallReceiver::class.java).apply {

@@ -89,7 +89,7 @@ class RootSystemGateway(
                 val currentUser = userResult.getOrNull()?.firstOrNull()?.trim()
                     ?: return@withContext Result.failure(Exception("Could not determine current user"))
 
-                // 3. Execute the reinstall command
+                // 3. Execute the reinstallation command
                 val command =
                     "pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 $combinedPath"
                 runCommand(command)

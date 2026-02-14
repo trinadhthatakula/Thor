@@ -45,7 +45,11 @@ class ShizukuSystemGateway(
     }
 
     override suspend fun installApp(apkPath: String): Result<Unit> {
-        return Result.failure(Exception("Install not implemented in this slice."))
+        return if (reflector.installPackage(apkPath)) {
+            Result.success(Unit)
+        } else {
+            Result.failure(Exception("Shizuku install failed. Ensure the file path is readable by Shell/ADB."))
+        }
     }
 
     override suspend fun getAppCacheSize(packageName: String): Long {
