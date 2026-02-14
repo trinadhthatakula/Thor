@@ -78,15 +78,19 @@
                 <category android:name="android.intent.category.BROWSABLE" />
 
                 <data android:scheme="content" />
+                <data android:scheme="file" />
                 <data android:host="*" />
                 <data android:mimeType="*/*" />
 
+                <data android:pathPattern=".*\\.apk" />
+                <data android:pathPattern=".*\\.APK" />
                 <data android:pathPattern=".*\\.xapk" />
                 <data android:pathPattern=".*\\.XAPK" />
                 <data android:pathPattern=".*\\.apks" />
                 <data android:pathPattern=".*\\.APKS" />
                 <data android:pathPattern=".*\\.apkm" />
                 <data android:pathPattern=".*\\.APKM" />
+
             </intent-filter>
         </activity>
 

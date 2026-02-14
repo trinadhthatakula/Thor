@@ -52,6 +52,7 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -81,7 +82,6 @@ import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.asGeneralName
 import com.valhalla.thor.domain.model.filterTypes
-import com.valhalla.thor.presentation.theme.animateExpressiveResize
 import com.valhalla.thor.presentation.theme.expressivePress
 import com.valhalla.thor.presentation.utils.AppIconModel
 import com.valhalla.thor.presentation.utils.popularInstallers
@@ -113,6 +113,10 @@ fun AppList(
     var showFilterSheet by rememberSaveable { mutableStateOf(false) }
     var multiSelection by rememberSaveable { mutableStateOf(emptyList<AppInfo>()) }
 
+    // Optimization: Use a Set for O(1) lookups
+    val selectedPackageNames by remember(multiSelection) {
+        derivedStateOf { multiSelection.map { it.packageName }.toSet() }
+    }
     val isMultiSelectMode = multiSelection.isNotEmpty()
 
     // 2. Logic
@@ -187,7 +191,7 @@ fun AppList(
             AppListContent(
                 list = displayedList,
                 isGrid = isGrid,
-                multiSelection = multiSelection,
+                selectedPackageNames = selectedPackageNames, // Pass Set instead of List
                 imageLoader = imageLoader,
                 onAppClick = { app ->
                     if (isMultiSelectMode) {
@@ -391,7 +395,7 @@ private fun MultiSelectHeader(
 private fun AppListContent(
     list: List<AppInfo>,
     isGrid: Boolean,
-    multiSelection: List<AppInfo>,
+    selectedPackageNames: Set<String>,
     imageLoader: ImageLoader,
     onAppClick: (AppInfo) -> Unit,
     onAppLongClick: (AppInfo) -> Unit
@@ -407,7 +411,7 @@ private fun AppListContent(
             items(list, key = { it.packageName }) { app ->
                 AppItemGrid(
                     app = app,
-                    isSelected = multiSelection.contains(app),
+                    isSelected = selectedPackageNames.contains(app.packageName),
                     imageLoader = imageLoader,
                     onClick = { onAppClick(app) },
                     onLongClick = { onAppLongClick(app) }
@@ -419,7 +423,7 @@ private fun AppListContent(
             items(list, key = { it.packageName }) { app ->
                 AppItemList(
                     app = app,
-                    isSelected = multiSelection.contains(app),
+                    isSelected = selectedPackageNames.contains(app.packageName),
                     imageLoader = imageLoader,
                     onClick = { onAppClick(app) },
                     onLongClick = { onAppLongClick(app) }
@@ -441,9 +445,6 @@ private fun AppItemList(
     val interactionSource = remember { MutableInteractionSource() }
     ListItem(
         modifier = Modifier
-            // 1. Makes the height change fluid and bouncy
-            .animateExpressiveResize()
-            // 2. Makes the card squish slightly when touched
             .expressivePress(interactionSource)
             .combinedClickable(interactionSource = interactionSource, onClick = onClick, onLongClick = onLongClick)
             .background(
@@ -489,9 +490,6 @@ private fun AppItemGrid(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .padding(4.dp)
-            // 1. Makes the height change fluid and bouncy
-            .animateExpressiveResize()
-            // 2. Makes the card squish slightly when touched
             .expressivePress(interactionSource)
             .clip(RoundedCornerShape(12.dp))
             .background(
@@ -529,7 +527,9 @@ private fun AppIcon(
     size: androidx.compose.ui.unit.Dp,
     imageLoader: ImageLoader
 ) {
+    // Hoisted static matrix to avoid recreation
     val colorMatrix = remember { ColorMatrix().apply { setToSaturation(0f) } }
+    
     Box(contentAlignment = Alignment.Center) {
         AsyncImage(
             model = AppIconModel(packageName),

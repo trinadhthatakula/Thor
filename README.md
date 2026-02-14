@@ -36,9 +36,10 @@
 
 ## Working Features
 
+- App Installer (install with root, shizuku or normal) **TESTING**
 - Shizuku Support
-- Fully reproducible, copylefted libre software (GPLv3.0)
-- Material 3 with dynamic colours
+- Fully reproducible, copyleft libre software (GPLv3.0)
+- Material 3 with dynamic colors
 - Displays App List while sorting them based on Installation source
 - Launch App Activities
 - Install/Uninstall/Freeze/Unfreeze Apk files
@@ -56,7 +57,6 @@
 
 - BackUp App Data
 - Editing Packages.xml
-- App Installer
 - Batch Install
 - Option to choose installers when reinstalling
 - Many more
@@ -64,8 +64,7 @@
 ## Credits
 
 - Portions of this app use code from [`libsu`](https://github.com/topjohnwu/libsu)
-  by [topjohnwu](https://github.com/topjohnwu/), adapted and integrated as the [
-  `suCore`](https://github.com/trinadhthatakula/Thor/tree/master/suCore) module.
+  by [topjohnwu](https://github.com/topjohnwu/), adapted and integrated as the [`suCore`](https://github.com/trinadhthatakula/Thor/tree/master/suCore) module.
 
 ### Modifications to libsu
 

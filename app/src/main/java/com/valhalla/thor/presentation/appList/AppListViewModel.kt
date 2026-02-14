@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -54,6 +55,7 @@ class AppListViewModel(
     private val _rawState = MutableStateFlow(AppListUiState())
 
     // Combine raw app data with user preferences from DataStore
+    // OPTIMIZATION: flowOn(Dispatchers.Default) ensures sorting/filtering happens on background thread
     val uiState = combine(_rawState, preferenceRepository.userPreferences) { state, prefs ->
         val mergedState = state.copy(
             sortBy = prefs.appSortBy,
@@ -62,7 +64,9 @@ class AppListViewModel(
             selectedFilter = prefs.appSelectedFilter
         )
         processList(mergedState)
-    }.stateIn(
+    }
+    .flowOn(Dispatchers.Default) // Move computation off Main Thread
+    .stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
         AppListUiState()
@@ -94,6 +98,10 @@ class AppListViewModel(
     fun freezeApp(packageName: String, freeze: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             if (manageAppUseCase.setAppDisabled(packageName, freeze).isSuccess) {
+                // No need to manually reload, the repository flow will likely trigger an update
+                // if it's listening to package changes. But currently GetInstalledAppsUseCase
+                // might not reflect enabled state changes instantly unless we refresh.
+                // Assuming Repository handles it or we manually refresh:
                 loadApps()
             }
         }
@@ -127,7 +135,8 @@ class AppListViewModel(
     fun updateFilter(filter: String) {
         viewModelScope.launch {
             // We need to know current filter type to update properly
-            val currentType = uiState.value.filterType
+            // We read from _rawState because uiState might be updating asynchronously
+            val currentType = _rawState.value.filterType
             preferenceRepository.updateAppFilter(currentType, filter)
         }
     }
@@ -150,7 +159,6 @@ class AppListViewModel(
         }
     }
 
-    // ... processList and getSortedList remain the same ...
     private fun processList(state: AppListUiState): AppListUiState {
         // 1. Pick Source
         val rawList = if (state.appListType == AppListType.USER) state.allUserApps else state.allSystemApps

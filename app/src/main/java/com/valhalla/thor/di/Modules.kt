@@ -1,8 +1,8 @@
 package com.valhalla.thor.di
 
 import android.content.pm.PackageManager
-import com.valhalla.superuser.repository.RealShellRepository
-import com.valhalla.superuser.repository.ShellRepository
+import com.valhalla.superuser.ktx.RealShellRepository
+import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.thor.data.gateway.RootSystemGateway
 import com.valhalla.thor.data.gateway.ShizukuSystemGateway
 import com.valhalla.thor.data.repository.AppAnalyzerImpl
@@ -33,7 +33,6 @@ import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.bind
 import org.koin.dsl.module
-import kotlin.jvm.java
 
 val commonModule = module {
     single<PackageManager> { androidContext().packageManager }

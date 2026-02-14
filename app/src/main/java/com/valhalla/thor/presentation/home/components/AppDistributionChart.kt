@@ -1,6 +1,6 @@
 package com.valhalla.thor.presentation.home.components
 
-import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -19,45 +19,63 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+
+@Immutable
+private data class ChartSlice(
+    val label: String,
+    val count: Int,
+    val color: Color,
+    val sweepAngle: Float
+)
 
 @Composable
 fun AppDistributionChart(
     data: Map<String, Int>,
     modifier: Modifier = Modifier
 ) {
-    // 1. Prepare Data & Colors
-    val totalSum = data.values.sum()
-    val keys = data.keys.toList()
-
-    // Generate a consistent color palette based on your theme
-    // We use a predefined list to avoid "random" colors changing on recomposition
+    // 1. Prepare Data & Colors (Memoized)
+    val colorScheme = MaterialTheme.colorScheme
     val baseColors = listOf(
-        MaterialTheme.colorScheme.primary,
-        MaterialTheme.colorScheme.secondary,
-        MaterialTheme.colorScheme.tertiary,
-        MaterialTheme.colorScheme.error,
+        colorScheme.primary,
+        colorScheme.secondary,
+        colorScheme.tertiary,
+        colorScheme.error,
         Color(0xFF8BC34A), // Light Green
         Color(0xFFFFC107), // Amber
         Color(0xFF00BCD4), // Cyan
-        Color(0xFF9C27B0)  // Purple
+        Color(0xFF9C27B0), // Purple
+        Color(0xFFE91E63), // Pink
+        Color(0xFF3F51B5)  // Indigo
     )
 
-    // Assign colors to data points (cycle through if more data than colors)
-    val colorMap = keys.mapIndexed { index, key ->
-        key to baseColors[index % baseColors.size]
-    }.toMap()
+    val chartSlices = remember(data, colorScheme) {
+        val totalSum = data.values.sum().toFloat()
+        val sortedKeys = data.keys.sorted() // Stable order
+
+        sortedKeys.mapIndexed { index, key ->
+            val count = data[key] ?: 0
+            val sweep = if (totalSum > 0) (360f * count / totalSum) else 0f
+            ChartSlice(
+                label = key,
+                count = count,
+                color = baseColors[index % baseColors.size],
+                sweepAngle = sweep
+            )
+        }
+    }
 
     Row(
         modifier = modifier
@@ -68,9 +86,7 @@ fun AppDistributionChart(
     ) {
         // LEFT: The Visual Chart
         PieChartVisual(
-            data = data,
-            totalSum = totalSum,
-            colors = keys.map { colorMap[it]!! },
+            slices = chartSlices,
             modifier = Modifier.weight(1f)
         )
 
@@ -78,8 +94,7 @@ fun AppDistributionChart(
 
         // RIGHT: The Legend
         ChartLegend(
-            data = data,
-            colorMap = colorMap,
+            slices = chartSlices,
             modifier = Modifier.weight(1f)
         )
     }
@@ -87,61 +102,64 @@ fun AppDistributionChart(
 
 @Composable
 private fun PieChartVisual(
-    data: Map<String, Int>,
-    totalSum: Int,
-    colors: List<Color>,
+    slices: List<ChartSlice>,
     modifier: Modifier = Modifier,
     radiusOuter: Dp = 80.dp,
     chartBarWidth: Dp = 20.dp,
-    animDuration: Int = 1000
+    animDuration: Int = 800
 ) {
-    // Calculate angles
-    val floatValues = data.values.map { 360 * it.toFloat() / totalSum.toFloat() }
-    var lastValue = 0f
-
-    // Animation States
     var animationPlayed by remember { mutableStateOf(false) }
 
-    val animateSize by animateFloatAsState(
-        targetValue = if (animationPlayed) radiusOuter.value * 2f else 0f,
+    // PERFORMANCE FIX: Animate Scale (0f -> 1f) instead of Dp Size to avoid re-layout
+    val animateScale by animateFloatAsState(
+        targetValue = if (animationPlayed) 1f else 0f,
         animationSpec = tween(
             durationMillis = animDuration,
-            delayMillis = 0,
-            easing = LinearOutSlowInEasing
-        ), label = "size"
+            easing = FastOutSlowInEasing
+        ),
+        label = "scale"
     )
 
+    // PERFORMANCE FIX: Animate Rotation using graphicsLayer
     val animateRotation by animateFloatAsState(
-        targetValue = if (animationPlayed) 90f * 11f else 0f,
+        targetValue = if (animationPlayed) 360f else 0f,
         animationSpec = tween(
             durationMillis = animDuration,
-            delayMillis = 0,
-            easing = LinearOutSlowInEasing
-        ), label = "rotation"
+            easing = FastOutSlowInEasing
+        ),
+        label = "rotation"
     )
 
     LaunchedEffect(Unit) {
         animationPlayed = true
     }
 
+    // Container with fixed size to prevent layout thrashing
     Box(
-        modifier = modifier.size(animateSize.dp),
+        modifier = modifier.size(radiusOuter * 2),
         contentAlignment = Alignment.Center
     ) {
         Canvas(
             modifier = Modifier
                 .size(radiusOuter * 2)
-                .rotate(animateRotation)
+                .graphicsLayer {
+                    // Apply transformations on the GPU (RenderNode)
+                    scaleX = animateScale
+                    scaleY = animateScale
+                    rotationZ = animateRotation
+                }
         ) {
-            floatValues.forEachIndexed { index, value ->
+            var startAngle = -90f // Start from top
+            val arcGap = 2f // Gap between slices in degrees
+            slices.forEach { slice ->
                 drawArc(
-                    color = colors[index],
-                    startAngle = lastValue,
-                    sweepAngle = value - 2f, // Small gap between arcs
+                    color = slice.color,
+                    startAngle = startAngle,
+                    sweepAngle = maxOf(0f, slice.sweepAngle - arcGap), // Ensure small gap
                     useCenter = false,
                     style = Stroke(chartBarWidth.toPx(), cap = StrokeCap.Butt)
                 )
-                lastValue += value
+                startAngle += slice.sweepAngle
             }
         }
     }
@@ -149,12 +167,11 @@ private fun PieChartVisual(
 
 @Composable
 private fun ChartLegend(
-    data: Map<String, Int>,
-    colorMap: Map<String, Color>,
+    slices: List<ChartSlice>,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier) {
-        data.forEach { (key, count) ->
+        slices.forEach { slice ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(vertical = 4.dp)
@@ -163,14 +180,14 @@ private fun ChartLegend(
                 Box(
                     modifier = Modifier
                         .size(10.dp)
-                        .background(color = colorMap[key]!!, shape = CircleShape)
+                        .background(color = slice.color, shape = CircleShape)
                 )
 
                 Spacer(modifier = Modifier.width(8.dp))
 
                 // Name
                 Text(
-                    text = key,
+                    text = slice.label,
                     style = MaterialTheme.typography.labelLarge,
                     modifier = Modifier.weight(1f),
                     maxLines = 1
@@ -178,7 +195,7 @@ private fun ChartLegend(
 
                 // Count
                 Text(
-                    text = "($count)",
+                    text = "(${slice.count})",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

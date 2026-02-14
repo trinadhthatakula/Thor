@@ -35,6 +35,7 @@ import com.valhalla.thor.presentation.appList.AppListScreen
 import com.valhalla.thor.presentation.freezer.FreezerScreen
 import com.valhalla.thor.presentation.home.AppDestinations
 import com.valhalla.thor.presentation.home.HomeScreen
+import com.valhalla.thor.presentation.home.HomeViewModel
 import com.valhalla.thor.presentation.widgets.AffirmationDialog
 import com.valhalla.thor.presentation.widgets.MultiAppAffirmationDialog
 import com.valhalla.thor.presentation.widgets.TermLoggerDialog
@@ -43,9 +44,10 @@ import org.koin.androidx.compose.koinViewModel
 
 @Composable
 fun MainScreen(
+    mainViewModel: MainViewModel = koinViewModel(),
+    homeViewModel: HomeViewModel = koinViewModel(),
     onExit: () -> Unit
 ) {
-    val mainViewModel: MainViewModel = koinViewModel()
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -149,6 +151,7 @@ fun MainScreen(
                 when (page) {
                     AppDestinations.HOME.ordinal -> {
                         HomeScreen(
+                            viewModel = homeViewModel,
                             // FIX: Use Pager scrolling instead of NavController
                             onNavigateToApps = {
                                 scope.launch { pagerState.animateScrollToPage(AppDestinations.APPS.ordinal) }
@@ -244,6 +247,7 @@ fun MainScreen(
             }
         }
     }
+
 }
 
 private fun checkAndProcessAction(

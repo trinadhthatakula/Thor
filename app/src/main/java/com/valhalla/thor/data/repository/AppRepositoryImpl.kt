@@ -33,6 +33,7 @@ class AppRepositoryImpl(
      * We debounce the TRIGGER to prevent heavy package scanning during batch operations.
      */
     override fun getAllApps(): Flow<List<AppInfo>> = callbackFlow {
+        val producer = this
 
         // A conflated channel acts as a signal buffer.
         // If 50 broadcasts come in, we only keep the latest "refresh needed" flag.
@@ -45,7 +46,7 @@ class AppRepositoryImpl(
 
             for (signal in triggerChannel) {
                 // Wait for the broadcast storm to settle (e.g. 500ms after last signal)
-                delay(500L)
+                //delay(500L)
 
                 // Drain any extra signals that arrived while we were waiting
                 while (triggerChannel.tryReceive().isSuccess) {
@@ -61,12 +62,17 @@ class AppRepositoryImpl(
                         pm.getInstalledPackages(PackageManager.MATCH_UNINSTALLED_PACKAGES)
                     }
 
-                    val list = installedPackages.mapNotNull { packInfo ->
-                        val appInfo = packInfo.applicationInfo ?: return@mapNotNull null
-                        mapToAppInfo(packInfo, appInfo, isLightweight = true)
+                    val currentList = ArrayList<AppInfo>(installedPackages.size)
+
+                    for (packInfo in installedPackages) {
+                        val appInfo = packInfo.applicationInfo ?: continue
+                        val mapped = mapToAppInfo(packInfo, appInfo, isLightweight = true)
+                        currentList.add(mapped)
                     }
 
-                    trySend(list)
+                    // Emit a single complete snapshot of all installed apps
+                    producer.send(currentList.toList())
+
                 } catch (e: Exception) {
                     if (BuildConfig.DEBUG) e.printStackTrace()
                 }
@@ -191,7 +197,7 @@ class AppRepositoryImpl(
                 @Suppress("DEPRECATION")
                 pm.getInstallerPackageName(packageName)
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
     }

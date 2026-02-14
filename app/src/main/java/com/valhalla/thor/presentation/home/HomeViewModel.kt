@@ -6,6 +6,8 @@ import com.valhalla.thor.domain.repository.PreferenceRepository // Injected
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.model.AppInfo
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
@@ -36,6 +38,7 @@ class HomeViewModel(
     private val preferenceRepository: PreferenceRepository // Injected
 ) : ViewModel() {
 
+    private var dashboardJob: Job? = null
     private val _internalState = MutableStateFlow(HomeUiState())
 
     // Combine internal data processing with user preferences
@@ -52,7 +55,10 @@ class HomeViewModel(
     }
 
     fun loadDashboardData() {
-        viewModelScope.launch {
+        // Cancel any existing job to ensure we restart with fresh system status
+        dashboardJob?.cancel()
+
+        dashboardJob = viewModelScope.launch(Dispatchers.IO) {
             _internalState.update { it.copy(isLoading = true) }
             val hasRoot = systemRepository.isRootAvailable()
             val hasShizuku = systemRepository.isShizukuAvailable()

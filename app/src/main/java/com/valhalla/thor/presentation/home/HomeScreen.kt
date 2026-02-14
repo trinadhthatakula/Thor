@@ -2,6 +2,7 @@ package com.valhalla.thor.presentation.home
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -133,7 +134,7 @@ fun HomeScreen(
         Spacer(Modifier.height(24.dp))
 
         // 3. Distribution Chart
-        if (state.distributionData.isNotEmpty()) {
+        AnimatedVisibility (state.distributionData.isNotEmpty() && !state.isLoading) {
             Text(
                 text = "App Distribution",
                 style = MaterialTheme.typography.titleMedium,
