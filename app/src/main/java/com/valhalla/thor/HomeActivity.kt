@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.view.WindowCompat.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.presentation.common.ShizukuPermissionHandler
@@ -48,6 +49,7 @@ class HomeActivity : ComponentActivity() {
         setContent {
             ThorTheme {
                 MainScreen(
+                    homeViewModel = homeViewModel,
                     onExit = { finish() }
                 )
             }
@@ -56,7 +58,6 @@ class HomeActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        homeViewModel.loadDashboardData()
         lifecycleScope.launch {
             // Only ask automatically ONCE per session if not rooted.
             if (!systemRepository.isRootAvailable() && !hasRequestedShizuku) {
