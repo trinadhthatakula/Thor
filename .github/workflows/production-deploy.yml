@@ -44,8 +44,8 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      # --- FASTLANE ---
-      - name: Run Fastlane (Distribute)
+      # --- FASTLANE (CLOSED TESTING) ---
+      - name: Run Fastlane (Distribute Prod)
         env:
           JSON_KEY_FILE: ${{ github.workspace }}/app/google-play-api.json
           SUPPLY_JSON_KEY: ${{ github.workspace }}/app/google-play-api.json
@@ -53,8 +53,8 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEYSTORE_FILE_PATH: ${{ github.workspace }}/app/release.jks
-        # No extra flags needed. Fastlane will use the version defined in the commit.
-        run: fastlane android distribute
+        # Updated to use the production lane (Closed Track)
+        run: fastlane android distribute_production
 
       # --- SYNC & RELEASE ---
       - name: Read Version Name
@@ -71,6 +71,7 @@ jobs:
           files: |
             app/build/distribution/foss/foss-release.apk
             app/build/distribution/store/store-release.apk
+            app/build/outputs/bundle/storeRelease/*.aab
           draft: false
           prerelease: false
         env:

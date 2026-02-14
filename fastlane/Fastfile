@@ -3,10 +3,8 @@ default_platform(:android)
 platform :android do
 
   # --- HELPER: Common Build Logic ---
-  # REPRODUCIBILITY UPDATE:
-  # This lane now strictly uses gradle.properties as the source of truth.
-  # The 'version_code' argument is preserved only for manual overrides (re-building old commits).
-  def prepare_release_artifacts(upload_to_store: false, version_code: nil)
+  # UPDATED: Now accepts 'track' to distinguish between Internal (Dev) and Alpha/Closed (Prod)
+  def prepare_release_artifacts(upload_to_store: false, track: 'internal', version_code: nil)
     # 1. PREPARATION
     fastlane_dir = Dir.pwd
     project_root = File.expand_path("..", fastlane_dir)
@@ -25,34 +23,32 @@ platform :android do
                      .map { |l| l.split('=', 2).map(&:strip) }
                      .to_h
 
-    # 3. DETERMINE VERSION CODE (Source of Truth Logic)
+    # 3. DETERMINE VERSION CODE
     final_version_code = nil
 
     if version_code
-      # A. Manual Override (e.g., triggering a build for a specific historical version)
       final_version_code = version_code.to_i
       UI.important("⚠️  Using MANUAL version code override: #{final_version_code}")
     else
-      # B. Standard: Read from File (Reproducible)
       final_version_code = properties["versionCode"]&.to_i
       UI.user_error!("❌ 'versionCode' missing in gradle.properties") unless final_version_code
       UI.message("✅ Using defined version code from properties: #{final_version_code}")
     end
 
     # 4. GET VERSION NAME
-    # We let Gradle calculate the name based on the code we just determined
     new_version_name = ""
     Dir.chdir(project_root) do
       new_version_name = sh("./gradlew -q app:printVersionName -PversionCode=#{final_version_code}").strip
     end
 
-    UI.message("📦 Build Target: v#{new_version_name} (#{final_version_code})")
+    UI.message("📦 Build Target: v#{new_version_name} (#{final_version_code}) - Track: #{track}")
 
     # Save for GitHub Actions steps
     File.write(File.join(project_root, "version_name.txt"), new_version_name)
     File.write(File.join(project_root, "version_code.txt"), final_version_code.to_s)
 
     # 5. BUILD ARTIFACTS
+    # We build APKs (for GitHub/Telegram) AND Bundle (for Play Store)
     build_tasks = "clean copyStoreReleaseApk copyFossReleaseApk"
     build_tasks += " bundleStoreRelease" if upload_to_store
 
@@ -70,30 +66,38 @@ platform :android do
       generated_aab_path = lane_context[SharedValues::GRADLE_AAB_OUTPUT_PATH]
       UI.user_error!("❌ No AAB generated") unless generated_aab_path
 
+      # Upload to specific track (internal or alpha/closed)
       upload_to_play_store(
-        track: 'internal',
-        release_status: 'completed',
+        track: track,
+        release_status: 'completed', # Draft or completed? usually completed for internal/alpha
         aab: generated_aab_path,
         skip_upload_metadata: true,
         skip_upload_images: true,
         skip_upload_screenshots: true,
         skip_upload_apk: true
       )
-      UI.success("🚀 Deployed to Play Store!")
+      UI.success("🚀 Deployed to Play Store [#{track}]!")
     else
       UI.success("📦 Artifacts built successfully (Upload skipped)")
     end
   end
 
-  desc "Build and Distribute to Play Store + GitHub"
-  lane :distribute do
-    # No arguments needed, it trusts the repo state
-    prepare_release_artifacts(upload_to_store: true)
+  # --- LANES ---
+
+  desc "Dev: Build -> Play Store (Internal) -> Telegram -> GitHub Pre-release"
+  lane :distribute_dev do
+    prepare_release_artifacts(upload_to_store: true, track: 'internal')
   end
 
-  desc "Build Release Candidates Only (No Play Store Upload)"
+  desc "Prod: Build -> Play Store (Closed/Alpha) -> GitHub Release"
+  lane :distribute_production do
+    # 'alpha' is the standard track key for "Closed Testing" in Google Play Console
+    prepare_release_artifacts(upload_to_store: true, track: 'alpha')
+  end
+
+  # Helper for manual triggering
+  desc "Build Release Candidates Only (No Store)"
   lane :build_release_candidates do |options|
-    # Allows manual override if needed via "fastlane ... version_code:123"
     prepare_release_artifacts(
         upload_to_store: false,
         version_code: options[:version_code]
