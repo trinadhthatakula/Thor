@@ -2,6 +2,7 @@ package com.valhalla.thor.presentation.home
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -41,6 +42,7 @@ import com.valhalla.thor.presentation.home.components.SummaryStatRow
 import com.valhalla.thor.presentation.installer.InstallerViewModel
 import com.valhalla.thor.presentation.installer.PortableInstaller
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 
 @Composable
 fun HomeScreen(
@@ -48,7 +50,7 @@ fun HomeScreen(
     onNavigateToFreezer: () -> Unit,
     onReinstallAll: () -> Unit,
     onClearAllCache: (AppListType) -> Unit,
-    viewModel: HomeViewModel = koinViewModel(),
+    viewModel: HomeViewModel = koinInject(),
     installerViewModel: InstallerViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -133,7 +135,7 @@ fun HomeScreen(
         Spacer(Modifier.height(24.dp))
 
         // 3. Distribution Chart
-        if (state.distributionData.isNotEmpty()) {
+        AnimatedVisibility (state.distributionData.isNotEmpty() && !state.isLoading) {
             Text(
                 text = "App Distribution",
                 style = MaterialTheme.typography.titleMedium,
