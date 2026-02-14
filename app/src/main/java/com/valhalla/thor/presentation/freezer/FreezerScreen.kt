@@ -93,6 +93,7 @@ fun FreezerScreen(
 
         // --- Header ---
         Row(verticalAlignment = Alignment.CenterVertically) {
+
             Icon(
                 painter = painterResource(R.drawable.frozen),
                 contentDescription = "Freezer",
@@ -104,7 +105,7 @@ fun FreezerScreen(
                     .padding(8.dp)
             )
             Text(
-                text = "Deep Freezer",
+                text = "Freezer",
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
                     .padding(vertical = 10.dp)

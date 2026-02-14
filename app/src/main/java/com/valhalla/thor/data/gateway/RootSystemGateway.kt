@@ -1,6 +1,6 @@
 package com.valhalla.thor.data.gateway
 
-import com.valhalla.superuser.repository.ShellRepository
+import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.domain.gateway.SystemGateway
 import kotlinx.coroutines.Dispatchers

@@ -1,8 +1,5 @@
-package com.valhalla.superuser.repository
+package com.valhalla.superuser.ktx
 
-import com.valhalla.superuser.Shell
-import com.valhalla.superuser.ktx.await
-import com.valhalla.superuser.ktx.getShellAwait
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
