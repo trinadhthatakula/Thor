@@ -63,21 +63,15 @@ class AppRepositoryImpl(
                     }
 
                     val currentList = ArrayList<AppInfo>(installedPackages.size)
-                    val batchSize = 20
 
                     for (packInfo in installedPackages) {
                         val appInfo = packInfo.applicationInfo ?: continue
                         val mapped = mapToAppInfo(packInfo, appInfo, isLightweight = true)
                         currentList.add(mapped)
-
-                        if (currentList.size % batchSize == 0) {
-                            producer.send(currentList.toList())
-                        }
                     }
 
-                    if (currentList.isEmpty() || currentList.size % batchSize != 0) {
-                        producer.send(currentList.toList())
-                    }
+                    // Emit a single complete snapshot of all installed apps
+                    producer.send(currentList.toList())
 
                 } catch (e: Exception) {
                     if (BuildConfig.DEBUG) e.printStackTrace()
