@@ -17,6 +17,7 @@ import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
+import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -157,7 +158,7 @@ class InstallerRepositoryImpl(
 
         try {
             // ATTEMPT 1: Try as Bundle (XAPK/APKS)
-            var bundleStream: InputStream? = context.contentResolver.openInputStream(uri)
+            val bundleStream: InputStream? = context.contentResolver.openInputStream(uri)
 
             if (bundleStream != null) {
                 try {
@@ -197,13 +198,13 @@ class InstallerRepositoryImpl(
                         }
                     }
                 } catch (e: Exception) {
-                    Log.d("thor", "Not a valid bundle zip, trying fallback.")
+                    Logger.e("thor", "Not a valid bundle zip, trying fallback. Error: ${e.message}")
                 }
             }
 
             // ATTEMPT 2: Fallback to Monolithic APK
             if (!filesWritten) {
-                Log.d("thor", "Fallback: Treating stream as monolithic base.apk")
+                Logger.d("thor", "Fallback: Treating stream as monolithic base.apk")
 
                 bytesProcessed = 0
                 lastProgressEmitted = 0
@@ -227,12 +228,6 @@ class InstallerRepositoryImpl(
                 }
             }
 
-            if (!filesWritten) {
-                session.abandon()
-                eventBus.emit(InstallState.Error("No valid APK files found. Is this a supported file type?"))
-                return
-            }
-
             eventBus.emit(InstallState.Installing(1.0f))
 
             val intent = Intent(context, InstallReceiver::class.java).apply {
@@ -252,7 +247,7 @@ class InstallerRepositoryImpl(
 
         } catch (e: Exception) {
             session.abandon()
-            Log.e("thorInstaller", "Install failed", e)
+            Logger.e("thorInstaller", "Install failed", e)
             eventBus.emit(InstallState.Error(e.message ?: "Unknown installation error"))
         }
     }

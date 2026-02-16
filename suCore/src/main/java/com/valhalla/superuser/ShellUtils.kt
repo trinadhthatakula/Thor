@@ -22,7 +22,7 @@ object ShellUtils {
      * @return `false` if the list is `null` or empty or all elements are empty strings.
      */
     fun isValidOutput(out: List<String?>): Boolean {
-        return out.any { it != null && it.isNotEmpty() }
+        return out.any { !it.isNullOrEmpty() }
     }
 
     /**
@@ -39,7 +39,7 @@ object ShellUtils {
      * @param shell a shell instance.
      * @param commands the commands.
      * @return the last line of the output of t
-     * he command, empty string if no output is available.
+     * the command, empty string if no output is available.
      */
     fun fastCmd(shell: Shell, vararg commands: String?): String {
         val out = shell.newJob().apply {
@@ -144,7 +144,7 @@ object ShellUtils {
                 v = u
                 u = t
             }
-            v = v - u
+            v -= u
         } while (v != 0L)
 
         return u shl shift

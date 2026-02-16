@@ -16,6 +16,7 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.content.getSystemService
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.util.Logger
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
@@ -72,7 +73,7 @@ class ShizukuReflector(
 
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
-                Log.e("ShizukuReflector", "clearCache failed: ${e.message}")
+                Logger.e("ShizukuReflector", "clearCache failed: ${e.message}")
         }
     }
 
@@ -82,7 +83,7 @@ class ShizukuReflector(
             Shizuku.forceStopApp(context, packageName)
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
-                Log.e("ShizukuReflector", "forceStop failed", e)
+                Logger.e("ShizukuReflector", "forceStop failed", e)
         }
     }
 
@@ -92,7 +93,7 @@ class ShizukuReflector(
             Shizuku.setAppDisabled(context, packageName, !enabled)
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
-                Log.e("ShizukuReflector", "setAppEnabled failed", e)
+                Logger.e("ShizukuReflector", "setAppEnabled failed", e)
         }
     }
 

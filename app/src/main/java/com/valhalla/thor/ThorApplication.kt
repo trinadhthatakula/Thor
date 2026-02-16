@@ -7,6 +7,7 @@ import com.valhalla.thor.di.coreModule
 import com.valhalla.thor.di.installerModule
 import com.valhalla.thor.di.preferenceModule
 import com.valhalla.thor.di.presentationModule
+import com.valhalla.thor.util.Logger
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.androix.startup.KoinStartup
@@ -16,7 +17,7 @@ class ThorApplication : Application(), KoinStartup {
 
     override fun onKoinStartup() = koinConfiguration {
         androidContext(this@ThorApplication)
-        androidLogger()
+        androidLogger(Logger.koinLogLevel)
         modules(
             coreModule,
             installerModule,

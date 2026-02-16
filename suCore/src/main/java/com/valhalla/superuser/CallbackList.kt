@@ -1,6 +1,5 @@
 package com.valhalla.superuser
 
-import android.util.Log.i
 import com.valhalla.superuser.internal.UiThreadHandler
 import java.util.AbstractList
 import java.util.concurrent.Executor

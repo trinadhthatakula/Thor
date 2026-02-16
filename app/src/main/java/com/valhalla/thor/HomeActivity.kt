@@ -12,6 +12,7 @@ import com.valhalla.thor.presentation.common.ShizukuPermissionHandler
 import com.valhalla.thor.presentation.home.HomeViewModel
 import com.valhalla.thor.presentation.main.MainScreen
 import com.valhalla.thor.presentation.theme.ThorTheme
+import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 import org.koin.androidx.viewmodel.ext.android.viewModel
@@ -26,15 +27,15 @@ class HomeActivity : ComponentActivity() {
 
     private val shizukuHandler = ShizukuPermissionHandler(
         onPermissionGranted = {
-            Log.d("HomeActivity", "Shizuku Ready")
+            Logger.d("HomeActivity", "Shizuku Ready")
             homeViewModel.loadDashboardData()
         },
         onPermissionDenied = {
-            Log.d("HomeActivity", "Shizuku Denied")
+            Logger.d("HomeActivity", "Shizuku Denied")
             // We stop asking automatically. User must click "Refresh" in dashboard manually now.
         },
         onBinderDead = {
-            Log.w("HomeActivity", "Shizuku Binder Died")
+            Logger.w("HomeActivity", "Shizuku Binder Died")
         }
     )
 
