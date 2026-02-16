@@ -109,12 +109,7 @@ class InstallerViewModel(
                     val installedPkg = packageManager.getPackageInfo(meta.packageName, 0)
                     oldVersion = installedPkg.versionName
                     
-                    val installedVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                        installedPkg.longVersionCode
-                    } else {
-                        @Suppress("DEPRECATION")
-                        installedPkg.versionCode.toLong()
-                    }
+                    val installedVersionCode = installedPkg.longVersionCode
                     isDowngrade = meta.versionCode < installedVersionCode
                     true
                 } catch (_: PackageManager.NameNotFoundException) {

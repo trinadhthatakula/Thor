@@ -82,7 +82,7 @@ val coreModule = module {
     // Singletons for the Gateways
     single { RootSystemGateway(get()) }
     single { ShizukuSystemGateway(get()) }
-    single { DhizukuSystemGateway(androidContext(), get()) }
+    single { DhizukuSystemGateway(get()) }
     // The Repository interacts with the Gateways
     singleOf(::SystemRepositoryImpl).bind<SystemRepository>()
 }

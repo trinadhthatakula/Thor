@@ -99,7 +99,7 @@ object DhizukuHelper {
         return Packages(context).isAppDisabled(packageName) == disabled
     }
 
-    fun uninstallApp(context: Context, packageName: String): Boolean {
+    fun uninstallApp( packageName: String): Boolean {
         return execute("pm uninstall --user current $packageName").first == 0
     }
 
@@ -117,22 +117,13 @@ object DhizukuHelper {
         return try {
             val pm = asInterface("android.content.pm.IPackageManager", "package") ?: return false
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                HiddenApiBypass.invoke(
-                    pm::class.java,
-                    pm,
-                    "deleteApplicationCacheFiles",
-                    packageName,
-                    null /* IPackageDataObserver */
-                )
-            } else {
-                val method = pm::class.java.getMethod(
-                    "deleteApplicationCacheFiles",
-                    String::class.java,
-                    Class.forName("android.content.pm.IPackageDataObserver")
-                )
-                method.invoke(pm, packageName, null)
-            }
+            HiddenApiBypass.invoke(
+                pm::class.java,
+                pm,
+                "deleteApplicationCacheFiles",
+                packageName,
+                null /* IPackageDataObserver */
+            )
             true
         } catch (e: Exception) {
             e.printStackTrace()

@@ -6,7 +6,6 @@ import com.valhalla.thor.data.source.local.dhizuku.DhizukuReflector
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
 
 class DhizukuSystemGateway(
-    private val context: Context,
     private val reflector: DhizukuReflector
 ) : SystemGateway {
 

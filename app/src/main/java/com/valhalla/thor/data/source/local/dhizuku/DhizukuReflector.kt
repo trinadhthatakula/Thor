@@ -37,8 +37,8 @@ class DhizukuReflector(
 
     fun uninstallApp(packageName: String): Boolean {
         return try {
-            DhizukuHelper.uninstallApp(context, packageName)
-        } catch (e: Exception) {
+            DhizukuHelper.uninstallApp( packageName)
+        } catch (_: Exception) {
             false
         }
     }
