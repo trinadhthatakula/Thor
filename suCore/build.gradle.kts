@@ -25,11 +25,11 @@ android {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
     }
-    buildFeatures{
+    buildFeatures {
         buildConfig = true
     }
 }
 
 dependencies {
     implementation(libs.androidx.core.ktx)
- }
+}

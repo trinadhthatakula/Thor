@@ -11,9 +11,6 @@ import android.content.pm.IPackageManager
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.IBinder
-import android.util.Log
-import androidx.annotation.RequiresApi
 import androidx.core.content.getSystemService
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.util.Logger

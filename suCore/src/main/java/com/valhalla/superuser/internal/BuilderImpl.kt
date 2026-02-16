@@ -95,7 +95,7 @@ class BuilderImpl : Shell.Builder() {
     }
 
     override fun build(process: Process?): ShellImpl {
-        if(process == null) {
+        if (process == null) {
             throw NoShellException("Process cannot be null!, Unable to create a shell!")
         }
         val shell: ShellImpl
@@ -112,7 +112,7 @@ class BuilderImpl : Shell.Builder() {
         MainShell.cached = (shell)
         if (initializers != null) {
             for (init in initializers) {
-                if (init != null && !init.onInit( shell)) {
+                if (init != null && !init.onInit(shell)) {
                     MainShell.cached = (null)
                     throw NoShellException("Unable to init shell")
                 }

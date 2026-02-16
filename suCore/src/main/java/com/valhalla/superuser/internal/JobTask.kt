@@ -20,6 +20,7 @@ internal abstract class JobTask : Shell.Job(), Shell.Task {
 
     @JvmField
     protected var callbackExecutor: Executor? = null
+
     @JvmField
     protected var callback: Shell.ResultCallback? = null
 
@@ -69,8 +70,8 @@ internal abstract class JobTask : Shell.Job(), Shell.Task {
             errGobbler.get()
 
             result.code = code
-            result.out = outList?: mutableListOf()
-            result.err = (if (noErr) null else err)?: mutableListOf()
+            result.out = outList ?: mutableListOf()
+            result.err = (if (noErr) null else err) ?: mutableListOf()
         } catch (e: IOException) {
             Utils.err(e)
         } catch (e: ExecutionException) {
@@ -125,7 +126,7 @@ internal abstract class JobTask : Shell.Job(), Shell.Task {
                 .toByteArray(
                     StandardCharsets.UTF_8
                 )
-        
+
         //private static final byte[] END_CMD = String
         //            .format("__RET=$?;echo %1$s;echo %1$s >&2;echo $__RET;unset __RET\n", END_UUID)
         //            .getBytes(UTF_8);

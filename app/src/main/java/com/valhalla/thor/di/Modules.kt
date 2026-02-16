@@ -55,7 +55,7 @@ val installerModule = module {
             shizukuReflector = get()
         )
     }
-    single<PackageManager>{
+    single<PackageManager> {
         androidContext().packageManager
     }
     single<AppAnalyzer> { AppAnalyzerImpl(androidContext()) }

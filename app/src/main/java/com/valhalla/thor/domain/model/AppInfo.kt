@@ -33,8 +33,8 @@ data class AppInfo(
     var lastUpdateTime: Long = 0L,
     var firstInstallTime: Long = 0L,
     val isDebuggable: Boolean = false,
-){
-    companion object{
+) {
+    companion object {
 
         fun mapToAppInfo(
             packInfo: PackageInfo,

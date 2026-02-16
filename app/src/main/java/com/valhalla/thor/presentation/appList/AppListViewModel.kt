@@ -2,15 +2,15 @@ package com.valhalla.thor.presentation.appList
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.valhalla.thor.domain.repository.PreferenceRepository // Injected
-import com.valhalla.thor.domain.repository.SystemRepository
-import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
-import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
+import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
+import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -65,12 +65,12 @@ class AppListViewModel(
         )
         processList(mergedState)
     }
-    .flowOn(Dispatchers.Default) // Move computation off Main Thread
-    .stateIn(
-        viewModelScope,
-        SharingStarted.WhileSubscribed(5000),
-        AppListUiState()
-    )
+        .flowOn(Dispatchers.Default) // Move computation off Main Thread
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            AppListUiState()
+        )
 
     init {
         loadApps()
@@ -113,7 +113,12 @@ class AppListViewModel(
         viewModelScope.launch {
             _rawState.update { it.copy(isLoadingDetails = true, selectedAppDetails = null) }
             getAppDetailsUseCase(packageName).onSuccess { fullDetails ->
-                _rawState.update { it.copy(isLoadingDetails = false, selectedAppDetails = fullDetails) }
+                _rawState.update {
+                    it.copy(
+                        isLoadingDetails = false,
+                        selectedAppDetails = fullDetails
+                    )
+                }
             }.onFailure {
                 _rawState.update { it.copy(isLoadingDetails = false) }
             }
@@ -161,7 +166,8 @@ class AppListViewModel(
 
     private fun processList(state: AppListUiState): AppListUiState {
         // 1. Pick Source
-        val rawList = if (state.appListType == AppListType.USER) state.allUserApps else state.allSystemApps
+        val rawList =
+            if (state.appListType == AppListType.USER) state.allUserApps else state.allSystemApps
 
         // 2. Filter
         val filtered = when (state.filterType) {
@@ -169,6 +175,7 @@ class AppListViewModel(
                 if (state.selectedFilter == "All") rawList
                 else rawList.filter { it.installerPackageName == state.selectedFilter }
             }
+
             FilterType.State -> {
                 when (state.selectedFilter) {
                     "Active" -> rawList.filter { it.enabled }
@@ -182,7 +189,8 @@ class AppListViewModel(
         val sorted = getSortedList(filtered, state.sortBy, state.sortOrder)
 
         // 4. Calculate Installers (Metadata)
-        val installers = rawList.mapNotNull { it.installerPackageName }.distinct().sorted().toMutableList()
+        val installers =
+            rawList.mapNotNull { it.installerPackageName }.distinct().sorted().toMutableList()
         installers.add(0, "All")
 
         return state.copy(
@@ -191,7 +199,11 @@ class AppListViewModel(
         )
     }
 
-    private fun getSortedList(list: List<AppInfo>, sortBy: SortBy, order: SortOrder): List<AppInfo> {
+    private fun getSortedList(
+        list: List<AppInfo>,
+        sortBy: SortBy,
+        order: SortOrder
+    ): List<AppInfo> {
         val comparator = when (sortBy) {
             SortBy.NAME -> compareBy<AppInfo> { it.appName?.lowercase() }
             SortBy.INSTALL_DATE -> compareBy { it.firstInstallTime }

@@ -64,7 +64,8 @@
 ## Credits
 
 - Portions of this app use code from [`libsu`](https://github.com/topjohnwu/libsu)
-  by [topjohnwu](https://github.com/topjohnwu/), adapted and integrated as the [`suCore`](https://github.com/trinadhthatakula/Thor/tree/master/suCore) module.
+  by [topjohnwu](https://github.com/topjohnwu/), adapted and integrated as the [
+  `suCore`](https://github.com/trinadhthatakula/Thor/tree/master/suCore) module.
 
 ### Modifications to libsu
 

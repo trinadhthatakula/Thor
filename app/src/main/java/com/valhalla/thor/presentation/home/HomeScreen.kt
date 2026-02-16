@@ -99,7 +99,8 @@ fun HomeScreen(
         // A. Clear Cache
         if (state.isRootAvailable) {
             // ... (Cache subtitle logic same as before) ...
-            val cacheSubtitle = "Free up space by cleaning app caches" // simplified for brevity here
+            val cacheSubtitle =
+                "Free up space by cleaning app caches" // simplified for brevity here
 
             ActionCard(
                 title = "Clear All Cache",
@@ -134,7 +135,7 @@ fun HomeScreen(
         Spacer(Modifier.height(24.dp))
 
         // 3. Distribution Chart
-        AnimatedVisibility (state.distributionData.isNotEmpty() && !state.isLoading) {
+        AnimatedVisibility(state.distributionData.isNotEmpty() && !state.isLoading) {
             Text(
                 text = "App Distribution",
                 style = MaterialTheme.typography.titleMedium,

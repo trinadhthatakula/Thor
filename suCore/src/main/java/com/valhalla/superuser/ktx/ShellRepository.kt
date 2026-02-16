@@ -31,20 +31,21 @@ class RealShellRepository : ShellRepository {
         return runInternal(*commands)
     }
 
-    private suspend fun runInternal(vararg commands: String): Result<List<String>> = withContext(Dispatchers.IO) {
-        try {
-            val shell = getShellAwait()
-            val jobResult = shell.newJob().add(*commands).to(ArrayList()).await()
+    private suspend fun runInternal(vararg commands: String): Result<List<String>> =
+        withContext(Dispatchers.IO) {
+            try {
+                val shell = getShellAwait()
+                val jobResult = shell.newJob().add(*commands).to(ArrayList()).await()
 
-            if (jobResult.isSuccess) {
-                // Filter out nulls which legacy lib-su might produce
-                Result.success(jobResult.out.filterNotNull())
-            } else {
-                val errorMsg = jobResult.err.filterNotNull().joinToString("\n")
-                Result.failure(IOException("Command failed with code ${jobResult.code}: $errorMsg"))
+                if (jobResult.isSuccess) {
+                    // Filter out nulls which legacy lib-su might produce
+                    Result.success(jobResult.out.filterNotNull())
+                } else {
+                    val errorMsg = jobResult.err.filterNotNull().joinToString("\n")
+                    Result.failure(IOException("Command failed with code ${jobResult.code}: $errorMsg"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
             }
-        } catch (e: Exception) {
-            Result.failure(e)
         }
-    }
 }

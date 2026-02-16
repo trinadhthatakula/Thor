@@ -8,7 +8,6 @@ import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
-import android.util.Log
 import android.view.InputEvent
 import android.view.KeyEvent
 import androidx.annotation.RequiresApi

@@ -283,7 +283,10 @@ private fun AppSearchBar(
                     Spacer(modifier = Modifier.width(12.dp))
                     Box(modifier = Modifier.weight(1f)) {
                         if (query.isEmpty()) {
-                            Text("Search apps...", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "Search apps...",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                         innerTextField()
                     }
@@ -336,6 +339,7 @@ private fun AppControlBar(
                 val label = when {
                     filterType == FilterType.Source -> popularInstallers[item] ?: item
                     ?: if (appListType != AppListType.SYSTEM) "Others" else "System"
+
                     else -> item ?: ""
                 }
 
@@ -379,7 +383,9 @@ private fun MultiSelectHeader(
             text = "$count Selected",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSecondaryContainer,
-            modifier = Modifier.weight(1f).padding(start = 8.dp)
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 8.dp)
         )
         IconButton(onClick = onClear) {
             Icon(
@@ -446,7 +452,11 @@ private fun AppItemList(
     ListItem(
         modifier = Modifier
             .expressivePress(interactionSource)
-            .combinedClickable(interactionSource = interactionSource, onClick = onClick, onLongClick = onLongClick)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
             .background(
                 if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
                 else MaterialTheme.colorScheme.surface
@@ -461,7 +471,9 @@ private fun AppItemList(
                     Icon(
                         painterResource(R.drawable.frozen),
                         "Frozen",
-                        modifier = Modifier.size(16.dp).padding(start = 4.dp),
+                        modifier = Modifier
+                            .size(16.dp)
+                            .padding(start = 4.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -470,7 +482,11 @@ private fun AppItemList(
         supportingContent = { Text(app.packageName, maxLines = 1) },
         trailingContent = {
             if (isSelected) {
-                Icon(painterResource(R.drawable.check_circle), "Selected", tint = MaterialTheme.colorScheme.primary)
+                Icon(
+                    painterResource(R.drawable.check_circle),
+                    "Selected",
+                    tint = MaterialTheme.colorScheme.primary
+                )
             }
         }
     )
@@ -496,7 +512,11 @@ private fun AppItemGrid(
                 if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
                 else MaterialTheme.colorScheme.surfaceContainerLow
             )
-            .combinedClickable(interactionSource = interactionSource, onClick = onClick, onLongClick = onLongClick)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
             .padding(12.dp)
     ) {
         Box {
@@ -506,7 +526,9 @@ private fun AppItemGrid(
                     painterResource(R.drawable.check_circle),
                     "Selected",
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.align(Alignment.TopEnd).background(MaterialTheme.colorScheme.surface, CircleShape)
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .background(MaterialTheme.colorScheme.surface, CircleShape)
                 )
             }
         }
@@ -529,7 +551,7 @@ private fun AppIcon(
 ) {
     // Hoisted static matrix to avoid recreation
     val colorMatrix = remember { ColorMatrix().apply { setToSaturation(0f) } }
-    
+
     Box(contentAlignment = Alignment.Center) {
         AsyncImage(
             model = AppIconModel(packageName),
@@ -588,7 +610,10 @@ private fun AppFilterSheet(
                             ListItem(
                                 headlineContent = { Text(type.asGeneralName()) },
                                 trailingContent = {
-                                    if (filterType == type) Icon(painterResource(R.drawable.check_circle), null)
+                                    if (filterType == type) Icon(
+                                        painterResource(R.drawable.check_circle),
+                                        null
+                                    )
                                 },
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(12.dp))
@@ -597,6 +622,7 @@ private fun AppFilterSheet(
                         }
                     }
                 }
+
                 SheetTab.SORT -> {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Order:", style = MaterialTheme.typography.titleMedium)
@@ -621,7 +647,10 @@ private fun AppFilterSheet(
                             ListItem(
                                 headlineContent = { Text(item.asGeneralName()) },
                                 trailingContent = {
-                                    if (sortBy == item) Icon(painterResource(R.drawable.check_circle), null)
+                                    if (sortBy == item) Icon(
+                                        painterResource(R.drawable.check_circle),
+                                        null
+                                    )
                                 },
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(12.dp))

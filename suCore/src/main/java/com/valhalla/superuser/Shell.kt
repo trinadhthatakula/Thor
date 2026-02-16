@@ -397,7 +397,7 @@ abstract class Shell : Closeable {
          * @param shell the newly constructed shell.
          * @return `false` when initialization fails, otherwise `true`.
          */
-        fun onInit( shell: Shell): Boolean {
+        fun onInit(shell: Shell): Boolean {
             return true
         }
     }

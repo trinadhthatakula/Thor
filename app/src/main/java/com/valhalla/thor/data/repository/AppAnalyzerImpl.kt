@@ -8,6 +8,7 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Build
+import androidx.core.graphics.createBitmap
 import com.valhalla.thor.domain.model.AppMetadata
 import com.valhalla.thor.domain.repository.AppAnalyzer
 import kotlinx.coroutines.Dispatchers
@@ -15,7 +16,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipInputStream
-import androidx.core.graphics.createBitmap
 
 class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
 
@@ -70,7 +70,10 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
             val flags = PackageManager.GET_META_DATA
 
             val archiveInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                pm.getPackageArchiveInfo(tempFile.absolutePath, PackageManager.PackageInfoFlags.of(flags.toLong()))
+                pm.getPackageArchiveInfo(
+                    tempFile.absolutePath,
+                    PackageManager.PackageInfoFlags.of(flags.toLong())
+                )
             } else {
                 @Suppress("DEPRECATION")
                 pm.getPackageArchiveInfo(tempFile.absolutePath, flags)

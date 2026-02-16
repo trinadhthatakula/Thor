@@ -37,7 +37,7 @@ class ShizukuSystemGateway(
     }
 
     override suspend fun uninstallApp(packageName: String): Result<Unit> {
-        return if(reflector.uninstallApp(packageName)){
+        return if (reflector.uninstallApp(packageName)) {
             Result.success(Unit)
         } else {
             Result.failure(Exception("Uninstall failed"))

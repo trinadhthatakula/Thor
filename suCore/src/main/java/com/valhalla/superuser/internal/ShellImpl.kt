@@ -1,4 +1,3 @@
-
 package com.valhalla.superuser.internal
 
 import android.text.TextUtils
@@ -142,7 +141,7 @@ class ShellImpl(builder: BuilderImpl, private val process: Process) : Shell() {
                 status = ROOT_SHELL
                 Utils.setConfirmedRootState(true)
                 // noinspection ConstantConditions
-                val cwd = escapedString(System.getProperty("user.dir")?:"/")
+                val cwd = escapedString(System.getProperty("user.dir") ?: "/")
                 stdIn.write(("cd $cwd\n").toByteArray(StandardCharsets.UTF_8))
                 stdIn.flush()
             }

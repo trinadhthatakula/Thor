@@ -8,13 +8,12 @@ import android.content.pm.PackageInstaller
 import android.database.Cursor
 import android.net.Uri
 import android.provider.OpenableColumns
-import android.util.Log
 import com.valhalla.thor.data.ACTION_INSTALL_STATUS
 import com.valhalla.thor.data.gateway.RootSystemGateway
 import com.valhalla.thor.data.receivers.InstallReceiver
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
-import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.InstallState
+import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
 import com.valhalla.thor.util.Logger
@@ -26,7 +25,6 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.zip.ZipInputStream
-import kotlin.jvm.java
 
 class InstallerRepositoryImpl(
     private val context: Context,
@@ -43,15 +41,17 @@ class InstallerRepositoryImpl(
                 InstallMode.ROOT -> {
                     installWithRoot(uri)
                 }
+
                 InstallMode.SHIZUKU -> {
                     val shizukuInstaller = try {
-                         shizukuReflector.getPackageInstaller()
+                        shizukuReflector.getPackageInstaller()
                     } catch (e: Exception) {
                         eventBus.emit(InstallState.Error("Failed to get Shizuku installer: ${e.message}"))
                         return@withContext
                     }
                     performPackageInstallerInstall(uri, shizukuInstaller)
                 }
+
                 InstallMode.NORMAL -> {
                     performPackageInstallerInstall(uri, defaultInstaller)
                 }
@@ -63,9 +63,9 @@ class InstallerRepositoryImpl(
 
     private suspend fun installWithRoot(uri: Uri) {
         eventBus.emit(InstallState.Installing(0f))
-        
+
         val tempFile = File(context.cacheDir, "install_temp_${System.currentTimeMillis()}.apk")
-        
+
         try {
             // Copy uri to temp file
             context.contentResolver.openInputStream(uri)?.use { input ->
@@ -78,15 +78,19 @@ class InstallerRepositoryImpl(
             }
 
             eventBus.emit(InstallState.Installing(0.5f))
-            
+
             // Execute root install
             val result = rootGateway.installApp(tempFile.absolutePath)
-            
+
             if (result.isSuccess) {
-                 eventBus.emit(InstallState.Installing(1.0f))
-                 eventBus.emit(InstallState.Success)
+                eventBus.emit(InstallState.Installing(1.0f))
+                eventBus.emit(InstallState.Success)
             } else {
-                 eventBus.emit(InstallState.Error(result.exceptionOrNull()?.message ?: "Root install failed"))
+                eventBus.emit(
+                    InstallState.Error(
+                        result.exceptionOrNull()?.message ?: "Root install failed"
+                    )
+                )
             }
 
         } catch (e: Exception) {
@@ -99,7 +103,10 @@ class InstallerRepositoryImpl(
     }
 
     @SuppressLint("RequestInstallPackagesPolicy")
-    private suspend fun performPackageInstallerInstall(uri: Uri, packageInstaller: PackageInstaller) {
+    private suspend fun performPackageInstallerInstall(
+        uri: Uri,
+        packageInstaller: PackageInstaller
+    ) {
         val totalBytes = getFileSize(uri)
         var bytesProcessed = 0L
         var lastProgressEmitted = 0
@@ -133,18 +140,22 @@ class InstallerRepositoryImpl(
                     if (b != -1) updateProgress(1)
                     return b
                 }
+
                 override fun read(b: ByteArray, off: Int, len: Int): Int {
                     val read = baseStream.read(b, off, len)
                     if (read != -1) updateProgress(read.toLong())
                     return read
                 }
+
                 override fun close() {
                     baseStream.close()
                 }
+
                 private fun updateProgress(readBytes: Long) {
                     bytesProcessed += readBytes
                     if (totalBytes > 0) {
-                        val currentProgress = ((bytesProcessed.toDouble() / totalBytes) * 100).toInt()
+                        val currentProgress =
+                            ((bytesProcessed.toDouble() / totalBytes) * 100).toInt()
                         if (currentProgress > lastProgressEmitted) {
                             lastProgressEmitted = currentProgress
                             CoroutineScope(Dispatchers.IO).launch {
@@ -172,7 +183,10 @@ class InstallerRepositoryImpl(
 
                                 if (size == -1L) {
                                     // Unknown size in Zip: Buffer to temp
-                                    val tempFile = File(context.cacheDir, "temp_${System.currentTimeMillis()}_$name")
+                                    val tempFile = File(
+                                        context.cacheDir,
+                                        "temp_${System.currentTimeMillis()}_$name"
+                                    )
                                     FileOutputStream(tempFile).use { fos -> zipStream.copyTo(fos) }
 
                                     val actualSize = tempFile.length()

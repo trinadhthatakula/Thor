@@ -1,17 +1,13 @@
 package com.valhalla.thor.data.source.local.shizuku
 
-import android.app.Activity
-import android.content.Context
 import android.content.pm.IPackageInstaller
 import android.content.pm.IPackageManager
 import android.content.pm.PackageInstaller
-import android.content.pm.PackageManager
 import android.os.Build
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
 import java.lang.reflect.InvocationTargetException
-import kotlin.jvm.java
 
 /**
  * Taken from <a href="https://github.com/depau/fdroid_shizuku_privileged_extension/blob/main/app/src/main/java/org/fdroid/fdroid/privileged/ShizukuPackageInstallerUtils.kt">FDroid Priv</a>.

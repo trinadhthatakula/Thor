@@ -14,7 +14,6 @@ import com.valhalla.thor.domain.repository.AppRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
@@ -56,11 +55,12 @@ class AppRepositoryImpl(
                 // Now Perform the Heavy Fetch ONE time
                 try {
                     val flags = PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong()
-                    val installedPackages = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(flags))
-                    } else {
-                        pm.getInstalledPackages(PackageManager.MATCH_UNINSTALLED_PACKAGES)
-                    }
+                    val installedPackages =
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(flags))
+                        } else {
+                            pm.getInstalledPackages(PackageManager.MATCH_UNINSTALLED_PACKAGES)
+                        }
 
                     val currentList = ArrayList<AppInfo>(installedPackages.size)
 
