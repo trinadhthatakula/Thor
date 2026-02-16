@@ -126,7 +126,7 @@ object DhizukuHelper {
             )
             true
         } catch (e: Exception) {
-            e.printStackTrace()
+            com.valhalla.thor.util.Logger.e("DhizukuHelper", "clearCache failed for $packageName", e)
             false
         }
     }
