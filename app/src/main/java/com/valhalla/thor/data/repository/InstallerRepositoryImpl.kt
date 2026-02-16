@@ -287,12 +287,6 @@ class InstallerRepositoryImpl(
 
             eventBus.emit(InstallState.Installing(1.0f))
 
-            if (!filesWritten) {
-                session.abandon()
-                eventBus.emit(InstallState.Error("No valid APK files found"))
-                return
-            }
-
             val intent = Intent(context, InstallReceiver::class.java).apply {
                 action = ACTION_INSTALL_STATUS
                 setPackage(context.packageName)
