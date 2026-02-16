@@ -259,7 +259,7 @@ class ShizukuReflector(
     fun installPackage(apkPath: String, canDowngrade: Boolean = false): Boolean {
         return try {
             val downgradeFlag = if (canDowngrade) "-d" else ""
-            val command = "pm install -r -g $downgradeFlag \"$apkPath\""
+            val command = "pm install -r -g $downgradeFlag ${com.valhalla.superuser.ShellUtils.escapedString(apkPath)}"
             val result = Shizuku.execute(command)
             result.first == 0
         } catch (e: Exception) {
