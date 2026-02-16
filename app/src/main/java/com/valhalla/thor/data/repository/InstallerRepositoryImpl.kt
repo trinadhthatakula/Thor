@@ -156,6 +156,8 @@ class InstallerRepositoryImpl(
                 HiddenApiBypass.invoke(params::class.java, params, "setRequestDowngrade", true)
             } catch (e: Exception) {
                 Logger.e("InstallerRepo", "Failed to setRequestDowngrade", e)
+                eventBus.emit(InstallState.Error("Failed to request downgrade: ${e.message}"))
+                return
             }
         }
 
@@ -290,11 +292,17 @@ class InstallerRepositoryImpl(
                 setPackage(context.packageName)
             }
 
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+
             val pendingIntent = PendingIntent.getBroadcast(
                 context,
                 sessionId,
                 intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0)
+                flags
             )
 
             session.commit(pendingIntent.intentSender)

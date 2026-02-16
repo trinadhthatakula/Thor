@@ -327,7 +327,7 @@ class MainViewModel(
     // --- Helper Implementations ---
 
     /**
-     * Executes a batch operation and updates the Logger DiaLogger.
+     * Executes a batch operation and updates the Logger Dialog.
      */
     private suspend fun performLoggedMultiAction(
         title: String,

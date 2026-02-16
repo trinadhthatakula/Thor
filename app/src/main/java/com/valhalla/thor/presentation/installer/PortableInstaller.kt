@@ -231,13 +231,14 @@ fun PortableInstaller(
                             textAlign = TextAlign.Center
                         )
                     }
-                    val totalPermissions by remember { mutableIntStateOf(s.meta.permissions.size) }
+                    val totalPermissions = remember(s.meta) { s.meta.permissions.size }
                     Row(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         if (totalPermissions > 0) {
+                            val warningMessage = if (s.shouldShowWarning()) s.getWarningMessage().orEmpty() else ""
                             Text(
-                                "This package requests $totalPermissions permission${if (totalPermissions > 1) "s" else ""}. ${if(s.shouldShowWarning())s.getWarningMessage()?:"" else ""}",
+                                "This package requests $totalPermissions permission${if (totalPermissions > 1) "s" else ""}. $warningMessage",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier
