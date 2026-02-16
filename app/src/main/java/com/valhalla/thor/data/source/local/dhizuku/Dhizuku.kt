@@ -65,7 +65,7 @@ object DhizukuHelper {
         )
         true
     }.getOrElse {
-        it.printStackTrace()
+        com.valhalla.thor.util.Logger.e("DhizukuHelper", "forceStopApp failed for $packageName", it)
         false
     }
 
