@@ -44,8 +44,8 @@ class ShizukuSystemGateway(
         }
     }
 
-    override suspend fun installApp(apkPath: String): Result<Unit> {
-        return if (reflector.installPackage(apkPath)) {
+    override suspend fun installApp(apkPath: String, canDowngrade: Boolean): Result<Unit> {
+        return if (reflector.installPackage(apkPath, canDowngrade)) {
             Result.success(Unit)
         } else {
             Result.failure(Exception("Shizuku install failed. Ensure the file path is readable by Shell/ADB."))

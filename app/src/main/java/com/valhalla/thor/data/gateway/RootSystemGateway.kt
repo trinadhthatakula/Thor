@@ -44,9 +44,10 @@ class RootSystemGateway(
         return runCommand("pm uninstall --user 0 $packageName")
     }
 
-    override suspend fun installApp(apkPath: String): Result<Unit> {
+    override suspend fun installApp(apkPath: String, canDowngrade: Boolean): Result<Unit> {
+        val downgradeFlag = if (canDowngrade) "-d" else ""
         // Use quotes to prevent path injection/splitting issues
-        return runCommand("pm install -r -g '$apkPath'")
+        return runCommand("pm install -r -g $downgradeFlag '$apkPath'")
     }
 
     override suspend fun getAppCacheSize(packageName: String): Long {
