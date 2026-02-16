@@ -35,11 +35,15 @@ class PreferenceRepositoryImpl(
             // Mapper: DataStore -> Domain Model
             val sortBy = try {
                 SortBy.valueOf(prefs[Keys.SORT_BY] ?: SortBy.NAME.name)
-            } catch (e: Exception) { SortBy.NAME }
+            } catch (_: Exception) {
+                SortBy.NAME
+            }
 
             val sortOrder = try {
                 SortOrder.valueOf(prefs[Keys.SORT_ORDER] ?: SortOrder.ASCENDING.name)
-            } catch (e: Exception) { SortOrder.ASCENDING }
+            } catch (_: Exception) {
+                SortOrder.ASCENDING
+            }
 
             val filterTypeStr = prefs[Keys.FILTER_TYPE] ?: "SOURCE"
             val filterType = if (filterTypeStr == "STATE") FilterType.State else FilterType.Source

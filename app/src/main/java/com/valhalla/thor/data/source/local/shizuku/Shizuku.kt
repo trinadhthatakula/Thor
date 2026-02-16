@@ -8,11 +8,11 @@ import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
-import android.util.Log
 import android.view.InputEvent
 import android.view.KeyEvent
 import androidx.annotation.RequiresApi
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.util.Logger
 import moe.shizuku.server.IShizukuService
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import rikka.shizuku.Shizuku
@@ -110,14 +110,14 @@ object Shizuku {
                     if (Shizuku.pingBinder()) {
                         setAppDisabled(context, packageName, disabled)
                     } else {
-                        Log.d("Shizuku", "setAppDisabled: failed to get shizuku ")
+                        Logger.d("Shizuku", "setAppDisabled: failed to get shizuku ")
                     }
                 }
                 Shizuku.addBinderDeadListener {
                     if (Shizuku.pingBinder()) {
                         setAppDisabled(context, packageName, disabled)
                     } else {
-                        Log.d("Shizuku", "setAppDisabled: failed to get shizuku ")
+                        Logger.d("Shizuku", "setAppDisabled: failed to get shizuku ")
                     }
                 }
                 Shizuku.requestPermission(1001)

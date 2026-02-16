@@ -6,7 +6,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
-import com.valhalla.thor.domain.model.AppMetadata
 import com.valhalla.thor.domain.repository.AppAnalyzer
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
@@ -31,14 +30,12 @@ class InstallerViewModel(
     val availableModes: StateFlow<List<InstallMode>>
         field = MutableStateFlow(listOf(InstallMode.NORMAL))
 
-    // History Read Logic Moved to HistoryViewModel
-
     var currentPackageName: String? = null
         private set
 
     private var pendingUri: Uri? = null
-    private var pendingMetadata: AppMetadata? = null
     private var isUpdateOperation: Boolean = false
+    private var isDowngrade: Boolean = false
 
     init {
         // Clear sticky state logic
@@ -62,19 +59,25 @@ class InstallerViewModel(
                 modes.add(InstallMode.SHIZUKU)
             }
 
+            if (systemRepository.isDhizukuAvailable()) {
+                modes.add(InstallMode.DHIZUKU)
+            }
+
             availableModes.value = modes
 
             if (availableModes.value.contains(InstallMode.ROOT)) {
                 installMode.value = InstallMode.ROOT
             } else if (availableModes.value.contains(InstallMode.SHIZUKU)) {
                 installMode.value = InstallMode.SHIZUKU
+            } else if (availableModes.value.contains(InstallMode.DHIZUKU)) {
+                installMode.value = InstallMode.DHIZUKU
             } else {
                 installMode.value = InstallMode.NORMAL
             }
-
         }
     }
 
+    @Suppress("unused")
     fun setInstallMode(mode: InstallMode) {
         if (availableModes.value.contains(mode)) {
             installMode.value = mode
@@ -91,24 +94,28 @@ class InstallerViewModel(
     fun installFile(uri: Uri) {
         viewModelScope.launch {
             currentPackageName = null
-            pendingMetadata = null
             eventBus.emit(InstallState.Parsing)
 
             val analysis = analyzer.analyze(uri)
 
             analysis.onSuccess { meta ->
                 pendingUri = uri
-                pendingMetadata = meta
                 currentPackageName = meta.packageName
+                var oldVersion: String? = null
+                isDowngrade = false
 
                 isUpdateOperation = try {
-                    packageManager.getPackageInfo(meta.packageName, 0)
+                    val installedPkg = packageManager.getPackageInfo(meta.packageName, 0)
+                    oldVersion = installedPkg.versionName
+                    
+                    val installedVersionCode = installedPkg.longVersionCode
+                    isDowngrade = meta.versionCode < installedVersionCode
                     true
                 } catch (_: PackageManager.NameNotFoundException) {
                     false
                 }
 
-                eventBus.emit(InstallState.ReadyToInstall(meta, isUpdateOperation))
+                eventBus.emit(InstallState.ReadyToInstall(meta, isUpdateOperation, isDowngrade, oldVersion))
             }.onFailure {
                 eventBus.emit(InstallState.Error("Failed to parse package."))
             }
@@ -117,8 +124,17 @@ class InstallerViewModel(
 
     fun confirmInstall() {
         val uri = pendingUri ?: return
+        
+        // Validation: Only allow downgrade with Root, Shizuku or Dhizuku
+        if (isDowngrade && installMode.value == InstallMode.NORMAL) {
+            viewModelScope.launch {
+                eventBus.emit(InstallState.Error("Downgrade is only supported with privileged access (Root, Shizuku, or Dhizuku mode)."))
+            }
+            return
+        }
+
         viewModelScope.launch {
-            repository.installPackage(uri, installMode.value)
+            repository.installPackage(uri, installMode.value, canDowngrade = isDowngrade)
         }
     }
 

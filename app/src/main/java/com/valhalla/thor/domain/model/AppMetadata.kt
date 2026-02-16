@@ -6,5 +6,7 @@ data class AppMetadata(
     val label: String,
     val packageName: String,
     val version: String,
-    val icon: Bitmap?
+    val versionCode: Long,
+    val icon: Bitmap?,
+    val permissions: List<String> = emptyList()
 )

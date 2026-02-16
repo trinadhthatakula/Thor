@@ -5,12 +5,14 @@ import com.valhalla.superuser.ktx.RealShellRepository
 import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.thor.data.gateway.RootSystemGateway
 import com.valhalla.thor.data.gateway.ShizukuSystemGateway
+import com.valhalla.thor.data.gateway.DhizukuSystemGateway
 import com.valhalla.thor.data.repository.AppAnalyzerImpl
 import com.valhalla.thor.data.repository.AppRepositoryImpl
 import com.valhalla.thor.data.repository.InstallerRepositoryImpl
 import com.valhalla.thor.data.repository.PreferenceRepositoryImpl
 import com.valhalla.thor.data.repository.SystemRepositoryImpl
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
+import com.valhalla.thor.data.source.local.dhizuku.DhizukuReflector
 import com.valhalla.thor.data.util.ApksMetadataGenerator
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.repository.AppAnalyzer
@@ -55,7 +57,7 @@ val installerModule = module {
             shizukuReflector = get()
         )
     }
-    single<PackageManager>{
+    single<PackageManager> {
         androidContext().packageManager
     }
     single<AppAnalyzer> { AppAnalyzerImpl(androidContext()) }
@@ -76,9 +78,11 @@ val presentationModule = module {
 val coreModule = module {
     singleOf(::RealShellRepository).bind<ShellRepository>()
     singleOf(::ShizukuReflector)
+    singleOf(::DhizukuReflector)
     // Singletons for the Gateways
     single { RootSystemGateway(get()) }
     single { ShizukuSystemGateway(get()) }
+    single { DhizukuSystemGateway(get()) }
     // The Repository interacts with the Gateways
     singleOf(::SystemRepositoryImpl).bind<SystemRepository>()
 }

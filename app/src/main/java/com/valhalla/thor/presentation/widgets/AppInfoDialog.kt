@@ -94,6 +94,7 @@ fun AppInfoDialog(
                                 onDismiss()
                             }
                         }
+
                         is AppClickAction.Reinstall -> showReinstallWarning = true
                         else -> {
                             onAppAction(action)
@@ -127,7 +128,13 @@ fun AppInfoDialog(
 
     if (showReinstallWarning) {
         AlertDialog(
-            icon = { Icon(painterResource(R.drawable.warning), null, tint = MaterialTheme.colorScheme.error) },
+            icon = {
+                Icon(
+                    painterResource(R.drawable.warning),
+                    null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
             onDismissRequest = { showReinstallWarning = false },
             title = { Text("Risk Warning") },
             text = {
@@ -157,7 +164,9 @@ private fun AppHeader(
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         // Settings Button (Top Right)
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.End
         ) {
             IconButton(onClick = onSettingsClick) {
@@ -251,7 +260,11 @@ private fun AppActionRow(
         if (hasPrivilege) {
             val (icon, label) = if (isFrozen) R.drawable.unfreeze to "Unfreeze" else R.drawable.frozen to "Freeze"
             ActionItem(icon, label) {
-                onAction(if (isFrozen) AppClickAction.UnFreeze(appInfo) else AppClickAction.Freeze(appInfo))
+                onAction(
+                    if (isFrozen) AppClickAction.UnFreeze(appInfo) else AppClickAction.Freeze(
+                        appInfo
+                    )
+                )
             }
 
             if (appInfo.enabled) {
@@ -261,16 +274,31 @@ private fun AppActionRow(
 
         // 3. Root Only
         if (isRoot) {
-            ActionItem(R.drawable.clear_all, "Cache") { onAction(AppClickAction.ClearCache(appInfo)) }
+            ActionItem(
+                R.drawable.clear_all,
+                "Cache"
+            ) { onAction(AppClickAction.ClearCache(appInfo)) }
 
             if (!appInfo.isSystem && appInfo.installerPackageName != "com.android.vending") {
-                ActionItem(R.drawable.apk_install, "Fix Store") { onAction(AppClickAction.Reinstall(appInfo)) }
+                ActionItem(R.drawable.apk_install, "Fix Store") {
+                    onAction(
+                        AppClickAction.Reinstall(
+                            appInfo
+                        )
+                    )
+                }
             }
         }
 
         // 4. Uninstall
         if (appInfo.packageName != "com.valhalla.thor") {
-            ActionItem(R.drawable.delete_forever, "Uninstall") { onAction(AppClickAction.Uninstall(appInfo)) }
+            ActionItem(R.drawable.delete_forever, "Uninstall") {
+                onAction(
+                    AppClickAction.Uninstall(
+                        appInfo
+                    )
+                )
+            }
         }
     }
 }

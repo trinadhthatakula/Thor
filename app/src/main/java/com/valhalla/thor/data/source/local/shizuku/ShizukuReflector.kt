@@ -1,3 +1,5 @@
+@file:Suppress("unused")
+
 package com.valhalla.thor.data.source.local.shizuku
 
 import android.annotation.SuppressLint
@@ -11,11 +13,9 @@ import android.content.pm.IPackageManager
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.IBinder
-import android.util.Log
-import androidx.annotation.RequiresApi
 import androidx.core.content.getSystemService
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.util.Logger
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
@@ -72,7 +72,7 @@ class ShizukuReflector(
 
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
-                Log.e("ShizukuReflector", "clearCache failed: ${e.message}")
+                Logger.e("ShizukuReflector", "clearCache failed: ${e.message}")
         }
     }
 
@@ -82,7 +82,7 @@ class ShizukuReflector(
             Shizuku.forceStopApp(context, packageName)
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
-                Log.e("ShizukuReflector", "forceStop failed", e)
+                Logger.e("ShizukuReflector", "forceStop failed", e)
         }
     }
 
@@ -92,7 +92,7 @@ class ShizukuReflector(
             Shizuku.setAppDisabled(context, packageName, !enabled)
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
-                Log.e("ShizukuReflector", "setAppEnabled failed", e)
+                Logger.e("ShizukuReflector", "setAppEnabled failed", e)
         }
     }
 
@@ -253,11 +253,12 @@ class ShizukuReflector(
      * Note: The file at [apkPath] must be readable by the shell user (e.g. /sdcard/).
      *
      * @param apkPath Absolute path to the APK file.
+     * @param canDowngrade Whether to allow downgrade.
      * @return true if installation command exited with 0 (Success).
      */
-    fun installPackage(apkPath: String): Boolean {
+    fun installPackage(apkPath: String, canDowngrade: Boolean = false): Boolean {
         return try {
-            val command = "pm install -r -g \"$apkPath\""
+            val command = "pm install -r -g${if (canDowngrade) " -d" else ""} ${com.valhalla.superuser.ShellUtils.escapedString(apkPath)}"
             val result = Shizuku.execute(command)
             result.first == 0
         } catch (e: Exception) {

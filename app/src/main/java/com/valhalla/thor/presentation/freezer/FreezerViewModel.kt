@@ -60,7 +60,7 @@ class FreezerViewModel(
     fun loadApps() {
         // Cancel any existing collection to prevent duplicates
         loadAppsJob?.cancel()
-        
+
         // RUTHLESS: IO Dispatcher for heavy data fetching
         loadAppsJob = viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(isLoading = true) }

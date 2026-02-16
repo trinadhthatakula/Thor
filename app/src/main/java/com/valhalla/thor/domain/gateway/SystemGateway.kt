@@ -9,6 +9,7 @@ interface SystemGateway {
     // Status Checks
     suspend fun isRootAvailable(): Boolean
     fun isShizukuAvailable(): Boolean
+    fun isDhizukuAvailable(): Boolean
 
     // Core Actions
     suspend fun forceStopApp(packageName: String): Result<Unit>
@@ -18,7 +19,7 @@ interface SystemGateway {
 
     // Advanced
     suspend fun uninstallApp(packageName: String): Result<Unit>
-    suspend fun installApp(apkPath: String): Result<Unit>
+    suspend fun installApp(apkPath: String, canDowngrade: Boolean = false): Result<Unit>
 
     // Metrics
     suspend fun getAppCacheSize(packageName: String): Long

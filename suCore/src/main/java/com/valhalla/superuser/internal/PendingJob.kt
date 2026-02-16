@@ -40,7 +40,7 @@ internal class PendingJob : JobTask() {
     }
 
     override fun exec(): Shell.Result {
-        retryTask = Runnable{
+        retryTask = Runnable {
             this.exec0()
         }
         val holder = ResultHolder()
@@ -51,9 +51,9 @@ internal class PendingJob : JobTask() {
     }
 
     private fun submit0() {
-        get(null, object: GetShellCallback{
+        get(null, object : GetShellCallback {
             override fun onShell(shell: Shell) {
-                    (shell as ShellImpl).submitTask(this@PendingJob)
+                (shell as ShellImpl).submitTask(this@PendingJob)
             }
         })
     }

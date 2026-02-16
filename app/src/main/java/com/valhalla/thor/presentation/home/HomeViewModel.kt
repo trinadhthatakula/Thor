@@ -2,10 +2,10 @@ package com.valhalla.thor.presentation.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.valhalla.thor.domain.repository.PreferenceRepository // Injected
+import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
-import com.valhalla.thor.domain.model.AppInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -94,7 +94,7 @@ class HomeViewModel(
             .groupBy { it.installerPackageName ?: "Unknown" }
             .mapValues { it.value.size }
             .mapKeys { (key, _) ->
-                when(key) {
+                when (key) {
                     "com.android.vending" -> "Play Store"
                     "com.google.android.packageinstaller" -> "Package Installer"
                     "null" -> "Unknown"

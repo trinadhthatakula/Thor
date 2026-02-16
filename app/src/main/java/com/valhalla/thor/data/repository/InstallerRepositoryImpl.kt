@@ -4,28 +4,34 @@ import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.IPackageManager
 import android.content.pm.PackageInstaller
 import android.database.Cursor
 import android.net.Uri
+import android.os.Build
 import android.provider.OpenableColumns
-import android.util.Log
 import com.valhalla.thor.data.ACTION_INSTALL_STATUS
 import com.valhalla.thor.data.gateway.RootSystemGateway
 import com.valhalla.thor.data.receivers.InstallReceiver
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
-import com.valhalla.thor.domain.InstallerEventBus
+import com.valhalla.thor.data.source.local.shizuku.ShizukuPackageInstallerUtils
 import com.valhalla.thor.domain.InstallState
+import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
+import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.lsposed.hiddenapibypass.HiddenApiBypass
+import rikka.shizuku.ShizukuBinderWrapper
+import rikka.shizuku.SystemServiceHelper
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.zip.ZipInputStream
-import kotlin.jvm.java
+import com.rosan.dhizuku.api.Dhizuku as DhizukuAPI
 
 class InstallerRepositoryImpl(
     private val context: Context,
@@ -36,23 +42,35 @@ class InstallerRepositoryImpl(
 
     private val defaultInstaller = context.packageManager.packageInstaller
 
-    override suspend fun installPackage(uri: Uri, mode: InstallMode) = withContext(Dispatchers.IO) {
+    override suspend fun installPackage(uri: Uri, mode: InstallMode, canDowngrade: Boolean) = withContext(Dispatchers.IO) {
         try {
             when (mode) {
                 InstallMode.ROOT -> {
-                    installWithRoot(uri)
+                    installWithRoot(uri, canDowngrade)
                 }
+
                 InstallMode.SHIZUKU -> {
                     val shizukuInstaller = try {
-                         shizukuReflector.getPackageInstaller()
+                        shizukuReflector.getPackageInstaller()
                     } catch (e: Exception) {
                         eventBus.emit(InstallState.Error("Failed to get Shizuku installer: ${e.message}"))
                         return@withContext
                     }
-                    performPackageInstallerInstall(uri, shizukuInstaller)
+                    performPackageInstallerInstall(uri, shizukuInstaller, canDowngrade)
                 }
+
+                InstallMode.DHIZUKU -> {
+                    val dhizukuInstaller = try {
+                        getDhizukuPackageInstaller()
+                    } catch (e: Exception) {
+                        eventBus.emit(InstallState.Error("Failed to get Dhizuku installer: ${e.message}"))
+                        return@withContext
+                    }
+                    performPackageInstallerInstall(uri, dhizukuInstaller, canDowngrade)
+                }
+
                 InstallMode.NORMAL -> {
-                    performPackageInstallerInstall(uri, defaultInstaller)
+                    performPackageInstallerInstall(uri, defaultInstaller, canDowngrade)
                 }
             }
         } catch (e: Exception) {
@@ -60,11 +78,25 @@ class InstallerRepositoryImpl(
         }
     }
 
-    private suspend fun installWithRoot(uri: Uri) {
+    private fun getDhizukuPackageInstaller(): PackageInstaller {
+        val binder = SystemServiceHelper.getSystemService("package")
+        val wrappedBinder = DhizukuAPI.binderWrapper(binder)
+        val ipm = IPackageManager.Stub.asInterface(ShizukuBinderWrapper(wrappedBinder))
+        val ipi = ipm.packageInstaller
+        val privilegedIpi = android.content.pm.IPackageInstaller.Stub.asInterface(ShizukuBinderWrapper(ipi.asBinder()))
+        
+        return ShizukuPackageInstallerUtils.createPackageInstaller(
+            privilegedIpi,
+            "com.android.shell", // Typical for privileged installers
+            0 // Assuming user 0 for Dhizuku
+        )
+    }
+
+    private suspend fun installWithRoot(uri: Uri, canDowngrade: Boolean) {
         eventBus.emit(InstallState.Installing(0f))
-        
+
         val tempFile = File(context.cacheDir, "install_temp_${System.currentTimeMillis()}.apk")
-        
+
         try {
             // Copy uri to temp file
             context.contentResolver.openInputStream(uri)?.use { input ->
@@ -77,15 +109,19 @@ class InstallerRepositoryImpl(
             }
 
             eventBus.emit(InstallState.Installing(0.5f))
-            
+
             // Execute root install
-            val result = rootGateway.installApp(tempFile.absolutePath)
-            
+            val result = rootGateway.installApp(tempFile.absolutePath, canDowngrade)
+
             if (result.isSuccess) {
-                 eventBus.emit(InstallState.Installing(1.0f))
-                 eventBus.emit(InstallState.Success)
+                eventBus.emit(InstallState.Installing(1.0f))
+                eventBus.emit(InstallState.Success)
             } else {
-                 eventBus.emit(InstallState.Error(result.exceptionOrNull()?.message ?: "Root install failed"))
+                eventBus.emit(
+                    InstallState.Error(
+                        result.exceptionOrNull()?.message ?: "Root install failed"
+                    )
+                )
             }
 
         } catch (e: Exception) {
@@ -98,7 +134,11 @@ class InstallerRepositoryImpl(
     }
 
     @SuppressLint("RequestInstallPackagesPolicy")
-    private suspend fun performPackageInstallerInstall(uri: Uri, packageInstaller: PackageInstaller) {
+    private suspend fun performPackageInstallerInstall(
+        uri: Uri,
+        packageInstaller: PackageInstaller,
+        canDowngrade: Boolean
+    ) {
         val totalBytes = getFileSize(uri)
         var bytesProcessed = 0L
         var lastProgressEmitted = 0
@@ -109,6 +149,17 @@ class InstallerRepositoryImpl(
         val params = PackageInstaller.SessionParams(
             PackageInstaller.SessionParams.MODE_FULL_INSTALL
         )
+        
+        if (canDowngrade) {
+            try {
+                // Use reflection via HiddenApiBypass as it might be unresolved in some SDK configurations
+                HiddenApiBypass.invoke(params::class.java, params, "setRequestDowngrade", true)
+            } catch (e: Exception) {
+                Logger.e("InstallerRepo", "Failed to setRequestDowngrade", e)
+                eventBus.emit(InstallState.Error("Failed to request downgrade: ${e.message}"))
+                return
+            }
+        }
 
         val sessionId = try {
             packageInstaller.createSession(params)
@@ -132,18 +183,22 @@ class InstallerRepositoryImpl(
                     if (b != -1) updateProgress(1)
                     return b
                 }
+
                 override fun read(b: ByteArray, off: Int, len: Int): Int {
                     val read = baseStream.read(b, off, len)
                     if (read != -1) updateProgress(read.toLong())
                     return read
                 }
+
                 override fun close() {
                     baseStream.close()
                 }
+
                 private fun updateProgress(readBytes: Long) {
                     bytesProcessed += readBytes
                     if (totalBytes > 0) {
-                        val currentProgress = ((bytesProcessed.toDouble() / totalBytes) * 100).toInt()
+                        val currentProgress =
+                            ((bytesProcessed.toDouble() / totalBytes) * 100).toInt()
                         if (currentProgress > lastProgressEmitted) {
                             lastProgressEmitted = currentProgress
                             CoroutineScope(Dispatchers.IO).launch {
@@ -157,7 +212,7 @@ class InstallerRepositoryImpl(
 
         try {
             // ATTEMPT 1: Try as Bundle (XAPK/APKS)
-            var bundleStream: InputStream? = context.contentResolver.openInputStream(uri)
+            val bundleStream: InputStream? = context.contentResolver.openInputStream(uri)
 
             if (bundleStream != null) {
                 try {
@@ -171,7 +226,10 @@ class InstallerRepositoryImpl(
 
                                 if (size == -1L) {
                                     // Unknown size in Zip: Buffer to temp
-                                    val tempFile = File(context.cacheDir, "temp_${System.currentTimeMillis()}_$name")
+                                    val tempFile = File(
+                                        context.cacheDir,
+                                        "temp_${System.currentTimeMillis()}_${File(name).name}"
+                                    )
                                     FileOutputStream(tempFile).use { fos -> zipStream.copyTo(fos) }
 
                                     val actualSize = tempFile.length()
@@ -197,13 +255,13 @@ class InstallerRepositoryImpl(
                         }
                     }
                 } catch (e: Exception) {
-                    Log.d("thor", "Not a valid bundle zip, trying fallback.")
+                    Logger.e("thor", "Not a valid bundle zip, trying fallback. Error: ${e.message}")
                 }
             }
 
             // ATTEMPT 2: Fallback to Monolithic APK
             if (!filesWritten) {
-                Log.d("thor", "Fallback: Treating stream as monolithic base.apk")
+                Logger.d("thor", "Fallback: Treating stream as monolithic base.apk")
 
                 bytesProcessed = 0
                 lastProgressEmitted = 0
@@ -227,12 +285,6 @@ class InstallerRepositoryImpl(
                 }
             }
 
-            if (!filesWritten) {
-                session.abandon()
-                eventBus.emit(InstallState.Error("No valid APK files found. Is this a supported file type?"))
-                return
-            }
-
             eventBus.emit(InstallState.Installing(1.0f))
 
             val intent = Intent(context, InstallReceiver::class.java).apply {
@@ -240,11 +292,17 @@ class InstallerRepositoryImpl(
                 setPackage(context.packageName)
             }
 
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+
             val pendingIntent = PendingIntent.getBroadcast(
                 context,
                 sessionId,
                 intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+                flags
             )
 
             session.commit(pendingIntent.intentSender)
@@ -252,7 +310,7 @@ class InstallerRepositoryImpl(
 
         } catch (e: Exception) {
             session.abandon()
-            Log.e("thorInstaller", "Install failed", e)
+            Logger.e("thorInstaller", "Install failed", e)
             eventBus.emit(InstallState.Error(e.message ?: "Unknown installation error"))
         }
     }

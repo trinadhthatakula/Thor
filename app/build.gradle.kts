@@ -1,7 +1,7 @@
+import com.android.build.api.artifact.SingleArtifact
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.FileInputStream
 import java.util.Properties
-import com.android.build.api.artifact.SingleArtifact
 
 plugins {
     alias(libs.plugins.android.application)
@@ -208,6 +208,7 @@ dependencies {
     implementation(libs.lottie.compose)
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
+    implementation(libs.dhizuku.api)
     implementation(libs.hiddenapibypass)
     implementation(libs.bundles.coil)
     implementation(libs.bundles.koin)

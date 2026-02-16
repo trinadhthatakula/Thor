@@ -12,19 +12,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +36,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -210,7 +208,7 @@ fun PortableInstaller(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = meta.version,
+                                text = "${meta.version} (${meta.versionCode})",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -224,104 +222,136 @@ fun PortableInstaller(
                         }
                     }
 
-                    if (availableModes.size == 1) {
-                        Button(
-                            onClick = { viewModel.confirmInstall() },
+                    if (s.isUpdate) {
+                        Text(
+                            text = if (s.isDowngrade) "This will downgrade the app." else "This will update the existing app.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (s.isDowngrade) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                             modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                    val totalPermissions = remember(s.meta) { s.meta.permissions.size }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (totalPermissions > 0) {
+                            val warningMessage = if (s.shouldShowWarning()) s.getWarningMessage().orEmpty() else ""
+                            Text(
+                                "This package requests $totalPermissions permission${if (totalPermissions > 1) "s" else ""}. $warningMessage",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 4.dp)
                             )
-                        ) {
-                            Text(if (s.isUpdate) "UPDATE" else "INSTALL")
                         }
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                        ) {
-                            var checked by remember { mutableStateOf(false) }
-                            SplitButtonLayout(
-                                leadingButton = {
-                                    SplitButtonDefaults.ElevatedLeadingButton(
-                                        onClick = { viewModel.confirmInstall() },
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = MaterialTheme.colorScheme.primary,
-                                            contentColor = MaterialTheme.colorScheme.onPrimary
-                                        )
-                                    ) {
-                                        Icon(
-                                            painterResource(
-                                                if (installerMode == InstallMode.ROOT)
-                                                    R.drawable.magisk_icon
-                                                else R.drawable.shizuku
-                                            ),
-                                            modifier = Modifier.size(SplitButtonDefaults.LeadingIconSize),
-                                            contentDescription = "Install Mode Icon",
-                                        )
-                                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                                        Text(if (s.isUpdate) "Update" else "Install")
-                                    }
-                                },
-                                trailingButton = {
-                                    val description =
-                                        "Install Options: " + availableModes.joinToString(", ") { mode ->
-                                            when (mode) {
-                                                InstallMode.NORMAL -> "Normal"
-                                                InstallMode.SHIZUKU -> "Shizuku"
-                                                InstallMode.ROOT -> "Root"
-                                            }
-                                        }
-                                    SplitButtonDefaults.ElevatedTrailingButton(
-                                        checked = checked,
-                                        onCheckedChange = { checked = it },
-                                        modifier =
-                                            Modifier.semantics {
-                                                stateDescription =
-                                                    if (checked) "Expanded" else "Collapsed"
-                                                this.contentDescription = description
-                                            },
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = MaterialTheme.colorScheme.primary,
-                                            contentColor = MaterialTheme.colorScheme.onPrimary
-                                        )
-                                    ) {
-                                        val rotation: Float by
-                                        animateFloatAsState(
-                                            targetValue = if (checked) 180f else 0f,
-                                            label = "Trailing Icon Rotation",
-                                        )
-                                        Icon(
-                                            painterResource(R.drawable.arrow_drop_down),
-                                            modifier =
-                                                Modifier
-                                                    .size(SplitButtonDefaults.TrailingIconSize)
-                                                    .graphicsLayer {
-                                                        this.rotationZ = rotation
-                                                    },
-                                            contentDescription = "Localized description",
-                                        )
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            DropdownMenu(expanded = checked, onDismissRequest = { checked = false }) {
-                                availableModes.forEach { mode ->
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                when (mode) {
-                                                    InstallMode.NORMAL -> "Normal ${if(s.isUpdate)"Update" else "Install"}"
-                                                    InstallMode.SHIZUKU -> "${if (s.isUpdate) "Update" else "Install"} via Shizuku"
-                                                    InstallMode.ROOT -> "${if (s.isUpdate) "Update" else "Install"} with Root"
-                                                }
+                        if (availableModes.size == 1) {
+                            Button(
+                                onClick = { viewModel.confirmInstall() },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                )
+                            ) {
+                                Text(
+                                    s.getActionButtonText()
+                                )
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                            ) {
+                                var checked by remember { mutableStateOf(false) }
+                                SplitButtonLayout(
+                                    leadingButton = {
+                                        SplitButtonDefaults.ElevatedLeadingButton(
+                                            onClick = { viewModel.confirmInstall() },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.primary,
+                                                contentColor = MaterialTheme.colorScheme.onPrimary
                                             )
-                                        },
-                                        onClick = {
-                                            viewModel.setInstallModeAlsoInstall(mode)
-                                            checked = false
+                                        ) {
+                                            Icon(
+                                                painterResource(
+                                                    when (installerMode) {
+                                                        InstallMode.ROOT -> R.drawable.magisk_icon
+                                                        InstallMode.SHIZUKU -> R.drawable.shizuku
+                                                        InstallMode.DHIZUKU -> R.drawable.dhizuku // Placeholder
+                                                        InstallMode.NORMAL -> R.drawable.ic_launcher_foreground // Fallback
+                                                    }
+                                                ),
+                                                modifier = Modifier.size(SplitButtonDefaults.LeadingIconSize),
+                                                contentDescription = "Install Mode Icon",
+                                            )
+                                            Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                                            Text(s.getActionButtonText())
                                         }
-                                    )
+                                    },
+                                    trailingButton = {
+                                        val description =
+                                            "Install Options: " + availableModes.joinToString(", ") { mode ->
+                                                when (mode) {
+                                                    InstallMode.NORMAL -> "Normal"
+                                                    InstallMode.SHIZUKU -> "Shizuku"
+                                                    InstallMode.DHIZUKU -> "Dhizuku"
+                                                    InstallMode.ROOT -> "Root"
+                                                }
+                                            }
+                                        SplitButtonDefaults.ElevatedTrailingButton(
+                                            checked = checked,
+                                            onCheckedChange = { checked = it },
+                                            modifier =
+                                                Modifier.semantics {
+                                                    stateDescription =
+                                                        if (checked) "Expanded" else "Collapsed"
+                                                    this.contentDescription = description
+                                                },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.primary,
+                                                contentColor = MaterialTheme.colorScheme.onPrimary
+                                            )
+                                        ) {
+                                            val rotation: Float by
+                                            animateFloatAsState(
+                                                targetValue = if (checked) 180f else 0f,
+                                                label = "Trailing Icon Rotation",
+                                            )
+                                            Icon(
+                                                painterResource(R.drawable.arrow_drop_down),
+                                                modifier =
+                                                    Modifier
+                                                        .size(SplitButtonDefaults.TrailingIconSize)
+                                                        .graphicsLayer {
+                                                            this.rotationZ = rotation
+                                                        },
+                                                contentDescription = "Localized description",
+                                            )
+                                        }
+                                    },
+                                    modifier = Modifier
+                                )
+                                DropdownMenu(
+                                    expanded = checked,
+                                    onDismissRequest = { checked = false }) {
+                                    availableModes.forEach { mode ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    when (mode) {
+                                                        InstallMode.NORMAL -> "Normal ${s.getActionWord()}"
+                                                        InstallMode.SHIZUKU -> "${s.getActionWord()} via Shizuku"
+                                                        InstallMode.DHIZUKU -> "${s.getActionWord()} via Dhizuku"
+                                                        InstallMode.ROOT -> "${s.getActionWord()} with Root"
+                                                    }
+                                                )
+                                            },
+                                            onClick = {
+                                                viewModel.setInstallModeAlsoInstall(mode)
+                                                checked = false
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }

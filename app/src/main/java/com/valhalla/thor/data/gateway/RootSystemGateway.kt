@@ -20,6 +20,7 @@ class RootSystemGateway(
     }
 
     override fun isShizukuAvailable(): Boolean = false
+    override fun isDhizukuAvailable(): Boolean = false
 
     override suspend fun forceStopApp(packageName: String): Result<Unit> {
         return runCommand("am force-stop $packageName")
@@ -44,9 +45,9 @@ class RootSystemGateway(
         return runCommand("pm uninstall --user 0 $packageName")
     }
 
-    override suspend fun installApp(apkPath: String): Result<Unit> {
-        // Use quotes to prevent path injection/splitting issues
-        return runCommand("pm install -r -g '$apkPath'")
+    override suspend fun installApp(apkPath: String, canDowngrade: Boolean): Result<Unit> {
+        val command = "pm install -r -g${if (canDowngrade) " -d" else ""} ${com.valhalla.superuser.ShellUtils.escapedString(apkPath)}"
+        return runCommand(command)
     }
 
     override suspend fun getAppCacheSize(packageName: String): Long {

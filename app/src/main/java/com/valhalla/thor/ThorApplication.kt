@@ -7,16 +7,18 @@ import com.valhalla.thor.di.coreModule
 import com.valhalla.thor.di.installerModule
 import com.valhalla.thor.di.preferenceModule
 import com.valhalla.thor.di.presentationModule
+import com.valhalla.thor.util.Logger
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.androix.startup.KoinStartup
 import org.koin.dsl.koinConfiguration
+import com.rosan.dhizuku.api.Dhizuku
 
 class ThorApplication : Application(), KoinStartup {
 
     override fun onKoinStartup() = koinConfiguration {
         androidContext(this@ThorApplication)
-        androidLogger()
+        androidLogger(Logger.koinLogLevel)
         modules(
             coreModule,
             installerModule,
@@ -29,6 +31,12 @@ class ThorApplication : Application(), KoinStartup {
     override fun onCreate() {
         super.onCreate()
         ThorShellConfig.init()
+        
+        try {
+            Dhizuku.init(this)
+        } catch (e: Exception) {
+            Logger.e("ThorApp", "Dhizuku init failed", e)
+        }
     }
 
 }

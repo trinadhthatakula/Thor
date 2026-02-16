@@ -5,10 +5,10 @@ import android.content.Context
 import android.os.Build
 import android.os.Process
 import android.util.ArraySet
-import android.util.Log
 import androidx.annotation.RestrictTo
 import com.valhalla.superuser.Shell
 import com.valhalla.superuser.internal.MainShell.get
+import com.valhalla.superuser.utils.Logger
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -33,11 +33,11 @@ object Utils {
     }
 
     fun log(tag: String?, log: Any) {
-        if (vLog()) Log.d(tag, log.toString())
+        if (vLog()) Logger.d(tag, log.toString())
     }
 
     fun ex(t: Throwable?) {
-        if (vLog()) Log.d(TAG, "", t)
+        if (vLog()) Logger.e(TAG, "", t)
     }
 
     fun err(t: Throwable?) {
@@ -45,7 +45,7 @@ object Utils {
     }
 
     fun err(tag: String?, t: Throwable?) {
-        Log.d(tag, "", t)
+        Logger.e(tag, "", t)
     }
 
     fun vLog(): Boolean {

@@ -20,6 +20,8 @@ class ShizukuSystemGateway(
         }
     }
 
+    override fun isDhizukuAvailable(): Boolean = false
+
     override suspend fun forceStopApp(packageName: String): Result<Unit> {
         return runReflectiveAction { reflector.forceStop(packageName) }
     }
@@ -37,15 +39,15 @@ class ShizukuSystemGateway(
     }
 
     override suspend fun uninstallApp(packageName: String): Result<Unit> {
-        return if(reflector.uninstallApp(packageName)){
+        return if (reflector.uninstallApp(packageName)) {
             Result.success(Unit)
         } else {
             Result.failure(Exception("Uninstall failed"))
         }
     }
 
-    override suspend fun installApp(apkPath: String): Result<Unit> {
-        return if (reflector.installPackage(apkPath)) {
+    override suspend fun installApp(apkPath: String, canDowngrade: Boolean): Result<Unit> {
+        return if (reflector.installPackage(apkPath, canDowngrade)) {
             Result.success(Unit)
         } else {
             Result.failure(Exception("Shizuku install failed. Ensure the file path is readable by Shell/ADB."))
