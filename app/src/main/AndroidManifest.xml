@@ -18,7 +18,10 @@
         tools:ignore="ReservedSystemPermission" />
 
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+
     <uses-permission android:name="shizuku.permission.API_V23" />
+    <uses-permission android:name="com.rosan.dhizuku.permission.API" />
+
 
     <application
         android:name=".ThorApplication"
