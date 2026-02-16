@@ -84,12 +84,7 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
             val label = archiveInfo.applicationInfo?.loadLabel(pm).toString()
             val drawable = archiveInfo.applicationInfo?.loadIcon(pm)
             val version = archiveInfo.versionName ?: "Unknown"
-            val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                archiveInfo.longVersionCode
-            } else {
-                @Suppress("DEPRECATION")
-                archiveInfo.versionCode.toLong()
-            }
+            val versionCode = archiveInfo.longVersionCode
             val pkgName = archiveInfo.packageName
             val permissions = archiveInfo.requestedPermissions?.toList() ?: emptyList()
 

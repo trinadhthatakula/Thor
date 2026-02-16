@@ -237,7 +237,7 @@ fun PortableInstaller(
                     ) {
                         if (totalPermissions > 0) {
                             Text(
-                                "This package requests $totalPermissions permission${if (totalPermissions > 1) "s" else ""}. ${s.getWarningMessage()?:""}",
+                                "This package requests $totalPermissions permission${if (totalPermissions > 1) "s" else ""}. ${if(s.shouldShowWarning())s.getWarningMessage()?:"" else ""}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier

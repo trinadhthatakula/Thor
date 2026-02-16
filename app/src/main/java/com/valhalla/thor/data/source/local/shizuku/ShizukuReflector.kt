@@ -1,3 +1,5 @@
+@file:Suppress("unused")
+
 package com.valhalla.thor.data.source.local.shizuku
 
 import android.annotation.SuppressLint

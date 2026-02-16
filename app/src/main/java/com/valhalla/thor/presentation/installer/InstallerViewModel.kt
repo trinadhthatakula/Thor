@@ -7,7 +7,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
-import com.valhalla.thor.domain.model.AppMetadata
 import com.valhalla.thor.domain.repository.AppAnalyzer
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
@@ -73,6 +72,7 @@ class InstallerViewModel(
         }
     }
 
+    @Suppress("unused")
     fun setInstallMode(mode: InstallMode) {
         if (availableModes.value.contains(mode)) {
             installMode.value = mode
@@ -103,13 +103,7 @@ class InstallerViewModel(
                     val installedPkg = packageManager.getPackageInfo(meta.packageName, 0)
                     oldVersion = installedPkg.versionName
                     
-                    val installedVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                        installedPkg.longVersionCode
-                    } else {
-                        @Suppress("DEPRECATION")
-                        installedPkg.versionCode.toLong()
-                    }
-                    
+                    val installedVersionCode = installedPkg.longVersionCode
                     isDowngrade = meta.versionCode < installedVersionCode
                     true
                 } catch (_: PackageManager.NameNotFoundException) {

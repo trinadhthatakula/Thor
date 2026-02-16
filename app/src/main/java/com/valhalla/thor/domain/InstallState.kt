@@ -17,6 +17,7 @@ sealed interface InstallState {
         val oldVersion: String? = null
     ) : InstallState{
 
+        @Suppress("unused")
         fun getVersionInfo(): String {
             return if (isUpdate) {
                 "Update available: ${meta.version} (current: $oldVersion)"
