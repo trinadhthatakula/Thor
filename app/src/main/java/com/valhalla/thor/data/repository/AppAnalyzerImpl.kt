@@ -49,7 +49,7 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
                         }
                     }
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // Not a zip or read error, proceed to fallback
                 isNestedBundle = false
             }

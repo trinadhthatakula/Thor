@@ -97,7 +97,7 @@ data class AppInfo(
                     @Suppress("DEPRECATION")
                     pm.getInstallerPackageName(packageName)
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 null
             }
         }

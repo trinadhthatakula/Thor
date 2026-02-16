@@ -35,13 +35,13 @@ class PreferenceRepositoryImpl(
             // Mapper: DataStore -> Domain Model
             val sortBy = try {
                 SortBy.valueOf(prefs[Keys.SORT_BY] ?: SortBy.NAME.name)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 SortBy.NAME
             }
 
             val sortOrder = try {
                 SortOrder.valueOf(prefs[Keys.SORT_ORDER] ?: SortOrder.ASCENDING.name)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 SortOrder.ASCENDING
             }
 
