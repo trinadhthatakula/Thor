@@ -273,9 +273,12 @@ fun PortableInstaller(
                                         ) {
                                             Icon(
                                                 painterResource(
-                                                    if (installerMode == InstallMode.ROOT)
-                                                        R.drawable.magisk_icon
-                                                    else R.drawable.shizuku
+                                                    when (installerMode) {
+                                                        InstallMode.ROOT -> R.drawable.magisk_icon
+                                                        InstallMode.SHIZUKU -> R.drawable.shizuku
+                                                        InstallMode.DHIZUKU -> R.drawable.dhizuku // Placeholder
+                                                        InstallMode.NORMAL -> R.drawable.ic_launcher_foreground // Fallback
+                                                    }
                                                 ),
                                                 modifier = Modifier.size(SplitButtonDefaults.LeadingIconSize),
                                                 contentDescription = "Install Mode Icon",
@@ -290,6 +293,7 @@ fun PortableInstaller(
                                                 when (mode) {
                                                     InstallMode.NORMAL -> "Normal"
                                                     InstallMode.SHIZUKU -> "Shizuku"
+                                                    InstallMode.DHIZUKU -> "Dhizuku"
                                                     InstallMode.ROOT -> "Root"
                                                 }
                                             }
@@ -336,6 +340,7 @@ fun PortableInstaller(
                                                     when (mode) {
                                                         InstallMode.NORMAL -> "Normal ${s.getActionWord()}"
                                                         InstallMode.SHIZUKU -> "${s.getActionWord()} via Shizuku"
+                                                        InstallMode.DHIZUKU -> "${s.getActionWord()} via Dhizuku"
                                                         InstallMode.ROOT -> "${s.getActionWord()} with Root"
                                                     }
                                                 )

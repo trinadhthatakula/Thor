@@ -20,6 +20,8 @@ class ShizukuSystemGateway(
         }
     }
 
+    override fun isDhizukuAvailable(): Boolean = false
+
     override suspend fun forceStopApp(packageName: String): Result<Unit> {
         return runReflectiveAction { reflector.forceStop(packageName) }
     }

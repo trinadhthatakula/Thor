@@ -12,6 +12,7 @@ import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.androix.startup.KoinStartup
 import org.koin.dsl.koinConfiguration
+import com.rosan.dhizuku.api.Dhizuku
 
 class ThorApplication : Application(), KoinStartup {
 
@@ -30,6 +31,12 @@ class ThorApplication : Application(), KoinStartup {
     override fun onCreate() {
         super.onCreate()
         ThorShellConfig.init()
+        
+        try {
+            Dhizuku.init(this)
+        } catch (e: Exception) {
+            Logger.e("ThorApp", "Dhizuku init failed", e)
+        }
     }
 
 }

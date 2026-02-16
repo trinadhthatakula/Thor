@@ -5,6 +5,7 @@ import android.net.Uri
 enum class InstallMode {
     NORMAL,
     SHIZUKU,
+    DHIZUKU,
     ROOT
 }
 

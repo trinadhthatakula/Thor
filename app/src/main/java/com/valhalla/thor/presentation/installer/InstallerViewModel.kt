@@ -60,12 +60,18 @@ class InstallerViewModel(
                 modes.add(InstallMode.SHIZUKU)
             }
 
+            if (systemRepository.isDhizukuAvailable()) {
+                modes.add(InstallMode.DHIZUKU)
+            }
+
             availableModes.value = modes
 
             if (availableModes.value.contains(InstallMode.ROOT)) {
                 installMode.value = InstallMode.ROOT
             } else if (availableModes.value.contains(InstallMode.SHIZUKU)) {
                 installMode.value = InstallMode.SHIZUKU
+            } else if (availableModes.value.contains(InstallMode.DHIZUKU)) {
+                installMode.value = InstallMode.DHIZUKU
             } else {
                 installMode.value = InstallMode.NORMAL
             }
@@ -103,7 +109,12 @@ class InstallerViewModel(
                     val installedPkg = packageManager.getPackageInfo(meta.packageName, 0)
                     oldVersion = installedPkg.versionName
                     
-                    val installedVersionCode = installedPkg.longVersionCode
+                    val installedVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        installedPkg.longVersionCode
+                    } else {
+                        @Suppress("DEPRECATION")
+                        installedPkg.versionCode.toLong()
+                    }
                     isDowngrade = meta.versionCode < installedVersionCode
                     true
                 } catch (_: PackageManager.NameNotFoundException) {
@@ -120,10 +131,10 @@ class InstallerViewModel(
     fun confirmInstall() {
         val uri = pendingUri ?: return
         
-        // Validation: Only allow downgrade with Root or Shizuku
+        // Validation: Only allow downgrade with Root, Shizuku or Dhizuku
         if (isDowngrade && installMode.value == InstallMode.NORMAL) {
             viewModelScope.launch {
-                eventBus.emit(InstallState.Error("Downgrade is only supported with Root or Shizuku mode."))
+                eventBus.emit(InstallState.Error("Downgrade is only supported with Root, Shizuku or Dhizuku mode."))
             }
             return
         }

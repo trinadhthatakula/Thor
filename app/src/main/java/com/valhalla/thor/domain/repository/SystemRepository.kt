@@ -2,26 +2,22 @@ package com.valhalla.thor.domain.repository
 
 interface SystemRepository {
 
-    // Privilege Checks - Updated to Suspend to handle I/O
     suspend fun isRootAvailable(): Boolean
     fun isShizukuAvailable(): Boolean
+    fun isDhizukuAvailable(): Boolean
 
-    // App Actions
+    // Core Actions
     suspend fun forceStopApp(packageName: String): Result<Unit>
     suspend fun clearCache(packageName: String): Result<Unit>
     suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit>
-    suspend fun uninstallApp(packageName: String): Result<Unit>
 
     // Advanced
+    suspend fun uninstallApp(packageName: String): Result<Unit>
     suspend fun rebootDevice(reason: String): Result<Unit>
 
-    // Smart Action: Tries to clean up as much as possible
+    // Composite Actions
     suspend fun aggressiveCleanup(packageName: String): Result<Unit>
-
     suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit>
-
     suspend fun copyFileWithRoot(sourcePath: String, destinationPath: String): Result<Unit>
-
     suspend fun getAppPaths(packageName: String): Result<List<String>>
-
 }

@@ -20,6 +20,7 @@ class RootSystemGateway(
     }
 
     override fun isShizukuAvailable(): Boolean = false
+    override fun isDhizukuAvailable(): Boolean = false
 
     override suspend fun forceStopApp(packageName: String): Result<Unit> {
         return runCommand("am force-stop $packageName")

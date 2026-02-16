@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.IPackageManager
 import android.content.pm.PackageInstaller
 import android.database.Cursor
 import android.net.Uri
@@ -13,6 +14,7 @@ import com.valhalla.thor.data.ACTION_INSTALL_STATUS
 import com.valhalla.thor.data.gateway.RootSystemGateway
 import com.valhalla.thor.data.receivers.InstallReceiver
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
+import com.valhalla.thor.data.source.local.shizuku.ShizukuPackageInstallerUtils
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.repository.InstallMode
@@ -23,10 +25,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.lsposed.hiddenapibypass.HiddenApiBypass
+import rikka.shizuku.ShizukuBinderWrapper
+import rikka.shizuku.SystemServiceHelper
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.zip.ZipInputStream
+import com.rosan.dhizuku.api.Dhizuku as DhizukuAPI
 
 class InstallerRepositoryImpl(
     private val context: Context,
@@ -54,6 +59,16 @@ class InstallerRepositoryImpl(
                     performPackageInstallerInstall(uri, shizukuInstaller, canDowngrade)
                 }
 
+                InstallMode.DHIZUKU -> {
+                    val dhizukuInstaller = try {
+                        getDhizukuPackageInstaller()
+                    } catch (e: Exception) {
+                        eventBus.emit(InstallState.Error("Failed to get Dhizuku installer: ${e.message}"))
+                        return@withContext
+                    }
+                    performPackageInstallerInstall(uri, dhizukuInstaller, canDowngrade)
+                }
+
                 InstallMode.NORMAL -> {
                     performPackageInstallerInstall(uri, defaultInstaller, canDowngrade)
                 }
@@ -61,6 +76,20 @@ class InstallerRepositoryImpl(
         } catch (e: Exception) {
             eventBus.emit(InstallState.Error(e.message ?: "Unknown error during installation"))
         }
+    }
+
+    private fun getDhizukuPackageInstaller(): PackageInstaller {
+        val binder = SystemServiceHelper.getSystemService("package")
+        val wrappedBinder = DhizukuAPI.binderWrapper(binder)
+        val ipm = IPackageManager.Stub.asInterface(ShizukuBinderWrapper(wrappedBinder))
+        val ipi = ipm.packageInstaller
+        val privilegedIpi = android.content.pm.IPackageInstaller.Stub.asInterface(ShizukuBinderWrapper(ipi.asBinder()))
+        
+        return ShizukuPackageInstallerUtils.createPackageInstaller(
+            privilegedIpi,
+            "com.android.shell", // Typical for privileged installers
+            0 // Assuming user 0 for Dhizuku
+        )
     }
 
     private suspend fun installWithRoot(uri: Uri, canDowngrade: Boolean) {

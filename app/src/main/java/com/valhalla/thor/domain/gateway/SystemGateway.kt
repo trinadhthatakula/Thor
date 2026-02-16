@@ -9,6 +9,7 @@ interface SystemGateway {
     // Status Checks
     suspend fun isRootAvailable(): Boolean
     fun isShizukuAvailable(): Boolean
+    fun isDhizukuAvailable(): Boolean
 
     // Core Actions
     suspend fun forceStopApp(packageName: String): Result<Unit>
