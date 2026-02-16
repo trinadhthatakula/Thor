@@ -1,6 +1,5 @@
 package com.valhalla.thor.data.gateway
 
-import android.content.Context
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuReflector
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
