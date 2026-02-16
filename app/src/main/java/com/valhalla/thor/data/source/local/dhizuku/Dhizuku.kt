@@ -100,7 +100,7 @@ object DhizukuHelper {
     }
 
     fun uninstallApp( packageName: String): Boolean {
-        return execute("pm uninstall --user current $packageName").first == 0
+        return execute("pm uninstall --user current ${com.valhalla.superuser.ShellUtils.escapedString(packageName)}").first == 0
     }
 
     fun execute(command: String): Pair<Int, String?> = runCatching {
