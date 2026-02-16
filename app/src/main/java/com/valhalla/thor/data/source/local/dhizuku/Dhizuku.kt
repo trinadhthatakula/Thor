@@ -94,7 +94,7 @@ object DhizukuHelper {
                 BuildConfig.APPLICATION_ID
             )
         }.onFailure {
-            it.printStackTrace()
+            com.valhalla.thor.util.Logger.e("DhizukuHelper", "setAppDisabled failed for $packageName", it)
         }
         return Packages(context).isAppDisabled(packageName) == disabled
     }
