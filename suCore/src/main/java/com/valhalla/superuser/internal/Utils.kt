@@ -33,7 +33,7 @@ object Utils {
     }
 
     fun log(tag: String?, log: Any) {
-        if (vLog()) Logger.d(tag, Logger.toString())
+        if (vLog()) Logger.d(tag, log.toString())
     }
 
     fun ex(t: Throwable?) {
