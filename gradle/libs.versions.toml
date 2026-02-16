@@ -22,6 +22,7 @@ benchmarkMacroJunit4 = "1.4.1"
 baselineprofile = "1.4.1"
 profileinstaller = "1.4.1"
 shizuku = "13.1.5"
+dhizuku = "2.5.4"
 hiddenapibypass = "6.1"
 koin = "4.1.1"
 coil3 = "3.3.0"
@@ -67,6 +68,7 @@ lottie-compose = { module = "com.airbnb.android:lottie-compose", version.ref = "
 #Shizuku
 shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku" }
 shizuku-provider = { module = "dev.rikka.shizuku:provider", version.ref = "shizuku" }
+dhizuku-api = { module = "io.github.iamr0s:Dhizuku-API", version.ref = "dhizuku" }
 hiddenapibypass = { module = "org.lsposed.hiddenapibypass:hiddenapibypass", version.ref = "hiddenapibypass" }
 #Koin
 koin-android = { module = "io.insert-koin:koin-android", version.ref = "koin" }

@@ -208,6 +208,7 @@ dependencies {
     implementation(libs.lottie.compose)
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
+    implementation(libs.dhizuku.api)
     implementation(libs.hiddenapibypass)
     implementation(libs.bundles.coil)
     implementation(libs.bundles.koin)
