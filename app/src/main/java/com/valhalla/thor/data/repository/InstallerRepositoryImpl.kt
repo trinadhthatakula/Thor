@@ -226,7 +226,7 @@ class InstallerRepositoryImpl(
                                     // Unknown size in Zip: Buffer to temp
                                     val tempFile = File(
                                         context.cacheDir,
-                                        "temp_${System.currentTimeMillis()}_$name"
+                                        "temp_${System.currentTimeMillis()}_${File(name).name}"
                                     )
                                     FileOutputStream(tempFile).use { fos -> zipStream.copyTo(fos) }
 
