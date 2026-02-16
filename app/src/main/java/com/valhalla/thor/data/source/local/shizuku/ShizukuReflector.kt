@@ -251,11 +251,13 @@ class ShizukuReflector(
      * Note: The file at [apkPath] must be readable by the shell user (e.g. /sdcard/).
      *
      * @param apkPath Absolute path to the APK file.
+     * @param canDowngrade Whether to allow downgrade.
      * @return true if installation command exited with 0 (Success).
      */
-    fun installPackage(apkPath: String): Boolean {
+    fun installPackage(apkPath: String, canDowngrade: Boolean = false): Boolean {
         return try {
-            val command = "pm install -r -g \"$apkPath\""
+            val downgradeFlag = if (canDowngrade) "-d" else ""
+            val command = "pm install -r -g $downgradeFlag \"$apkPath\""
             val result = Shizuku.execute(command)
             result.first == 0
         } catch (e: Exception) {
