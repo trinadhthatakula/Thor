@@ -20,6 +20,8 @@ class SystemRepositoryImpl(
     
     override fun isDhizukuAvailable(): Boolean = dhizukuGateway.isDhizukuAvailable()
 
+    // Dynamic Resolution Strategy: Prefer Root -> Fallback to Shizuku -> Fallback to Dhizuku -> Fail
+    // Must be suspend because checking root is suspend
     private suspend fun getActiveGateway(): SystemGateway {
         return when {
             rootGateway.isRootAvailable() -> rootGateway

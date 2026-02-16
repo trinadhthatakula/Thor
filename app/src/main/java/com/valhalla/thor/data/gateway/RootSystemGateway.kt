@@ -46,11 +46,7 @@ class RootSystemGateway(
     }
 
     override suspend fun installApp(apkPath: String, canDowngrade: Boolean): Result<Unit> {
-        val downgradeFlag = if (canDowngrade) "-d" else ""
-        // Use quotes to prevent path injection/splitting issues
-        val command = listOf("pm", "install", "-r", "-g", downgradeFlag, "'$apkPath'")
-            .filter { it.isNotBlank() }
-            .joinToString(separator = " ")
+        val command = "pm install -r -g${if (canDowngrade) " -d" else ""} ${com.valhalla.superuser.ShellUtils.escapedString(apkPath)}"
         return runCommand(command)
     }
 

@@ -156,6 +156,8 @@ class InstallerRepositoryImpl(
                 HiddenApiBypass.invoke(params::class.java, params, "setRequestDowngrade", true)
             } catch (e: Exception) {
                 Logger.e("InstallerRepo", "Failed to setRequestDowngrade", e)
+                eventBus.emit(InstallState.Error("Failed to request downgrade: ${e.message}"))
+                return
             }
         }
 
@@ -285,16 +287,28 @@ class InstallerRepositoryImpl(
 
             eventBus.emit(InstallState.Installing(1.0f))
 
+            if (!filesWritten) {
+                session.abandon()
+                eventBus.emit(InstallState.Error("No valid APK files found"))
+                return
+            }
+
             val intent = Intent(context, InstallReceiver::class.java).apply {
                 action = ACTION_INSTALL_STATUS
                 setPackage(context.packageName)
+            }
+
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             }
 
             val pendingIntent = PendingIntent.getBroadcast(
                 context,
                 sessionId,
                 intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0)
+                flags
             )
 
             session.commit(pendingIntent.intentSender)

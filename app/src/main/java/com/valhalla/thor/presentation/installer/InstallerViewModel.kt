@@ -2,7 +2,6 @@ package com.valhalla.thor.presentation.installer
 
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.InstallState
@@ -129,7 +128,7 @@ class InstallerViewModel(
         // Validation: Only allow downgrade with Root, Shizuku or Dhizuku
         if (isDowngrade && installMode.value == InstallMode.NORMAL) {
             viewModelScope.launch {
-                eventBus.emit(InstallState.Error("Downgrade is only supported with Root, Shizuku or Dhizuku mode."))
+                eventBus.emit(InstallState.Error("Downgrade is only supported with privileged access (Root, Shizuku, or Dhizuku mode)."))
             }
             return
         }

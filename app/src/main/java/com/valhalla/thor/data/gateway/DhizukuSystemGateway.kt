@@ -56,7 +56,7 @@ class DhizukuSystemGateway(
     }
 
     override suspend fun installApp(apkPath: String, canDowngrade: Boolean): Result<Unit> {
-        val result = DhizukuHelper.execute("pm install -r -g ${if (canDowngrade) "-d" else ""} ${com.valhalla.superuser.ShellUtils.escapedString(apkPath)}")
+        val result = DhizukuHelper.execute("pm install -r -g${if (canDowngrade) " -d" else ""} ${com.valhalla.superuser.ShellUtils.escapedString(apkPath)}")
         return if (result.first == 0) {
             Result.success(Unit)
         } else {
