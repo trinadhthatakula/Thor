@@ -26,7 +26,6 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
             val contentResolver = context.contentResolver
 
             // Phase 1: Try to extract a nested APK (for XAPK/APKS)
-            // We open a fresh stream for the Zip check
             var isNestedBundle = false
 
             try {
@@ -35,8 +34,6 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
                         var entry = zipStream.nextEntry
                         while (entry != null) {
                             val name = entry.name
-                            // If we find a nested APK, we extract it and stop.
-                            // We prioritize 'base.apk' but accept any .apk if base isn't found first.
                             if (name.endsWith(".apk", ignoreCase = true)) {
                                 FileOutputStream(tempFile).use { fos ->
                                     zipStream.copyTo(fos)
@@ -50,12 +47,10 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
                     }
                 }
             } catch (_: Exception) {
-                // Not a zip or read error, proceed to fallback
                 isNestedBundle = false
             }
 
             // Phase 2: Fallback (Standard APK)
-            // If we didn't find any nested APKs inside, the file ITSELF is the APK.
             if (!isNestedBundle) {
                 contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(tempFile).use { output ->
@@ -65,9 +60,8 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
             }
 
             // Phase 3: Parsing
-            // Now tempFile is either the extracted base.apk OR the copy of the original APK.
             val pm = context.packageManager
-            val flags = PackageManager.GET_META_DATA
+            val flags = PackageManager.GET_META_DATA or PackageManager.GET_PERMISSIONS
 
             val archiveInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 pm.getPackageArchiveInfo(
@@ -90,21 +84,29 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
             val label = archiveInfo.applicationInfo?.loadLabel(pm).toString()
             val drawable = archiveInfo.applicationInfo?.loadIcon(pm)
             val version = archiveInfo.versionName ?: "Unknown"
+            val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                archiveInfo.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                archiveInfo.versionCode.toLong()
+            }
             val pkgName = archiveInfo.packageName
+            val permissions = archiveInfo.requestedPermissions?.toList() ?: emptyList()
 
             Result.success(
                 AppMetadata(
                     label = label,
                     packageName = pkgName,
                     version = version,
-                    icon = drawable?.toBitmap()
+                    versionCode = versionCode,
+                    icon = drawable?.toBitmap(),
+                    permissions = permissions
                 )
             )
 
         } catch (e: Exception) {
             Result.failure(e)
         } finally {
-            // Cleanup: Delete the temp file to save space
             if (tempFile.exists()) {
                 tempFile.delete()
             }

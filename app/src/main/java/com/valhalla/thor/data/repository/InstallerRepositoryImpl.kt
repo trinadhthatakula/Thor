@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.database.Cursor
 import android.net.Uri
+import android.os.Build
 import android.provider.OpenableColumns
 import com.valhalla.thor.data.ACTION_INSTALL_STATUS
 import com.valhalla.thor.data.gateway.RootSystemGateway
@@ -21,6 +22,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.lsposed.hiddenapibypass.HiddenApiBypass
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -35,11 +37,11 @@ class InstallerRepositoryImpl(
 
     private val defaultInstaller = context.packageManager.packageInstaller
 
-    override suspend fun installPackage(uri: Uri, mode: InstallMode) = withContext(Dispatchers.IO) {
+    override suspend fun installPackage(uri: Uri, mode: InstallMode, canDowngrade: Boolean) = withContext(Dispatchers.IO) {
         try {
             when (mode) {
                 InstallMode.ROOT -> {
-                    installWithRoot(uri)
+                    installWithRoot(uri, canDowngrade)
                 }
 
                 InstallMode.SHIZUKU -> {
@@ -49,11 +51,11 @@ class InstallerRepositoryImpl(
                         eventBus.emit(InstallState.Error("Failed to get Shizuku installer: ${e.message}"))
                         return@withContext
                     }
-                    performPackageInstallerInstall(uri, shizukuInstaller)
+                    performPackageInstallerInstall(uri, shizukuInstaller, canDowngrade)
                 }
 
                 InstallMode.NORMAL -> {
-                    performPackageInstallerInstall(uri, defaultInstaller)
+                    performPackageInstallerInstall(uri, defaultInstaller, canDowngrade)
                 }
             }
         } catch (e: Exception) {
@@ -61,7 +63,7 @@ class InstallerRepositoryImpl(
         }
     }
 
-    private suspend fun installWithRoot(uri: Uri) {
+    private suspend fun installWithRoot(uri: Uri, canDowngrade: Boolean) {
         eventBus.emit(InstallState.Installing(0f))
 
         val tempFile = File(context.cacheDir, "install_temp_${System.currentTimeMillis()}.apk")
@@ -80,7 +82,7 @@ class InstallerRepositoryImpl(
             eventBus.emit(InstallState.Installing(0.5f))
 
             // Execute root install
-            val result = rootGateway.installApp(tempFile.absolutePath)
+            val result = rootGateway.installApp(tempFile.absolutePath, canDowngrade)
 
             if (result.isSuccess) {
                 eventBus.emit(InstallState.Installing(1.0f))
@@ -105,7 +107,8 @@ class InstallerRepositoryImpl(
     @SuppressLint("RequestInstallPackagesPolicy")
     private suspend fun performPackageInstallerInstall(
         uri: Uri,
-        packageInstaller: PackageInstaller
+        packageInstaller: PackageInstaller,
+        canDowngrade: Boolean
     ) {
         val totalBytes = getFileSize(uri)
         var bytesProcessed = 0L
@@ -117,6 +120,15 @@ class InstallerRepositoryImpl(
         val params = PackageInstaller.SessionParams(
             PackageInstaller.SessionParams.MODE_FULL_INSTALL
         )
+        
+        if (canDowngrade) {
+            try {
+                // Use reflection via HiddenApiBypass as it might be unresolved in some SDK configurations
+                HiddenApiBypass.invoke(params::class.java, params, "setRequestDowngrade", true)
+            } catch (e: Exception) {
+                Logger.e("InstallerRepo", "Failed to setRequestDowngrade", e)
+            }
+        }
 
         val sessionId = try {
             packageInstaller.createSession(params)
@@ -253,7 +265,7 @@ class InstallerRepositoryImpl(
                 context,
                 sessionId,
                 intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+                PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0)
             )
 
             session.commit(pendingIntent.intentSender)
