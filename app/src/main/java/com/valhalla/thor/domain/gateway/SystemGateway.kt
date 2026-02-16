@@ -18,7 +18,7 @@ interface SystemGateway {
 
     // Advanced
     suspend fun uninstallApp(packageName: String): Result<Unit>
-    suspend fun installApp(apkPath: String): Result<Unit>
+    suspend fun installApp(apkPath: String, canDowngrade: Boolean = false): Result<Unit>
 
     // Metrics
     suspend fun getAppCacheSize(packageName: String): Long
