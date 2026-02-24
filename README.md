@@ -28,15 +28,16 @@
 * 100% Kotlin
 * Material 3 Design
 * Jetpack Compose
-* PlayStore Download Size (less than 2.0 MB)
-* Smallest APK size (less than 2.50 MB)
+* PlayStore Download Size (around 2.0 MB)
+* Smallest APK size (less than 4 MB)
 * FOSS - GPL-3.0
 * Fully Offline
 * No Ads/Trackers
 
 ## Working Features
 
-- App Installer (install with root, shizuku or normal) **TESTING**
+- App Installer (install with root, shizuku or normal) 
+- Dhizuku Support (testing)
 - Shizuku Support
 - Fully reproducible, copyleft libre software (GPLv3.0)
 - Material 3 with dynamic colors
@@ -55,11 +56,22 @@
 
 ## Upcoming Features
 
+- Fingerprint Lock
 - BackUp App Data
 - Editing Packages.xml
 - Batch Install
 - Option to choose installers when reinstalling
 - Many more
+
+## 💖 Support Development
+
+Thor is a labor of love, built to be **100% offline, ad-free, and tracker-free**. If this tool has made your Android management easier, consider supporting its continued development. Your contributions help keep the project alive and free for everyone.
+
+| Platform | Link |
+| --- | --- |
+| **Patreon** | [Support on Patreon](https://www.patreon.com/trinadh) |
+| **Buy Me a Coffee** | [Buy me a coffee](https://www.buymeacoffee.com/trinadh) |
+| **PayPal** | [Donate via PayPal](https://www.paypal.me/trinadhthatakula) |
 
 ## Credits
 

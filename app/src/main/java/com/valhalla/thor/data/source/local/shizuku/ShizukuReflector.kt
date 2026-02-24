@@ -219,8 +219,8 @@ class ShizukuReflector(
                 try {
                     val updatedPackageInfo =
                         context.packageManager.getInfoForPackage(packageName) ?: return false
-                    val stillHasUpdates =
-                        (updatedPackageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+                    // Check if package still has updates; value intentionally ignored here
+                    (updatedPackageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -320,4 +320,20 @@ class ShizukuReflector(
         )
     }
 
+    /**
+     * Create a privileged PackageInstaller using the provided installer package name.
+     * This mirrors `getPackageInstaller()` but allows specifying the installer package
+     * (so sessions can be created as belonging to the app's package).
+     */
+    fun createPackageInstallerFor(installerPackageName: String): PackageInstaller {
+        val iPackageInstaller = ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller()
+        val root = try { rikka.shizuku.Shizuku.getUid() == 0 } catch (_: Exception) { false }
+        val userId = if (root) android.os.Process.myUserHandle().hashCode() else 0
+
+        return ShizukuPackageInstallerUtils.createPackageInstaller(
+            iPackageInstaller,
+            installerPackageName,
+            userId
+        )
+    }
 }

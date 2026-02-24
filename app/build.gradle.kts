@@ -97,6 +97,11 @@ android {
         }
     }
 
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = true
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true

@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.pm.IPackageManager
 import android.content.pm.PackageInstaller
 import android.database.Cursor
 import android.net.Uri
@@ -25,19 +24,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.lsposed.hiddenapibypass.HiddenApiBypass
-import rikka.shizuku.ShizukuBinderWrapper
-import rikka.shizuku.SystemServiceHelper
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.zip.ZipInputStream
-import com.rosan.dhizuku.api.Dhizuku as DhizukuAPI
 
 class InstallerRepositoryImpl(
     private val context: Context,
     private val eventBus: InstallerEventBus,
     private val rootGateway: RootSystemGateway,
-    private val shizukuReflector: ShizukuReflector
+    @Suppress("unused") private val shizukuReflector: ShizukuReflector
 ) : InstallerRepository {
 
     private val defaultInstaller = context.packageManager.packageInstaller
@@ -50,27 +46,51 @@ class InstallerRepositoryImpl(
                 }
 
                 InstallMode.SHIZUKU -> {
-                    val shizukuInstaller = try {
-                        shizukuReflector.getPackageInstaller()
+                    val privilegedInstaller = try {
+                        getShizukuPackageInstaller()
                     } catch (e: Exception) {
-                        eventBus.emit(InstallState.Error("Failed to get Shizuku installer: ${e.message}"))
-                        return@withContext
+                        Logger.e("InstallerRepo", "Failed to get Shizuku installer, will use normal installer: ${e.message}")
+                        null
                     }
-                    performPackageInstallerInstall(uri, shizukuInstaller, canDowngrade)
+
+                    if (privilegedInstaller != null) {
+                        try {
+                            // Try privileged path but suppress error emission so we can fall back silently
+                            performPackageInstallerInstall(uri, privilegedInstaller, canDowngrade, emitErrors = false)
+                        } catch (e: Exception) {
+                            Logger.e("InstallerRepo", "Shizuku privileged install failed, falling back to normal: ${e.message}")
+                            performPackageInstallerInstall(uri, defaultInstaller, canDowngrade, emitErrors = true)
+                        }
+                    } else {
+                        // No privileged installer available, use normal installer and allow errors
+                        performPackageInstallerInstall(uri, defaultInstaller, canDowngrade, emitErrors = true)
+                    }
                 }
 
                 InstallMode.DHIZUKU -> {
-                    val dhizukuInstaller = try {
+                    val privilegedInstaller = try {
                         getDhizukuPackageInstaller()
                     } catch (e: Exception) {
-                        eventBus.emit(InstallState.Error("Failed to get Dhizuku installer: ${e.message}"))
-                        return@withContext
+                        Logger.e("InstallerRepo", "Failed to get Dhizuku installer, will use normal installer: ${e.message}")
+                        null
                     }
-                    performPackageInstallerInstall(uri, dhizukuInstaller, canDowngrade)
+
+                    if (privilegedInstaller != null) {
+                        try {
+                            // Try privileged path but suppress error emission so we can fall back silently
+                            performPackageInstallerInstall(uri, privilegedInstaller, canDowngrade, emitErrors = false)
+                        } catch (e: Exception) {
+                            Logger.e("InstallerRepo", "Dhizuku privileged install failed, falling back to normal: ${e.message}")
+                            performPackageInstallerInstall(uri, defaultInstaller, canDowngrade, emitErrors = true)
+                        }
+                    } else {
+                        // No privileged installer available, use normal installer and allow errors
+                        performPackageInstallerInstall(uri, defaultInstaller, canDowngrade, emitErrors = true)
+                    }
                 }
 
                 InstallMode.NORMAL -> {
-                    performPackageInstallerInstall(uri, defaultInstaller, canDowngrade)
+                    performPackageInstallerInstall(uri, defaultInstaller, canDowngrade, emitErrors = true)
                 }
             }
         } catch (e: Exception) {
@@ -78,17 +98,46 @@ class InstallerRepositoryImpl(
         }
     }
 
+    // Create a PackageInstaller using Dhizuku's binder wrapper but make the installer package
+    // be this app's package name so created sessions belong to the app UID (avoids UID mismatch).
     private fun getDhizukuPackageInstaller(): PackageInstaller {
-        val binder = SystemServiceHelper.getSystemService("package")
-        val wrappedBinder = DhizukuAPI.binderWrapper(binder)
-        val ipm = IPackageManager.Stub.asInterface(ShizukuBinderWrapper(wrappedBinder))
-        val ipi = ipm.packageInstaller
-        val privilegedIpi = android.content.pm.IPackageInstaller.Stub.asInterface(ShizukuBinderWrapper(ipi.asBinder()))
-        
+        // Prefer using the existing Shizuku helper which returns a privileged IPackageInstaller.
+        // This avoids calling IPackageManager.getPackageInstaller() directly (which may not exist
+        // on some ROMs / API versions and caused NoSuchMethodError).
+        try {
+            val iPackageInstaller = ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller()
+            val root = try { rikka.shizuku.Shizuku.getUid() == 0 } catch (_: Exception) { false }
+            val userId = if (root) android.os.Process.myUserHandle().hashCode() else 0
+            val installerPackageName = context.packageName
+
+            return ShizukuPackageInstallerUtils.createPackageInstaller(
+                iPackageInstaller,
+                installerPackageName,
+                userId
+            )
+        } catch (e: Throwable) {
+            // Bubble up so caller falls back to normal installer; log for debugging.
+            Logger.e("InstallerRepo", "getDhizukuPackageInstaller failed: ${e.message}")
+            throw e
+        }
+    }
+
+    // Create a PackageInstaller using Shizuku's privileged installer helper (like ShizukuReflector)
+    // and make the installer package be this app's package name so sessions belong to app UID.
+    private fun getShizukuPackageInstaller(): PackageInstaller {
+        // Reuse ShizukuPackageInstallerUtils to get a privileged IPackageInstaller safely across API levels
+        val iPackageInstaller = ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller()
+
+        // If Shizuku is running as root, set userId to current user; otherwise use 0
+        val root = try { rikka.shizuku.Shizuku.getUid() == 0 } catch (_: Exception) { false }
+        val userId = if (root) android.os.Process.myUserHandle().hashCode() else 0
+
+        val installerPackageName = context.packageName
+
         return ShizukuPackageInstallerUtils.createPackageInstaller(
-            privilegedIpi,
-            "com.android.shell", // Typical for privileged installers
-            0 // Assuming user 0 for Dhizuku
+            iPackageInstaller,
+            installerPackageName,
+            userId
         )
     }
 
@@ -137,7 +186,8 @@ class InstallerRepositoryImpl(
     private suspend fun performPackageInstallerInstall(
         uri: Uri,
         packageInstaller: PackageInstaller,
-        canDowngrade: Boolean
+        canDowngrade: Boolean,
+        emitErrors: Boolean = true
     ) {
         val totalBytes = getFileSize(uri)
         var bytesProcessed = 0L
@@ -156,23 +206,29 @@ class InstallerRepositoryImpl(
                 HiddenApiBypass.invoke(params::class.java, params, "setRequestDowngrade", true)
             } catch (e: Exception) {
                 Logger.e("InstallerRepo", "Failed to setRequestDowngrade", e)
-                eventBus.emit(InstallState.Error("Failed to request downgrade: ${e.message}"))
-                return
+                if (emitErrors) {
+                    eventBus.emit(InstallState.Error("Failed to request downgrade: ${e.message}"))
+                    return
+                } else throw Exception("Failed to request downgrade: ${e.message}")
             }
         }
 
         val sessionId = try {
             packageInstaller.createSession(params)
         } catch (e: Exception) {
-            eventBus.emit(InstallState.Error("Failed to create session: ${e.message}"))
-            return
+            if (emitErrors) {
+                eventBus.emit(InstallState.Error("Failed to create session: ${e.message}"))
+                return
+            } else throw e
         }
 
         val session = try {
             packageInstaller.openSession(sessionId)
         } catch (e: Exception) {
-            eventBus.emit(InstallState.Error("Failed to open session: ${e.message}"))
-            return
+            if (emitErrors) {
+                eventBus.emit(InstallState.Error("Failed to open session: ${e.message}"))
+                return
+            } else throw e
         }
 
         // Helper to track progress across different streams
@@ -211,7 +267,7 @@ class InstallerRepositoryImpl(
         }
 
         try {
-            // ATTEMPT 1: Try as Bundle (XAPK/APKS)
+            // ATTEMPT 1: Try as Bundle (XAPK/APKS/APKM)
             val bundleStream: InputStream? = context.contentResolver.openInputStream(uri)
 
             if (bundleStream != null) {
@@ -269,8 +325,11 @@ class InstallerRepositoryImpl(
                 val rawStream = context.contentResolver.openInputStream(uri)
                 if (rawStream == null) {
                     session.abandon()
-                    eventBus.emit(InstallState.Error("Could not open file stream."))
-                    return
+                    Logger.e("thor", "Could not open file stream.")
+                    if (emitErrors) {
+                        eventBus.emit(InstallState.Error("Could not open file stream."))
+                        return
+                    } else throw Exception("Could not open file stream.")
                 }
 
                 val trackedStream = getTrackedStream(rawStream)
@@ -309,9 +368,14 @@ class InstallerRepositoryImpl(
             session.close()
 
         } catch (e: Exception) {
-            session.abandon()
+            try {
+                session.abandon()
+            } catch (_: Exception) {
+            }
             Logger.e("thorInstaller", "Install failed", e)
-            eventBus.emit(InstallState.Error(e.message ?: "Unknown installation error"))
+            if (emitErrors) {
+                eventBus.emit(InstallState.Error(e.message ?: "Unknown installation error"))
+            } else throw e
         }
     }
 
