@@ -20,7 +20,7 @@ shizuku = "13.1.5"
 dhizuku = "2.5.4"
 hiddenapibypass = "6.1"
 koin = "4.1.1"
-coil3 = "3.3.0"
+coil3 = "3.4.0"
 navigationCompose = "2.9.7"
 
 [libraries]
