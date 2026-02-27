@@ -21,6 +21,7 @@ interface PreferenceRepository {
     // --- Theme ---
     suspend fun setThemeMode(themeMode: ThemeMode)
     suspend fun setDynamicColor(enabled: Boolean)
+    suspend fun setUseAmoled(enabled: Boolean)
 
     // --- Security ---
     suspend fun setBiometricLock(enabled: Boolean)

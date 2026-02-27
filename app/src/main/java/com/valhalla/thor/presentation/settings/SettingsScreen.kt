@@ -78,6 +78,16 @@ fun SettingsScreen(
         SettingsDivider()
 
         SettingsSwitchRow(
+            icon = R.drawable.theme_panel,
+            title = "AMOLED Mode",
+            subtitle = "Use pure black background in dark mode",
+            checked = prefs.useAmoled,
+            onCheckedChange = { viewModel.setAmoledMode(it) }
+        )
+
+        SettingsDivider()
+
+        SettingsSwitchRow(
             icon = R.drawable.shield_with_heart,
             title = "Dynamic Colour",
             subtitle = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)

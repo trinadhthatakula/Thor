@@ -33,6 +33,7 @@ class PreferenceRepositoryImpl(
         // Theme
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val USE_DYNAMIC_COLOR = booleanPreferencesKey("use_dynamic_color")
+        val USE_AMOLED = booleanPreferencesKey("use_amoled")
 
         // Security
         val BIOMETRIC_LOCK = booleanPreferencesKey("biometric_lock")
@@ -65,6 +66,7 @@ class PreferenceRepositoryImpl(
                 showReinstallAllCard = prefs[Keys.SHOW_REINSTALL_ALL] ?: true,
                 themeMode = themeMode,
                 useDynamicColor = prefs[Keys.USE_DYNAMIC_COLOR] ?: true,
+                useAmoled = prefs[Keys.USE_AMOLED] ?: false,
                 biometricLockEnabled = prefs[Keys.BIOMETRIC_LOCK] ?: false,
             )
         }
@@ -98,6 +100,10 @@ class PreferenceRepositoryImpl(
 
     override suspend fun setDynamicColor(enabled: Boolean) {
         context.dataStore.edit { it[Keys.USE_DYNAMIC_COLOR] = enabled }
+    }
+
+    override suspend fun setUseAmoled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.USE_AMOLED] = enabled }
     }
 
     // --- Security ---

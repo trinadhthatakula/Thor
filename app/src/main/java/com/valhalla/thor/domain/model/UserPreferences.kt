@@ -13,6 +13,7 @@ data class UserPreferences(
     // Theme
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val useDynamicColor: Boolean = true,
+    val useAmoled: Boolean = false,
 
     // Security
     val biometricLockEnabled: Boolean = false,

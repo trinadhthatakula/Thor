@@ -36,6 +36,10 @@ class SettingsViewModel(
         viewModelScope.launch { preferenceRepository.setDynamicColor(enabled) }
     }
 
+    fun setAmoledMode(enabled: Boolean) {
+        viewModelScope.launch { preferenceRepository.setUseAmoled(enabled) }
+    }
+
     fun setBiometricLock(enabled: Boolean) {
         viewModelScope.launch { preferenceRepository.setBiometricLock(enabled) }
     }

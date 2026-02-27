@@ -65,6 +65,7 @@ class HomeActivity : FragmentActivity() {
             ThorTheme(
                 darkTheme = darkTheme,
                 dynamicColor = prefs.useDynamicColor,
+                amoledMode = prefs.useAmoled,
             ) {
                 val authState by securityViewModel.authState.collectAsStateWithLifecycle()
 
