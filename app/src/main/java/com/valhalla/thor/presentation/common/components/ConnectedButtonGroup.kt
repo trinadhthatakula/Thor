@@ -3,8 +3,6 @@ package com.valhalla.thor.presentation.common.components
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -13,7 +11,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonShapes
-import androidx.compose.material3.animateWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -183,8 +180,6 @@ private fun ItemContent(item: ConnectedButtonGroupItem) {
  * - `0 < index < lastIndex`  → small corners on all sides    *(middle)*
  * - `index == lastIndex`     → small inner-left, pill-right  *(trailing)*
  */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun connectedShapesFor(index: Int, lastIndex: Int): ToggleButtonShapes = when {
