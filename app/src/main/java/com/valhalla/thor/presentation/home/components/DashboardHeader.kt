@@ -12,14 +12,13 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TooltipAnchorPosition
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
+import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
+import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -83,21 +82,16 @@ fun DashboardHeader(
             Spacer(Modifier.width(12.dp))
 
             // 2. App Type Switcher
-            SingleChoiceSegmentedButtonRow {
-                AppListType.entries.forEachIndexed { index, type ->
-                    val isSelected = selectedType == type
-                    SegmentedButton(
-                        shape = SegmentedButtonDefaults.itemShape(index = index, count = 2),
-                        onClick = { onTypeChanged(type) },
-                        selected = isSelected
-                    ) {
-                        Icon(
-                            painter = painterResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
-                            contentDescription = type.name
-                        )
-                    }
-                }
-            }
+            ConnectedButtonGroup(
+                items = AppListType.entries.map { type ->
+                    ConnectedButtonGroupItem.Icon(
+                        iconRes = if (type == AppListType.USER) R.drawable.apps else R.drawable.android,
+                        contentDescription = type.name
+                    )
+                },
+                selectedIndex = AppListType.entries.indexOf(selectedType),
+                onItemSelected = { onTypeChanged(AppListType.entries[it]) }
+            )
         }
     }
 }

@@ -19,9 +19,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,6 +34,8 @@ import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.ThemeMode
+import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
+import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -69,19 +68,11 @@ fun SettingsScreen(
             title = "Theme",
             subtitle = "Choose your preferred colour scheme"
         ) {
-            SingleChoiceSegmentedButtonRow {
-                ThemeMode.entries.forEachIndexed { index, mode ->
-                    SegmentedButton(
-                        shape = SegmentedButtonDefaults.itemShape(
-                            index = index,
-                            count = ThemeMode.entries.size
-                        ),
-                        selected = prefs.themeMode == mode,
-                        onClick = { viewModel.setThemeMode(mode) },
-                        label = { Text(mode.label()) }
-                    )
-                }
-            }
+            ConnectedButtonGroup(
+                items = ThemeMode.entries.map { ConnectedButtonGroupItem.Label(it.label()) },
+                selectedIndex = ThemeMode.entries.indexOf(prefs.themeMode),
+                onItemSelected = { viewModel.setThemeMode(ThemeMode.entries[it]) }
+            )
         }
 
         SettingsDivider()

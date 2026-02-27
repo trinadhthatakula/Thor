@@ -1,11 +1,11 @@
 package com.valhalla.thor
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.valhalla.thor.domain.repository.SystemRepository
@@ -21,7 +21,7 @@ import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 import org.koin.androidx.viewmodel.ext.android.viewModel
 
-class HomeActivity : ComponentActivity() {
+class HomeActivity : FragmentActivity() {
 
     private val systemRepository: SystemRepository by inject()
     private val homeViewModel: HomeViewModel by viewModel()
