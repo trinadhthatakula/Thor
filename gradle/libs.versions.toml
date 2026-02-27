@@ -1,6 +1,7 @@
 [versions]
 accompanistDrawablepainter = "0.37.3"
 agp = "9.2.0-alpha02"
+biometric = "1.2.0-alpha05"
 datastorePreferences = "1.2.0"
 kotlin = "2.3.10"
 coreKtx = "1.17.0"
@@ -32,6 +33,7 @@ androidx-splashscreen = { group = "androidx.core", name = "core-splashscreen", v
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
+androidx-biometric = { module = "androidx.biometric:biometric-ktx", version.ref = "biometric" }
 #Compose
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
