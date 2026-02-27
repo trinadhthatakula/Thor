@@ -10,12 +10,12 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
+import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-// Extension property to create the DataStore singleton
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "thor_preferences")
 
 class PreferenceRepositoryImpl(
@@ -23,39 +23,53 @@ class PreferenceRepositoryImpl(
 ) : PreferenceRepository {
 
     private object Keys {
+        // App List
         val SORT_BY = stringPreferencesKey("sort_by")
         val SORT_ORDER = stringPreferencesKey("sort_order")
-        val FILTER_TYPE = stringPreferencesKey("filter_type") // "STATE" or "SOURCE"
+        val FILTER_TYPE = stringPreferencesKey("filter_type")
         val SELECTED_FILTER = stringPreferencesKey("selected_filter")
         val SHOW_REINSTALL_ALL = booleanPreferencesKey("show_reinstall_all")
+
+        // Theme
+        val THEME_MODE = stringPreferencesKey("theme_mode")
+        val USE_DYNAMIC_COLOR = booleanPreferencesKey("use_dynamic_color")
+
+        // Security
+        val BIOMETRIC_LOCK = booleanPreferencesKey("biometric_lock")
     }
 
     override val userPreferences: Flow<UserPreferences> = context.dataStore.data
         .map { prefs ->
-            // Mapper: DataStore -> Domain Model
-            val sortBy = try {
-                SortBy.valueOf(prefs[Keys.SORT_BY] ?: SortBy.NAME.name)
-            } catch (_: Exception) {
-                SortBy.NAME
+            val sortBy = prefs[Keys.SORT_BY]
+                ?.let { runCatching { SortBy.valueOf(it) }.getOrNull() }
+                ?: SortBy.NAME
+
+            val sortOrder = prefs[Keys.SORT_ORDER]
+                ?.let { runCatching { SortOrder.valueOf(it) }.getOrNull() }
+                ?: SortOrder.ASCENDING
+
+            val filterType = when (prefs[Keys.FILTER_TYPE]) {
+                "STATE" -> FilterType.State
+                else -> FilterType.Source
             }
 
-            val sortOrder = try {
-                SortOrder.valueOf(prefs[Keys.SORT_ORDER] ?: SortOrder.ASCENDING.name)
-            } catch (_: Exception) {
-                SortOrder.ASCENDING
-            }
-
-            val filterTypeStr = prefs[Keys.FILTER_TYPE] ?: "SOURCE"
-            val filterType = if (filterTypeStr == "STATE") FilterType.State else FilterType.Source
+            val themeMode = prefs[Keys.THEME_MODE]
+                ?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
+                ?: ThemeMode.SYSTEM
 
             UserPreferences(
                 appSortBy = sortBy,
                 appSortOrder = sortOrder,
                 appFilterType = filterType,
                 appSelectedFilter = prefs[Keys.SELECTED_FILTER] ?: "All",
-                showReinstallAllCard = prefs[Keys.SHOW_REINSTALL_ALL] ?: true
+                showReinstallAllCard = prefs[Keys.SHOW_REINSTALL_ALL] ?: true,
+                themeMode = themeMode,
+                useDynamicColor = prefs[Keys.USE_DYNAMIC_COLOR] ?: true,
+                biometricLockEnabled = prefs[Keys.BIOMETRIC_LOCK] ?: false,
             )
         }
+
+    // --- App List ---
 
     override suspend fun updateAppSort(sortBy: SortBy) {
         context.dataStore.edit { it[Keys.SORT_BY] = sortBy.name }
@@ -74,5 +88,21 @@ class PreferenceRepositoryImpl(
 
     override suspend fun setReinstallAllCardVisibility(isVisible: Boolean) {
         context.dataStore.edit { it[Keys.SHOW_REINSTALL_ALL] = isVisible }
+    }
+
+    // --- Theme ---
+
+    override suspend fun setThemeMode(themeMode: ThemeMode) {
+        context.dataStore.edit { it[Keys.THEME_MODE] = themeMode.name }
+    }
+
+    override suspend fun setDynamicColor(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.USE_DYNAMIC_COLOR] = enabled }
+    }
+
+    // --- Security ---
+
+    override suspend fun setBiometricLock(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.BIOMETRIC_LOCK] = enabled }
     }
 }
