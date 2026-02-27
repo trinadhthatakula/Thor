@@ -11,6 +11,7 @@ import com.valhalla.thor.data.repository.AppRepositoryImpl
 import com.valhalla.thor.data.repository.InstallerRepositoryImpl
 import com.valhalla.thor.data.repository.PreferenceRepositoryImpl
 import com.valhalla.thor.data.repository.SystemRepositoryImpl
+import com.valhalla.thor.data.security.BiometricHelper
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuReflector
 import com.valhalla.thor.data.util.ApksMetadataGenerator
@@ -29,6 +30,8 @@ import com.valhalla.thor.presentation.freezer.FreezerViewModel
 import com.valhalla.thor.presentation.home.HomeViewModel
 import com.valhalla.thor.presentation.installer.InstallerViewModel
 import com.valhalla.thor.presentation.main.MainViewModel
+import com.valhalla.thor.presentation.security.SecurityViewModel
+import com.valhalla.thor.presentation.settings.SettingsViewModel
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
@@ -73,12 +76,15 @@ val presentationModule = module {
     viewModelOf(::AppListViewModel)
     viewModelOf(::FreezerViewModel)
     viewModelOf(::InstallerViewModel)
+    viewModelOf(::SettingsViewModel)
+    viewModelOf(::SecurityViewModel)
 }
 
 val coreModule = module {
     singleOf(::RealShellRepository).bind<ShellRepository>()
     singleOf(::ShizukuReflector)
     singleOf(::DhizukuReflector)
+    singleOf(::BiometricHelper)
     // Singletons for the Gateways
     single { RootSystemGateway(get()) }
     single { ShizukuSystemGateway(get()) }

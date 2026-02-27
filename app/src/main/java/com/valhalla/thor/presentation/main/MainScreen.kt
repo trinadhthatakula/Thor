@@ -36,6 +36,7 @@ import com.valhalla.thor.presentation.freezer.FreezerScreen
 import com.valhalla.thor.presentation.home.AppDestinations
 import com.valhalla.thor.presentation.home.HomeScreen
 import com.valhalla.thor.presentation.home.HomeViewModel
+import com.valhalla.thor.presentation.settings.SettingsScreen
 import com.valhalla.thor.presentation.widgets.AffirmationDialog
 import com.valhalla.thor.presentation.widgets.MultiAppAffirmationDialog
 import com.valhalla.thor.presentation.widgets.TermLoggerDialog
@@ -185,6 +186,11 @@ fun MainScreen(
                             onMultiAppAction = { pendingMultiAction = it }
                         )
                     }
+
+                    AppDestinations.SETTINGS.ordinal -> {
+                        SettingsScreen()
+                    }
+
                 }
             }
 

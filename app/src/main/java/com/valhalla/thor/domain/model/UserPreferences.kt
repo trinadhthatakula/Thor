@@ -8,5 +8,14 @@ data class UserPreferences(
     val appSelectedFilter: String = "All",
 
     // Home Screen Config
-    val showReinstallAllCard: Boolean = true
+    val showReinstallAllCard: Boolean = true,
+
+    // Theme
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val useDynamicColor: Boolean = true,
+
+    // Security
+    val biometricLockEnabled: Boolean = false,
 )
+
+
