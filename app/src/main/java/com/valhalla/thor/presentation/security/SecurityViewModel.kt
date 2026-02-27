@@ -40,7 +40,11 @@ class SecurityViewModel(
             error != null -> AuthState.Error(error)
             else -> AuthState.Locked
         }
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, AuthState.Locked)
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        if (_biometricEnabled.value) AuthState.Locked else AuthState.NotRequired
+    )
 
     /** Called by BiometricScreen on successful authentication. */
     fun onAuthenticated() {

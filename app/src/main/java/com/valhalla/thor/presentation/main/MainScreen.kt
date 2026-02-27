@@ -191,10 +191,6 @@ fun MainScreen(
                         SettingsScreen()
                     }
 
-                    AppDestinations.SETTINGS.ordinal -> {
-                        SettingsScreen()
-                    }
-
                 }
             }
 
