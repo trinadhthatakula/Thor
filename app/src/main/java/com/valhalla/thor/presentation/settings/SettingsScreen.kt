@@ -64,7 +64,7 @@ fun SettingsScreen(
         SettingsSectionLabel("Appearance")
 
         SettingsRow(
-            icon = R.drawable.shield,
+            icon = R.drawable.theme_panel,
             title = "Theme",
             subtitle = "Choose your preferred colour scheme"
         ) {
