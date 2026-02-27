@@ -46,10 +46,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
+import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
+import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -570,6 +569,11 @@ private fun toggleSelection(currentSelection: List<AppInfo>, item: AppInfo): Lis
 
 private enum class SheetTab { FILTERS, SORT }
 
+private fun SheetTab.label(): String = when (this) {
+    SheetTab.FILTERS -> "Filters"
+    SheetTab.SORT    -> "Sort By"
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppFilterSheet(
@@ -588,18 +592,12 @@ private fun AppFilterSheet(
             Text("Configuration", style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(16.dp))
 
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                SegmentedButton(
-                    selected = activeTab == SheetTab.FILTERS,
-                    onClick = { activeTab = SheetTab.FILTERS },
-                    shape = SegmentedButtonDefaults.itemShape(0, 2)
-                ) { Text("Filters") }
-                SegmentedButton(
-                    selected = activeTab == SheetTab.SORT,
-                    onClick = { activeTab = SheetTab.SORT },
-                    shape = SegmentedButtonDefaults.itemShape(1, 2)
-                ) { Text("Sort By") }
-            }
+            ConnectedButtonGroup(
+                items = SheetTab.entries.map { ConnectedButtonGroupItem.Label(it.label()) },
+                selectedIndex = SheetTab.entries.indexOf(activeTab),
+                onItemSelected = { activeTab = SheetTab.entries[it] },
+                modifier = Modifier.fillMaxWidth()
+            )
 
             Spacer(Modifier.height(16.dp))
 

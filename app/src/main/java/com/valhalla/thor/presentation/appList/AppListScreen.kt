@@ -15,9 +15,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -50,9 +47,11 @@ import com.valhalla.thor.presentation.utils.AppIconKeyer
 import com.valhalla.thor.presentation.utils.getAppIcon
 import com.valhalla.thor.presentation.widgets.AppInfoDialog
 import com.valhalla.thor.presentation.widgets.AppList
+import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
+import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
 import org.koin.androidx.compose.koinViewModel
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppListScreen(
     modifier: Modifier = Modifier,
@@ -111,20 +110,17 @@ fun AppListScreen(
             )
 
             // App Type Switcher (User / System)
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.padding(horizontal = 5.dp)) {
-                AppListType.entries.forEachIndexed { index, type ->
-                    SegmentedButton(
-                        shape = SegmentedButtonDefaults.itemShape(index = index, count = 2),
-                        selected = state.appListType == type,
-                        onClick = { viewModel.updateListType(type) }
-                    ) {
-                        Icon(
-                            painter = painterResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
-                            contentDescription = type.name
-                        )
-                    }
-                }
-            }
+            ConnectedButtonGroup(
+                items = AppListType.entries.map { type ->
+                    ConnectedButtonGroupItem.Icon(
+                        iconRes = if (type == AppListType.USER) R.drawable.apps else R.drawable.android,
+                        contentDescription = type.name
+                    )
+                },
+                selectedIndex = AppListType.entries.indexOf(state.appListType),
+                onItemSelected = { viewModel.updateListType(AppListType.entries[it]) },
+                modifier = Modifier.padding(horizontal = 5.dp)
+            )
         }
 
         // 2. The List Content
