@@ -36,6 +36,8 @@
 
 ## Working Features
 
+- Fingerprint Lock
+- Themes (dark, light, system) + AMOLED
 - App Installer (install with root, shizuku or normal) 
 - Dhizuku Support (testing)
 - Shizuku Support
@@ -56,7 +58,6 @@
 
 ## Upcoming Features
 
-- Fingerprint Lock
 - BackUp App Data
 - Editing Packages.xml
 - Batch Install
