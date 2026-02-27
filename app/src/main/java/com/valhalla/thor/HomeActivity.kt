@@ -78,24 +78,11 @@ class HomeActivity : FragmentActivity() {
                         )
                     }
 
-                    AuthState.Locked -> {
-                        BiometricScreen(
-                            isError = false,
-                            errorMessage = "",
-                            onAuthenticated = { securityViewModel.onAuthenticated() },
-                            onError = { message ->
-                                Logger.e("HomeActivity", "Biometric error: $message")
-                                securityViewModel.onAuthError(message)
-                            },
-                            onRetry = { securityViewModel.onRetry() },
-                            onExit = { finish() }
-                        )
-                    }
-
+                    AuthState.Locked,
                     is AuthState.Error -> {
                         BiometricScreen(
-                            isError = true,
-                            errorMessage = (authState as AuthState.Error).message,
+                            isError = authState is AuthState.Error,
+                            errorMessage = (authState as? AuthState.Error)?.message ?: "",
                             onAuthenticated = { securityViewModel.onAuthenticated() },
                             onError = { message ->
                                 Logger.e("HomeActivity", "Biometric error: $message")
