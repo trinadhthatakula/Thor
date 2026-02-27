@@ -163,7 +163,7 @@ fun SettingsScreen(
             subtitle = "Get updates and release notes",
             onClick = {
                 context.startActivity(
-                    Intent(Intent.ACTION_VIEW, "https://t.me/valhalla_suite".toUri())
+                    Intent(Intent.ACTION_VIEW, "https://t.me/thorAppDev".toUri())
                 )
             }
         )

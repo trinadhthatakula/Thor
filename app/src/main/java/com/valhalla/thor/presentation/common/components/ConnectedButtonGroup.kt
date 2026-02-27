@@ -158,7 +158,7 @@ private fun ItemContent(item: ConnectedButtonGroupItem) {
             )
 
         is ConnectedButtonGroupItem.Label ->
-            Text(item.text)
+            Text(item.text, maxLines = 1)
 
         is ConnectedButtonGroupItem.IconWithLabel ->
             Row(
@@ -169,7 +169,7 @@ private fun ItemContent(item: ConnectedButtonGroupItem) {
                     painter = painterResource(item.iconRes),
                     contentDescription = item.contentDescription
                 )
-                Text(item.text)
+                Text(item.text, maxLines = 1)
             }
     }
 }
