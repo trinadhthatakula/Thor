@@ -43,7 +43,7 @@ class SecurityViewModel(
     }.stateIn(
         viewModelScope,
         SharingStarted.Eagerly,
-        if (_biometricEnabled.value) AuthState.Locked else AuthState.NotRequired
+        AuthState.Locked
     )
 
     /** Called by BiometricScreen on successful authentication. */
