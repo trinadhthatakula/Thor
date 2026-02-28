@@ -33,7 +33,7 @@ class InstallerRepositoryImpl(
     private val context: Context,
     private val eventBus: InstallerEventBus,
     private val rootGateway: RootSystemGateway,
-    @Suppress("unused") private val shizukuReflector: ShizukuReflector
+    private val shizukuReflector: ShizukuReflector
 ) : InstallerRepository {
 
     private val defaultInstaller = context.packageManager.packageInstaller
