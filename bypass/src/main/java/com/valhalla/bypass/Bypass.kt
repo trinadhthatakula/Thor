@@ -127,6 +127,7 @@ object Bypass {
 
     /**
      * Finds a method and ensures it is accessible.
+     * Traverses the class hierarchy to find methods in superclasses.
      * @throws NoSuchMethodException if the method cannot be resolved.
      */
     fun getDeclaredMethod(
@@ -134,23 +135,30 @@ object Bypass {
         name: String,
         vararg parameterTypes: Class<*>
     ): Method {
-        val exactMethod = runCatching {
-            clazz.getDeclaredMethod(name, *parameterTypes).apply {
-                isAccessible = true
-            }
-        }.getOrNull()
-        if (exactMethod != null) return exactMethod
+        var current: Class<*>? = clazz
+        while (current != null) {
+            val exactMethod = runCatching {
+                current.getDeclaredMethod(name, *parameterTypes).apply {
+                    isAccessible = true
+                }
+            }.getOrNull()
+            if (exactMethod != null) return exactMethod
 
-        // Fallback for compatible types (primitives, subtypes, nulls)
-        return runCatching {
-            clazz.declaredMethods.find { method ->
-                method.name == name &&
-                        method.parameterCount == parameterTypes.size &&
-                        method.parameterTypes.zip(parameterTypes).all { (declared, provided) ->
-                            isCompatible(declared, provided)
-                        }
-            }?.apply { isAccessible = true }
-        }.getOrNull() ?: throw NoSuchMethodException("Method $name not found on ${clazz.name}")
+            // Fallback for compatible types (primitives, subtypes, nulls)
+            val fallbackMethod = runCatching {
+                current.declaredMethods.find { method ->
+                    method.name == name &&
+                            method.parameterCount == parameterTypes.size &&
+                            method.parameterTypes.zip(parameterTypes).all { (declared, provided) ->
+                                isCompatible(declared, provided)
+                            }
+                }?.apply { isAccessible = true }
+            }.getOrNull()
+            if (fallbackMethod != null) return fallbackMethod
+
+            current = current.superclass
+        }
+        throw NoSuchMethodException("Method $name not found on ${clazz.name}")
     }
 
     private fun isCompatible(declared: Class<*>, provided: Class<*>): Boolean {
