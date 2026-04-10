@@ -15,7 +15,8 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
 /**
- * Receives the async result from the Android System.
+ * Receives the async installation status result from the Android System.
+ * This receiver is not exported for security; it is triggered via a targeted PendingIntent.
  */
 class InstallReceiver : BroadcastReceiver(), KoinComponent {
 
@@ -37,13 +38,13 @@ class InstallReceiver : BroadcastReceiver(), KoinComponent {
                     PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                         val confirmIntent: Intent? =
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                intent.getParcelableExtra<Intent>(
+                                intent.getParcelableExtra(
                                     Intent.EXTRA_INTENT,
                                     Intent::class.java
                                 )
                             } else {
                                 @Suppress("DEPRECATION")
-                                intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
+                                intent.getParcelableExtra(Intent.EXTRA_INTENT)
                             }
                         if (confirmIntent != null) {
                             eventBus.emit(InstallState.UserConfirmationRequired(confirmIntent))

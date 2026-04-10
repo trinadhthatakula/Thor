@@ -6,7 +6,8 @@ enum class InstallMode {
     NORMAL,
     SHIZUKU,
     DHIZUKU,
-    ROOT
+    ROOT,
+    EXTERNAL
 }
 
 /**

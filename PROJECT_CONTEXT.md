@@ -10,8 +10,10 @@ The project follows **Clean Architecture** principles combined with **MVVM (Mode
   - **Presentation**: Built with **Jetpack Compose**. ViewModels manage state using `StateFlow` and Koin for dependency injection.
   - **Domain**: Pure Kotlin layer containing business logic, Use Cases, and repository interfaces. Platform-agnostic where possible.
   - **Data**: Implementation of repositories, interacting with Android's `PackageManager`, `Shizuku`/`Dhizuku` APIs, and `DataStore` for persistence.
-  - **DI**: Dependency Injection using **Koin**, organized into `commonModule`, `installerModule`, `preferenceModule`, and `coreModule`.
+  - **DI**: Dependency Injection using **Koin**, organized into `commonModule`, `installerModule`, `preferenceModule`, `coreModule`, and `roomModule`.
 - **`suCore/`**: A specialized module for root shell management. It's a Kotlin-refactored version of the `libsu` core module by `topjohnwu`, optimized for modern Kotlin idioms and memory safety.
+- **`bypass/`**: A core utility module for bypassing Android's hidden API restrictions using `VMRuntime` exemptions and enhanced reflection.
+- **`bypass-stubs/`**: Compile-only Java stubs required for the `bypass` module to interface with internal Android classes like `VMRuntime`.
 
 ## 🛠 Tech Stack
 - **Language**: 100% Kotlin
@@ -20,12 +22,14 @@ The project follows **Clean Architecture** principles combined with **MVVM (Mode
 - **Asynchronous Programming**: Kotlin Coroutines & Flow
 - **Image Loading**: Coil
 - **Animation**: Lottie
-- **Persistence**: Jetpack DataStore (Preferences)
+- **Persistence**: 
+  - **Jetpack Room**: For high-performance caching of application metadata (Room 2.8.4).
+  - **Jetpack DataStore**: For lightweight user preferences.
 - **Security**: Android Biometrics (Fingerprint Lock)
 - **Elevated Privileges**: 
   - **Shizuku / Dhizuku API**: For system-level operations without full root.
   - **Root (su)**: Via `suCore` module.
-  - **Internal Bypass (`core:bypass`)**: A custom, 100% Kotlin implementation (with Java stubs) to access restricted Android internal APIs, replacing external dependencies like `HiddenApiBypass`.
+  - **Internal Bypass (`:bypass`)**: A custom, 100% Kotlin implementation (with Java stubs) to access restricted Android internal APIs, replacing external dependencies like `HiddenApiBypass`.
 - **Build System**: Gradle Kotlin DSL with Version Catalog (`libs.versions.toml`).
 - **Distribution**: Two product flavors: `store` (Play Store compliant) and `foss` (fully libre/open).
 
@@ -35,6 +39,7 @@ The project follows **Clean Architecture** principles combined with **MVVM (Mode
 - **Advanced Insights**: Display app installers (source), split APK indicators, version codes, and SDK targets.
 - **System App Support**: Ability to uninstall or freeze system applications (requires Shizuku/Root).
 - **Security**: Fingerprint lock for app access.
+- **App Metadata Caching**: Room DB cache for `AppInfo` fields, reducing `PackageManager` iteration overhead by using `lastUpdateTime` for intelligent invalidation.
 - **Customization**: Dark/Light/AMOLED themes with Material You support.
 - **Privacy**: Fully offline, no ads, no trackers, and FOSS (GPL-3.0).
 
@@ -49,11 +54,6 @@ The project follows **Clean Architecture** principles combined with **MVVM (Mode
 - **Package Editing**: Direct editing of `packages.xml` for advanced users.
 - **Automation**: Scheduled freezing/unfreezing or automated cleanup tasks.
 - **Installer Integration**: Expanding support for third-party installers (e.g., F-Droid, Aurora Store).
-- **Room DB App Metadata Cache** *(planned)*: Room 2.8.4 is already declared in `libs.versions.toml` but unused. Plan is to cache `AppInfo` fields in Room to avoid full `PackageManager` iteration on every launch.
-  - `packageName` as primary key; `lastUpdateTime` for per-entry invalidation on startup.
-  - `List<String>` fields (`splitPublicSourceDirs`, `sharedLibraryFiles`) via `TypeConverter`.
-  - Icons are excluded — Coil already disk-caches them efficiently.
-  - `InstallReceiver` will handle real-time cache invalidation on install/uninstall/update broadcasts.
 
 ## 🛡 Threats
 - **Play Store Policies**: As an "App Manager" with elevated privileges, it faces strict scrutiny from Google Play.

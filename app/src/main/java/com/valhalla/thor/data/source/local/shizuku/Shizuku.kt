@@ -82,15 +82,11 @@ object Shizuku {
                 isRoot -> PackageManager.COMPONENT_ENABLED_STATE_DISABLED
                 else -> PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
             }
-            pm::class.java.getMethod(
-                "setApplicationEnabledSetting",
-                String::class.java,
-                Int::class.java,
-                Int::class.java,
-                Int::class.java,
-                String::class.java
-            ).invoke(
+            Bypass.invoke<Any?>(
+                pm.javaClass,
                 pm,
+                "setApplicationEnabledSetting",
+                arrayOf(String::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, String::class.java),
                 packageName,
                 newState,
                 0,
@@ -125,12 +121,15 @@ object Shizuku {
         if (hidden) forceStopApp(context, packageName)
         return runCatching {
             val pm = asInterface("android.content.pm.IPackageManager", "package")
-            pm::class.java.getMethod(
+            Bypass.invoke<Boolean>(
+                pm.javaClass,
+                pm,
                 "setApplicationHiddenSettingAsUser",
-                String::class.java,
-                Boolean::class.java,
-                Int::class.java
-            ).invoke(pm, packageName, hidden, Packages(context).myUserId) as Boolean
+                arrayOf(String::class.java, Boolean::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!),
+                packageName,
+                hidden,
+                Packages(context).myUserId
+            )
         }.getOrElse {
             it.printStackTrace()
             false

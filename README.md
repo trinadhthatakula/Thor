@@ -28,6 +28,8 @@
 * 100% Kotlin
 * Material 3 Design
 * Jetpack Compose
+* Room DB App Caching
+* Custom Hidden API Bypass
 * PlayStore Download Size (around 2.0 MB)
 * Smallest APK size (less than 4 MB)
 * FOSS - GPL-3.0
@@ -36,6 +38,7 @@
 
 ## Working Features
 
+- High-performance app list loading with Room DB metadata caching
 - Fingerprint Lock
 - Themes (dark, light, system) + AMOLED
 - App Installer (install with root, shizuku or normal) 
@@ -79,6 +82,7 @@ Thor is a labor of love, built to be **100% offline, ad-free, and tracker-free**
 - Portions of this app use code from [`libsu`](https://github.com/topjohnwu/libsu)
   by [topjohnwu](https://github.com/topjohnwu/), adapted and integrated as the [
   `suCore`](https://github.com/trinadhthatakula/Thor/tree/master/suCore) module.
+- Replaced [`AndroidHiddenApiBypass`](https://github.com/LSPosed/AndroidHiddenApiBypass) with an internal, 100% Kotlin implementation in the [`bypass`](https://github.com/trinadhthatakula/Thor/tree/master/bypass) module.
 
 ### Modifications to libsu
 

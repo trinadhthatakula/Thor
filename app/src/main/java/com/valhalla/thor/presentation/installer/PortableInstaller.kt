@@ -279,6 +279,7 @@ fun PortableInstaller(
                                                         InstallMode.SHIZUKU -> R.drawable.shizuku
                                                         InstallMode.DHIZUKU -> R.drawable.dhizuku // Placeholder
                                                         InstallMode.NORMAL -> R.drawable.ic_launcher_foreground // Fallback
+                                                        InstallMode.EXTERNAL -> R.drawable.open_in
                                                     }
                                                 ),
                                                 modifier = Modifier.size(SplitButtonDefaults.LeadingIconSize),
@@ -296,6 +297,7 @@ fun PortableInstaller(
                                                     InstallMode.SHIZUKU -> "Shizuku"
                                                     InstallMode.DHIZUKU -> "Dhizuku"
                                                     InstallMode.ROOT -> "Root"
+                                                    InstallMode.EXTERNAL -> "External"
                                                 }
                                             }
                                         SplitButtonDefaults.ElevatedTrailingButton(
@@ -343,6 +345,7 @@ fun PortableInstaller(
                                                         InstallMode.SHIZUKU -> "${s.getActionWord()} via Shizuku"
                                                         InstallMode.DHIZUKU -> "${s.getActionWord()} via Dhizuku"
                                                         InstallMode.ROOT -> "${s.getActionWord()} with Root"
+                                                        InstallMode.EXTERNAL -> "Open with..."
                                                     }
                                                 )
                                             },

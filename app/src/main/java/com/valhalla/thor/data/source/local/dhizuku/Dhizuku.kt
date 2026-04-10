@@ -70,9 +70,10 @@ object DhizukuHelper {
                 else -> PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
             }
             Bypass.invoke<Any?>(
-                pm::class.java,
+                pm.javaClass,
                 pm,
                 "setApplicationEnabledSetting",
+                arrayOf(String::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, String::class.java),
                 packageName,
                 newState,
                 0,
@@ -104,9 +105,10 @@ object DhizukuHelper {
             val pm = asInterface("android.content.pm.IPackageManager", "package") ?: return false
 
             Bypass.invoke<Any?>(
-                pm::class.java,
+                pm.javaClass,
                 pm,
                 "deleteApplicationCacheFiles",
+                arrayOf(String::class.java, Class.forName("android.content.pm.IPackageDataObserver")),
                 packageName,
                 null /* IPackageDataObserver */
             )

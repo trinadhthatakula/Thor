@@ -3,6 +3,7 @@ package com.valhalla.thor.presentation.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
@@ -17,9 +18,8 @@ import kotlinx.coroutines.launch
 
 data class HomeUiState(
     val isLoading: Boolean = true,
+    val selectedType: AppListType = AppListType.USER,
     // Stats
-    val userAppCount: Int = 0,
-    val systemAppCount: Int = 0,
     val activeAppCount: Int = 0,
     val frozenAppCount: Int = 0,
     val unknownInstallerCount: Int = 0,
@@ -39,7 +39,11 @@ class HomeViewModel(
 ) : ViewModel() {
 
     private var dashboardJob: Job? = null
+    private var typeChangeJob: Job? = null
     private val _internalState = MutableStateFlow(HomeUiState())
+    
+    private var lastUserApps: List<AppInfo> = emptyList()
+    private var lastSystemApps: List<AppInfo> = emptyList()
 
     // Combine internal data processing with user preferences
     val state = combine(_internalState, preferenceRepository.userPreferences) { internal, prefs ->
@@ -64,8 +68,18 @@ class HomeViewModel(
             val hasShizuku = systemRepository.isShizukuAvailable()
 
             getInstalledAppsUseCase().collect { (userApps, systemApps) ->
-                processData(userApps, systemApps, hasRoot, hasShizuku)
+                lastUserApps = userApps
+                lastSystemApps = systemApps
+                processData(userApps, systemApps, _internalState.value.selectedType, hasRoot, hasShizuku)
             }
+        }
+    }
+
+    fun onTypeChanged(type: AppListType) {
+        _internalState.update { it.copy(selectedType = type) }
+        typeChangeJob?.cancel()
+        typeChangeJob = viewModelScope.launch(Dispatchers.IO) {
+            processData(lastUserApps, lastSystemApps, type, _internalState.value.isRootAvailable, _internalState.value.isShizukuAvailable)
         }
     }
 
@@ -78,19 +92,23 @@ class HomeViewModel(
     private fun processData(
         userApps: List<AppInfo>,
         systemApps: List<AppInfo>,
+        selectedType: AppListType,
         hasRoot: Boolean,
         hasShizuku: Boolean
     ) {
-        val allApps = userApps + systemApps
-        val activeCount = allApps.count { it.enabled }
-        val frozenCount = allApps.count { !it.enabled }
+        val filteredApps = if (selectedType == AppListType.USER) userApps else systemApps
+        
+        val activeCount = filteredApps.count { it.enabled }
+        val frozenCount = filteredApps.count { !it.enabled }
 
-        val unknownCount = userApps.count {
-            it.installerPackageName != "com.android.vending" &&
-                    it.installerPackageName != "com.google.android.packageinstaller"
-        }
+        val unknownCount = if (selectedType == AppListType.USER) {
+            userApps.count {
+                it.installerPackageName != "com.android.vending" &&
+                        it.installerPackageName != "com.google.android.packageinstaller"
+            }
+        } else 0
 
-        val distribution = allApps
+        val distribution = filteredApps
             .groupBy { it.installerPackageName ?: "Unknown" }
             .mapValues { it.value.size }
             .mapKeys { (key, _) ->
@@ -105,8 +123,7 @@ class HomeViewModel(
         _internalState.update {
             it.copy(
                 isLoading = false,
-                userAppCount = userApps.size,
-                systemAppCount = systemApps.size,
+                selectedType = selectedType,
                 activeAppCount = activeCount,
                 frozenAppCount = frozenCount,
                 unknownInstallerCount = unknownCount,
