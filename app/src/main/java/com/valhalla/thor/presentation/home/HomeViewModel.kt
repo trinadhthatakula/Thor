@@ -39,6 +39,7 @@ class HomeViewModel(
 ) : ViewModel() {
 
     private var dashboardJob: Job? = null
+    private var typeChangeJob: Job? = null
     private val _internalState = MutableStateFlow(HomeUiState())
     
     private var lastUserApps: List<AppInfo> = emptyList()
@@ -76,7 +77,8 @@ class HomeViewModel(
 
     fun onTypeChanged(type: AppListType) {
         _internalState.update { it.copy(selectedType = type) }
-        viewModelScope.launch(Dispatchers.IO) {
+        typeChangeJob?.cancel()
+        typeChangeJob = viewModelScope.launch(Dispatchers.IO) {
             processData(lastUserApps, lastSystemApps, type, _internalState.value.isRootAvailable, _internalState.value.isShizukuAvailable)
         }
     }
