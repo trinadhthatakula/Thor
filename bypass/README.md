@@ -4,16 +4,16 @@ An internal module that replaces the [AndroidHiddenApiBypass](https://github.com
 
 ## Why this exists
 
-Android enforces hidden API restrictions via a denylist checked in `java.lang.reflect` and in the native linker. The standard bypass technique calls `VMRuntime.setHiddenApiExemptions()` — a hidden method itself — before any restricted calls are made. Rather than pulling in an external AAR dependency for this single responsibility, `bypass` implements it directly with full control over the exemption signatures and an optional `Unsafe`-based field access path.
+Android enforces hidden API restrictions via a denylist checked in `java.lang.reflect` and in the native linker. The standard bypass technique calls `VMRuntime.setHiddenApiExemptions()` — a hidden method itself — before any restricted calls are made. Rather than pulling in an external AAR dependency for this single responsibility, `bypass` implements it directly with full control over the exemption signatures.
 
 ## Module structure
 
 ```
 :bypass         — the runtime implementation (Bypass.kt)
-:bypass-stubs   — compileOnly Java stubs for dalvik.system.VMRuntime and sun.misc.Unsafe
+:bypass-stubs   — compileOnly Java stubs for dalvik.system.VMRuntime
 ```
 
-`:bypass-stubs` is a plain `java-library` that provides stub classes so `:bypass` can reference `VMRuntime.setHiddenApiExemptions()` and `Unsafe` at compile time without those classes being on the normal classpath. The real implementations are always present on-device.
+`:bypass-stubs` is a plain `java-library` that provides stub classes so `:bypass` can reference `VMRuntime.setHiddenApiExemptions()` at compile time without those classes being on the normal classpath. The real implementations are always present on-device.
 
 ## API reference
 
@@ -54,7 +54,7 @@ Exemptions are additive and permanent for the process lifetime. Prefer `addExemp
 
 ### Reflection helpers
 
-These helpers bypass access checks even for methods/fields not covered by `setHiddenApiExemptions` by using `Unsafe` offsets directly.
+These helpers provide a unified API for reflection on hidden members. Ensure `prepareThor()` or `exemptAll()` is called first to allow hidden API access.
 
 ```kotlin
 // Call a hidden method
@@ -72,7 +72,7 @@ val method: Method? = Bypass.getDeclaredMethod(
     String::class.java, Int::class.java   // parameter types
 )
 
-// Read a field value via Unsafe (bypasses all access checks)
+// Read a field value (bypasses access checks)
 val value: Any? = Bypass.getField(instance, "mHiddenField")
 
 // Instantiate a class with a hidden constructor
@@ -104,4 +104,4 @@ implementation(project(":bypass"))
 
 1. **`VMRuntime.setHiddenApiExemptions()`** — the primary path. `VMRuntime` is itself a hidden class; `:bypass-stubs` provides a compile-time stub in the `dalvik.system` package so the call compiles. At runtime the real `dalvik.system.VMRuntime` on the device is used, and calling `setHiddenApiExemptions` with a set of Dalvik descriptor prefixes whitelists all matching members for the current process.
 
-2. **Reflection-based access** — once exemptions are added, standard reflection (`getDeclaredMethod`, `getDeclaredField`) works even for hidden members without `Unsafe` poked reflection.
+2. **Reflection-based access** — once exemptions are added, standard reflection (`getDeclaredMethod`, `getDeclaredField`, etc.) works even for hidden members.

@@ -95,12 +95,34 @@ object Bypass {
 
     /**
      * Instantiates a class using reflection with explicit parameter types.
+     * @throws NoSuchMethodException if the constructor cannot be resolved.
      */
     fun <T> newInstance(clazz: Class<*>, paramTypes: Array<out Class<*>>, vararg args: Any?): T {
-        val constructor = clazz.getDeclaredConstructor(*paramTypes)
-        constructor.isAccessible = true
+        val constructor = getDeclaredConstructor(clazz, *paramTypes)
         @Suppress("UNCHECKED_CAST")
         return constructor.newInstance(*args) as T
+    }
+
+    private fun getDeclaredConstructor(
+        clazz: Class<*>,
+        vararg parameterTypes: Class<*>
+    ): java.lang.reflect.Constructor<*> {
+        val exactConstructor = runCatching {
+            clazz.getDeclaredConstructor(*parameterTypes).apply {
+                isAccessible = true
+            }
+        }.getOrNull()
+        if (exactConstructor != null) return exactConstructor
+
+        // Fallback for compatible types (primitives, subtypes, nulls)
+        return runCatching {
+            clazz.declaredConstructors.find { constructor ->
+                constructor.parameterCount == parameterTypes.size &&
+                        constructor.parameterTypes.zip(parameterTypes).all { (declared, provided) ->
+                            isCompatible(declared, provided)
+                        }
+            }?.apply { isAccessible = true }
+        }.getOrNull() ?: throw NoSuchMethodException("Constructor not found on ${clazz.name}")
     }
 
     /**
@@ -153,12 +175,24 @@ object Bypass {
 
     /**
      * Directly get a field bypassing access checks.
+     * Supports both instance and static fields (by passing the Class as instance).
+     * Traverses the class hierarchy to find fields in superclasses.
      * @throws NoSuchFieldException if the field cannot be found.
      */
     fun <T> getField(instance: Any, fieldName: String): T {
-        val field = instance.javaClass.getDeclaredField(fieldName)
-        field.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        return field.get(instance) as T
+        val target = if (instance is Class<*>) null else instance
+        var clazz: Class<*>? = instance as? Class<*> ?: instance.javaClass
+        
+        while (clazz != null) {
+            try {
+                val field = clazz.getDeclaredField(fieldName)
+                field.isAccessible = true
+                @Suppress("UNCHECKED_CAST")
+                return field.get(target) as T
+            } catch (e: NoSuchFieldException) {
+                clazz = clazz.superclass
+            }
+        }
+        throw NoSuchFieldException("Field $fieldName not found on ${if (instance is Class<*>) instance.name else instance.javaClass.name}")
     }
 }
