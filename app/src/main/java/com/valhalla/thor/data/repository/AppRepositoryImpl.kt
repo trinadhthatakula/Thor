@@ -43,12 +43,18 @@ class AppRepositoryImpl(
         // The Worker: Consumes triggers, waits for quiet, then fetches ONCE.
         val worker = launch(Dispatchers.IO) {
             // Initial load from cache and baseline for comparison
-            val cachedEntities = appDao.getAllApps()
-            val cachedMap = cachedEntities.associateBy { it.packageName }.toMutableMap()
-            
-            if (cachedEntities.isNotEmpty()) {
-                producer.send(cachedEntities.map { it.toDomain() })
+            val cachedMap = try {
+                val entities = appDao.getAllApps()
+                if (entities.isNotEmpty()) {
+                    producer.send(entities.map { it.toDomain() })
+                }
+                entities.associateBy { it.packageName }.toMutableMap()
+            } catch (e: Exception) {
+                if (BuildConfig.DEBUG) e.printStackTrace()
+                mutableMapOf<String, AppEntity>()
             }
+
+            var lastLocale = context.resources.configuration.locales[0].toString()
 
             // Signal the worker to refresh
             triggerChannel.send(Unit)
@@ -61,6 +67,12 @@ class AppRepositoryImpl(
 
                 // Now Perform the Heavy Fetch ONE time
                 try {
+                    val currentLocale = context.resources.configuration.locales[0].toString()
+                    val forceRefresh = currentLocale != lastLocale
+                    if (forceRefresh) {
+                        lastLocale = currentLocale
+                    }
+
                     val flags = PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong()
                     val installedPackages =
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -77,7 +89,8 @@ class AppRepositoryImpl(
                         val packageName = packInfo.packageName
                         
                         val cachedEntry = cachedMap[packageName]
-                        if (cachedEntry != null && 
+                        if (!forceRefresh && 
+                            cachedEntry != null && 
                             cachedEntry.lastUpdateTime == packInfo.lastUpdateTime &&
                             cachedEntry.enabled == appInfo.enabled) {
                             currentList.add(cachedEntry.toDomain())
@@ -90,16 +103,13 @@ class AppRepositoryImpl(
                         }
                     }
 
-                    if (toUpdate.isNotEmpty()) {
-                        appDao.insertApps(toUpdate)
-                    }
-
                     // Handle uninstalled apps: Cleanup cache
                     val currentPackageNames = installedPackages.map { it.packageName }.toSet()
-                    val removedPackages = cachedMap.keys.filter { it !in currentPackageNames }
-                    removedPackages.forEach { pkg ->
-                        appDao.deleteApp(pkg)
-                        cachedMap.remove(pkg)
+                    val toDelete = cachedMap.keys.filter { it !in currentPackageNames }
+                    
+                    if (toUpdate.isNotEmpty() || toDelete.isNotEmpty()) {
+                        appDao.syncCache(toUpdate, toDelete)
+                        toDelete.forEach { cachedMap.remove(it) }
                     }
 
                     // Emit a single complete snapshot of all installed apps

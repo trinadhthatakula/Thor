@@ -6,6 +6,8 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
+import androidx.room.Transaction
+
 @Dao
 interface AppDao {
     @Query("SELECT * FROM apps")
@@ -22,6 +24,12 @@ interface AppDao {
 
     @Query("DELETE FROM apps WHERE packageName = :packageName")
     suspend fun deleteApp(packageName: String)
+
+    @Transaction
+    suspend fun syncCache(toUpdate: List<AppEntity>, toDelete: List<String>) {
+        if (toUpdate.isNotEmpty()) insertApps(toUpdate)
+        toDelete.forEach { deleteApp(it) }
+    }
 
     @Query("DELETE FROM apps")
     suspend fun clearAll()

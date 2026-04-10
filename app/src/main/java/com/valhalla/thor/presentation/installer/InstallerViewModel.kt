@@ -126,7 +126,7 @@ class InstallerViewModel(
         val uri = pendingUri ?: return
         
         // Validation: Only allow downgrade with Root, Shizuku or Dhizuku
-        if (isDowngrade && installMode.value == InstallMode.NORMAL) {
+        if (isDowngrade && (installMode.value == InstallMode.NORMAL || installMode.value == InstallMode.EXTERNAL)) {
             viewModelScope.launch {
                 eventBus.emit(InstallState.Error("Downgrade is only supported with privileged access (Root, Shizuku, or Dhizuku mode)."))
             }
