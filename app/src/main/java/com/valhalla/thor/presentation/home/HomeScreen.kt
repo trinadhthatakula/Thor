@@ -55,7 +55,6 @@ fun HomeScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showCacheDialog by remember { mutableStateOf(false) }
     var showPrivilegeDialog by remember { mutableStateOf(false) }
-    var headerSelectedType by remember { mutableStateOf(AppListType.USER) }
 
     var showInstallerSheet by remember { mutableStateOf(false) }
 
@@ -77,8 +76,8 @@ fun HomeScreen(
         DashboardHeader(
             isRoot = state.isRootAvailable,
             isShizuku = state.isShizukuAvailable,
-            selectedType = headerSelectedType,
-            onTypeChanged = { headerSelectedType = it },
+            selectedType = state.selectedType,
+            onTypeChanged = { viewModel.onTypeChanged(it) },
             onRestrictedStatusClick = { showPrivilegeDialog = true }
         )
 
@@ -114,7 +113,7 @@ fun HomeScreen(
         if (state.isRootAvailable && state.unknownInstallerCount > 0 && state.showReinstallCard) {
             ActionCard(
                 title = "Reinstall All",
-                subtitle = "${state.unknownInstallerCount} ${headerSelectedType.name.lowercase()} apps not from Play Store. Fix them?",
+                subtitle = "${state.unknownInstallerCount} ${state.selectedType.name.lowercase()} apps not from Play Store. Fix them?",
                 icon = R.drawable.apk_install,
                 containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                 onClick = onReinstallAll,
