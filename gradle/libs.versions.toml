@@ -1,6 +1,6 @@
 [versions]
 accompanistDrawablepainter = "0.37.3"
-agp = "9.2.0-alpha02"
+agp = "9.2.0-alpha08"
 biometric = "1.2.0-alpha05"
 datastorePreferences = "1.2.0"
 kotlin = "2.3.10"
