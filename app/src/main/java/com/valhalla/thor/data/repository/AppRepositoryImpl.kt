@@ -42,10 +42,12 @@ class AppRepositoryImpl(
 
         // The Worker: Consumes triggers, waits for quiet, then fetches ONCE.
         val worker = launch(Dispatchers.IO) {
-            // Initial load from cache
-            val cached = appDao.getAllApps().map { it.toDomain() }
-            if (cached.isNotEmpty()) {
-                producer.send(cached)
+            // Initial load from cache and baseline for comparison
+            val cachedEntities = appDao.getAllApps()
+            val cachedMap = cachedEntities.associateBy { it.packageName }.toMutableMap()
+            
+            if (cachedEntities.isNotEmpty()) {
+                producer.send(cachedEntities.map { it.toDomain() })
             }
 
             // Signal the worker to refresh
@@ -67,7 +69,6 @@ class AppRepositoryImpl(
                             pm.getInstalledPackages(PackageManager.MATCH_UNINSTALLED_PACKAGES)
                         }
 
-                    val cachedMap = appDao.getAllApps().associateBy { it.packageName }
                     val currentList = ArrayList<AppInfo>(installedPackages.size)
                     val toUpdate = mutableListOf<AppEntity>()
 
@@ -76,12 +77,16 @@ class AppRepositoryImpl(
                         val packageName = packInfo.packageName
                         
                         val cachedEntry = cachedMap[packageName]
-                        if (cachedEntry != null && cachedEntry.lastUpdateTime == packInfo.lastUpdateTime) {
+                        if (cachedEntry != null && 
+                            cachedEntry.lastUpdateTime == packInfo.lastUpdateTime &&
+                            cachedEntry.enabled == appInfo.enabled) {
                             currentList.add(cachedEntry.toDomain())
                         } else {
                             val mapped = AppInfo.mapToAppInfo(packInfo, appInfo, pm, isLightweight = true)
                             currentList.add(mapped)
-                            toUpdate.add(AppEntity.fromDomain(mapped))
+                            val entity = AppEntity.fromDomain(mapped)
+                            toUpdate.add(entity)
+                            cachedMap[packageName] = entity
                         }
                     }
 
@@ -91,10 +96,10 @@ class AppRepositoryImpl(
 
                     // Handle uninstalled apps: Cleanup cache
                     val currentPackageNames = installedPackages.map { it.packageName }.toSet()
-                    cachedMap.keys.forEach { pkg ->
-                        if (pkg !in currentPackageNames) {
-                            appDao.deleteApp(pkg)
-                        }
+                    val removedPackages = cachedMap.keys.filter { it !in currentPackageNames }
+                    removedPackages.forEach { pkg ->
+                        appDao.deleteApp(pkg)
+                        cachedMap.remove(pkg)
                     }
 
                     // Emit a single complete snapshot of all installed apps
@@ -131,7 +136,6 @@ class AppRepositoryImpl(
         }
     }.flowOn(Dispatchers.IO)
 
-    // ... (rest of the file remains unchanged) ...
     override suspend fun getAppDetails(packageName: String): AppInfo? =
         withContext(Dispatchers.IO) {
             try {
