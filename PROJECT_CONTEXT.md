@@ -49,11 +49,11 @@ The project follows **Clean Architecture** principles combined with **MVVM (Mode
 - **Package Editing**: Direct editing of `packages.xml` for advanced users.
 - **Automation**: Scheduled freezing/unfreezing or automated cleanup tasks.
 - **Installer Integration**: Expanding support for third-party installers (e.g., F-Droid, Aurora Store).
-- **Room DB App Metadata Cache** *(planned)*: Room 2.8.4 is already declared in `libs.versions.toml` but unused. Plan is to cache `AppInfo` fields in Room to avoid full `PackageManager` iteration on every launch.
+- **Room DB App Metadata Cache**: Implemented using Room 2.8.4 to cache `AppInfo` fields, reducing `PackageManager` iteration overhead.
   - `packageName` as primary key; `lastUpdateTime` for per-entry invalidation on startup.
   - `List<String>` fields (`splitPublicSourceDirs`, `sharedLibraryFiles`) via `TypeConverter`.
   - Icons are excluded — Coil already disk-caches them efficiently.
-  - `InstallReceiver` will handle real-time cache invalidation on install/uninstall/update broadcasts.
+  - `InstallReceiver` handles real-time cache invalidation on install/uninstall/update broadcasts.
 
 ## 🛡 Threats
 - **Play Store Policies**: As an "App Manager" with elevated privileges, it faces strict scrutiny from Google Play.

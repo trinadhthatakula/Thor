@@ -7,6 +7,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlinSerialization)
+    alias(libs.plugins.room)
+    alias(libs.plugins.ksp)
 }
 
 kotlin {
@@ -19,6 +21,10 @@ kotlin {
         optIn.add("androidx.compose.material3.ExperimentalMaterial3ExpressiveApi")
         optIn.add("androidx.compose.material3.ExperimentalMaterial3Api")
     }
+}
+
+room {
+    schemaDirectory("$projectDir/schemas")
 }
 
 val keystorePropertiesFile: File = rootProject.file("jks.properties")
@@ -217,6 +223,10 @@ dependencies {
     implementation(libs.dhizuku.api)
     implementation(libs.bundles.coil)
     implementation(libs.bundles.koin)
+
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
 }
 
 // These rely on the private functions above, which is allowed in the same file scope

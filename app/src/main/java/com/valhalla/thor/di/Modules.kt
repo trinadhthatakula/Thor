@@ -1,6 +1,7 @@
 package com.valhalla.thor.di
 
 import android.content.pm.PackageManager
+import androidx.room.Room
 import com.valhalla.superuser.ktx.RealShellRepository
 import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.thor.data.gateway.RootSystemGateway
@@ -12,6 +13,7 @@ import com.valhalla.thor.data.repository.InstallerRepositoryImpl
 import com.valhalla.thor.data.repository.PreferenceRepositoryImpl
 import com.valhalla.thor.data.repository.SystemRepositoryImpl
 import com.valhalla.thor.data.security.BiometricHelper
+import com.valhalla.thor.data.source.local.room.AppDatabase
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuReflector
 import com.valhalla.thor.data.util.ApksMetadataGenerator
@@ -42,11 +44,22 @@ import org.koin.dsl.module
 val commonModule = module {
     single<PackageManager> { androidContext().packageManager }
     singleOf(::ApksMetadataGenerator)
-    single<AppRepository> { AppRepositoryImpl(androidContext()) }
+    single<AppRepository> { AppRepositoryImpl(androidContext(), get()) }
     factory { GetInstalledAppsUseCase(get()) }
     factory { GetAppDetailsUseCase(get()) }
     factory { ManageAppUseCase(get()) }
     factoryOf(::ShareAppUseCase)
+}
+
+val roomModule = module {
+    single {
+        Room.databaseBuilder(
+            androidContext(),
+            AppDatabase::class.java,
+            "thor_database"
+        ).build()
+    }
+    single { get<AppDatabase>().appDao() }
 }
 
 val installerModule = module {

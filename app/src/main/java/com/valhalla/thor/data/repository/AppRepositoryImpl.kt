@@ -4,11 +4,12 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Environment
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.data.source.local.room.AppDao
+import com.valhalla.thor.data.source.local.room.AppEntity
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.repository.AppRepository
 import kotlinx.coroutines.Dispatchers
@@ -22,7 +23,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 class AppRepositoryImpl(
-    private val context: Context
+    private val context: Context,
+    private val appDao: AppDao
 ) : AppRepository {
 
     private val pm = context.packageManager
@@ -40,13 +42,16 @@ class AppRepositoryImpl(
 
         // The Worker: Consumes triggers, waits for quiet, then fetches ONCE.
         val worker = launch(Dispatchers.IO) {
-            // Initial load
+            // Initial load from cache
+            val cached = appDao.getAllApps().map { it.toDomain() }
+            if (cached.isNotEmpty()) {
+                producer.send(cached)
+            }
+
+            // Signal the worker to refresh
             triggerChannel.send(Unit)
 
             for (signal in triggerChannel) {
-                // Wait for the broadcast storm to settle (e.g. 500ms after last signal)
-                //delay(500L)
-
                 // Drain any extra signals that arrived while we were waiting
                 while (triggerChannel.tryReceive().isSuccess) {
                     // Do nothing, just consume them so we don't loop immediately again
@@ -62,12 +67,34 @@ class AppRepositoryImpl(
                             pm.getInstalledPackages(PackageManager.MATCH_UNINSTALLED_PACKAGES)
                         }
 
+                    val cachedMap = appDao.getAllApps().associateBy { it.packageName }
                     val currentList = ArrayList<AppInfo>(installedPackages.size)
+                    val toUpdate = mutableListOf<AppEntity>()
 
                     for (packInfo in installedPackages) {
                         val appInfo = packInfo.applicationInfo ?: continue
-                        val mapped = mapToAppInfo(packInfo, appInfo, isLightweight = true)
-                        currentList.add(mapped)
+                        val packageName = packInfo.packageName
+                        
+                        val cachedEntry = cachedMap[packageName]
+                        if (cachedEntry != null && cachedEntry.lastUpdateTime == packInfo.lastUpdateTime) {
+                            currentList.add(cachedEntry.toDomain())
+                        } else {
+                            val mapped = AppInfo.mapToAppInfo(packInfo, appInfo, pm, isLightweight = true)
+                            currentList.add(mapped)
+                            toUpdate.add(AppEntity.fromDomain(mapped))
+                        }
+                    }
+
+                    if (toUpdate.isNotEmpty()) {
+                        appDao.insertApps(toUpdate)
+                    }
+
+                    // Handle uninstalled apps: Cleanup cache
+                    val currentPackageNames = installedPackages.map { it.packageName }.toSet()
+                    cachedMap.keys.forEach { pkg ->
+                        if (pkg !in currentPackageNames) {
+                            appDao.deleteApp(pkg)
+                        }
                     }
 
                     // Emit a single complete snapshot of all installed apps
@@ -116,7 +143,7 @@ class AppRepositoryImpl(
                 }
                 val appInfo = packInfo.applicationInfo ?: return@withContext null
 
-                mapToAppInfo(packInfo, appInfo, isLightweight = false)
+                AppInfo.mapToAppInfo(packInfo, appInfo, pm, isLightweight = false)
             } catch (e: Exception) {
                 if (BuildConfig.DEBUG)
                     e.printStackTrace()
@@ -138,67 +165,8 @@ class AppRepositoryImpl(
             publicSourceDir = apkPath
         } ?: return@withContext null
 
-        mapToAppInfo(packInfo, appInfo, isLightweight = false).apply {
+        AppInfo.mapToAppInfo(packInfo, appInfo, pm, isLightweight = false).apply {
             this.appName = pm.getApplicationLabel(appInfo).toString()
-        }
-    }
-
-    private fun mapToAppInfo(
-        packInfo: android.content.pm.PackageInfo,
-        appInfo: ApplicationInfo,
-        isLightweight: Boolean
-    ): AppInfo {
-        val isDebuggable = (appInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
-        @Suppress("DEPRECATION") val mapped = AppInfo(
-            appName = appInfo.loadLabel(pm).toString(),
-            packageName = packInfo.packageName,
-            versionName = packInfo.versionName,
-            versionCode = packInfo.longVersionCode.toInt(),
-            minSdk = appInfo.minSdkVersion,
-            targetSdk = appInfo.targetSdkVersion,
-            isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0,
-            installerPackageName = getInstallerPackageName(packInfo.packageName),
-            publicSourceDir = appInfo.publicSourceDir,
-            splitPublicSourceDirs = appInfo.splitPublicSourceDirs?.toList() ?: emptyList(),
-            enabled = appInfo.enabled,
-            dataDir = appInfo.dataDir,
-            nativeLibraryDir = appInfo.nativeLibraryDir,
-            deviceProtectedDataDir = appInfo.deviceProtectedDataDir,
-            sourceDir = appInfo.sourceDir,
-            lastUpdateTime = packInfo.lastUpdateTime,
-            firstInstallTime = packInfo.firstInstallTime,
-            isDebuggable = isDebuggable
-        )
-
-        if (!isLightweight) {
-            mapped.sharedLibraryFiles = appInfo.sharedLibraryFiles?.toList() ?: emptyList()
-            val obbFile = File(
-                Environment.getExternalStorageDirectory(),
-                "Android/obb/${appInfo.packageName}"
-            )
-            if (obbFile.exists()) {
-                mapped.obbFilePath = obbFile.absolutePath
-            }
-            val dataFile = File(
-                Environment.getExternalStorageDirectory(),
-                "Android/data/${appInfo.packageName}"
-            )
-            mapped.sharedDataDir = dataFile.absolutePath
-        }
-
-        return mapped
-    }
-
-    private fun getInstallerPackageName(packageName: String): String? {
-        return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                pm.getInstallSourceInfo(packageName).installingPackageName
-            } else {
-                @Suppress("DEPRECATION")
-                pm.getInstallerPackageName(packageName)
-            }
-        } catch (_: Exception) {
-            null
         }
     }
 }
