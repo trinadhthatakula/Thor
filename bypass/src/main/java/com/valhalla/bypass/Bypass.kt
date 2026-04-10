@@ -165,16 +165,15 @@ object Bypass {
         if (provided == Any::class.java) return !declared.isPrimitive
         if (declared.isAssignableFrom(provided)) return true
         if (declared.isPrimitive) {
-            val primitiveName = declared.name
-            return when (provided.name) {
-                "java.lang.Integer" -> primitiveName == "int"
-                "java.lang.Boolean" -> primitiveName == "boolean"
-                "java.lang.Long" -> primitiveName == "long"
-                "java.lang.Double" -> primitiveName == "double"
-                "java.lang.Float" -> primitiveName == "float"
-                "java.lang.Byte" -> primitiveName == "byte"
-                "java.lang.Character" -> primitiveName == "char"
-                "java.lang.Short" -> primitiveName == "short"
+            return when (provided) {
+                Int::class.javaObjectType -> declared == Int::class.javaPrimitiveType
+                Boolean::class.javaObjectType -> declared == Boolean::class.javaPrimitiveType
+                Long::class.javaObjectType -> declared == Long::class.javaPrimitiveType
+                Double::class.javaObjectType -> declared == Double::class.javaPrimitiveType
+                Float::class.javaObjectType -> declared == Float::class.javaPrimitiveType
+                Byte::class.javaObjectType -> declared == Byte::class.javaPrimitiveType
+                Char::class.javaObjectType -> declared == Char::class.javaPrimitiveType
+                Short::class.javaObjectType -> declared == Short::class.javaPrimitiveType
                 else -> false
             }
         }
