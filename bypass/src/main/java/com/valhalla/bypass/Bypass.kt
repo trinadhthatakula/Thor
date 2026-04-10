@@ -59,34 +59,36 @@ object Bypass {
      * Advanced: Reflection-based invocation of hidden methods without globally exempting.
      * Ensure [prepareThor] or [exemptAll] is called first to allow hidden API access.
      */
-    fun invoke(
+    fun <T> invoke(
         clazz: Class<*>,
         instance: Any?,
         methodName: String,
         vararg args: Any?
-    ): Any? {
+    ): T {
         val paramTypes = args.map { it?.javaClass ?: Any::class.java }.toTypedArray()
         return invoke(clazz, instance, methodName, paramTypes, *args)
     }
 
     /**
      * Advanced: Reflection-based invocation with explicit parameter types.
+     * @throws NoSuchMethodException if the method cannot be resolved.
      */
-    fun invoke(
+    fun <T> invoke(
         clazz: Class<*>,
         instance: Any?,
         methodName: String,
         paramTypes: Array<out Class<*>>,
         vararg args: Any?
-    ): Any? {
+    ): T {
         val method = getDeclaredMethod(clazz, methodName, *paramTypes)
-        return method?.invoke(instance, *args)
+        @Suppress("UNCHECKED_CAST")
+        return method.invoke(instance, *args) as T
     }
 
     /**
      * Instantiates a class using reflection.
      */
-    fun newInstance(clazz: Class<*>, vararg args: Any?): Any {
+    fun <T> newInstance(clazz: Class<*>, vararg args: Any?): T {
         val paramTypes = args.map { it?.javaClass ?: Any::class.java }.toTypedArray()
         return newInstance(clazz, paramTypes, *args)
     }
@@ -94,20 +96,22 @@ object Bypass {
     /**
      * Instantiates a class using reflection with explicit parameter types.
      */
-    fun newInstance(clazz: Class<*>, paramTypes: Array<out Class<*>>, vararg args: Any?): Any {
+    fun <T> newInstance(clazz: Class<*>, paramTypes: Array<out Class<*>>, vararg args: Any?): T {
         val constructor = clazz.getDeclaredConstructor(*paramTypes)
         constructor.isAccessible = true
-        return constructor.newInstance(*args)
+        @Suppress("UNCHECKED_CAST")
+        return constructor.newInstance(*args) as T
     }
 
     /**
      * Finds a method and ensures it is accessible.
+     * @throws NoSuchMethodException if the method cannot be resolved.
      */
     fun getDeclaredMethod(
         clazz: Class<*>,
         name: String,
         vararg parameterTypes: Class<*>
-    ): Method? {
+    ): Method {
         val exactMethod = runCatching {
             clazz.getDeclaredMethod(name, *parameterTypes).apply {
                 isAccessible = true
@@ -124,9 +128,7 @@ object Bypass {
                             isCompatible(declared, provided)
                         }
             }?.apply { isAccessible = true }
-        }.onFailure {
-            logger?.invoke("Failed to get declared method $name on ${clazz.name}", it)
-        }.getOrNull()
+        }.getOrNull() ?: throw NoSuchMethodException("Method $name not found on ${clazz.name}")
     }
 
     private fun isCompatible(declared: Class<*>, provided: Class<*>): Boolean {
@@ -151,14 +153,12 @@ object Bypass {
 
     /**
      * Directly get a field bypassing access checks.
+     * @throws NoSuchFieldException if the field cannot be found.
      */
-    fun getField(instance: Any, fieldName: String): Any? {
-        return runCatching {
-            val field = instance.javaClass.getDeclaredField(fieldName)
-            field.isAccessible = true
-            field.get(instance)
-        }.onFailure {
-            logger?.invoke("Failed to get field $fieldName on ${instance.javaClass.name}", it)
-        }.getOrNull()
+    fun <T> getField(instance: Any, fieldName: String): T {
+        val field = instance.javaClass.getDeclaredField(fieldName)
+        field.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        return field.get(instance) as T
     }
 }

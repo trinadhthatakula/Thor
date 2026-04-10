@@ -163,7 +163,7 @@ class ShizukuReflector(
 
     fun setAppRestricted(packageName: String, restricted: Boolean): Boolean = runCatching {
         context.getSystemService<AppOpsManager>()?.let {
-            Bypass.invoke(
+            Bypass.invoke<Any?>(
                 it::class.java,
                 it,
                 "setMode",
@@ -202,7 +202,7 @@ class ShizukuReflector(
         if (shouldReset) {
             try {
 
-                Bypass.invoke(
+                Bypass.invoke<Any?>(
                     PackageInstaller::class.java,
                     packageInstaller,
                     "uninstall",
@@ -228,7 +228,7 @@ class ShizukuReflector(
 
 
         return try {
-            Bypass.invoke(
+            Bypass.invoke<Any?>(
                 PackageInstaller::class.java,
                 packageInstaller,
                 "uninstall",
@@ -283,7 +283,7 @@ class ShizukuReflector(
 
         return try {
             val installReason = PackageManager.INSTALL_REASON_UNKNOWN
-            Bypass.invoke(
+            Bypass.invoke<Any?>(
                 IPackageInstaller::class.java,
                 ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller(),
                 "installExistingPackage",

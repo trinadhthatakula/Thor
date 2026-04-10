@@ -41,7 +41,7 @@ object DhizukuHelper {
             "asInterface",
             arrayOf(IBinder::class.java),
             ShizukuBinderWrapper(original)
-        )!!
+        )
     }
 
     private fun asInterface(className: String, serviceName: String): Any? {
@@ -51,7 +51,7 @@ object DhizukuHelper {
 
     fun forceStopApp(context: Context, packageName: String): Boolean = runCatching {
         val am = asInterface("android.app.IActivityManager", Context.ACTIVITY_SERVICE) ?: return false
-        Bypass.invoke(
+        Bypass.invoke<Any?>(
             am::class.java, am, "forceStopPackage", packageName, Packages(context).myUserId
         )
         true
@@ -69,7 +69,7 @@ object DhizukuHelper {
                 !disabled -> PackageManager.COMPONENT_ENABLED_STATE_ENABLED
                 else -> PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
             }
-            Bypass.invoke(
+            Bypass.invoke<Any?>(
                 pm::class.java,
                 pm,
                 "setApplicationEnabledSetting",
@@ -103,13 +103,13 @@ object DhizukuHelper {
         return try {
             val pm = asInterface("android.content.pm.IPackageManager", "package") ?: return false
 
-            Bypass.invoke(
+            Bypass.invoke<Any?>(
                 pm::class.java,
                 pm,
                 "deleteApplicationCacheFiles",
                 packageName,
                 null /* IPackageDataObserver */
-            )!!
+            )
             true
         } catch (e: Exception) {
             com.valhalla.thor.util.Logger.e("DhizukuHelper", "clearCache failed for $packageName", e)

@@ -35,7 +35,7 @@ object Shizuku {
             "asInterface",
             arrayOf(IBinder::class.java),
             ShizukuBinderWrapper(original)
-        )!!
+        )
     }
 
     private fun asInterface(className: String, serviceName: String): Any =
@@ -62,7 +62,7 @@ object Shizuku {
 
     fun forceStopApp(context: Context, packageName: String): Boolean = runCatching {
         asInterface("android.app.IActivityManager", Context.ACTIVITY_SERVICE).let {
-            Bypass.invoke(
+            Bypass.invoke<Any?>(
                 it::class.java, it, "forceStopPackage", packageName, Packages(context).myUserId
             )
         }
@@ -145,7 +145,7 @@ object Shizuku {
             val pm = asInterface("android.content.pm.IPackageManager", "package")
             (when {
                 Targets.U -> runCatching {
-                    Bypass.invoke(
+                    Bypass.invoke<Array<String>>(
                         pm::class.java,
                         pm,
                         "setPackagesSuspendedAsUser",
@@ -158,7 +158,7 @@ object Shizuku {
                         callerPackage,
                         Packages(context).myUserId /*suspendingUserId*/,
                         Packages(context).myUserId /*targetUserId*/
-                    )!!
+                    )
                 }.getOrElse {
                     if (it is NoSuchMethodException) setPackagesSuspendedAsUserSinceQ(
                         context,
@@ -190,7 +190,7 @@ object Shizuku {
         pm: Any,
         packageName: String,
         suspended: Boolean
-    ): Any =
+    ): Array<String> =
         Bypass.invoke(
             pm::class.java,
             pm,
@@ -202,14 +202,14 @@ object Shizuku {
             if (suspended) suspendDialogInfo else null,
             callerPackage,
             Packages(context).myUserId
-        )!!
+        )
 
     private fun setPackagesSuspendedAsUserSinceP(
         context: Context,
         pm: Any,
         packageName: String,
         suspended: Boolean
-    ): Any =
+    ): Array<String> =
         Bypass.invoke(
             pm::class.java,
             pm,
@@ -221,19 +221,19 @@ object Shizuku {
             null /*dialogMessage*/,
             callerPackage,
             Packages(context).myUserId
-        )!!
+        )
 
     private val suspendDialogInfo: Any
-        @RequiresApi(Build.VERSION_CODES.Q) @SuppressLint("PrivateApi") get() = Bypass.newInstance(
+        @RequiresApi(Build.VERSION_CODES.Q) @SuppressLint("PrivateApi") get() = Bypass.newInstance<Any>(
             Class.forName("android.content.pm.SuspendDialogInfo\$Builder")
         ).let {
-            Bypass.invoke(
+            Bypass.invoke<Any?>(
                 it::class.java,
                 it,
                 "setNeutralButtonAction",
                 1 /*BUTTON_ACTION_UNSUSPEND*/
             )
-            Bypass.invoke(it::class.java, it, "build")!!
+            Bypass.invoke<Any>(it::class.java, it, "build")
         }
 
     @SuppressLint("PrivateApi")
@@ -241,7 +241,7 @@ object Shizuku {
         return try {
             val pm = asInterface("android.content.pm.IPackageManager", "package")
 
-            Bypass.invoke(
+            Bypass.invoke<Any?>(
                 pm::class.java,
                 pm,
                 "deleteApplicationCacheFiles",
@@ -283,11 +283,11 @@ object Shizuku {
         runCatching {
             val appops =
                 asInterface("com.android.internal.app.IAppOpsService", Context.APP_OPS_SERVICE)
-            Bypass.invoke(
+            Bypass.invoke<Any?>(
                 appops::class.java,
                 appops,
                 "setMode",
-                Bypass.invoke(
+                Bypass.invoke<Int>(
                     AppOpsManager::class.java,
                     null,
                     "strOpToOp",

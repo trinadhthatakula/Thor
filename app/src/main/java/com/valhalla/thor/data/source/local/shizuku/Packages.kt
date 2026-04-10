@@ -68,7 +68,7 @@ class Packages(private val app: Context) {
 
     fun forceStopApp(packageName: String): Boolean = runCatching {
         app.getSystemService<ActivityManager>()?.let {
-            Bypass.invoke(
+            Bypass.invoke<Any?>(
                 it::class.java,
                 it,
                 "forceStopPackage",
@@ -98,7 +98,7 @@ class Packages(private val app: Context) {
 
     fun setAppRestricted(packageName: String, restricted: Boolean): Boolean = runCatching {
         app.getSystemService<AppOpsManager>()?.let {
-            Bypass.invoke(
+            Bypass.invoke<Any?>(
                 it::class.java,
                 it,
                 "setMode",

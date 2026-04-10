@@ -203,7 +203,7 @@ class InstallerRepositoryImpl(
         if (canDowngrade) {
             try {
                 // Use reflection via Bypass as it might be unresolved in some SDK configurations
-                Bypass.invoke(params::class.java, params, "setRequestDowngrade", true)
+                Bypass.invoke<Any?>(params::class.java, params, "setRequestDowngrade", true)
             } catch (e: Exception) {
                 Logger.e("InstallerRepo", "Failed to setRequestDowngrade", e)
                 if (emitErrors) {
