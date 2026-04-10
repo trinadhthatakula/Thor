@@ -14,9 +14,9 @@ import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.getSystemService
+import com.valhalla.bypass.Bypass
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.util.Logger
-import org.lsposed.hiddenapibypass.HiddenApiBypass
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
 import java.lang.reflect.Method
@@ -30,11 +30,6 @@ class ShizukuReflector(
         get() = android.os.Process.myUserHandle().hashCode()
 
     private val packageManager: IPackageManager by lazy {
-        // This is needed to access hidden methods in IPackageManager
-        HiddenApiBypass.addHiddenApiExemptions(
-            "Landroid/content/pm"
-        )
-
         IPackageManager.Stub.asInterface(
             ShizukuBinderWrapper(
                 SystemServiceHelper.getSystemService(
@@ -106,7 +101,7 @@ class ShizukuReflector(
             clazz.getMethod(name, *parameterTypes)
         } catch (_: Exception) {
             try {
-                HiddenApiBypass.getDeclaredMethod(clazz, name, *parameterTypes)
+                Bypass.getDeclaredMethod(clazz, name, *parameterTypes)
             } catch (_: Exception) {
                 null
             }
@@ -168,7 +163,7 @@ class ShizukuReflector(
 
     fun setAppRestricted(packageName: String, restricted: Boolean): Boolean = runCatching {
         context.getSystemService<AppOpsManager>()?.let {
-            HiddenApiBypass.invoke(
+            Bypass.invoke<Any?>(
                 it::class.java,
                 it,
                 "setMode",
@@ -207,7 +202,7 @@ class ShizukuReflector(
         if (shouldReset) {
             try {
 
-                HiddenApiBypass.invoke(
+                Bypass.invoke<Any?>(
                     PackageInstaller::class.java,
                     packageInstaller,
                     "uninstall",
@@ -233,7 +228,7 @@ class ShizukuReflector(
 
 
         return try {
-            HiddenApiBypass.invoke(
+            Bypass.invoke<Any?>(
                 PackageInstaller::class.java,
                 packageInstaller,
                 "uninstall",
@@ -288,7 +283,7 @@ class ShizukuReflector(
 
         return try {
             val installReason = PackageManager.INSTALL_REASON_UNKNOWN
-            HiddenApiBypass.invoke(
+            Bypass.invoke<Any?>(
                 IPackageInstaller::class.java,
                 ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller(),
                 "installExistingPackage",

@@ -5,11 +5,9 @@ import android.app.AppOpsManager
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Process
-import androidx.annotation.RequiresApi
 import androidx.core.content.getSystemService
-import org.lsposed.hiddenapibypass.HiddenApiBypass
+import com.valhalla.bypass.Bypass
 
 class Packages(private val app: Context) {
 
@@ -70,14 +68,12 @@ class Packages(private val app: Context) {
 
     fun forceStopApp(packageName: String): Boolean = runCatching {
         app.getSystemService<ActivityManager>()?.let {
-            if (Targets.P) HiddenApiBypass.invoke(
+            Bypass.invoke<Any?>(
                 it::class.java,
                 it,
                 "forceStopPackage",
                 packageName
             )
-            else it::class.java.getMethod("forceStopPackage", String::class.java)
-                .invoke(it, packageName)
         }
         true
     }.getOrElse {
@@ -100,10 +96,9 @@ class Packages(private val app: Context) {
         return isAppDisabled(packageName) == disabled
     }
 
-    @RequiresApi(Build.VERSION_CODES.P)
     fun setAppRestricted(packageName: String, restricted: Boolean): Boolean = runCatching {
         app.getSystemService<AppOpsManager>()?.let {
-            HiddenApiBypass.invoke(
+            Bypass.invoke<Any?>(
                 it::class.java,
                 it,
                 "setMode",
