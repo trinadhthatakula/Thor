@@ -3,12 +3,10 @@ package com.valhalla.thor.data.source.local.dhizuku
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.IBinder
+import com.valhalla.bypass.Bypass
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.shizuku.Packages
-import com.valhalla.thor.data.source.local.shizuku.Targets
-import org.lsposed.hiddenapibypass.HiddenApiBypass
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
 import com.rosan.dhizuku.api.Dhizuku as DhizukuAPI
@@ -35,19 +33,15 @@ object DhizukuHelper {
         }
     }
 
-    private fun asInterface(className: String, original: IBinder): Any =
-        Class.forName("$className\$Stub").run {
-            if (Targets.P) HiddenApiBypass.invoke(
-                this,
-                null,
-                "asInterface",
-                ShizukuBinderWrapper(original)
-            )
-            else getMethod("asInterface", IBinder::class.java).invoke(
-                null,
-                ShizukuBinderWrapper(original)
-            )
-        }
+    private fun asInterface(className: String, original: IBinder): Any {
+        val clazz = Class.forName("$className\$Stub")
+        return Bypass.invoke(
+            clazz,
+            null,
+            "asInterface",
+            ShizukuBinderWrapper(original)
+        )!!
+    }
 
     private fun asInterface(className: String, serviceName: String): Any? {
         val binder = getSystemService(serviceName) ?: return null
@@ -56,12 +50,8 @@ object DhizukuHelper {
 
     fun forceStopApp(context: Context, packageName: String): Boolean = runCatching {
         val am = asInterface("android.app.IActivityManager", Context.ACTIVITY_SERVICE) ?: return false
-        if (Targets.P) HiddenApiBypass.invoke(
+        Bypass.invoke(
             am::class.java, am, "forceStopPackage", packageName, Packages(context).myUserId
-        ) else am::class.java.getMethod(
-            "forceStopPackage", String::class.java, Int::class.java
-        ).invoke(
-            am, packageName, Packages(context).myUserId
         )
         true
     }.getOrElse {
@@ -78,15 +68,10 @@ object DhizukuHelper {
                 !disabled -> PackageManager.COMPONENT_ENABLED_STATE_ENABLED
                 else -> PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
             }
-            pm::class.java.getMethod(
-                "setApplicationEnabledSetting",
-                String::class.java,
-                Int::class.java,
-                Int::class.java,
-                Int::class.java,
-                String::class.java
-            ).invoke(
+            Bypass.invoke(
+                pm::class.java,
                 pm,
+                "setApplicationEnabledSetting",
                 packageName,
                 newState,
                 0,
@@ -117,13 +102,13 @@ object DhizukuHelper {
         return try {
             val pm = asInterface("android.content.pm.IPackageManager", "package") ?: return false
 
-            HiddenApiBypass.invoke(
+            Bypass.invoke(
                 pm::class.java,
                 pm,
                 "deleteApplicationCacheFiles",
                 packageName,
                 null /* IPackageDataObserver */
-            )
+            )!!
             true
         } catch (e: Exception) {
             com.valhalla.thor.util.Logger.e("DhizukuHelper", "clearCache failed for $packageName", e)

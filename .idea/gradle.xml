@@ -10,6 +10,8 @@
           <set>
             <option value="$PROJECT_DIR$" />
             <option value="$PROJECT_DIR$/app" />
+            <option value="$PROJECT_DIR$/bypass" />
+            <option value="$PROJECT_DIR$/bypass-stubs" />
             <option value="$PROJECT_DIR$/suCore" />
           </set>
         </option>

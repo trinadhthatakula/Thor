@@ -9,11 +9,12 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
+import com.valhalla.bypass.Bypass
 import com.valhalla.thor.data.ACTION_INSTALL_STATUS
 import com.valhalla.thor.data.gateway.RootSystemGateway
 import com.valhalla.thor.data.receivers.InstallReceiver
-import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
 import com.valhalla.thor.data.source.local.shizuku.ShizukuPackageInstallerUtils
+import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.repository.InstallMode
@@ -23,7 +24,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.lsposed.hiddenapibypass.HiddenApiBypass
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -202,8 +202,8 @@ class InstallerRepositoryImpl(
         
         if (canDowngrade) {
             try {
-                // Use reflection via HiddenApiBypass as it might be unresolved in some SDK configurations
-                HiddenApiBypass.invoke(params::class.java, params, "setRequestDowngrade", true)
+                // Use reflection via Bypass as it might be unresolved in some SDK configurations
+                Bypass.invoke(params::class.java, params, "setRequestDowngrade", true)
             } catch (e: Exception) {
                 Logger.e("InstallerRepo", "Failed to setRequestDowngrade", e)
                 if (emitErrors) {

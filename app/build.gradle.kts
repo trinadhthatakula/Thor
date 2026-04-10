@@ -114,7 +114,6 @@ android {
         }
         debug {
             isMinifyEnabled = false
-            isShrinkResources = false
             applicationIdSuffix = ".debug"
         }
     }
@@ -189,6 +188,7 @@ androidComponents {
 
 dependencies {
     implementation(project(":suCore"))
+    implementation(project(":bypass"))
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.splashscreen)
     implementation(libs.androidx.core.ktx)
@@ -215,7 +215,6 @@ dependencies {
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
     implementation(libs.dhizuku.api)
-    implementation(libs.hiddenapibypass)
     implementation(libs.bundles.coil)
     implementation(libs.bundles.koin)
 }

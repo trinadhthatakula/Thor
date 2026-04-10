@@ -25,7 +25,7 @@ The project follows **Clean Architecture** principles combined with **MVVM (Mode
 - **Elevated Privileges**: 
   - **Shizuku / Dhizuku API**: For system-level operations without full root.
   - **Root (su)**: Via `suCore` module.
-  - **HiddenApiBypass**: To access restricted Android internal APIs.
+  - **Internal Bypass (`core:bypass`)**: A custom, 100% Kotlin implementation (with Java stubs) to access restricted Android internal APIs, replacing external dependencies like `HiddenApiBypass`.
 - **Build System**: Gradle Kotlin DSL with Version Catalog (`libs.versions.toml`).
 - **Distribution**: Two product flavors: `store` (Play Store compliant) and `foss` (fully libre/open).
 

@@ -8,6 +8,7 @@ import com.valhalla.thor.di.installerModule
 import com.valhalla.thor.di.preferenceModule
 import com.valhalla.thor.di.presentationModule
 import com.valhalla.thor.util.Logger
+import com.valhalla.bypass.Bypass
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.androix.startup.KoinStartup
@@ -30,6 +31,13 @@ class ThorApplication : Application(), KoinStartup {
 
     override fun onCreate() {
         super.onCreate()
+        
+        // Initialize Bypass with custom logging
+        Bypass.setLogger { message, throwable ->
+            Logger.e("Bypass", message, throwable)
+        }
+        Bypass.prepareThor()
+
         ThorShellConfig.init()
         
         try {

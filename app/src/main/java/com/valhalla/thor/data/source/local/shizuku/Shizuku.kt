@@ -14,7 +14,7 @@ import androidx.annotation.RequiresApi
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.util.Logger
 import moe.shizuku.server.IShizukuService
-import org.lsposed.hiddenapibypass.HiddenApiBypass
+import com.valhalla.bypass.Bypass
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
@@ -27,19 +27,15 @@ object Shizuku {
     val isRoot get() = Shizuku.getUid() == 0
     private val callerPackage get() = if (isRoot) BuildConfig.APPLICATION_ID else "com.android.shell"
 
-    private fun asInterface(className: String, original: IBinder): Any =
-        Class.forName("$className\$Stub").run {
-            if (Targets.P) HiddenApiBypass.invoke(
-                this,
-                null,
-                "asInterface",
-                ShizukuBinderWrapper(original)
-            )
-            else getMethod("asInterface", IBinder::class.java).invoke(
-                null,
-                ShizukuBinderWrapper(original)
-            )
-        }
+    private fun asInterface(className: String, original: IBinder): Any {
+        val clazz = Class.forName("$className\$Stub")
+        return Bypass.invoke(
+            clazz,
+            null,
+            "asInterface",
+            ShizukuBinderWrapper(original)
+        )!!
+    }
 
     private fun asInterface(className: String, serviceName: String): Any =
         asInterface(className, SystemServiceHelper.getSystemService(serviceName))
@@ -65,12 +61,8 @@ object Shizuku {
 
     fun forceStopApp(context: Context, packageName: String): Boolean = runCatching {
         asInterface("android.app.IActivityManager", Context.ACTIVITY_SERVICE).let {
-            if (Targets.P) HiddenApiBypass.invoke(
+            Bypass.invoke(
                 it::class.java, it, "forceStopPackage", packageName, Packages(context).myUserId
-            ) else it::class.java.getMethod(
-                "forceStopPackage", String::class.java, Int::class.java
-            ).invoke(
-                it, packageName, Packages(context).myUserId
             )
         }
         true
@@ -146,13 +138,13 @@ object Shizuku {
 
     fun setAppSuspended(context: Context, packageName: String, suspended: Boolean): Boolean {
         Packages(context).getApplicationInfoOrNull(packageName) ?: return false
-        if (Targets.P) setAppRestricted(context, packageName, suspended)
+        setAppRestricted(context, packageName, suspended)
         if (suspended) forceStopApp(context, packageName)
         return runCatching {
             val pm = asInterface("android.content.pm.IPackageManager", "package")
             (when {
                 Targets.U -> runCatching {
-                    HiddenApiBypass.invoke(
+                    Bypass.invoke(
                         pm::class.java,
                         pm,
                         "setPackagesSuspendedAsUser",
@@ -165,7 +157,7 @@ object Shizuku {
                         callerPackage,
                         Packages(context).myUserId /*suspendingUserId*/,
                         Packages(context).myUserId /*targetUserId*/
-                    )
+                    )!!
                 }.getOrElse {
                     if (it is NoSuchMethodException) setPackagesSuspendedAsUserSinceQ(
                         context,
@@ -179,18 +171,11 @@ object Shizuku {
                 Targets.Q -> runCatching {
                     setPackagesSuspendedAsUserSinceQ(context, pm, packageName, suspended)
                 }.getOrElse {
-                    if (it is NoSuchMethodException) setPackagesSuspendedAsUserSinceP(
-                        context,
-                        pm,
-                        packageName,
-                        suspended
-                    )
-                    else throw it
+                    setPackagesSuspendedAsUserSinceP(context, pm, packageName, suspended)
                 }
 
-                Targets.P -> setPackagesSuspendedAsUserSinceP(context, pm, packageName, suspended)
+                else -> setPackagesSuspendedAsUserSinceP(context, pm, packageName, suspended)
 
-                else -> return false
             } as Array<*>).isEmpty()
         }.getOrElse {
             it.printStackTrace()
@@ -205,7 +190,7 @@ object Shizuku {
         packageName: String,
         suspended: Boolean
     ): Any =
-        HiddenApiBypass.invoke(
+        Bypass.invoke(
             pm::class.java,
             pm,
             "setPackagesSuspendedAsUser",
@@ -216,16 +201,15 @@ object Shizuku {
             if (suspended) suspendDialogInfo else null,
             callerPackage,
             Packages(context).myUserId
-        )
+        )!!
 
-    @RequiresApi(Build.VERSION_CODES.P)
     private fun setPackagesSuspendedAsUserSinceP(
         context: Context,
         pm: Any,
         packageName: String,
         suspended: Boolean
     ): Any =
-        HiddenApiBypass.invoke(
+        Bypass.invoke(
             pm::class.java,
             pm,
             "setPackagesSuspendedAsUser",
@@ -236,19 +220,19 @@ object Shizuku {
             null /*dialogMessage*/,
             callerPackage,
             Packages(context).myUserId
-        )
+        )!!
 
     private val suspendDialogInfo: Any
-        @RequiresApi(Build.VERSION_CODES.Q) @SuppressLint("PrivateApi") get() = HiddenApiBypass.newInstance(
+        @RequiresApi(Build.VERSION_CODES.Q) @SuppressLint("PrivateApi") get() = Bypass.newInstance(
             Class.forName("android.content.pm.SuspendDialogInfo\$Builder")
         ).let {
-            HiddenApiBypass.invoke(
+            Bypass.invoke(
                 it::class.java,
                 it,
                 "setNeutralButtonAction",
                 1 /*BUTTON_ACTION_UNSUSPEND*/
             )
-            HiddenApiBypass.invoke(it::class.java, it, "build")
+            Bypass.invoke(it::class.java, it, "build")!!
         }
 
     @SuppressLint("PrivateApi")
@@ -256,22 +240,13 @@ object Shizuku {
         return try {
             val pm = asInterface("android.content.pm.IPackageManager", "package")
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                HiddenApiBypass.invoke(
-                    pm::class.java,
-                    pm,
-                    "deleteApplicationCacheFiles",
-                    packageName,
-                    null /* IPackageDataObserver */
-                )
-            } else {
-                val method = pm::class.java.getMethod(
-                    "deleteApplicationCacheFiles",
-                    String::class.java,
-                    Class.forName("android.content.pm.IPackageDataObserver")
-                )
-                method.invoke(pm, packageName, null)
-            }
+            Bypass.invoke(
+                pm::class.java,
+                pm,
+                "deleteApplicationCacheFiles",
+                packageName,
+                null /* IPackageDataObserver */
+            )
             true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -303,16 +278,15 @@ object Shizuku {
         return totalCacheBytes
     }
 
-    @RequiresApi(Build.VERSION_CODES.P)
     fun setAppRestricted(context: Context, packageName: String, restricted: Boolean): Boolean =
         runCatching {
             val appops =
                 asInterface("com.android.internal.app.IAppOpsService", Context.APP_OPS_SERVICE)
-            HiddenApiBypass.invoke(
+            Bypass.invoke(
                 appops::class.java,
                 appops,
                 "setMode",
-                HiddenApiBypass.invoke(
+                Bypass.invoke(
                     AppOpsManager::class.java,
                     null,
                     "strOpToOp",
