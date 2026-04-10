@@ -50,25 +50,27 @@ class ShizukuReflector(
         try {
             val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
 
-            // 1. Find Method (using Bypass if needed)
-            val method = findMethod(
-                packageManager.javaClass,
-                "deleteApplicationCacheFiles",
-                String::class.java,
-                observerClass
-            ) ?: findMethod( // Fallback for some ROMs
-                packageManager.javaClass,
-                "deleteApplicationCacheFilesAsUser",
-                String::class.java,
-                Int::class.javaPrimitiveType!!,
-                observerClass
-            ) ?: throw NoSuchMethodException("deleteApplicationCacheFiles not found")
-
-            // 2. Invoke (Standard Java Invoke)
-            if (method.parameterCount == 2) {
-                method.invoke(packageManager, packageName, null)
-            } else {
-                method.invoke(packageManager, packageName, myUserId, null)
+            try {
+                // Try 2-parameter version
+                Bypass.invoke(
+                    packageManager.javaClass,
+                    packageManager,
+                    "deleteApplicationCacheFiles",
+                    arrayOf(String::class.java, observerClass),
+                    packageName,
+                    null
+                )
+            } catch (e: NoSuchMethodException) {
+                // Try 3-parameter version (with userId)
+                Bypass.invoke<Any?>(
+                    packageManager.javaClass,
+                    packageManager,
+                    "deleteApplicationCacheFilesAsUser",
+                    arrayOf(String::class.java, Int::class.javaPrimitiveType!!, observerClass),
+                    packageName,
+                    myUserId,
+                    null
+                )
             }
 
         } catch (e: Exception) {
@@ -139,7 +141,7 @@ class ShizukuReflector(
         getApplicationInfoOrNull(packageName)?.enabled?.not() ?: false
 
     fun isAppHidden(packageName: String): Boolean = getApplicationInfoOrNull(packageName)?.let {
-        (ApplicationInfo::class.java.getField("privateFlags").get(it) as Int) and 1 == 1
+        (Bypass.getField<Int>(it, "privateFlags")) and 1 == 1
     } ?: false
 
     fun isAppStopped(packageName: String): Boolean =
@@ -151,7 +153,7 @@ class ShizukuReflector(
             ?: true
 
     fun isPrivilegedApp(packageName: String): Boolean = getApplicationInfoOrNull(packageName)?.let {
-        (ApplicationInfo::class.java.getField("privateFlags").get(it) as Int) and 8 == 8
+        (Bypass.getField<Int>(it, "privateFlags")) and 8 == 8
     } ?: false
 
     fun setAppDisabled(packageName: String, disabled: Boolean): Boolean {
@@ -160,7 +162,17 @@ class ShizukuReflector(
                 !disabled -> PackageManager.COMPONENT_ENABLED_STATE_ENABLED
                 else -> PackageManager.COMPONENT_ENABLED_STATE_DISABLED
             }
-            context.packageManager.setApplicationEnabledSetting(packageName, newState, 0)
+            Bypass.invoke<Any?>(
+                packageManager.javaClass,
+                packageManager,
+                "setApplicationEnabledSetting",
+                arrayOf(String::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, String::class.java),
+                packageName,
+                newState,
+                0,
+                myUserId,
+                context.packageName
+            )
         }.onFailure {
             it.printStackTrace()
         }
@@ -173,7 +185,13 @@ class ShizukuReflector(
                 it::class.java,
                 it,
                 "setMode",
-                "android:run_any_in_background",
+                arrayOf(Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, String::class.java, Int::class.javaPrimitiveType!!),
+                Bypass.invoke<Int>(
+                    AppOpsManager::class.java,
+                    null,
+                    "strOpToOp",
+                    "android:run_any_in_background"
+                ),
                 packageUid(packageName),
                 packageName,
                 if (restricted) AppOpsManager.MODE_IGNORED else AppOpsManager.MODE_ALLOWED

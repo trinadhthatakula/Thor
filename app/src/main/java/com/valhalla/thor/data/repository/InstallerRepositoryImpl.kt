@@ -48,7 +48,7 @@ class InstallerRepositoryImpl(
                 InstallMode.SHIZUKU -> {
                     val privilegedInstaller = try {
                         getShizukuPackageInstaller()
-                    } catch (e: Exception) {
+                    } catch (e: Throwable) {
                         Logger.e("InstallerRepo", "Failed to get Shizuku installer, will use normal installer: ${e.message}")
                         null
                     }
@@ -57,7 +57,7 @@ class InstallerRepositoryImpl(
                         try {
                             // Try privileged path but suppress error emission so we can fall back silently
                             performPackageInstallerInstall(uri, privilegedInstaller, canDowngrade, emitErrors = false)
-                        } catch (e: Exception) {
+                        } catch (e: Throwable) {
                             Logger.e("InstallerRepo", "Shizuku privileged install failed, falling back to normal: ${e.message}")
                             performPackageInstallerInstall(uri, defaultInstaller, canDowngrade, emitErrors = true)
                         }
@@ -70,7 +70,7 @@ class InstallerRepositoryImpl(
                 InstallMode.DHIZUKU -> {
                     val privilegedInstaller = try {
                         getDhizukuPackageInstaller()
-                    } catch (e: Exception) {
+                    } catch (e: Throwable) {
                         Logger.e("InstallerRepo", "Failed to get Dhizuku installer, will use normal installer: ${e.message}")
                         null
                     }
@@ -79,7 +79,7 @@ class InstallerRepositoryImpl(
                         try {
                             // Try privileged path but suppress error emission so we can fall back silently
                             performPackageInstallerInstall(uri, privilegedInstaller, canDowngrade, emitErrors = false)
-                        } catch (e: Exception) {
+                        } catch (e: Throwable) {
                             Logger.e("InstallerRepo", "Dhizuku privileged install failed, falling back to normal: ${e.message}")
                             performPackageInstallerInstall(uri, defaultInstaller, canDowngrade, emitErrors = true)
                         }
