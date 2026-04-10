@@ -39,6 +39,7 @@ object DhizukuHelper {
             clazz,
             null,
             "asInterface",
+            arrayOf(IBinder::class.java),
             ShizukuBinderWrapper(original)
         )!!
     }

@@ -104,4 +104,4 @@ implementation(project(":bypass"))
 
 1. **`VMRuntime.setHiddenApiExemptions()`** — the primary path. `VMRuntime` is itself a hidden class; `:bypass-stubs` provides a compile-time stub in the `dalvik.system` package so the call compiles. At runtime the real `dalvik.system.VMRuntime` on the device is used, and calling `setHiddenApiExemptions` with a set of Dalvik descriptor prefixes whitelists all matching members for the current process.
 
-2. **`Unsafe` field access** — the fallback path for reading fields where exemption alone is insufficient (e.g. internal runtime structures). `:bypass-stubs` provides a `stub.sun.misc.Unsafe` stub; the real `sun.misc.Unsafe` instance is retrieved via `Unsafe.theUnsafe` reflection and cached lazily. `objectFieldOffset` + `getLong`/`getInt` can then read any object field regardless of visibility.
+2. **Reflection-based access** — once exemptions are added, standard reflection (`getDeclaredMethod`, `getDeclaredField`) works even for hidden members without `Unsafe` poked reflection.

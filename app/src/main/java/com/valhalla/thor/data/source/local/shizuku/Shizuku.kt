@@ -33,6 +33,7 @@ object Shizuku {
             clazz,
             null,
             "asInterface",
+            arrayOf(IBinder::class.java),
             ShizukuBinderWrapper(original)
         )!!
     }
