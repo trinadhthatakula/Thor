@@ -49,7 +49,7 @@ class InstallerViewModel(
 
     private fun checkAvailableModes() {
         viewModelScope.launch {
-            val modes = mutableListOf(InstallMode.NORMAL)
+            val modes = mutableListOf(InstallMode.NORMAL, InstallMode.EXTERNAL)
 
             if (systemRepository.isRootAvailable()) {
                 modes.add(InstallMode.ROOT)

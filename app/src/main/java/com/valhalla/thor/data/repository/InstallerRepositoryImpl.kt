@@ -92,6 +92,10 @@ class InstallerRepositoryImpl(
                 InstallMode.NORMAL -> {
                     performPackageInstallerInstall(uri, defaultInstaller, canDowngrade, emitErrors = true)
                 }
+
+                InstallMode.EXTERNAL -> {
+                    installWithExternal(uri)
+                }
             }
         } catch (e: Exception) {
             eventBus.emit(InstallState.Error(e.message ?: "Unknown error during installation"))
@@ -128,17 +132,43 @@ class InstallerRepositoryImpl(
         // Reuse ShizukuPackageInstallerUtils to get a privileged IPackageInstaller safely across API levels
         val iPackageInstaller = ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller()
 
-        // If Shizuku is running as root, set userId to current user; otherwise use 0
-        val root = try { rikka.shizuku.Shizuku.getUid() == 0 } catch (_: Exception) { false }
-        val userId = if (root) android.os.Process.myUserHandle().hashCode() else 0
+        val shizukuUid = try { rikka.shizuku.Shizuku.getUid() } catch (_: Exception) { -1 }
+        val isRoot = shizukuUid == 0
+        val isShell = shizukuUid == 2000
 
-        val installerPackageName = context.packageName
+        // If Shizuku is running as root, set userId to current user; otherwise use 0
+        val userId = if (isRoot) android.os.Process.myUserHandle().hashCode() else 0
+
+        // For ADB-based Shizuku (shell), using "com.android.shell" often works better
+        // than the app's own package name to avoid permission/UID mismatch issues.
+        val installerPackageName = if (isShell) "com.android.shell" else context.packageName
 
         return ShizukuPackageInstallerUtils.createPackageInstaller(
             iPackageInstaller,
             installerPackageName,
             userId
         )
+    }
+
+    private suspend fun installWithExternal(uri: Uri) {
+        withContext(Dispatchers.Main) {
+            try {
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "application/vnd.android.package-archive")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                
+                val chooser = Intent.createChooser(intent, "Install with...")
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(chooser)
+                
+                // We consider this a success in terms of handing off the job
+                eventBus.emit(InstallState.Success)
+            } catch (e: Exception) {
+                eventBus.emit(InstallState.Error("Could not open external installer: ${e.message}"))
+            }
+        }
     }
 
     private suspend fun installWithRoot(uri: Uri, canDowngrade: Boolean) {

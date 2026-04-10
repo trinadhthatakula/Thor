@@ -29,14 +29,20 @@ class ShizukuReflector(
     private val myUserId: Int
         get() = android.os.Process.myUserHandle().hashCode()
 
-    private val packageManager: IPackageManager by lazy {
-        IPackageManager.Stub.asInterface(
-            ShizukuBinderWrapper(
-                SystemServiceHelper.getSystemService(
-                    "package"
-                )
-            )
+    private fun asInterface(className: String, serviceName: String): Any {
+        val binder = SystemServiceHelper.getSystemService(serviceName)
+        val clazz = Class.forName("$className\$Stub")
+        return Bypass.invoke(
+            clazz,
+            null,
+            "asInterface",
+            arrayOf(android.os.IBinder::class.java),
+            ShizukuBinderWrapper(binder)
         )
+    }
+
+    private val packageManager: Any by lazy {
+        asInterface("android.content.pm.IPackageManager", "package")
     }
 
     @SuppressLint("PrivateApi")
@@ -54,7 +60,7 @@ class ShizukuReflector(
                 packageManager.javaClass,
                 "deleteApplicationCacheFilesAsUser",
                 String::class.java,
-                Integer.TYPE, // Replaced Int::class.javaPrimitiveType
+                Int::class.javaPrimitiveType!!,
                 observerClass
             ) ?: throw NoSuchMethodException("deleteApplicationCacheFiles not found")
 
