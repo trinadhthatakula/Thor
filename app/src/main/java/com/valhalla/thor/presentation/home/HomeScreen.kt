@@ -102,8 +102,10 @@ fun HomeScreen(
         SummaryStatRow(
             activeCount = state.activeAppCount,
             frozenCount = state.frozenAppCount,
+            suspendedCount = state.suspendedAppCount,
             onActiveClick = onNavigateToApps,
-            onFrozenClick = onNavigateToFreezer
+            onFrozenClick = onNavigateToFreezer,
+            onSuspendedClick = onNavigateToFreezer // For now just go to freezer
         )
 
         Spacer(Modifier.height(12.dp))

@@ -213,6 +213,7 @@ class AppListViewModel(
                 when (state.selectedFilter) {
                     "Active" -> rawList.filter { it.enabled }
                     "Frozen" -> rawList.filter { !it.enabled }
+                    "Suspended" -> rawList.filter { it.isSuspended }
                     else -> rawList
                 }
             }

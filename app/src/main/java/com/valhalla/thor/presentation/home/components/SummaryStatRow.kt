@@ -21,8 +21,10 @@ import androidx.compose.ui.unit.dp
 fun SummaryStatRow(
     activeCount: Int,
     frozenCount: Int,
+    suspendedCount: Int,
     onActiveClick: () -> Unit,
-    onFrozenClick: () -> Unit
+    onFrozenClick: () -> Unit,
+    onSuspendedClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -37,13 +39,22 @@ fun SummaryStatRow(
             modifier = Modifier.weight(1f),
             onClick = onActiveClick
         )
-        StatCard(
-            title = "Frozen",
-            count = frozenCount,
-            color = MaterialTheme.colorScheme.secondary,
-            modifier = Modifier.weight(1f),
-            onClick = onFrozenClick
-        )
+        if (frozenCount > 0)
+            StatCard(
+                title = "Frozen",
+                count = frozenCount,
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.weight(1f),
+                onClick = onFrozenClick
+            )
+        if (suspendedCount > 0)
+            StatCard(
+                title = "Suspended",
+                count = suspendedCount,
+                color = MaterialTheme.colorScheme.tertiary,
+                modifier = Modifier.weight(1f),
+                onClick = onSuspendedClick
+            )
     }
 }
 
@@ -62,7 +73,7 @@ fun StatCard(
             .clickable { onClick() }
             .padding(24.dp)
     ) {
-        // USE THE ANIMATED COUNTER HERE
+
         AnimatedCounter(
             count = count,
             style = MaterialTheme.typography.displayMedium.copy(
@@ -76,6 +87,7 @@ fun StatCard(
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontWeight = FontWeight.Medium,
+            maxLines = 1,
             letterSpacing = androidx.compose.ui.unit.TextUnit.Unspecified // tracking-wider
         )
     }

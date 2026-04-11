@@ -23,6 +23,7 @@ data class HomeUiState(
     // Stats
     val activeAppCount: Int = 0,
     val frozenAppCount: Int = 0,
+    val suspendedAppCount: Int = 0,
     val unknownInstallerCount: Int = 0,
     val distributionData: Map<String, Int> = emptyMap(),
     // Status
@@ -120,8 +121,9 @@ class HomeViewModel(
     ) {
         val filteredApps = if (selectedType == AppListType.USER) userApps else systemApps
         
-        val activeCount = filteredApps.count { it.enabled }
+        val activeCount = filteredApps.count { it.enabled && !it.isSuspended }
         val frozenCount = filteredApps.count { !it.enabled }
+        val suspendedCount = filteredApps.count { it.isSuspended && it.enabled }
 
         val unknownCount = if (selectedType == AppListType.USER) {
             userApps.count {
@@ -148,6 +150,7 @@ class HomeViewModel(
                 selectedType = selectedType,
                 activeAppCount = activeCount,
                 frozenAppCount = frozenCount,
+                suspendedAppCount = suspendedCount,
                 unknownInstallerCount = unknownCount,
                 distributionData = distribution,
                 isRootAvailable = hasRoot,

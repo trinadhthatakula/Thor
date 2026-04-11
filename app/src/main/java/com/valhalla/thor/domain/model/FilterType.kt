@@ -4,9 +4,9 @@ sealed interface FilterType {
     data object Source : FilterType
     data object State : FilterType {
         val types = listOf(
-            "All", "Active", "Frozen"//, "Suspended", "Compressed"
+            "All", "Active", "Frozen", "Suspended"
         )
-    };//active, frozen, suspended, compressed etc.
+    };
 
 
 }

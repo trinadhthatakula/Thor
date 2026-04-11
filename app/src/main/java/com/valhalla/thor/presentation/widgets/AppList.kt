@@ -46,7 +46,6 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.VerticalDivider
 import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
 import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
 import androidx.compose.runtime.Composable
@@ -64,6 +63,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
@@ -492,7 +492,7 @@ private fun AppItemList(
                 else MaterialTheme.colorScheme.surfaceContainerLow
             ),
         leadingContent = {
-            AppIcon(app.packageName, app.enabled, 48.dp, imageLoader)
+            AppIcon(app.packageName, app.enabled, app.isSuspended, 48.dp, imageLoader)
         },
         headlineContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -505,6 +505,15 @@ private fun AppItemList(
                             .size(16.dp)
                             .padding(start = 4.dp),
                         tint = MaterialTheme.colorScheme.primary
+                    )
+                } else if (app.isSuspended) {
+                    Icon(
+                        painterResource(R.drawable.bolt),
+                        "Suspended",
+                        modifier = Modifier
+                            .size(16.dp)
+                            .padding(start = 4.dp),
+                        tint = MaterialTheme.colorScheme.secondary
                     )
                 }
             }
@@ -560,7 +569,7 @@ private fun AppItemGrid(
             .padding(16.dp)
     ) {
         Box {
-            AppIcon(app.packageName, app.enabled, 56.dp, imageLoader)
+            AppIcon(app.packageName, app.enabled, app.isSuspended, 56.dp, imageLoader)
             if (isSelected) {
                 Icon(
                     painterResource(R.drawable.check_circle),
@@ -570,6 +579,31 @@ private fun AppItemGrid(
                         .align(Alignment.TopEnd)
                         .background(MaterialTheme.colorScheme.surface, CircleShape)
                 )
+            } else {
+                // Status Indicator
+                if (!app.enabled) {
+                    Icon(
+                        painterResource(R.drawable.frozen),
+                        null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .size(16.dp)
+                            .background(MaterialTheme.colorScheme.surface, CircleShape)
+                            .padding(2.dp)
+                    )
+                } else if (app.isSuspended) {
+                    Icon(
+                        painterResource(R.drawable.bolt),
+                        null,
+                        tint = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .size(16.dp)
+                            .background(MaterialTheme.colorScheme.surface, CircleShape)
+                            .padding(2.dp)
+                    )
+                }
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -587,19 +621,27 @@ private fun AppItemGrid(
 private fun AppIcon(
     packageName: String,
     isEnabled: Boolean,
+    isSuspended: Boolean,
     size: androidx.compose.ui.unit.Dp,
     imageLoader: ImageLoader
 ) {
-    // Hoisted static matrix to avoid recreation
-    val colorMatrix = remember { ColorMatrix().apply { setToSaturation(0f) } }
+    // Hoisted static matrices to avoid recreation
+    val greyScaleMatrix = remember { ColorMatrix().apply { setToSaturation(0f) } }
+    val dullMatrix = remember { ColorMatrix().apply { setToSaturation(0.3f) } }
 
     Box(contentAlignment = Alignment.Center) {
         AsyncImage(
             model = AppIconModel(packageName),
             imageLoader = imageLoader,
             contentDescription = null,
-            modifier = Modifier.size(size),
-            colorFilter = if (!isEnabled) ColorFilter.colorMatrix(colorMatrix) else null,
+            modifier = Modifier
+                .size(size)
+                .then(if (isSuspended && isEnabled) Modifier.graphicsLayer(alpha = 0.7f) else Modifier),
+            colorFilter = when {
+                !isEnabled -> ColorFilter.colorMatrix(greyScaleMatrix)
+                isSuspended -> ColorFilter.colorMatrix(dullMatrix)
+                else -> null
+            },
             error = painterResource(R.drawable.android)
         )
     }

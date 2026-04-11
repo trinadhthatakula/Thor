@@ -153,6 +153,7 @@ fun MainScreen(
 
             HorizontalPager(
                 state = pagerState,
+                userScrollEnabled = false,
                 beyondViewportPageCount = 1,
                 modifier = Modifier.fillMaxSize()
             ) { page ->

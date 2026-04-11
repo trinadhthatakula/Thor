@@ -57,7 +57,7 @@ val roomModule = module {
             androidContext(),
             AppDatabase::class.java,
             "thor_database"
-        ).build()
+        ).fallbackToDestructiveMigration(dropAllTables = true).build()
     }
     single { get<AppDatabase>().appDao() }
 }

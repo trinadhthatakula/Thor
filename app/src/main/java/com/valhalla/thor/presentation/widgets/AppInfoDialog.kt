@@ -257,6 +257,9 @@ private fun AppHeader(
             if (!appInfo.enabled) {
                 StatusChip(text = "FROZEN", color = MaterialTheme.colorScheme.errorContainer)
             }
+            if (appInfo.isSuspended) {
+                StatusChip(text = "SUSPENDED", color = MaterialTheme.colorScheme.secondaryContainer)
+            }
             StatusChip(
                 text = "v${appInfo.versionName}", 
                 color = MaterialTheme.colorScheme.surfaceContainerHighest,

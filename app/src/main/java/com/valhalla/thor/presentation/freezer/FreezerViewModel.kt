@@ -180,6 +180,7 @@ class FreezerViewModel(
                     when (state.selectedFilter) {
                         "Frozen" -> rawList.filter { !it.enabled }
                         "Active" -> rawList.filter { it.enabled }
+                        "Suspended" -> rawList.filter { it.isSuspended }
                         else -> rawList
                     }
                 }
