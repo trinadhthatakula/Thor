@@ -12,7 +12,7 @@ data class UserPreferences(
 
     // Theme
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    val useDynamicColor: Boolean = true,
+    val useDynamicColor: Boolean = false,
     val useAmoled: Boolean = false,
 
     // Security

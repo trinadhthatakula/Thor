@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
+import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.repository.PreferenceRepository
@@ -41,7 +42,9 @@ data class AppListUiState(
     val availableInstallers: List<String> = listOf("All"),
     // Detail View State
     val selectedAppDetails: AppInfo? = null,
-    val isLoadingDetails: Boolean = false
+    val isLoadingDetails: Boolean = false,
+    // Action Feedback
+    val actionMessage: String? = null
 )
 
 class AppListViewModel(
@@ -95,14 +98,43 @@ class AppListViewModel(
         }
     }
 
-    fun freezeApp(packageName: String, freeze: Boolean) {
+    fun freezeApp(packageName: String, appName: String?, freeze: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
-            if (manageAppUseCase.setAppDisabled(packageName, freeze).isSuccess) {
-                // No need to manually reload, the repository flow will likely trigger an update
-                // if it's listening to package changes. But currently GetInstalledAppsUseCase
-                // might not reflect enabled state changes instantly unless we refresh.
-                // Assuming Repository handles it or we manually refresh:
+            val result = manageAppUseCase.setAppDisabled(packageName, freeze)
+            if (result.isSuccess) {
+                _rawState.update { it.copy(actionMessage = "${if (freeze) "Frozen" else "Unfrozen"} ${appName ?: packageName}") }
                 loadApps()
+            } else {
+                _rawState.update { it.copy(actionMessage = "Error: ${result.exceptionOrNull()?.message}") }
+            }
+        }
+    }
+
+    fun dismissMessage() {
+        _rawState.update { it.copy(actionMessage = null) }
+    }
+
+    fun performMultiAction(action: MultiAppAction) {
+        viewModelScope.launch {
+            when (action) {
+                is MultiAppAction.Freeze -> {
+                    action.appList.forEach { manageAppUseCase.setAppDisabled(it.packageName, true) }
+                    _rawState.update { it.copy(actionMessage = "Froze ${action.appList.size} apps") }
+                    loadApps()
+                }
+
+                is MultiAppAction.UnFreeze -> {
+                    action.appList.forEach {
+                        manageAppUseCase.setAppDisabled(it.packageName, false)
+                    }
+                    _rawState.update { it.copy(actionMessage = "Unfrozen ${action.appList.size} apps") }
+                    loadApps()
+                }
+
+                else -> {
+                    // Fallback or forward? If we forward, we need a callback. 
+                    // For now let's just stay consistent with single app actions.
+                }
             }
         }
     }

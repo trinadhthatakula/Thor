@@ -65,7 +65,7 @@ class PreferenceRepositoryImpl(
                 appSelectedFilter = prefs[Keys.SELECTED_FILTER] ?: "All",
                 showReinstallAllCard = prefs[Keys.SHOW_REINSTALL_ALL] ?: true,
                 themeMode = themeMode,
-                useDynamicColor = prefs[Keys.USE_DYNAMIC_COLOR] ?: true,
+                useDynamicColor = prefs[Keys.USE_DYNAMIC_COLOR] ?: false,
                 useAmoled = prefs[Keys.USE_AMOLED] ?: false,
                 biometricLockEnabled = prefs[Keys.BIOMETRIC_LOCK] ?: false,
             )

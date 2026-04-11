@@ -3,6 +3,10 @@ package com.valhalla.thor.presentation.home
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -30,8 +35,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppListType
@@ -70,7 +80,9 @@ fun HomeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
+            .padding(bottom = 100.dp) // Nav bar space
     ) {
         // 1. Header
         DashboardHeader(
@@ -91,41 +103,29 @@ fun HomeScreen(
             onFrozenClick = onNavigateToFreezer
         )
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(12.dp))
 
         // --- ACTIONS ---
 
-        // A. Clear Cache
-        if (state.isRootAvailable) {
-            // ... (Cache subtitle logic same as before) ...
-            val cacheSubtitle =
-                "Free up space by cleaning app caches" // simplified for brevity here
-
-            ActionCard(
-                title = "Clear All Cache",
-                subtitle = cacheSubtitle,
-                icon = R.drawable.clear_all,
-                onClick = { showCacheDialog = true }
-            )
-        }
-
-        // B. Reinstall All (Controlled by DataStore preference)
+        // B. Reinstall All (Warning style card)
         if (state.isRootAvailable && state.unknownInstallerCount > 0 && state.showReinstallCard) {
             ActionCard(
                 title = "Reinstall All",
                 subtitle = "${state.unknownInstallerCount} ${state.selectedType.name.lowercase()} apps not from Play Store. Fix them?",
                 icon = R.drawable.apk_install,
-                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                isWarning = true,
                 onClick = onReinstallAll,
-                onClose = { viewModel.dismissReinstallCard() } // <--- Enable Close Button
+                onClose = { viewModel.dismissReinstallCard() }
             )
+            Spacer(Modifier.height(12.dp))
         }
 
-        // C. Portable Installer
+        // C. Portable Installer (Primary style card)
         ActionCard(
             title = "Install from File",
             subtitle = "Install APK, XAPK, APKS or Split bundles",
             icon = R.drawable.apk_install,
+            isPrimary = true,
             onClick = {
                 filePickerLauncher.launch(arrayOf("*/*"))
             }
@@ -135,33 +135,46 @@ fun HomeScreen(
 
         // 3. Distribution Chart
         AnimatedVisibility(state.distributionData.isNotEmpty() && !state.isLoading) {
-            Text(
-                text = "App Distribution",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-            Spacer(Modifier.height(16.dp))
-            AppDistributionChart(
-                data = state.distributionData,
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(250.dp)
-            )
+                    .padding(horizontal = 24.dp)
+                    .clip(RoundedCornerShape(48.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                    .padding(24.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    Text(
+                        text = "App Distribution",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "TOTAL: ${state.activeAppCount + state.frozenAppCount}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.height(24.dp))
+                AppDistributionChart(
+                    data = state.distributionData,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(250.dp)
+                )
+            }
         }
 
         // 4. Social Links
         Spacer(Modifier.height(24.dp))
-        Text(
-            text = "Connect",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
         SocialLinksRow()
         Spacer(Modifier.height(32.dp))
     }
 
-    // --- Dialogs (Same as before) ---
+    // --- Dialogs ---
     if (showCacheDialog) {
         AlertDialog(
             onDismissRequest = { showCacheDialog = false },
@@ -220,41 +233,93 @@ private fun ActionCard(
     title: String,
     subtitle: String,
     icon: Int,
-    containerColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    isPrimary: Boolean = false,
+    isWarning: Boolean = false,
     onClick: () -> Unit,
-    onClose: (() -> Unit)? = null // <--- Added optional close callback
+    onClose: (() -> Unit)? = null
 ) {
-    Card(
-        onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = containerColor),
+    val containerColor = when {
+        isPrimary -> MaterialTheme.colorScheme.primaryContainer
+        isWarning -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.1f)
+        else -> MaterialTheme.colorScheme.surfaceContainerHigh
+    }
+
+    val contentColor = when {
+        isPrimary -> MaterialTheme.colorScheme.onPrimaryContainer
+        isWarning -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .padding(horizontal = 24.dp)
+            .clip(RoundedCornerShape(32.dp))
+            .background(containerColor)
+            .then(
+                if (isWarning) {
+                    Modifier.background(
+                        Brush.linearGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.tertiary.copy(alpha = 0.05f),
+                                Color.Transparent
+                            )
+                        )
+                    )
+                } else Modifier
+            )
+            .clickable(onClick = onClick)
+            .padding(if (isPrimary) 24.dp else 20.dp)
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Icon(
-                painter = painterResource(icon),
-                contentDescription = null,
-                modifier = Modifier.size(32.dp)
-            )
-            Spacer(Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) { // Weight ensures text takes available space
-                Text(text = title, style = MaterialTheme.typography.titleMedium)
-                Text(text = subtitle, style = MaterialTheme.typography.bodyMedium)
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(
+                        if (isPrimary) MaterialTheme.colorScheme.onPrimaryContainer 
+                        else MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f)
+                    )
+                    .padding(if (isPrimary) 16.dp else 12.dp)
+            ) {
+                Icon(
+                    painter = painterResource(icon),
+                    contentDescription = null,
+                    modifier = Modifier.size(if (isPrimary) 24.dp else 20.dp),
+                    tint = if (isPrimary) MaterialTheme.colorScheme.primaryContainer else contentColor
+                )
             }
 
-            // Render Close Button if callback provided
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = if (isPrimary) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = contentColor
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isPrimary) contentColor.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
             if (onClose != null) {
                 IconButton(onClick = onClose) {
                     Icon(
-                        painter = painterResource(R.drawable.round_close), // Ensure you have this drawable
+                        painter = painterResource(R.drawable.round_close),
                         contentDescription = "Dismiss",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            } else if (isPrimary) {
+                Icon(
+                    painter = painterResource(R.drawable.open_in_new), // Arrow forward fallback
+                    contentDescription = null,
+                    tint = contentColor.copy(alpha = 0.4f)
+                )
             }
         }
     }

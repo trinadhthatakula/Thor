@@ -5,9 +5,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -38,6 +40,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.compose.rememberAsyncImagePainter
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
@@ -63,8 +66,10 @@ fun AppInfoDialog(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.onSurface
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        shape = RoundedCornerShape(topStart = 48.dp, topEnd = 48.dp),
+        tonalElevation = 0.dp
     ) {
         Column(
             modifier = Modifier
@@ -161,76 +166,104 @@ private fun AppHeader(
 ) {
     val context = LocalContext.current
 
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        // Settings Button (Top Right)
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+    ) {
+        // Top row with settings and close? Or just settings.
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End
         ) {
-            IconButton(onClick = onSettingsClick) {
-                Icon(painterResource(R.drawable.settings), "Settings")
+            IconButton(
+                onClick = onSettingsClick,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            ) {
+                Icon(
+                    painterResource(R.drawable.settings), 
+                    "Settings",
+                    tint = MaterialTheme.colorScheme.primary
+                )
             }
         }
 
-        // Icon
-        Image(
-            painter = rememberAsyncImagePainter(getAppIcon(appInfo.packageName, context)),
-            contentDescription = null,
-            modifier = Modifier.size(72.dp)
-        )
+        Spacer(Modifier.height(16.dp))
 
-        Spacer(Modifier.height(8.dp))
+        // Icon with a nice background
+        Box(
+            modifier = Modifier
+                .size(100.dp)
+                .clip(RoundedCornerShape(32.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .padding(16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Image(
+                painter = rememberAsyncImagePainter(getAppIcon(appInfo.packageName, context)),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        Spacer(Modifier.height(24.dp))
 
         // Title
         Text(
             text = appInfo.appName ?: "Unknown",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Black,
             textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 16.dp)
+            letterSpacing = (-1).sp
         )
+
+        Spacer(Modifier.height(8.dp))
 
         // Metadata Chips
         Row(
-            modifier = Modifier.padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (appInfo.splitPublicSourceDirs.isNotEmpty()) {
-                StatusChip(text = "Split APK", color = MaterialTheme.colorScheme.tertiaryContainer)
+                StatusChip(text = "SPLIT", color = MaterialTheme.colorScheme.tertiaryContainer)
             }
             if (!appInfo.enabled) {
-                StatusChip(text = "Frozen", color = MaterialTheme.colorScheme.errorContainer)
+                StatusChip(text = "FROZEN", color = MaterialTheme.colorScheme.errorContainer)
             }
+            StatusChip(
+                text = "v${appInfo.versionName}", 
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                textColor = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
 
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(12.dp))
 
-        // Package & Version
+        // Package Name
         Text(
             text = appInfo.packageName,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = "v${appInfo.versionName}",
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontFamily = com.valhalla.thor.presentation.theme.firaMonoFontFamily
         )
     }
 }
 
 @Composable
-private fun StatusChip(text: String, color: Color) {
+private fun StatusChip(
+    text: String, 
+    color: Color,
+    textColor: Color = MaterialTheme.colorScheme.onSurface
+) {
     Text(
         text = text,
         style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(CircleShape)
             .background(color)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        color = MaterialTheme.colorScheme.onSurface
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        color = textColor
     )
 }
 
@@ -308,24 +341,30 @@ private fun ActionItem(icon: Int, label: String, onClick: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(24.dp))
             .clickable(onClick = onClick)
             .padding(8.dp)
     ) {
         // Use a Tonal Button style for better touch targets
-        Icon(
-            painter = painterResource(icon),
-            contentDescription = label,
+        Box(
             modifier = Modifier
-                .size(48.dp)
-                .background(MaterialTheme.colorScheme.secondaryContainer, CircleShape)
-                .padding(10.dp), // Padding inside the circle
-            tint = MaterialTheme.colorScheme.onSecondaryContainer
-        )
-        Spacer(Modifier.height(4.dp))
+                .size(64.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = label,
+                modifier = Modifier.size(28.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
+        Spacer(Modifier.height(8.dp))
         Text(
             text = label,
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
             maxLines = 1
         )
     }

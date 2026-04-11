@@ -2,12 +2,14 @@ package com.valhalla.thor.presentation.freezer
 
 import android.widget.Toast
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -30,6 +32,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.ImageLoader
 import coil3.compose.rememberAsyncImagePainter
@@ -88,32 +91,41 @@ fun FreezerScreen(
         }
     }
 
-    Column(modifier.fillMaxWidth()) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
 
         // --- Header ---
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // LEFT: Brand/Title Block
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.frozen),
+                    contentDescription = "Freezer",
+                    modifier = Modifier.size(24.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "Freezer",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
+                    color = MaterialTheme.colorScheme.primary,
+                    letterSpacing = (-1).sp
+                )
+            }
 
-            Icon(
-                painter = painterResource(R.drawable.frozen),
-                contentDescription = "Freezer",
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .padding(5.dp)
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .padding(8.dp)
-            )
-            Text(
-                text = "Freezer",
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .padding(vertical = 10.dp)
-                    .weight(1f),
-                style = MaterialTheme.typography.titleLarge,
-                textAlign = TextAlign.Start
-            )
-
-            // App Source Switcher
+            // RIGHT: App Source Switcher
             ConnectedButtonGroup(
                 items = AppListType.entries.map { type ->
                     ConnectedButtonGroupItem.Icon(
@@ -122,8 +134,7 @@ fun FreezerScreen(
                     )
                 },
                 selectedIndex = AppListType.entries.indexOf(state.appListType),
-                onItemSelected = { viewModel.updateListType(AppListType.entries[it]) },
-                modifier = Modifier.padding(horizontal = 5.dp)
+                onItemSelected = { viewModel.updateListType(AppListType.entries[it]) }
             )
         }
 

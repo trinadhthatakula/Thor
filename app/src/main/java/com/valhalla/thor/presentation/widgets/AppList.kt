@@ -36,7 +36,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -47,6 +46,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
 import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
 import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
 import androidx.compose.runtime.Composable
@@ -60,6 +60,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.SolidColor
@@ -70,6 +71,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import com.valhalla.thor.R
@@ -252,12 +254,13 @@ private fun AppSearchBar(
         else onQueryChange("")
     }
 
-    Card(
+    Box(
         modifier = Modifier
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp), // More rounded modern look
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(horizontal = 24.dp, vertical = 8.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(32.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(4.dp)
     ) {
         BasicTextField(
             value = query,
@@ -277,7 +280,8 @@ private fun AppSearchBar(
                     Icon(
                         painter = painterResource(R.drawable.round_search),
                         contentDescription = "Search",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 8.dp)
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Box(modifier = Modifier.weight(1f)) {
@@ -297,7 +301,7 @@ private fun AppSearchBar(
                             modifier = Modifier
                                 .clip(CircleShape)
                                 .clickable { onQueryChange("") }
-                                .padding(4.dp)
+                                .padding(8.dp)
                         )
                     }
                 }
@@ -370,8 +374,9 @@ private fun MultiSelectHeader(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(12.dp))
+            .padding(horizontal = 24.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(32.dp))
+            .background(MaterialTheme.colorScheme.secondaryContainer)
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
         Checkbox(
@@ -381,6 +386,7 @@ private fun MultiSelectHeader(
         Text(
             text = "$count Selected",
             style = MaterialTheme.typography.titleMedium,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSecondaryContainer,
             modifier = Modifier
                 .weight(1f)
@@ -450,6 +456,8 @@ private fun AppItemList(
     val interactionSource = remember { MutableInteractionSource() }
     ListItem(
         modifier = Modifier
+            .padding(horizontal = 12.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(24.dp))
             .expressivePress(interactionSource)
             .combinedClickable(
                 interactionSource = interactionSource,
@@ -457,15 +465,15 @@ private fun AppItemList(
                 onLongClick = onLongClick
             )
             .background(
-                if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
-                else MaterialTheme.colorScheme.surface
+                if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+                else MaterialTheme.colorScheme.surfaceContainerLow
             ),
         leadingContent = {
             AppIcon(app.packageName, app.enabled, 48.dp, imageLoader)
         },
         headlineContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(app.appName ?: "Unknown", maxLines = 1)
+                Text(app.appName ?: "Unknown", maxLines = 1, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                 if (!app.enabled) {
                     Icon(
                         painterResource(R.drawable.frozen),
@@ -478,7 +486,14 @@ private fun AppItemList(
                 }
             }
         },
-        supportingContent = { Text(app.packageName, maxLines = 1) },
+        supportingContent = { 
+            Text(
+                app.packageName, 
+                maxLines = 1, 
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            ) 
+        },
         trailingContent = {
             if (isSelected) {
                 Icon(
@@ -487,7 +502,10 @@ private fun AppItemList(
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
-        }
+        },
+        colors = androidx.compose.material3.ListItemDefaults.colors(
+            containerColor = Color.Transparent
+        )
     )
 }
 
@@ -504,11 +522,11 @@ private fun AppItemGrid(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .padding(4.dp)
+            .padding(6.dp)
             .expressivePress(interactionSource)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(32.dp))
             .background(
-                if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+                if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
                 else MaterialTheme.colorScheme.surfaceContainerLow
             )
             .combinedClickable(
@@ -516,7 +534,7 @@ private fun AppItemGrid(
                 onClick = onClick,
                 onLongClick = onLongClick
             )
-            .padding(12.dp)
+            .padding(16.dp)
     ) {
         Box {
             AppIcon(app.packageName, app.enabled, 56.dp, imageLoader)
@@ -535,7 +553,8 @@ private fun AppItemGrid(
         Text(
             text = app.appName ?: "Unknown",
             maxLines = 1,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
             textAlign = TextAlign.Center
         )
     }
@@ -587,10 +606,20 @@ private fun AppFilterSheet(
 ) {
     var activeTab by remember { mutableStateOf(SheetTab.FILTERS) }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Configuration", style = MaterialTheme.typography.headlineSmall)
-            Spacer(Modifier.height(16.dp))
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(topStart = 48.dp, topEnd = 48.dp),
+        tonalElevation = 0.dp
+    ) {
+        Column(modifier = Modifier.padding(24.dp)) {
+            Text(
+                "Configuration", 
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
+                letterSpacing = (-1).sp
+            )
+            Spacer(Modifier.height(24.dp))
 
             ConnectedButtonGroup(
                 items = SheetTab.entries.map { ConnectedButtonGroupItem.Label(it.label()) },

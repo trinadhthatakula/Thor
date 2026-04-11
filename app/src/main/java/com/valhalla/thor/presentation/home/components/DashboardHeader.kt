@@ -1,6 +1,9 @@
 package com.valhalla.thor.presentation.home.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,27 +11,25 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TooltipAnchorPosition
-import androidx.compose.material3.TooltipBox
-import androidx.compose.material3.TooltipDefaults
-import androidx.compose.material3.rememberTooltipState
-import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
-import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppListType
-import kotlinx.coroutines.launch
+import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
+import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
+import com.valhalla.thor.presentation.theme.greenDark
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,51 +38,50 @@ fun DashboardHeader(
     isShizuku: Boolean,
     selectedType: AppListType,
     onTypeChanged: (AppListType) -> Unit,
-    onRestrictedStatusClick: () -> Unit, // Renamed for clarity: Triggers parent dialog
+    onRestrictedStatusClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .background(MaterialTheme.colorScheme.background)
+            .padding(horizontal = 24.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        // LEFT: Title Block
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // LEFT: Brand Block
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             Icon(
                 painter = painterResource(R.drawable.thor_mono),
                 contentDescription = null,
-                modifier = Modifier.size(40.dp),
-                tint = MaterialTheme.colorScheme.onBackground
+                modifier = Modifier.size(24.dp),
+                tint = MaterialTheme.colorScheme.primary
             )
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text(
-                    text = "Thor",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "Dashboard",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Text(
+                text = "Thor",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.primary,
+                letterSpacing = (-1).sp
+            )
         }
 
-        // RIGHT: Controls (Status Icon + Switcher)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            // 1. Status Icon with Tooltip
+        // RIGHT: Controls (Status + Type Switcher)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Work Mode Icon
             StatusIcon(
                 isRoot = isRoot,
                 isShizuku = isShizuku,
                 onClick = onRestrictedStatusClick
             )
 
-            Spacer(Modifier.width(12.dp))
-
-            // 2. App Type Switcher
+            // App Type Switcher
             ConnectedButtonGroup(
                 items = AppListType.entries.map { type ->
                     ConnectedButtonGroupItem.Icon(
@@ -96,62 +96,32 @@ fun DashboardHeader(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun StatusIcon(
     isRoot: Boolean,
     isShizuku: Boolean,
     onClick: () -> Unit
 ) {
-
-    val (icon, color, tooltip) = when {
-        isRoot -> Triple(
-            R.drawable.magisk_icon,
-            MaterialTheme.colorScheme.onPrimaryContainer,
-            "Root Access Granted"
-        )
-
-        isShizuku -> Triple(
-            R.drawable.shizuku,
-            MaterialTheme.colorScheme.onPrimaryContainer,
-            "Shizuku Access Granted"
-        )
-
-        else -> Triple(
-            R.drawable.round_close,
-            MaterialTheme.colorScheme.error,
-            "Restricted Mode"
-        )
+    val (icon, color) = when {
+        isRoot -> R.drawable.magisk_icon to MaterialTheme.colorScheme.primary
+        isShizuku -> R.drawable.shizuku to MaterialTheme.colorScheme.primary
+        else -> R.drawable.round_close to MaterialTheme.colorScheme.error
     }
 
-    val scope = rememberCoroutineScope()
-    val tooltipState = rememberTooltipState()
-
-    TooltipBox(
-        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below),
-        tooltip = { Text(tooltip) },
-        state = tooltipState
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
     ) {
-        IconButton(
-            onClick = {
-                if (!isRoot && !isShizuku) {
-                    // If restricted, notify parent to show dialog
-                    onClick()
-                } else {
-                    // If granted, just show the tooltip locally
-                    scope.launch {
-                        if (!tooltipState.isVisible) {
-                            tooltipState.show()
-                        }
-                    }
-                }
-            }
-        ) {
-            Icon(
-                painter = painterResource(icon),
-                contentDescription = tooltip,
-                tint = color
-            )
-        }
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = "Status",
+            modifier = Modifier.size(20.dp),
+            tint = color
+        )
     }
 }
+

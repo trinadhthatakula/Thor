@@ -4,11 +4,13 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
 import androidx.biometric.BiometricPrompt
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.scaleIn
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,39 +19,33 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Button
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.valhalla.thor.R
+import com.valhalla.thor.presentation.theme.greenDark
 
-/**
- * BiometricScreen
- *
- * Routes between two internal states:
- *  - [BiometricPromptScreen]: invisible — fires the system prompt on composition.
- *  - [BiometricErrorScreen]: visible — shown when auth fails, with Retry and Exit actions.
- *
- * The caller controls which is shown via [isError]. Both live in this file because
- * they are two faces of the same security gate and should never exist independently.
- */
 @Composable
 fun BiometricScreen(
     isError: Boolean,
@@ -59,139 +55,248 @@ fun BiometricScreen(
     onRetry: () -> Unit,
     onExit: () -> Unit
 ) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        // 1. Ambient Glow
+        AmbientGlow()
 
-    Scaffold {
-        Box(modifier = Modifier.fillMaxSize().padding(it)){
-            if (isError) {
-                BiometricErrorScreen(
-                    message = errorMessage,
-                    onRetry = onRetry,
-                    onExit = onExit
-                )
-            } else {
-                BiometricPromptScreen(
-                    onAuthenticated = onAuthenticated,
-                    onError = onError
-                )
-            }
-        }
-    }
-
-}
-
-// ─── Prompt (invisible) ───────────────────────────────────────────────────────
-
-@Composable
-private fun BiometricPromptScreen(
-    onAuthenticated: () -> Unit,
-    onError: (String) -> Unit
-) {
-    val context = LocalContext.current
-
-    LaunchedEffect(Unit) {
-        val activity = context as? FragmentActivity
-        if (activity == null) {
-            onError("Biometric prompt requires a FragmentActivity host.")
-            return@LaunchedEffect
-        }
-
-        val biometricManager = BiometricManager.from(context)
-        val allowedAuthenticators = BIOMETRIC_STRONG or DEVICE_CREDENTIAL
-
-        when (biometricManager.canAuthenticate(allowedAuthenticators)) {
-            BiometricManager.BIOMETRIC_SUCCESS -> showBiometricPrompt(
-                activity = activity,
+        if (isError) {
+            BiometricErrorView(
+                message = errorMessage,
+                onRetry = onRetry,
+                onExit = onExit
+            )
+        } else {
+            BiometricLockView(
                 onAuthenticated = onAuthenticated,
                 onError = onError
             )
-
-            BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE ->
-                onError("This device has no biometric hardware.")
-
-            BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE ->
-                onError("Biometric hardware is currently unavailable.")
-
-            BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED ->
-                // No credentials enrolled — fail open so user is never locked out.
-                onAuthenticated()
-
-            else -> onError("Biometric authentication is not available.")
         }
     }
-    // Intentionally renders nothing — the system prompt is the entire UI.
 }
 
-// ─── Error screen ─────────────────────────────────────────────────────────────
-
 @Composable
-private fun BiometricErrorScreen(
-    message: String,
-    onRetry: () -> Unit,
-    onExit: () -> Unit
-) {
-    // Animate in once — the spring gives a tactile feel matching Material Expressive.
-    var visible by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { visible = true }
-
+private fun AmbientGlow() {
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        AnimatedVisibility(
-            visible = visible,
-            enter = fadeIn() + scaleIn(
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessMedium
+        Box(
+            modifier = Modifier
+                .size(400.dp)
+                .alpha(0.05f)
+                .blur(120.dp)
+                .background(greenDark, CircleShape)
+        )
+    }
+}
+
+@Composable
+private fun BiometricLockView(
+    onAuthenticated: () -> Unit,
+    onError: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val activity = context as? FragmentActivity
+
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        // Logo Section
+        Box(contentAlignment = Alignment.Center) {
+            // Identity Ring (Pulsing)
+            val infiniteTransition = rememberInfiniteTransition(label = "ring")
+            val pulseAlpha by infiniteTransition.animateFloat(
+                initialValue = 0.1f,
+                targetValue = 0.3f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(2000),
+                    repeatMode = RepeatMode.Reverse
                 ),
-                initialScale = 0.85f
+                label = "alpha"
             )
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+            
+            Box(
+                modifier = Modifier
+                    .size(110.dp)
+                    .alpha(pulseAlpha)
+                    .background(Color.Transparent, CircleShape)
+                    .padding(2.dp)
+                    .background(greenDark.copy(alpha = 0.2f), CircleShape)
+            )
+
+            Box(
+                modifier = Modifier
+                    .size(96.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape)
+                        .background(Color.Black),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.thor_mono),
+                        contentDescription = null,
+                        modifier = Modifier.size(48.dp),
+                        tint = Color.White
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(48.dp))
+
+        // Typography Header
+        Text(
+            text = "Thor",
+            style = MaterialTheme.typography.displayLarge,
+            fontWeight = FontWeight.Black,
+            color = MaterialTheme.colorScheme.onSurface,
+            letterSpacing = (-2).sp
+        )
+        Text(
+            text = "Unlock to continue",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+        )
+
+        Spacer(modifier = Modifier.height(64.dp))
+
+        // Fingerprint Button
+        Box(contentAlignment = Alignment.Center) {
+            // Pulsing Background
+            val infiniteTransition = rememberInfiniteTransition(label = "fingerprint")
+            val scale by infiniteTransition.animateFloat(
+                initialValue = 1f,
+                targetValue = 1.2f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1500),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "scale"
+            )
+            
+            Box(
+                modifier = Modifier
+                    .size(96.dp)
+                    .scale(scale)
+                    .alpha(0.1f)
+                    .background(greenDark, RoundedCornerShape(24.dp))
+            )
+
+            Box(
+                modifier = Modifier
+                    .size(96.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(greenDark, greenDark.copy(alpha = 0.8f))
+                        )
+                    )
+                    .clickable {
+                        activity?.let {
+                            showBiometricPrompt(it, onAuthenticated, onError)
+                        }
+                    },
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.round_key),
-                    contentDescription = "Authentication failed",
-                    modifier = Modifier.size(72.dp),
-                    tint = MaterialTheme.colorScheme.error
+                    painter = painterResource(R.drawable.round_key), // Fingerprint icon fallback
+                    contentDescription = "Unlock",
+                    modifier = Modifier.size(48.dp),
+                    tint = Color.Black
                 )
+            }
+        }
+    }
 
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Text(
-                    text = "Authentication Failed",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
-                )
-
-                Spacer(modifier = Modifier.height(40.dp))
-
-                Button(onClick = onRetry) {
-                    Text("Retry")
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                TextButton(onClick = onExit) {
-                    Text("Exit")
-                }
+    // Auto-trigger on first launch if possible
+    LaunchedEffect(Unit) {
+        activity?.let {
+            val biometricManager = BiometricManager.from(context)
+            if (biometricManager.canAuthenticate(BIOMETRIC_STRONG or DEVICE_CREDENTIAL) == BiometricManager.BIOMETRIC_SUCCESS) {
+                showBiometricPrompt(it, onAuthenticated, onError)
             }
         }
     }
 }
 
-// ─── Prompt builder ───────────────────────────────────────────────────────────
+@Composable
+private fun BiometricErrorView(
+    message: String,
+    onRetry: () -> Unit,
+    onExit: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.danger),
+            contentDescription = null,
+            modifier = Modifier.size(72.dp),
+            tint = MaterialTheme.colorScheme.error
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Text(
+            text = "Authentication Failed",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 48.dp)
+        )
+
+        Spacer(modifier = Modifier.height(48.dp))
+
+        Box(
+            modifier = Modifier
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.errorContainer)
+                .clickable { onRetry() }
+                .padding(horizontal = 32.dp, vertical = 12.dp)
+        ) {
+            Text(
+                text = "TRY AGAIN",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onErrorContainer
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "EXIT",
+            modifier = Modifier
+                .clickable { onExit() }
+                .padding(16.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
 
 private fun showBiometricPrompt(
     activity: FragmentActivity,
@@ -206,15 +311,11 @@ private fun showBiometricPrompt(
         }
 
         override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-            // Codes 10 (user cancel) and 13 (negative button) are explicit dismissals.
-            // All error codes are treated the same — surface the message and let the
-            // user decide to retry or exit from the error screen.
             onError(errString.toString())
         }
 
         override fun onAuthenticationFailed() {
-            // A single failed attempt (wrong finger, etc.) — the system prompt
-            // handles retry natively. We only react to terminal errors above.
+            // Native prompt handles retries
         }
     }
 

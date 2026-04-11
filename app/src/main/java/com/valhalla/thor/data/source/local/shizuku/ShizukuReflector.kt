@@ -3,76 +3,26 @@
 package com.valhalla.thor.data.source.local.shizuku
 
 import android.annotation.SuppressLint
-import android.app.AppOpsManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.IPackageInstaller
-import android.content.pm.IPackageManager
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.core.content.getSystemService
 import com.valhalla.bypass.Bypass
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.util.Logger
-import rikka.shizuku.ShizukuBinderWrapper
-import rikka.shizuku.SystemServiceHelper
-import java.lang.reflect.Method
 
 @SuppressLint("PrivateApi")
 class ShizukuReflector(
     private val context: Context
 ) {
 
-    private val myUserId: Int
-        get() = android.os.Process.myUserHandle().hashCode()
-
-    private fun asInterface(className: String, serviceName: String): Any {
-        val binder = SystemServiceHelper.getSystemService(serviceName)
-        val clazz = Class.forName("$className\$Stub")
-        return Bypass.invoke(
-            clazz,
-            null,
-            "asInterface",
-            arrayOf(android.os.IBinder::class.java),
-            ShizukuBinderWrapper(binder)
-        )
-    }
-
-    private val packageManager: Any by lazy {
-        asInterface("android.content.pm.IPackageManager", "package")
-    }
-
-    @SuppressLint("PrivateApi")
     fun clearCache(packageName: String) {
         try {
-            val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
-
-            try {
-                // Try 2-parameter version
-                Bypass.invoke(
-                    packageManager.javaClass,
-                    packageManager,
-                    "deleteApplicationCacheFiles",
-                    arrayOf(String::class.java, observerClass),
-                    packageName,
-                    null
-                )
-            } catch (e: NoSuchMethodException) {
-                // Try 3-parameter version (with userId)
-                Bypass.invoke<Any?>(
-                    packageManager.javaClass,
-                    packageManager,
-                    "deleteApplicationCacheFilesAsUser",
-                    arrayOf(String::class.java, Int::class.javaPrimitiveType!!, observerClass),
-                    packageName,
-                    myUserId,
-                    null
-                )
-            }
-
+            Shizuku.clearCache(packageName)
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
                 Logger.e("ShizukuReflector", "clearCache failed: ${e.message}")
@@ -81,7 +31,6 @@ class ShizukuReflector(
 
     fun forceStop(packageName: String) {
         try {
-            // Use the local Shizuku object helper
             Shizuku.forceStopApp(context, packageName)
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
@@ -91,32 +40,12 @@ class ShizukuReflector(
 
     fun setAppEnabled(packageName: String, enabled: Boolean) {
         try {
-            // Use the local Shizuku object helper
             Shizuku.setAppDisabled(context, packageName, !enabled)
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
                 Logger.e("ShizukuReflector", "setAppEnabled failed", e)
         }
     }
-
-    // Helper to find method using standard reflection OR Bypass
-    private fun findMethod(
-        clazz: Class<*>,
-        name: String,
-        vararg parameterTypes: Class<*>
-    ): Method? {
-        return try {
-            clazz.getMethod(name, *parameterTypes)
-        } catch (_: Exception) {
-            try {
-                Bypass.getDeclaredMethod(clazz, name, *parameterTypes)
-            } catch (_: Exception) {
-                null
-            }
-        }
-    }
-
-    fun packageUri(packageName: String) = "package:$packageName"
 
     fun packageUid(packageName: String) =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) context.packageManager.getPackageUid(
@@ -156,52 +85,8 @@ class ShizukuReflector(
         (Bypass.getField<Int>(it, "privateFlags")) and 8 == 8
     } ?: false
 
-    fun setAppDisabled(packageName: String, disabled: Boolean): Boolean {
-        runCatching {
-            val newState = when {
-                !disabled -> PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-                else -> PackageManager.COMPONENT_ENABLED_STATE_DISABLED
-            }
-            Bypass.invoke<Any?>(
-                packageManager.javaClass,
-                packageManager,
-                "setApplicationEnabledSetting",
-                arrayOf(String::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, String::class.java),
-                packageName,
-                newState,
-                0,
-                myUserId,
-                context.packageName
-            )
-        }.onFailure {
-            it.printStackTrace()
-        }
-        return isAppDisabled(packageName) == disabled
-    }
-
-    fun setAppRestricted(packageName: String, restricted: Boolean): Boolean = runCatching {
-        context.getSystemService<AppOpsManager>()?.let {
-            Bypass.invoke<Any?>(
-                it::class.java,
-                it,
-                "setMode",
-                arrayOf(Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, String::class.java, Int::class.javaPrimitiveType!!),
-                Bypass.invoke<Int>(
-                    AppOpsManager::class.java,
-                    null,
-                    "strOpToOp",
-                    "android:run_any_in_background"
-                ),
-                packageUid(packageName),
-                packageName,
-                if (restricted) AppOpsManager.MODE_IGNORED else AppOpsManager.MODE_ALLOWED
-            )
-        }
-        true
-    }.getOrElse {
-        it.printStackTrace()
-        false
-    }
+    fun setAppRestricted(packageName: String, restricted: Boolean): Boolean = 
+        Shizuku.setAppRestricted(packageName, restricted)
 
     fun uninstallApp(packageName: String, resetToFactory: Boolean = false): Boolean {
         val packageInfo = context.packageManager.getInfoForPackage(packageName) ?: return false
@@ -327,7 +212,7 @@ class ShizukuReflector(
 
     fun getPackageInstaller(): PackageInstaller {
         val iPackageInstaller = ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller()
-        val root = rikka.shizuku.Shizuku.getUid() == 0
+        val root = try { rikka.shizuku.Shizuku.getUid() == 0 } catch (_: Exception) { false }
         val userId = if (root) android.os.Process.myUserHandle().hashCode() else 0
 
         // The reason for use "com.android.shell" as installer package under adb is that
