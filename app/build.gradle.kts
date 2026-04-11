@@ -65,12 +65,12 @@ private fun resolveVersionName(code: Int): String {
 
 android {
     namespace = "com.valhalla.thor"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.valhalla.thor"
         minSdk = 28
-        targetSdk = 36
+        targetSdk = 37
 
         // Calculate versions using the private helpers
         val code = resolveVersionCode()

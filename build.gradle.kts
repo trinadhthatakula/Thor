@@ -5,4 +5,5 @@ plugins {
     alias(libs.plugins.kotlinSerialization) apply false
     alias(libs.plugins.android.test) apply false
     alias(libs.plugins.android.library) apply false
+    alias(libs.plugins.kotlinJvm) apply false
 }

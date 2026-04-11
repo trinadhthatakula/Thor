@@ -10,10 +10,10 @@ Android enforces hidden API restrictions via a denylist checked in `java.lang.re
 
 ```
 :bypass         — the runtime implementation (Bypass.kt)
-:bypass-stubs   — compileOnly Java stubs for dalvik.system.VMRuntime
+:vm-runtime     — compileOnly Kotlin stubs for dalvik.system.VMRuntime
 ```
 
-`:bypass-stubs` is a plain `java-library` that provides stub classes so `:bypass` can reference `VMRuntime.setHiddenApiExemptions()` at compile time without those classes being on the normal classpath. The real implementations are always present on-device.
+`:vm-runtime` is a plain `java-library` that provides stub classes so `:bypass` can reference `VMRuntime.setHiddenApiExemptions()` at compile time without those classes being on the normal classpath. The real implementations are always present on-device.
 
 ## API reference
 
@@ -98,10 +98,10 @@ Add the module dependency:
 implementation(project(":bypass"))
 ```
 
-`:bypass-stubs` must **not** be added as a runtime dependency — it is only needed as `compileOnly` inside `:bypass` itself and is already declared there.
+`:vm-runtime` must **not** be added as a runtime dependency — it is only needed as `compileOnly` inside `:bypass` itself and is already declared there.
 
 ## How it works
 
-1. **`VMRuntime.setHiddenApiExemptions()`** — the primary path. `VMRuntime` is itself a hidden class; `:bypass-stubs` provides a compile-time stub in the `dalvik.system` package so the call compiles. At runtime the real `dalvik.system.VMRuntime` on the device is used, and calling `setHiddenApiExemptions` with a set of Dalvik descriptor prefixes whitelists all matching members for the current process.
+1. **`VMRuntime.setHiddenApiExemptions()`** — the primary path. `VMRuntime` is itself a hidden class; `:vm-runtime` provides a compile-time stub in the `dalvik.system` package so the call compiles. At runtime the real `dalvik.system.VMRuntime` on the device is used, and calling `setHiddenApiExemptions` with a set of Dalvik descriptor prefixes whitelists all matching members for the current process.
 
 2. **Reflection-based access** — once exemptions are added, standard reflection (`getDeclaredMethod`, `getDeclaredField`, etc.) works even for hidden members.
