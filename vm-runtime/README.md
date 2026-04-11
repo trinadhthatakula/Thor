@@ -1,10 +1,10 @@
-# bypass-stubs
+# vm-runtime
 
-Compile-only Java stubs that allow `:bypass` to reference hidden Android runtime classes at compile time.
+Compile-only Kotlin stubs that allow `:bypass` to reference hidden Android runtime classes at compile time.
 
 ## Purpose
 
-Two classes used by `:bypass` are not present on the standard Android SDK classpath:
+The following class is used by `:bypass` but is not present on the standard Android SDK classpath:
 
 | Stub class | Real runtime class | Used for |
 |---|---|---|
@@ -18,10 +18,10 @@ This module is declared `compileOnly` inside `:bypass`:
 
 ```kotlin
 // bypass/build.gradle.kts
-compileOnly(project(":bypass-stubs"))
+compileOnly(project(":vm-runtime"))
 ```
 
-Do **not** add `:bypass-stubs` as `implementation` or `api` anywhere. Shipping the stub classes in the APK would shadow the real `dalvik.system.VMRuntime` and break the bypass entirely.
+Do **not** add `:vm-runtime` as `implementation` or `api` anywhere. Shipping the stub classes in the APK would shadow the real `dalvik.system.VMRuntime` and break the bypass entirely.
 
 ## Why stubs instead of implementation
 
@@ -30,9 +30,9 @@ The real classes like `dalvik.system.VMRuntime` live on the device. Placing the 
 ## Stub surface
 
 **`dalvik.system.VMRuntime`**
-```java
-public static VMRuntime getRuntime()
-public void setHiddenApiExemptions(String... signatures)
+```kotlin
+fun getRuntime(): VMRuntime
+fun setHiddenApiExemptions(vararg signatures: String)
 ```
 
 Only the methods actually called by `:bypass` are stubbed. There is no need to mirror the full `VMRuntime` API.

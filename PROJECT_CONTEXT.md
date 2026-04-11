@@ -13,7 +13,7 @@ The project follows **Clean Architecture** principles combined with **MVVM (Mode
   - **DI**: Dependency Injection using **Koin**, organized into `commonModule`, `installerModule`, `preferenceModule`, `coreModule`, and `roomModule`.
 - **`suCore/`**: A specialized module for root shell management. It's a Kotlin-refactored version of the `libsu` core module by `topjohnwu`, optimized for modern Kotlin idioms and memory safety.
 - **`bypass/`**: A core utility module for bypassing Android's hidden API restrictions using `VMRuntime` exemptions and enhanced reflection.
-- **`bypass-stubs/`**: Compile-only Java stubs required for the `bypass` module to interface with internal Android classes like `VMRuntime`.
+- **`vm-runtime/`**: Compile-only Kotlin stubs required for the `bypass` module to interface with internal Android classes like `VMRuntime`.
 
 ## 🛠 Tech Stack
 - **Language**: 100% Kotlin
@@ -29,7 +29,7 @@ The project follows **Clean Architecture** principles combined with **MVVM (Mode
 - **Elevated Privileges**: 
   - **Shizuku / Dhizuku API**: For system-level operations without full root.
   - **Root (su)**: Via `suCore` module.
-  - **Internal Bypass (`:bypass`)**: A custom, 100% Kotlin implementation (with Java stubs) to access restricted Android internal APIs, replacing external dependencies like `HiddenApiBypass`.
+  - **Internal Bypass (`:bypass`)**: A custom, 100% Kotlin implementation (with Kotlin stubs) to access restricted Android internal APIs, replacing external dependencies like `HiddenApiBypass`.
 - **Build System**: Gradle Kotlin DSL with Version Catalog (`libs.versions.toml`).
 - **Distribution**: Two product flavors: `store` (Play Store compliant) and `foss` (fully libre/open).
 

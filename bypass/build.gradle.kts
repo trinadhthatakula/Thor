@@ -13,9 +13,7 @@ kotlin {
 
 android {
     namespace = "com.valhalla.bypass"
-    compileSdk {
-        version = release(36)
-    }
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 28
@@ -35,5 +33,5 @@ android {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
-    compileOnly(project(":bypass-stubs"))
+    compileOnly(project(":vm-runtime"))
 }

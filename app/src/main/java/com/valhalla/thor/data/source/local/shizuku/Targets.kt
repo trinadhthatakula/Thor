@@ -16,4 +16,13 @@ object Targets {
 
     @get:ChecksSdkIntAtLeast(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     val U = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+
+    @get:ChecksSdkIntAtLeast(api = 35)
+    val V = Build.VERSION.SDK_INT >= 35
+
+    @get:ChecksSdkIntAtLeast(api = 36)
+    val B = Build.VERSION.SDK_INT >= 36
+
+    @get:ChecksSdkIntAtLeast(api = 37)
+    val B_MINOR = Build.VERSION.SDK_INT >= 37
 }
