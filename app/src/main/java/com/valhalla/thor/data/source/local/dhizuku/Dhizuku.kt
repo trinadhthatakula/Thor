@@ -62,26 +62,36 @@ object DhizukuHelper {
 
     fun setAppDisabled(context: Context, packageName: String, disabled: Boolean): Boolean {
         Packages(context).getApplicationInfoOrNull(packageName) ?: return false
-        if (disabled) forceStopApp(context, packageName)
-        runCatching {
-            val pm = asInterface("android.content.pm.IPackageManager", "package") ?: return false
-            val newState = when {
-                !disabled -> PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-                else -> PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
+        val userId = Packages(context).myUserId
+        val command = if (disabled) {
+            "pm disable-user --user $userId $packageName"
+        } else {
+            "pm enable --user $userId $packageName"
+        }
+        val result = execute(command)
+
+        if (result.first != 0) {
+            // Fallback to Bypass reflection
+            runCatching {
+                val pm = asInterface("android.content.pm.IPackageManager", "package") ?: return false
+                val newState = when {
+                    !disabled -> PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                    else -> PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
+                }
+                Bypass.invoke<Any?>(
+                    pm.javaClass,
+                    pm,
+                    "setApplicationEnabledSetting",
+                    arrayOf(String::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, String::class.java),
+                    packageName,
+                    newState,
+                    0,
+                    userId,
+                    BuildConfig.APPLICATION_ID
+                )
+            }.onFailure {
+                com.valhalla.thor.util.Logger.e("DhizukuHelper", "setAppDisabled fallback failed for $packageName", it)
             }
-            Bypass.invoke<Any?>(
-                pm.javaClass,
-                pm,
-                "setApplicationEnabledSetting",
-                arrayOf(String::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, String::class.java),
-                packageName,
-                newState,
-                0,
-                Packages(context).myUserId,
-                BuildConfig.APPLICATION_ID
-            )
-        }.onFailure {
-            com.valhalla.thor.util.Logger.e("DhizukuHelper", "setAppDisabled failed for $packageName", it)
         }
         return Packages(context).isAppDisabled(packageName) == disabled
     }

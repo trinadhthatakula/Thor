@@ -3,9 +3,8 @@ package com.valhalla.thor.data.source.local.shizuku
 import android.content.Context
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
-import com.valhalla.thor.BuildConfig
-import moe.shizuku.server.IShizukuService
 import com.valhalla.bypass.Bypass
+import moe.shizuku.server.IShizukuService
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
@@ -53,7 +52,31 @@ object Shizuku {
         } else {
             "pm enable --user $userId $packageName"
         }
-        execute(command)
+        val result = execute(command)
+
+        if (result.first != 0) {
+            // Fallback to Bypass reflection
+            runCatching {
+                val pm = asInterface("android.content.pm.IPackageManager", "package")
+                val newState = when {
+                    !disabled -> android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                    isRoot -> android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+                    else -> android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
+                }
+                Bypass.invoke<Any?>(
+                    pm.javaClass,
+                    pm,
+                    "setApplicationEnabledSetting",
+                    arrayOf(String::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, String::class.java),
+                    packageName,
+                    newState,
+                    0,
+                    userId,
+                    com.valhalla.thor.BuildConfig.APPLICATION_ID
+                )
+            }.onFailure { it.printStackTrace() }
+        }
+
         return Packages(context).isAppDisabled(packageName) == disabled
     }
 
