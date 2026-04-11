@@ -258,7 +258,7 @@ private fun AppActionRow(
 
         // 2. Privileged Actions
         if (hasPrivilege) {
-            val (icon, label) = if (isFrozen) R.drawable.unfreeze to "Unfreeze" else R.drawable.frozen to "Freeze"
+            val (icon, label) = if (isFrozen) R.drawable.freeze_off to "Unfreeze" else R.drawable.frozen to "Freeze"
             ActionItem(icon, label) {
                 onAction(
                     if (isFrozen) AppClickAction.UnFreeze(appInfo) else AppClickAction.Freeze(
