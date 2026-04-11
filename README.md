@@ -25,8 +25,7 @@
 
 ---
 
-* 100% Kotlin
-* Material 3 Design
+* Kotlin + Material 3 Design
 * Jetpack Compose
 * Room DB App Caching
 * Custom Hidden API Bypass
@@ -40,31 +39,34 @@
 
 - High-performance app list loading with Room DB metadata caching
 - Fingerprint Lock
-- Themes (dark, light, system) + AMOLED
-- App Installer (install with root, shizuku or normal) 
-- Dhizuku Support (testing)
+- Themes (dark, light, system) + AMOLED + Asgardian static theme
+- App Installer (install with root, shizuku or normal)
+- Root Support
 - Shizuku Support
+- Dhizuku Support
 - Fully reproducible, copyleft libre software (GPLv3.0)
-- Material 3 with dynamic colors
+- Material 3 with optional dynamic colors (Material You)
+- Work Mode selection — manually choose between Root, Shizuku, or Dhizuku as the active privilege engine
 - Displays App List while sorting them based on Installation source
 - Launch App Activities
 - Install/Uninstall/Freeze/Unfreeze Apk files
-- Reinstall APKs/app with Google
+- Suspend/Unsuspend apps (shows custom Thor-branded system dialog)
+- Background Restriction (restrict app background activity)
+- Reinstall APKs/Fix Store installer record (available in all privilege modes)
 - Share App Apk file
-- Batch Reinstall/Uninstall/Kill Apps
+- Batch Reinstall/Uninstall/Freeze/Unfreeze/Kill/Suspend/Clear Data
 - Split App Indicator
-- AppState Indicator (frozen = disabled)
+- AppState Indicator (frozen / suspended / hidden)
 - Uninstall System Apps
 - Freeze/UnFreeze System apps
 - Sorting & filters
-- Clear Data/Cache
+- Clear Data/Cache (available in all privilege modes)
 
 ## Upcoming Features
 
 - BackUp App Data
 - Editing Packages.xml
 - Batch Install
-- Option to choose installers when reinstalling
 - Many more
 
 ## 💖 Support Development
@@ -82,7 +84,7 @@ Thor is a labor of love, built to be **100% offline, ad-free, and tracker-free**
 - Portions of this app use code from [`libsu`](https://github.com/topjohnwu/libsu)
   by [topjohnwu](https://github.com/topjohnwu/), adapted and integrated as the [
   `suCore`](https://github.com/trinadhthatakula/Thor/tree/master/suCore) module.
-- Replaced [`AndroidHiddenApiBypass`](https://github.com/LSPosed/AndroidHiddenApiBypass) with an internal, 100% Kotlin implementation in the [`bypass`](https://github.com/trinadhthatakula/Thor/tree/master/bypass) module.
+- Replaced [`AndroidHiddenApiBypass`](https://github.com/LSPosed/AndroidHiddenApiBypass) with an internal Kotlin implementation in the [`bypass`](https://github.com/trinadhthatakula/Thor/tree/master/bypass) module, backed by Java stubs in the [`vm-runtime`](https://github.com/trinadhthatakula/Thor/tree/master/vm-runtime) module for maximum compatibility when shadowing system classes.
 
 ### Modifications to libsu
 
