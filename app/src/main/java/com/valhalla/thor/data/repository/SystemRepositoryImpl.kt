@@ -4,12 +4,16 @@ import com.valhalla.thor.data.gateway.RootSystemGateway
 import com.valhalla.thor.data.gateway.ShizukuSystemGateway
 import com.valhalla.thor.data.gateway.DhizukuSystemGateway
 import com.valhalla.thor.domain.gateway.SystemGateway
+import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
+import kotlinx.coroutines.flow.first
 
 class SystemRepositoryImpl(
     private val rootGateway: RootSystemGateway,
     private val shizukuGateway: ShizukuSystemGateway,
     private val dhizukuGateway: DhizukuSystemGateway,
+    private val preferenceRepository: PreferenceRepository
 ) : SystemRepository {
 
     override suspend fun isRootAvailable(): Boolean {
@@ -20,9 +24,21 @@ class SystemRepositoryImpl(
     
     override fun isDhizukuAvailable(): Boolean = dhizukuGateway.isDhizukuAvailable()
 
-    // Dynamic Resolution Strategy: Prefer Root -> Fallback to Shizuku -> Fallback to Dhizuku -> Fail
-    // Must be suspend because checking root is suspend
+    // Dynamic Resolution Strategy: Respect user preference if available, else auto-detect.
+    // Must be suspend because checking root and reading preferences are suspend operations.
     private suspend fun getActiveGateway(): SystemGateway {
+        val prefs = preferenceRepository.userPreferences.first()
+        
+        // 1. Try User Preference
+        prefs.preferredPrivilegeMode?.let { mode ->
+            when (mode) {
+                PrivilegeMode.ROOT -> if (rootGateway.isRootAvailable()) return rootGateway
+                PrivilegeMode.SHIZUKU -> if (shizukuGateway.isShizukuAvailable()) return shizukuGateway
+                PrivilegeMode.DHIZUKU -> if (dhizukuGateway.isDhizukuAvailable()) return dhizukuGateway
+            }
+        }
+
+        // 2. Fallback to Auto-Detection
         return when {
             rootGateway.isRootAvailable() -> rootGateway
             shizukuGateway.isShizukuAvailable() -> shizukuGateway
@@ -36,6 +52,9 @@ class SystemRepositoryImpl(
 
     override suspend fun clearCache(packageName: String): Result<Unit> =
         getActiveGateway().clearCache(packageName)
+
+    override suspend fun clearAppData(packageName: String): Result<Unit> =
+        getActiveGateway().clearAppData(packageName)
 
     override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> =
         getActiveGateway().setAppDisabled(packageName, isDisabled)

@@ -20,30 +20,43 @@ class ShizukuReflector(
     private val context: Context
 ) {
 
-    fun clearCache(packageName: String) {
-        try {
+    fun clearCache(packageName: String): Boolean {
+        return try {
             Shizuku.clearCache(packageName)
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
                 Logger.e("ShizukuReflector", "clearCache failed: ${e.message}")
+            false
         }
     }
 
-    fun forceStop(packageName: String) {
-        try {
+    fun clearData(packageName: String): Boolean {
+        return try {
+            Shizuku.clearAppData(packageName)
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG)
+                Logger.e("ShizukuReflector", "clearData failed: ${e.message}")
+            false
+        }
+    }
+
+    fun forceStop(packageName: String): Boolean {
+        return try {
             Shizuku.forceStopApp(context, packageName)
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
                 Logger.e("ShizukuReflector", "forceStop failed", e)
+            false
         }
     }
 
-    fun setAppEnabled(packageName: String, enabled: Boolean) {
-        try {
+    fun setAppEnabled(packageName: String, enabled: Boolean): Boolean {
+        return try {
             Shizuku.setAppDisabled(context, packageName, !enabled)
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
                 Logger.e("ShizukuReflector", "setAppEnabled failed", e)
+            false
         }
     }
 

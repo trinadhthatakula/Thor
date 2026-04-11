@@ -17,6 +17,9 @@ data class UserPreferences(
 
     // Security
     val biometricLockEnabled: Boolean = false,
+
+    // Work Mode
+    val preferredPrivilegeMode: PrivilegeMode? = null,
 )
 
 

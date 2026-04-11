@@ -111,21 +111,46 @@ object DhizukuHelper {
 
     @SuppressLint("PrivateApi")
     fun clearCache(packageName: String): Boolean {
-        return try {
+        val reflectionResult = runCatching {
             val pm = asInterface("android.content.pm.IPackageManager", "package") ?: return false
+            val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
 
-            Bypass.invoke<Any?>(
-                pm.javaClass,
-                pm,
-                "deleteApplicationCacheFiles",
-                arrayOf(String::class.java, Class.forName("android.content.pm.IPackageDataObserver")),
-                packageName,
-                null /* IPackageDataObserver */
-            )
+            try {
+                Bypass.invoke<Any?>(
+                    pm.javaClass,
+                    pm,
+                    "deleteApplicationCacheFiles",
+                    arrayOf(String::class.java, observerClass),
+                    packageName,
+                    null /* IPackageDataObserver */
+                )
+            } catch (_: NoSuchMethodException) {
+                Bypass.invoke(
+                    pm.javaClass,
+                    pm,
+                    "deleteApplicationCacheFilesAsUser",
+                    arrayOf(String::class.java, Int::class.javaPrimitiveType!!, observerClass),
+                    packageName,
+                    android.os.Process.myUserHandle().hashCode(),
+                    null
+                )
+            }
             true
-        } catch (e: Exception) {
-            com.valhalla.thor.util.Logger.e("DhizukuHelper", "clearCache failed for $packageName", e)
-            false
-        }
+        }.getOrDefault(false)
+
+        if (reflectionResult) return true
+
+        // Fallback to shell rm -rf on common cache paths
+        val userId = android.os.Process.myUserHandle().hashCode()
+        val paths = listOf(
+            "/data/data/$packageName/cache",
+            "/data/user/$userId/$packageName/cache",
+            "/sdcard/Android/data/$packageName/cache"
+        )
+        val command = "rm -rf ${paths.joinToString(" ")}"
+        return execute(command).first == 0
     }
+
+    fun clearAppData(packageName: String): Boolean =
+        execute("pm clear $packageName").first == 0
 }

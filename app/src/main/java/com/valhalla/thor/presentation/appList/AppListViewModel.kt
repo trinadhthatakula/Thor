@@ -40,6 +40,7 @@ data class AppListUiState(
     // Display Data
     val displayedApps: List<AppInfo> = emptyList(),
     val availableInstallers: List<String> = listOf("All"),
+    val installerNameMap: Map<String, String> = emptyMap(),
     // Detail View State
     val selectedAppDetails: AppInfo? = null,
     val isLoadingDetails: Boolean = false,
@@ -223,11 +224,18 @@ class AppListViewModel(
         // 4. Calculate Installers (Metadata)
         val installers =
             rawList.mapNotNull { it.installerPackageName }.distinct().sorted().toMutableList()
+
+        val allApps = state.allUserApps + state.allSystemApps
+        val installerNames = installers.associateWith { pkg ->
+            allApps.find { it.packageName == pkg }?.appName ?: pkg
+        }
+
         installers.add(0, "All")
 
         return state.copy(
             displayedApps = sorted,
-            availableInstallers = installers
+            availableInstallers = installers,
+            installerNameMap = installerNames
         )
     }
 

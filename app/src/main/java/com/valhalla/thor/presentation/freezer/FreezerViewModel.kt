@@ -37,6 +37,7 @@ data class FreezerUiState(
     val sortBy: SortBy = SortBy.NAME,
     val sortOrder: SortOrder = SortOrder.ASCENDING,
     val availableInstallers: List<String> = listOf("All"),
+    val installerNameMap: Map<String, String> = emptyMap(),
     // Action Feedback
     val actionMessage: String? = null
 )
@@ -195,11 +196,18 @@ class FreezerViewModel(
             // Metadata
             val installers =
                 rawList.mapNotNull { it.installerPackageName }.distinct().sorted().toMutableList()
+
+            val allApps = state.allUserApps + state.allSystemApps
+            val installerNames = installers.associateWith { pkg ->
+                allApps.find { it.packageName == pkg }?.appName ?: pkg
+            }
+
             installers.add(0, "All")
 
             state.copy(
                 displayedApps = sorted,
-                availableInstallers = installers
+                availableInstallers = installers,
+                installerNameMap = installerNames
             )
         }
 

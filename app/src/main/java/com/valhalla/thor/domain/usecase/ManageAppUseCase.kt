@@ -9,6 +9,9 @@ class ManageAppUseCase(
     suspend fun clearCache(packageName: String): Result<Unit> =
         systemRepository.clearCache(packageName)
 
+    suspend fun clearAppData(packageName: String): Result<Unit> =
+        systemRepository.clearAppData(packageName)
+
     suspend fun setAppDisabled(packageName: String, disabled: Boolean): Result<Unit> =
         systemRepository.setAppDisabled(packageName, disabled)
 

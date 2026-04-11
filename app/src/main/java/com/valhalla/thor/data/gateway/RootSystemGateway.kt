@@ -31,6 +31,10 @@ class RootSystemGateway(
         return runCommand(command)
     }
 
+    override suspend fun clearAppData(packageName: String): Result<Unit> {
+        return runCommand("pm clear $packageName")
+    }
+
     override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> {
         val state = if (isDisabled) "disable" else "enable"
         return runCommand("pm $state $packageName")

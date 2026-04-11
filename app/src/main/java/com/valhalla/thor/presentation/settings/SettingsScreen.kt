@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
 import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
@@ -48,7 +49,8 @@ import org.koin.androidx.compose.koinViewModel
 fun SettingsScreen(
     viewModel: SettingsViewModel = koinViewModel()
 ) {
-    val prefs by viewModel.preferences.collectAsStateWithLifecycle()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val prefs = state.prefs
     val context = LocalContext.current
 
     val versionName = remember(context) {
@@ -152,6 +154,49 @@ fun SettingsScreen(
         }
 
         Spacer(Modifier.height(32.dp))
+
+        // ── WORK MODE ───────────────────────────────────────────────────────
+        val availableModes = buildList {
+            if (state.isRootAvailable) add(PrivilegeMode.ROOT)
+            if (state.isShizukuAvailable) add(PrivilegeMode.SHIZUKU)
+            if (state.isDhizukuAvailable) add(PrivilegeMode.DHIZUKU)
+        }
+
+        if (availableModes.size > 1) {
+            SettingsSectionLabel("WORK MODE")
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(32.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                    .padding(16.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val activeMode = prefs.preferredPrivilegeMode ?: availableModes.first()
+                    val icon = when (activeMode) {
+                        PrivilegeMode.ROOT -> R.drawable.magisk_icon
+                        PrivilegeMode.SHIZUKU -> R.drawable.shizuku
+                        PrivilegeMode.DHIZUKU -> R.drawable.dhizuku
+                    }
+                    IconBox(icon)
+                    Spacer(Modifier.width(16.dp))
+                    Column {
+                        Text("Active Engine", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("Switch between available providers", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                ConnectedButtonGroup(
+                    items = availableModes.map { mode ->
+                        ConnectedButtonGroupItem.Label(mode.name)
+                    },
+                    selectedIndex = availableModes.indexOf(prefs.preferredPrivilegeMode ?: availableModes.first()),
+                    onItemSelected = { viewModel.setPrivilegeMode(availableModes[it]) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            Spacer(Modifier.height(32.dp))
+        }
 
         // ── ABOUT ───────────────────────────────────────────────────────────
         SettingsSectionLabel("ABOUT")

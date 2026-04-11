@@ -85,7 +85,6 @@ import com.valhalla.thor.domain.model.asGeneralName
 import com.valhalla.thor.domain.model.filterTypes
 import com.valhalla.thor.presentation.theme.expressivePress
 import com.valhalla.thor.presentation.utils.AppIconModel
-import com.valhalla.thor.presentation.utils.popularInstallers
 
 @Composable
 fun AppList(
@@ -101,6 +100,7 @@ fun AppList(
     isRoot: Boolean = false,
     isShizuku: Boolean = false,
     imageLoader: ImageLoader,
+    installerNameMap: Map<String, String> = emptyMap(),
     onSortOrderSelected: (SortOrder) -> Unit = {},
     onSortByChanged: (SortBy) -> Unit = {},
     onFilterSelected: (String?) -> Unit,
@@ -166,6 +166,7 @@ fun AppList(
                         filterType = filterType,
                         appListType = appListType,
                         isGrid = isGrid,
+                        installerNameMap = installerNameMap,
                         onToggleView = { isGrid = !isGrid },
                         onOpenFilters = { showFilterSheet = true },
                         onFilterSelected = onFilterSelected
@@ -317,6 +318,7 @@ private fun AppControlBar(
     filterType: FilterType,
     appListType: AppListType,
     isGrid: Boolean,
+    installerNameMap: Map<String, String>,
     onToggleView: () -> Unit,
     onOpenFilters: () -> Unit,
     onFilterSelected: (String?) -> Unit
@@ -340,8 +342,11 @@ private fun AppControlBar(
 
             chips.forEach { item ->
                 val label = when {
-                    filterType == FilterType.Source -> popularInstallers[item] ?: item
-                    ?: if (appListType != AppListType.SYSTEM) "Others" else "System"
+                    filterType == FilterType.Source -> {
+                        if (item == "All") "All"
+                        else installerNameMap[item] ?: item
+                        ?: if (appListType != AppListType.SYSTEM) "Others" else "System"
+                    }
 
                     else -> item ?: ""
                 }

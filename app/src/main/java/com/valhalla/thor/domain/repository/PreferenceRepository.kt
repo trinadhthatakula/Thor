@@ -1,6 +1,7 @@
 package com.valhalla.thor.domain.repository
 
 import com.valhalla.thor.domain.model.FilterType
+import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.ThemeMode
@@ -25,4 +26,7 @@ interface PreferenceRepository {
 
     // --- Security ---
     suspend fun setBiometricLock(enabled: Boolean)
+
+    // --- Work Mode ---
+    suspend fun setPrivilegeMode(mode: PrivilegeMode?)
 }

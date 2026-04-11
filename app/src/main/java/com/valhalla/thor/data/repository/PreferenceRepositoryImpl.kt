@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.valhalla.thor.domain.model.FilterType
+import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.ThemeMode
@@ -37,6 +38,9 @@ class PreferenceRepositoryImpl(
 
         // Security
         val BIOMETRIC_LOCK = booleanPreferencesKey("biometric_lock")
+
+        // Work Mode
+        val PRIVILEGE_MODE = stringPreferencesKey("privilege_mode")
     }
 
     override val userPreferences: Flow<UserPreferences> = context.dataStore.data
@@ -58,6 +62,9 @@ class PreferenceRepositoryImpl(
                 ?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
                 ?: ThemeMode.SYSTEM
 
+            val privilegeMode = prefs[Keys.PRIVILEGE_MODE]
+                ?.let { runCatching { PrivilegeMode.valueOf(it) }.getOrNull() }
+
             UserPreferences(
                 appSortBy = sortBy,
                 appSortOrder = sortOrder,
@@ -68,6 +75,7 @@ class PreferenceRepositoryImpl(
                 useDynamicColor = prefs[Keys.USE_DYNAMIC_COLOR] ?: false,
                 useAmoled = prefs[Keys.USE_AMOLED] ?: false,
                 biometricLockEnabled = prefs[Keys.BIOMETRIC_LOCK] ?: false,
+                preferredPrivilegeMode = privilegeMode
             )
         }
 
@@ -110,5 +118,14 @@ class PreferenceRepositoryImpl(
 
     override suspend fun setBiometricLock(enabled: Boolean) {
         context.dataStore.edit { it[Keys.BIOMETRIC_LOCK] = enabled }
+    }
+
+    // --- Work Mode ---
+
+    override suspend fun setPrivilegeMode(mode: PrivilegeMode?) {
+        context.dataStore.edit {
+            if (mode == null) it.remove(Keys.PRIVILEGE_MODE)
+            else it[Keys.PRIVILEGE_MODE] = mode.name
+        }
     }
 }

@@ -158,6 +158,7 @@ fun FreezerScreen(
                 isRoot = state.isRoot,
                 isShizuku = state.isShizuku,
                 imageLoader = imageLoader,
+                installerNameMap = state.installerNameMap,
                 // Filtering / Sorting Actions
                 onFilterTypeChanged = viewModel::updateFilterType,
                 onSortByChanged = viewModel::updateSort,

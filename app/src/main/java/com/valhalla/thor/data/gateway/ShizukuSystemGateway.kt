@@ -23,15 +23,19 @@ class ShizukuSystemGateway(
     override fun isDhizukuAvailable(): Boolean = false
 
     override suspend fun forceStopApp(packageName: String): Result<Unit> {
-        return runReflectiveAction { reflector.forceStop(packageName) }
+        return runAction { reflector.forceStop(packageName) }
     }
 
     override suspend fun clearCache(packageName: String): Result<Unit> {
-        return runReflectiveAction { reflector.clearCache(packageName) }
+        return runAction { reflector.clearCache(packageName) }
+    }
+
+    override suspend fun clearAppData(packageName: String): Result<Unit> {
+        return runAction { reflector.clearData(packageName) }
     }
 
     override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> {
-        return runReflectiveAction { reflector.setAppEnabled(packageName, !isDisabled) }
+        return runAction { reflector.setAppEnabled(packageName, !isDisabled) }
     }
 
     override suspend fun rebootDevice(reason: String): Result<Unit> {
@@ -59,15 +63,15 @@ class ShizukuSystemGateway(
     }
 
     /**
-     * Standardizes error handling for reflection calls.
+     * Standardizes error handling for reflection and shell actions.
      */
-    private inline fun runReflectiveAction(action: () -> Unit): Result<Unit> {
+    private inline fun runAction(action: () -> Boolean): Result<Unit> {
         if (!isShizukuAvailable()) {
             return Result.failure(Exception("Shizuku is not available or permission denied."))
         }
         return try {
-            action()
-            Result.success(Unit)
+            if (action()) Result.success(Unit)
+            else Result.failure(Exception("Action failed. This may happen if reflection is blocked or shell lacks permissions."))
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
                 e.printStackTrace()

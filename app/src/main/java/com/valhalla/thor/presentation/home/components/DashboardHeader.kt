@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
 import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
 import com.valhalla.thor.presentation.theme.greenDark
@@ -36,8 +37,11 @@ import com.valhalla.thor.presentation.theme.greenDark
 fun DashboardHeader(
     isRoot: Boolean,
     isShizuku: Boolean,
+    isDhizuku: Boolean,
+    activeMode: PrivilegeMode?,
     selectedType: AppListType,
     onTypeChanged: (AppListType) -> Unit,
+    onPrivilegeChanged: (PrivilegeMode) -> Unit,
     onRestrictedStatusClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -50,6 +54,7 @@ fun DashboardHeader(
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         // LEFT: Brand Block
+        // ... (existing code)
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -74,10 +79,13 @@ fun DashboardHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Work Mode Icon
+            // Work Mode Icon/Selector
             StatusIcon(
                 isRoot = isRoot,
                 isShizuku = isShizuku,
+                isDhizuku = isDhizuku,
+                activeMode = activeMode,
+                onModeSelected = onPrivilegeChanged,
                 onClick = onRestrictedStatusClick
             )
 
@@ -100,11 +108,21 @@ fun DashboardHeader(
 private fun StatusIcon(
     isRoot: Boolean,
     isShizuku: Boolean,
+    isDhizuku: Boolean,
+    activeMode: PrivilegeMode?,
+    onModeSelected: (PrivilegeMode) -> Unit,
     onClick: () -> Unit
 ) {
-    val (icon, color) = when {
-        isRoot -> R.drawable.magisk_icon to MaterialTheme.colorScheme.primary
-        isShizuku -> R.drawable.shizuku to MaterialTheme.colorScheme.primary
+    val availableModes = buildList {
+        if (isRoot) add(PrivilegeMode.ROOT)
+        if (isShizuku) add(PrivilegeMode.SHIZUKU)
+        if (isDhizuku) add(PrivilegeMode.DHIZUKU)
+    }
+
+    val (icon, color) = when (activeMode) {
+        PrivilegeMode.ROOT -> R.drawable.magisk_icon to MaterialTheme.colorScheme.primary
+        PrivilegeMode.SHIZUKU -> R.drawable.shizuku to MaterialTheme.colorScheme.primary
+        PrivilegeMode.DHIZUKU -> R.drawable.dhizuku to MaterialTheme.colorScheme.primary
         else -> R.drawable.round_close to MaterialTheme.colorScheme.error
     }
 
@@ -113,7 +131,16 @@ private fun StatusIcon(
             .size(40.dp)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .clickable { onClick() },
+            .clickable {
+                if (availableModes.size > 1) {
+                    // Cycle through available modes
+                    val currentIndex = availableModes.indexOf(activeMode)
+                    val nextIndex = (currentIndex + 1) % availableModes.size
+                    onModeSelected(availableModes[nextIndex])
+                } else if (availableModes.isEmpty()) {
+                    onClick()
+                }
+            },
         contentAlignment = Alignment.Center
     ) {
         Icon(

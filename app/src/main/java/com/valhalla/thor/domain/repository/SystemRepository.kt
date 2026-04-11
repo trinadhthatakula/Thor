@@ -9,6 +9,7 @@ interface SystemRepository {
     // Core Actions
     suspend fun forceStopApp(packageName: String): Result<Unit>
     suspend fun clearCache(packageName: String): Result<Unit>
+    suspend fun clearAppData(packageName: String): Result<Unit>
     suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit>
 
     // Advanced

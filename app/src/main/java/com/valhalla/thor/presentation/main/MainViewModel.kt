@@ -248,6 +248,7 @@ class MainViewModel(
                 }
 
                 is AppClickAction.ClearCache -> quickAction(action) { manageAppUseCase.clearCache(it.packageName) }
+                is AppClickAction.ClearData -> quickAction(action) { manageAppUseCase.clearAppData(it.packageName) }
             }
         }
     }
@@ -384,6 +385,7 @@ class MainViewModel(
         is AppClickAction.Share -> appInfo
         is AppClickAction.Reinstall -> appInfo
         is AppClickAction.AppInfoSettings -> appInfo
+        is AppClickAction.ClearData -> appInfo
         else -> null
     }
 }

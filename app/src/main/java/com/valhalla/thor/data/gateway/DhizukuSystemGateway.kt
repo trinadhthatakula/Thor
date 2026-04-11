@@ -17,30 +17,23 @@ class DhizukuSystemGateway(
     }
 
     override suspend fun forceStopApp(packageName: String): Result<Unit> {
-        return try {
-            reflector.forceStop(packageName)
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        return if (reflector.forceStop(packageName)) Result.success(Unit)
+        else Result.failure(Exception("Force stop failed"))
     }
 
     override suspend fun clearCache(packageName: String): Result<Unit> {
-        return try {
-            reflector.clearCache(packageName)
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        return if (reflector.clearCache(packageName)) Result.success(Unit)
+        else Result.failure(Exception("Clear cache failed"))
+    }
+
+    override suspend fun clearAppData(packageName: String): Result<Unit> {
+        return if (reflector.clearData(packageName)) Result.success(Unit)
+        else Result.failure(Exception("Clear data failed"))
     }
 
     override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> {
-        return try {
-            reflector.setAppEnabled(packageName, !isDisabled)
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        return if (reflector.setAppEnabled(packageName, !isDisabled)) Result.success(Unit)
+        else Result.failure(Exception("Set app disabled state failed"))
     }
 
     override suspend fun rebootDevice(reason: String): Result<Unit> {

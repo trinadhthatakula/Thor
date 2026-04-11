@@ -62,6 +62,7 @@ fun AppInfoDialog(
 
     var showUninstallConfirmation by remember { mutableStateOf(false) }
     var showReinstallWarning by remember { mutableStateOf(false) }
+    var showClearDataConfirmation by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -101,6 +102,7 @@ fun AppInfoDialog(
                         }
 
                         is AppClickAction.Reinstall -> showReinstallWarning = true
+                        is AppClickAction.ClearData -> showClearDataConfirmation = true
                         else -> {
                             onAppAction(action)
                             if (action is AppClickAction.Launch) onDismiss()
@@ -112,6 +114,31 @@ fun AppInfoDialog(
     }
 
     // --- ALERTS ---
+
+    if (showClearDataConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showClearDataConfirmation = false },
+            icon = {
+                Icon(
+                    painterResource(R.drawable.danger),
+                    null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text("Clear App Data?") },
+            text = { Text("This will permanently delete all data for ${appInfo.appName}. This action cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onAppAction(AppClickAction.ClearData(appInfo))
+                    showClearDataConfirmation = false
+                    onDismiss()
+                }) { Text("Clear All Data") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearDataConfirmation = false }) { Text("Cancel") }
+            }
+        )
+    }
 
     if (showUninstallConfirmation) {
         AlertDialog(
@@ -303,15 +330,21 @@ private fun AppActionRow(
             if (appInfo.enabled) {
                 ActionItem(R.drawable.danger, "Kill") { onAction(AppClickAction.Kill(appInfo)) }
             }
-        }
 
-        // 3. Root Only
-        if (isRoot) {
+            // Moved here to support Shizuku/Dhizuku
             ActionItem(
                 R.drawable.clear_all,
                 "Cache"
             ) { onAction(AppClickAction.ClearCache(appInfo)) }
 
+            ActionItem(
+                R.drawable.delete,
+                "Data"
+            ) { onAction(AppClickAction.ClearData(appInfo)) }
+        }
+
+        // 3. Root Only
+        if (isRoot) {
             if (!appInfo.isSystem && appInfo.installerPackageName != "com.android.vending") {
                 ActionItem(R.drawable.apk_install, "Fix Store") {
                     onAction(

@@ -102,7 +102,48 @@ object Shizuku {
         return execute(command).first == 0
     }
 
-    fun clearCache(packageName: String): Boolean =
+    fun clearCache(packageName: String): Boolean {
+        val reflectionResult = runCatching {
+            val pm = asInterface("android.content.pm.IPackageManager", "package")
+            val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
+
+            try {
+                Bypass.invoke<Any?>(
+                    pm.javaClass,
+                    pm,
+                    "deleteApplicationCacheFiles",
+                    arrayOf(String::class.java, observerClass),
+                    packageName,
+                    null
+                )
+            } catch (_: NoSuchMethodException) {
+                Bypass.invoke<Any?>(
+                    pm.javaClass,
+                    pm,
+                    "deleteApplicationCacheFilesAsUser",
+                    arrayOf(String::class.java, Int::class.javaPrimitiveType!!, observerClass),
+                    packageName,
+                    android.os.Process.myUserHandle().hashCode(),
+                    null
+                )
+            }
+            true
+        }.getOrDefault(false)
+
+        if (reflectionResult) return true
+
+        // Fallback to shell rm -rf on common cache paths
+        val userId = android.os.Process.myUserHandle().hashCode()
+        val paths = listOf(
+            "/data/data/$packageName/cache",
+            "/data/user/$userId/$packageName/cache",
+            "/sdcard/Android/data/$packageName/cache"
+        )
+        val command = "rm -rf ${paths.joinToString(" ")}"
+        return execute(command).first == 0
+    }
+
+    fun clearAppData(packageName: String): Boolean =
         execute("pm clear $packageName").first == 0
 
     fun getTotalCacheSizeWithShizuku(): Long {

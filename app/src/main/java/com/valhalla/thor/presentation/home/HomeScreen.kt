@@ -88,8 +88,11 @@ fun HomeScreen(
         DashboardHeader(
             isRoot = state.isRootAvailable,
             isShizuku = state.isShizukuAvailable,
+            isDhizuku = state.isDhizukuAvailable,
+            activeMode = state.activePrivilegeMode,
             selectedType = state.selectedType,
             onTypeChanged = { viewModel.onTypeChanged(it) },
+            onPrivilegeChanged = { viewModel.onPrivilegeModeChanged(it) },
             onRestrictedStatusClick = { showPrivilegeDialog = true }
         )
 

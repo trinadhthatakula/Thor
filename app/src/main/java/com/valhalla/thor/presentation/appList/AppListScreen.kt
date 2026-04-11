@@ -167,6 +167,7 @@ fun AppListScreen(
                 isShizuku = state.isShizuku,
                 startAsGrid = true,
                 imageLoader = imageLoader,
+                installerNameMap = state.installerNameMap,
                 // Actions forwarded to ViewModel
                 onFilterTypeChanged = viewModel::updateFilterType,
                 onSortByChanged = viewModel::updateSort,

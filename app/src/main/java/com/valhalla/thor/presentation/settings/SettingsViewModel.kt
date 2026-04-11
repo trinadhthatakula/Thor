@@ -3,17 +3,57 @@ package com.valhalla.thor.presentation.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.data.security.BiometricHelper
+import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.SystemRepository
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class SettingsViewModel(
     private val preferenceRepository: PreferenceRepository,
+    private val systemRepository: SystemRepository,
     private val biometricHelper: BiometricHelper
 ) : ViewModel() {
+
+    data class SettingsUiState(
+        val prefs: UserPreferences = UserPreferences(),
+        val isRootAvailable: Boolean = false,
+        val isShizukuAvailable: Boolean = false,
+        val isDhizukuAvailable: Boolean = false
+    )
+
+    private val _systemStatus = combine(
+        preferenceRepository.userPreferences,
+        // We can't really observe system status easily without a flow, 
+        // but we can check it once or periodically.
+        // For simplicity, let's just use a flow that emits once and then combine.
+        kotlinx.coroutines.flow.flow {
+            emit(Triple(
+                systemRepository.isRootAvailable(),
+                systemRepository.isShizukuAvailable(),
+                systemRepository.isDhizukuAvailable()
+            ))
+        }
+    ) { prefs, status ->
+        SettingsUiState(
+            prefs = prefs,
+            isRootAvailable = status.first,
+            isShizukuAvailable = status.second,
+            isDhizukuAvailable = status.third
+        )
+    }
+
+    val uiState: StateFlow<SettingsUiState> = _systemStatus
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            SettingsUiState()
+        )
 
     val preferences = preferenceRepository.userPreferences
         .stateIn(
@@ -42,5 +82,9 @@ class SettingsViewModel(
 
     fun setBiometricLock(enabled: Boolean) {
         viewModelScope.launch { preferenceRepository.setBiometricLock(enabled) }
+    }
+
+    fun setPrivilegeMode(mode: PrivilegeMode?) {
+        viewModelScope.launch { preferenceRepository.setPrivilegeMode(mode) }
     }
 }
