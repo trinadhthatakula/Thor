@@ -105,6 +105,7 @@ fun AppList(
     onSortByChanged: (SortBy) -> Unit = {},
     onFilterSelected: (String?) -> Unit,
     onFilterTypeChanged: (FilterType) -> Unit = {},
+    onListTypeChanged: (AppListType) -> Unit = {},
     onAppInfoSelected: (AppInfo) -> Unit,
     onMultiAppAction: (MultiAppAction) -> Unit = {}
 ) {
@@ -140,7 +141,8 @@ fun AppList(
             // Search Bar
             AppSearchBar(
                 query = searchQuery,
-                onQueryChange = { searchQuery = it }
+                onQueryChange = { searchQuery = it },
+                onOpenConfig = { showFilterSheet = true }
             )
 
             // System App Warning
@@ -160,17 +162,22 @@ fun AppList(
                     enter = expandVertically(),
                     exit = shrinkVertically()
                 ) {
-                    AppControlBar(
-                        installers = installers,
-                        selectedFilter = selectedFilter,
-                        filterType = filterType,
-                        appListType = appListType,
-                        isGrid = isGrid,
-                        installerNameMap = installerNameMap,
-                        onToggleView = { isGrid = !isGrid },
-                        onOpenFilters = { showFilterSheet = true },
-                        onFilterSelected = onFilterSelected
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        AppQuickFilters(
+                            installers = installers,
+                            selectedFilter = selectedFilter,
+                            filterType = filterType,
+                            appListType = appListType,
+                            installerNameMap = installerNameMap,
+                            onFilterSelected = onFilterSelected
+                        )
+                    }
                 }
 
                 this@Column.AnimatedVisibility(
@@ -232,20 +239,67 @@ fun AppList(
             filterType = filterType,
             sortBy = sortBy,
             sortOrder = sortOrder,
+            isGrid = isGrid,
+            appListType = appListType,
             onFilterTypeChanged = onFilterTypeChanged,
             onSortByChanged = onSortByChanged,
-            onSortOrderChanged = onSortOrderSelected
+            onSortOrderChanged = onSortOrderSelected,
+            onToggleView = { isGrid = !isGrid },
+            onListTypeChanged = onListTypeChanged
         )
     }
 }
 
 // --- SUB-COMPONENTS ---
 
+@Composable
+private fun AppQuickFilters(
+    installers: List<String?>,
+    selectedFilter: String?,
+    filterType: FilterType,
+    appListType: AppListType,
+    installerNameMap: Map<String, String>,
+    onFilterSelected: (String?) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        val chips = if (filterType == FilterType.Source) installers
+        else (filterType as? FilterType.State)?.types ?: emptyList()
+
+        chips.forEach { item ->
+            val label = when {
+                filterType == FilterType.Source -> {
+                    if (item == "All") "All"
+                    else installerNameMap[item] ?: item
+                    ?: if (appListType != AppListType.SYSTEM) "Others" else "System"
+                }
+
+                else -> item ?: ""
+            }
+
+            FilterChip(
+                selected = item == selectedFilter,
+                onClick = { onFilterSelected(item) },
+                label = { Text(label) },
+                colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                )
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AppSearchBar(
     query: String,
-    onQueryChange: (String) -> Unit
+    onQueryChange: (String) -> Unit,
+    onOpenConfig: () -> Unit
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
     val isImeVisible = WindowInsets.isImeVisible
@@ -255,114 +309,78 @@ private fun AppSearchBar(
         else onQueryChange("")
     }
 
-    Box(
-        modifier = Modifier
-            .padding(horizontal = 24.dp, vertical = 8.dp)
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(32.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(4.dp)
-    ) {
-        BasicTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Text,
-                capitalization = KeyboardCapitalization.Words,
-                imeAction = ImeAction.Search
-            ),
-            decorationBox = { innerTextField ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        painter = painterResource(R.drawable.round_search),
-                        contentDescription = "Search",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Box(modifier = Modifier.weight(1f)) {
-                        if (query.isEmpty()) {
-                            Text(
-                                "Search apps...",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        innerTextField()
-                    }
-                    if (query.isNotEmpty()) {
-                        Icon(
-                            painter = painterResource(R.drawable.round_close),
-                            contentDescription = "Clear",
-                            tint = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .clickable { onQueryChange("") }
-                                .padding(8.dp)
-                        )
-                    }
-                }
-            }
-        )
-    }
-}
-
-@Composable
-private fun AppControlBar(
-    installers: List<String?>,
-    selectedFilter: String?,
-    filterType: FilterType,
-    appListType: AppListType,
-    isGrid: Boolean,
-    installerNameMap: Map<String, String>,
-    onToggleView: () -> Unit,
-    onOpenFilters: () -> Unit,
-    onFilterSelected: (String?) -> Unit
-) {
     Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        IconButton(onClick = onOpenFilters) {
-            Icon(painterResource(R.drawable.filter_list), "Filters")
-        }
-
-        Row(
+        Box(
             modifier = Modifier
                 .weight(1f)
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .clip(RoundedCornerShape(32.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .padding(4.dp)
         ) {
-            val chips = if (filterType == FilterType.Source) installers
-            else (filterType as? FilterType.State)?.types ?: emptyList()
-
-            chips.forEach { item ->
-                val label = when {
-                    filterType == FilterType.Source -> {
-                        if (item == "All") "All"
-                        else installerNameMap[item] ?: item
-                        ?: if (appListType != AppListType.SYSTEM) "Others" else "System"
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Text,
+                    capitalization = KeyboardCapitalization.Words,
+                    imeAction = ImeAction.Search
+                ),
+                decorationBox = { innerTextField ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            painter = painterResource(R.drawable.round_search),
+                            contentDescription = "Search",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Box(modifier = Modifier.weight(1f)) {
+                            if (query.isEmpty()) {
+                                Text(
+                                    "Search apps...",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            innerTextField()
+                        }
+                        if (query.isNotEmpty()) {
+                            Icon(
+                                painter = painterResource(R.drawable.round_close),
+                                contentDescription = "Clear",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable { onQueryChange("") }
+                                    .padding(8.dp)
+                            )
+                        }
                     }
-
-                    else -> item ?: ""
                 }
-
-                FilterChip(
-                    selected = item == selectedFilter,
-                    onClick = { onFilterSelected(item) },
-                    label = { Text(label) }
-                )
-            }
+            )
         }
 
-        IconButton(onClick = onToggleView) {
+        IconButton(
+            onClick = onOpenConfig,
+            modifier = Modifier
+                .size(48.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+        ) {
             Icon(
-                painterResource(if (isGrid) R.drawable.view_stream else R.drawable.grid_view),
-                "Toggle View"
+                painter = painterResource(R.drawable.filter_list),
+                contentDescription = "Config",
+                tint = MaterialTheme.colorScheme.primary
             )
         }
     }
@@ -605,9 +623,13 @@ private fun AppFilterSheet(
     filterType: FilterType,
     sortBy: SortBy,
     sortOrder: SortOrder,
+    isGrid: Boolean,
+    appListType: AppListType,
     onFilterTypeChanged: (FilterType) -> Unit,
     onSortByChanged: (SortBy) -> Unit,
-    onSortOrderChanged: (SortOrder) -> Unit
+    onSortOrderChanged: (SortOrder) -> Unit,
+    onToggleView: () -> Unit,
+    onListTypeChanged: (AppListType) -> Unit
 ) {
     var activeTab by remember { mutableStateOf(SheetTab.FILTERS) }
 
@@ -626,6 +648,46 @@ private fun AppFilterSheet(
             )
             Spacer(Modifier.height(24.dp))
 
+            // 1. App Type Selector (Top Row)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("App Source", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                ConnectedButtonGroup(
+                    items = AppListType.entries.map { type ->
+                        ConnectedButtonGroupItem.Icon(
+                            iconRes = if (type == AppListType.USER) R.drawable.apps else R.drawable.android,
+                            contentDescription = type.name
+                        )
+                    },
+                    selectedIndex = AppListType.entries.indexOf(appListType),
+                    onItemSelected = { onListTypeChanged(AppListType.entries[it]) }
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            // 2. View Toggle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("View Mode", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                ConnectedButtonGroup(
+                    items = listOf(
+                        ConnectedButtonGroupItem.Icon(R.drawable.grid_view, "Grid"),
+                        ConnectedButtonGroupItem.Icon(R.drawable.view_stream, "List")
+                    ),
+                    selectedIndex = if (isGrid) 0 else 1,
+                    onItemSelected = { onToggleView() }
+                )
+            }
+
+            Spacer(Modifier.height(32.dp))
+
             ConnectedButtonGroup(
                 items = SheetTab.entries.map { ConnectedButtonGroupItem.Label(it.label()) },
                 selectedIndex = SheetTab.entries.indexOf(activeTab),
@@ -637,19 +699,27 @@ private fun AppFilterSheet(
 
             when (activeTab) {
                 SheetTab.FILTERS -> {
-                    LazyColumn {
+                    LazyColumn(
+                        modifier = Modifier.height(200.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         items(filterTypes) { type ->
                             ListItem(
                                 headlineContent = { Text(type.asGeneralName()) },
                                 trailingContent = {
                                     if (filterType == type) Icon(
                                         painterResource(R.drawable.check_circle),
-                                        null
+                                        null,
+                                        tint = MaterialTheme.colorScheme.primary
                                     )
                                 },
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable { onFilterTypeChanged(type) }
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f))
+                                    .clickable { onFilterTypeChanged(type) },
+                                colors = androidx.compose.material3.ListItemDefaults.colors(
+                                    containerColor = Color.Transparent
+                                )
                             )
                         }
                     }
@@ -673,20 +743,28 @@ private fun AppFilterSheet(
                             leadingIcon = { Icon(painterResource(R.drawable.arrow_downward), null) }
                         )
                     }
-                    Spacer(Modifier.height(8.dp))
-                    LazyColumn {
+                    Spacer(Modifier.height(12.dp))
+                    LazyColumn(
+                        modifier = Modifier.height(200.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         items(SortBy.entries) { item ->
                             ListItem(
                                 headlineContent = { Text(item.asGeneralName()) },
                                 trailingContent = {
                                     if (sortBy == item) Icon(
                                         painterResource(R.drawable.check_circle),
-                                        null
+                                        null,
+                                        tint = MaterialTheme.colorScheme.primary
                                     )
                                 },
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable { onSortByChanged(item) }
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f))
+                                    .clickable { onSortByChanged(item) },
+                                colors = androidx.compose.material3.ListItemDefaults.colors(
+                                    containerColor = Color.Transparent
+                                )
                             )
                         }
                     }

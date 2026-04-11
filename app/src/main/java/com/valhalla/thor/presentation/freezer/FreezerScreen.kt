@@ -6,10 +6,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -125,17 +127,8 @@ fun FreezerScreen(
                 )
             }
 
-            // RIGHT: App Source Switcher
-            ConnectedButtonGroup(
-                items = AppListType.entries.map { type ->
-                    ConnectedButtonGroupItem.Icon(
-                        iconRes = if (type == AppListType.USER) R.drawable.apps else R.drawable.android,
-                        contentDescription = type.name
-                    )
-                },
-                selectedIndex = AppListType.entries.indexOf(state.appListType),
-                onItemSelected = { viewModel.updateListType(AppListType.entries[it]) }
-            )
+            // RIGHT: App Source Switcher moved to config
+            Spacer(Modifier.width(48.dp))
         }
 
         // --- List Content ---
@@ -164,6 +157,7 @@ fun FreezerScreen(
                 onSortByChanged = viewModel::updateSort,
                 onSortOrderSelected = viewModel::updateSortOrder,
                 onFilterSelected = { it?.let { filter -> viewModel.updateFilter(filter) } },
+                onListTypeChanged = { viewModel.updateListType(it) },
                 // Multi-Selection Actions
                 onMultiAppAction = { action ->
                     if (action is MultiAppAction.Freeze || action is MultiAppAction.UnFreeze) {

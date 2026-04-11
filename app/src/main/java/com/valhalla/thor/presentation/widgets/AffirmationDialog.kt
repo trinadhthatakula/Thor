@@ -1,12 +1,23 @@
 package com.valhalla.thor.presentation.widgets
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.valhalla.thor.domain.model.MultiAppAction
 
 @Composable
@@ -20,38 +31,51 @@ fun AffirmationDialog(
 ) {
     AlertDialog(
         modifier = modifier,
-        onDismissRequest = {},
+        onDismissRequest = onRejected,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(48.dp),
         confirmButton = {
-            TextButton(
-                onClick = {
-                    onConfirm()
-                }
-            ) {
-                Text("Yes")
+            TextButton(onClick = onConfirm) {
+                Text("Confirm", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             }
         },
         dismissButton = {
-            TextButton(
-                onClick = {
-                    onRejected()
-                }
-            ) {
-                Text("No")
+            TextButton(onClick = onRejected) {
+                Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         icon = {
             icon?.let {
-                Icon(
-                    painter = painterResource(it),
-                    ""
-                )
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        painter = painterResource(it),
+                        contentDescription = null,
+                        modifier = Modifier.size(32.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         },
         title = {
-            Text(title)
+            Text(
+                title, 
+                style = MaterialTheme.typography.headlineSmall, 
+                fontWeight = FontWeight.Black,
+                letterSpacing = (-1).sp
+            )
         },
         text = {
-            Text(text)
+            Text(
+                text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     )
 }
@@ -66,60 +90,58 @@ fun MultiAppAffirmationDialog(
 ) {
     AlertDialog(
         modifier = modifier,
-        onDismissRequest = {},
+        onDismissRequest = onRejected,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(48.dp),
         confirmButton = {
-            TextButton(
-                onClick = {
-                    onConfirm()
-                }
-            ) {
-                Text("Yes")
+            TextButton(onClick = onConfirm) {
+                Text("Confirm", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             }
         },
         dismissButton = {
-            TextButton(
-                onClick = {
-                    onRejected()
-                }
-            ) {
-                Text("No")
+            TextButton(onClick = onRejected) {
+                Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         title = {
-            Text(title)
+            Text(
+                title,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Black,
+                letterSpacing = (-1).sp
+            )
         },
         text = {
             Text(
-                when (multiAppAction) {
-
+                text = when (multiAppAction) {
                     is MultiAppAction.ClearCache -> {
-                        val appCount = multiAppAction.appList.size - 1
-                        "This will clear Cache of $appCount apps, Do you want to continue?"
+                        "This will clear Cache of ${multiAppAction.appList.size} apps. Proceed?"
                     }
 
                     is MultiAppAction.Freeze -> {
                         val activeAppsCount = multiAppAction.appList.count { it.enabled }
-                        "$activeAppsCount of ${multiAppAction.appList.size} apps are active, Do you want to freeze them?"
+                        "$activeAppsCount of ${multiAppAction.appList.size} apps are active. Freeze them?"
                     }
 
                     is MultiAppAction.Kill -> {
-                        "You want to kill ${multiAppAction.appList.size} apps?"
+                        "Force stop ${multiAppAction.appList.size} apps?"
                     }
 
                     is MultiAppAction.ReInstall -> {
-                        val otherApps =
-                            multiAppAction.appList.filter { it.installerPackageName != "com.android.vending" }
-                        "${otherApps.size} of ${multiAppAction.appList.size} are not installed from Play store, you want to reinstall them with Google Play store?"
+                        "Reinstall ${multiAppAction.appList.size} apps with Google Play Store signature?"
                     }
 
-                    is MultiAppAction.Share -> "You want to share ${multiAppAction.appList.size} apps?"
+                    is MultiAppAction.Share -> "Share ${multiAppAction.appList.size} apps?"
                     is MultiAppAction.UnFreeze -> {
-                        val frozenAppsCount = multiAppAction.appList.count { it.enabled.not() }
-                        "$frozenAppsCount of ${multiAppAction.appList.size} apps are frozen, Do you want to un freeze them?"
+                        val frozenAppsCount = multiAppAction.appList.count { !it.enabled }
+                        "$frozenAppsCount of ${multiAppAction.appList.size} apps are frozen. Unfreeze them?"
                     }
 
-                    is MultiAppAction.Uninstall -> "You want to Uninstall ${multiAppAction.appList.size} apps?"
-                })
+                    is MultiAppAction.Uninstall -> "Uninstall ${multiAppAction.appList.size} apps?"
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     )
 }

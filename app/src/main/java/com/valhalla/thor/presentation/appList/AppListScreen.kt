@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -37,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import android.widget.Toast
+import androidx.compose.foundation.layout.width
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.ImageLoader
 import coil3.compose.rememberAsyncImagePainter
@@ -132,17 +134,8 @@ fun AppListScreen(
                 )
             }
 
-            // RIGHT: App Type Switcher (User / System)
-            ConnectedButtonGroup(
-                items = AppListType.entries.map { type ->
-                    ConnectedButtonGroupItem.Icon(
-                        iconRes = if (type == AppListType.USER) R.drawable.apps else R.drawable.android,
-                        contentDescription = type.name
-                    )
-                },
-                selectedIndex = AppListType.entries.indexOf(state.appListType),
-                onItemSelected = { viewModel.updateListType(AppListType.entries[it]) }
-            )
+            // RIGHT: App Type Switcher moved to config
+            Spacer(Modifier.width(48.dp))
         }
 
         // 2. The List Content
@@ -180,6 +173,7 @@ fun AppListScreen(
                 onAppInfoSelected = { appInfo ->
                     viewModel.selectApp(appInfo.packageName)
                 },
+                onListTypeChanged = { viewModel.updateListType(it) },
                 onMultiAppAction = { action ->
                     if (action is MultiAppAction.Freeze || action is MultiAppAction.UnFreeze) {
                         viewModel.performMultiAction(action)
