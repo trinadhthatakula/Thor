@@ -3,120 +3,62 @@
 package com.valhalla.thor.data.source.local.shizuku
 
 import android.annotation.SuppressLint
-import android.app.AppOpsManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.IPackageInstaller
-import android.content.pm.IPackageManager
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.core.content.getSystemService
 import com.valhalla.bypass.Bypass
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.util.Logger
-import rikka.shizuku.ShizukuBinderWrapper
-import rikka.shizuku.SystemServiceHelper
-import java.lang.reflect.Method
 
 @SuppressLint("PrivateApi")
 class ShizukuReflector(
-    private val context: Context
+    val context: Context
 ) {
 
-    private val myUserId: Int
-        get() = android.os.Process.myUserHandle().hashCode()
-
-    private fun asInterface(className: String, serviceName: String): Any {
-        val binder = SystemServiceHelper.getSystemService(serviceName)
-        val clazz = Class.forName("$className\$Stub")
-        return Bypass.invoke(
-            clazz,
-            null,
-            "asInterface",
-            arrayOf(android.os.IBinder::class.java),
-            ShizukuBinderWrapper(binder)
-        )
-    }
-
-    private val packageManager: Any by lazy {
-        asInterface("android.content.pm.IPackageManager", "package")
-    }
-
-    @SuppressLint("PrivateApi")
-    fun clearCache(packageName: String) {
-        try {
-            val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
-
-            try {
-                // Try 2-parameter version
-                Bypass.invoke(
-                    packageManager.javaClass,
-                    packageManager,
-                    "deleteApplicationCacheFiles",
-                    arrayOf(String::class.java, observerClass),
-                    packageName,
-                    null
-                )
-            } catch (e: NoSuchMethodException) {
-                // Try 3-parameter version (with userId)
-                Bypass.invoke<Any?>(
-                    packageManager.javaClass,
-                    packageManager,
-                    "deleteApplicationCacheFilesAsUser",
-                    arrayOf(String::class.java, Int::class.javaPrimitiveType!!, observerClass),
-                    packageName,
-                    myUserId,
-                    null
-                )
-            }
-
+    fun clearCache(packageName: String): Boolean {
+        return try {
+            Shizuku.clearCache(packageName)
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
                 Logger.e("ShizukuReflector", "clearCache failed: ${e.message}")
+            false
         }
     }
 
-    fun forceStop(packageName: String) {
-        try {
-            // Use the local Shizuku object helper
+    fun clearData(packageName: String): Boolean {
+        return try {
+            Shizuku.clearAppData(packageName)
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG)
+                Logger.e("ShizukuReflector", "clearData failed: ${e.message}")
+            false
+        }
+    }
+
+    fun forceStop(packageName: String): Boolean {
+        return try {
             Shizuku.forceStopApp(context, packageName)
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
                 Logger.e("ShizukuReflector", "forceStop failed", e)
+            false
         }
     }
 
-    fun setAppEnabled(packageName: String, enabled: Boolean) {
-        try {
-            // Use the local Shizuku object helper
+    fun setAppEnabled(packageName: String, enabled: Boolean): Boolean {
+        return try {
             Shizuku.setAppDisabled(context, packageName, !enabled)
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
                 Logger.e("ShizukuReflector", "setAppEnabled failed", e)
+            false
         }
     }
-
-    // Helper to find method using standard reflection OR Bypass
-    private fun findMethod(
-        clazz: Class<*>,
-        name: String,
-        vararg parameterTypes: Class<*>
-    ): Method? {
-        return try {
-            clazz.getMethod(name, *parameterTypes)
-        } catch (_: Exception) {
-            try {
-                Bypass.getDeclaredMethod(clazz, name, *parameterTypes)
-            } catch (_: Exception) {
-                null
-            }
-        }
-    }
-
-    fun packageUri(packageName: String) = "package:$packageName"
 
     fun packageUid(packageName: String) =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) context.packageManager.getPackageUid(
@@ -156,76 +98,34 @@ class ShizukuReflector(
         (Bypass.getField<Int>(it, "privateFlags")) and 8 == 8
     } ?: false
 
-    fun setAppDisabled(packageName: String, disabled: Boolean): Boolean {
-        runCatching {
-            val newState = when {
-                !disabled -> PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-                else -> PackageManager.COMPONENT_ENABLED_STATE_DISABLED
-            }
-            Bypass.invoke<Any?>(
-                packageManager.javaClass,
-                packageManager,
-                "setApplicationEnabledSetting",
-                arrayOf(String::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, String::class.java),
-                packageName,
-                newState,
-                0,
-                myUserId,
-                context.packageName
-            )
-        }.onFailure {
-            it.printStackTrace()
-        }
-        return isAppDisabled(packageName) == disabled
-    }
+    fun setAppRestricted(packageName: String, restricted: Boolean): Boolean = 
+        Shizuku.setAppRestricted(context, packageName, restricted)
 
-    fun setAppRestricted(packageName: String, restricted: Boolean): Boolean = runCatching {
-        context.getSystemService<AppOpsManager>()?.let {
-            Bypass.invoke<Any?>(
-                it::class.java,
-                it,
-                "setMode",
-                arrayOf(Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, String::class.java, Int::class.javaPrimitiveType!!),
-                Bypass.invoke<Int>(
-                    AppOpsManager::class.java,
-                    null,
-                    "strOpToOp",
-                    "android:run_any_in_background"
-                ),
-                packageUid(packageName),
-                packageName,
-                if (restricted) AppOpsManager.MODE_IGNORED else AppOpsManager.MODE_ALLOWED
-            )
-        }
-        true
-    }.getOrElse {
-        it.printStackTrace()
-        false
-    }
+    fun setAppSuspended(packageName: String, suspended: Boolean): Boolean =
+        Shizuku.setAppSuspended(context, packageName, suspended)
 
     fun uninstallApp(packageName: String, resetToFactory: Boolean = false): Boolean {
-        val packageInfo = context.packageManager.getInfoForPackage(packageName) ?: return false
-        val isSystem = (packageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-        val hasUpdates =
-            (packageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+        return runCatching {
+            val packageInfo = context.packageManager.getInfoForPackage(packageName) ?: return false
+            val isSystem = (packageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            val hasUpdates =
+                (packageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
 
-        val shouldReset = resetToFactory && isSystem && hasUpdates
-        val broadcastIntent = Intent("io.github.samolego.canta.UNINSTALL_RESULT_ACTION")
-        val intent = PendingIntent.getBroadcast(
-            context,
-            0,
-            broadcastIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val packageInstaller = getPackageInstaller()
+            val shouldReset = resetToFactory && isSystem && hasUpdates
+            val broadcastIntent = Intent("io.github.samolego.canta.UNINSTALL_RESULT_ACTION")
+            val intent = PendingIntent.getBroadcast(
+                context,
+                0,
+                broadcastIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val packageInstaller = getPackageInstaller()
 
-        // 0x00000004 = PackageManager.DELETE_SYSTEM_APP
-        // 0x00000002 = PackageManager.DELETE_ALL_USERS
-        val flags = if (isSystem) 0x00000004 else 0x00000002
+            // 0x00000004 = PackageManager.DELETE_SYSTEM_APP
+            // 0x00000002 = PackageManager.DELETE_ALL_USERS
+            val flags = if (isSystem) 0x00000004 else 0x00000002
 
-        if (shouldReset) {
-            try {
-
+            if (shouldReset) {
                 Bypass.invoke<Any?>(
                     PackageInstaller::class.java,
                     packageInstaller,
@@ -234,24 +134,8 @@ class ShizukuReflector(
                     flags,
                     intent.intentSender
                 )
-
-                try {
-                    val updatedPackageInfo =
-                        context.packageManager.getInfoForPackage(packageName) ?: return false
-                    // Check if package still has updates; value intentionally ignored here
-                    (updatedPackageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-
-            } catch (e: Exception) {
-                e.printStackTrace()
             }
-        }
 
-
-
-        return try {
             Bypass.invoke<Any?>(
                 PackageInstaller::class.java,
                 packageInstaller,
@@ -261,9 +145,10 @@ class ShizukuReflector(
                 intent.intentSender
             )
             true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
+        }.getOrElse {
+            // Fallback to Shell uninstallation
+            Logger.w("ShizukuReflector", "Reflection uninstall failed, falling back to shell: ${it.message}")
+            Shizuku.uninstallApp(context, packageName)
         }
     }
 
@@ -327,7 +212,7 @@ class ShizukuReflector(
 
     fun getPackageInstaller(): PackageInstaller {
         val iPackageInstaller = ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller()
-        val root = rikka.shizuku.Shizuku.getUid() == 0
+        val root = try { rikka.shizuku.Shizuku.getUid() == 0 } catch (_: Exception) { false }
         val userId = if (root) android.os.Process.myUserHandle().hashCode() else 0
 
         // The reason for use "com.android.shell" as installer package under adb is that

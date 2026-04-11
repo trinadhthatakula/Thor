@@ -9,4 +9,7 @@ sealed interface MultiAppAction {
     data class Kill(val appList: List<AppInfo>) : MultiAppAction
 
     data class ClearCache(val appList: List<AppInfo>) : MultiAppAction
+    data class ClearData(val appList: List<AppInfo>) : MultiAppAction
+    data class Suspend(val appList: List<AppInfo>) : MultiAppAction
+    data class UnSuspend(val appList: List<AppInfo>) : MultiAppAction
 }

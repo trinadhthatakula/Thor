@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
@@ -22,11 +23,14 @@ data class HomeUiState(
     // Stats
     val activeAppCount: Int = 0,
     val frozenAppCount: Int = 0,
+    val suspendedAppCount: Int = 0,
     val unknownInstallerCount: Int = 0,
     val distributionData: Map<String, Int> = emptyMap(),
     // Status
     val isRootAvailable: Boolean = false,
     val isShizukuAvailable: Boolean = false,
+    val isDhizukuAvailable: Boolean = false,
+    val activePrivilegeMode: PrivilegeMode? = null,
 
     // Preferences
     val showReinstallCard: Boolean = true // <--- Controlled by DataStore
@@ -47,7 +51,16 @@ class HomeViewModel(
 
     // Combine internal data processing with user preferences
     val state = combine(_internalState, preferenceRepository.userPreferences) { internal, prefs ->
-        internal.copy(showReinstallCard = prefs.showReinstallAllCard)
+        val activeMode = prefs.preferredPrivilegeMode ?: when {
+            internal.isRootAvailable -> PrivilegeMode.ROOT
+            internal.isShizukuAvailable -> PrivilegeMode.SHIZUKU
+            internal.isDhizukuAvailable -> PrivilegeMode.DHIZUKU
+            else -> null
+        }
+        internal.copy(
+            showReinstallCard = prefs.showReinstallAllCard,
+            activePrivilegeMode = activeMode
+        )
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
@@ -66,11 +79,12 @@ class HomeViewModel(
             _internalState.update { it.copy(isLoading = true) }
             val hasRoot = systemRepository.isRootAvailable()
             val hasShizuku = systemRepository.isShizukuAvailable()
+            val hasDhizuku = systemRepository.isDhizukuAvailable()
 
             getInstalledAppsUseCase().collect { (userApps, systemApps) ->
                 lastUserApps = userApps
                 lastSystemApps = systemApps
-                processData(userApps, systemApps, _internalState.value.selectedType, hasRoot, hasShizuku)
+                processData(userApps, systemApps, _internalState.value.selectedType, hasRoot, hasShizuku, hasDhizuku)
             }
         }
     }
@@ -79,7 +93,15 @@ class HomeViewModel(
         _internalState.update { it.copy(selectedType = type) }
         typeChangeJob?.cancel()
         typeChangeJob = viewModelScope.launch(Dispatchers.IO) {
-            processData(lastUserApps, lastSystemApps, type, _internalState.value.isRootAvailable, _internalState.value.isShizukuAvailable)
+            val s = _internalState.value
+            processData(lastUserApps, lastSystemApps, type, s.isRootAvailable, s.isShizukuAvailable, s.isDhizukuAvailable)
+        }
+    }
+
+    fun onPrivilegeModeChanged(mode: PrivilegeMode) {
+        viewModelScope.launch {
+            preferenceRepository.setPrivilegeMode(mode)
+            loadDashboardData() // Refresh everything
         }
     }
 
@@ -94,12 +116,14 @@ class HomeViewModel(
         systemApps: List<AppInfo>,
         selectedType: AppListType,
         hasRoot: Boolean,
-        hasShizuku: Boolean
+        hasShizuku: Boolean,
+        hasDhizuku: Boolean
     ) {
         val filteredApps = if (selectedType == AppListType.USER) userApps else systemApps
         
-        val activeCount = filteredApps.count { it.enabled }
+        val activeCount = filteredApps.count { it.enabled && !it.isSuspended }
         val frozenCount = filteredApps.count { !it.enabled }
+        val suspendedCount = filteredApps.count { it.isSuspended && it.enabled }
 
         val unknownCount = if (selectedType == AppListType.USER) {
             userApps.count {
@@ -126,10 +150,12 @@ class HomeViewModel(
                 selectedType = selectedType,
                 activeAppCount = activeCount,
                 frozenAppCount = frozenCount,
+                suspendedAppCount = suspendedCount,
                 unknownInstallerCount = unknownCount,
                 distributionData = distribution,
                 isRootAvailable = hasRoot,
-                isShizukuAvailable = hasShizuku
+                isShizukuAvailable = hasShizuku,
+                isDhizukuAvailable = hasDhizuku
             )
         }
     }

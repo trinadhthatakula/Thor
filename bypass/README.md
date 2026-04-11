@@ -10,7 +10,7 @@ Android enforces hidden API restrictions via a denylist checked in `java.lang.re
 
 ```
 :bypass         — the runtime implementation (Bypass.kt)
-:vm-runtime     — compileOnly Kotlin stubs for dalvik.system.VMRuntime
+:vm-runtime     — compileOnly Java stubs for dalvik.system.VMRuntime
 ```
 
 `:vm-runtime` is a plain `java-library` that provides stub classes so `:bypass` can reference `VMRuntime.setHiddenApiExemptions()` at compile time without those classes being on the normal classpath. The real implementations are always present on-device.

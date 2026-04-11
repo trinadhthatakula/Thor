@@ -26,7 +26,8 @@ data class AppEntity(
     val sharedDataDir: String,
     val lastUpdateTime: Long,
     val firstInstallTime: Long,
-    val isDebuggable: Boolean
+    val isDebuggable: Boolean,
+    val isSuspended: Boolean
 ) {
     fun toDomain(): AppInfo {
         return AppInfo(
@@ -50,7 +51,8 @@ data class AppEntity(
             sharedDataDir = sharedDataDir,
             lastUpdateTime = lastUpdateTime,
             firstInstallTime = firstInstallTime,
-            isDebuggable = isDebuggable
+            isDebuggable = isDebuggable,
+            isSuspended = isSuspended
         )
     }
 
@@ -77,7 +79,8 @@ data class AppEntity(
                 sharedDataDir = appInfo.sharedDataDir,
                 lastUpdateTime = appInfo.lastUpdateTime,
                 firstInstallTime = appInfo.firstInstallTime,
-                isDebuggable = appInfo.isDebuggable
+                isDebuggable = appInfo.isDebuggable,
+                isSuspended = appInfo.isSuspended
             )
         }
     }

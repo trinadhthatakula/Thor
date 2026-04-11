@@ -105,6 +105,13 @@ fun MainScreen(
                     }
                     context.startActivity(Intent.createChooser(intent, "Share App"))
                 }
+
+                is MainSideEffect.NormalUninstall -> {
+                    val intent = Intent(Intent.ACTION_DELETE).apply {
+                        data = "package:${effect.packageName}".toUri()
+                    }
+                    context.startActivity(intent)
+                }
             }
         }
     }
@@ -146,6 +153,7 @@ fun MainScreen(
 
             HorizontalPager(
                 state = pagerState,
+                userScrollEnabled = false,
                 beyondViewportPageCount = 1,
                 modifier = Modifier.fillMaxSize()
             ) { page ->

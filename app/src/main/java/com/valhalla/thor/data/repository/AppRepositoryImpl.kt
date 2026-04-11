@@ -89,10 +89,13 @@ class AppRepositoryImpl(
                         val packageName = packInfo.packageName
                         
                         val cachedEntry = cachedMap[packageName]
+                        val isSuspended = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED) != 0
+                        
                         if (!forceRefresh && 
                             cachedEntry != null && 
                             cachedEntry.lastUpdateTime == packInfo.lastUpdateTime &&
-                            cachedEntry.enabled == appInfo.enabled) {
+                            cachedEntry.enabled == appInfo.enabled &&
+                            cachedEntry.isSuspended == isSuspended) {
                             currentList.add(cachedEntry.toDomain())
                         } else {
                             val mapped = AppInfo.mapToAppInfo(packInfo, appInfo, pm, isLightweight = true)
@@ -121,15 +124,14 @@ class AppRepositoryImpl(
             }
         }
 
-        // Register Receiver
-        val receiver = object : BroadcastReceiver() {
+        // Receiver for Package-specific changes (requires "package" data scheme)
+        val packageReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
-                // Signal the worker to refresh. Non-blocking.
                 triggerChannel.trySend(Unit)
             }
         }
 
-        val filter = IntentFilter().apply {
+        val packageFilter = IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED)
             addAction(Intent.ACTION_PACKAGE_REMOVED)
             addAction(Intent.ACTION_PACKAGE_FULLY_REMOVED)
@@ -138,10 +140,24 @@ class AppRepositoryImpl(
             addDataScheme("package")
         }
 
-        context.registerReceiver(receiver, filter)
+        // Receiver for General Package changes (No data scheme)
+        val generalReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                triggerChannel.trySend(Unit)
+            }
+        }
+
+        val generalFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGES_SUSPENDED)
+            addAction(Intent.ACTION_PACKAGES_UNSUSPENDED)
+        }
+
+        context.registerReceiver(packageReceiver, packageFilter)
+        context.registerReceiver(generalReceiver, generalFilter)
 
         awaitClose {
-            context.unregisterReceiver(receiver)
+            context.unregisterReceiver(packageReceiver)
+            context.unregisterReceiver(generalReceiver)
             worker.cancel()
         }
     }.flowOn(Dispatchers.IO)

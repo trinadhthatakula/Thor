@@ -1,9 +1,13 @@
 package com.valhalla.thor.presentation.appList
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -12,7 +16,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -32,7 +35,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import android.widget.Toast
+import androidx.compose.foundation.layout.width
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.ImageLoader
 import coil3.compose.rememberAsyncImagePainter
@@ -83,44 +89,53 @@ fun AppListScreen(
         }
     }
 
+    // Handle Feedback (Toasts)
+    LaunchedEffect(state.actionMessage) {
+        state.actionMessage?.let { message ->
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            viewModel.dismissMessage()
+        }
+    }
+
     // UI-Specific State (Dialogs that don't need to persist in VM)
     var reinstallCandidate: AppInfo? by remember { mutableStateOf(null) }
 
-    Column(modifier.fillMaxWidth()) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
 
         // 1. Header Row
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                painter = painterResource(icon),
-                contentDescription = title,
-                modifier = Modifier
-                    .padding(5.dp)
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .padding(8.dp)
-            )
-            Text(
-                text = title,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .padding(vertical = 10.dp)
-                    .weight(1f),
-                style = MaterialTheme.typography.titleLarge,
-                textAlign = TextAlign.Start
-            )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // LEFT: Brand/Title Block
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    painter = painterResource(icon),
+                    contentDescription = title,
+                    modifier = Modifier.size(24.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
+                    color = MaterialTheme.colorScheme.primary,
+                    letterSpacing = (-1).sp
+                )
+            }
 
-            // App Type Switcher (User / System)
-            ConnectedButtonGroup(
-                items = AppListType.entries.map { type ->
-                    ConnectedButtonGroupItem.Icon(
-                        iconRes = if (type == AppListType.USER) R.drawable.apps else R.drawable.android,
-                        contentDescription = type.name
-                    )
-                },
-                selectedIndex = AppListType.entries.indexOf(state.appListType),
-                onItemSelected = { viewModel.updateListType(AppListType.entries[it]) },
-                modifier = Modifier.padding(horizontal = 5.dp)
-            )
+            // RIGHT: App Type Switcher moved to config
+            Spacer(Modifier.width(48.dp))
         }
 
         // 2. The List Content
@@ -145,6 +160,7 @@ fun AppListScreen(
                 isShizuku = state.isShizuku,
                 startAsGrid = true,
                 imageLoader = imageLoader,
+                installerNameMap = state.installerNameMap,
                 // Actions forwarded to ViewModel
                 onFilterTypeChanged = viewModel::updateFilterType,
                 onSortByChanged = viewModel::updateSort,
@@ -157,7 +173,14 @@ fun AppListScreen(
                 onAppInfoSelected = { appInfo ->
                     viewModel.selectApp(appInfo.packageName)
                 },
-                onMultiAppAction = onMultiAppAction
+                onListTypeChanged = { viewModel.updateListType(it) },
+                onMultiAppAction = { action ->
+                    if (action is MultiAppAction.Freeze || action is MultiAppAction.UnFreeze) {
+                        viewModel.performMultiAction(action)
+                    } else {
+                        onMultiAppAction(action)
+                    }
+                }
             )
         }
     }
@@ -196,11 +219,13 @@ fun AppListScreen(
                     }
 
                     is AppClickAction.Freeze -> {
-                        viewModel.freezeApp(action.appInfo.packageName, true)
+                        viewModel.freezeApp(action.appInfo.packageName, action.appInfo.appName, true)
+                        viewModel.clearSelection()
                     }
 
                     is AppClickAction.UnFreeze -> {
-                        viewModel.freezeApp(action.appInfo.packageName, false)
+                        viewModel.freezeApp(action.appInfo.packageName, action.appInfo.appName, false)
+                        viewModel.clearSelection()
                     }
 
                     else -> {

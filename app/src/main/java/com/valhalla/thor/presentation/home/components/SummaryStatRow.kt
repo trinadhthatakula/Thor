@@ -1,53 +1,60 @@
 package com.valhalla.thor.presentation.home.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.valhalla.thor.R
 
 @Composable
 fun SummaryStatRow(
     activeCount: Int,
     frozenCount: Int,
+    suspendedCount: Int,
     onActiveClick: () -> Unit,
-    onFrozenClick: () -> Unit
+    onFrozenClick: () -> Unit,
+    onSuspendedClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(horizontal = 24.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         StatCard(
             title = "Active",
             count = activeCount,
-            icon = R.drawable.apps,
-            color = MaterialTheme.colorScheme.primaryContainer,
+            color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.weight(1f),
             onClick = onActiveClick
         )
-        StatCard(
-            title = "Frozen",
-            count = frozenCount,
-            icon = R.drawable.frozen,
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            modifier = Modifier.weight(1f),
-            onClick = onFrozenClick
-        )
+        if (frozenCount > 0)
+            StatCard(
+                title = "Frozen",
+                count = frozenCount,
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.weight(1f),
+                onClick = onFrozenClick
+            )
+        if (suspendedCount > 0)
+            StatCard(
+                title = "Suspended",
+                count = suspendedCount,
+                color = MaterialTheme.colorScheme.tertiary,
+                modifier = Modifier.weight(1f),
+                onClick = onSuspendedClick
+            )
     }
 }
 
@@ -55,27 +62,34 @@ fun SummaryStatRow(
 fun StatCard(
     title: String,
     count: Int,
-    icon: Int,
     color: Color,
     modifier: Modifier,
     onClick: () -> Unit
 ) {
-    Card(
-        onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = color),
+    Column(
         modifier = modifier
+            .clip(RoundedCornerShape(32.dp)) // squircle-lg approx
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .clickable { onClick() }
+            .padding(24.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Icon(painterResource(icon), null)
-            Spacer(Modifier.height(8.dp))
 
-            // USE THE ANIMATED COUNTER HERE
-            AnimatedCounter(
-                count = count,
-                style = MaterialTheme.typography.displaySmall
+        AnimatedCounter(
+            count = count,
+            style = MaterialTheme.typography.displayMedium.copy(
+                color = color,
+                fontWeight = FontWeight.ExtraBold
             )
+        )
 
-            Text(text = title, style = MaterialTheme.typography.bodyMedium)
-        }
+        Text(
+            text = title.uppercase(),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            letterSpacing = androidx.compose.ui.unit.TextUnit.Unspecified // tracking-wider
+        )
     }
 }
+
