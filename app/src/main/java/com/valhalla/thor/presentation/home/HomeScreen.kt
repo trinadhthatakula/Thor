@@ -111,7 +111,7 @@ fun HomeScreen(
         // --- ACTIONS ---
 
         // B. Reinstall All (Warning style card)
-        if (state.isRootAvailable && state.unknownInstallerCount > 0 && state.showReinstallCard) {
+        if (state.activePrivilegeMode != null && state.unknownInstallerCount > 0 && state.showReinstallCard) {
             ActionCard(
                 title = "Reinstall All",
                 subtitle = "${state.unknownInstallerCount} ${state.selectedType.name.lowercase()} apps not from Play Store. Fix them?",

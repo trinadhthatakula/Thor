@@ -44,10 +44,14 @@ fun MultiSelectToolBox(
 ) {
     var hasFrozen by remember { mutableStateOf(selected.any { !it.enabled }) }
     var hasUnFrozen by remember { mutableStateOf(selected.any { it.enabled }) }
+    var hasSuspended by remember { mutableStateOf(selected.any { it.isSuspended }) }
+    var hasUnSuspended by remember { mutableStateOf(selected.any { !it.isSuspended }) }
 
     LaunchedEffect(selected) {
         hasFrozen = selected.any { !it.enabled }
         hasUnFrozen = selected.any { it.enabled }
+        hasSuspended = selected.any { it.isSuspended }
+        hasUnSuspended = selected.any { !it.isSuspended }
     }
 
     Card(
@@ -94,6 +98,20 @@ fun MultiSelectToolBox(
                         icon = R.drawable.unfreeze,
                         label = "UnFreeze",
                         onClick = { onMultiAppAction(MultiAppAction.UnFreeze(selected)) }
+                    )
+                }
+                if (hasUnSuspended) {
+                    ToolBoxItem(
+                        icon = R.drawable.warning,
+                        label = "Suspend",
+                        onClick = { onMultiAppAction(MultiAppAction.Suspend(selected)) }
+                    )
+                }
+                if (hasSuspended) {
+                    ToolBoxItem(
+                        icon = R.drawable.bolt,
+                        label = "Unsuspend",
+                        onClick = { onMultiAppAction(MultiAppAction.UnSuspend(selected)) }
                     )
                 }
             }

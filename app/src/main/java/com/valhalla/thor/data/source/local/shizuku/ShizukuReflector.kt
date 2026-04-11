@@ -17,7 +17,7 @@ import com.valhalla.thor.util.Logger
 
 @SuppressLint("PrivateApi")
 class ShizukuReflector(
-    private val context: Context
+    val context: Context
 ) {
 
     fun clearCache(packageName: String): Boolean {
@@ -99,31 +99,33 @@ class ShizukuReflector(
     } ?: false
 
     fun setAppRestricted(packageName: String, restricted: Boolean): Boolean = 
-        Shizuku.setAppRestricted(packageName, restricted)
+        Shizuku.setAppRestricted(context, packageName, restricted)
+
+    fun setAppSuspended(packageName: String, suspended: Boolean): Boolean =
+        Shizuku.setAppSuspended(context, packageName, suspended)
 
     fun uninstallApp(packageName: String, resetToFactory: Boolean = false): Boolean {
-        val packageInfo = context.packageManager.getInfoForPackage(packageName) ?: return false
-        val isSystem = (packageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-        val hasUpdates =
-            (packageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+        return runCatching {
+            val packageInfo = context.packageManager.getInfoForPackage(packageName) ?: return false
+            val isSystem = (packageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            val hasUpdates =
+                (packageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
 
-        val shouldReset = resetToFactory && isSystem && hasUpdates
-        val broadcastIntent = Intent("io.github.samolego.canta.UNINSTALL_RESULT_ACTION")
-        val intent = PendingIntent.getBroadcast(
-            context,
-            0,
-            broadcastIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val packageInstaller = getPackageInstaller()
+            val shouldReset = resetToFactory && isSystem && hasUpdates
+            val broadcastIntent = Intent("io.github.samolego.canta.UNINSTALL_RESULT_ACTION")
+            val intent = PendingIntent.getBroadcast(
+                context,
+                0,
+                broadcastIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val packageInstaller = getPackageInstaller()
 
-        // 0x00000004 = PackageManager.DELETE_SYSTEM_APP
-        // 0x00000002 = PackageManager.DELETE_ALL_USERS
-        val flags = if (isSystem) 0x00000004 else 0x00000002
+            // 0x00000004 = PackageManager.DELETE_SYSTEM_APP
+            // 0x00000002 = PackageManager.DELETE_ALL_USERS
+            val flags = if (isSystem) 0x00000004 else 0x00000002
 
-        if (shouldReset) {
-            try {
-
+            if (shouldReset) {
                 Bypass.invoke<Any?>(
                     PackageInstaller::class.java,
                     packageInstaller,
@@ -132,24 +134,8 @@ class ShizukuReflector(
                     flags,
                     intent.intentSender
                 )
-
-                try {
-                    val updatedPackageInfo =
-                        context.packageManager.getInfoForPackage(packageName) ?: return false
-                    // Check if package still has updates; value intentionally ignored here
-                    (updatedPackageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-
-            } catch (e: Exception) {
-                e.printStackTrace()
             }
-        }
 
-
-
-        return try {
             Bypass.invoke<Any?>(
                 PackageInstaller::class.java,
                 packageInstaller,
@@ -159,9 +145,10 @@ class ShizukuReflector(
                 intent.intentSender
             )
             true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
+        }.getOrElse {
+            // Fallback to Shell uninstallation
+            Logger.w("ShizukuReflector", "Reflection uninstall failed, falling back to shell: ${it.message}")
+            Shizuku.uninstallApp(context, packageName)
         }
     }
 

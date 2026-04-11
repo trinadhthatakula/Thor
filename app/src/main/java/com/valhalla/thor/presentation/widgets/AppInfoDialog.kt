@@ -303,6 +303,7 @@ private fun AppActionRow(
 ) {
     val hasPrivilege = isRoot || isShizuku
     val isFrozen = !appInfo.enabled
+    val isSuspended = appInfo.isSuspended // Need to ensure this is in AppInfo
 
     Row(
         modifier = Modifier
@@ -318,52 +319,35 @@ private fun AppActionRow(
 
         // 2. Privileged Actions
         if (hasPrivilege) {
-            val (icon, label) = if (isFrozen) R.drawable.freeze_off to "Unfreeze" else R.drawable.frozen to "Freeze"
-            ActionItem(icon, label) {
-                onAction(
-                    if (isFrozen) AppClickAction.UnFreeze(appInfo) else AppClickAction.Freeze(
-                        appInfo
-                    )
-                )
+            val (freezeIcon, freezeLabel) = if (isFrozen) R.drawable.freeze_off to "Unfreeze" else R.drawable.frozen to "Freeze"
+            ActionItem(freezeIcon, freezeLabel) {
+                onAction(if (isFrozen) AppClickAction.UnFreeze(appInfo) else AppClickAction.Freeze(appInfo))
+            }
+
+            val (suspendIcon, suspendLabel) = if (isSuspended) R.drawable.bolt to "Unsuspend" else R.drawable.warning to "Suspend"
+            ActionItem(suspendIcon, suspendLabel) {
+                onAction(if (isSuspended) AppClickAction.UnSuspend(appInfo) else AppClickAction.Suspend(appInfo))
             }
 
             if (appInfo.enabled) {
                 ActionItem(R.drawable.danger, "Kill") { onAction(AppClickAction.Kill(appInfo)) }
             }
 
-            // Moved here to support Shizuku/Dhizuku
-            ActionItem(
-                R.drawable.clear_all,
-                "Cache"
-            ) { onAction(AppClickAction.ClearCache(appInfo)) }
-
-            ActionItem(
-                R.drawable.delete,
-                "Data"
-            ) { onAction(AppClickAction.ClearData(appInfo)) }
+            ActionItem(R.drawable.clear_all, "Cache") { onAction(AppClickAction.ClearCache(appInfo)) }
+            ActionItem(R.drawable.delete, "Data") { onAction(AppClickAction.ClearData(appInfo)) }
         }
 
-        // 3. Root Only
-        if (isRoot) {
-            if (!appInfo.isSystem && appInfo.installerPackageName != "com.android.vending") {
-                ActionItem(R.drawable.apk_install, "Fix Store") {
-                    onAction(
-                        AppClickAction.Reinstall(
-                            appInfo
-                        )
-                    )
-                }
+        // 3. App Store Fix
+        if (hasPrivilege && !appInfo.isSystem && appInfo.installerPackageName != "com.android.vending") {
+            ActionItem(R.drawable.apk_install, "Fix Store") {
+                onAction(AppClickAction.Reinstall(appInfo))
             }
         }
 
         // 4. Uninstall
         if (appInfo.packageName != "com.valhalla.thor") {
             ActionItem(R.drawable.delete_forever, "Uninstall") {
-                onAction(
-                    AppClickAction.Uninstall(
-                        appInfo
-                    )
-                )
+                onAction(AppClickAction.Uninstall(appInfo))
             }
         }
     }

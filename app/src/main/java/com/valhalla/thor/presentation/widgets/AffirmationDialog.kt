@@ -138,6 +138,12 @@ fun MultiAppAffirmationDialog(
                     }
 
                     is MultiAppAction.Uninstall -> "Uninstall ${multiAppAction.appList.size} apps?"
+
+                    is MultiAppAction.ClearData -> "Permanently clear data for ${multiAppAction.appList.size} apps? This cannot be undone."
+
+                    is MultiAppAction.Suspend -> "Suspend ${multiAppAction.appList.size} apps? This will restrict background activities."
+
+                    is MultiAppAction.UnSuspend -> "Unsuspend ${multiAppAction.appList.size} apps?"
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant

@@ -220,7 +220,7 @@ fun AppList(
             MultiSelectToolBox(
                 selected = multiSelection,
                 modifier = Modifier
-                    .padding(16.dp)
+                    .padding(horizontal = 16.dp, vertical = 32.dp)
                     .align(Alignment.BottomEnd),
                 isRoot = isRoot,
                 isShizuku = isShizuku,

@@ -3,6 +3,7 @@ package com.valhalla.thor.data.gateway
 import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.domain.gateway.SystemGateway
+import com.valhalla.bypass.Bypass
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -40,6 +41,59 @@ class RootSystemGateway(
         return runCommand("pm $state $packageName")
     }
 
+    override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> {
+        val userId = android.os.Process.myUserHandle().hashCode()
+
+        // Try reflection first to show proper branding
+        if (isSuspended && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val reflectionResult = runCatching {
+                // Using standard PackageManager for Root if bypass is ready
+                val pmClass = Class.forName("android.content.pm.IPackageManager")
+                val pmStub = Class.forName("android.content.pm.IPackageManager\$Stub")
+                val serviceManager = Class.forName("android.os.ServiceManager")
+                val binder = Bypass.invoke<android.os.IBinder>(serviceManager, null, "getService", "package")
+                val pm = Bypass.invoke<Any>(pmStub, null, "asInterface", binder)
+
+                val dialogInfoClass = Class.forName("android.content.pm.SuspendDialogInfo")
+                val builderClass = Class.forName("android.content.pm.SuspendDialogInfo\$Builder")
+                val dialogInfo = Bypass.newInstance<Any>(builderClass).let { b ->
+                    Bypass.invoke<Any>(builderClass, b, "setTitle", "Thor")
+                    Bypass.invoke<Any>(builderClass, b, "setMessage", "This app has been suspended by Thor.")
+                    Bypass.invoke<Any>(builderClass, b, "build")
+                }
+
+                val caller = BuildConfig.APPLICATION_ID
+
+                try {
+                    // Try Android 13+ (8 args)
+                    Bypass.invoke<Array<String>>(
+                        pmClass, pm, "setPackagesSuspendedAsUser",
+                        arrayOf(Array<String>::class.java, Boolean::class.javaPrimitiveType!!, android.os.PersistableBundle::class.java, android.os.PersistableBundle::class.java, dialogInfoClass, Int::class.javaPrimitiveType!!, String::class.java, Int::class.javaPrimitiveType!!),
+                        arrayOf(packageName), true, null, null, dialogInfo, 0, caller, userId
+                    )
+                } catch (_: NoSuchMethodException) {
+                    // Try Android 10-12 (7 args)
+                    Bypass.invoke<Array<String>>(
+                        pmClass, pm, "setPackagesSuspendedAsUser",
+                        arrayOf(Array<String>::class.java, Boolean::class.javaPrimitiveType!!, android.os.PersistableBundle::class.java, android.os.PersistableBundle::class.java, dialogInfoClass, String::class.java, Int::class.javaPrimitiveType!!),
+                        arrayOf(packageName), true, null, null, dialogInfo, caller, userId
+                    )
+                }
+                true
+            }.getOrDefault(false)
+
+            if (reflectionResult) return Result.success(Unit)
+        }
+
+        val state = if (isSuspended) "suspend" else "unsuspend"
+        return runCommand("pm $state $packageName")
+    }
+
+    override suspend fun setAppRestricted(packageName: String, isRestricted: Boolean): Result<Unit> {
+        val state = if (isRestricted) "ignore" else "allow"
+        return runCommand("appops set $packageName RUN_ANY_IN_BACKGROUND $state")
+    }
+
     override suspend fun rebootDevice(reason: String): Result<Unit> {
         // executeResult returns success if ANY of the commands succeed in the chain logic
         return runCommand("svc power reboot $reason || reboot $reason")
@@ -75,7 +129,7 @@ class RootSystemGateway(
      * Modernized Reinstall Logic.
      * Replaces the 'sed' and 'tr' pipes with proper Kotlin string manipulation.
      */
-    suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> {
+    override suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> {
         if (packageName == BuildConfig.APPLICATION_ID)
             return Result.failure(Exception("Cannot reinstall Thor"))
 

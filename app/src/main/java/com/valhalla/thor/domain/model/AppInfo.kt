@@ -33,6 +33,8 @@ data class AppInfo(
     var lastUpdateTime: Long = 0L,
     var firstInstallTime: Long = 0L,
     val isDebuggable: Boolean = false,
+    var isHidden: Boolean = false,
+    var isSuspended: Boolean = false,
 ) {
     companion object {
 
@@ -62,7 +64,9 @@ data class AppInfo(
                 sourceDir = appInfo.sourceDir,
                 lastUpdateTime = packInfo.lastUpdateTime,
                 firstInstallTime = packInfo.firstInstallTime,
-                isDebuggable = isDebuggable
+                isDebuggable = isDebuggable,
+                isHidden = (appInfo.flags and 0x8000000) != 0, // ApplicationInfo.PRIVATE_FLAG_HIDDEN via reflection equivalent
+                isSuspended = (appInfo.flags and ApplicationInfo.FLAG_SUSPENDED) != 0
             )
 
             // The "Heavy" Logic - Only run if explicitly requested

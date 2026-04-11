@@ -59,6 +59,12 @@ class SystemRepositoryImpl(
     override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> =
         getActiveGateway().setAppDisabled(packageName, isDisabled)
 
+    override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> =
+        getActiveGateway().setAppSuspended(packageName, isSuspended)
+
+    override suspend fun setAppRestricted(packageName: String, isRestricted: Boolean): Result<Unit> =
+        getActiveGateway().setAppRestricted(packageName, isRestricted)
+
     override suspend fun uninstallApp(packageName: String): Result<Unit> =
         getActiveGateway().uninstallApp(packageName)
 
@@ -81,13 +87,8 @@ class SystemRepositoryImpl(
         }
     }
 
-    override suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> {
-        return if (rootGateway.isRootAvailable()) {
-            rootGateway.reinstallAppWithGoogle(packageName)
-        } else {
-            Result.failure(Exception("Root access is required for Google Reinstall hack"))
-        }
-    }
+    override suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> =
+        getActiveGateway().reinstallAppWithGoogle(packageName)
 
     override suspend fun copyFileWithRoot(
         sourcePath: String,

@@ -55,4 +55,12 @@ class DhizukuReflector(
             false
         }
     }
+
+    fun setAppSuspended(packageName: String, suspended: Boolean): Boolean {
+        return DhizukuHelper.setAppSuspended(context, packageName, suspended)
+    }
+
+    fun setAppRestricted(packageName: String, restricted: Boolean): Boolean {
+        return DhizukuHelper.setAppRestricted(context, packageName, restricted)
+    }
 }

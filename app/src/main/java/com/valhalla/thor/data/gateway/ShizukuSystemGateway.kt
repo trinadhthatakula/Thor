@@ -3,6 +3,7 @@ package com.valhalla.thor.data.gateway
 import android.content.pm.PackageManager
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
+import com.valhalla.thor.data.source.local.shizuku.Shizuku as ShizukuHelper
 import com.valhalla.thor.domain.gateway.SystemGateway
 import rikka.shizuku.Shizuku
 
@@ -38,6 +39,14 @@ class ShizukuSystemGateway(
         return runAction { reflector.setAppEnabled(packageName, !isDisabled) }
     }
 
+    override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> {
+        return runAction { reflector.setAppSuspended(packageName, isSuspended) }
+    }
+
+    override suspend fun setAppRestricted(packageName: String, isRestricted: Boolean): Result<Unit> {
+        return runAction { reflector.setAppRestricted(packageName, isRestricted) }
+    }
+
     override suspend fun rebootDevice(reason: String): Result<Unit> {
         return Result.failure(Exception("Reboot requires Root. Shizuku cannot perform this action."))
     }
@@ -60,6 +69,39 @@ class ShizukuSystemGateway(
 
     override suspend fun getAppCacheSize(packageName: String): Long {
         return 0L // Requires specialized logic
+    }
+
+    override suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> {
+        if (packageName == BuildConfig.APPLICATION_ID)
+            return Result.failure(Exception("Cannot reinstall Thor"))
+
+        return try {
+            // 1. Get the APK path(s)
+            val pathResult = ShizukuHelper.execute("pm path $packageName")
+            val paths = pathResult.second?.lines()
+                ?.filter { it.isNotBlank() }
+                ?.map { it.removePrefix("package:").trim() } ?: emptyList()
+
+            if (paths.isEmpty()) {
+                return Result.failure(Exception("Could not find APK path for $packageName"))
+            }
+
+            val combinedPath = paths.joinToString(" ") { "\"$it\"" }
+
+            // 2. Get Current User ID
+            val userResult = ShizukuHelper.execute("am get-current-user")
+            val currentUser = userResult.second?.trim()
+                ?: return Result.failure(Exception("Could not determine current user"))
+
+            // 3. Execute the reinstallation command
+            val command =
+                "pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 $combinedPath"
+            val result = ShizukuHelper.execute(command)
+            if (result.first == 0) Result.success(Unit)
+            else Result.failure(Exception("Shizuku reinstall failed: ${result.second}"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     /**

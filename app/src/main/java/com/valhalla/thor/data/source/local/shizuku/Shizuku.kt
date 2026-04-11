@@ -37,11 +37,22 @@ object Shizuku {
             false
         }
 
-    fun forceStopApp(context: Context, packageName: String): Boolean = runCatching {
-        execute("am force-stop --user ${Packages(context).myUserId} $packageName").first == 0
-    }.getOrElse {
-        it.printStackTrace()
-        false
+    fun forceStopApp(context: Context, packageName: String): Boolean {
+        val userId = Packages(context).myUserId
+        val result = execute("am force-stop --user $userId $packageName")
+        if (result.first == 0) return true
+
+        // Fallback to reflection
+        return runCatching {
+            val am = asInterface("android.app.IActivityManager", Context.ACTIVITY_SERVICE)
+            Bypass.invoke<Any?>(
+                am::class.java, am, "forceStopPackage", packageName, userId
+            )
+            true
+        }.getOrElse {
+            it.printStackTrace()
+            false
+        }
     }
 
     fun setAppDisabled(context: Context, packageName: String, disabled: Boolean): Boolean {
@@ -80,20 +91,60 @@ object Shizuku {
         return Packages(context).isAppDisabled(packageName) == disabled
     }
 
-    fun setAppHidden(context: Context, packageName: String, hidden: Boolean): Boolean {
-        Packages(context).getApplicationInfoOrNull(packageName) ?: return false
-        val userId = Packages(context).myUserId
-        val command = if (hidden) {
-            "pm hide --user $userId $packageName"
-        } else {
-            "pm unhide --user $userId $packageName"
-        }
-        return execute(command).first == 0
-    }
-
     fun setAppSuspended(context: Context, packageName: String, suspended: Boolean): Boolean {
         Packages(context).getApplicationInfoOrNull(packageName) ?: return false
         val userId = Packages(context).myUserId
+
+        // Try reflection first for both Root and Shizuku to show proper branding
+        if (suspended && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val reflectionResult = runCatching {
+                val pm = asInterface("android.content.pm.IPackageManager", "package")
+                val dialogInfoClass = Class.forName("android.content.pm.SuspendDialogInfo")
+                val builderClass = Class.forName("android.content.pm.SuspendDialogInfo\$Builder")
+                val dialogInfo = Bypass.newInstance<Any>(builderClass).let { b ->
+                    Bypass.invoke<Any>(builderClass, b, "setTitle", "Thor")
+                    Bypass.invoke<Any>(builderClass, b, "setMessage", "This app has been suspended by Thor.")
+                    Bypass.invoke<Any>(builderClass, b, "build")
+                }
+
+                val caller = if (isRoot) com.valhalla.thor.BuildConfig.APPLICATION_ID else "com.android.shell"
+
+                try {
+                    // Try Android 13+ (8 args)
+                    Bypass.invoke<Array<String>>(
+                        pm.javaClass,
+                        pm,
+                        "setPackagesSuspendedAsUser",
+                        arrayOf(Array<String>::class.java, Boolean::class.javaPrimitiveType!!, android.os.PersistableBundle::class.java, android.os.PersistableBundle::class.java, dialogInfoClass, Int::class.javaPrimitiveType!!, String::class.java, Int::class.javaPrimitiveType!!),
+                        arrayOf(packageName),
+                        true,
+                        null, null,
+                        dialogInfo,
+                        0,
+                        caller,
+                        userId
+                    )
+                } catch (_: NoSuchMethodException) {
+                    // Try Android 10-12 (7 args)
+                    Bypass.invoke<Array<String>>(
+                        pm.javaClass,
+                        pm,
+                        "setPackagesSuspendedAsUser",
+                        arrayOf(Array<String>::class.java, Boolean::class.javaPrimitiveType!!, android.os.PersistableBundle::class.java, android.os.PersistableBundle::class.java, dialogInfoClass, String::class.java, Int::class.javaPrimitiveType!!),
+                        arrayOf(packageName),
+                        true,
+                        null, null,
+                        dialogInfo,
+                        caller,
+                        userId
+                    )
+                }
+                true
+            }.getOrDefault(false)
+
+            if (reflectionResult) return true
+        }
+
         val command = if (suspended) {
             "pm suspend --user $userId $packageName"
         } else {
@@ -143,8 +194,26 @@ object Shizuku {
         return execute(command).first == 0
     }
 
-    fun clearAppData(packageName: String): Boolean =
-        execute("pm clear $packageName").first == 0
+    fun clearAppData(packageName: String): Boolean {
+        val result = execute("pm clear $packageName")
+        if (result.first == 0) return true
+
+        // Fallback to reflection
+        return runCatching {
+            val pm = asInterface("android.content.pm.IPackageManager", "package")
+            val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
+            Bypass.invoke<Any?>(
+                pm.javaClass,
+                pm,
+                "clearApplicationUserData",
+                arrayOf(String::class.java, observerClass, Int::class.javaPrimitiveType!!),
+                packageName,
+                null,
+                android.os.Process.myUserHandle().hashCode()
+            )
+            true
+        }.getOrElse { false }
+    }
 
     fun getTotalCacheSizeWithShizuku(): Long {
         var totalCacheBytes = 0L
@@ -166,8 +235,27 @@ object Shizuku {
         return totalCacheBytes
     }
 
-    fun setAppRestricted(packageName: String, restricted: Boolean): Boolean =
-        execute("appops set $packageName RUN_ANY_IN_BACKGROUND ${if (restricted) "ignore" else "allow"}").first == 0
+    fun setAppRestricted(context: Context, packageName: String, restricted: Boolean): Boolean {
+        val result = execute("appops set $packageName RUN_ANY_IN_BACKGROUND ${if (restricted) "ignore" else "allow"}")
+        if (result.first == 0) return true
+
+        // Fallback to reflection
+        return runCatching {
+            val appops = asInterface("com.android.internal.app.IAppOpsService", Context.APP_OPS_SERVICE)
+            val uid = Packages(context).packageUid(packageName)
+            Bypass.invoke<Any?>(
+                appops::class.java,
+                appops,
+                "setMode",
+                arrayOf(Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, String::class.java, Int::class.javaPrimitiveType!!),
+                Bypass.invoke<Int>(android.app.AppOpsManager::class.java, null, "strOpToOp", "android:run_any_in_background"),
+                uid,
+                packageName,
+                if (restricted) android.app.AppOpsManager.MODE_IGNORED else android.app.AppOpsManager.MODE_ALLOWED
+            )
+            true
+        }.getOrElse { false }
+    }
 
     fun uninstallApp(context: Context, packageName: String): Boolean =
         execute("pm ${if (Packages(context).canUninstallNormally(packageName)) "uninstall" else "uninstall --user current"} $packageName").first == 0

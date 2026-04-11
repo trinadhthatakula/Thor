@@ -30,6 +30,7 @@ sealed interface MainSideEffect {
     data class LaunchApp(val packageName: String) : MainSideEffect
     data class OpenAppSettings(val packageName: String) : MainSideEffect
     data class ShareApp(val uri: android.net.Uri) : MainSideEffect
+    data class NormalUninstall(val packageName: String) : MainSideEffect
 }
 
 /**
@@ -202,11 +203,22 @@ class MainViewModel(
                         withContext(Dispatchers.IO) {
                             val result = manageAppUseCase.uninstallApp(action.appInfo.packageName)
                             if (result.isSuccess) addLog("✔ Uninstall successful")
-                            else addLog("✘ Failed: ${result.exceptionOrNull()?.message}")
+                            else {
+                                addLog("✘ Privileged uninstall failed")
+                                addLog("Attempting system uninstall...")
+                                _effect.send(MainSideEffect.NormalUninstall(action.appInfo.packageName))
+                            }
                         }
                         finishLogger()
                     } else {
-                        quickAction(action) { manageAppUseCase.uninstallApp(it.packageName) }
+                        viewModelScope.launch {
+                            val result = manageAppUseCase.uninstallApp(action.appInfo.packageName)
+                            if (result.isSuccess) {
+                                _uiState.update { it.copy(actionMessage = "Uninstalled ${action.appInfo.appName}") }
+                            } else {
+                                _effect.send(MainSideEffect.NormalUninstall(action.appInfo.packageName))
+                            }
+                        }
                     }
                 }
 
@@ -249,6 +261,8 @@ class MainViewModel(
 
                 is AppClickAction.ClearCache -> quickAction(action) { manageAppUseCase.clearCache(it.packageName) }
                 is AppClickAction.ClearData -> quickAction(action) { manageAppUseCase.clearAppData(it.packageName) }
+                is AppClickAction.Suspend -> quickAction(action) { manageAppUseCase.setAppSuspended(it.packageName, true) }
+                is AppClickAction.UnSuspend -> quickAction(action) { manageAppUseCase.setAppSuspended(it.packageName, false) }
             }
         }
     }
@@ -316,6 +330,27 @@ class MainViewModel(
                     action.appList
                 ) {
                     manageAppUseCase.uninstallApp(it.packageName)
+                }
+
+                is MultiAppAction.Suspend -> performLoggedMultiAction(
+                    "Suspending Apps",
+                    action.appList
+                ) {
+                    manageAppUseCase.setAppSuspended(it.packageName, true)
+                }
+
+                is MultiAppAction.UnSuspend -> performLoggedMultiAction(
+                    "Unsuspending Apps",
+                    action.appList
+                ) {
+                    manageAppUseCase.setAppSuspended(it.packageName, false)
+                }
+
+                is MultiAppAction.ClearData -> performLoggedMultiAction(
+                    "Clearing Data",
+                    action.appList
+                ) {
+                    manageAppUseCase.clearAppData(it.packageName)
                 }
 
                 else -> {
@@ -386,6 +421,8 @@ class MainViewModel(
         is AppClickAction.Reinstall -> appInfo
         is AppClickAction.AppInfoSettings -> appInfo
         is AppClickAction.ClearData -> appInfo
+        is AppClickAction.Suspend -> appInfo
+        is AppClickAction.UnSuspend -> appInfo
         else -> null
     }
 }

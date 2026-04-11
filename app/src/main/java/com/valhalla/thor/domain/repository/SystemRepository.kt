@@ -11,6 +11,8 @@ interface SystemRepository {
     suspend fun clearCache(packageName: String): Result<Unit>
     suspend fun clearAppData(packageName: String): Result<Unit>
     suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit>
+    suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit>
+    suspend fun setAppRestricted(packageName: String, isRestricted: Boolean): Result<Unit>
 
     // Advanced
     suspend fun uninstallApp(packageName: String): Result<Unit>
