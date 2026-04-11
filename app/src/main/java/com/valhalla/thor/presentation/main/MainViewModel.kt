@@ -211,7 +211,7 @@ class MainViewModel(
                         }
                         finishLogger()
                     } else {
-                        viewModelScope.launch {
+                        viewModelScope.launch(Dispatchers.IO) {
                             val result = manageAppUseCase.uninstallApp(action.appInfo.packageName)
                             if (result.isSuccess) {
                                 _uiState.update { it.copy(actionMessage = "Uninstalled ${action.appInfo.appName}") }
