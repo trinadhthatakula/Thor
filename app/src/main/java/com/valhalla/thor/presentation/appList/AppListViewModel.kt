@@ -116,7 +116,7 @@ class AppListViewModel(
     }
 
     fun performMultiAction(action: MultiAppAction) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             when (action) {
                 is MultiAppAction.Freeze -> {
                     action.appList.forEach { manageAppUseCase.setAppDisabled(it.packageName, true) }
