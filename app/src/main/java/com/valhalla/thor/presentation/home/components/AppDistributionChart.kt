@@ -55,20 +55,18 @@ fun AppDistributionChart(
 
         sortedData.mapIndexed { index, (label, count) ->
             val color = when (label.uppercase()) {
-                "PLAY STORE" -> Color(0xFFEFFFD7) // Light Green
-                "F-DROID" -> Color(0xFFC7CCE1)   // Muted Blue
-                "SIDELOADED" -> Color(0xFFC7BFFF) // Muted Purple
-                "OTHERS" -> Color(0xFFB14028)    // Muted Red
+                "PLAY STORE" -> colorScheme.primary
+                "F-DROID" -> colorScheme.secondary
+                "SIDELOADED" -> colorScheme.tertiary
+                "OTHERS" -> colorScheme.error
                 else -> {
                     val colors = listOf(
                         colorScheme.primary,
                         colorScheme.secondary,
                         colorScheme.tertiary,
                         colorScheme.error,
-                        Color(0xFF8BC34A), // Light Green
-                        Color(0xFFFFC107), // Amber
-                        Color(0xFF00BCD4), // Cyan
-                        Color(0xFF9C27B0)  // Purple
+                        colorScheme.outline,
+                        colorScheme.inversePrimary
                     )
                     colors[index % colors.size]
                 }

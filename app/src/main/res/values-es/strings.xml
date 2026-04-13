@@ -12,6 +12,9 @@
     <string name="settings">Ajustes</string>
     <string name="settings_desc">Página de ajustes para cambiar las opciones de la aplicación</string>
     <string name="config_engine_v">Motor de configuración • v%1$s</string>
+    <string name="general">GENERAL</string>
+    <string name="show_reinstall_card">Mostrar tarjeta de reinstalación</string>
+    <string name="show_reinstall_card_desc">Mostrar recordatorio de Fix Store en la pantalla de inicio</string>
     <string name="appearance">APARIENCIA</string>
     <string name="theme">Tema</string>
     <string name="theme_desc">Estilo de interfaz visual</string>

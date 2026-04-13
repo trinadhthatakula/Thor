@@ -12,6 +12,9 @@
     <string name="settings">Settings</string>
     <string name="settings_desc">Settings Page to change app settings</string>
     <string name="config_engine_v">Configuration Engine • v%1$s</string>
+    <string name="general">GENERAL</string>
+    <string name="show_reinstall_card">Show Reinstall Card</string>
+    <string name="show_reinstall_card_desc">Show Fix Store reminder on home screen</string>
     <string name="appearance">APPEARANCE</string>
     <string name="theme">Theme</string>
     <string name="theme_desc">Visual interface style</string>

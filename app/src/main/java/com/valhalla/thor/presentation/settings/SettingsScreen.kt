@@ -92,6 +92,28 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(48.dp))
 
+        // ── GENERAL ─────────────────────────────────────────────────────────
+        SettingsSectionLabel(stringResource(R.string.general))
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(32.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            SettingsSwitchRow(
+                icon = R.drawable.apk_install,
+                title = stringResource(R.string.show_reinstall_card),
+                subtitle = stringResource(R.string.show_reinstall_card_desc),
+                checked = prefs.showReinstallAllCard,
+                onCheckedChange = { viewModel.setReinstallAllCardVisibility(it) }
+            )
+        }
+
+        Spacer(Modifier.height(32.dp))
+
         // ── APPEARANCE ──────────────────────────────────────────────────────
         SettingsSectionLabel(stringResource(R.string.appearance))
 

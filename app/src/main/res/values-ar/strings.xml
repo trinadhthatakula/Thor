@@ -12,6 +12,9 @@
     <string name="settings">الإعدادات</string>
     <string name="settings_desc">صفحة الإعدادات لتغيير إعدادات التطبيق</string>
     <string name="config_engine_v">محرك التكوين • إصدار %1$s</string>
+    <string name="general">عام</string>
+    <string name="show_reinstall_card">إظهار بطاقة إعادة التثبيت</string>
+    <string name="show_reinstall_card_desc">إظهار تذكير إصلاح المتجر على الشاشة الرئيسية</string>
     <string name="appearance">المظهر</string>
     <string name="theme">المظهر</string>
     <string name="theme_desc">نمط الواجهة المرئية</string>

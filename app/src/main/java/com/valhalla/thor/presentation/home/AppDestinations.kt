@@ -12,7 +12,7 @@ enum class AppDestinations(
 ) {
     HOME(R.string.home, R.drawable.home_outline, R.drawable.home, R.string.home_desc),
     APPS(R.string.apps, R.drawable.apps, R.drawable.apps, R.string.apps_desc),
-    FREEZER(R.string.freezer, R.drawable.frozen, R.drawable.frozen, R.string.freezer_desc),
+    FREEZER(R.string.freezer, R.drawable.frozen, R.drawable.snowflake, R.string.freezer_desc),
 
     SETTINGS(
         R.string.settings,

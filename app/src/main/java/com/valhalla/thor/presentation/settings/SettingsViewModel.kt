@@ -92,6 +92,10 @@ class SettingsViewModel(
         viewModelScope.launch { preferenceRepository.setPrivilegeMode(mode) }
     }
 
+    fun setReinstallAllCardVisibility(visible: Boolean) {
+        viewModelScope.launch { preferenceRepository.setReinstallAllCardVisibility(visible) }
+    }
+
     fun setLanguage(language: String?) {
         viewModelScope.launch {
             preferenceRepository.setLanguage(language)

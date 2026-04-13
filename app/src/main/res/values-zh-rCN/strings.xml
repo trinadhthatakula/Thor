@@ -12,6 +12,9 @@
     <string name="settings">设置</string>
     <string name="settings_desc">设置页面以更改应用设置</string>
     <string name="config_engine_v">配置引擎 • v%1$s</string>
+    <string name="general">通用</string>
+    <string name="show_reinstall_card">显示重新安装卡片</string>
+    <string name="show_reinstall_card_desc">在主屏幕上显示修复商店提醒</string>
     <string name="appearance">外观</string>
     <string name="theme">主题</string>
     <string name="theme_desc">视觉界面风格</string>
