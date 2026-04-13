@@ -132,17 +132,37 @@ class HomeViewModel(
             }
         } else 0
 
-        val distribution = filteredApps
-            .groupBy { it.installerPackageName ?: "Unknown" }
-            .mapValues { it.value.size }
-            .mapKeys { (key, _) ->
-                when (key) {
+        val labelCounts = filteredApps
+            .groupBy {
+                when (val pkg = it.installerPackageName) {
                     "com.android.vending" -> "Play Store"
-                    "com.google.android.packageinstaller" -> "Package Installer"
-                    "null" -> "Unknown"
-                    else -> key.substringAfterLast(".")
+                    "org.fdroid.fdroid" -> "F-Droid"
+                    "com.google.android.packageinstaller" -> "Sideloaded"
+                    null, "Unknown" -> "Others"
+                    else -> pkg.substringAfterLast(".").uppercase()
                 }
             }
+            .mapValues { it.value.size }
+
+        // --- TOP 3 / 4 GROUPING LOGIC ---
+        val sortedLabels = labelCounts.entries.sortedByDescending { it.value }
+        
+        val distribution = if (sortedLabels.size <= 4) {
+            // If 4 or fewer categories, show them exactly as they are
+            labelCounts
+        } else {
+            // If more than 4, take top 3 and bunch the rest into "Others"
+            val top3Entries = sortedLabels.take(3)
+            val restEntries = sortedLabels.drop(3)
+
+            val result = mutableMapOf<String, Int>()
+            top3Entries.forEach { result[it.key] = it.value }
+            
+            val othersCount = restEntries.sumOf { it.value }
+            // Add 'othersCount' to 'Others' label (merge if 'Others' was already in top 3)
+            result["Others"] = result.getOrDefault("Others", 0) + othersCount
+            result
+        }
 
         _internalState.update {
             it.copy(

@@ -36,13 +36,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -96,6 +97,8 @@ fun AppList(
     filterType: FilterType = FilterType.Source,
     sortBy: SortBy = SortBy.NAME,
     sortOrder: SortOrder = SortOrder.ASCENDING,
+    searchQuery: String = "",
+    isLoading: Boolean = false,
     startAsGrid: Boolean = true,
     isRoot: Boolean = false,
     isShizuku: Boolean = false,
@@ -104,13 +107,13 @@ fun AppList(
     onSortOrderSelected: (SortOrder) -> Unit = {},
     onSortByChanged: (SortBy) -> Unit = {},
     onFilterSelected: (String?) -> Unit,
+    onSearchQueryChange: (String) -> Unit = {},
     onFilterTypeChanged: (FilterType) -> Unit = {},
     onListTypeChanged: (AppListType) -> Unit = {},
     onAppInfoSelected: (AppInfo) -> Unit,
     onMultiAppAction: (MultiAppAction) -> Unit = {}
 ) {
     // 1. Local State
-    var searchQuery by rememberSaveable { mutableStateOf("") }
     var isGrid by rememberSaveable { mutableStateOf(startAsGrid) }
     var showFilterSheet by rememberSaveable { mutableStateOf(false) }
     var multiSelection by rememberSaveable { mutableStateOf(emptyList<AppInfo>()) }
@@ -124,14 +127,6 @@ fun AppList(
     // 2. Logic
     BackHandler(isMultiSelectMode) { multiSelection = emptyList() }
 
-    val displayedList = remember(appList, searchQuery) {
-        if (searchQuery.isBlank()) appList
-        else appList.filter {
-            it.appName?.contains(searchQuery, true) == true ||
-                    it.packageName.contains(searchQuery, true)
-        }
-    }
-
     LaunchedEffect(appListType) { multiSelection = emptyList() }
 
     // 3. UI Layout
@@ -141,7 +136,7 @@ fun AppList(
             // Search Bar
             AppSearchBar(
                 query = searchQuery,
-                onQueryChange = { searchQuery = it },
+                onQueryChange = onSearchQueryChange,
                 onOpenConfig = { showFilterSheet = true }
             )
 
@@ -187,9 +182,9 @@ fun AppList(
                 ) {
                     MultiSelectHeader(
                         count = multiSelection.size,
-                        isAllSelected = multiSelection.size == displayedList.size && displayedList.isNotEmpty(),
+                        isAllSelected = multiSelection.size == appList.size && appList.isNotEmpty(),
                         onSelectAll = { selectAll ->
-                            multiSelection = if (selectAll) displayedList else emptyList()
+                            multiSelection = if (selectAll) appList else emptyList()
                         },
                         onClear = { multiSelection = emptyList() }
                     )
@@ -197,22 +192,37 @@ fun AppList(
             }
 
             // App Content (Grid or List)
-            AppListContent(
-                list = displayedList,
-                isGrid = isGrid,
-                selectedPackageNames = selectedPackageNames, // Pass Set instead of List
-                imageLoader = imageLoader,
-                onAppClick = { app ->
-                    if (isMultiSelectMode) {
-                        multiSelection = toggleSelection(multiSelection, app)
+            if (appList.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isLoading) {
+                        ContainedLoadingIndicator()
                     } else {
-                        onAppInfoSelected(app)
+                        EmptyStatePlaceholder(
+                            isFiltering = searchQuery.isNotEmpty() || selectedFilter != "All"
+                        )
                     }
-                },
-                onAppLongClick = { app ->
-                    multiSelection = toggleSelection(multiSelection, app)
                 }
-            )
+            } else {
+                AppListContent(
+                    list = appList,
+                    isGrid = isGrid,
+                    selectedPackageNames = selectedPackageNames, // Pass Set instead of List
+                    imageLoader = imageLoader,
+                    onAppClick = { app ->
+                        if (isMultiSelectMode) {
+                            multiSelection = toggleSelection(multiSelection, app)
+                        } else {
+                            onAppInfoSelected(app)
+                        }
+                    },
+                    onAppLongClick = { app ->
+                        multiSelection = toggleSelection(multiSelection, app)
+                    }
+                )
+            }
         }
 
         // Floating Action Toolbar (Multi-Select)
@@ -649,6 +659,40 @@ private fun AppIcon(
 
 private fun toggleSelection(currentSelection: List<AppInfo>, item: AppInfo): List<AppInfo> {
     return if (currentSelection.contains(item)) currentSelection - item else currentSelection + item
+}
+
+@Composable
+private fun EmptyStatePlaceholder(
+    isFiltering: Boolean
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier = Modifier.padding(32.dp)
+    ) {
+        Icon(
+            painter = painterResource(
+                if (isFiltering) R.drawable.round_search else R.drawable.apps
+            ),
+            contentDescription = null,
+            modifier = Modifier.size(64.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+        )
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text = if (isFiltering) "No matching apps found" else "No apps to display",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (isFiltering) {
+            Text(
+                text = "Try adjusting your search or filters",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+    }
 }
 
 private enum class SheetTab { FILTERS, SORT }

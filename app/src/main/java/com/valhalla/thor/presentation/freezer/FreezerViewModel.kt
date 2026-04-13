@@ -13,6 +13,7 @@ import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,6 +35,7 @@ data class FreezerUiState(
     // Freezer defaults to showing "Frozen" apps first, usually
     val filterType: FilterType = FilterType.State,
     val selectedFilter: String = "Frozen",
+    val searchQuery: String = "",
     val sortBy: SortBy = SortBy.NAME,
     val sortOrder: SortOrder = SortOrder.ASCENDING,
     val availableInstallers: List<String> = listOf("All"),
@@ -65,6 +67,10 @@ class FreezerViewModel(
         // RUTHLESS: IO Dispatcher for heavy data fetching
         loadAppsJob = viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(isLoading = true) }
+            
+            // Allow bottom nav animations to finish fluidly
+            delay(800)
+
             // Check privileges
             val hasRoot = systemRepository.isRootAvailable()
             val hasShizuku = systemRepository.isShizukuAvailable()
@@ -157,6 +163,10 @@ class FreezerViewModel(
         triggerAsyncUpdate { it.copy(sortOrder = order) }
     }
 
+    fun updateSearchQuery(query: String) {
+        triggerAsyncUpdate { it.copy(searchQuery = query) }
+    }
+
     private fun triggerAsyncUpdate(reducer: (FreezerUiState) -> FreezerUiState) {
         filterJob?.cancel()
         filterJob = viewModelScope.launch(Dispatchers.Default) {
@@ -174,34 +184,41 @@ class FreezerViewModel(
             val rawList =
                 if (state.appListType == AppListType.USER) state.allUserApps else state.allSystemApps
 
-            // Filter
+            // 1. Search Query Filter
+            val searched = if (state.searchQuery.isBlank()) {
+                rawList
+            } else {
+                rawList.filter {
+                    it.appName?.contains(state.searchQuery, ignoreCase = true) == true ||
+                            it.packageName.contains(state.searchQuery, ignoreCase = true)
+                }
+            }
+
+            // 2. State/Source Filter
             val filtered = when (state.filterType) {
                 FilterType.State -> {
                     when (state.selectedFilter) {
-                        "Frozen" -> rawList.filter { !it.enabled }
-                        "Active" -> rawList.filter { it.enabled }
-                        "Suspended" -> rawList.filter { it.isSuspended }
-                        else -> rawList
+                        "Frozen" -> searched.filter { !it.enabled }
+                        "Active" -> searched.filter { it.enabled }
+                        "Suspended" -> searched.filter { it.isSuspended }
+                        else -> searched
                     }
                 }
 
                 FilterType.Source -> {
-                    if (state.selectedFilter == "All") rawList
-                    else rawList.filter { it.installerPackageName == state.selectedFilter }
+                    if (state.selectedFilter == "All") searched
+                    else searched.filter { it.installerPackageName == state.selectedFilter }
                 }
             }
 
-            // Sort
+            // 3. Sort
             val sorted = getSortedList(filtered, state.sortBy, state.sortOrder)
 
-            // Metadata
-            val installers =
-                rawList.mapNotNull { it.installerPackageName }.distinct().sorted().toMutableList()
-
-            val allApps = state.allUserApps + state.allSystemApps
-            val installerNames = installers.associateWith { pkg ->
-                allApps.find { it.packageName == pkg }?.appName ?: pkg
-            }
+            // 4. Metadata - OPTIMIZED
+            val installers = rawList.mapNotNull { it.installerPackageName }.distinct().sorted().toMutableList()
+            
+            val nameMap = rawList.associateBy({ it.packageName }, { it.appName })
+            val installerNames = installers.associateWith { pkg -> nameMap[pkg] ?: pkg }
 
             installers.add(0, "All")
 

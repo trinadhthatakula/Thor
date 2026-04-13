@@ -19,3 +19,4 @@ local.properties
 /.idea/appInsightsSettings.xml
 /.agents
 /*/build
+/graphify-out

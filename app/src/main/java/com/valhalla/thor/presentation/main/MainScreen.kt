@@ -7,24 +7,15 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -47,35 +38,22 @@ import org.koin.androidx.compose.koinViewModel
 fun MainScreen(
     mainViewModel: MainViewModel = koinViewModel(),
     homeViewModel: HomeViewModel = koinViewModel(),
-    onExit: () -> Unit
+    onExit: () -> Unit,
 ) {
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
     // --- Safety Gates (Dialog State) ---
     var pendingMultiAction by remember { mutableStateOf<MultiAppAction?>(null) }
     var pendingSingleAction by remember { mutableStateOf<AppClickAction?>(null) }
     var showExitConfirmation by remember { mutableStateOf(false) }
 
-    // 1. Pager State
-    val pagerState = rememberPagerState(
-        pageCount = { AppDestinations.entries.size }
-    )
-
-    // 2. Sync Pager -> ViewModel (Update Bottom Bar when Swiping)
-    LaunchedEffect(pagerState) {
-        snapshotFlow { pagerState.currentPage }.collect { page ->
-            mainViewModel.onDestinationSelected(AppDestinations.entries[page])
-        }
-    }
-
-    // 3. Handle Back Button (Return to Home before Exiting)
-    BackHandler(enabled = pagerState.currentPage != AppDestinations.HOME.ordinal) {
-        scope.launch { pagerState.animateScrollToPage(AppDestinations.HOME.ordinal) }
+    // 1. Handle Back Button (Return to Home before Exiting)
+    BackHandler(enabled = state.selectedDestination != AppDestinations.HOME) {
+        mainViewModel.onDestinationSelected(AppDestinations.HOME)
     }
     // Secondary BackHandler for Home tab to Exit
-    BackHandler(enabled = pagerState.currentPage == AppDestinations.HOME.ordinal) {
+    BackHandler(enabled = state.selectedDestination == AppDestinations.HOME) {
         showExitConfirmation = true
     }
 
@@ -125,23 +103,13 @@ fun MainScreen(
 
     Scaffold(
         bottomBar = {
-            NavigationBar {
-                AppDestinations.entries.forEach { dest ->
-                    NavigationBarItem(
-                        icon = {
-                            Icon(
-                                painterResource(if (state.selectedDestination == dest) dest.selectedIcon else dest.icon),
-                                contentDescription = null
-                            )
-                        },
-                        label = { Text(stringResource(dest.label)) },
-                        selected = state.selectedDestination == dest,
-                        onClick = {
-                            scope.launch { pagerState.animateScrollToPage(dest.ordinal) }
-                        }
-                    )
+            ThorNavigationBar(
+                destinations = AppDestinations.entries,
+                selectedDestination = state.selectedDestination,
+                onDestinationSelected = { dest ->
+                    mainViewModel.onDestinationSelected(dest)
                 }
-            }
+            )
         }
     ) { innerPadding ->
 
@@ -150,55 +118,45 @@ fun MainScreen(
                 .padding(innerPadding)
                 .fillMaxSize()
         ) {
+            when (state.selectedDestination) {
+                AppDestinations.HOME -> {
+                    HomeScreen(
+                        viewModel = homeViewModel,
+                        onNavigateToApps = {
+                            mainViewModel.onDestinationSelected(AppDestinations.APPS)
+                        },
+                        onNavigateToFreezer = {
+                            mainViewModel.onDestinationSelected(AppDestinations.FREEZER)
+                        },
+                        onReinstallAll = { mainViewModel.onAppAction(AppClickAction.ReinstallAll) },
+                        onClearAllCache = { type -> mainViewModel.clearAllCache(type) }
+                    )
+                }
 
-            HorizontalPager(
-                state = pagerState,
-                userScrollEnabled = false,
-                beyondViewportPageCount = 1,
-                modifier = Modifier.fillMaxSize()
-            ) { page ->
-                when (page) {
-                    AppDestinations.HOME.ordinal -> {
-                        HomeScreen(
-                            viewModel = homeViewModel,
-                            // FIX: Use Pager scrolling instead of NavController
-                            onNavigateToApps = {
-                                scope.launch { pagerState.animateScrollToPage(AppDestinations.APPS.ordinal) }
-                            },
-                            onNavigateToFreezer = {
-                                scope.launch { pagerState.animateScrollToPage(AppDestinations.FREEZER.ordinal) }
-                            },
-                            onReinstallAll = { mainViewModel.onAppAction(AppClickAction.ReinstallAll) },
-                            onClearAllCache = { type -> mainViewModel.clearAllCache(type) }
-                        )
-                    }
+                AppDestinations.APPS -> {
+                    AppListScreen(
+                        onAppAction = { action ->
+                            checkAndProcessAction(action, { pendingSingleAction = it }) {
+                                mainViewModel.onAppAction(it)
+                            }
+                        },
+                        onMultiAppAction = { pendingMultiAction = it }
+                    )
+                }
 
-                    AppDestinations.APPS.ordinal -> {
-                        AppListScreen(
-                            onAppAction = { action ->
-                                checkAndProcessAction(action, { pendingSingleAction = it }) {
-                                    mainViewModel.onAppAction(it)
-                                }
-                            },
-                            onMultiAppAction = { pendingMultiAction = it }
-                        )
-                    }
+                AppDestinations.FREEZER -> {
+                    FreezerScreen(
+                        onAppAction = { action ->
+                            checkAndProcessAction(action, { pendingSingleAction = it }) {
+                                mainViewModel.onAppAction(it)
+                            }
+                        },
+                        onMultiAppAction = { pendingMultiAction = it }
+                    )
+                }
 
-                    AppDestinations.FREEZER.ordinal -> {
-                        FreezerScreen(
-                            onAppAction = { action ->
-                                checkAndProcessAction(action, { pendingSingleAction = it }) {
-                                    mainViewModel.onAppAction(it)
-                                }
-                            },
-                            onMultiAppAction = { pendingMultiAction = it }
-                        )
-                    }
-
-                    AppDestinations.SETTINGS.ordinal -> {
-                        SettingsScreen()
-                    }
-
+                AppDestinations.SETTINGS -> {
+                    SettingsScreen()
                 }
             }
 

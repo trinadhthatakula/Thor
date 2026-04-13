@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -113,16 +112,19 @@ fun HomeScreen(
         // --- ACTIONS ---
 
         // B. Reinstall All (Warning style card)
-        if (state.activePrivilegeMode != null && state.unknownInstallerCount > 0 && state.showReinstallCard) {
-            ActionCard(
-                title = "Reinstall All",
-                subtitle = "${state.unknownInstallerCount} ${state.selectedType.name.lowercase()} apps not from Play Store. Fix them?",
-                icon = R.drawable.apk_install,
-                isWarning = true,
-                onClick = onReinstallAll,
-                onClose = { viewModel.dismissReinstallCard() }
-            )
-            Spacer(Modifier.height(12.dp))
+        AnimatedVisibility (state.activePrivilegeMode != null && state.unknownInstallerCount > 0 && state.showReinstallCard) {
+            Column{
+                ActionCard(
+                    title = "Reinstall All",
+                    subtitle = "${state.unknownInstallerCount} ${state.selectedType.name.lowercase()} apps not from Play Store. Fix them?",
+                    icon = R.drawable.apk_install,
+                    isWarning = true,
+                    onClick = onReinstallAll,
+                    onClose = { viewModel.dismissReinstallCard() }
+                )
+                Spacer(Modifier.height(12.dp))
+            }
+
         }
 
         // C. Portable Installer (Primary style card)
@@ -166,15 +168,13 @@ fun HomeScreen(
                 Spacer(Modifier.height(24.dp))
                 AppDistributionChart(
                     data = state.distributionData,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(250.dp)
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         }
 
         // 4. Social Links
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(8.dp))
         SocialLinksRow()
         Spacer(Modifier.height(32.dp))
     }

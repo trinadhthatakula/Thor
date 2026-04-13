@@ -36,7 +36,7 @@ The project follows **Clean Architecture** principles combined with **MVVM (Mode
 - **Distribution**: Two product flavors: `store` (Play Store compliant) and `foss` (fully libre/open).
 
 ## ✨ Key Features
-- **App Management**: Install, uninstall, freeze (disable/enable), suspend/unsuspend, and background-restrict apps. Tracks `isSuspended` and `isHidden` flags directly on `AppInfo`.
+- **App Management**: Install, uninstall, freeze (disable/enable), suspend/unsuspend, and background-restrict apps. Tracks `isSuspended` and `isDebuggable` flags directly on `AppInfo`.
 - **Work Mode**: User-selectable privilege engine (`PrivilegeMode`: ROOT, SHIZUKU, DHIZUKU) stored in `UserPreferences`. Falls back automatically if the preferred mode is unavailable.
 - **Batch Operations**: Batch freeze/unfreeze, reinstall, uninstall, kill, suspend/unsuspend, and clear data — all logged in real time through the terminal logger dialog.
 - **App Suspension**: Uses `IPackageManager` reflection to suspend apps, showing a custom "Thor"-branded system dialog. Supports Android 10 through 13+ with version-specific fallbacks.

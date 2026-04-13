@@ -147,6 +147,8 @@ fun FreezerScreen(
                 filterType = state.filterType,
                 sortBy = state.sortBy,
                 sortOrder = state.sortOrder,
+                searchQuery = state.searchQuery,
+                isLoading = state.isLoading,
                 appList = state.displayedApps,
                 isRoot = state.isRoot,
                 isShizuku = state.isShizuku,
@@ -156,6 +158,7 @@ fun FreezerScreen(
                 onFilterTypeChanged = viewModel::updateFilterType,
                 onSortByChanged = viewModel::updateSort,
                 onSortOrderSelected = viewModel::updateSortOrder,
+                onSearchQueryChange = viewModel::updateSearchQuery,
                 onFilterSelected = { it?.let { filter -> viewModel.updateFilter(filter) } },
                 onListTypeChanged = { viewModel.updateListType(it) },
                 // Multi-Selection Actions

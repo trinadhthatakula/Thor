@@ -1,5 +1,6 @@
 package com.valhalla.thor.presentation.home.components
 
+import android.R.attr.onClick
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +17,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.valhalla.thor.presentation.theme.animateExpressiveResize
 
 @Composable
 fun SummaryStatRow(
@@ -36,7 +38,7 @@ fun SummaryStatRow(
             title = "Active",
             count = activeCount,
             color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).animateExpressiveResize(),
             onClick = onActiveClick
         )
         if (frozenCount > 0)
@@ -44,7 +46,7 @@ fun SummaryStatRow(
                 title = "Frozen",
                 count = frozenCount,
                 color = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).animateExpressiveResize(),
                 onClick = onFrozenClick
             )
         if (suspendedCount > 0)
@@ -52,7 +54,7 @@ fun SummaryStatRow(
                 title = "Suspended",
                 count = suspendedCount,
                 color = MaterialTheme.colorScheme.tertiary,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).animateExpressiveResize(),
                 onClick = onSuspendedClick
             )
     }

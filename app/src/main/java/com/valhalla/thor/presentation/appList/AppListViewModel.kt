@@ -14,6 +14,7 @@ import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
@@ -35,6 +36,7 @@ data class AppListUiState(
     val appListType: AppListType = AppListType.USER,
     val filterType: FilterType = FilterType.Source,
     val selectedFilter: String = "All",
+    val searchQuery: String = "",
     val sortBy: SortBy = SortBy.NAME,
     val sortOrder: SortOrder = SortOrder.ASCENDING,
     // Display Data
@@ -83,6 +85,10 @@ class AppListViewModel(
     fun loadApps() {
         viewModelScope.launch {
             _rawState.update { it.copy(isLoading = true) }
+            
+            // Allow navigation/bottom bar animations to finish fluidly
+            delay(800)
+
             val hasRoot = systemRepository.isRootAvailable()
             val hasShizuku = systemRepository.isShizukuAvailable()
             getInstalledAppsUseCase().collect { (user, system) ->
@@ -197,39 +203,52 @@ class AppListViewModel(
         }
     }
 
+    fun updateSearchQuery(query: String) {
+        _rawState.update { it.copy(searchQuery = query) }
+    }
+
     private fun processList(state: AppListUiState): AppListUiState {
         // 1. Pick Source
         val rawList =
             if (state.appListType == AppListType.USER) state.allUserApps else state.allSystemApps
 
-        // 2. Filter
+        // 2. Filter by Search Query (Early out for performance)
+        val searched = if (state.searchQuery.isBlank()) {
+            rawList
+        } else {
+            rawList.filter {
+                it.appName?.contains(state.searchQuery, ignoreCase = true) == true ||
+                        it.packageName.contains(state.searchQuery, ignoreCase = true)
+            }
+        }
+
+        // 3. Filter by Source/State
         val filtered = when (state.filterType) {
             FilterType.Source -> {
-                if (state.selectedFilter == "All") rawList
-                else rawList.filter { it.installerPackageName == state.selectedFilter }
+                if (state.selectedFilter == "All") searched
+                else searched.filter { it.installerPackageName == state.selectedFilter }
             }
 
             FilterType.State -> {
                 when (state.selectedFilter) {
-                    "Active" -> rawList.filter { it.enabled }
-                    "Frozen" -> rawList.filter { !it.enabled }
-                    "Suspended" -> rawList.filter { it.isSuspended }
-                    else -> rawList
+                    "Active" -> searched.filter { it.enabled }
+                    "Frozen" -> searched.filter { !it.enabled }
+                    "Suspended" -> searched.filter { it.isSuspended }
+                    else -> searched
                 }
             }
         }
 
-        // 3. Sort
+        // 4. Sort
         val sorted = getSortedList(filtered, state.sortBy, state.sortOrder)
 
-        // 4. Calculate Installers (Metadata)
-        val installers =
-            rawList.mapNotNull { it.installerPackageName }.distinct().sorted().toMutableList()
-
-        val allApps = state.allUserApps + state.allSystemApps
-        val installerNames = installers.associateWith { pkg ->
-            allApps.find { it.packageName == pkg }?.appName ?: pkg
-        }
+        // 5. Calculate Installers (Metadata) - OPTIMIZED
+        // Only recalculate map if the full list changed (avoid doing this on search)
+        val installers = rawList.mapNotNull { it.installerPackageName }.distinct().sorted().toMutableList()
+        
+        // Fast lookup map for app names to avoid O(N^2) associative logic
+        val nameMap = rawList.associateBy({ it.packageName }, { it.appName })
+        val installerNames = installers.associateWith { pkg -> nameMap[pkg] ?: pkg }
 
         installers.add(0, "All")
 

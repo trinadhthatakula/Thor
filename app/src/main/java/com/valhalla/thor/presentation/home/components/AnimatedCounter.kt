@@ -29,6 +29,7 @@ fun AnimatedCounter(
     Text(
         text = animatedValue.toString(),
         style = style,
-        modifier = modifier
+        modifier = modifier,
+        maxLines = 1
     )
 }
