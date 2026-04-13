@@ -33,6 +33,8 @@ for the presentation layer.
 - **Language**: Kotlin (all modules except `vm-runtime`, which is pure Java for stub compatibility)
 - **UI Framework**: Jetpack Compose with `MaterialExpressiveTheme` + `MotionScheme.expressive()`.
   Static "Asgardian" color scheme by default; optional Material You dynamic color on Android 12+.
+  Navigation uses a custom `ThorNavigationBar` with spring animations + `HorizontalPager` for
+  swipe-between-screens.
 - **Dependency Injection**: Koin
 - **Asynchronous Programming**: Kotlin Coroutines & Flow
 - **Image Loading**: Coil 3
@@ -42,7 +44,8 @@ for the presentation layer.
       `lastUpdateTime`.
     - **Jetpack DataStore**: User preferences including theme, AMOLED mode, biometric lock, and
       preferred privilege mode.
-- **Security**: Android Biometrics (Fingerprint / Device Credential)
+- **Security**: Android Biometrics via `BiometricPrompt` API directly (no `androidx.biometric`
+  dependency). `HomeActivity` extends `ComponentActivity`.
 - **Elevated Privileges**:
     - **Root (su)**: Via `suCore` module (Kotlin-refactored fork of `libsu`).
     - **Shizuku**: Shell-command-first (`am`, `pm`, `appops`) with reflection fallback via
@@ -52,8 +55,8 @@ for the presentation layer.
       with automatic fallback strategy (Root → Shizuku → Dhizuku).
     - **Internal Bypass (`:bypass`)**: Custom Kotlin implementation using `VMRuntime` exemptions and
       reflection, backed by Java stubs in `:vm-runtime`.
-- **Build System**: Gradle Kotlin DSL with Version Catalog (`libs.versions.toml`). AGP 9.x, Kotlin
-  2.x, KSP.
+- **Build System**: Gradle Kotlin DSL with Version Catalog (`libs.versions.toml`). Exact tool and
+  library versions defined in `libs.versions.toml`; do not hardcode them in docs.
 - **Distribution**: Two product flavors: `store` (Play Store compliant) and `foss` (fully
   libre/open).
 
@@ -73,12 +76,18 @@ for the presentation layer.
 - **Clear Data / Clear Cache**: Available in all privilege modes; `clearAppData` uses `pm clear`
   with multi-user support.
 - **Advanced Insights**: Installer source (resolved from package labels, not hardcoded), split APK
-  indicators, version codes, SDK targets, `isSuspended`, `isHidden`.
+  indicators, version codes, SDK targets, `isSuspended`, `isDebuggable`.
 - **System App Support**: Uninstall or freeze system apps (requires any privilege mode).
 - **Security**: Biometric/device-credential lock for app access. Per-session authentication state.
 - **App Metadata Caching**: Room DB cache for `AppInfo`, invalidated via `lastUpdateTime`.
+- **Preferences** (`UserPreferences`): theme, AMOLED, dynamic color, biometric lock, sort/filter
+  state, privilege mode, and language — all persisted via DataStore.
 - **Customization**: Dark/Light/System + AMOLED themes. "Asgardian" static color scheme is the
   default; Material You dynamic color opt-in. Preferred privilege mode persisted across sessions.
+- **Search**: Live search by app name or package name in App List and Freezer screens.
+- **Multi-language**: Supports English, Spanish, French, Arabic, and Chinese. Runtime locale
+  switching via `LocaleManager` (`util/LocaleManager.kt`); language preference stored in
+  `UserPreferences.language` (null = system default).
 - **Privacy**: Fully offline, no ads, no trackers, FOSS (GPL-3.0).
 
 ## ⚠️ Limitations

@@ -49,6 +49,8 @@
 - Work Mode selection — manually choose between Root, Shizuku, or Dhizuku as the active privilege
   engine
 - Displays App List while sorting them based on Installation source
+- Search in App List and Freezer
+- Multi-language support (English, Spanish, French, Arabic, Chinese) with in-app language switcher
 - Launch App Activities
 - Install/Uninstall/Freeze/Unfreeze Apk files
 - Suspend/Unsuspend apps (shows custom Thor-branded system dialog)
