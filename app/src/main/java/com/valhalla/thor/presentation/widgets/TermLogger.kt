@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -78,26 +79,28 @@ fun TermLoggerDialog(
                     } else {
                         Icon(
                             painterResource(R.drawable.check_circle),
-                            contentDescription = "Done",
+                            contentDescription = stringResource(R.string.cd_selected),
                             modifier = Modifier.size(40.dp),
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
 
                     Text(
-                        text = if (isOperationComplete) "Done" else title,
+                        text = if (isOperationComplete) stringResource(R.string.done) else title,
                         color = MaterialTheme.colorScheme.onBackground,
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier
                             .weight(1f)
-                            .padding(start = 12.dp)
+                            .padding(start = 12.dp),
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
 
                     if (isOperationComplete) {
                         IconButton(onClick = onDismiss) {
                             Icon(
                                 painterResource(R.drawable.round_close),
-                                "Close",
+                                stringResource(R.string.cd_close),
                                 tint = MaterialTheme.colorScheme.onBackground
                             )
                         }
@@ -140,7 +143,7 @@ fun TermLoggerDialog(
                             .padding(top = 16.dp)
                             .fillMaxWidth()
                     ) {
-                        Text("Close")
+                        Text(stringResource(R.string.close))
                     }
                 }
             }

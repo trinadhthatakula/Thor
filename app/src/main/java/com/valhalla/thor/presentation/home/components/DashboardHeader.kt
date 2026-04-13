@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,7 +67,7 @@ fun DashboardHeader(
                 tint = MaterialTheme.colorScheme.primary
             )
             Text(
-                text = "Thor",
+                text = stringResource(R.string.app_name),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Black,
                 color = MaterialTheme.colorScheme.primary,
@@ -145,7 +146,7 @@ private fun StatusIcon(
     ) {
         Icon(
             painter = painterResource(icon),
-            contentDescription = "Status",
+            contentDescription = stringResource(R.string.privilege_check),
             modifier = Modifier.size(20.dp),
             tint = color
         )

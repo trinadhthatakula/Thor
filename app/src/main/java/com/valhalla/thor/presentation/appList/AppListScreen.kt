@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -61,7 +62,7 @@ import org.koin.androidx.compose.koinViewModel
 @Composable
 fun AppListScreen(
     modifier: Modifier = Modifier,
-    title: String = "App List",
+    title: String = stringResource(R.string.apps),
     icon: Int = R.drawable.thor_mono,
     viewModel: AppListViewModel = koinViewModel(),
     // These actions bubble up to MainScreen/HomeViewModel for execution
@@ -252,10 +253,10 @@ fun AppListScreen(
                 )
             },
             onDismissRequest = { reinstallCandidate = null },
-            title = { Text("Reinstall with Play Store?") },
+            title = { Text(stringResource(R.string.reinstall_play_store_title)) },
             text = {
                 Text(
-                    "This will attempt to reinstall ${app.appName} using the Google Play Store.",
+                    stringResource(R.string.reinstall_play_store_desc, app.appName ?: ""),
                     textAlign = TextAlign.Center
                 )
             },
@@ -264,12 +265,12 @@ fun AppListScreen(
                     onAppAction(AppClickAction.Reinstall(app))
                     reinstallCandidate = null
                 }) {
-                    Text("Reinstall")
+                    Text(stringResource(R.string.action_reinstall))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { reinstallCandidate = null }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )

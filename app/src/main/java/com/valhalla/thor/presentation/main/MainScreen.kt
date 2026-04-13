@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.core.net.toUri
@@ -57,6 +58,9 @@ fun MainScreen(
         showExitConfirmation = true
     }
 
+    val canNotLaunchApp = stringResource(R.string.cannot_launch_app)
+    val shareApp = stringResource(R.string.share_app)
+
     // 4. Handle Side Effects
     LaunchedEffect(Unit) {
         mainViewModel.effect.collect { effect ->
@@ -65,7 +69,7 @@ fun MainScreen(
                     val intent =
                         context.packageManager.getLaunchIntentForPackage(effect.packageName)
                     if (intent != null) context.startActivity(intent)
-                    else Toast.makeText(context, "Cannot launch app", Toast.LENGTH_SHORT).show()
+                    else Toast.makeText(context, canNotLaunchApp, Toast.LENGTH_SHORT).show()
                 }
 
                 is MainSideEffect.OpenAppSettings -> {
@@ -81,7 +85,7 @@ fun MainScreen(
                         putExtra(Intent.EXTRA_STREAM, effect.uri)
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
-                    context.startActivity(Intent.createChooser(intent, "Share App"))
+                    context.startActivity(Intent.createChooser(intent, shareApp))
                 }
 
                 is MainSideEffect.NormalUninstall -> {
@@ -176,12 +180,16 @@ fun MainScreen(
                 val action = pendingSingleAction!!
                 val (title, text, icon) = when (action) {
                     is AppClickAction.Kill -> Triple(
-                        "Kill App?",
-                        "Force stop ${action.appInfo.appName}? This may cause data loss.",
+                        stringResource(R.string.kill_app_title),
+                        stringResource(R.string.kill_app_desc, action.appInfo.appName ?: ""),
                         R.drawable.danger
                     )
 
-                    else -> Triple("Confirm", "Are you sure?", R.drawable.thor_mono)
+                    else -> Triple(
+                        stringResource(R.string.confirm),
+                        stringResource(R.string.are_you_sure),
+                        R.drawable.thor_mono
+                    )
                 }
 
                 AffirmationDialog(
@@ -207,8 +215,8 @@ fun MainScreen(
 
             if (showExitConfirmation) {
                 AffirmationDialog(
-                    title = "Exit Thor?",
-                    text = "Are you sure you want to close the application?",
+                    title = stringResource(R.string.exit_thor_title),
+                    text = stringResource(R.string.exit_thor_desc),
                     icon = R.drawable.exit_to_app,
                     onConfirm = {
                         showExitConfirmation = false

@@ -1,13 +1,141 @@
 <resources>
-    <string name="app_name">Thor</string>
     <string name="title_activity_script_runner">脚本运行器</string>
     <string name="title_activity_home">主页</string>
+
+    <!-- Navigation -->
     <string name="home">主页</string>
     <string name="home_desc">主页</string>
-    <string name="apps_desc">显示所有可用应用程序的列表</string>
     <string name="apps">应用列表</string>
-    <string name="freezer_desc">从这里冻结/解冻应用程序</string>
+    <string name="apps_desc">显示所有可用应用程序的列表</string>
     <string name="freezer">应用冻结</string>
+    <string name="freezer_desc">从这里冻结/解冻应用程序</string>
     <string name="settings">设置</string>
     <string name="settings_desc">设置页面以更改应用设置</string>
+    <string name="config_engine_v">配置引擎 • v%1$s</string>
+    <string name="appearance">外观</string>
+    <string name="theme">主题</string>
+    <string name="theme_desc">视觉界面风格</string>
+    <string name="amoled_mode">AMOLED 模式</string>
+    <string name="amoled_desc">纯黑背景</string>
+    <string name="dynamic_colors">动态色彩</string>
+    <string name="dynamic_colors_desc">Material You 集成</string>
+    <string name="security">安全</string>
+    <string name="biometric_lock">生物识别锁定</string>
+    <string name="biometric_lock_desc">启动时需要验证</string>
+    <string name="work_mode">工作模式</string>
+    <string name="active_engine">活动引擎</string>
+    <string name="active_engine_desc">在可用提供者之间切换</string>
+    <string name="about">关于</string>
+    <string name="version">版本</string>
+    <string name="release_candidate">发布候选版</string>
+    <string name="source_code">源代码</string>
+    <string name="community">社区</string>
+    <string name="kernel_status">内核状态: 已优化</string>
+    <string name="built_with_precision">为高级用户精准打造</string>
+    <string name="app_language">应用语言</string>
+    <string name="select_language">选择语言</string>
+    <string name="system_default">系统默认</string>
+    <string name="english">英语</string>
+    <string name="chinese">中文</string>
+    <string name="french">法语</string>
+    <string name="spanish">西班牙语</string>
+    <string name="arabic">阿拉伯语</string>
+
+    <!-- Common Actions -->
+    <string name="cancel">取消</string>
+    <string name="confirm">确认</string>
+    <string name="proceed">继续</string>
+    <string name="yes">是</string>
+    <string name="no">否</string>
+    <string name="done">完成</string>
+    <string name="close">关闭</string>
+    <string name="refresh">刷新</string>
+    <string name="dismiss">关闭</string>
+    <string name="search_apps">搜索应用&#8230;</string>
+    <string name="unknown">未知</string>
+
+    <!-- Home Screen -->
+    <string name="reinstall_all">全部重新安装</string>
+    <string name="reinstall_all_subtitle">%1$d 个非来自 Play 商店的 %2$s 应用。要修复它们吗？</string>
+    <string name="install_from_file">从文件安装</string>
+    <string name="install_from_file_subtitle">安装 APK、XAPK、APKS 或分割包</string>
+    <string name="app_distribution">应用分布</string>
+    <string name="total_apps">总计: %1$d</string>
+    <string name="others">其他</string>
+    <string name="clear_all_cache">清除所有缓存</string>
+    <string name="clear_cache_prompt">您想清除哪些应用？</string>
+    <string name="user_apps">用户应用</string>
+    <string name="system_apps">系统应用</string>
+    <string name="privilege_check">权限检查</string>
+    <string name="active">活跃</string>
+    <string name="frozen">已冻结</string>
+    <string name="suspended">已暂停</string>
+    <string name="privilege_check_desc">Thor 需要 Root 或 Shizuku 权限才能正常运行。\n\n请在管理应用中授予权限并点击刷新。</string>
+
+    <!-- App List / Freezer -->
+    <string name="system_apps_warning">⚠ 系统应用</string>
+    <string name="selected_count">已选择 %1$d 个</string>
+    <string name="no_matching_apps">未找到匹配的应用</string>
+    <string name="no_apps_display">无应用可显示</string>
+    <string name="adjust_filters_hint">尝试调整搜索或过滤器</string>
+    <string name="configuration">配置</string>
+    <string name="app_source">应用来源</string>
+    <string name="view_mode">视图模式</string>
+    <string name="grid">网格</string>
+    <string name="list">列表</string>
+    <string name="order">排序:</string>
+    <string name="ascending">升序</string>
+    <string name="descending">降序</string>
+    <string name="filters">过滤器</string>
+    <string name="sort_by">排序方式</string>
+
+    <!-- App Info Dialog -->
+    <string name="clear_app_data_title">清除应用数据？</string>
+    <string name="clear_app_data_desc">这将永久删除 %1$s 的所有数据。此操作无法撤销。</string>
+    <string name="clear_all_data">清除所有数据</string>
+    <string name="uninstall_system_app_title">卸载系统应用？</string>
+    <string name="uninstall_system_app_desc">这允许您卸载更新或恢复此系统应用的出厂设置。继续吗？</string>
+    <string name="risk_warning_title">风险警告</string>
+    <string name="risk_warning_desc">这会强制将安装程序记录更改为“Google Play 商店”。\n\n如果签名与官方商店版本不匹配，更新可能会失败。</string>
+    <string name="reinstall_play_store_title">使用 Play 商店重新安装？</string>
+    <string name="reinstall_play_store_desc">这将尝试使用 Google Play 商店重新安装 %1$s。</string>
+    <string name="fix_store">修复商店</string>
+
+    <!-- App Status -->
+    <string name="status_split">分割</string>
+    <string name="status_frozen">已冻结</string>
+    <string name="status_suspended">已暂停</string>
+
+    <!-- App Actions -->
+    <string name="action_launch">启动</string>
+    <string name="action_share">分享</string>
+    <string name="action_freeze">冻结</string>
+    <string name="action_unfreeze">解冻</string>
+    <string name="action_suspend">暂停</string>
+    <string name="action_unsuspend">取消暂停</string>
+    <string name="action_kill">结束</string>
+    <string name="action_cache">缓存</string>
+    <string name="action_data">数据</string>
+    <string name="action_uninstall">卸载</string>
+    <string name="action_reinstall">重新安装</string>
+
+    <!-- Main Screen / Global -->
+    <string name="cannot_launch_app">无法启动应用</string>
+    <string name="share_app">分享应用</string>
+    <string name="kill_app_title">结束应用？</string>
+    <string name="kill_app_desc">强制停止 %1$s？这可能会导致数据丢失。</string>
+    <string name="exit_thor_title">退出 Thor？</string>
+    <string name="exit_thor_desc">您确定要关闭应用程序吗？</string>
+    <string name="are_you_sure">您确定吗？</string>
+
+    <!-- Accessibility / Content Descriptions -->
+    <string name="cd_config">配置</string>
+    <string name="cd_close">关闭</string>
+    <string name="cd_frozen">已冻结</string>
+    <string name="cd_suspended">已暂停</string>
+    <string name="cd_selected">已选择</string>
+    <string name="cd_search">搜索</string>
+    <string name="cd_clear">清除</string>
+    <string name="cd_settings">设置</string>
+
 </resources>

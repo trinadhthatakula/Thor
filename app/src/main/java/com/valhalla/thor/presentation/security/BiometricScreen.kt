@@ -27,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -41,8 +42,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity
 import com.valhalla.thor.R
 import com.valhalla.thor.presentation.theme.greenDark
 
@@ -55,6 +54,14 @@ fun BiometricScreen(
     onRetry: () -> Unit,
     onExit: () -> Unit
 ) {
+    val context = LocalContext.current
+    val handler = remember { BiometricPromptHandler(context) }
+
+    // Clean up on dispose
+    androidx.compose.runtime.DisposableEffect(handler) {
+        onDispose { handler.cancel() }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -72,7 +79,8 @@ fun BiometricScreen(
         } else {
             BiometricLockView(
                 onAuthenticated = onAuthenticated,
-                onError = onError
+                onError = onError,
+                handler = handler
             )
         }
     }
@@ -97,11 +105,9 @@ private fun AmbientGlow() {
 @Composable
 private fun BiometricLockView(
     onAuthenticated: () -> Unit,
-    onError: (String) -> Unit
+    onError: (String) -> Unit,
+    handler: BiometricPromptHandler
 ) {
-    val context = LocalContext.current
-    val activity = context as? FragmentActivity
-
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -204,9 +210,12 @@ private fun BiometricLockView(
                         )
                     )
                     .clickable {
-                        activity?.let {
-                            showBiometricPrompt(it, onAuthenticated, onError)
-                        }
+                        handler.authenticate(
+                            title = "Unlock Thor",
+                            subtitle = "Authenticate to continue",
+                            onAuthenticated = onAuthenticated,
+                            onError = onError
+                        )
                     },
                 contentAlignment = Alignment.Center
             ) {
@@ -220,14 +229,14 @@ private fun BiometricLockView(
         }
     }
 
-    // Auto-trigger on first launch if possible
+    // Auto-trigger on first launch
     LaunchedEffect(Unit) {
-        activity?.let {
-            val biometricManager = BiometricManager.from(context)
-            if (biometricManager.canAuthenticate(BIOMETRIC_STRONG or DEVICE_CREDENTIAL) == BiometricManager.BIOMETRIC_SUCCESS) {
-                showBiometricPrompt(it, onAuthenticated, onError)
-            }
-        }
+        handler.authenticate(
+            title = "Unlock Thor",
+            subtitle = "Authenticate to continue",
+            onAuthenticated = onAuthenticated,
+            onError = onError
+        )
     }
 }
 
@@ -296,34 +305,4 @@ private fun BiometricErrorView(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
-}
-
-private fun showBiometricPrompt(
-    activity: FragmentActivity,
-    onAuthenticated: () -> Unit,
-    onError: (String) -> Unit
-) {
-    val executor = ContextCompat.getMainExecutor(activity)
-
-    val callback = object : BiometricPrompt.AuthenticationCallback() {
-        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-            onAuthenticated()
-        }
-
-        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-            onError(errString.toString())
-        }
-
-        override fun onAuthenticationFailed() {
-            // Native prompt handles retries
-        }
-    }
-
-    BiometricPrompt(activity, executor, callback).authenticate(
-        BiometricPrompt.PromptInfo.Builder()
-            .setTitle("Unlock Thor")
-            .setSubtitle("Authenticate to continue")
-            .setAllowedAuthenticators(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)
-            .build()
-    )
 }

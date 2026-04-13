@@ -38,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -115,8 +116,8 @@ fun HomeScreen(
         AnimatedVisibility (state.activePrivilegeMode != null && state.unknownInstallerCount > 0 && state.showReinstallCard) {
             Column{
                 ActionCard(
-                    title = "Reinstall All",
-                    subtitle = "${state.unknownInstallerCount} ${state.selectedType.name.lowercase()} apps not from Play Store. Fix them?",
+                    title = stringResource(R.string.reinstall_all),
+                    subtitle = stringResource(R.string.reinstall_all_subtitle, state.unknownInstallerCount, state.selectedType.name.lowercase()),
                     icon = R.drawable.apk_install,
                     isWarning = true,
                     onClick = onReinstallAll,
@@ -129,8 +130,8 @@ fun HomeScreen(
 
         // C. Portable Installer (Primary style card)
         ActionCard(
-            title = "Install from File",
-            subtitle = "Install APK, XAPK, APKS or Split bundles",
+            title = stringResource(R.string.install_from_file),
+            subtitle = stringResource(R.string.install_from_file_subtitle),
             icon = R.drawable.apk_install,
             isPrimary = true,
             onClick = {
@@ -155,14 +156,18 @@ fun HomeScreen(
                     verticalAlignment = Alignment.Bottom
                 ) {
                     Text(
-                        text = "App Distribution",
+                        text = stringResource(R.string.app_distribution),
                         style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
                     Text(
-                        text = "TOTAL: ${state.activeAppCount + state.frozenAppCount}",
+                        text = stringResource(R.string.total_apps, state.activeAppCount + state.frozenAppCount),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
                     )
                 }
                 Spacer(Modifier.height(24.dp))
@@ -184,19 +189,19 @@ fun HomeScreen(
         AlertDialog(
             onDismissRequest = { showCacheDialog = false },
             icon = { Icon(painterResource(R.drawable.clear_all), null) },
-            title = { Text("Clear All Cache") },
-            text = { Text("Which apps would you like to clear?") },
+            title = { Text(stringResource(R.string.clear_all_cache)) },
+            text = { Text(stringResource(R.string.clear_cache_prompt)) },
             confirmButton = {
                 Button(onClick = {
                     onClearAllCache(AppListType.USER)
                     showCacheDialog = false
-                }) { Text("User Apps") }
+                }) { Text(stringResource(R.string.user_apps)) }
             },
             dismissButton = {
                 OutlinedButton(onClick = {
                     onClearAllCache(AppListType.SYSTEM)
                     showCacheDialog = false
-                }) { Text("System Apps") }
+                }) { Text(stringResource(R.string.system_apps)) }
             }
         )
     }
@@ -205,21 +210,21 @@ fun HomeScreen(
         AlertDialog(
             onDismissRequest = { showPrivilegeDialog = false },
             icon = { Icon(painterResource(R.drawable.privacy_tip), null) },
-            title = { Text("Privilege Check") },
+            title = { Text(stringResource(R.string.privilege_check)) },
             text = {
-                Text("Thor requires Root or Shizuku access to function correctly.\n\nPlease grant access in your manager app and click Refresh.")
+                Text(stringResource(R.string.privilege_check_desc))
             },
             confirmButton = {
                 Button(onClick = {
                     viewModel.loadDashboardData()
                     showPrivilegeDialog = false
                 }) {
-                    Text("Refresh")
+                    Text(stringResource(R.string.refresh))
                 }
             },
             dismissButton = {
                 OutlinedButton(onClick = { showPrivilegeDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -315,7 +320,7 @@ private fun ActionCard(
                 IconButton(onClick = onClose) {
                     Icon(
                         painter = painterResource(R.drawable.round_close),
-                        contentDescription = "Dismiss",
+                        contentDescription = stringResource(R.string.dismiss),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }

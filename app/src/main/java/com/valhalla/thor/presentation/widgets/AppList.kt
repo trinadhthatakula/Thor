@@ -67,6 +67,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -143,10 +144,12 @@ fun AppList(
             // System App Warning
             if (appListType == AppListType.SYSTEM) {
                 Text(
-                    text = "⚠\uFE0E System Apps",
+                    text = stringResource(R.string.system_apps_warning),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp)
+                    modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp),
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
 
@@ -285,7 +288,7 @@ private fun AppQuickFilters(
                 filterType == FilterType.Source -> {
                     if (item == "All") "All"
                     else installerNameMap[item] ?: item
-                    ?: if (appListType != AppListType.SYSTEM) "Others" else "System"
+                    ?: if (appListType != AppListType.SYSTEM) "Others" else stringResource(R.string.system_apps)
                 }
 
                 else -> item ?: ""
@@ -358,8 +361,10 @@ private fun AppSearchBar(
                         Box(modifier = Modifier.weight(1f)) {
                             if (query.isEmpty()) {
                                 Text(
-                                    "Search apps...",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    stringResource(R.string.search_apps),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )
                             }
                             innerTextField()
@@ -367,7 +372,7 @@ private fun AppSearchBar(
                         if (query.isNotEmpty()) {
                             Icon(
                                 painter = painterResource(R.drawable.round_close),
-                                contentDescription = "Clear",
+                                contentDescription = stringResource(R.string.cd_clear),
                                 tint = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier
                                     .clip(CircleShape)
@@ -389,7 +394,7 @@ private fun AppSearchBar(
         ) {
             Icon(
                 painter = painterResource(R.drawable.filter_list),
-                contentDescription = "Config",
+                contentDescription = stringResource(R.string.cd_config),
                 tint = MaterialTheme.colorScheme.primary
             )
         }
@@ -417,18 +422,20 @@ private fun MultiSelectHeader(
             onCheckedChange = onSelectAll
         )
         Text(
-            text = "$count Selected",
+            text = stringResource(R.string.selected_count, count),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSecondaryContainer,
             modifier = Modifier
                 .weight(1f)
-                .padding(start = 8.dp)
+                .padding(start = 8.dp),
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
         IconButton(onClick = onClear) {
             Icon(
                 painterResource(R.drawable.round_close),
-                "Close",
+                stringResource(R.string.cd_close),
                 tint = MaterialTheme.colorScheme.onSecondaryContainer
             )
         }
@@ -506,11 +513,17 @@ private fun AppItemList(
         },
         headlineContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(app.appName ?: "Unknown", maxLines = 1, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                Text(
+                    app.appName ?: stringResource(R.string.unknown), 
+                    maxLines = 1, 
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
                 if (!app.enabled) {
                     Icon(
                         painterResource(R.drawable.frozen),
-                        "Frozen",
+                        stringResource(R.string.cd_frozen),
                         modifier = Modifier
                             .size(16.dp)
                             .padding(start = 4.dp),
@@ -519,7 +532,7 @@ private fun AppItemList(
                 } else if (app.isSuspended) {
                     Icon(
                         painterResource(R.drawable.bolt),
-                        "Suspended",
+                        stringResource(R.string.cd_suspended),
                         modifier = Modifier
                             .size(16.dp)
                             .padding(start = 4.dp),
@@ -540,7 +553,7 @@ private fun AppItemList(
             if (isSelected) {
                 Icon(
                     painterResource(R.drawable.check_circle),
-                    "Selected",
+                    stringResource(R.string.cd_selected),
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
@@ -583,7 +596,7 @@ private fun AppItemGrid(
             if (isSelected) {
                 Icon(
                     painterResource(R.drawable.check_circle),
-                    "Selected",
+                    stringResource(R.string.cd_selected),
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -594,7 +607,7 @@ private fun AppItemGrid(
                 if (!app.enabled) {
                     Icon(
                         painterResource(R.drawable.frozen),
-                        null,
+                        stringResource(R.string.cd_frozen),
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
@@ -605,7 +618,7 @@ private fun AppItemGrid(
                 } else if (app.isSuspended) {
                     Icon(
                         painterResource(R.drawable.bolt),
-                        null,
+                        stringResource(R.string.cd_suspended),
                         tint = MaterialTheme.colorScheme.secondary,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
@@ -618,11 +631,12 @@ private fun AppItemGrid(
         }
         Spacer(Modifier.height(8.dp))
         Text(
-            text = app.appName ?: "Unknown",
+            text = app.appName ?: stringResource(R.string.unknown),
             maxLines = 1,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
     }
 }
@@ -680,13 +694,13 @@ private fun EmptyStatePlaceholder(
         )
         Spacer(Modifier.height(16.dp))
         Text(
-            text = if (isFiltering) "No matching apps found" else "No apps to display",
+            text = if (isFiltering) stringResource(R.string.no_matching_apps) else stringResource(R.string.no_apps_display),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         if (isFiltering) {
             Text(
-                text = "Try adjusting your search or filters",
+                text = stringResource(R.string.adjust_filters_hint),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 modifier = Modifier.padding(top = 4.dp)
@@ -696,11 +710,6 @@ private fun EmptyStatePlaceholder(
 }
 
 private enum class SheetTab { FILTERS, SORT }
-
-private fun SheetTab.label(): String = when (this) {
-    SheetTab.FILTERS -> "Filters"
-    SheetTab.SORT    -> "Sort By"
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -727,7 +736,7 @@ private fun AppFilterSheet(
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
             Text(
-                "Configuration", 
+                stringResource(R.string.configuration), 
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
                 letterSpacing = (-1).sp
@@ -740,7 +749,7 @@ private fun AppFilterSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("App Source", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                Text(stringResource(R.string.app_source), style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                 ConnectedButtonGroup(
                     items = AppListType.entries.map { type ->
                         ConnectedButtonGroupItem.Icon(
@@ -761,11 +770,11 @@ private fun AppFilterSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("View Mode", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                Text(stringResource(R.string.view_mode), style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                 ConnectedButtonGroup(
                     items = listOf(
-                        ConnectedButtonGroupItem.Icon(R.drawable.grid_view, "Grid"),
-                        ConnectedButtonGroupItem.Icon(R.drawable.view_stream, "List")
+                        ConnectedButtonGroupItem.Icon(R.drawable.grid_view, stringResource(R.string.grid)),
+                        ConnectedButtonGroupItem.Icon(R.drawable.view_stream, stringResource(R.string.list))
                     ),
                     selectedIndex = if (isGrid) 0 else 1,
                     onItemSelected = { onToggleView() }
@@ -775,7 +784,7 @@ private fun AppFilterSheet(
             Spacer(Modifier.height(32.dp))
 
             ConnectedButtonGroup(
-                items = SheetTab.entries.map { ConnectedButtonGroupItem.Label(it.label()) },
+                items = SheetTab.entries.map { ConnectedButtonGroupItem.Label(stringResource(if (it == SheetTab.FILTERS) R.string.filters else R.string.sort_by)) },
                 selectedIndex = SheetTab.entries.indexOf(activeTab),
                 onItemSelected = { activeTab = SheetTab.entries[it] },
                 modifier = Modifier.fillMaxWidth()
@@ -791,7 +800,7 @@ private fun AppFilterSheet(
                     ) {
                         items(filterTypes) { type ->
                             ListItem(
-                                headlineContent = { Text(type.asGeneralName()) },
+                                headlineContent = { Text(type.asGeneralName(), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
                                 trailingContent = {
                                     if (filterType == type) Icon(
                                         painterResource(R.drawable.check_circle),
@@ -813,19 +822,19 @@ private fun AppFilterSheet(
 
                 SheetTab.SORT -> {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Order:", style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.order), style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.width(8.dp))
                         FilterChip(
                             selected = sortOrder == SortOrder.ASCENDING,
                             onClick = { onSortOrderChanged(SortOrder.ASCENDING) },
-                            label = { Text("Ascending") },
+                            label = { Text(stringResource(R.string.ascending)) },
                             leadingIcon = { Icon(painterResource(R.drawable.arrow_upward), null) }
                         )
                         Spacer(Modifier.width(8.dp))
                         FilterChip(
                             selected = sortOrder == SortOrder.DESCENDING,
                             onClick = { onSortOrderChanged(SortOrder.DESCENDING) },
-                            label = { Text("Descending") },
+                            label = { Text(stringResource(R.string.descending)) },
                             leadingIcon = { Icon(painterResource(R.drawable.arrow_downward), null) }
                         )
                     }
@@ -836,7 +845,7 @@ private fun AppFilterSheet(
                     ) {
                         items(SortBy.entries) { item ->
                             ListItem(
-                                headlineContent = { Text(item.asGeneralName()) },
+                                headlineContent = { Text(item.asGeneralName(), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
                                 trailingContent = {
                                     if (sortBy == item) Icon(
                                         painterResource(R.drawable.check_circle),
@@ -860,7 +869,7 @@ private fun AppFilterSheet(
             Button(
                 onClick = onDismiss,
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("Done") }
+            ) { Text(stringResource(R.string.done)) }
         }
     }
 }

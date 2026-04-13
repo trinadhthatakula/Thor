@@ -20,6 +20,9 @@ data class UserPreferences(
 
     // Work Mode
     val preferredPrivilegeMode: PrivilegeMode? = null,
+
+    // Localization
+    val language: String? = null, // null means System Default
 )
 
 

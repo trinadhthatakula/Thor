@@ -8,6 +8,7 @@ import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.util.LocaleManager
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -17,7 +18,8 @@ import kotlinx.coroutines.launch
 class SettingsViewModel(
     private val preferenceRepository: PreferenceRepository,
     private val systemRepository: SystemRepository,
-    private val biometricHelper: BiometricHelper
+    private val biometricHelper: BiometricHelper,
+    private val localeManager: LocaleManager
 ) : ViewModel() {
 
     data class SettingsUiState(
@@ -86,5 +88,12 @@ class SettingsViewModel(
 
     fun setPrivilegeMode(mode: PrivilegeMode?) {
         viewModelScope.launch { preferenceRepository.setPrivilegeMode(mode) }
+    }
+
+    fun setLanguage(language: String?) {
+        viewModelScope.launch {
+            preferenceRepository.setLanguage(language)
+            localeManager.applyLocale(language)
+        }
     }
 }

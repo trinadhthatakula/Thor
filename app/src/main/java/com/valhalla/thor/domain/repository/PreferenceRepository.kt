@@ -29,4 +29,7 @@ interface PreferenceRepository {
 
     // --- Work Mode ---
     suspend fun setPrivilegeMode(mode: PrivilegeMode?)
+
+    // --- Localization ---
+    suspend fun setLanguage(language: String?)
 }

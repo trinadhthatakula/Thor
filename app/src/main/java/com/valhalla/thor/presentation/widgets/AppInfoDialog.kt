@@ -37,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -125,17 +126,17 @@ fun AppInfoDialog(
                     tint = MaterialTheme.colorScheme.error
                 )
             },
-            title = { Text("Clear App Data?") },
-            text = { Text("This will permanently delete all data for ${appInfo.appName}. This action cannot be undone.") },
+            title = { Text(stringResource(R.string.clear_app_data_title)) },
+            text = { Text(stringResource(R.string.clear_app_data_desc, appInfo.appName ?: "")) },
             confirmButton = {
                 TextButton(onClick = {
                     onAppAction(AppClickAction.ClearData(appInfo))
                     showClearDataConfirmation = false
                     onDismiss()
-                }) { Text("Clear All Data") }
+                }) { Text(stringResource(R.string.clear_all_data)) }
             },
             dismissButton = {
-                TextButton(onClick = { showClearDataConfirmation = false }) { Text("Cancel") }
+                TextButton(onClick = { showClearDataConfirmation = false }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }
@@ -143,17 +144,17 @@ fun AppInfoDialog(
     if (showUninstallConfirmation) {
         AlertDialog(
             onDismissRequest = { showUninstallConfirmation = false },
-            title = { Text("Uninstall System App?") },
-            text = { Text("This allows you to uninstall updates or factory reset this system app. Proceed?") },
+            title = { Text(stringResource(R.string.uninstall_system_app_title)) },
+            text = { Text(stringResource(R.string.uninstall_system_app_desc)) },
             confirmButton = {
                 TextButton(onClick = {
                     onAppAction(AppClickAction.Uninstall(appInfo))
                     showUninstallConfirmation = false
                     onDismiss()
-                }) { Text("Yes") }
+                }) { Text(stringResource(R.string.yes)) }
             },
             dismissButton = {
-                TextButton(onClick = { showUninstallConfirmation = false }) { Text("No") }
+                TextButton(onClick = { showUninstallConfirmation = false }) { Text(stringResource(R.string.no)) }
             }
         )
     }
@@ -168,19 +169,19 @@ fun AppInfoDialog(
                 )
             },
             onDismissRequest = { showReinstallWarning = false },
-            title = { Text("Risk Warning") },
+            title = { Text(stringResource(R.string.risk_warning_title)) },
             text = {
-                Text("This forces the installer record to 'Google Play Store'.\n\nUpdates may fail if the signature doesn't match the official store version.")
+                Text(stringResource(R.string.risk_warning_desc))
             },
             confirmButton = {
                 TextButton(onClick = {
                     onAppAction(AppClickAction.Reinstall(appInfo))
                     showReinstallWarning = false
                     onDismiss()
-                }) { Text("Proceed") }
+                }) { Text(stringResource(R.string.proceed)) }
             },
             dismissButton = {
-                TextButton(onClick = { showReinstallWarning = false }) { Text("Cancel") }
+                TextButton(onClick = { showReinstallWarning = false }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }
@@ -210,7 +211,7 @@ private fun AppHeader(
             ) {
                 Icon(
                     painterResource(R.drawable.settings), 
-                    "Settings",
+                    stringResource(R.string.cd_settings),
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
@@ -238,11 +239,13 @@ private fun AppHeader(
 
         // Title
         Text(
-            text = appInfo.appName ?: "Unknown",
+            text = appInfo.appName ?: stringResource(R.string.unknown),
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Black,
             textAlign = TextAlign.Center,
-            letterSpacing = (-1).sp
+            letterSpacing = (-1).sp,
+            maxLines = 2,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
 
         Spacer(Modifier.height(8.dp))
@@ -252,13 +255,13 @@ private fun AppHeader(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (appInfo.splitPublicSourceDirs.isNotEmpty()) {
-                StatusChip(text = "SPLIT", color = MaterialTheme.colorScheme.tertiaryContainer)
+                StatusChip(text = stringResource(R.string.status_split), color = MaterialTheme.colorScheme.tertiaryContainer)
             }
             if (!appInfo.enabled) {
-                StatusChip(text = "FROZEN", color = MaterialTheme.colorScheme.errorContainer)
+                StatusChip(text = stringResource(R.string.status_frozen), color = MaterialTheme.colorScheme.errorContainer)
             }
             if (appInfo.isSuspended) {
-                StatusChip(text = "SUSPENDED", color = MaterialTheme.colorScheme.secondaryContainer)
+                StatusChip(text = stringResource(R.string.status_suspended), color = MaterialTheme.colorScheme.secondaryContainer)
             }
             StatusChip(
                 text = "v${appInfo.versionName}", 
@@ -317,39 +320,39 @@ private fun AppActionRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         // 1. Standard Actions
-        ActionItem(R.drawable.open_in_new, "Launch") { onAction(AppClickAction.Launch(appInfo)) }
-        ActionItem(R.drawable.share, "Share") { onAction(AppClickAction.Share(appInfo)) }
+        ActionItem(R.drawable.open_in_new, stringResource(R.string.action_launch)) { onAction(AppClickAction.Launch(appInfo)) }
+        ActionItem(R.drawable.share, stringResource(R.string.action_share)) { onAction(AppClickAction.Share(appInfo)) }
 
         // 2. Privileged Actions
         if (hasPrivilege) {
-            val (freezeIcon, freezeLabel) = if (isFrozen) R.drawable.freeze_off to "Unfreeze" else R.drawable.frozen to "Freeze"
+            val (freezeIcon, freezeLabel) = if (isFrozen) R.drawable.freeze_off to stringResource(R.string.action_unfreeze) else R.drawable.frozen to stringResource(R.string.action_freeze)
             ActionItem(freezeIcon, freezeLabel) {
                 onAction(if (isFrozen) AppClickAction.UnFreeze(appInfo) else AppClickAction.Freeze(appInfo))
             }
 
-            val (suspendIcon, suspendLabel) = if (isSuspended) R.drawable.bolt to "Unsuspend" else R.drawable.warning to "Suspend"
+            val (suspendIcon, suspendLabel) = if (isSuspended) R.drawable.bolt to stringResource(R.string.action_unsuspend) else R.drawable.warning to stringResource(R.string.action_suspend)
             ActionItem(suspendIcon, suspendLabel) {
                 onAction(if (isSuspended) AppClickAction.UnSuspend(appInfo) else AppClickAction.Suspend(appInfo))
             }
 
             if (appInfo.enabled) {
-                ActionItem(R.drawable.danger, "Kill") { onAction(AppClickAction.Kill(appInfo)) }
+                ActionItem(R.drawable.danger, stringResource(R.string.action_kill)) { onAction(AppClickAction.Kill(appInfo)) }
             }
 
-            ActionItem(R.drawable.clear_all, "Cache") { onAction(AppClickAction.ClearCache(appInfo)) }
-            ActionItem(R.drawable.delete, "Data") { onAction(AppClickAction.ClearData(appInfo)) }
+            ActionItem(R.drawable.clear_all, stringResource(R.string.action_cache)) { onAction(AppClickAction.ClearCache(appInfo)) }
+            ActionItem(R.drawable.delete, stringResource(R.string.action_data)) { onAction(AppClickAction.ClearData(appInfo)) }
         }
 
         // 3. App Store Fix
         if (hasPrivilege && !appInfo.isSystem && appInfo.installerPackageName != "com.android.vending") {
-            ActionItem(R.drawable.apk_install, "Fix Store") {
+            ActionItem(R.drawable.apk_install, stringResource(R.string.fix_store)) {
                 onAction(AppClickAction.Reinstall(appInfo))
             }
         }
 
         // 4. Uninstall
         if (appInfo.packageName != "com.valhalla.thor") {
-            ActionItem(R.drawable.delete_forever, "Uninstall") {
+            ActionItem(R.drawable.delete_forever, stringResource(R.string.action_uninstall)) {
                 onAction(AppClickAction.Uninstall(appInfo))
             }
         }

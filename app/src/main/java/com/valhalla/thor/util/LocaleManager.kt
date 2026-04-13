@@ -1,0 +1,49 @@
+package com.valhalla.thor.util
+
+import android.app.LocaleManager
+import android.content.Context
+import android.os.Build
+import android.os.LocaleList
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
+
+/**
+ * Modern Locale Manager that uses the system LocaleManager on Android 13+ (API 33)
+ * and falls back to AppCompatDelegate for older versions.
+ */
+class LocaleManager(private val context: Context) {
+
+    /**
+     * Applies the given language code to the application.
+     * @param languageCode The language tag (e.g., "en", "zh-CN"), or null for system default.
+     */
+    fun applyLocale(languageCode: String?) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val localeManager = context.getSystemService(Context.LOCALE_SERVICE) as LocaleManager
+            localeManager.applicationLocales = if (languageCode == null) {
+                LocaleList.getEmptyLocaleList()
+            } else {
+                LocaleList.forLanguageTags(languageCode)
+            }
+        } else {
+            val appLocale: LocaleListCompat = if (languageCode == null) {
+                LocaleListCompat.getEmptyLocaleList()
+            } else {
+                LocaleListCompat.forLanguageTags(languageCode)
+            }
+            AppCompatDelegate.setApplicationLocales(appLocale)
+        }
+    }
+
+    /**
+     * Returns the currently applied application locales.
+     */
+    fun getAppliedLocales(): LocaleListCompat {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val localeManager = context.getSystemService(Context.LOCALE_SERVICE) as LocaleManager
+            LocaleListCompat.wrap(localeManager.applicationLocales)
+        } else {
+            AppCompatDelegate.getApplicationLocales()
+        }
+    }
+}

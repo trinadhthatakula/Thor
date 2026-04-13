@@ -34,6 +34,7 @@ import com.valhalla.thor.presentation.installer.InstallerViewModel
 import com.valhalla.thor.presentation.main.MainViewModel
 import com.valhalla.thor.presentation.security.SecurityViewModel
 import com.valhalla.thor.presentation.settings.SettingsViewModel
+import com.valhalla.thor.util.LocaleManager
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
@@ -43,6 +44,7 @@ import org.koin.dsl.module
 
 val commonModule = module {
     single<PackageManager> { androidContext().packageManager }
+    singleOf(::LocaleManager)
     singleOf(::ApksMetadataGenerator)
     single<AppRepository> { AppRepositoryImpl(androidContext(), get()) }
     factory { GetInstalledAppsUseCase(get()) }

@@ -30,9 +30,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.valhalla.thor.R
 
 private data class ChartSlice(
     val label: String,
@@ -165,6 +167,14 @@ private fun LegendItem(
     slice: ChartSlice,
     modifier: Modifier = Modifier
 ) {
+    val localizedLabel = when (slice.label.uppercase()) {
+        "PLAY STORE" -> stringResource(R.string.play_store)
+        "F-DROID" -> stringResource(R.string.f_droid)
+        "SIDELOADED" -> stringResource(R.string.sideloaded)
+        "OTHERS" -> stringResource(R.string.others)
+        else -> slice.label
+    }
+
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically
@@ -174,20 +184,23 @@ private fun LegendItem(
                 .size(10.dp)
                 .background(slice.color, CircleShape)
         )
-        Spacer(Modifier.width(16.dp))
+        Spacer(Modifier.width(12.dp))
         Column {
             Text(
-                text = slice.label.uppercase(),
+                text = localizedLabel.uppercase(),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp
+                letterSpacing = 1.sp,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
             Text(
                 text = slice.count.toString(),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Black,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1
             )
         }
     }

@@ -1,13 +1,141 @@
 <resources>
-    <string name="app_name">Thor</string>
     <string name="title_activity_script_runner">ScriptRunner</string>
     <string name="title_activity_home">HomeActivity</string>
+
+    <!-- Navigation -->
     <string name="home">Home</string>
     <string name="home_desc">Home Page</string>
-    <string name="apps_desc">Shows A list of all apps available</string>
     <string name="apps">App List</string>
-    <string name="freezer_desc">Freeze/Unfreeze apps from here</string>
+    <string name="apps_desc">Shows A list of all apps available</string>
     <string name="freezer">Freezer</string>
+    <string name="freezer_desc">Freeze/Unfreeze apps from here</string>
     <string name="settings">Settings</string>
     <string name="settings_desc">Settings Page to change app settings</string>
+    <string name="config_engine_v">Configuration Engine • v%1$s</string>
+    <string name="appearance">APPEARANCE</string>
+    <string name="theme">Theme</string>
+    <string name="theme_desc">Visual interface style</string>
+    <string name="amoled_mode">AMOLED Mode</string>
+    <string name="amoled_desc">Pure black background</string>
+    <string name="dynamic_colors">Dynamic Colors</string>
+    <string name="dynamic_colors_desc">Material You integration</string>
+    <string name="security">SECURITY</string>
+    <string name="biometric_lock">Biometric Lock</string>
+    <string name="biometric_lock_desc">Require auth on launch</string>
+    <string name="work_mode">WORK MODE</string>
+    <string name="active_engine">Active Engine</string>
+    <string name="active_engine_desc">Switch between available providers</string>
+    <string name="about">ABOUT</string>
+    <string name="version">Version</string>
+    <string name="release_candidate">Release candidate</string>
+    <string name="source_code">SOURCE CODE</string>
+    <string name="community">COMMUNITY</string>
+    <string name="kernel_status">KERNEL_STATUS: OPTIMIZED</string>
+    <string name="built_with_precision">BUILT WITH PRECISION FOR POWER USERS</string>
+    <string name="app_language">App Language</string>
+    <string name="select_language">Select Language</string>
+    <string name="system_default">System Default</string>
+    <string name="english">English</string>
+    <string name="chinese">Chinese</string>
+    <string name="french">French</string>
+    <string name="spanish">Spanish</string>
+    <string name="arabic">Arabic</string>
+
+    <!-- Common Actions -->
+    <string name="cancel">Cancel</string>
+    <string name="confirm">Confirm</string>
+    <string name="proceed">Proceed</string>
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
+    <string name="done">Done</string>
+    <string name="close">Close</string>
+    <string name="refresh">Refresh</string>
+    <string name="dismiss">Dismiss</string>
+    <string name="search_apps">Search apps&#8230;</string>
+    <string name="unknown">Unknown</string>
+
+    <!-- Home Screen -->
+    <string name="reinstall_all">Reinstall All</string>
+    <string name="reinstall_all_subtitle">%1$d %2$s apps not from Play Store. Fix them?</string>
+    <string name="install_from_file">Install from File</string>
+    <string name="install_from_file_subtitle">Install APK, XAPK, APKS or Split bundles</string>
+    <string name="app_distribution">App Distribution</string>
+    <string name="total_apps">TOTAL: %1$d</string>
+    <string name="others">Others</string>
+    <string name="clear_all_cache">Clear All Cache</string>
+    <string name="clear_cache_prompt">Which apps would you like to clear?</string>
+    <string name="user_apps">User Apps</string>
+    <string name="system_apps">System Apps</string>
+    <string name="active">Active</string>
+    <string name="frozen">Frozen</string>
+    <string name="suspended">Suspended</string>
+    <string name="privilege_check">Privilege Check</string>
+    <string name="privilege_check_desc">Thor requires Root or Shizuku access to function correctly.\n\nPlease grant access in your manager app and click Refresh.</string>
+
+    <!-- App List / Freezer -->
+    <string name="system_apps_warning">⚠ System Apps</string>
+    <string name="selected_count">%1$d Selected</string>
+    <string name="no_matching_apps">No matching apps found</string>
+    <string name="no_apps_display">No apps to display</string>
+    <string name="adjust_filters_hint">Try adjusting your search or filters</string>
+    <string name="configuration">Configuration</string>
+    <string name="app_source">App Source</string>
+    <string name="view_mode">View Mode</string>
+    <string name="grid">Grid</string>
+    <string name="list">List</string>
+    <string name="order">Order:</string>
+    <string name="ascending">Ascending</string>
+    <string name="descending">Descending</string>
+    <string name="filters">Filters</string>
+    <string name="sort_by">Sort By</string>
+
+    <!-- App Info Dialog -->
+    <string name="clear_app_data_title">Clear App Data?</string>
+    <string name="clear_app_data_desc">This will permanently delete all data for %1$s. This action cannot be undone.</string>
+    <string name="clear_all_data">Clear All Data</string>
+    <string name="uninstall_system_app_title">Uninstall System App?</string>
+    <string name="uninstall_system_app_desc">This allows you to uninstall updates or factory reset this system app. Proceed?</string>
+    <string name="risk_warning_title">Risk Warning</string>
+    <string name="risk_warning_desc">This forces the installer record to \'Google Play Store\'.\n\nUpdates may fail if the signature doesn\'t match the official store version.</string>
+    <string name="reinstall_play_store_title">Reinstall with Play Store?</string>
+    <string name="reinstall_play_store_desc">This will attempt to reinstall %1$s using the Google Play Store.</string>
+    <string name="fix_store">Fix Store</string>
+
+    <!-- App Status -->
+    <string name="status_split">SPLIT</string>
+    <string name="status_frozen">FROZEN</string>
+    <string name="status_suspended">SUSPENDED</string>
+
+    <!-- App Actions -->
+    <string name="action_launch">Launch</string>
+    <string name="action_share">Share</string>
+    <string name="action_freeze">Freeze</string>
+    <string name="action_unfreeze">Unfreeze</string>
+    <string name="action_suspend">Suspend</string>
+    <string name="action_unsuspend">Unsuspend</string>
+    <string name="action_kill">Kill</string>
+    <string name="action_cache">Cache</string>
+    <string name="action_data">Data</string>
+    <string name="action_uninstall">Uninstall</string>
+    <string name="action_reinstall">Reinstall</string>
+
+    <!-- Main Screen / Global -->
+    <string name="cannot_launch_app">Cannot launch app</string>
+    <string name="share_app">Share App</string>
+    <string name="kill_app_title">Kill App?</string>
+    <string name="kill_app_desc">Force stop %1$s? This may cause data loss.</string>
+    <string name="exit_thor_title">Exit Thor?</string>
+    <string name="exit_thor_desc">Are you sure you want to close the application?</string>
+    <string name="are_you_sure">Are you sure?</string>
+
+    <!-- Accessibility / Content Descriptions -->
+    <string name="cd_config">Config</string>
+    <string name="cd_close">Close</string>
+    <string name="cd_frozen">Frozen</string>
+    <string name="cd_suspended">Suspended</string>
+    <string name="cd_selected">Selected</string>
+    <string name="cd_search">Search</string>
+    <string name="cd_clear">Clear</string>
+    <string name="cd_settings">Settings</string>
+
 </resources>

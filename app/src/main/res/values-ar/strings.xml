@@ -1,0 +1,141 @@
+<resources>
+    <string name="title_activity_script_runner">ScriptRunner</string>
+    <string name="title_activity_home">HomeActivity</string>
+
+    <!-- Navigation -->
+    <string name="home">الرئيسية</string>
+    <string name="home_desc">الصفحة الرئيسية</string>
+    <string name="apps">قائمة التطبيقات</string>
+    <string name="apps_desc">يعرض قائمة بجميع التطبيقات المتاحة</string>
+    <string name="freezer">المجمد</string>
+    <string name="freezer_desc">تجميد/إلغاء تجميد التطبيقات من هنا</string>
+    <string name="settings">الإعدادات</string>
+    <string name="settings_desc">صفحة الإعدادات لتغيير إعدادات التطبيق</string>
+    <string name="config_engine_v">محرك التكوين • إصدار %1$s</string>
+    <string name="appearance">المظهر</string>
+    <string name="theme">المظهر</string>
+    <string name="theme_desc">نمط الواجهة المرئية</string>
+    <string name="amoled_mode">وضع AMOLED</string>
+    <string name="amoled_desc">خلفية سوداء نقية</string>
+    <string name="dynamic_colors">ألوان ديناميكية</string>
+    <string name="dynamic_colors_desc">تكامل Material You</string>
+    <string name="security">الأمان</string>
+    <string name="biometric_lock">قفل القياسات الحيوية</string>
+    <string name="biometric_lock_desc">يتطلب المصادقة عند التشغيل</string>
+    <string name="work_mode">وضع العمل</string>
+    <string name="active_engine">المحرك النشط</string>
+    <string name="active_engine_desc">التبديل بين الموفرين المتاحين</string>
+    <string name="about">حول</string>
+    <string name="version">الإصدار</string>
+    <string name="release_candidate">نسخة مرشحة</string>
+    <string name="source_code">كود المصدر</string>
+    <string name="community">المجتمع</string>
+    <string name="kernel_status">حالة النواة: محسنة</string>
+    <string name="built_with_precision">بني بدقة للمستخدمين المحترفين</string>
+    <string name="app_language">لغة التطبيق</string>
+    <string name="select_language">اختر اللغة</string>
+    <string name="system_default">افتراضي النظام</string>
+    <string name="english">الإنجليزية</string>
+    <string name="chinese">الصينية</string>
+    <string name="french">الفرنسية</string>
+    <string name="spanish">الإسبانية</string>
+    <string name="arabic">العربية</string>
+
+    <!-- Common Actions -->
+    <string name="cancel">إلغاء</string>
+    <string name="confirm">تأكيد</string>
+    <string name="proceed">متابعة</string>
+    <string name="yes">نعم</string>
+    <string name="no">لا</string>
+    <string name="done">تم</string>
+    <string name="close">إغلاق</string>
+    <string name="refresh">تحديث</string>
+    <string name="dismiss">تجاهل</string>
+    <string name="search_apps">بحث عن تطبيقات&#8230;</string>
+    <string name="unknown">غير معروف</string>
+
+    <!-- Home Screen -->
+    <string name="reinstall_all">إعادة تثبيت الكل</string>
+    <string name="reinstall_all_subtitle">%1$d تطبيق %2$s ليس من متجر Play. هل تريد إصلاحها؟</string>
+    <string name="install_from_file">تثبيت من ملف</string>
+    <string name="install_from_file_subtitle">تثبيت APK أو XAPK أو APKS أو حزم مقسمة</string>
+    <string name="app_distribution">توزيع التطبيقات</string>
+    <string name="total_apps">الإجمالي: %1$d</string>
+    <string name="others">أخرى</string>
+    <string name="clear_all_cache">مسح جميع الذاكرة المؤقتة</string>
+    <string name="clear_cache_prompt">أي التطبيقات ترغب في مسحها؟</string>
+    <string name="user_apps">تطبيقات المستخدم</string>
+    <string name="system_apps">تطبيقات النظام</string>
+    <string name="active">نشط</string>
+    <string name="frozen">مجمد</string>
+    <string name="suspended">معلق</string>
+    <string name="privilege_check">فحص الصلاحيات</string>
+    <string name="privilege_check_desc">يتطلب Thor صلاحيات Root أو Shizuku ليعمل بشكل صحيح.\n\nيرجى منح الصلاحيات في تطبيق الإدارة والنقر فوق تحديث.</string>
+
+    <!-- App List / Freezer -->
+    <string name="system_apps_warning">⚠ تطبيقات النظام</string>
+    <string name="selected_count">%1$d مختار</string>
+    <string name="no_matching_apps">لم يتم العثور على تطبيقات مطابقة</string>
+    <string name="no_apps_display">لا توجد تطبيقات لعرضها</string>
+    <string name="adjust_filters_hint">حاول ضبط البحث أو الفلاتر</string>
+    <string name="configuration">التكوين</string>
+    <string name="app_source">مصدر التطبيق</string>
+    <string name="view_mode">وضع العرض</string>
+    <string name="grid">شبكة</string>
+    <string name="list">قائمة</string>
+    <string name="order">الترتيب:</string>
+    <string name="ascending">تصاعدي</string>
+    <string name="descending">تنازلي</string>
+    <string name="filters">الفلاتر</string>
+    <string name="sort_by">فرز حسب</string>
+
+    <!-- App Info Dialog -->
+    <string name="clear_app_data_title">مسح بيانات التطبيق؟</string>
+    <string name="clear_app_data_desc">سيؤدي هذا إلى حذف جميع بيانات %1$s نهائياً. لا يمكن التراجع عن هذا الإجراء.</string>
+    <string name="clear_all_data">مسح جميع البيانات</string>
+    <string name="uninstall_system_app_title">إلغاء تثبيت تطبيق النظام؟</string>
+    <string name="uninstall_system_app_desc">يتيح لك هذا إلغاء تثبيت التحديثات أو استعادة ضبط المصنع لتطبيق النظام هذا. متابعة؟</string>
+    <string name="risk_warning_title">تحذير من المخاطر</string>
+    <string name="risk_warning_desc">هذا يجبر سجل المثبت على \'Google Play Store\'.\n\nقد تفشل التحديثات إذا لم يتطابق التوقيع مع نسخة المتجر الرسمية.</string>
+    <string name="reinstall_play_store_title">إعادة التثبيت باستخدام متجر Play؟</string>
+    <string name="reinstall_play_store_desc">سيحاول هذا إعادة تثبيت %1$s باستخدام متجر Google Play.</string>
+    <string name="fix_store">إصلاح المتجر</string>
+
+    <!-- App Status -->
+    <string name="status_split">مقسم</string>
+    <string name="status_frozen">مجمد</string>
+    <string name="status_suspended">معلق</string>
+
+    <!-- App Actions -->
+    <string name="action_launch">تشغيل</string>
+    <string name="action_share">مشاركة</string>
+    <string name="action_freeze">تجميد</string>
+    <string name="action_unfreeze">إلغاء التجميد</string>
+    <string name="action_suspend">تعليق</string>
+    <string name="action_unsuspend">إلغاء التعليق</string>
+    <string name="action_kill">إنهاء</string>
+    <string name="action_cache">ذاكرة مؤقتة</string>
+    <string name="action_data">بيانات</string>
+    <string name="action_uninstall">إلغاء التثبيت</string>
+    <string name="action_reinstall">إعادة تثبيت</string>
+
+    <!-- Main Screen / Global -->
+    <string name="cannot_launch_app">لا يمكن تشغيل التطبيق</string>
+    <string name="share_app">مشاركة التطبيق</string>
+    <string name="kill_app_title">إنهاء التطبيق؟</string>
+    <string name="kill_app_desc">إيقاف إجباري لـ %1$s؟ قد يؤدي هذا إلى فقدان البيانات.</string>
+    <string name="exit_thor_title">الخروج من Thor؟</string>
+    <string name="exit_thor_desc">هل أنت متأكد أنك تريد إغلاق التطبيق؟</string>
+    <string name="are_you_sure">هل أنت متأكد؟</string>
+
+    <!-- Accessibility / Content Descriptions -->
+    <string name="cd_config">تكوين</string>
+    <string name="cd_close">إغلاق</string>
+    <string name="cd_frozen">مجمد</string>
+    <string name="cd_suspended">معلق</string>
+    <string name="cd_selected">مختار</string>
+    <string name="cd_search">بحث</string>
+    <string name="cd_clear">مسح</string>
+    <string name="cd_settings">الإعدادات</string>
+
+</resources>

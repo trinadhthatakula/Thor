@@ -1,12 +1,12 @@
 package com.valhalla.thor
 
 import android.os.Bundle
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.getValue
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.valhalla.thor.domain.model.ThemeMode
@@ -24,7 +24,7 @@ import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 import org.koin.androidx.viewmodel.ext.android.viewModel
 
-class HomeActivity : FragmentActivity() {
+class HomeActivity : ComponentActivity() {
 
     private val systemRepository: SystemRepository by inject()
     private val homeViewModel: HomeViewModel by viewModel()
@@ -55,6 +55,7 @@ class HomeActivity : FragmentActivity() {
 
         setContent {
             val prefs by settingsViewModel.preferences.collectAsStateWithLifecycle()
+
             val systemDark = isSystemInDarkTheme()
             val darkTheme = when (prefs.themeMode) {
                 ThemeMode.LIGHT  -> false

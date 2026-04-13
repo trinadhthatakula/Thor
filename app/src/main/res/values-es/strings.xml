@@ -1,0 +1,141 @@
+<resources>
+    <string name="title_activity_script_runner">ScriptRunner</string>
+    <string name="title_activity_home">HomeActivity</string>
+
+    <!-- Navigation -->
+    <string name="home">Inicio</string>
+    <string name="home_desc">Página de inicio</string>
+    <string name="apps">Lista de aplicaciones</string>
+    <string name="apps_desc">Muestra una lista de todas las aplicaciones disponibles</string>
+    <string name="freezer">Congelador</string>
+    <string name="freezer_desc">Congelar/Descongelar aplicaciones desde aquí</string>
+    <string name="settings">Ajustes</string>
+    <string name="settings_desc">Página de ajustes para cambiar las opciones de la aplicación</string>
+    <string name="config_engine_v">Motor de configuración • v%1$s</string>
+    <string name="appearance">APARIENCIA</string>
+    <string name="theme">Tema</string>
+    <string name="theme_desc">Estilo de interfaz visual</string>
+    <string name="amoled_mode">Modo AMOLED</string>
+    <string name="amoled_desc">Fondo negro puro</string>
+    <string name="dynamic_colors">Colores dinámicos</string>
+    <string name="dynamic_colors_desc">Integración con Material You</string>
+    <string name="security">SEGURIDAD</string>
+    <string name="biometric_lock">Bloqueo biométrico</string>
+    <string name="biometric_lock_desc">Requerir autenticación al iniciar</string>
+    <string name="work_mode">MODO DE TRABAJO</string>
+    <string name="active_engine">Motor activo</string>
+    <string name="active_engine_desc">Cambiar entre proveedores disponibles</string>
+    <string name="about">ACERCA DE</string>
+    <string name="version">Versión</string>
+    <string name="release_candidate">Versión candidata</string>
+    <string name="source_code">CÓDIGO FUENTE</string>
+    <string name="community">COMUNIDAD</string>
+    <string name="kernel_status">ESTADO_DEL_KERNEL: OPTIMIZADO</string>
+    <string name="built_with_precision">CONSTRUIDO CON PRECISIÓN PARA USUARIOS AVANZADOS</string>
+    <string name="app_language">Idioma de la aplicación</string>
+    <string name="select_language">Seleccionar idioma</string>
+    <string name="system_default">Predeterminado del sistema</string>
+    <string name="english">Inglés</string>
+    <string name="chinese">Chino</string>
+    <string name="french">Francés</string>
+    <string name="spanish">Español</string>
+    <string name="arabic">Árabe</string>
+
+    <!-- Common Actions -->
+    <string name="cancel">Cancelar</string>
+    <string name="confirm">Confirmar</string>
+    <string name="proceed">Continuar</string>
+    <string name="yes">Sí</string>
+    <string name="no">No</string>
+    <string name="done">Hecho</string>
+    <string name="close">Cerrar</string>
+    <string name="refresh">Actualizar</string>
+    <string name="dismiss">Descartar</string>
+    <string name="search_apps">Buscar aplicaciones&#8230;</string>
+    <string name="unknown">Desconocido</string>
+
+    <!-- Home Screen -->
+    <string name="reinstall_all">Reinstalar todo</string>
+    <string name="reinstall_all_subtitle">%1$d aplicaciones %2$s no son de Play Store. ¿Repararlas?</string>
+    <string name="install_from_file">Instalar desde archivo</string>
+    <string name="install_from_file_subtitle">Instalar APK, XAPK, APKS o paquetes divididos</string>
+    <string name="app_distribution">Distribución de aplicaciones</string>
+    <string name="total_apps">TOTAL: %1$d</string>
+    <string name="others">Otros</string>
+    <string name="clear_all_cache">Limpiar todos los cachés</string>
+    <string name="clear_cache_prompt">¿Qué aplicaciones te gustaría limpiar?</string>
+    <string name="user_apps">Aplicaciones de usuario</string>
+    <string name="system_apps">Aplicaciones del sistema</string>
+    <string name="active">Activo</string>
+    <string name="frozen">Congelado</string>
+    <string name="suspended">Suspendido</string>
+    <string name="privilege_check">Verificación de privilegios</string>
+    <string name="privilege_check_desc">Thor requiere acceso Root o Shizuku para funcionar correctamente.\n\nPor favor, concede acceso en tu aplicación de gestión y pulsa Actualizar.</string>
+
+    <!-- App List / Freezer -->
+    <string name="system_apps_warning">⚠ Aplicaciones del sistema</string>
+    <string name="selected_count">%1$d Seleccionado(s)</string>
+    <string name="no_matching_apps">No se encontraron aplicaciones</string>
+    <string name="no_apps_display">No hay aplicaciones para mostrar</string>
+    <string name="adjust_filters_hint">Intenta ajustar tu búsqueda o filtros</string>
+    <string name="configuration">Configuración</string>
+    <string name="app_source">Fuente de la aplicación</string>
+    <string name="view_mode">Modo de vista</string>
+    <string name="grid">Cuadrícula</string>
+    <string name="list">Lista</string>
+    <string name="order">Orden:</string>
+    <string name="ascending">Ascendente</string>
+    <string name="descending">Descendente</string>
+    <string name="filters">Filtros</string>
+    <string name="sort_by">Ordenar por</string>
+
+    <!-- App Info Dialog -->
+    <string name="clear_app_data_title">¿Borrar datos de la aplicación?</string>
+    <string name="clear_app_data_desc">Esto borrará permanentemente todos los datos de %1$s. Esta acción no se puede deshacer.</string>
+    <string name="clear_all_data">Borrar todos los datos</string>
+    <string name="uninstall_system_app_title">¿Desinstalar aplicación del sistema?</string>
+    <string name="uninstall_system_app_desc">Esto te permite desinstalar actualizaciones o restablecer de fábrica esta aplicación del sistema. ¿Continuar?</string>
+    <string name="risk_warning_title">Advertencia de riesgo</string>
+    <string name="risk_warning_desc">Esto fuerza el registro del instalador a \'Google Play Store\'.\n\nLas actualizaciones pueden fallar si la firma no coincide con la versión oficial de la tienda.</string>
+    <string name="reinstall_play_store_title">¿Reinstalar con Play Store?</string>
+    <string name="reinstall_play_store_desc">Esto intentará reinstalar %1$s usando Google Play Store.</string>
+    <string name="fix_store">Reparar tienda</string>
+
+    <!-- App Status -->
+    <string name="status_split">DIVIDIDO</string>
+    <string name="status_frozen">CONGELADO</string>
+    <string name="status_suspended">SUSPENDIDO</string>
+
+    <!-- App Actions -->
+    <string name="action_launch">Abrir</string>
+    <string name="action_share">Compartir</string>
+    <string name="action_freeze">Congelar</string>
+    <string name="action_unfreeze">Descongelar</string>
+    <string name="action_suspend">Suspender</string>
+    <string name="action_unsuspend">Habilitar</string>
+    <string name="action_kill">Detener</string>
+    <string name="action_cache">Caché</string>
+    <string name="action_data">Datos</string>
+    <string name="action_uninstall">Desinstalar</string>
+    <string name="action_reinstall">Reinstalar</string>
+
+    <!-- Main Screen / Global -->
+    <string name="cannot_launch_app">No se puede abrir la aplicación</string>
+    <string name="share_app">Compartir aplicación</string>
+    <string name="kill_app_title">¿Detener aplicación?</string>
+    <string name="kill_app_desc">¿Forzar detención de %1$s? Esto puede causar pérdida de datos.</string>
+    <string name="exit_thor_title">¿Salir de Thor?</string>
+    <string name="exit_thor_desc">¿Estás seguro de que quieres cerrar la aplicación?</string>
+    <string name="are_you_sure">¿Estás seguro?</string>
+
+    <!-- Accessibility / Content Descriptions -->
+    <string name="cd_config">Configuración</string>
+    <string name="cd_close">Cerrar</string>
+    <string name="cd_frozen">Congelado</string>
+    <string name="cd_suspended">Suspendido</string>
+    <string name="cd_selected">Seleccionado</string>
+    <string name="cd_search">Buscar</string>
+    <string name="cd_clear">Limpiar</string>
+    <string name="cd_settings">Ajustes</string>
+
+</resources>

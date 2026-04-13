@@ -22,17 +22,24 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
@@ -52,6 +59,7 @@ fun SettingsScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val prefs = state.prefs
     val context = LocalContext.current
+    var showLanguageSheet by remember { mutableStateOf(false) }
 
     val versionName = remember(context) {
         runCatching {
@@ -70,13 +78,13 @@ fun SettingsScreen(
 
         // Header Section
         Text(
-            text = "Settings",
+            text = stringResource(R.string.settings),
             style = MaterialTheme.typography.displayMedium,
             fontWeight = FontWeight.Bold,
             letterSpacing = (-1).sp
         )
         Text(
-            text = "Configuration Engine • v$versionName",
+            text = stringResource(R.string.config_engine_v, versionName),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             letterSpacing = 2.sp
@@ -85,7 +93,7 @@ fun SettingsScreen(
         Spacer(Modifier.height(48.dp))
 
         // ── APPEARANCE ──────────────────────────────────────────────────────
-        SettingsSectionLabel("APPEARANCE")
+        SettingsSectionLabel(stringResource(R.string.appearance))
         
         Column(
             modifier = Modifier
@@ -101,8 +109,8 @@ fun SettingsScreen(
                     IconBox(R.drawable.theme_panel)
                     Spacer(Modifier.width(16.dp))
                     Column {
-                        Text("Theme", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("Visual interface style", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.theme), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(stringResource(R.string.theme_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
                 Spacer(Modifier.height(16.dp))
@@ -116,26 +124,40 @@ fun SettingsScreen(
 
             SettingsSwitchRow(
                 icon = R.drawable.theme_panel,
-                title = "AMOLED Mode",
-                subtitle = "Pure black background",
+                title = stringResource(R.string.amoled_mode),
+                subtitle = stringResource(R.string.amoled_desc),
                 checked = prefs.useAmoled,
                 onCheckedChange = { viewModel.setAmoledMode(it) }
             )
 
             SettingsSwitchRow(
                 icon = R.drawable.shield_with_heart,
-                title = "Dynamic Colors",
-                subtitle = "Material You integration",
+                title = stringResource(R.string.dynamic_colors),
+                subtitle = stringResource(R.string.dynamic_colors_desc),
                 checked = prefs.useDynamicColor,
                 enabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S,
                 onCheckedChange = { viewModel.setDynamicColor(it) }
+            )
+
+            SettingsClickRow(
+                icon = R.drawable.settings_backup_restore,
+                title = stringResource(R.string.app_language),
+                subtitle = when (prefs.language) {
+                    "en" -> stringResource(R.string.english)
+                    "zh" -> stringResource(R.string.chinese)
+                    "fr" -> stringResource(R.string.french)
+                    "es" -> stringResource(R.string.spanish)
+                    "ar" -> stringResource(R.string.arabic)
+                    else -> stringResource(R.string.system_default)
+                },
+                onClick = { showLanguageSheet = true }
             )
         }
 
         Spacer(Modifier.height(32.dp))
 
         // ── SECURITY ────────────────────────────────────────────────────────
-        SettingsSectionLabel("SECURITY")
+        SettingsSectionLabel(stringResource(R.string.security))
         
         Column(
             modifier = Modifier
@@ -146,8 +168,8 @@ fun SettingsScreen(
         ) {
             SettingsSwitchRow(
                 icon = R.drawable.round_key,
-                title = "Biometric Lock",
-                subtitle = "Require auth on launch",
+                title = stringResource(R.string.biometric_lock),
+                subtitle = stringResource(R.string.biometric_lock_desc),
                 checked = prefs.biometricLockEnabled,
                 onCheckedChange = { viewModel.setBiometricLock(it) }
             )
@@ -163,7 +185,7 @@ fun SettingsScreen(
         }
 
         if (availableModes.size > 1) {
-            SettingsSectionLabel("WORK MODE")
+            SettingsSectionLabel(stringResource(R.string.work_mode))
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -181,8 +203,8 @@ fun SettingsScreen(
                     IconBox(icon)
                     Spacer(Modifier.width(16.dp))
                     Column {
-                        Text("Active Engine", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("Switch between available providers", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.active_engine), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(stringResource(R.string.active_engine_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
                 Spacer(Modifier.height(16.dp))
@@ -199,7 +221,7 @@ fun SettingsScreen(
         }
 
         // ── ABOUT ───────────────────────────────────────────────────────────
-        SettingsSectionLabel("ABOUT")
+        SettingsSectionLabel(stringResource(R.string.about))
         
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             // Version Tile
@@ -216,8 +238,8 @@ fun SettingsScreen(
                     IconBox(R.drawable.thor_mono)
                     Spacer(Modifier.width(16.dp))
                     Column {
-                        Text("Version", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("Release candidate", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.version), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(stringResource(R.string.release_candidate), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
                 Box(
@@ -232,8 +254,8 @@ fun SettingsScreen(
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 AboutTile(
-                    title = "GitHub",
-                    subtitle = "SOURCE CODE",
+                    title = stringResource(R.string.github),
+                    subtitle = stringResource(R.string.source_code),
                     icon = R.drawable.brand_github,
                     modifier = Modifier.weight(1f),
                     onClick = {
@@ -241,8 +263,8 @@ fun SettingsScreen(
                     }
                 )
                 AboutTile(
-                    title = "Telegram",
-                    subtitle = "COMMUNITY",
+                    title = stringResource(R.string.telegram),
+                    subtitle = stringResource(R.string.community),
                     icon = R.drawable.brand_telegram,
                     modifier = Modifier.weight(1f),
                     onClick = {
@@ -261,10 +283,10 @@ fun SettingsScreen(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
-                Text("KERNEL_STATUS: OPTIMIZED", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.kernel_status), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(
-                "BUILT WITH PRECISION FOR POWER USERS",
+                stringResource(R.string.built_with_precision),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                 letterSpacing = 4.sp
@@ -272,6 +294,104 @@ fun SettingsScreen(
         }
         
         Spacer(Modifier.height(32.dp))
+    }
+
+    if (showLanguageSheet) {
+        LanguageBottomSheet(
+            selectedLanguage = prefs.language,
+            onLanguageSelected = { lang ->
+                viewModel.setLanguage(lang)
+                showLanguageSheet = false
+            },
+            onDismiss = { showLanguageSheet = false }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LanguageBottomSheet(
+    selectedLanguage: String?,
+    onLanguageSelected: (String?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val languages = listOf(
+        null to stringResource(R.string.system_default),
+        "en" to stringResource(R.string.english),
+        "zh" to stringResource(R.string.chinese),
+        "fr" to stringResource(R.string.french),
+        "es" to stringResource(R.string.spanish),
+        "ar" to stringResource(R.string.arabic),
+    )
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 48.dp)
+                .padding(horizontal = 24.dp)
+        ) {
+            Text(
+                stringResource(R.string.select_language),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
+
+            languages.forEach { (code, label) ->
+                val isSelected = selectedLanguage == code
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(
+                            if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                            else Color.Transparent
+                        )
+                        .clickable { onLanguageSelected(code) }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsClickRow(
+    icon: Int,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f))
+            .clickable { onClick() }
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconBox(icon)
+        Spacer(Modifier.width(16.dp))
+        Column {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -328,8 +448,8 @@ private fun SettingsSwitchRow(
             IconBox(icon)
             Spacer(Modifier.width(16.dp))
             Column {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
@@ -367,8 +487,8 @@ private fun AboutTile(
             )
         }
         Column {
-            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, letterSpacing = 1.sp)
+            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, letterSpacing = 1.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

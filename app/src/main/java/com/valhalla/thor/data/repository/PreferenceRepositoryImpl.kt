@@ -41,6 +41,9 @@ class PreferenceRepositoryImpl(
 
         // Work Mode
         val PRIVILEGE_MODE = stringPreferencesKey("privilege_mode")
+
+        // Localization
+        val LANGUAGE = stringPreferencesKey("language")
     }
 
     override val userPreferences: Flow<UserPreferences> = context.dataStore.data
@@ -75,7 +78,8 @@ class PreferenceRepositoryImpl(
                 useDynamicColor = prefs[Keys.USE_DYNAMIC_COLOR] ?: false,
                 useAmoled = prefs[Keys.USE_AMOLED] ?: false,
                 biometricLockEnabled = prefs[Keys.BIOMETRIC_LOCK] ?: false,
-                preferredPrivilegeMode = privilegeMode
+                preferredPrivilegeMode = privilegeMode,
+                language = prefs[Keys.LANGUAGE]
             )
         }
 
@@ -126,6 +130,13 @@ class PreferenceRepositoryImpl(
         context.dataStore.edit {
             if (mode == null) it.remove(Keys.PRIVILEGE_MODE)
             else it[Keys.PRIVILEGE_MODE] = mode.name
+        }
+    }
+
+    override suspend fun setLanguage(language: String?) {
+        context.dataStore.edit {
+            if (language == null) it.remove(Keys.LANGUAGE)
+            else it[Keys.LANGUAGE] = language
         }
     }
 }

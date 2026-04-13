@@ -1,0 +1,8 @@
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <string name="app_name" translatable="false">Thor</string>
+    <string name="play_store" translatable="false">Play Store</string>
+    <string name="f_droid" translatable="false">F-Droid</string>
+    <string name="sideloaded" translatable="false">Sideloaded</string>
+    <string name="github" translatable="false">GitHub</string>
+    <string name="telegram" translatable="false">Telegram</string>
+</resources>
