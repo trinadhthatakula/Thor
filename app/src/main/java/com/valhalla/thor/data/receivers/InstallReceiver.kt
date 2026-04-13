@@ -44,7 +44,7 @@ class InstallReceiver : BroadcastReceiver(), KoinComponent {
                                 )
                             } else {
                                 @Suppress("DEPRECATION")
-                                intent.getParcelableExtra(Intent.EXTRA_INTENT)
+                                intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
                             }
                         if (confirmIntent != null) {
                             eventBus.emit(InstallState.UserConfirmationRequired(confirmIntent))
