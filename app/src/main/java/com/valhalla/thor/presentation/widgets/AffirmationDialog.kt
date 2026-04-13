@@ -36,7 +36,11 @@ fun AffirmationDialog(
         shape = RoundedCornerShape(48.dp),
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text("Confirm", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    "Confirm",
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
         },
         dismissButton = {
@@ -64,8 +68,8 @@ fun AffirmationDialog(
         },
         title = {
             Text(
-                title, 
-                style = MaterialTheme.typography.headlineSmall, 
+                title,
+                style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Black,
                 letterSpacing = (-1).sp
             )
@@ -95,7 +99,11 @@ fun MultiAppAffirmationDialog(
         shape = RoundedCornerShape(48.dp),
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text("Confirm", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    "Confirm",
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
         },
         dismissButton = {

@@ -1,9 +1,5 @@
 package com.valhalla.thor.presentation.security
 
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
-import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
-import androidx.biometric.BiometricPrompt
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -126,7 +122,7 @@ private fun BiometricLockView(
                 ),
                 label = "alpha"
             )
-            
+
             Box(
                 modifier = Modifier
                     .size(110.dp)
@@ -191,7 +187,7 @@ private fun BiometricLockView(
                 ),
                 label = "scale"
             )
-            
+
             Box(
                 modifier = Modifier
                     .size(96.dp)

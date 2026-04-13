@@ -36,7 +36,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -236,7 +235,8 @@ fun PortableInstaller(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         if (totalPermissions > 0) {
-                            val warningMessage = if (s.shouldShowWarning()) s.getWarningMessage().orEmpty() else ""
+                            val warningMessage =
+                                if (s.shouldShowWarning()) s.getWarningMessage().orEmpty() else ""
                             Text(
                                 "This package requests $totalPermissions permission${if (totalPermissions > 1) "s" else ""}. $warningMessage",
                                 style = MaterialTheme.typography.bodySmall,

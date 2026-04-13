@@ -79,19 +79,19 @@ private fun ThorNavigationBarItem(
     modifier: Modifier = Modifier
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    
+
     // Snappier spring for transitions
     val snappySpring = spring<Float>(
         dampingRatio = Spring.DampingRatioNoBouncy,
         stiffness = Spring.StiffnessMedium
     )
-    
+
     val containerColor by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
         animationSpec = spring(stiffness = Spring.StiffnessMedium),
         label = "containerColor"
     )
-    
+
     val contentColor by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
         animationSpec = spring(stiffness = Spring.StiffnessMedium),
@@ -133,13 +133,23 @@ private fun ThorNavigationBarItem(
                 contentDescription = stringResource(destination.contentDescription),
                 tint = contentColor
             )
-            
+
             AnimatedVisibility(
                 visible = selected,
-                enter = fadeIn(animationSpec = snappySpring) + 
-                        expandHorizontally(animationSpec = spring(stiffness = Spring.StiffnessMedium, dampingRatio = Spring.DampingRatioNoBouncy)),
-                exit = fadeOut(animationSpec = snappySpring) + 
-                       shrinkHorizontally(animationSpec = spring(stiffness = Spring.StiffnessMedium, dampingRatio = Spring.DampingRatioNoBouncy))
+                enter = fadeIn(animationSpec = snappySpring) +
+                        expandHorizontally(
+                            animationSpec = spring(
+                                stiffness = Spring.StiffnessMedium,
+                                dampingRatio = Spring.DampingRatioNoBouncy
+                            )
+                        ),
+                exit = fadeOut(animationSpec = snappySpring) +
+                        shrinkHorizontally(
+                            animationSpec = spring(
+                                stiffness = Spring.StiffnessMedium,
+                                dampingRatio = Spring.DampingRatioNoBouncy
+                            )
+                        )
             ) {
                 Text(
                     text = stringResource(destination.label),

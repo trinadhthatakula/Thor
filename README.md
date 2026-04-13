@@ -46,7 +46,8 @@
 - Dhizuku Support
 - Fully reproducible, copyleft libre software (GPLv3.0)
 - Material 3 with optional dynamic colors (Material You)
-- Work Mode selection — manually choose between Root, Shizuku, or Dhizuku as the active privilege engine
+- Work Mode selection — manually choose between Root, Shizuku, or Dhizuku as the active privilege
+  engine
 - Displays App List while sorting them based on Installation source
 - Launch App Activities
 - Install/Uninstall/Freeze/Unfreeze Apk files
@@ -71,20 +72,26 @@
 
 ## 💖 Support Development
 
-Thor is a labor of love, built to be **100% offline, ad-free, and tracker-free**. If this tool has made your Android management easier, consider supporting its continued development. Your contributions help keep the project alive and free for everyone.
+Thor is a labor of love, built to be **100% offline, ad-free, and tracker-free**. If this tool has
+made your Android management easier, consider supporting its continued development. Your
+contributions help keep the project alive and free for everyone.
 
-| Platform | Link |
-| --- | --- |
-| **Patreon** | [Support on Patreon](https://www.patreon.com/trinadh) |
-| **Buy Me a Coffee** | [Buy me a coffee](https://www.buymeacoffee.com/trinadh) |
-| **PayPal** | [Donate via PayPal](https://www.paypal.me/trinadhthatakula) |
+| Platform            | Link                                                        |
+|---------------------|-------------------------------------------------------------|
+| **Patreon**         | [Support on Patreon](https://www.patreon.com/trinadh)       |
+| **Buy Me a Coffee** | [Buy me a coffee](https://www.buymeacoffee.com/trinadh)     |
+| **PayPal**          | [Donate via PayPal](https://www.paypal.me/trinadhthatakula) |
 
 ## Credits
 
 - Portions of this app use code from [`libsu`](https://github.com/topjohnwu/libsu)
   by [topjohnwu](https://github.com/topjohnwu/), adapted and integrated as the [
   `suCore`](https://github.com/trinadhthatakula/Thor/tree/master/suCore) module.
-- Replaced [`AndroidHiddenApiBypass`](https://github.com/LSPosed/AndroidHiddenApiBypass) with an internal Kotlin implementation in the [`bypass`](https://github.com/trinadhthatakula/Thor/tree/master/bypass) module, backed by Java stubs in the [`vm-runtime`](https://github.com/trinadhthatakula/Thor/tree/master/vm-runtime) module for maximum compatibility when shadowing system classes.
+- Replaced [`AndroidHiddenApiBypass`](https://github.com/LSPosed/AndroidHiddenApiBypass) with an
+  internal Kotlin implementation in the [
+  `bypass`](https://github.com/trinadhthatakula/Thor/tree/master/bypass) module, backed by Java
+  stubs in the [`vm-runtime`](https://github.com/trinadhthatakula/Thor/tree/master/vm-runtime)
+  module for maximum compatibility when shadowing system classes.
 
 ### Modifications to libsu
 

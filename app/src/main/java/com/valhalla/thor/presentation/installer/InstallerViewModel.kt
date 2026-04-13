@@ -107,7 +107,7 @@ class InstallerViewModel(
                 isUpdateOperation = try {
                     val installedPkg = packageManager.getPackageInfo(meta.packageName, 0)
                     oldVersion = installedPkg.versionName
-                    
+
                     val installedVersionCode = installedPkg.longVersionCode
                     isDowngrade = meta.versionCode < installedVersionCode
                     true
@@ -115,7 +115,14 @@ class InstallerViewModel(
                     false
                 }
 
-                eventBus.emit(InstallState.ReadyToInstall(meta, isUpdateOperation, isDowngrade, oldVersion))
+                eventBus.emit(
+                    InstallState.ReadyToInstall(
+                        meta,
+                        isUpdateOperation,
+                        isDowngrade,
+                        oldVersion
+                    )
+                )
             }.onFailure {
                 eventBus.emit(InstallState.Error("Failed to parse package."))
             }
@@ -124,7 +131,7 @@ class InstallerViewModel(
 
     fun confirmInstall() {
         val uri = pendingUri ?: return
-        
+
         // Validation: Only allow downgrade with Root, Shizuku or Dhizuku
         if (isDowngrade && (installMode.value == InstallMode.NORMAL || installMode.value == InstallMode.EXTERNAL)) {
             viewModelScope.launch {

@@ -94,7 +94,7 @@ fun SettingsScreen(
 
         // ── APPEARANCE ──────────────────────────────────────────────────────
         SettingsSectionLabel(stringResource(R.string.appearance))
-        
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -109,8 +109,20 @@ fun SettingsScreen(
                     IconBox(R.drawable.theme_panel)
                     Spacer(Modifier.width(16.dp))
                     Column {
-                        Text(stringResource(R.string.theme), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(stringResource(R.string.theme_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            stringResource(R.string.theme),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            stringResource(R.string.theme_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
                 Spacer(Modifier.height(16.dp))
@@ -158,7 +170,7 @@ fun SettingsScreen(
 
         // ── SECURITY ────────────────────────────────────────────────────────
         SettingsSectionLabel(stringResource(R.string.security))
-        
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -203,8 +215,20 @@ fun SettingsScreen(
                     IconBox(icon)
                     Spacer(Modifier.width(16.dp))
                     Column {
-                        Text(stringResource(R.string.active_engine), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(stringResource(R.string.active_engine_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            stringResource(R.string.active_engine),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            stringResource(R.string.active_engine_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
                 Spacer(Modifier.height(16.dp))
@@ -212,7 +236,9 @@ fun SettingsScreen(
                     items = availableModes.map { mode ->
                         ConnectedButtonGroupItem.Label(mode.name)
                     },
-                    selectedIndex = availableModes.indexOf(prefs.preferredPrivilegeMode ?: availableModes.first()),
+                    selectedIndex = availableModes.indexOf(
+                        prefs.preferredPrivilegeMode ?: availableModes.first()
+                    ),
                     onItemSelected = { viewModel.setPrivilegeMode(availableModes[it]) },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -222,8 +248,11 @@ fun SettingsScreen(
 
         // ── ABOUT ───────────────────────────────────────────────────────────
         SettingsSectionLabel(stringResource(R.string.about))
-        
-        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             // Version Tile
             Row(
                 modifier = Modifier
@@ -238,8 +267,20 @@ fun SettingsScreen(
                     IconBox(R.drawable.thor_mono)
                     Spacer(Modifier.width(16.dp))
                     Column {
-                        Text(stringResource(R.string.version), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(stringResource(R.string.release_candidate), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            stringResource(R.string.version),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            stringResource(R.string.release_candidate),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
                 Box(
@@ -248,18 +289,30 @@ fun SettingsScreen(
                         .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
                         .padding(horizontal = 12.dp, vertical = 4.dp)
                 ) {
-                    Text(versionName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    Text(
+                        versionName,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 AboutTile(
                     title = stringResource(R.string.github),
                     subtitle = stringResource(R.string.source_code),
                     icon = R.drawable.brand_github,
                     modifier = Modifier.weight(1f),
                     onClick = {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, "https://github.com/trinadhthatakula/Thor".toUri()))
+                        context.startActivity(
+                            Intent(
+                                Intent.ACTION_VIEW,
+                                "https://github.com/trinadhthatakula/Thor".toUri()
+                            )
+                        )
                     }
                 )
                 AboutTile(
@@ -268,7 +321,12 @@ fun SettingsScreen(
                     icon = R.drawable.brand_telegram,
                     modifier = Modifier.weight(1f),
                     onClick = {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, "https://t.me/thorAppDev".toUri()))
+                        context.startActivity(
+                            Intent(
+                                Intent.ACTION_VIEW,
+                                "https://t.me/thorAppDev".toUri()
+                            )
+                        )
                     }
                 )
             }
@@ -281,9 +339,21 @@ fun SettingsScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
-                Text(stringResource(R.string.kernel_status), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                )
+                Text(
+                    stringResource(R.string.kernel_status),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             Text(
                 stringResource(R.string.built_with_precision),
@@ -292,7 +362,7 @@ fun SettingsScreen(
                 letterSpacing = 4.sp
             )
         }
-        
+
         Spacer(Modifier.height(32.dp))
     }
 
@@ -390,7 +460,11 @@ private fun SettingsClickRow(
         Spacer(Modifier.width(16.dp))
         Column {
             Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -448,8 +522,20 @@ private fun SettingsSwitchRow(
             IconBox(icon)
             Spacer(Modifier.width(16.dp))
             Column {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
@@ -487,8 +573,21 @@ private fun AboutTile(
             )
         }
         Column {
-            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, letterSpacing = 1.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                letterSpacing = 1.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }

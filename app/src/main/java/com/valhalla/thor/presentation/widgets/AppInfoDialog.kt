@@ -136,7 +136,9 @@ fun AppInfoDialog(
                 }) { Text(stringResource(R.string.clear_all_data)) }
             },
             dismissButton = {
-                TextButton(onClick = { showClearDataConfirmation = false }) { Text(stringResource(R.string.cancel)) }
+                TextButton(onClick = {
+                    showClearDataConfirmation = false
+                }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }
@@ -154,7 +156,9 @@ fun AppInfoDialog(
                 }) { Text(stringResource(R.string.yes)) }
             },
             dismissButton = {
-                TextButton(onClick = { showUninstallConfirmation = false }) { Text(stringResource(R.string.no)) }
+                TextButton(onClick = {
+                    showUninstallConfirmation = false
+                }) { Text(stringResource(R.string.no)) }
             }
         )
     }
@@ -181,7 +185,9 @@ fun AppInfoDialog(
                 }) { Text(stringResource(R.string.proceed)) }
             },
             dismissButton = {
-                TextButton(onClick = { showReinstallWarning = false }) { Text(stringResource(R.string.cancel)) }
+                TextButton(onClick = {
+                    showReinstallWarning = false
+                }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }
@@ -196,7 +202,9 @@ private fun AppHeader(
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
     ) {
         // Top row with settings and close? Or just settings.
         Row(
@@ -210,7 +218,7 @@ private fun AppHeader(
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             ) {
                 Icon(
-                    painterResource(R.drawable.settings), 
+                    painterResource(R.drawable.settings),
                     stringResource(R.string.cd_settings),
                     tint = MaterialTheme.colorScheme.primary
                 )
@@ -255,16 +263,25 @@ private fun AppHeader(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (appInfo.splitPublicSourceDirs.isNotEmpty()) {
-                StatusChip(text = stringResource(R.string.status_split), color = MaterialTheme.colorScheme.tertiaryContainer)
+                StatusChip(
+                    text = stringResource(R.string.status_split),
+                    color = MaterialTheme.colorScheme.tertiaryContainer
+                )
             }
             if (!appInfo.enabled) {
-                StatusChip(text = stringResource(R.string.status_frozen), color = MaterialTheme.colorScheme.errorContainer)
+                StatusChip(
+                    text = stringResource(R.string.status_frozen),
+                    color = MaterialTheme.colorScheme.errorContainer
+                )
             }
             if (appInfo.isSuspended) {
-                StatusChip(text = stringResource(R.string.status_suspended), color = MaterialTheme.colorScheme.secondaryContainer)
+                StatusChip(
+                    text = stringResource(R.string.status_suspended),
+                    color = MaterialTheme.colorScheme.secondaryContainer
+                )
             }
             StatusChip(
-                text = "v${appInfo.versionName}", 
+                text = "v${appInfo.versionName}",
                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
                 textColor = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -284,7 +301,7 @@ private fun AppHeader(
 
 @Composable
 private fun StatusChip(
-    text: String, 
+    text: String,
     color: Color,
     textColor: Color = MaterialTheme.colorScheme.onSurface
 ) {
@@ -320,27 +337,59 @@ private fun AppActionRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         // 1. Standard Actions
-        ActionItem(R.drawable.open_in_new, stringResource(R.string.action_launch)) { onAction(AppClickAction.Launch(appInfo)) }
-        ActionItem(R.drawable.share, stringResource(R.string.action_share)) { onAction(AppClickAction.Share(appInfo)) }
+        ActionItem(R.drawable.open_in_new, stringResource(R.string.action_launch)) {
+            onAction(
+                AppClickAction.Launch(appInfo)
+            )
+        }
+        ActionItem(R.drawable.share, stringResource(R.string.action_share)) {
+            onAction(
+                AppClickAction.Share(appInfo)
+            )
+        }
 
         // 2. Privileged Actions
         if (hasPrivilege) {
-            val (freezeIcon, freezeLabel) = if (isFrozen) R.drawable.freeze_off to stringResource(R.string.action_unfreeze) else R.drawable.frozen to stringResource(R.string.action_freeze)
+            val (freezeIcon, freezeLabel) = if (isFrozen) R.drawable.freeze_off to stringResource(R.string.action_unfreeze) else R.drawable.frozen to stringResource(
+                R.string.action_freeze
+            )
             ActionItem(freezeIcon, freezeLabel) {
-                onAction(if (isFrozen) AppClickAction.UnFreeze(appInfo) else AppClickAction.Freeze(appInfo))
+                onAction(
+                    if (isFrozen) AppClickAction.UnFreeze(appInfo) else AppClickAction.Freeze(
+                        appInfo
+                    )
+                )
             }
 
-            val (suspendIcon, suspendLabel) = if (isSuspended) R.drawable.bolt to stringResource(R.string.action_unsuspend) else R.drawable.warning to stringResource(R.string.action_suspend)
+            val (suspendIcon, suspendLabel) = if (isSuspended) R.drawable.bolt to stringResource(R.string.action_unsuspend) else R.drawable.warning to stringResource(
+                R.string.action_suspend
+            )
             ActionItem(suspendIcon, suspendLabel) {
-                onAction(if (isSuspended) AppClickAction.UnSuspend(appInfo) else AppClickAction.Suspend(appInfo))
+                onAction(
+                    if (isSuspended) AppClickAction.UnSuspend(appInfo) else AppClickAction.Suspend(
+                        appInfo
+                    )
+                )
             }
 
             if (appInfo.enabled) {
-                ActionItem(R.drawable.danger, stringResource(R.string.action_kill)) { onAction(AppClickAction.Kill(appInfo)) }
+                ActionItem(R.drawable.danger, stringResource(R.string.action_kill)) {
+                    onAction(
+                        AppClickAction.Kill(appInfo)
+                    )
+                }
             }
 
-            ActionItem(R.drawable.clear_all, stringResource(R.string.action_cache)) { onAction(AppClickAction.ClearCache(appInfo)) }
-            ActionItem(R.drawable.delete, stringResource(R.string.action_data)) { onAction(AppClickAction.ClearData(appInfo)) }
+            ActionItem(R.drawable.clear_all, stringResource(R.string.action_cache)) {
+                onAction(
+                    AppClickAction.ClearCache(appInfo)
+                )
+            }
+            ActionItem(R.drawable.delete, stringResource(R.string.action_data)) {
+                onAction(
+                    AppClickAction.ClearData(appInfo)
+                )
+            }
         }
 
         // 3. App Store Fix

@@ -5,5 +5,6 @@ public class VMRuntime {
         throw new RuntimeException("Stub!");
     }
 
-    public void setHiddenApiExemptions(String... signatures) {}
+    public void setHiddenApiExemptions(String... signatures) {
+    }
 }

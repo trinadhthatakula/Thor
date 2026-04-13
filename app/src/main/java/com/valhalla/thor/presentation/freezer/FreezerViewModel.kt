@@ -67,7 +67,7 @@ class FreezerViewModel(
         // RUTHLESS: IO Dispatcher for heavy data fetching
         loadAppsJob = viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(isLoading = true) }
-            
+
             // Allow bottom nav animations to finish fluidly
             delay(800)
 
@@ -215,8 +215,9 @@ class FreezerViewModel(
             val sorted = getSortedList(filtered, state.sortBy, state.sortOrder)
 
             // 4. Metadata - OPTIMIZED
-            val installers = rawList.mapNotNull { it.installerPackageName }.distinct().sorted().toMutableList()
-            
+            val installers =
+                rawList.mapNotNull { it.installerPackageName }.distinct().sorted().toMutableList()
+
             val nameMap = rawList.associateBy({ it.packageName }, { it.appName })
             val installerNames = installers.associateWith { pkg -> nameMap[pkg] ?: pkg }
 

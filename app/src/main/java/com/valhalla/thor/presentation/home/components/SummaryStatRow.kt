@@ -39,7 +39,9 @@ fun SummaryStatRow(
             title = stringResource(R.string.active),
             count = activeCount,
             color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.weight(1f).animateExpressiveResize(),
+            modifier = Modifier
+                .weight(1f)
+                .animateExpressiveResize(),
             onClick = onActiveClick
         )
         if (frozenCount > 0)
@@ -47,7 +49,9 @@ fun SummaryStatRow(
                 title = stringResource(R.string.frozen),
                 count = frozenCount,
                 color = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.weight(1f).animateExpressiveResize(),
+                modifier = Modifier
+                    .weight(1f)
+                    .animateExpressiveResize(),
                 onClick = onFrozenClick
             )
         if (suspendedCount > 0)
@@ -55,7 +59,9 @@ fun SummaryStatRow(
                 title = stringResource(R.string.suspended),
                 count = suspendedCount,
                 color = MaterialTheme.colorScheme.tertiary,
-                modifier = Modifier.weight(1f).animateExpressiveResize(),
+                modifier = Modifier
+                    .weight(1f)
+                    .animateExpressiveResize(),
                 onClick = onSuspendedClick
             )
     }

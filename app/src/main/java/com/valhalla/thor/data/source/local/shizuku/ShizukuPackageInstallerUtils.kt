@@ -52,7 +52,12 @@ object ShizukuPackageInstallerUtils {
         return if (Build.VERSION.SDK_INT > Build.VERSION_CODES.R) {
             Bypass.newInstance(
                 PackageInstaller::class.java,
-                arrayOf(iPackageInstallerClass, String::class.java, String::class.java, Int::class.javaPrimitiveType!!),
+                arrayOf(
+                    iPackageInstallerClass,
+                    String::class.java,
+                    String::class.java,
+                    Int::class.javaPrimitiveType!!
+                ),
                 installer, installerPackageName, null, userId
             )
         } else {

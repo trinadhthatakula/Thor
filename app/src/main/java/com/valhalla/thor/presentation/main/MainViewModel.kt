@@ -260,9 +260,25 @@ class MainViewModel(
                 }
 
                 is AppClickAction.ClearCache -> quickAction(action) { manageAppUseCase.clearCache(it.packageName) }
-                is AppClickAction.ClearData -> quickAction(action) { manageAppUseCase.clearAppData(it.packageName) }
-                is AppClickAction.Suspend -> quickAction(action) { manageAppUseCase.setAppSuspended(it.packageName, true) }
-                is AppClickAction.UnSuspend -> quickAction(action) { manageAppUseCase.setAppSuspended(it.packageName, false) }
+                is AppClickAction.ClearData -> quickAction(action) {
+                    manageAppUseCase.clearAppData(
+                        it.packageName
+                    )
+                }
+
+                is AppClickAction.Suspend -> quickAction(action) {
+                    manageAppUseCase.setAppSuspended(
+                        it.packageName,
+                        true
+                    )
+                }
+
+                is AppClickAction.UnSuspend -> quickAction(action) {
+                    manageAppUseCase.setAppSuspended(
+                        it.packageName,
+                        false
+                    )
+                }
             }
         }
     }

@@ -38,69 +38,117 @@ class InstallerRepositoryImpl(
 
     private val defaultInstaller = context.packageManager.packageInstaller
 
-    override suspend fun installPackage(uri: Uri, mode: InstallMode, canDowngrade: Boolean) = withContext(Dispatchers.IO) {
-        try {
-            when (mode) {
-                InstallMode.ROOT -> {
-                    installWithRoot(uri, canDowngrade)
-                }
-
-                InstallMode.SHIZUKU -> {
-                    val privilegedInstaller = try {
-                        getShizukuPackageInstaller()
-                    } catch (e: Throwable) {
-                        Logger.e("InstallerRepo", "Failed to get Shizuku installer, will use normal installer: ${e.message}")
-                        null
+    override suspend fun installPackage(uri: Uri, mode: InstallMode, canDowngrade: Boolean) =
+        withContext(Dispatchers.IO) {
+            try {
+                when (mode) {
+                    InstallMode.ROOT -> {
+                        installWithRoot(uri, canDowngrade)
                     }
 
-                    if (privilegedInstaller != null) {
-                        try {
-                            // Try privileged path but suppress error emission so we can fall back silently
-                            performPackageInstallerInstall(uri, privilegedInstaller, canDowngrade, emitErrors = false)
+                    InstallMode.SHIZUKU -> {
+                        val privilegedInstaller = try {
+                            getShizukuPackageInstaller()
                         } catch (e: Throwable) {
-                            Logger.e("InstallerRepo", "Shizuku privileged install failed, falling back to normal: ${e.message}")
-                            performPackageInstallerInstall(uri, defaultInstaller, canDowngrade, emitErrors = true)
+                            Logger.e(
+                                "InstallerRepo",
+                                "Failed to get Shizuku installer, will use normal installer: ${e.message}"
+                            )
+                            null
                         }
-                    } else {
-                        // No privileged installer available, use normal installer and allow errors
-                        performPackageInstallerInstall(uri, defaultInstaller, canDowngrade, emitErrors = true)
-                    }
-                }
 
-                InstallMode.DHIZUKU -> {
-                    val privilegedInstaller = try {
-                        getDhizukuPackageInstaller()
-                    } catch (e: Throwable) {
-                        Logger.e("InstallerRepo", "Failed to get Dhizuku installer, will use normal installer: ${e.message}")
-                        null
+                        if (privilegedInstaller != null) {
+                            try {
+                                // Try privileged path but suppress error emission so we can fall back silently
+                                performPackageInstallerInstall(
+                                    uri,
+                                    privilegedInstaller,
+                                    canDowngrade,
+                                    emitErrors = false
+                                )
+                            } catch (e: Throwable) {
+                                Logger.e(
+                                    "InstallerRepo",
+                                    "Shizuku privileged install failed, falling back to normal: ${e.message}"
+                                )
+                                performPackageInstallerInstall(
+                                    uri,
+                                    defaultInstaller,
+                                    canDowngrade,
+                                    emitErrors = true
+                                )
+                            }
+                        } else {
+                            // No privileged installer available, use normal installer and allow errors
+                            performPackageInstallerInstall(
+                                uri,
+                                defaultInstaller,
+                                canDowngrade,
+                                emitErrors = true
+                            )
+                        }
                     }
 
-                    if (privilegedInstaller != null) {
-                        try {
-                            // Try privileged path but suppress error emission so we can fall back silently
-                            performPackageInstallerInstall(uri, privilegedInstaller, canDowngrade, emitErrors = false)
+                    InstallMode.DHIZUKU -> {
+                        val privilegedInstaller = try {
+                            getDhizukuPackageInstaller()
                         } catch (e: Throwable) {
-                            Logger.e("InstallerRepo", "Dhizuku privileged install failed, falling back to normal: ${e.message}")
-                            performPackageInstallerInstall(uri, defaultInstaller, canDowngrade, emitErrors = true)
+                            Logger.e(
+                                "InstallerRepo",
+                                "Failed to get Dhizuku installer, will use normal installer: ${e.message}"
+                            )
+                            null
                         }
-                    } else {
-                        // No privileged installer available, use normal installer and allow errors
-                        performPackageInstallerInstall(uri, defaultInstaller, canDowngrade, emitErrors = true)
+
+                        if (privilegedInstaller != null) {
+                            try {
+                                // Try privileged path but suppress error emission so we can fall back silently
+                                performPackageInstallerInstall(
+                                    uri,
+                                    privilegedInstaller,
+                                    canDowngrade,
+                                    emitErrors = false
+                                )
+                            } catch (e: Throwable) {
+                                Logger.e(
+                                    "InstallerRepo",
+                                    "Dhizuku privileged install failed, falling back to normal: ${e.message}"
+                                )
+                                performPackageInstallerInstall(
+                                    uri,
+                                    defaultInstaller,
+                                    canDowngrade,
+                                    emitErrors = true
+                                )
+                            }
+                        } else {
+                            // No privileged installer available, use normal installer and allow errors
+                            performPackageInstallerInstall(
+                                uri,
+                                defaultInstaller,
+                                canDowngrade,
+                                emitErrors = true
+                            )
+                        }
+                    }
+
+                    InstallMode.NORMAL -> {
+                        performPackageInstallerInstall(
+                            uri,
+                            defaultInstaller,
+                            canDowngrade,
+                            emitErrors = true
+                        )
+                    }
+
+                    InstallMode.EXTERNAL -> {
+                        installWithExternal(uri)
                     }
                 }
-
-                InstallMode.NORMAL -> {
-                    performPackageInstallerInstall(uri, defaultInstaller, canDowngrade, emitErrors = true)
-                }
-
-                InstallMode.EXTERNAL -> {
-                    installWithExternal(uri)
-                }
+            } catch (e: Exception) {
+                eventBus.emit(InstallState.Error(e.message ?: "Unknown error during installation"))
             }
-        } catch (e: Exception) {
-            eventBus.emit(InstallState.Error(e.message ?: "Unknown error during installation"))
         }
-    }
 
     // Create a PackageInstaller using Dhizuku's binder wrapper but make the installer package
     // be this app's package name so created sessions belong to the app UID (avoids UID mismatch).
@@ -110,7 +158,11 @@ class InstallerRepositoryImpl(
         // on some ROMs / API versions and caused NoSuchMethodError).
         try {
             val iPackageInstaller = ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller()
-            val root = try { rikka.shizuku.Shizuku.getUid() == 0 } catch (_: Exception) { false }
+            val root = try {
+                rikka.shizuku.Shizuku.getUid() == 0
+            } catch (_: Exception) {
+                false
+            }
             val userId = if (root) android.os.Process.myUserHandle().hashCode() else 0
             val installerPackageName = context.packageName
 
@@ -132,7 +184,11 @@ class InstallerRepositoryImpl(
         // Reuse ShizukuPackageInstallerUtils to get a privileged IPackageInstaller safely across API levels
         val iPackageInstaller = ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller()
 
-        val shizukuUid = try { rikka.shizuku.Shizuku.getUid() } catch (_: Exception) { -1 }
+        val shizukuUid = try {
+            rikka.shizuku.Shizuku.getUid()
+        } catch (_: Exception) {
+            -1
+        }
         val isRoot = shizukuUid == 0
         val isShell = shizukuUid == 2000
 
@@ -158,11 +214,11 @@ class InstallerRepositoryImpl(
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
-                
+
                 val chooser = Intent.createChooser(intent, "Install with...")
                 chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(chooser)
-                
+
                 // We consider this a success in terms of handing off the job
                 eventBus.emit(InstallState.Success)
             } catch (e: Exception) {
@@ -229,7 +285,7 @@ class InstallerRepositoryImpl(
         val params = PackageInstaller.SessionParams(
             PackageInstaller.SessionParams.MODE_FULL_INSTALL
         )
-        
+
         if (canDowngrade) {
             try {
                 // Use reflection via Bypass as it might be unresolved in some SDK configurations

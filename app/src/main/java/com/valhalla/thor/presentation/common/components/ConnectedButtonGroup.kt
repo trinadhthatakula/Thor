@@ -183,7 +183,7 @@ private fun ItemContent(item: ConnectedButtonGroupItem) {
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun connectedShapesFor(index: Int, lastIndex: Int): ToggleButtonShapes = when {
-    index == 0                   -> ButtonGroupDefaults.connectedLeadingButtonShapes()
-    index == lastIndex           -> ButtonGroupDefaults.connectedTrailingButtonShapes()
-    else                         -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+    index == 0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+    index == lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+    else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
 }

@@ -1,7 +1,6 @@
 package com.valhalla.thor.data.source.local.room
 
 import androidx.room.TypeConverter
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 class AppTypeConverters {

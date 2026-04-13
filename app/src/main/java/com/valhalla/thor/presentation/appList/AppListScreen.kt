@@ -1,5 +1,6 @@
 package com.valhalla.thor.presentation.appList
 
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -11,7 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -38,8 +39,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import android.widget.Toast
-import androidx.compose.foundation.layout.width
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.ImageLoader
 import coil3.compose.rememberAsyncImagePainter
@@ -47,15 +46,12 @@ import coil3.request.crossfade
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
-import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.presentation.utils.AppIconFetcher
 import com.valhalla.thor.presentation.utils.AppIconKeyer
 import com.valhalla.thor.presentation.utils.getAppIcon
 import com.valhalla.thor.presentation.widgets.AppInfoDialog
 import com.valhalla.thor.presentation.widgets.AppList
-import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
-import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -223,12 +219,20 @@ fun AppListScreen(
                     }
 
                     is AppClickAction.Freeze -> {
-                        viewModel.freezeApp(action.appInfo.packageName, action.appInfo.appName, true)
+                        viewModel.freezeApp(
+                            action.appInfo.packageName,
+                            action.appInfo.appName,
+                            true
+                        )
                         viewModel.clearSelection()
                     }
 
                     is AppClickAction.UnFreeze -> {
-                        viewModel.freezeApp(action.appInfo.packageName, action.appInfo.appName, false)
+                        viewModel.freezeApp(
+                            action.appInfo.packageName,
+                            action.appInfo.appName,
+                            false
+                        )
                         viewModel.clearSelection()
                     }
 

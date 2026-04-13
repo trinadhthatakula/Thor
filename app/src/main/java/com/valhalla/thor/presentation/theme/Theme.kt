@@ -94,6 +94,7 @@ fun ThorTheme(
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
+
         darkTheme -> {
             if (amoledMode) {
                 AsgardianDarkColorScheme.copy(
@@ -105,6 +106,7 @@ fun ThorTheme(
                 AsgardianDarkColorScheme
             }
         }
+
         else -> AsgardianLightColorScheme
     }
 

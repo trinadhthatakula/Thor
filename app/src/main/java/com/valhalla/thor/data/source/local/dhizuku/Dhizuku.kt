@@ -56,13 +56,18 @@ object DhizukuHelper {
 
         // Fallback to reflection
         return runCatching {
-            val am = asInterface("android.app.IActivityManager", Context.ACTIVITY_SERVICE) ?: return false
+            val am = asInterface("android.app.IActivityManager", Context.ACTIVITY_SERVICE)
+                ?: return false
             Bypass.invoke<Any?>(
                 am::class.java, am, "forceStopPackage", packageName, userId
             )
             true
         }.getOrElse {
-            com.valhalla.thor.util.Logger.e("DhizukuHelper", "forceStopApp failed for $packageName", it)
+            com.valhalla.thor.util.Logger.e(
+                "DhizukuHelper",
+                "forceStopApp failed for $packageName",
+                it
+            )
             false
         }
     }
@@ -80,7 +85,8 @@ object DhizukuHelper {
         if (result.first != 0) {
             // Fallback to Bypass reflection
             runCatching {
-                val pm = asInterface("android.content.pm.IPackageManager", "package") ?: return false
+                val pm =
+                    asInterface("android.content.pm.IPackageManager", "package") ?: return false
                 val newState = when {
                     !disabled -> PackageManager.COMPONENT_ENABLED_STATE_ENABLED
                     else -> PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
@@ -89,7 +95,13 @@ object DhizukuHelper {
                     pm.javaClass,
                     pm,
                     "setApplicationEnabledSetting",
-                    arrayOf(String::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, String::class.java),
+                    arrayOf(
+                        String::class.java,
+                        Int::class.javaPrimitiveType!!,
+                        Int::class.javaPrimitiveType!!,
+                        Int::class.javaPrimitiveType!!,
+                        String::class.java
+                    ),
                     packageName,
                     newState,
                     0,
@@ -97,14 +109,24 @@ object DhizukuHelper {
                     BuildConfig.APPLICATION_ID
                 )
             }.onFailure {
-                com.valhalla.thor.util.Logger.e("DhizukuHelper", "setAppDisabled fallback failed for $packageName", it)
+                com.valhalla.thor.util.Logger.e(
+                    "DhizukuHelper",
+                    "setAppDisabled fallback failed for $packageName",
+                    it
+                )
             }
         }
         return Packages(context).isAppDisabled(packageName) == disabled
     }
 
-    fun uninstallApp( packageName: String): Boolean {
-        return execute("pm uninstall --user current ${com.valhalla.superuser.ShellUtils.escapedString(packageName)}").first == 0
+    fun uninstallApp(packageName: String): Boolean {
+        return execute(
+            "pm uninstall --user current ${
+                com.valhalla.superuser.ShellUtils.escapedString(
+                    packageName
+                )
+            }"
+        ).first == 0
     }
 
     fun execute(command: String): Pair<Int, String?> = runCatching {
@@ -186,12 +208,18 @@ object DhizukuHelper {
         // Try reflection first through Dhizuku's binder wrapper to show proper branding
         if (suspended && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             val reflectionResult = runCatching {
-                val pm = asInterface("android.content.pm.IPackageManager", "package") ?: return false
+                val pm =
+                    asInterface("android.content.pm.IPackageManager", "package") ?: return false
                 val dialogInfoClass = Class.forName("android.content.pm.SuspendDialogInfo")
                 val builderClass = Class.forName("android.content.pm.SuspendDialogInfo\$Builder")
                 val dialogInfo = Bypass.newInstance<Any>(builderClass).let { b ->
                     Bypass.invoke<Any>(builderClass, b, "setTitle", "Thor")
-                    Bypass.invoke<Any>(builderClass, b, "setMessage", "This app has been suspended by Thor.")
+                    Bypass.invoke<Any>(
+                        builderClass,
+                        b,
+                        "setMessage",
+                        "This app has been suspended by Thor."
+                    )
                     Bypass.invoke<Any>(builderClass, b, "build")
                 }
 
@@ -202,14 +230,31 @@ object DhizukuHelper {
                     // Try Android 13+ (8 args)
                     Bypass.invoke<Array<String>>(
                         pm.javaClass, pm, "setPackagesSuspendedAsUser",
-                        arrayOf(Array<String>::class.java, Boolean::class.javaPrimitiveType!!, android.os.PersistableBundle::class.java, android.os.PersistableBundle::class.java, dialogInfoClass, Int::class.javaPrimitiveType!!, String::class.java, Int::class.javaPrimitiveType!!),
+                        arrayOf(
+                            Array<String>::class.java,
+                            Boolean::class.javaPrimitiveType!!,
+                            android.os.PersistableBundle::class.java,
+                            android.os.PersistableBundle::class.java,
+                            dialogInfoClass,
+                            Int::class.javaPrimitiveType!!,
+                            String::class.java,
+                            Int::class.javaPrimitiveType!!
+                        ),
                         arrayOf(packageName), true, null, null, dialogInfo, 0, caller, userId
                     )
                 } catch (_: NoSuchMethodException) {
                     // Try Android 10-12 (7 args)
                     Bypass.invoke<Array<String>>(
                         pm.javaClass, pm, "setPackagesSuspendedAsUser",
-                        arrayOf(Array<String>::class.java, Boolean::class.javaPrimitiveType!!, android.os.PersistableBundle::class.java, android.os.PersistableBundle::class.java, dialogInfoClass, String::class.java, Int::class.javaPrimitiveType!!),
+                        arrayOf(
+                            Array<String>::class.java,
+                            Boolean::class.javaPrimitiveType!!,
+                            android.os.PersistableBundle::class.java,
+                            android.os.PersistableBundle::class.java,
+                            dialogInfoClass,
+                            String::class.java,
+                            Int::class.javaPrimitiveType!!
+                        ),
                         arrayOf(packageName), true, null, null, dialogInfo, caller, userId
                     )
                 }
@@ -229,20 +274,33 @@ object DhizukuHelper {
     }
 
     fun setAppRestricted(context: Context, packageName: String, restricted: Boolean): Boolean {
-        val result = execute("appops set $packageName RUN_ANY_IN_BACKGROUND ${if (restricted) "ignore" else "allow"}")
+        val result =
+            execute("appops set $packageName RUN_ANY_IN_BACKGROUND ${if (restricted) "ignore" else "allow"}")
         if (result.first == 0) return true
 
         // Fallback to reflection
         return runCatching {
-            val appops = asInterface("com.android.internal.app.IAppOpsService", Context.APP_OPS_SERVICE) ?: return false
+            val appops =
+                asInterface("com.android.internal.app.IAppOpsService", Context.APP_OPS_SERVICE)
+                    ?: return false
             val userId = Packages(context).myUserId
             val uid = Packages(context).packageUid(packageName)
             Bypass.invoke<Any?>(
                 appops::class.java,
                 appops,
                 "setMode",
-                arrayOf(Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, String::class.java, Int::class.javaPrimitiveType!!),
-                Bypass.invoke<Int>(android.app.AppOpsManager::class.java, null, "strOpToOp", "android:run_any_in_background"),
+                arrayOf(
+                    Int::class.javaPrimitiveType!!,
+                    Int::class.javaPrimitiveType!!,
+                    String::class.java,
+                    Int::class.javaPrimitiveType!!
+                ),
+                Bypass.invoke<Int>(
+                    android.app.AppOpsManager::class.java,
+                    null,
+                    "strOpToOp",
+                    "android:run_any_in_background"
+                ),
                 uid,
                 packageName,
                 if (restricted) android.app.AppOpsManager.MODE_IGNORED else android.app.AppOpsManager.MODE_ALLOWED

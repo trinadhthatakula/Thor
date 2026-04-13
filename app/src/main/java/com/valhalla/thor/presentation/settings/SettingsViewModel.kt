@@ -35,11 +35,13 @@ class SettingsViewModel(
         // but we can check it once or periodically.
         // For simplicity, let's just use a flow that emits once and then combine.
         kotlinx.coroutines.flow.flow {
-            emit(Triple(
-                systemRepository.isRootAvailable(),
-                systemRepository.isShizukuAvailable(),
-                systemRepository.isDhizukuAvailable()
-            ))
+            emit(
+                Triple(
+                    systemRepository.isRootAvailable(),
+                    systemRepository.isShizukuAvailable(),
+                    systemRepository.isDhizukuAvailable()
+                )
+            )
         }
     ) { prefs, status ->
         SettingsUiState(

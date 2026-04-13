@@ -37,18 +37,15 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
-import androidx.compose.material3.LoadingIndicator
-import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
-import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -85,6 +82,8 @@ import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.asGeneralName
 import com.valhalla.thor.domain.model.filterTypes
+import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
+import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
 import com.valhalla.thor.presentation.theme.expressivePress
 import com.valhalla.thor.presentation.utils.AppIconModel
 
@@ -514,8 +513,8 @@ private fun AppItemList(
         headlineContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    app.appName ?: stringResource(R.string.unknown), 
-                    maxLines = 1, 
+                    app.appName ?: stringResource(R.string.unknown),
+                    maxLines = 1,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
@@ -541,13 +540,13 @@ private fun AppItemList(
                 }
             }
         },
-        supportingContent = { 
+        supportingContent = {
             Text(
-                app.packageName, 
-                maxLines = 1, 
+                app.packageName,
+                maxLines = 1,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
-            ) 
+            )
         },
         trailingContent = {
             if (isSelected) {
@@ -736,7 +735,7 @@ private fun AppFilterSheet(
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
             Text(
-                stringResource(R.string.configuration), 
+                stringResource(R.string.configuration),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
                 letterSpacing = (-1).sp
@@ -749,7 +748,11 @@ private fun AppFilterSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(stringResource(R.string.app_source), style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                Text(
+                    stringResource(R.string.app_source),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
                 ConnectedButtonGroup(
                     items = AppListType.entries.map { type ->
                         ConnectedButtonGroupItem.Icon(
@@ -770,11 +773,21 @@ private fun AppFilterSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(stringResource(R.string.view_mode), style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                Text(
+                    stringResource(R.string.view_mode),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
                 ConnectedButtonGroup(
                     items = listOf(
-                        ConnectedButtonGroupItem.Icon(R.drawable.grid_view, stringResource(R.string.grid)),
-                        ConnectedButtonGroupItem.Icon(R.drawable.view_stream, stringResource(R.string.list))
+                        ConnectedButtonGroupItem.Icon(
+                            R.drawable.grid_view,
+                            stringResource(R.string.grid)
+                        ),
+                        ConnectedButtonGroupItem.Icon(
+                            R.drawable.view_stream,
+                            stringResource(R.string.list)
+                        )
                     ),
                     selectedIndex = if (isGrid) 0 else 1,
                     onItemSelected = { onToggleView() }
@@ -800,7 +813,13 @@ private fun AppFilterSheet(
                     ) {
                         items(filterTypes) { type ->
                             ListItem(
-                                headlineContent = { Text(type.asGeneralName(), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+                                headlineContent = {
+                                    Text(
+                                        type.asGeneralName(),
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                },
                                 trailingContent = {
                                     if (filterType == type) Icon(
                                         painterResource(R.drawable.check_circle),
@@ -810,7 +829,11 @@ private fun AppFilterSheet(
                                 },
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(16.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f))
+                                    .background(
+                                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(
+                                            alpha = 0.5f
+                                        )
+                                    )
                                     .clickable { onFilterTypeChanged(type) },
                                 colors = androidx.compose.material3.ListItemDefaults.colors(
                                     containerColor = Color.Transparent
@@ -822,7 +845,10 @@ private fun AppFilterSheet(
 
                 SheetTab.SORT -> {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.order), style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            stringResource(R.string.order),
+                            style = MaterialTheme.typography.titleMedium
+                        )
                         Spacer(Modifier.width(8.dp))
                         FilterChip(
                             selected = sortOrder == SortOrder.ASCENDING,
@@ -845,7 +871,13 @@ private fun AppFilterSheet(
                     ) {
                         items(SortBy.entries) { item ->
                             ListItem(
-                                headlineContent = { Text(item.asGeneralName(), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+                                headlineContent = {
+                                    Text(
+                                        item.asGeneralName(),
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                },
                                 trailingContent = {
                                     if (sortBy == item) Icon(
                                         painterResource(R.drawable.check_circle),
@@ -855,7 +887,11 @@ private fun AppFilterSheet(
                                 },
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(16.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f))
+                                    .background(
+                                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(
+                                            alpha = 0.5f
+                                        )
+                                    )
                                     .clickable { onSortByChanged(item) },
                                 colors = androidx.compose.material3.ListItemDefaults.colors(
                                     containerColor = Color.Transparent

@@ -98,7 +98,7 @@ class ShizukuReflector(
         (Bypass.getField<Int>(it, "privateFlags")) and 8 == 8
     } ?: false
 
-    fun setAppRestricted(packageName: String, restricted: Boolean): Boolean = 
+    fun setAppRestricted(packageName: String, restricted: Boolean): Boolean =
         Shizuku.setAppRestricted(context, packageName, restricted)
 
     fun setAppSuspended(packageName: String, suspended: Boolean): Boolean =
@@ -107,7 +107,8 @@ class ShizukuReflector(
     fun uninstallApp(packageName: String, resetToFactory: Boolean = false): Boolean {
         return runCatching {
             val packageInfo = context.packageManager.getInfoForPackage(packageName) ?: return false
-            val isSystem = (packageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            val isSystem =
+                (packageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_SYSTEM) != 0
             val hasUpdates =
                 (packageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
 
@@ -147,7 +148,10 @@ class ShizukuReflector(
             true
         }.getOrElse {
             // Fallback to Shell uninstallation
-            Logger.w("ShizukuReflector", "Reflection uninstall failed, falling back to shell: ${it.message}")
+            Logger.w(
+                "ShizukuReflector",
+                "Reflection uninstall failed, falling back to shell: ${it.message}"
+            )
             Shizuku.uninstallApp(context, packageName)
         }
     }
@@ -162,7 +166,9 @@ class ShizukuReflector(
      */
     fun installPackage(apkPath: String, canDowngrade: Boolean = false): Boolean {
         return try {
-            val command = "pm install -r -g${if (canDowngrade) " -d" else ""} ${com.valhalla.superuser.ShellUtils.escapedString(apkPath)}"
+            val command = "pm install -r -g${if (canDowngrade) " -d" else ""} ${
+                com.valhalla.superuser.ShellUtils.escapedString(apkPath)
+            }"
             val result = Shizuku.execute(command)
             result.first == 0
         } catch (e: Exception) {
@@ -212,7 +218,11 @@ class ShizukuReflector(
 
     fun getPackageInstaller(): PackageInstaller {
         val iPackageInstaller = ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller()
-        val root = try { rikka.shizuku.Shizuku.getUid() == 0 } catch (_: Exception) { false }
+        val root = try {
+            rikka.shizuku.Shizuku.getUid() == 0
+        } catch (_: Exception) {
+            false
+        }
         val userId = if (root) android.os.Process.myUserHandle().hashCode() else 0
 
         // The reason for use "com.android.shell" as installer package under adb is that
@@ -231,7 +241,11 @@ class ShizukuReflector(
      */
     fun createPackageInstallerFor(installerPackageName: String): PackageInstaller {
         val iPackageInstaller = ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller()
-        val root = try { rikka.shizuku.Shizuku.getUid() == 0 } catch (_: Exception) { false }
+        val root = try {
+            rikka.shizuku.Shizuku.getUid() == 0
+        } catch (_: Exception) {
+            false
+        }
         val userId = if (root) android.os.Process.myUserHandle().hashCode() else 0
 
         return ShizukuPackageInstallerUtils.createPackageInstaller(

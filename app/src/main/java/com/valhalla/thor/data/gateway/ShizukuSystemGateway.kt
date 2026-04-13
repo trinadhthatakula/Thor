@@ -3,9 +3,9 @@ package com.valhalla.thor.data.gateway
 import android.content.pm.PackageManager
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
-import com.valhalla.thor.data.source.local.shizuku.Shizuku as ShizukuHelper
 import com.valhalla.thor.domain.gateway.SystemGateway
 import rikka.shizuku.Shizuku
+import com.valhalla.thor.data.source.local.shizuku.Shizuku as ShizukuHelper
 
 class ShizukuSystemGateway(
     private val reflector: ShizukuReflector
@@ -43,7 +43,10 @@ class ShizukuSystemGateway(
         return runAction { reflector.setAppSuspended(packageName, isSuspended) }
     }
 
-    override suspend fun setAppRestricted(packageName: String, isRestricted: Boolean): Result<Unit> {
+    override suspend fun setAppRestricted(
+        packageName: String,
+        isRestricted: Boolean
+    ): Result<Unit> {
         return runAction { reflector.setAppRestricted(packageName, isRestricted) }
     }
 

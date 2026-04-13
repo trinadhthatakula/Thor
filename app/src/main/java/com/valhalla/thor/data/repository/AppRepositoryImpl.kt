@@ -6,7 +6,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.Environment
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.room.AppDao
 import com.valhalla.thor.data.source.local.room.AppEntity
@@ -20,7 +19,6 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
 class AppRepositoryImpl(
     private val context: Context,
@@ -87,18 +85,21 @@ class AppRepositoryImpl(
                     for (packInfo in installedPackages) {
                         val appInfo = packInfo.applicationInfo ?: continue
                         val packageName = packInfo.packageName
-                        
+
                         val cachedEntry = cachedMap[packageName]
-                        val isSuspended = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED) != 0
-                        
-                        if (!forceRefresh && 
-                            cachedEntry != null && 
+                        val isSuspended =
+                            (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED) != 0
+
+                        if (!forceRefresh &&
+                            cachedEntry != null &&
                             cachedEntry.lastUpdateTime == packInfo.lastUpdateTime &&
                             cachedEntry.enabled == appInfo.enabled &&
-                            cachedEntry.isSuspended == isSuspended) {
+                            cachedEntry.isSuspended == isSuspended
+                        ) {
                             currentList.add(cachedEntry.toDomain())
                         } else {
-                            val mapped = AppInfo.mapToAppInfo(packInfo, appInfo, pm, isLightweight = true)
+                            val mapped =
+                                AppInfo.mapToAppInfo(packInfo, appInfo, pm, isLightweight = true)
                             currentList.add(mapped)
                             val entity = AppEntity.fromDomain(mapped)
                             toUpdate.add(entity)
@@ -109,7 +110,7 @@ class AppRepositoryImpl(
                     // Handle uninstalled apps: Cleanup cache
                     val currentPackageNames = installedPackages.map { it.packageName }.toSet()
                     val toDelete = cachedMap.keys.filter { it !in currentPackageNames }
-                    
+
                     if (toUpdate.isNotEmpty() || toDelete.isNotEmpty()) {
                         appDao.syncCache(toUpdate, toDelete)
                         toDelete.forEach { cachedMap.remove(it) }

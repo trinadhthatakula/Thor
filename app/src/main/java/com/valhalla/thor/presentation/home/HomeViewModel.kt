@@ -45,7 +45,7 @@ class HomeViewModel(
     private var dashboardJob: Job? = null
     private var typeChangeJob: Job? = null
     private val _internalState = MutableStateFlow(HomeUiState())
-    
+
     private var lastUserApps: List<AppInfo> = emptyList()
     private var lastSystemApps: List<AppInfo> = emptyList()
 
@@ -84,7 +84,14 @@ class HomeViewModel(
             getInstalledAppsUseCase().collect { (userApps, systemApps) ->
                 lastUserApps = userApps
                 lastSystemApps = systemApps
-                processData(userApps, systemApps, _internalState.value.selectedType, hasRoot, hasShizuku, hasDhizuku)
+                processData(
+                    userApps,
+                    systemApps,
+                    _internalState.value.selectedType,
+                    hasRoot,
+                    hasShizuku,
+                    hasDhizuku
+                )
             }
         }
     }
@@ -94,7 +101,14 @@ class HomeViewModel(
         typeChangeJob?.cancel()
         typeChangeJob = viewModelScope.launch(Dispatchers.IO) {
             val s = _internalState.value
-            processData(lastUserApps, lastSystemApps, type, s.isRootAvailable, s.isShizukuAvailable, s.isDhizukuAvailable)
+            processData(
+                lastUserApps,
+                lastSystemApps,
+                type,
+                s.isRootAvailable,
+                s.isShizukuAvailable,
+                s.isDhizukuAvailable
+            )
         }
     }
 
@@ -120,7 +134,7 @@ class HomeViewModel(
         hasDhizuku: Boolean
     ) {
         val filteredApps = if (selectedType == AppListType.USER) userApps else systemApps
-        
+
         val activeCount = filteredApps.count { it.enabled && !it.isSuspended }
         val frozenCount = filteredApps.count { !it.enabled }
         val suspendedCount = filteredApps.count { it.isSuspended && it.enabled }
@@ -146,7 +160,7 @@ class HomeViewModel(
 
         // --- TOP 3 / 4 GROUPING LOGIC ---
         val sortedLabels = labelCounts.entries.sortedByDescending { it.value }
-        
+
         val distribution = if (sortedLabels.size <= 4) {
             // If 4 or fewer categories, show them exactly as they are
             labelCounts
@@ -157,7 +171,7 @@ class HomeViewModel(
 
             val result = mutableMapOf<String, Int>()
             top3Entries.forEach { result[it.key] = it.value }
-            
+
             val othersCount = restEntries.sumOf { it.value }
             // Add 'othersCount' to 'Others' label (merge if 'Others' was already in top 3)
             result["Others"] = result.getOrDefault("Others", 0) + othersCount

@@ -1,9 +1,9 @@
 package com.valhalla.thor.data.gateway
 
+import com.valhalla.bypass.Bypass
 import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.domain.gateway.SystemGateway
-import com.valhalla.bypass.Bypass
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -51,14 +51,20 @@ class RootSystemGateway(
                 val pmClass = Class.forName("android.content.pm.IPackageManager")
                 val pmStub = Class.forName("android.content.pm.IPackageManager\$Stub")
                 val serviceManager = Class.forName("android.os.ServiceManager")
-                val binder = Bypass.invoke<android.os.IBinder>(serviceManager, null, "getService", "package")
+                val binder =
+                    Bypass.invoke<android.os.IBinder>(serviceManager, null, "getService", "package")
                 val pm = Bypass.invoke<Any>(pmStub, null, "asInterface", binder)
 
                 val dialogInfoClass = Class.forName("android.content.pm.SuspendDialogInfo")
                 val builderClass = Class.forName("android.content.pm.SuspendDialogInfo\$Builder")
                 val dialogInfo = Bypass.newInstance<Any>(builderClass).let { b ->
                     Bypass.invoke<Any>(builderClass, b, "setTitle", "Thor")
-                    Bypass.invoke<Any>(builderClass, b, "setMessage", "This app has been suspended by Thor.")
+                    Bypass.invoke<Any>(
+                        builderClass,
+                        b,
+                        "setMessage",
+                        "This app has been suspended by Thor."
+                    )
                     Bypass.invoke<Any>(builderClass, b, "build")
                 }
 
@@ -68,14 +74,31 @@ class RootSystemGateway(
                     // Try Android 13+ (8 args)
                     Bypass.invoke<Array<String>>(
                         pmClass, pm, "setPackagesSuspendedAsUser",
-                        arrayOf(Array<String>::class.java, Boolean::class.javaPrimitiveType!!, android.os.PersistableBundle::class.java, android.os.PersistableBundle::class.java, dialogInfoClass, Int::class.javaPrimitiveType!!, String::class.java, Int::class.javaPrimitiveType!!),
+                        arrayOf(
+                            Array<String>::class.java,
+                            Boolean::class.javaPrimitiveType!!,
+                            android.os.PersistableBundle::class.java,
+                            android.os.PersistableBundle::class.java,
+                            dialogInfoClass,
+                            Int::class.javaPrimitiveType!!,
+                            String::class.java,
+                            Int::class.javaPrimitiveType!!
+                        ),
                         arrayOf(packageName), true, null, null, dialogInfo, 0, caller, userId
                     )
                 } catch (_: NoSuchMethodException) {
                     // Try Android 10-12 (7 args)
                     Bypass.invoke<Array<String>>(
                         pmClass, pm, "setPackagesSuspendedAsUser",
-                        arrayOf(Array<String>::class.java, Boolean::class.javaPrimitiveType!!, android.os.PersistableBundle::class.java, android.os.PersistableBundle::class.java, dialogInfoClass, String::class.java, Int::class.javaPrimitiveType!!),
+                        arrayOf(
+                            Array<String>::class.java,
+                            Boolean::class.javaPrimitiveType!!,
+                            android.os.PersistableBundle::class.java,
+                            android.os.PersistableBundle::class.java,
+                            dialogInfoClass,
+                            String::class.java,
+                            Int::class.javaPrimitiveType!!
+                        ),
                         arrayOf(packageName), true, null, null, dialogInfo, caller, userId
                     )
                 }
@@ -89,7 +112,10 @@ class RootSystemGateway(
         return runCommand("pm $state $packageName")
     }
 
-    override suspend fun setAppRestricted(packageName: String, isRestricted: Boolean): Result<Unit> {
+    override suspend fun setAppRestricted(
+        packageName: String,
+        isRestricted: Boolean
+    ): Result<Unit> {
         val state = if (isRestricted) "ignore" else "allow"
         return runCommand("appops set $packageName RUN_ANY_IN_BACKGROUND $state")
     }
@@ -104,7 +130,9 @@ class RootSystemGateway(
     }
 
     override suspend fun installApp(apkPath: String, canDowngrade: Boolean): Result<Unit> {
-        val command = "pm install -r -g${if (canDowngrade) " -d" else ""} ${com.valhalla.superuser.ShellUtils.escapedString(apkPath)}"
+        val command = "pm install -r -g${if (canDowngrade) " -d" else ""} ${
+            com.valhalla.superuser.ShellUtils.escapedString(apkPath)
+        }"
         return runCommand(command)
     }
 

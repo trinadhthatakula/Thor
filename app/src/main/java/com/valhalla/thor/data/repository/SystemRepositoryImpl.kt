@@ -1,8 +1,8 @@
 package com.valhalla.thor.data.repository
 
+import com.valhalla.thor.data.gateway.DhizukuSystemGateway
 import com.valhalla.thor.data.gateway.RootSystemGateway
 import com.valhalla.thor.data.gateway.ShizukuSystemGateway
-import com.valhalla.thor.data.gateway.DhizukuSystemGateway
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.repository.PreferenceRepository
@@ -21,14 +21,14 @@ class SystemRepositoryImpl(
     }
 
     override fun isShizukuAvailable(): Boolean = shizukuGateway.isShizukuAvailable()
-    
+
     override fun isDhizukuAvailable(): Boolean = dhizukuGateway.isDhizukuAvailable()
 
     // Dynamic Resolution Strategy: Respect user preference if available, else auto-detect.
     // Must be suspend because checking root and reading preferences are suspend operations.
     private suspend fun getActiveGateway(): SystemGateway {
         val prefs = preferenceRepository.userPreferences.first()
-        
+
         // 1. Try User Preference
         prefs.preferredPrivilegeMode?.let { mode ->
             when (mode) {
@@ -62,7 +62,10 @@ class SystemRepositoryImpl(
     override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> =
         getActiveGateway().setAppSuspended(packageName, isSuspended)
 
-    override suspend fun setAppRestricted(packageName: String, isRestricted: Boolean): Result<Unit> =
+    override suspend fun setAppRestricted(
+        packageName: String,
+        isRestricted: Boolean
+    ): Result<Unit> =
         getActiveGateway().setAppRestricted(packageName, isRestricted)
 
     override suspend fun uninstallApp(packageName: String): Result<Unit> =

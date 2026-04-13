@@ -78,7 +78,13 @@ object Shizuku {
                     pm.javaClass,
                     pm,
                     "setApplicationEnabledSetting",
-                    arrayOf(String::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, String::class.java),
+                    arrayOf(
+                        String::class.java,
+                        Int::class.javaPrimitiveType!!,
+                        Int::class.javaPrimitiveType!!,
+                        Int::class.javaPrimitiveType!!,
+                        String::class.java
+                    ),
                     packageName,
                     newState,
                     0,
@@ -103,11 +109,17 @@ object Shizuku {
                 val builderClass = Class.forName("android.content.pm.SuspendDialogInfo\$Builder")
                 val dialogInfo = Bypass.newInstance<Any>(builderClass).let { b ->
                     Bypass.invoke<Any>(builderClass, b, "setTitle", "Thor")
-                    Bypass.invoke<Any>(builderClass, b, "setMessage", "This app has been suspended by Thor.")
+                    Bypass.invoke<Any>(
+                        builderClass,
+                        b,
+                        "setMessage",
+                        "This app has been suspended by Thor."
+                    )
                     Bypass.invoke<Any>(builderClass, b, "build")
                 }
 
-                val caller = if (isRoot) com.valhalla.thor.BuildConfig.APPLICATION_ID else "com.android.shell"
+                val caller =
+                    if (isRoot) com.valhalla.thor.BuildConfig.APPLICATION_ID else "com.android.shell"
 
                 try {
                     // Try Android 13+ (8 args)
@@ -115,7 +127,16 @@ object Shizuku {
                         pm.javaClass,
                         pm,
                         "setPackagesSuspendedAsUser",
-                        arrayOf(Array<String>::class.java, Boolean::class.javaPrimitiveType!!, android.os.PersistableBundle::class.java, android.os.PersistableBundle::class.java, dialogInfoClass, Int::class.javaPrimitiveType!!, String::class.java, Int::class.javaPrimitiveType!!),
+                        arrayOf(
+                            Array<String>::class.java,
+                            Boolean::class.javaPrimitiveType!!,
+                            android.os.PersistableBundle::class.java,
+                            android.os.PersistableBundle::class.java,
+                            dialogInfoClass,
+                            Int::class.javaPrimitiveType!!,
+                            String::class.java,
+                            Int::class.javaPrimitiveType!!
+                        ),
                         arrayOf(packageName),
                         true,
                         null, null,
@@ -130,7 +151,15 @@ object Shizuku {
                         pm.javaClass,
                         pm,
                         "setPackagesSuspendedAsUser",
-                        arrayOf(Array<String>::class.java, Boolean::class.javaPrimitiveType!!, android.os.PersistableBundle::class.java, android.os.PersistableBundle::class.java, dialogInfoClass, String::class.java, Int::class.javaPrimitiveType!!),
+                        arrayOf(
+                            Array<String>::class.java,
+                            Boolean::class.javaPrimitiveType!!,
+                            android.os.PersistableBundle::class.java,
+                            android.os.PersistableBundle::class.java,
+                            dialogInfoClass,
+                            String::class.java,
+                            Int::class.javaPrimitiveType!!
+                        ),
                         arrayOf(packageName),
                         true,
                         null, null,
@@ -236,19 +265,31 @@ object Shizuku {
     }
 
     fun setAppRestricted(context: Context, packageName: String, restricted: Boolean): Boolean {
-        val result = execute("appops set $packageName RUN_ANY_IN_BACKGROUND ${if (restricted) "ignore" else "allow"}")
+        val result =
+            execute("appops set $packageName RUN_ANY_IN_BACKGROUND ${if (restricted) "ignore" else "allow"}")
         if (result.first == 0) return true
 
         // Fallback to reflection
         return runCatching {
-            val appops = asInterface("com.android.internal.app.IAppOpsService", Context.APP_OPS_SERVICE)
+            val appops =
+                asInterface("com.android.internal.app.IAppOpsService", Context.APP_OPS_SERVICE)
             val uid = Packages(context).packageUid(packageName)
             Bypass.invoke<Any?>(
                 appops::class.java,
                 appops,
                 "setMode",
-                arrayOf(Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, String::class.java, Int::class.javaPrimitiveType!!),
-                Bypass.invoke<Int>(android.app.AppOpsManager::class.java, null, "strOpToOp", "android:run_any_in_background"),
+                arrayOf(
+                    Int::class.javaPrimitiveType!!,
+                    Int::class.javaPrimitiveType!!,
+                    String::class.java,
+                    Int::class.javaPrimitiveType!!
+                ),
+                Bypass.invoke<Int>(
+                    android.app.AppOpsManager::class.java,
+                    null,
+                    "strOpToOp",
+                    "android:run_any_in_background"
+                ),
                 uid,
                 packageName,
                 if (restricted) android.app.AppOpsManager.MODE_IGNORED else android.app.AppOpsManager.MODE_ALLOWED

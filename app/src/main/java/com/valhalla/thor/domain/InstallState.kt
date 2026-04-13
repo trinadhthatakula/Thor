@@ -15,7 +15,7 @@ sealed interface InstallState {
         val isUpdate: Boolean,
         val isDowngrade: Boolean = false,
         val oldVersion: String? = null
-    ) : InstallState{
+    ) : InstallState {
 
         @Suppress("unused")
         fun getVersionInfo(): String {

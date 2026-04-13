@@ -1,6 +1,8 @@
 package com.valhalla.bypass
 
 import android.annotation.SuppressLint
+import com.valhalla.bypass.Bypass.exemptAll
+import com.valhalla.bypass.Bypass.prepareThor
 import dalvik.system.VMRuntime
 import java.lang.reflect.Method
 
@@ -189,7 +191,7 @@ object Bypass {
     fun <T> getField(instance: Any, fieldName: String): T {
         val target = if (instance is Class<*>) null else instance
         var clazz: Class<*>? = instance as? Class<*> ?: instance.javaClass
-        
+
         while (clazz != null) {
             try {
                 val field = clazz.getDeclaredField(fieldName)

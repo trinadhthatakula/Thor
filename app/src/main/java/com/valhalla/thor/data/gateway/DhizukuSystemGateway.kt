@@ -1,8 +1,8 @@
 package com.valhalla.thor.data.gateway
 
-import com.valhalla.thor.domain.gateway.SystemGateway
-import com.valhalla.thor.data.source.local.dhizuku.DhizukuReflector
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
+import com.valhalla.thor.data.source.local.dhizuku.DhizukuReflector
+import com.valhalla.thor.domain.gateway.SystemGateway
 
 class DhizukuSystemGateway(
     private val reflector: DhizukuReflector
@@ -49,7 +49,11 @@ class DhizukuSystemGateway(
     }
 
     override suspend fun installApp(apkPath: String, canDowngrade: Boolean): Result<Unit> {
-        val result = DhizukuHelper.execute("pm install -r -g${if (canDowngrade) " -d" else ""} ${com.valhalla.superuser.ShellUtils.escapedString(apkPath)}")
+        val result = DhizukuHelper.execute(
+            "pm install -r -g${if (canDowngrade) " -d" else ""} ${
+                com.valhalla.superuser.ShellUtils.escapedString(apkPath)
+            }"
+        )
         return if (result.first == 0) {
             Result.success(Unit)
         } else {
@@ -99,7 +103,10 @@ class DhizukuSystemGateway(
         else Result.failure(Exception("Dhizuku: Set suspended state failed."))
     }
 
-    override suspend fun setAppRestricted(packageName: String, isRestricted: Boolean): Result<Unit> {
+    override suspend fun setAppRestricted(
+        packageName: String,
+        isRestricted: Boolean
+    ): Result<Unit> {
         return if (reflector.setAppRestricted(packageName, isRestricted)) Result.success(Unit)
         else Result.failure(Exception("Dhizuku: Set restricted state failed."))
     }

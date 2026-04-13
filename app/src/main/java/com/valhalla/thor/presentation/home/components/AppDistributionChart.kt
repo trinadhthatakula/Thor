@@ -48,11 +48,11 @@ fun AppDistributionChart(
     modifier: Modifier = Modifier
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    
+
     // 1. Prepare Data & Colors
     val chartSlices = remember(data, colorScheme) {
         val sortedData = data.toList().sortedByDescending { it.second }
-        
+
         sortedData.mapIndexed { index, (label, count) ->
             val color = when (label.uppercase()) {
                 "PLAY STORE" -> Color(0xFFEFFFD7) // Light Green
@@ -96,7 +96,7 @@ private fun DistributionBar(
 ) {
     val total = slices.sumOf { it.count }.toFloat()
     var startAnimation by remember { mutableFloatStateOf(0f) }
-    
+
     val animatedProgress by animateFloatAsState(
         targetValue = startAnimation,
         animationSpec = spring(
@@ -115,7 +115,7 @@ private fun DistributionBar(
             .fillMaxWidth()
             .height(44.dp)
             .clip(RoundedCornerShape(22.dp))
-            .background(Color.Black.copy(alpha = 0.5f)) 
+            .background(Color.Black.copy(alpha = 0.5f))
     ) {
         Row(modifier = Modifier.fillMaxSize()) {
             slices.forEachIndexed { index, slice ->
@@ -127,7 +127,7 @@ private fun DistributionBar(
                             .fillMaxHeight()
                             .weight(animWeight)
                             .background(slice.color)
-                            .padding(end = if (index < slices.lastIndex) 4.dp else 0.dp) 
+                            .padding(end = if (index < slices.lastIndex) 4.dp else 0.dp)
                     )
                 }
             }

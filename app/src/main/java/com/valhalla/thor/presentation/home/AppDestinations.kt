@@ -14,6 +14,11 @@ enum class AppDestinations(
     APPS(R.string.apps, R.drawable.apps, R.drawable.apps, R.string.apps_desc),
     FREEZER(R.string.freezer, R.drawable.frozen, R.drawable.frozen, R.string.freezer_desc),
 
-    SETTINGS(R.string.settings, R.drawable.settings_outline, R.drawable.settings, R.string.settings_desc)
+    SETTINGS(
+        R.string.settings,
+        R.drawable.settings_outline,
+        R.drawable.settings,
+        R.string.settings_desc
+    )
 
 }

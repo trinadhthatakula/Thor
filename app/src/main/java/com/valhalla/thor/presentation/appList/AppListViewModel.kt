@@ -85,7 +85,7 @@ class AppListViewModel(
     fun loadApps() {
         viewModelScope.launch {
             _rawState.update { it.copy(isLoading = true) }
-            
+
             // Allow navigation/bottom bar animations to finish fluidly
             delay(800)
 
@@ -244,8 +244,9 @@ class AppListViewModel(
 
         // 5. Calculate Installers (Metadata) - OPTIMIZED
         // Only recalculate map if the full list changed (avoid doing this on search)
-        val installers = rawList.mapNotNull { it.installerPackageName }.distinct().sorted().toMutableList()
-        
+        val installers =
+            rawList.mapNotNull { it.installerPackageName }.distinct().sorted().toMutableList()
+
         // Fast lookup map for app names to avoid O(N^2) associative logic
         val nameMap = rawList.associateBy({ it.packageName }, { it.appName })
         val installerNames = installers.associateWith { pkg -> nameMap[pkg] ?: pkg }

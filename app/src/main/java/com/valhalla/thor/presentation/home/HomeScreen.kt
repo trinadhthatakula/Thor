@@ -20,8 +20,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -41,7 +39,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppListType
@@ -113,11 +110,15 @@ fun HomeScreen(
         // --- ACTIONS ---
 
         // B. Reinstall All (Warning style card)
-        AnimatedVisibility (state.activePrivilegeMode != null && state.unknownInstallerCount > 0 && state.showReinstallCard) {
-            Column{
+        AnimatedVisibility(state.activePrivilegeMode != null && state.unknownInstallerCount > 0 && state.showReinstallCard) {
+            Column {
                 ActionCard(
                     title = stringResource(R.string.reinstall_all),
-                    subtitle = stringResource(R.string.reinstall_all_subtitle, state.unknownInstallerCount, state.selectedType.name.lowercase()),
+                    subtitle = stringResource(
+                        R.string.reinstall_all_subtitle,
+                        state.unknownInstallerCount,
+                        state.selectedType.name.lowercase()
+                    ),
                     icon = R.drawable.apk_install,
                     isWarning = true,
                     onClick = onReinstallAll,
@@ -164,7 +165,10 @@ fun HomeScreen(
                         modifier = Modifier.weight(1f)
                     )
                     Text(
-                        text = stringResource(R.string.total_apps, state.activeAppCount + state.frozenAppCount),
+                        text = stringResource(
+                            R.string.total_apps,
+                            state.activeAppCount + state.frozenAppCount
+                        ),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1
@@ -289,7 +293,7 @@ private fun ActionCard(
                 modifier = Modifier
                     .clip(RoundedCornerShape(24.dp))
                     .background(
-                        if (isPrimary) MaterialTheme.colorScheme.onPrimaryContainer 
+                        if (isPrimary) MaterialTheme.colorScheme.onPrimaryContainer
                         else MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f)
                     )
                     .padding(if (isPrimary) 16.dp else 12.dp)
