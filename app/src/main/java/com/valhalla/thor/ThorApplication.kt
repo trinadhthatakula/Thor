@@ -13,9 +13,11 @@ import com.valhalla.thor.di.roomModule
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.util.LocaleManager
 import com.valhalla.thor.util.Logger
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.android.ext.android.inject
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
@@ -59,7 +61,9 @@ class ThorApplication : Application(), KoinStartup {
         // Apply saved language on startup
         MainScope().launch {
             val prefs = preferenceRepository.userPreferences.first()
-            localeManager.applyLocale(prefs.language)
+            withContext(Dispatchers.Main) {
+                localeManager.applyLocale(prefs.language)
+            }
         }
     }
 

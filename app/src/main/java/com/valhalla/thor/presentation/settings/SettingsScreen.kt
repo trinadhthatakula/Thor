@@ -203,8 +203,13 @@ fun SettingsScreen(
             SettingsSwitchRow(
                 icon = R.drawable.round_key,
                 title = stringResource(R.string.biometric_lock),
-                subtitle = stringResource(R.string.biometric_lock_desc),
+                subtitle = if (state.canUseBiometric) {
+                    stringResource(R.string.biometric_lock_desc)
+                } else {
+                    stringResource(R.string.biometric_not_available)
+                },
                 checked = prefs.biometricLockEnabled,
+                enabled = state.canUseBiometric,
                 onCheckedChange = { viewModel.setBiometricLock(it) }
             )
         }

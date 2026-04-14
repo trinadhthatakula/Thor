@@ -20,6 +20,7 @@ import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
 import com.valhalla.thor.util.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -50,6 +51,7 @@ class InstallerRepositoryImpl(
                         val privilegedInstaller = try {
                             getShizukuPackageInstaller()
                         } catch (e: Throwable) {
+                            if (e is CancellationException) throw e
                             Logger.e(
                                 "InstallerRepo",
                                 "Failed to get Shizuku installer, will use normal installer: ${e.message}"
@@ -67,6 +69,7 @@ class InstallerRepositoryImpl(
                                     emitErrors = false
                                 )
                             } catch (e: Throwable) {
+                                if (e is CancellationException) throw e
                                 Logger.e(
                                     "InstallerRepo",
                                     "Shizuku privileged install failed, falling back to normal: ${e.message}"
@@ -93,6 +96,7 @@ class InstallerRepositoryImpl(
                         val privilegedInstaller = try {
                             getDhizukuPackageInstaller()
                         } catch (e: Throwable) {
+                            if (e is CancellationException) throw e
                             Logger.e(
                                 "InstallerRepo",
                                 "Failed to get Dhizuku installer, will use normal installer: ${e.message}"
@@ -110,6 +114,7 @@ class InstallerRepositoryImpl(
                                     emitErrors = false
                                 )
                             } catch (e: Throwable) {
+                                if (e is CancellationException) throw e
                                 Logger.e(
                                     "InstallerRepo",
                                     "Dhizuku privileged install failed, falling back to normal: ${e.message}"
@@ -146,6 +151,7 @@ class InstallerRepositoryImpl(
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 eventBus.emit(InstallState.Error(e.message ?: "Unknown error during installation"))
             }
         }
@@ -172,6 +178,7 @@ class InstallerRepositoryImpl(
                 userId
             )
         } catch (e: Throwable) {
+            if (e is CancellationException) throw e
             // Bubble up so caller falls back to normal installer; log for debugging.
             Logger.e("InstallerRepo", "getDhizukuPackageInstaller failed: ${e.message}")
             throw e
@@ -222,6 +229,7 @@ class InstallerRepositoryImpl(
                 // We consider this a success in terms of handing off the job
                 eventBus.emit(InstallState.Success)
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 eventBus.emit(InstallState.Error("Could not open external installer: ${e.message}"))
             }
         }
@@ -260,6 +268,7 @@ class InstallerRepositoryImpl(
             }
 
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             eventBus.emit(InstallState.Error("Root install error: ${e.message}"))
         } finally {
             if (tempFile.exists()) {
@@ -291,6 +300,7 @@ class InstallerRepositoryImpl(
                 // Use reflection via Bypass as it might be unresolved in some SDK configurations
                 Bypass.invoke<Any?>(params::class.java, params, "setRequestDowngrade", true)
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Logger.e("InstallerRepo", "Failed to setRequestDowngrade", e)
                 if (emitErrors) {
                     eventBus.emit(InstallState.Error("Failed to request downgrade: ${e.message}"))
@@ -302,6 +312,7 @@ class InstallerRepositoryImpl(
         val sessionId = try {
             packageInstaller.createSession(params)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             if (emitErrors) {
                 eventBus.emit(InstallState.Error("Failed to create session: ${e.message}"))
                 return
@@ -311,6 +322,7 @@ class InstallerRepositoryImpl(
         val session = try {
             packageInstaller.openSession(sessionId)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             if (emitErrors) {
                 eventBus.emit(InstallState.Error("Failed to open session: ${e.message}"))
                 return
@@ -454,6 +466,7 @@ class InstallerRepositoryImpl(
             session.close()
 
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             try {
                 session.abandon()
             } catch (_: Exception) {

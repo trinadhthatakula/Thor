@@ -1,6 +1,6 @@
 package com.valhalla.thor.data.gateway
 
-import com.valhalla.bypass.Bypass
+import android.content.Context
 import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.domain.gateway.SystemGateway
@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
  * No more static blocking calls.
  */
 class RootSystemGateway(
+    private val context: Context,
     private val shellRepository: ShellRepository
 ) : SystemGateway {
 
@@ -42,70 +43,10 @@ class RootSystemGateway(
     }
 
     override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> {
-        val userId = android.os.Process.myUserHandle().hashCode()
-
-        // Try reflection first to show proper branding
+        // Try one-shot root task first to show proper branding
         if (isSuspended && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            val reflectionResult = runCatching {
-                // Using standard PackageManager for Root if bypass is ready
-                val pmClass = Class.forName("android.content.pm.IPackageManager")
-                val pmStub = Class.forName("android.content.pm.IPackageManager\$Stub")
-                val serviceManager = Class.forName("android.os.ServiceManager")
-                val binder =
-                    Bypass.invoke<android.os.IBinder>(serviceManager, null, "getService", "package")
-                val pm = Bypass.invoke<Any>(pmStub, null, "asInterface", binder)
-
-                val dialogInfoClass = Class.forName("android.content.pm.SuspendDialogInfo")
-                val builderClass = Class.forName("android.content.pm.SuspendDialogInfo\$Builder")
-                val dialogInfo = Bypass.newInstance<Any>(builderClass).let { b ->
-                    Bypass.invoke<Any>(builderClass, b, "setTitle", "Thor")
-                    Bypass.invoke<Any>(
-                        builderClass,
-                        b,
-                        "setMessage",
-                        "This app has been suspended by Thor."
-                    )
-                    Bypass.invoke<Any>(builderClass, b, "build")
-                }
-
-                val caller = BuildConfig.APPLICATION_ID
-
-                try {
-                    // Try Android 13+ (8 args)
-                    Bypass.invoke<Array<String>>(
-                        pmClass, pm, "setPackagesSuspendedAsUser",
-                        arrayOf(
-                            Array<String>::class.java,
-                            Boolean::class.javaPrimitiveType!!,
-                            android.os.PersistableBundle::class.java,
-                            android.os.PersistableBundle::class.java,
-                            dialogInfoClass,
-                            Int::class.javaPrimitiveType!!,
-                            String::class.java,
-                            Int::class.javaPrimitiveType!!
-                        ),
-                        arrayOf(packageName), true, null, null, dialogInfo, 0, caller, userId
-                    )
-                } catch (_: NoSuchMethodException) {
-                    // Try Android 10-12 (7 args)
-                    Bypass.invoke<Array<String>>(
-                        pmClass, pm, "setPackagesSuspendedAsUser",
-                        arrayOf(
-                            Array<String>::class.java,
-                            Boolean::class.javaPrimitiveType!!,
-                            android.os.PersistableBundle::class.java,
-                            android.os.PersistableBundle::class.java,
-                            dialogInfoClass,
-                            String::class.java,
-                            Int::class.javaPrimitiveType!!
-                        ),
-                        arrayOf(packageName), true, null, null, dialogInfo, caller, userId
-                    )
-                }
-                true
-            }.getOrDefault(false)
-
-            if (reflectionResult) return Result.success(Unit)
+            val taskResult = runRootTask("suspend", packageName, isSuspended.toString())
+            if (taskResult.isSuccess) return Result.success(Unit)
         }
 
         val state = if (isSuspended) "suspend" else "unsuspend"
@@ -208,6 +149,16 @@ class RootSystemGateway(
         return lines
             .filter { it.isNotBlank() }
             .map { it.removePrefix("package:").trim() }
+    }
+
+    /**
+     * Executes a Root command in a separate process using app_process.
+     */
+    private suspend fun runRootTask(action: String, vararg args: String): Result<Unit> {
+        val apkPath = context.packageCodePath
+        val className = "com.valhalla.thor.data.source.local.root.RootMain"
+        val cmd = "export CLASSPATH=$apkPath && app_process /system/bin $className $action ${args.joinToString(" ")}"
+        return runCommand(cmd)
     }
 
     /**

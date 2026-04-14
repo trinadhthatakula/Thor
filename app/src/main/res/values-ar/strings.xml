@@ -25,6 +25,7 @@
     <string name="security">الأمان</string>
     <string name="biometric_lock">قفل القياسات الحيوية</string>
     <string name="biometric_lock_desc">يتطلب المصادقة عند التشغيل</string>
+    <string name="biometric_not_available">المقاييس الحيوية غير مسجلة أو غير متوفرة</string>
     <string name="work_mode">وضع العمل</string>
     <string name="active_engine">المحرك النشط</string>
     <string name="active_engine_desc">التبديل بين الموفرين المتاحين</string>

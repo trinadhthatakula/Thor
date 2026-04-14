@@ -101,7 +101,7 @@ val coreModule = module {
     singleOf(::DhizukuReflector)
     singleOf(::BiometricHelper)
     // Singletons for the Gateways
-    single { RootSystemGateway(get()) }
+    single { RootSystemGateway(androidContext(), get()) }
     single { ShizukuSystemGateway(get()) }
     single { DhizukuSystemGateway(get()) }
     // The Repository interacts with the Gateways

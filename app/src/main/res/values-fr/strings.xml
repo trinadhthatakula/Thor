@@ -25,6 +25,7 @@
     <string name="security">SÉCURITÉ</string>
     <string name="biometric_lock">Verrouillage biométrique</string>
     <string name="biometric_lock_desc">Exiger une authentification au lancement</string>
+    <string name="biometric_not_available">Biométrie non enregistrée ou indisponible</string>
     <string name="work_mode">MODE DE TRAVAIL</string>
     <string name="active_engine">Moteur actif</string>
     <string name="active_engine_desc">Passer d\'un fournisseur à l\'autre</string>

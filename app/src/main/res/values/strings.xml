@@ -25,6 +25,7 @@
     <string name="security">SECURITY</string>
     <string name="biometric_lock">Biometric Lock</string>
     <string name="biometric_lock_desc">Require auth on launch</string>
+    <string name="biometric_not_available">Biometrics not enrolled or available</string>
     <string name="work_mode">WORK MODE</string>
     <string name="active_engine">Active Engine</string>
     <string name="active_engine_desc">Switch between available providers</string>

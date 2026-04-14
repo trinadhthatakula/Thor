@@ -12,8 +12,7 @@ class DhizukuReflector(
         return try {
             DhizukuHelper.forceStopApp(context, packageName)
         } catch (e: Exception) {
-            if (BuildConfig.DEBUG)
-                Logger.e("DhizukuReflector", "forceStop failed", e)
+            Logger.e("DhizukuReflector", "forceStop failed", e)
             false
         }
     }
@@ -22,8 +21,7 @@ class DhizukuReflector(
         return try {
             DhizukuHelper.clearCache(packageName)
         } catch (e: Exception) {
-            if (BuildConfig.DEBUG)
-                Logger.e("DhizukuReflector", "clearCache failed", e)
+            Logger.e("DhizukuReflector", "clearCache failed", e)
             false
         }
     }
@@ -32,8 +30,7 @@ class DhizukuReflector(
         return try {
             DhizukuHelper.clearAppData(packageName)
         } catch (e: Exception) {
-            if (BuildConfig.DEBUG)
-                Logger.e("DhizukuReflector", "clearData failed", e)
+            Logger.e("DhizukuReflector", "clearData failed", e)
             false
         }
     }
@@ -57,10 +54,20 @@ class DhizukuReflector(
     }
 
     fun setAppSuspended(packageName: String, suspended: Boolean): Boolean {
-        return DhizukuHelper.setAppSuspended(context, packageName, suspended)
+        return try {
+            DhizukuHelper.setAppSuspended(context, packageName, suspended)
+        } catch (e: Exception) {
+            Logger.e("DhizukuReflector", "setAppSuspended failed", e)
+            false
+        }
     }
 
     fun setAppRestricted(packageName: String, restricted: Boolean): Boolean {
-        return DhizukuHelper.setAppRestricted(context, packageName, restricted)
+        return try {
+            DhizukuHelper.setAppRestricted(context, packageName, restricted)
+        } catch (e: Exception) {
+            Logger.e("DhizukuReflector", "setAppRestricted failed", e)
+            false
+        }
     }
 }

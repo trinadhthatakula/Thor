@@ -26,7 +26,9 @@ class SettingsViewModel(
         val prefs: UserPreferences = UserPreferences(),
         val isRootAvailable: Boolean = false,
         val isShizukuAvailable: Boolean = false,
-        val isDhizukuAvailable: Boolean = false
+        val isDhizukuAvailable: Boolean = false,
+        val canUseBiometric: Boolean = false,
+        val hasBiometricHardware: Boolean = false
     )
 
     private val _systemStatus = combine(
@@ -48,7 +50,9 @@ class SettingsViewModel(
             prefs = prefs,
             isRootAvailable = status.first,
             isShizukuAvailable = status.second,
-            isDhizukuAvailable = status.third
+            isDhizukuAvailable = status.third,
+            canUseBiometric = biometricHelper.canAuthenticate(),
+            hasBiometricHardware = biometricHelper.hasHardware()
         )
     }
 

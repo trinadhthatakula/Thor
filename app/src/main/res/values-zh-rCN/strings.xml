@@ -25,6 +25,7 @@
     <string name="security">安全</string>
     <string name="biometric_lock">生物识别锁定</string>
     <string name="biometric_lock_desc">启动时需要验证</string>
+    <string name="biometric_not_available">生物识别未注册或不可用</string>
     <string name="work_mode">工作模式</string>
     <string name="active_engine">活动引擎</string>
     <string name="active_engine_desc">在可用提供者之间切换</string>
