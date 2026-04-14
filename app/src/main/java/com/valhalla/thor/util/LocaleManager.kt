@@ -1,6 +1,6 @@
 package com.valhalla.thor.util
 
-import android.app.LocaleManager
+import android.app.LocaleManager as AndroidLocaleManager
 import android.content.Context
 import android.os.Build
 import android.os.LocaleList
@@ -15,11 +15,11 @@ class LocaleManager(private val context: Context) {
 
     /**
      * Applies the given language code to the application.
-     * @param languageCode The language tag (e.g., "en", "zh-CN"), or null for system default.
+     * `@param` languageCode The language tag (e.g., "en", "zh-CN"), or null for system default.
      */
     fun applyLocale(languageCode: String?) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val localeManager = context.getSystemService(Context.LOCALE_SERVICE) as LocaleManager
+            val localeManager = context.getSystemService(Context.LOCALE_SERVICE) as AndroidLocaleManager
             localeManager.applicationLocales = if (languageCode == null) {
                 LocaleList.getEmptyLocaleList()
             } else {
@@ -40,7 +40,7 @@ class LocaleManager(private val context: Context) {
      */
     fun getAppliedLocales(): LocaleListCompat {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val localeManager = context.getSystemService(Context.LOCALE_SERVICE) as LocaleManager
+            val localeManager = context.getSystemService(Context.LOCALE_SERVICE) as AndroidLocaleManager
             LocaleListCompat.wrap(localeManager.applicationLocales)
         } else {
             AppCompatDelegate.getApplicationLocales()
