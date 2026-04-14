@@ -1,6 +1,7 @@
 package com.valhalla.thor.presentation.theme
 
 import android.os.Build
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MotionScheme
@@ -112,10 +113,13 @@ fun ThorTheme(
 
     //make status bar icon match the dark theme mode
     val view = LocalView.current
+    val activity = LocalActivity.current
     if (!view.isInEditMode) {
         SideEffect {
-            val window = (view.context as android.app.Activity).window
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            activity?.window?.let {
+                WindowCompat.getInsetsController(it, view)
+                    .isAppearanceLightStatusBars = !darkTheme
+            }
         }
     }
 
