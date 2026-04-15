@@ -93,7 +93,21 @@ fun ThorTheme(
     val context = LocalContext.current
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            if (darkTheme) {
+                dynamicDarkColorScheme(context).run {
+                    if(amoledMode){
+                        copy(
+                            background = Color.Black,
+                            surface = Color.Black,
+                            surfaceVariant = Color.Black
+                        )
+                    } else {
+                        this
+                    }
+                }
+            } else {
+                dynamicLightColorScheme(context)
+            }
         }
 
         darkTheme -> {
