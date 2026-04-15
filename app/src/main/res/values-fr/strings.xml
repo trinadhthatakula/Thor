@@ -6,7 +6,7 @@
     <string name="home">Accueil</string>
     <string name="home_desc">Page d\'accueil</string>
     <string name="apps">Liste des applis</string>
-    <string name="apps_desc">Affiche une liste de toutes les applications disponibles</string>
+    <string name="apps_desc">Affiche une liste de toutes les applications installées</string>
     <string name="freezer">Congélateur</string>
     <string name="freezer_desc">Geler/Dégeler les applications ici</string>
     <string name="settings">Paramètres</string>
@@ -60,7 +60,7 @@
 
     <!-- Home Screen -->
     <string name="reinstall_all">Tout réinstaller</string>
-    <string name="reinstall_all_subtitle">%1$d applications %2$s ne provenant pas du Play Store. Les réparer ?</string>
+    <string name="reinstall_all_subtitle">%1$d applications %2$s ne provenant pas du Play Store. Voulez-vous les réparer ?</string>
     <string name="install_from_file">Installer depuis un fichier</string>
     <string name="install_from_file_subtitle">Installer APK, XAPK, APKS ou lots de fichiers</string>
     <string name="app_distribution">Distribution des applis</string>
@@ -106,7 +106,7 @@
     <string name="fix_store">Réparer Store</string>
 
     <!-- App Status -->
-    <string name="status_split">SPLIT</string>
+    <string name="status_split">DIVISÉ</string>
     <string name="status_frozen">GELÉ</string>
     <string name="status_suspended">SUSPENDU</string>
 
