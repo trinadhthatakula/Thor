@@ -77,6 +77,14 @@ class RootSystemGateway(
         return runCommand(command)
     }
 
+    suspend fun installMultipleApks(apkPaths: List<String>, canDowngrade: Boolean): Result<Unit> {
+        val escapedPaths = apkPaths.joinToString(" ") {
+            com.valhalla.superuser.ShellUtils.escapedString(it)
+        }
+        val command = "pm install-multiple -r -g${if (canDowngrade) " -d" else ""} $escapedPaths"
+        return runCommand(command)
+    }
+
     override suspend fun getAppCacheSize(packageName: String): Long {
         return try {
             val result = shellRepository.runCommand("du -s /data/data/$packageName/cache")

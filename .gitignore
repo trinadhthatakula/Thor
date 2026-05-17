@@ -20,3 +20,12 @@ local.properties
 /.agents
 /*/build
 /graphify-out
+*.apk
+*.aab
+*.dm
+*.xapk
+*.apks
+/app/store/release
+*.jks
+*.keystore
+signing.properties

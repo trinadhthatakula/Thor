@@ -25,6 +25,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -37,7 +40,56 @@ class InstallerRepositoryImpl(
     private val shizukuReflector: ShizukuReflector
 ) : InstallerRepository {
 
+    @Serializable
+    private data class XapkManifest(
+        @SerialName("split_apks") val splitApks: List<XapkSplitApk> = emptyList()
+    )
+
+    @Serializable
+    private data class XapkSplitApk(
+        @SerialName("file") val file: String,
+        @SerialName("id") val id: String
+    )
+
+    private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+
     private val defaultInstaller = context.packageManager.packageInstaller
+
+    /**
+     * Returns the ordered list of APK filenames to install from an XAPK bundle.
+     * Uses manifest.json split_apks if present; falls back to all .apk entries.
+     */
+    private fun resolveXapkApkFiles(uri: Uri): List<String>? {
+        if (!isZipBundle(uri)) return null
+        return try {
+            var manifestBytes: ByteArray? = null
+            val allApkNames = mutableListOf<String>()
+
+            context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                ZipInputStream(inputStream).use { zipStream ->
+                    var entry = zipStream.nextEntry
+                    while (entry != null) {
+                        when {
+                            entry.name.equals("manifest.json", ignoreCase = true) ->
+                                manifestBytes = zipStream.readBytes()
+                            !entry.isDirectory && entry.name.endsWith(".apk", ignoreCase = true) ->
+                                allApkNames += entry.name
+                            else -> zipStream.closeEntry()
+                        }
+                        zipStream.nextEntry.also { entry = it }
+                    }
+                }
+            }
+
+            manifestBytes?.let { bytes ->
+                try {
+                    json.decodeFromString<XapkManifest>(String(bytes)).splitApks.map { it.file }
+                } catch (_: Exception) { null }
+            } ?: allApkNames.ifEmpty { null }
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     override suspend fun installPackage(uri: Uri, mode: InstallMode, canDowngrade: Boolean) =
         withContext(Dispatchers.IO) {
@@ -238,42 +290,88 @@ class InstallerRepositoryImpl(
     private suspend fun installWithRoot(uri: Uri, canDowngrade: Boolean) {
         eventBus.emit(InstallState.Installing(0f))
 
-        val tempFile = File(context.cacheDir, "install_temp_${System.currentTimeMillis()}.apk")
+        val tempDir = File(context.cacheDir, "install_root_${System.currentTimeMillis()}")
+        val tempApk = File(context.cacheDir, "install_temp_${System.currentTimeMillis()}.apk")
 
         try {
-            // Copy uri to temp file
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                FileOutputStream(tempFile).use { output ->
-                    input.copyTo(output)
+            val apkPaths: List<String>
+
+            val xapkApkFiles = resolveXapkApkFiles(uri)
+            if (xapkApkFiles != null) {
+                // XAPK/APKS: extract APKs listed in manifest (or all .apk files as fallback)
+                tempDir.mkdirs()
+                val extracted = mutableListOf<File>()
+                val wanted = xapkApkFiles.map { it.substringAfterLast('/') }.toSet()
+
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    ZipInputStream(input).use { zipStream ->
+                        var entry = zipStream.nextEntry
+                        while (entry != null) {
+                            val entryFileName = entry.name.substringAfterLast('/')
+                            if (!entry.isDirectory && entryFileName in wanted) {
+                                val dest = File(tempDir, entryFileName)
+                                FileOutputStream(dest).use { fos -> zipStream.copyTo(fos) }
+                                extracted.add(dest)
+                            } else {
+                                zipStream.closeEntry()
+                            }
+                            entry = zipStream.nextEntry
+                        }
+                    }
                 }
-            } ?: run {
-                eventBus.emit(InstallState.Error("Failed to read input file"))
-                return
+
+                if (extracted.isEmpty()) {
+                    eventBus.emit(InstallState.Error("No APK files found in bundle"))
+                    return
+                }
+
+                apkPaths = extracted.map { it.absolutePath }
+            } else {
+                // Single APK
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    FileOutputStream(tempApk).use { output -> input.copyTo(output) }
+                } ?: run {
+                    eventBus.emit(InstallState.Error("Failed to read input file"))
+                    return
+                }
+
+                apkPaths = listOf(tempApk.absolutePath)
             }
 
             eventBus.emit(InstallState.Installing(0.5f))
 
-            // Execute root install
-            val result = rootGateway.installApp(tempFile.absolutePath, canDowngrade)
+            val result = if (apkPaths.size == 1) {
+                rootGateway.installApp(apkPaths[0], canDowngrade)
+            } else {
+                rootGateway.installMultipleApks(apkPaths, canDowngrade)
+            }
 
             if (result.isSuccess) {
                 eventBus.emit(InstallState.Installing(1.0f))
                 eventBus.emit(InstallState.Success)
             } else {
                 eventBus.emit(
-                    InstallState.Error(
-                        result.exceptionOrNull()?.message ?: "Root install failed"
-                    )
+                    InstallState.Error(result.exceptionOrNull()?.message ?: "Root install failed")
                 )
             }
-
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             eventBus.emit(InstallState.Error("Root install error: ${e.message}"))
         } finally {
-            if (tempFile.exists()) {
-                tempFile.delete()
-            }
+            tempApk.delete()
+            tempDir.deleteRecursively()
+        }
+    }
+
+    private fun isZipBundle(uri: Uri): Boolean {
+        return try {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                val magic = ByteArray(4)
+                input.read(magic) == 4 &&
+                        magic[0] == 0x50.toByte() && magic[1] == 0x4B.toByte() // PK header
+            } ?: false
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -365,51 +463,56 @@ class InstallerRepositoryImpl(
         }
 
         try {
-            // ATTEMPT 1: Try as Bundle (XAPK/APKS/APKM)
-            val bundleStream: InputStream? = context.contentResolver.openInputStream(uri)
+            // ATTEMPT 1: Try as XAPK/APKS/APKM bundle
+            // Use manifest.json split_apks list if available; otherwise include all .apk entries.
+            val xapkApkFiles = resolveXapkApkFiles(uri)
 
-            if (bundleStream != null) {
+            if (xapkApkFiles != null) {
+                val wanted = xapkApkFiles.map { it.substringAfterLast('/') }.toSet()
                 try {
-                    ZipInputStream(bundleStream).use { zipStream ->
-                        var entry = zipStream.nextEntry
-                        while (entry != null) {
-                            val name = entry.name
-                            if (name.endsWith(".apk", ignoreCase = true)) {
-                                filesWritten = true
-                                val size = entry.size
+                    context.contentResolver.openInputStream(uri)?.use { bundleStream ->
+                        ZipInputStream(bundleStream).use { zipStream ->
+                            var entry = zipStream.nextEntry
+                            while (entry != null) {
+                                val entryFileName = entry.name.substringAfterLast('/')
+                                if (!entry.isDirectory && entryFileName in wanted) {
+                                    filesWritten = true
+                                    val size = entry.size
 
-                                if (size == -1L) {
-                                    // Unknown size in Zip: Buffer to temp
-                                    val tempFile = File(
-                                        context.cacheDir,
-                                        "temp_${System.currentTimeMillis()}_${File(name).name}"
-                                    )
-                                    FileOutputStream(tempFile).use { fos -> zipStream.copyTo(fos) }
-
-                                    val actualSize = tempFile.length()
-                                    val outStream = session.openWrite(name, 0, actualSize)
-                                    tempFile.inputStream().use { fis -> fis.copyTo(outStream) }
-                                    session.fsync(outStream)
-                                    outStream.close()
-                                    tempFile.delete()
-                                } else {
-                                    // Known size: Stream directly
-                                    val outStream = session.openWrite(name, 0, size)
-                                    val buffer = ByteArray(65536)
-                                    var len: Int
-                                    while (zipStream.read(buffer).also { len = it } > 0) {
-                                        outStream.write(buffer, 0, len)
+                                    if (size == -1L) {
+                                        // Unknown size: buffer to temp file first
+                                        val tempFile = File(
+                                            context.cacheDir,
+                                            "temp_${System.currentTimeMillis()}_$entryFileName"
+                                        )
+                                        FileOutputStream(tempFile).use { fos -> zipStream.copyTo(fos) }
+                                        val actualSize = tempFile.length()
+                                        session.openWrite(entryFileName, 0, actualSize).use { out ->
+                                            tempFile.inputStream().use { fis -> fis.copyTo(out) }
+                                            session.fsync(out)
+                                        }
+                                        tempFile.delete()
+                                    } else {
+                                        // Known size: stream directly
+                                        session.openWrite(entryFileName, 0, size).use { out ->
+                                            val buffer = ByteArray(65536)
+                                            var len: Int
+                                            while (zipStream.read(buffer).also { len = it } > 0) {
+                                                out.write(buffer, 0, len)
+                                            }
+                                            session.fsync(out)
+                                        }
                                     }
-                                    session.fsync(outStream)
-                                    outStream.close()
+                                } else {
+                                    zipStream.closeEntry()
                                 }
+                                entry = zipStream.nextEntry
                             }
-                            zipStream.closeEntry()
-                            entry = zipStream.nextEntry
                         }
                     }
                 } catch (e: Exception) {
-                    Logger.e("thor", "Not a valid bundle zip, trying fallback. Error: ${e.message}")
+                    Logger.e("thor", "Bundle extraction failed, trying fallback: ${e.message}")
+                    filesWritten = false
                 }
             }
 
