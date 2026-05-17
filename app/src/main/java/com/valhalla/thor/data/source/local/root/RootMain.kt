@@ -3,6 +3,7 @@ package com.valhalla.thor.data.source.local.root
 import android.os.Build
 import android.os.IBinder
 import com.valhalla.thor.BuildConfig
+import java.lang.reflect.InvocationTargetException
 import kotlin.system.exitProcess
 
 /**
@@ -41,11 +42,31 @@ object RootMain {
             .getMethod("asInterface", IBinder::class.java)
             .invoke(null, binder)
         val pmClass = Class.forName("android.content.pm.IPackageManager")
+
+        // SuspendDialogInfo and its method overloads were introduced in API 29
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            throw UnsupportedOperationException("suspend via reflection requires API 29+")
+        }
+
         val dialogInfoClass = Class.forName("android.content.pm.SuspendDialogInfo")
-
         val dialogInfo = if (suspended) buildSuspendDialogInfo() else null
-        val caller = BuildConfig.APPLICATION_ID
 
+        try {
+            callSetSuspended(pmClass, pm, dialogInfoClass, packageName, suspended, dialogInfo, BuildConfig.APPLICATION_ID)
+        } catch (e: Exception) {
+            // invoke() wraps the actual exception in InvocationTargetException; unwrap to check
+            val cause = if (e is InvocationTargetException) e.cause else e
+            if (cause is SecurityException) {
+                // Some devices reject non-privileged callers even from UID 0; fall back to shell
+                callSetSuspended(pmClass, pm, dialogInfoClass, packageName, suspended, dialogInfo, "com.android.shell")
+            } else throw e
+        }
+    }
+
+    private fun callSetSuspended(
+        pmClass: Class<*>, pm: Any?, dialogInfoClass: Class<*>,
+        packageName: String, suspended: Boolean, dialogInfo: Any?, caller: String
+    ) {
         try {
             // Android 13+ (API 33): 8-arg — extra flags Int between dialogInfo and caller
             pmClass.getDeclaredMethod(
@@ -68,12 +89,9 @@ object RootMain {
     private fun buildSuspendDialogInfo(): Any? = try {
         val builderClass = Class.forName("android.content.pm.SuspendDialogInfo\$Builder")
         val builder = builderClass.getDeclaredConstructor().newInstance()
-        // setTitle(String)/setMessage(String) only exist on API 30+; API 29 has @StringRes int only
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            builderClass.getMethod("setTitle", String::class.java).invoke(builder, "Thor")
-            builderClass.getMethod("setMessage", String::class.java)
-                .invoke(builder, "This app has been suspended by Thor.")
-        }
+        builderClass.getMethod("setTitle", CharSequence::class.java).invoke(builder, "Thor")
+        builderClass.getMethod("setMessage", CharSequence::class.java)
+            .invoke(builder, "This app has been suspended by Thor.")
         // Suppress the neutral button — prevents an unresolved intent from crashing SystemUI
         // BUTTON_ACTION_NO_ACTION = 2
         builderClass.getMethod("setNeutralButtonAction", Int::class.javaPrimitiveType)

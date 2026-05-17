@@ -40,7 +40,7 @@ fun Modifier.expressivePress(
     val animatable = remember { Animatable(1f) }
     val motionScheme = MaterialTheme.motionScheme
 
-    LaunchedEffect(interactionSource) {
+    LaunchedEffect(interactionSource, motionScheme) {
         interactionSource.interactions.collect { interaction ->
             when (interaction) {
                 is PressInteraction.Press -> launch {
