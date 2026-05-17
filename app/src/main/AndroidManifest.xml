@@ -80,16 +80,15 @@
                 <data android:mimeType="application/x-apkm" />
             </intent-filter>
 
+            <!-- file:// URIs: match by extension, no MIME type required -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data android:scheme="content" />
                 <data android:scheme="file" />
                 <data android:host="*" />
-                <data android:mimeType="*/*" />
 
                 <data android:pathPattern=".*\\.apk" />
                 <data android:pathPattern=".*\\.APK" />
