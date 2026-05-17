@@ -1,1 +1,1 @@
-Android App Manager and App Installer utility
+Freeze, manage & install apps — Root, Shizuku & Dhizuku support
