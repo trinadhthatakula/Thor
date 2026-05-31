@@ -78,6 +78,9 @@ class RootSystemGateway(
     }
 
     suspend fun installMultipleApks(apkPaths: List<String>, canDowngrade: Boolean): Result<Unit> {
+        if (apkPaths.isEmpty()) {
+            return Result.failure(Exception("No APK paths provided for multi-install"))
+        }
         val escapedPaths = apkPaths.joinToString(" ") {
             com.valhalla.superuser.ShellUtils.escapedString(it)
         }

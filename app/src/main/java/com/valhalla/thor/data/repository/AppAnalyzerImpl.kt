@@ -83,25 +83,63 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
             }
 
             if (manifest != null) {
-                // Decode icon — prefer icon.png from zip, fall back to extracting base APK
-                val iconBitmap: Bitmap? = when {
-                    iconBytes != null -> BitmapFactory.decodeByteArray(iconBytes, 0, iconBytes!!.size)
-                    else -> {
-                        val baseApkFile = manifest.splitApks.firstOrNull { it.id == "base" }?.file
-                        if (baseApkFile != null) extractBaseApkIcon(uri, baseApkFile, tempFile) else null
+                val baseApkFile = manifest.splitApks.firstOrNull { it.id == "base" }?.file
+                if (baseApkFile != null) {
+                    // Authority check: Extract base APK and parse it to avoid trusting manifest.json
+                    try {
+                        contentResolver.openInputStream(uri)?.use { inputStream ->
+                            ZipInputStream(inputStream).use { zipStream ->
+                                var entry = zipStream.nextEntry
+                                while (entry != null) {
+                                    if (entry.name.equals(baseApkFile, ignoreCase = true)) {
+                                        FileOutputStream(tempFile).use { fos -> zipStream.copyTo(fos) }
+                                        break
+                                    }
+                                    zipStream.closeEntry()
+                                    entry = zipStream.nextEntry
+                                }
+                            }
+                        }
+
+                        if (tempFile.exists()) {
+                            val pm = context.packageManager
+                            val flags = PackageManager.GET_META_DATA or PackageManager.GET_PERMISSIONS
+                            val archiveInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                pm.getPackageArchiveInfo(
+                                    tempFile.absolutePath,
+                                    PackageManager.PackageInfoFlags.of(flags.toLong())
+                                )
+                            } else {
+                                @Suppress("DEPRECATION")
+                                pm.getPackageArchiveInfo(tempFile.absolutePath, flags)
+                            }
+
+                            if (archiveInfo != null) {
+                                archiveInfo.applicationInfo?.sourceDir = tempFile.absolutePath
+                                archiveInfo.applicationInfo?.publicSourceDir = tempFile.absolutePath
+
+                                val currentIconBytes = iconBytes
+                                val iconBitmap: Bitmap? = when {
+                                    currentIconBytes != null -> BitmapFactory.decodeByteArray(currentIconBytes, 0, currentIconBytes.size)
+                                    else -> archiveInfo.applicationInfo?.loadIcon(pm)?.toBitmap()
+                                }
+
+                                return@withContext Result.success(
+                                    AppMetadata(
+                                        label = archiveInfo.applicationInfo?.loadLabel(pm).toString(),
+                                        packageName = archiveInfo.packageName,
+                                        version = archiveInfo.versionName ?: "Unknown",
+                                        versionCode = archiveInfo.longVersionCode,
+                                        icon = iconBitmap,
+                                        permissions = archiveInfo.requestedPermissions?.toList() ?: emptyList()
+                                    )
+                                )
+                            }
+                        }
+                    } catch (_: Exception) {
+                        // Fall through to Phase 3 if authoritative extraction fails
                     }
                 }
-
-                return@withContext Result.success(
-                    AppMetadata(
-                        label = manifest.name,
-                        packageName = manifest.packageName,
-                        version = manifest.versionName,
-                        versionCode = manifest.versionCode.toLongOrNull() ?: 0L,
-                        icon = iconBitmap,
-                        permissions = manifest.permissions
-                    )
-                )
             }
 
             // Phase 3: No XAPK manifest — fall back to APK extraction from zip

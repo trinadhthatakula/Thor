@@ -83,8 +83,11 @@ class InstallerRepositoryImpl(
 
             manifestBytes?.let { bytes ->
                 try {
-                    json.decodeFromString<XapkManifest>(String(bytes)).splitApks.map { it.file }
-                } catch (_: Exception) { null }
+                    val files = json.decodeFromString<XapkManifest>(String(bytes)).splitApks.map { it.file }
+                    if (files.isEmpty()) null else files
+                } catch (_: Exception) {
+                    null
+                }
             } ?: allApkNames.ifEmpty { null }
         } catch (_: Exception) {
             null
@@ -417,7 +420,7 @@ class InstallerRepositoryImpl(
             } else throw e
         }
 
-        val session = try {
+        var session = try {
             packageInstaller.openSession(sessionId)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -512,6 +515,15 @@ class InstallerRepositoryImpl(
                     }
                 } catch (e: Exception) {
                     Logger.e("thor", "Bundle extraction failed, trying fallback: ${e.message}")
+                    if (filesWritten) {
+                        try {
+                            session.abandon()
+                            session.close()
+                        } catch (_: Exception) {
+                        }
+                        val newSessionId = packageInstaller.createSession(params)
+                        session = packageInstaller.openSession(newSessionId)
+                    }
                     filesWritten = false
                 }
             }
