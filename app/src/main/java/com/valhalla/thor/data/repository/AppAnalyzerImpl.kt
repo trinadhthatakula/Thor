@@ -126,7 +126,7 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
 
                                 return@withContext Result.success(
                                     AppMetadata(
-                                        label = archiveInfo.applicationInfo?.loadLabel(pm).toString(),
+                                        label = archiveInfo.applicationInfo?.loadLabel(pm)?.toString() ?: "Unknown",
                                         packageName = archiveInfo.packageName,
                                         version = archiveInfo.versionName ?: "Unknown",
                                         versionCode = archiveInfo.longVersionCode,
