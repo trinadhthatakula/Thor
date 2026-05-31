@@ -522,7 +522,14 @@ class InstallerRepositoryImpl(
                         } catch (_: Exception) {
                         }
                         val newSessionId = packageInstaller.createSession(params)
-                        session = packageInstaller.openSession(newSessionId)
+                        try {
+                            session = packageInstaller.openSession(newSessionId)
+                        } catch (e: Exception) {
+                            try {
+                                packageInstaller.abandonSession(newSessionId)
+                            } catch (_: Exception) {}
+                            throw e
+                        }
                     }
                     filesWritten = false
                 }
