@@ -49,8 +49,7 @@ data class LoggerState(
 data class MainUiState(
     val actionMessage: String? = null, // For transient Toasts
     val loggerState: LoggerState = LoggerState(), // For persistent Logs
-    val selectedDestination: AppDestinations = AppDestinations.HOME, // For Bottom Nav
-    val permissionsManageApp: AppInfo? = null // App to manage permissions for
+    val selectedDestination: AppDestinations = AppDestinations.HOME // For Bottom Nav
 )
 
 class MainViewModel(
@@ -82,14 +81,6 @@ class MainViewModel(
 
     fun onDestinationSelected(destination: AppDestinations) {
         _uiState.update { it.copy(selectedDestination = destination) }
-    }
-
-    fun managePermissions(appInfo: AppInfo) {
-        _uiState.update { it.copy(permissionsManageApp = appInfo) }
-    }
-
-    fun clearPermissionsManagement() {
-        _uiState.update { it.copy(permissionsManageApp = null) }
     }
 
     private fun startLogger(title: String) {
@@ -170,11 +161,6 @@ class MainViewModel(
                 // 2. SETTINGS
                 is AppClickAction.AppInfoSettings -> {
                     _effect.send(MainSideEffect.OpenAppSettings(action.appInfo.packageName))
-                }
-
-                // Manage Permissions Action
-                is AppClickAction.ManagePermissions -> {
-                    managePermissions(action.appInfo)
                 }
 
                 // 3. SHARE (Heavy I/O -> Use Logger)
