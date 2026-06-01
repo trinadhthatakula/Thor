@@ -32,6 +32,11 @@ import com.valhalla.thor.presentation.widgets.AffirmationDialog
 import com.valhalla.thor.presentation.widgets.MultiAppAffirmationDialog
 import com.valhalla.thor.presentation.widgets.TermLoggerDialog
 import com.valhalla.thor.presentation.permission.PermissionManagerScreen
+import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.ui.NavDisplay
+import com.valhalla.thor.presentation.navigation.ThorRoute
+import com.valhalla.thor.presentation.navigation.rememberNavigationState
+import com.valhalla.thor.presentation.navigation.Navigator
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
@@ -48,18 +53,43 @@ fun MainScreen(
     var pendingSingleAction by remember { mutableStateOf<AppClickAction?>(null) }
     var showExitConfirmation by remember { mutableStateOf(false) }
 
-    // Handle Back Button inside Permission Manager
-    BackHandler(enabled = state.permissionsManageApp != null) {
-        mainViewModel.clearPermissionsManagement()
+    // --- Navigation 3 Setup ---
+    val topLevelRoutes = remember {
+        setOf(
+            ThorRoute.Home,
+            ThorRoute.Apps,
+            ThorRoute.Freezer,
+            ThorRoute.Settings
+        )
     }
 
-    // 1. Handle Back Button (Return to Home before Exiting)
-    BackHandler(enabled = state.selectedDestination != AppDestinations.HOME && state.permissionsManageApp == null) {
-        mainViewModel.onDestinationSelected(AppDestinations.HOME)
+    val navigationState = rememberNavigationState(
+        startRoute = ThorRoute.Home,
+        topLevelRoutes = topLevelRoutes
+    )
+
+    val navigator = remember { Navigator(navigationState) }
+
+    // Synchronize bottom bar selected destination with topLevelRoute
+    val selectedDestination = when (navigationState.topLevelRoute) {
+        is ThorRoute.Home -> AppDestinations.HOME
+        is ThorRoute.Apps -> AppDestinations.APPS
+        is ThorRoute.Freezer -> AppDestinations.FREEZER
+        is ThorRoute.Settings -> AppDestinations.SETTINGS
+        else -> AppDestinations.HOME
     }
-    // Secondary BackHandler for Home tab to Exit
-    BackHandler(enabled = state.selectedDestination == AppDestinations.HOME && state.permissionsManageApp == null) {
+
+    // Handle Back Press to Show Exit Confirmation when at the root of Home stack
+    val currentStack = navigationState.backStacks[navigationState.topLevelRoute]
+    val isAtRoot = currentStack?.size == 1 && navigationState.topLevelRoute == navigationState.startRoute
+    BackHandler(enabled = isAtRoot) {
         showExitConfirmation = true
+    }
+
+    // Handle Back Press to return to Home stack when at the root of another tab
+    val isNonStartRoot = currentStack?.size == 1 && navigationState.topLevelRoute != navigationState.startRoute
+    BackHandler(enabled = isNonStartRoot) {
+        navigator.goBack()
     }
 
     val canNotLaunchApp = stringResource(R.string.cannot_launch_app)
@@ -109,13 +139,89 @@ fun MainScreen(
         }
     }
 
+    val entryProvider = remember {
+        entryProvider {
+            entry<ThorRoute.Home> {
+                HomeScreen(
+                    viewModel = homeViewModel,
+                    onNavigateToApps = {
+                        navigator.navigate(ThorRoute.Apps)
+                    },
+                    onNavigateToFreezer = {
+                        navigator.navigate(ThorRoute.Freezer)
+                    },
+                    onReinstallAll = { mainViewModel.onAppAction(AppClickAction.ReinstallAll) },
+                    onClearAllCache = { type -> mainViewModel.clearAllCache(type) }
+                )
+            }
+
+            entry<ThorRoute.Apps> {
+                AppListScreen(
+                    onAppAction = { action ->
+                        if (action is AppClickAction.ManagePermissions) {
+                            navigator.navigate(
+                                ThorRoute.PermissionManager(
+                                    action.appInfo.packageName,
+                                    action.appInfo.appName ?: ""
+                                )
+                            )
+                        } else {
+                            checkAndProcessAction(action, { pendingSingleAction = it }) {
+                                mainViewModel.onAppAction(it)
+                            }
+                        }
+                    },
+                    onMultiAppAction = { pendingMultiAction = it }
+                )
+            }
+
+            entry<ThorRoute.Freezer> {
+                FreezerScreen(
+                    onAppAction = { action ->
+                        if (action is AppClickAction.ManagePermissions) {
+                            navigator.navigate(
+                                ThorRoute.PermissionManager(
+                                    action.appInfo.packageName,
+                                    action.appInfo.appName ?: ""
+                                )
+                            )
+                        } else {
+                            checkAndProcessAction(action, { pendingSingleAction = it }) {
+                                mainViewModel.onAppAction(it)
+                            }
+                        }
+                    },
+                    onMultiAppAction = { pendingMultiAction = it }
+                )
+            }
+
+            entry<ThorRoute.Settings> {
+                SettingsScreen()
+            }
+
+            entry<ThorRoute.PermissionManager> { key ->
+                PermissionManagerScreen(
+                    packageName = key.packageName,
+                    appName = key.appName,
+                    onBack = { navigator.goBack() }
+                )
+            }
+        }
+    }
+
     Scaffold(
         bottomBar = {
             ThorNavigationBar(
                 destinations = AppDestinations.entries,
-                selectedDestination = state.selectedDestination,
+                selectedDestination = selectedDestination,
                 onDestinationSelected = { dest ->
-                    mainViewModel.onDestinationSelected(dest)
+                    val route = when (dest) {
+                        AppDestinations.HOME -> ThorRoute.Home
+                        AppDestinations.APPS -> ThorRoute.Apps
+                        AppDestinations.FREEZER -> ThorRoute.Freezer
+                        AppDestinations.SETTINGS -> ThorRoute.Settings
+                    }
+                    navigator.navigate(route)
                 }
             )
         }
@@ -126,47 +232,10 @@ fun MainScreen(
                 .padding(innerPadding)
                 .fillMaxSize()
         ) {
-            when (state.selectedDestination) {
-                AppDestinations.HOME -> {
-                    HomeScreen(
-                        viewModel = homeViewModel,
-                        onNavigateToApps = {
-                            mainViewModel.onDestinationSelected(AppDestinations.APPS)
-                        },
-                        onNavigateToFreezer = {
-                            mainViewModel.onDestinationSelected(AppDestinations.FREEZER)
-                        },
-                        onReinstallAll = { mainViewModel.onAppAction(AppClickAction.ReinstallAll) },
-                        onClearAllCache = { type -> mainViewModel.clearAllCache(type) }
-                    )
-                }
-
-                AppDestinations.APPS -> {
-                    AppListScreen(
-                        onAppAction = { action ->
-                            checkAndProcessAction(action, { pendingSingleAction = it }) {
-                                mainViewModel.onAppAction(it)
-                            }
-                        },
-                        onMultiAppAction = { pendingMultiAction = it }
-                    )
-                }
-
-                AppDestinations.FREEZER -> {
-                    FreezerScreen(
-                        onAppAction = { action ->
-                            checkAndProcessAction(action, { pendingSingleAction = it }) {
-                                mainViewModel.onAppAction(it)
-                            }
-                        },
-                        onMultiAppAction = { pendingMultiAction = it }
-                    )
-                }
-
-                AppDestinations.SETTINGS -> {
-                    SettingsScreen()
-                }
-            }
+            NavDisplay(
+                entries = navigationState.toDecoratedEntries(entryProvider),
+                onBack = { navigator.goBack() }
+            )
 
             // --- GLOBAL OVERLAYS (Unchanged) ---
             if (pendingMultiAction != null) {
@@ -227,14 +296,6 @@ fun MainScreen(
                         onExit()
                     },
                     onRejected = { showExitConfirmation = false }
-                )
-            }
-
-            if (state.permissionsManageApp != null) {
-                PermissionManagerScreen(
-                    packageName = state.permissionsManageApp!!.packageName,
-                    appName = state.permissionsManageApp!!.appName ?: "",
-                    onBack = { mainViewModel.clearPermissionsManagement() }
                 )
             }
         }
