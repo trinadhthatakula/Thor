@@ -227,6 +227,8 @@ dependencies {
 
     implementation(libs.androidx.navigation3.runtime)
     implementation(libs.androidx.navigation3.ui)
+    implementation(libs.androidx.navigationevent)
+    implementation(libs.androidx.navigationevent.compose)
 
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
