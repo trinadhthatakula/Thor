@@ -7,6 +7,9 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -80,6 +83,10 @@ fun MainScreen(
         ThorRoute.Settings -> AppDestinations.SETTINGS
         else -> AppDestinations.HOME
     }
+
+    val showBottomBar = activeBackStack.lastOrNull()?.let {
+        it == ThorRoute.Home || it == ThorRoute.Apps || it == ThorRoute.Freezer || it == ThorRoute.Settings
+    } ?: true
 
     // Handle Back Press to Show Exit Confirmation when at the root of Home stack
     val isAtRoot = activeBackStack.size == 1 && activeTab == ThorRoute.Home
@@ -210,18 +217,24 @@ fun MainScreen(
 
     Scaffold(
         bottomBar = {
-            ThorNavigationBar(
-                destinations = AppDestinations.entries,
-                selectedDestination = selectedDestination,
-                onDestinationSelected = { dest ->
-                    activeTab = when (dest) {
-                        AppDestinations.HOME -> ThorRoute.Home
-                        AppDestinations.APPS -> ThorRoute.Apps
-                        AppDestinations.FREEZER -> ThorRoute.Freezer
-                        AppDestinations.SETTINGS -> ThorRoute.Settings
+            AnimatedVisibility(
+                visible = showBottomBar,
+                enter = slideInVertically(initialOffsetY = { it }),
+                exit = slideOutVertically(targetOffsetY = { it })
+            ) {
+                ThorNavigationBar(
+                    destinations = AppDestinations.entries,
+                    selectedDestination = selectedDestination,
+                    onDestinationSelected = { dest ->
+                        activeTab = when (dest) {
+                            AppDestinations.HOME -> ThorRoute.Home
+                            AppDestinations.APPS -> ThorRoute.Apps
+                            AppDestinations.FREEZER -> ThorRoute.Freezer
+                            AppDestinations.SETTINGS -> ThorRoute.Settings
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     ) { innerPadding ->
 
