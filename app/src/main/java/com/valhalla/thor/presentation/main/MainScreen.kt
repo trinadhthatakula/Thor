@@ -31,6 +31,7 @@ import com.valhalla.thor.presentation.settings.SettingsScreen
 import com.valhalla.thor.presentation.widgets.AffirmationDialog
 import com.valhalla.thor.presentation.widgets.MultiAppAffirmationDialog
 import com.valhalla.thor.presentation.widgets.TermLoggerDialog
+import com.valhalla.thor.presentation.permission.PermissionManagerScreen
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
@@ -47,12 +48,17 @@ fun MainScreen(
     var pendingSingleAction by remember { mutableStateOf<AppClickAction?>(null) }
     var showExitConfirmation by remember { mutableStateOf(false) }
 
+    // Handle Back Button inside Permission Manager
+    BackHandler(enabled = state.permissionsManageApp != null) {
+        mainViewModel.clearPermissionsManagement()
+    }
+
     // 1. Handle Back Button (Return to Home before Exiting)
-    BackHandler(enabled = state.selectedDestination != AppDestinations.HOME) {
+    BackHandler(enabled = state.selectedDestination != AppDestinations.HOME && state.permissionsManageApp == null) {
         mainViewModel.onDestinationSelected(AppDestinations.HOME)
     }
     // Secondary BackHandler for Home tab to Exit
-    BackHandler(enabled = state.selectedDestination == AppDestinations.HOME) {
+    BackHandler(enabled = state.selectedDestination == AppDestinations.HOME && state.permissionsManageApp == null) {
         showExitConfirmation = true
     }
 
@@ -221,6 +227,14 @@ fun MainScreen(
                         onExit()
                     },
                     onRejected = { showExitConfirmation = false }
+                )
+            }
+
+            if (state.permissionsManageApp != null) {
+                PermissionManagerScreen(
+                    packageName = state.permissionsManageApp!!.packageName,
+                    appName = state.permissionsManageApp!!.appName ?: "",
+                    onBack = { mainViewModel.clearPermissionsManagement() }
                 )
             }
         }
