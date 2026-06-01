@@ -36,6 +36,9 @@ import com.valhalla.thor.presentation.widgets.TermLoggerDialog
 import com.valhalla.thor.presentation.permission.PermissionManagerScreen
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.NavEntry
+import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.runtime.NavBackStack
+import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.ui.NavDisplay
 import com.valhalla.thor.presentation.navigation.ThorRoute
 import org.koin.androidx.compose.koinViewModel
@@ -55,14 +58,14 @@ fun MainScreen(
     var showExitConfirmation by remember { mutableStateOf(false) }
 
     // --- Navigation 3 Setup ---
-    val homeBackStack = remember { mutableStateListOf<ThorRoute>(ThorRoute.Home) }
-    val appsBackStack = remember { mutableStateListOf<ThorRoute>(ThorRoute.Apps) }
-    val freezerBackStack = remember { mutableStateListOf<ThorRoute>(ThorRoute.Freezer) }
-    val settingsBackStack = remember { mutableStateListOf<ThorRoute>(ThorRoute.Settings) }
+    val homeBackStack = rememberNavBackStack(ThorRoute.Home)
+    val appsBackStack = rememberNavBackStack(ThorRoute.Apps)
+    val freezerBackStack = rememberNavBackStack(ThorRoute.Freezer)
+    val settingsBackStack = rememberNavBackStack(ThorRoute.Settings)
 
     var activeTab by remember { mutableStateOf<ThorRoute>(ThorRoute.Home) }
 
-    val activeBackStack: SnapshotStateList<ThorRoute> = when (activeTab) {
+    val activeBackStack: NavBackStack<NavKey> = when (activeTab) {
         ThorRoute.Home -> homeBackStack
         ThorRoute.Apps -> appsBackStack
         ThorRoute.Freezer -> freezerBackStack
@@ -137,73 +140,71 @@ fun MainScreen(
         }
     }
 
-    val entryProvider: (ThorRoute) -> NavEntry<ThorRoute> = { key ->
-        when (key) {
-            is ThorRoute.Home -> NavEntry<ThorRoute>(key) {
-                HomeScreen(
-                    viewModel = homeViewModel,
-                    onNavigateToApps = {
-                        activeTab = ThorRoute.Apps
-                    },
-                    onNavigateToFreezer = {
-                        activeTab = ThorRoute.Freezer
-                    },
-                    onReinstallAll = { mainViewModel.onAppAction(AppClickAction.ReinstallAll) },
-                    onClearAllCache = { type -> mainViewModel.clearAllCache(type) }
-                )
-            }
+    val entryProvider = entryProvider<NavKey> {
+        entry<ThorRoute.Home> {
+            HomeScreen(
+                viewModel = homeViewModel,
+                onNavigateToApps = {
+                    activeTab = ThorRoute.Apps
+                },
+                onNavigateToFreezer = {
+                    activeTab = ThorRoute.Freezer
+                },
+                onReinstallAll = { mainViewModel.onAppAction(AppClickAction.ReinstallAll) },
+                onClearAllCache = { type -> mainViewModel.clearAllCache(type) }
+            )
+        }
 
-            is ThorRoute.Apps -> NavEntry<ThorRoute>(key) {
-                AppListScreen(
-                    onAppAction = { action ->
-                        if (action is AppClickAction.ManagePermissions) {
-                            activeBackStack.add(
-                                ThorRoute.PermissionManager(
-                                    action.appInfo.packageName,
-                                    action.appInfo.appName ?: ""
-                                )
+        entry<ThorRoute.Apps> {
+            AppListScreen(
+                onAppAction = { action ->
+                    if (action is AppClickAction.ManagePermissions) {
+                        activeBackStack.add(
+                            ThorRoute.PermissionManager(
+                                action.appInfo.packageName,
+                                action.appInfo.appName ?: ""
                             )
-                        } else {
-                            checkAndProcessAction(action, { pendingSingleAction = it }) {
-                                mainViewModel.onAppAction(it)
-                            }
+                        )
+                    } else {
+                        checkAndProcessAction(action, { pendingSingleAction = it }) {
+                            mainViewModel.onAppAction(it)
                         }
-                    },
-                    onMultiAppAction = { pendingMultiAction = it }
-                )
-            }
+                    }
+                },
+                onMultiAppAction = { pendingMultiAction = it }
+            )
+        }
 
-            is ThorRoute.Freezer -> NavEntry<ThorRoute>(key) {
-                FreezerScreen(
-                    onAppAction = { action ->
-                        if (action is AppClickAction.ManagePermissions) {
-                            activeBackStack.add(
-                                ThorRoute.PermissionManager(
-                                    action.appInfo.packageName,
-                                    action.appInfo.appName ?: ""
-                                )
+        entry<ThorRoute.Freezer> {
+            FreezerScreen(
+                onAppAction = { action ->
+                    if (action is AppClickAction.ManagePermissions) {
+                        activeBackStack.add(
+                            ThorRoute.PermissionManager(
+                                action.appInfo.packageName,
+                                action.appInfo.appName ?: ""
                             )
-                        } else {
-                            checkAndProcessAction(action, { pendingSingleAction = it }) {
-                                mainViewModel.onAppAction(it)
-                            }
+                        )
+                    } else {
+                        checkAndProcessAction(action, { pendingSingleAction = it }) {
+                            mainViewModel.onAppAction(it)
                         }
-                    },
-                    onMultiAppAction = { pendingMultiAction = it }
-                )
-            }
+                    }
+                },
+                onMultiAppAction = { pendingMultiAction = it }
+            )
+        }
 
-            is ThorRoute.Settings -> NavEntry<ThorRoute>(key) {
-                SettingsScreen()
-            }
+        entry<ThorRoute.Settings> {
+            SettingsScreen()
+        }
 
-            is ThorRoute.PermissionManager -> NavEntry<ThorRoute>(key) {
-                PermissionManagerScreen(
-                    packageName = key.packageName,
-                    appName = key.appName,
-                    onBack = { activeBackStack.removeLastOrNull() }
-                )
-            }
+        entry<ThorRoute.PermissionManager> { route ->
+            PermissionManagerScreen(
+                packageName = route.packageName,
+                appName = route.appName,
+                onBack = { activeBackStack.removeLastOrNull() }
+            )
         }
     }
 
