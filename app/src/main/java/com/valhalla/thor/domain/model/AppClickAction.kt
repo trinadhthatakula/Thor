@@ -16,4 +16,5 @@ sealed interface AppClickAction {
     data class ClearData(val appInfo: AppInfo) : AppClickAction
     data class Suspend(val appInfo: AppInfo) : AppClickAction
     data class UnSuspend(val appInfo: AppInfo) : AppClickAction
+    data class ManagePermissions(val appInfo: AppInfo) : AppClickAction
 }

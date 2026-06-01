@@ -279,6 +279,10 @@ class MainViewModel(
                         false
                     )
                 }
+
+                is AppClickAction.ManagePermissions -> {
+                    // Handled directly in Compose UI layer via Navigation 3
+                }
             }
         }
     }

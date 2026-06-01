@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,10 +35,9 @@ import com.valhalla.thor.presentation.widgets.MultiAppAffirmationDialog
 import com.valhalla.thor.presentation.widgets.TermLoggerDialog
 import com.valhalla.thor.presentation.permission.PermissionManagerScreen
 import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.ui.NavDisplay
 import com.valhalla.thor.presentation.navigation.ThorRoute
-import com.valhalla.thor.presentation.navigation.rememberNavigationState
-import com.valhalla.thor.presentation.navigation.Navigator
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
@@ -54,42 +55,39 @@ fun MainScreen(
     var showExitConfirmation by remember { mutableStateOf(false) }
 
     // --- Navigation 3 Setup ---
-    val topLevelRoutes = remember {
-        setOf(
-            ThorRoute.Home,
-            ThorRoute.Apps,
-            ThorRoute.Freezer,
-            ThorRoute.Settings
-        )
+    val homeBackStack = remember { mutableStateListOf<ThorRoute>(ThorRoute.Home) }
+    val appsBackStack = remember { mutableStateListOf<ThorRoute>(ThorRoute.Apps) }
+    val freezerBackStack = remember { mutableStateListOf<ThorRoute>(ThorRoute.Freezer) }
+    val settingsBackStack = remember { mutableStateListOf<ThorRoute>(ThorRoute.Settings) }
+
+    var activeTab by remember { mutableStateOf<ThorRoute>(ThorRoute.Home) }
+
+    val activeBackStack: SnapshotStateList<ThorRoute> = when (activeTab) {
+        ThorRoute.Home -> homeBackStack
+        ThorRoute.Apps -> appsBackStack
+        ThorRoute.Freezer -> freezerBackStack
+        ThorRoute.Settings -> settingsBackStack
+        else -> homeBackStack
     }
 
-    val navigationState = rememberNavigationState(
-        startRoute = ThorRoute.Home,
-        topLevelRoutes = topLevelRoutes
-    )
-
-    val navigator = remember { Navigator(navigationState) }
-
-    // Synchronize bottom bar selected destination with topLevelRoute
-    val selectedDestination = when (navigationState.topLevelRoute) {
-        is ThorRoute.Home -> AppDestinations.HOME
-        is ThorRoute.Apps -> AppDestinations.APPS
-        is ThorRoute.Freezer -> AppDestinations.FREEZER
-        is ThorRoute.Settings -> AppDestinations.SETTINGS
+    val selectedDestination = when (activeTab) {
+        ThorRoute.Home -> AppDestinations.HOME
+        ThorRoute.Apps -> AppDestinations.APPS
+        ThorRoute.Freezer -> AppDestinations.FREEZER
+        ThorRoute.Settings -> AppDestinations.SETTINGS
         else -> AppDestinations.HOME
     }
 
     // Handle Back Press to Show Exit Confirmation when at the root of Home stack
-    val currentStack = navigationState.backStacks[navigationState.topLevelRoute]
-    val isAtRoot = currentStack?.size == 1 && navigationState.topLevelRoute == navigationState.startRoute
+    val isAtRoot = activeBackStack.size == 1 && activeTab == ThorRoute.Home
     BackHandler(enabled = isAtRoot) {
         showExitConfirmation = true
     }
 
     // Handle Back Press to return to Home stack when at the root of another tab
-    val isNonStartRoot = currentStack?.size == 1 && navigationState.topLevelRoute != navigationState.startRoute
+    val isNonStartRoot = activeBackStack.size == 1 && activeTab != ThorRoute.Home
     BackHandler(enabled = isNonStartRoot) {
-        navigator.goBack()
+        activeTab = ThorRoute.Home
     }
 
     val canNotLaunchApp = stringResource(R.string.cannot_launch_app)
@@ -139,27 +137,27 @@ fun MainScreen(
         }
     }
 
-    val entryProvider = remember {
-        entryProvider {
-            entry<ThorRoute.Home> {
+    val entryProvider: (ThorRoute) -> NavEntry<ThorRoute> = { key ->
+        when (key) {
+            is ThorRoute.Home -> NavEntry<ThorRoute>(key) {
                 HomeScreen(
                     viewModel = homeViewModel,
                     onNavigateToApps = {
-                        navigator.navigate(ThorRoute.Apps)
+                        activeTab = ThorRoute.Apps
                     },
                     onNavigateToFreezer = {
-                        navigator.navigate(ThorRoute.Freezer)
+                        activeTab = ThorRoute.Freezer
                     },
                     onReinstallAll = { mainViewModel.onAppAction(AppClickAction.ReinstallAll) },
                     onClearAllCache = { type -> mainViewModel.clearAllCache(type) }
                 )
             }
 
-            entry<ThorRoute.Apps> {
+            is ThorRoute.Apps -> NavEntry<ThorRoute>(key) {
                 AppListScreen(
                     onAppAction = { action ->
                         if (action is AppClickAction.ManagePermissions) {
-                            navigator.navigate(
+                            activeBackStack.add(
                                 ThorRoute.PermissionManager(
                                     action.appInfo.packageName,
                                     action.appInfo.appName ?: ""
@@ -175,11 +173,11 @@ fun MainScreen(
                 )
             }
 
-            entry<ThorRoute.Freezer> {
+            is ThorRoute.Freezer -> NavEntry<ThorRoute>(key) {
                 FreezerScreen(
                     onAppAction = { action ->
                         if (action is AppClickAction.ManagePermissions) {
-                            navigator.navigate(
+                            activeBackStack.add(
                                 ThorRoute.PermissionManager(
                                     action.appInfo.packageName,
                                     action.appInfo.appName ?: ""
@@ -195,15 +193,15 @@ fun MainScreen(
                 )
             }
 
-            entry<ThorRoute.Settings> {
+            is ThorRoute.Settings -> NavEntry<ThorRoute>(key) {
                 SettingsScreen()
             }
 
-            entry<ThorRoute.PermissionManager> { key ->
+            is ThorRoute.PermissionManager -> NavEntry<ThorRoute>(key) {
                 PermissionManagerScreen(
                     packageName = key.packageName,
                     appName = key.appName,
-                    onBack = { navigator.goBack() }
+                    onBack = { activeBackStack.removeLastOrNull() }
                 )
             }
         }
@@ -215,13 +213,12 @@ fun MainScreen(
                 destinations = AppDestinations.entries,
                 selectedDestination = selectedDestination,
                 onDestinationSelected = { dest ->
-                    val route = when (dest) {
+                    activeTab = when (dest) {
                         AppDestinations.HOME -> ThorRoute.Home
                         AppDestinations.APPS -> ThorRoute.Apps
                         AppDestinations.FREEZER -> ThorRoute.Freezer
                         AppDestinations.SETTINGS -> ThorRoute.Settings
                     }
-                    navigator.navigate(route)
                 }
             )
         }
@@ -233,8 +230,9 @@ fun MainScreen(
                 .fillMaxSize()
         ) {
             NavDisplay(
-                entries = navigationState.toDecoratedEntries(entryProvider),
-                onBack = { navigator.goBack() }
+                backStack = activeBackStack,
+                onBack = { activeBackStack.removeLastOrNull() },
+                entryProvider = entryProvider
             )
 
             // --- GLOBAL OVERLAYS (Unchanged) ---
