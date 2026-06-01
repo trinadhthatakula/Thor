@@ -27,6 +27,11 @@ import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.domain.usecase.ShareAppUseCase
+import com.valhalla.thor.domain.repository.PermissionRepository
+import com.valhalla.thor.data.repository.PermissionRepositoryImpl
+import com.valhalla.thor.domain.usecase.GetAppPermissionsUseCase
+import com.valhalla.thor.domain.usecase.TogglePermissionUseCase
+import com.valhalla.thor.presentation.permission.PermissionManagerViewModel
 import com.valhalla.thor.presentation.appList.AppListViewModel
 import com.valhalla.thor.presentation.freezer.FreezerViewModel
 import com.valhalla.thor.presentation.home.HomeViewModel
@@ -51,6 +56,9 @@ val commonModule = module {
     factory { GetAppDetailsUseCase(get()) }
     factory { ManageAppUseCase(get()) }
     factoryOf(::ShareAppUseCase)
+    single<PermissionRepository> { PermissionRepositoryImpl(androidContext(), get()) }
+    factory { GetAppPermissionsUseCase(get()) }
+    factory { TogglePermissionUseCase(get()) }
 }
 
 val roomModule = module {
@@ -93,6 +101,7 @@ val presentationModule = module {
     viewModelOf(::InstallerViewModel)
     viewModelOf(::SettingsViewModel)
     viewModelOf(::SecurityViewModel)
+    viewModelOf(::PermissionManagerViewModel)
 }
 
 val coreModule = module {
