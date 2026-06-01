@@ -233,7 +233,7 @@ private fun PermissionTopAppBar(
     ) {
         IconButton(onClick = onBack) {
             Icon(
-                painter = painterResource(R.drawable.cd_close),
+                painter = painterResource(R.drawable.round_close),
                 contentDescription = stringResource(R.string.cd_close),
                 tint = MaterialTheme.colorScheme.onSurface
             )
@@ -331,7 +331,7 @@ private fun SearchBar(
             placeholder = { Text(stringResource(R.string.permissions_search)) },
             leadingIcon = {
                 Icon(
-                    painter = painterResource(R.drawable.cd_search),
+                    painter = painterResource(R.drawable.round_search),
                     contentDescription = null,
                     modifier = Modifier.size(20.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -341,7 +341,7 @@ private fun SearchBar(
                 if (query.isNotEmpty()) {
                     IconButton(onClick = { onQueryChange("") }) {
                         Icon(
-                            painter = painterResource(R.drawable.cd_clear),
+                            painter = painterResource(R.drawable.round_close),
                             contentDescription = stringResource(R.string.cd_clear),
                             modifier = Modifier.size(20.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
