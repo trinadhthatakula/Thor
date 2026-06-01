@@ -347,6 +347,11 @@ private fun AppActionRow(
                 AppClickAction.Share(appInfo)
             )
         }
+        ActionItem(R.drawable.shield, stringResource(R.string.action_permissions)) {
+            onAction(
+                AppClickAction.ManagePermissions(appInfo)
+            )
+        }
 
         // 2. Privileged Actions
         if (hasPrivilege) {
