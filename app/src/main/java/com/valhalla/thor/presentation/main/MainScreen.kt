@@ -10,6 +10,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -246,7 +251,19 @@ fun MainScreen(
             NavDisplay(
                 backStack = activeBackStack,
                 onBack = { activeBackStack.removeLastOrNull() },
-                entryProvider = entryProvider
+                entryProvider = entryProvider,
+                transitionSpec = {
+                    (slideInHorizontally(initialOffsetX = { it }) + fadeIn()) togetherWith
+                            (slideOutHorizontally(targetOffsetX = { -it }) + fadeOut())
+                },
+                popTransitionSpec = {
+                    (slideInHorizontally(initialOffsetX = { -it }) + fadeIn()) togetherWith
+                            (slideOutHorizontally(targetOffsetX = { it }) + fadeOut())
+                },
+                predictivePopTransitionSpec = {
+                    (slideInHorizontally(initialOffsetX = { -it }) + fadeIn()) togetherWith
+                            (slideOutHorizontally(targetOffsetX = { it }) + fadeOut())
+                }
             )
 
             // --- GLOBAL OVERLAYS (Unchanged) ---
