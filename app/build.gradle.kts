@@ -225,6 +225,9 @@ dependencies {
     implementation(libs.bundles.coil)
     implementation(libs.bundles.koin)
 
+    implementation(libs.androidx.navigation3.runtime)
+    implementation(libs.androidx.navigation3.ui)
+
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
