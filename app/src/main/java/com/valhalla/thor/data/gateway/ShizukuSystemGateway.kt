@@ -107,6 +107,26 @@ class ShizukuSystemGateway(
         }
     }
 
+    override suspend fun grantPermission(packageName: String, permissionName: String): Result<Unit> {
+        return try {
+            val result = ShizukuHelper.execute("pm grant $packageName $permissionName")
+            if (result.first == 0) Result.success(Unit)
+            else Result.failure(Exception("Shizuku: pm grant failed with exit code ${result.first}: ${result.second}"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun revokePermission(packageName: String, permissionName: String): Result<Unit> {
+        return try {
+            val result = ShizukuHelper.execute("pm revoke $packageName $permissionName")
+            if (result.first == 0) Result.success(Unit)
+            else Result.failure(Exception("Shizuku: pm revoke failed with exit code ${result.first}: ${result.second}"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     /**
      * Standardizes error handling for reflection and shell actions.
      */

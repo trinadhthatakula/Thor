@@ -110,4 +110,24 @@ class DhizukuSystemGateway(
         return if (reflector.setAppRestricted(packageName, isRestricted)) Result.success(Unit)
         else Result.failure(Exception("Dhizuku: Set restricted state failed."))
     }
+
+    override suspend fun grantPermission(packageName: String, permissionName: String): Result<Unit> {
+        return try {
+            val result = DhizukuHelper.execute("pm grant $packageName $permissionName")
+            if (result.first == 0) Result.success(Unit)
+            else Result.failure(Exception("Dhizuku: pm grant failed with exit code ${result.first}: ${result.second}"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun revokePermission(packageName: String, permissionName: String): Result<Unit> {
+        return try {
+            val result = DhizukuHelper.execute("pm revoke $packageName $permissionName")
+            if (result.first == 0) Result.success(Unit)
+            else Result.failure(Exception("Dhizuku: pm revoke failed with exit code ${result.first}: ${result.second}"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }

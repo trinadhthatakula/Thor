@@ -122,4 +122,10 @@ class SystemRepositoryImpl(
             Result.failure(e)
         }
     }
+
+    override suspend fun grantPermission(packageName: String, permissionName: String): Result<Unit> =
+        getActiveGateway().grantPermission(packageName, permissionName)
+
+    override suspend fun revokePermission(packageName: String, permissionName: String): Result<Unit> =
+        getActiveGateway().revokePermission(packageName, permissionName)
 }

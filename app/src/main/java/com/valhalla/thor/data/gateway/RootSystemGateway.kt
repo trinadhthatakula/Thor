@@ -172,6 +172,14 @@ class RootSystemGateway(
         return runCommand(cmd)
     }
 
+    override suspend fun grantPermission(packageName: String, permissionName: String): Result<Unit> {
+        return runCommand("pm grant $packageName $permissionName")
+    }
+
+    override suspend fun revokePermission(packageName: String, permissionName: String): Result<Unit> {
+        return runCommand("pm revoke $packageName $permissionName")
+    }
+
     /**
      * Helper to bridge ShellRepository's Result<List<String>> to Result<Unit>
      */
