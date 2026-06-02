@@ -252,16 +252,7 @@ fun MainScreen(
             NavDisplay(
                 backStack = activeBackStack,
                 onBack = { activeBackStack.removeLastOrNull() },
-                entryProvider = entryProvider,
-                transitionSpec = {
-                    fadeIn(tween(200)) togetherWith fadeOut(tween(200))
-                },
-                popTransitionSpec = {
-                    fadeIn(tween(200)) togetherWith fadeOut(tween(200))
-                },
-                predictivePopTransitionSpec = {
-                    fadeIn(tween(200)) togetherWith fadeOut(tween(200))
-                }
+                entryProvider = entryProvider
             )
 
             // --- GLOBAL OVERLAYS (Unchanged) ---
