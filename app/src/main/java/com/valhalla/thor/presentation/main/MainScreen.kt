@@ -162,7 +162,13 @@ fun MainScreen(
                 onNavigateToFreezer = {
                     activeTab = ThorRoute.Freezer
                 },
-                onReinstallAll = { mainViewModel.onAppAction(AppClickAction.ReinstallAll) },
+                onReinstallAll = {
+                    checkAndProcessAction(
+                        AppClickAction.ReinstallAll,
+                        { pendingSingleAction = it },
+                        { mainViewModel.onAppAction(it) }
+                    )
+                },
                 onClearAllCache = { type -> mainViewModel.clearAllCache(type) }
             )
         }
@@ -277,6 +283,12 @@ fun MainScreen(
                         R.drawable.danger
                     )
 
+                    AppClickAction.ReinstallAll -> Triple(
+                        stringResource(R.string.reinstall_all),
+                        stringResource(R.string.risk_warning_desc),
+                        R.drawable.apk_install
+                    )
+
                     else -> Triple(
                         stringResource(R.string.confirm),
                         stringResource(R.string.are_you_sure),
@@ -328,7 +340,9 @@ private fun checkAndProcessAction(
     onExecute: (AppClickAction) -> Unit
 ) {
     when (action) {
-        is AppClickAction.Kill -> onRequireConfirmation(action)
+        is AppClickAction.Kill,
+        AppClickAction.ReinstallAll -> onRequireConfirmation(action)
+
         else -> onExecute(action)
     }
 }
