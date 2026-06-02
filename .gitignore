@@ -29,3 +29,6 @@ local.properties
 *.jks
 *.keystore
 signing.properties
+/.superpowers
+/.antigravitycli
+CLAUDE.md
