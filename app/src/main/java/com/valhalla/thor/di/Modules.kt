@@ -7,6 +7,7 @@ import com.valhalla.superuser.ktx.RealShellRepository
 import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.thor.data.source.local.room.AppDao
 import com.valhalla.thor.data.source.local.room.AppDatabase
+import com.valhalla.thor.data.source.local.room.FreezerDao
 import org.koin.core.annotation.ComponentScan
 import org.koin.core.annotation.Configuration
 import org.koin.core.annotation.Module
@@ -28,6 +29,9 @@ class AppModule {
 
     @Single
     fun appDao(appDatabase: AppDatabase): AppDao = appDatabase.appDao()
+
+    @Single
+    fun freezerDao(appDatabase: AppDatabase): FreezerDao = appDatabase.freezerDao()
 
     // RealShellRepository lives in :suCore (com.valhalla.superuser.ktx), outside the scan scope
     @Single
