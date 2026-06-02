@@ -10,16 +10,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,7 +30,9 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.presentation.appList.AppListScreen
+import com.valhalla.thor.presentation.appList.AppListViewModel
 import com.valhalla.thor.presentation.freezer.FreezerScreen
+import com.valhalla.thor.presentation.freezer.FreezerViewModel
 import com.valhalla.thor.presentation.home.AppDestinations
 import com.valhalla.thor.presentation.home.HomeScreen
 import com.valhalla.thor.presentation.home.HomeViewModel
@@ -43,7 +42,6 @@ import com.valhalla.thor.presentation.widgets.MultiAppAffirmationDialog
 import com.valhalla.thor.presentation.widgets.TermLoggerDialog
 import com.valhalla.thor.presentation.permission.PermissionManagerScreen
 import androidx.navigation3.runtime.entryProvider
-import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
@@ -55,6 +53,8 @@ import org.koin.androidx.compose.koinViewModel
 fun MainScreen(
     mainViewModel: MainViewModel = koinViewModel(),
     homeViewModel: HomeViewModel = koinViewModel(),
+    appListViewModel: AppListViewModel = koinViewModel(),
+    freezerViewModel: FreezerViewModel = koinViewModel(),
     onExit: () -> Unit,
 ) {
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
@@ -169,6 +169,7 @@ fun MainScreen(
 
         entry<ThorRoute.Apps> {
             AppListScreen(
+                viewModel = appListViewModel,
                 onAppAction = { action ->
                     if (action is AppClickAction.ManagePermissions) {
                         activeBackStack.add(
@@ -189,6 +190,7 @@ fun MainScreen(
 
         entry<ThorRoute.Freezer> {
             FreezerScreen(
+                viewModel = freezerViewModel,
                 onAppAction = { action ->
                     if (action is AppClickAction.ManagePermissions) {
                         activeBackStack.add(
@@ -252,16 +254,13 @@ fun MainScreen(
                 onBack = { activeBackStack.removeLastOrNull() },
                 entryProvider = entryProvider,
                 transitionSpec = {
-                    (slideInHorizontally(initialOffsetX = { it }) + fadeIn()) togetherWith
-                            (slideOutHorizontally(targetOffsetX = { -it }) + fadeOut())
+                    fadeIn(tween(200)) togetherWith fadeOut(tween(200))
                 },
                 popTransitionSpec = {
-                    (slideInHorizontally(initialOffsetX = { -it }) + fadeIn()) togetherWith
-                            (slideOutHorizontally(targetOffsetX = { it }) + fadeOut())
+                    fadeIn(tween(200)) togetherWith fadeOut(tween(200))
                 },
                 predictivePopTransitionSpec = {
-                    (slideInHorizontally(initialOffsetX = { -it }) + fadeIn()) togetherWith
-                            (slideOutHorizontally(targetOffsetX = { it }) + fadeOut())
+                    fadeIn(tween(200)) togetherWith fadeOut(tween(200))
                 }
             )
 
