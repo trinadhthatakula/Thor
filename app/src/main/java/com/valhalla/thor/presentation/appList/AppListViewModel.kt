@@ -14,7 +14,10 @@ import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
+import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.presentation.freezer.FreezerPrompt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -48,7 +51,8 @@ data class AppListUiState(
     val selectedAppDetails: AppInfo? = null,
     val isLoadingDetails: Boolean = false,
     // Action Feedback
-    val actionMessage: String? = null
+    val actionMessage: String? = null,
+    val freezerPrompt: FreezerPrompt? = null
 )
 
 @KoinViewModel
@@ -57,7 +61,8 @@ class AppListViewModel(
     private val getAppDetailsUseCase: GetAppDetailsUseCase,
     private val systemRepository: SystemRepository,
     private val manageAppUseCase: ManageAppUseCase,
-    private val preferenceRepository: PreferenceRepository // Injected
+    private val preferenceRepository: PreferenceRepository,
+    private val freezerRepository: FreezerRepository
 ) : ViewModel() {
 
     private val _rawState = MutableStateFlow(AppListUiState())
@@ -108,14 +113,35 @@ class AppListViewModel(
     }
 
     fun freezeApp(packageName: String, appName: String?, freeze: Boolean) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch {
             val result = manageAppUseCase.setAppDisabled(packageName, freeze)
-            if (result.isSuccess) {
-                _rawState.update { it.copy(actionMessage = "${if (freeze) "Frozen" else "Unfrozen"} ${appName ?: packageName}") }
-                loadApps()
-            } else {
-                _rawState.update { it.copy(actionMessage = "Error: ${result.exceptionOrNull()?.message}") }
+            result.onSuccess {
+                if (freeze) {
+                    val inFreezer = withContext(Dispatchers.IO) {
+                        freezerRepository.contains(packageName)
+                    }
+                    if (!inFreezer) {
+                        _rawState.update { it.copy(freezerPrompt = FreezerPrompt(packageName, appName)) }
+                    } else {
+                        _rawState.update { it.copy(actionMessage = "Frozen ${appName ?: packageName}") }
+                    }
+                } else {
+                    _rawState.update { it.copy(actionMessage = "Unfrozen ${appName ?: packageName}") }
+                }
+            }.onFailure { e ->
+                _rawState.update { it.copy(actionMessage = "Error: ${e.message}") }
             }
+        }
+    }
+
+    fun dismissFreezerPrompt() {
+        _rawState.update { it.copy(freezerPrompt = null) }
+    }
+
+    fun addToFreezer(packageName: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            freezerRepository.add(packageName)
+            _rawState.update { it.copy(freezerPrompt = null, actionMessage = "Added to Freezer") }
         }
     }
 

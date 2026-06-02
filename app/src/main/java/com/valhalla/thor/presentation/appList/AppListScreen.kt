@@ -19,6 +19,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -28,6 +33,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,6 +73,7 @@ fun AppListScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
 
     // Create a custom ImageLoader that knows how to fetch App Icons in the background.
     // We use 'remember' so we don't recreate the loader on every recomposition.
@@ -94,94 +101,118 @@ fun AppListScreen(
         }
     }
 
+    LaunchedEffect(state.freezerPrompt) {
+        state.freezerPrompt?.let { prompt ->
+            val result = snackbarHostState.showSnackbar(
+                message = "Frozen",
+                actionLabel = "Add to Freezer",
+                duration = SnackbarDuration.Short
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                viewModel.addToFreezer(prompt.packageName)
+            }
+            viewModel.dismissFreezerPrompt()
+        }
+    }
+
     // UI-Specific State (Dialogs that don't need to persist in VM)
     var reinstallCandidate: AppInfo? by remember { mutableStateOf(null) }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-
-        // 1. Header Row
-        Row(
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
         ) {
-            // LEFT: Brand/Title Block
+
+            // 1. Header Row
             Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Icon(
-                    painter = painterResource(icon),
-                    contentDescription = title,
-                    modifier = Modifier.size(24.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
-                    color = MaterialTheme.colorScheme.primary,
-                    letterSpacing = (-1).sp
-                )
+                // LEFT: Brand/Title Block
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(icon),
+                        contentDescription = title,
+                        modifier = Modifier.size(24.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
+                        color = MaterialTheme.colorScheme.primary,
+                        letterSpacing = (-1).sp
+                    )
+                }
+
+                // RIGHT: App Type Switcher moved to config
+                Spacer(Modifier.width(48.dp))
             }
 
-            // RIGHT: App Type Switcher moved to config
-            Spacer(Modifier.width(48.dp))
+            // 2. The List Content
+            val refreshState = rememberPullToRefreshState()
+
+            PullToRefreshBox(
+                isRefreshing = state.isLoading,
+                onRefresh = { viewModel.loadApps() },
+                state = refreshState,
+                modifier = Modifier.weight(1f) // Fill remaining space
+            ) {
+                // Using your existing AppList widget, but feeding it PURE STATE
+                AppList(
+                    appListType = state.appListType,
+                    installers = state.availableInstallers,
+                    selectedFilter = state.selectedFilter,
+                    filterType = state.filterType,
+                    sortBy = state.sortBy,
+                    sortOrder = state.sortOrder,
+                    searchQuery = state.searchQuery,
+                    isLoading = state.isLoading,
+                    appList = state.displayedApps,
+                    isRoot = state.isRoot,
+                    isShizuku = state.isShizuku,
+                    startAsGrid = true,
+                    imageLoader = imageLoader,
+                    installerNameMap = state.installerNameMap,
+                    // Actions forwarded to ViewModel
+                    onFilterTypeChanged = viewModel::updateFilterType,
+                    onSortByChanged = viewModel::updateSort,
+                    onSortOrderSelected = viewModel::updateSortOrder,
+                    onSearchQueryChange = viewModel::updateSearchQuery,
+                    onFilterSelected = {
+                        it?.let { filter ->
+                            viewModel.updateFilter(filter)
+                        }
+                    },
+                    onAppInfoSelected = { appInfo ->
+                        viewModel.selectApp(appInfo.packageName)
+                    },
+                    onListTypeChanged = { viewModel.updateListType(it) },
+                    onMultiAppAction = { action ->
+                        if (action is MultiAppAction.Freeze || action is MultiAppAction.UnFreeze) {
+                            viewModel.performMultiAction(action)
+                        } else {
+                            onMultiAppAction(action)
+                        }
+                    }
+                )
+            }
         }
-
-        // 2. The List Content
-        val refreshState = rememberPullToRefreshState()
-
-        PullToRefreshBox(
-            isRefreshing = state.isLoading,
-            onRefresh = { viewModel.loadApps() },
-            state = refreshState,
-            modifier = Modifier.weight(1f) // Fill remaining space
-        ) {
-            // Using your existing AppList widget, but feeding it PURE STATE
-            AppList(
-                appListType = state.appListType,
-                installers = state.availableInstallers,
-                selectedFilter = state.selectedFilter,
-                filterType = state.filterType,
-                sortBy = state.sortBy,
-                sortOrder = state.sortOrder,
-                searchQuery = state.searchQuery,
-                isLoading = state.isLoading,
-                appList = state.displayedApps,
-                isRoot = state.isRoot,
-                isShizuku = state.isShizuku,
-                startAsGrid = true,
-                imageLoader = imageLoader,
-                installerNameMap = state.installerNameMap,
-                // Actions forwarded to ViewModel
-                onFilterTypeChanged = viewModel::updateFilterType,
-                onSortByChanged = viewModel::updateSort,
-                onSortOrderSelected = viewModel::updateSortOrder,
-                onSearchQueryChange = viewModel::updateSearchQuery,
-                onFilterSelected = {
-                    it?.let { filter ->
-                        viewModel.updateFilter(filter)
-                    }
-                },
-                onAppInfoSelected = { appInfo ->
-                    viewModel.selectApp(appInfo.packageName)
-                },
-                onListTypeChanged = { viewModel.updateListType(it) },
-                onMultiAppAction = { action ->
-                    if (action is MultiAppAction.Freeze || action is MultiAppAction.UnFreeze) {
-                        viewModel.performMultiAction(action)
-                    } else {
-                        onMultiAppAction(action)
-                    }
-                }
-            )
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 80.dp)
+        ) { data ->
+            Snackbar(snackbarData = data)
         }
     }
 
