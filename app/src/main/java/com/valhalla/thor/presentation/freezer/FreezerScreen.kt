@@ -234,7 +234,7 @@ fun FreezerScreen(
                         contentPadding = PaddingValues(bottom = 100.dp, top = 8.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        items(displayedApps, key = { it.packageName }) { app ->
+                        items(displayedApps.sortedBy { it.appName }, key = { it.packageName }) { app ->
                             AppItemGrid(
                                 app = app,
                                 isSelected = app.packageName in state.multiSelection,
@@ -254,7 +254,7 @@ fun FreezerScreen(
                         contentPadding = PaddingValues(bottom = 100.dp, top = 8.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        items(displayedApps, key = { it.packageName }) { app ->
+                        items(displayedApps.sortedBy { it.appName }, key = { it.packageName }) { app ->
                             AppItemList(
                                 app = app,
                                 isSelected = app.packageName in state.multiSelection,

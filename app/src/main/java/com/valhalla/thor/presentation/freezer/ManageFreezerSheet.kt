@@ -102,7 +102,7 @@ fun ManageFreezerSheet(
                 start = 16.dp, end = 16.dp, bottom = 32.dp
             )
         ) {
-            items(filtered, key = { it.packageName }) { app ->
+            items(filtered.sortedBy { it.appName }, key = { it.packageName }) { app ->
                 val inFreezer = app.packageName in freezerPackageNames
                 FreezerManageItem(
                     app = app,
