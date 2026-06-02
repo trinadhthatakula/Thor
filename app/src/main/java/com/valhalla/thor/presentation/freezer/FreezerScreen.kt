@@ -72,7 +72,8 @@ fun FreezerScreen(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
-    var selectedAppInfo by remember { mutableStateOf<AppInfo?>(null) }
+    var selectedPackageName by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedAppInfo = selectedPackageName?.let { pkg -> state.freezerApps.find { it.packageName == pkg } }
     var showManageSheet by rememberSaveable { mutableStateOf(false) }
     var showSettingsSheet by rememberSaveable { mutableStateOf(false) }
 
@@ -243,7 +244,7 @@ fun FreezerScreen(
                                 app = app,
                                 isSelected = app.packageName in state.multiSelection,
                                 imageLoader = imageLoader,
-                                onClick = { selectedAppInfo = app },
+                                onClick = { selectedPackageName = app.packageName },
                                 onLongClick = { viewModel.toggleSelection(app.packageName) }
                             )
                         }
@@ -273,7 +274,7 @@ fun FreezerScreen(
             appInfo = app,
             isRoot = state.isRoot,
             isShizuku = state.isShizuku,
-            onDismiss = { selectedAppInfo = null },
+            onDismiss = { selectedPackageName = null },
             onAppAction = { action ->
                 when (action) {
                     is AppClickAction.Freeze -> {
@@ -282,15 +283,15 @@ fun FreezerScreen(
                             app.appName,
                             inFreezer = app.packageName in state.freezerPackageNames
                         )
-                        selectedAppInfo = null
+                        selectedPackageName = null
                     }
                     is AppClickAction.UnFreeze -> {
                         viewModel.unfreezeSingleApp(app.packageName, app.appName)
-                        selectedAppInfo = null
+                        selectedPackageName = null
                     }
                     else -> {
                         onAppAction(action)
-                        selectedAppInfo = null
+                        selectedPackageName = null
                     }
                 }
             }
