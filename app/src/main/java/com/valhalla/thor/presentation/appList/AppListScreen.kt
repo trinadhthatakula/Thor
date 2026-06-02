@@ -19,11 +19,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Snackbar
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -58,6 +53,7 @@ import com.valhalla.thor.presentation.utils.AppIconKeyer
 import com.valhalla.thor.presentation.utils.getAppIcon
 import com.valhalla.thor.presentation.widgets.AppInfoDialog
 import com.valhalla.thor.presentation.widgets.AppList
+import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -73,7 +69,6 @@ fun AppListScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val snackbarHostState = remember { SnackbarHostState() }
 
     // Create a custom ImageLoader that knows how to fetch App Icons in the background.
     // We use 'remember' so we don't recreate the loader on every recomposition.
@@ -98,20 +93,6 @@ fun AppListScreen(
         state.actionMessage?.let { message ->
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
             viewModel.dismissMessage()
-        }
-    }
-
-    LaunchedEffect(state.freezerPrompt) {
-        state.freezerPrompt?.let { prompt ->
-            val result = snackbarHostState.showSnackbar(
-                message = "Frozen",
-                actionLabel = "Add to Freezer",
-                duration = SnackbarDuration.Short
-            )
-            if (result == SnackbarResult.ActionPerformed) {
-                viewModel.addToFreezer(prompt.packageName)
-            }
-            viewModel.dismissFreezerPrompt()
         }
     }
 
@@ -206,14 +187,17 @@ fun AppListScreen(
                 )
             }
         }
-        SnackbarHost(
-            hostState = snackbarHostState,
+        FreezerPromptSnackbar(
+            visible = state.freezerPrompt != null,
+            appName = state.freezerPrompt?.appName,
+            onAddToFreezer = {
+                state.freezerPrompt?.let { viewModel.addToFreezer(it.packageName) }
+            },
+            onDismiss = viewModel::dismissFreezerPrompt,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 80.dp)
-        ) { data ->
-            Snackbar(snackbarData = data)
-        }
+        )
     }
 
     // --- DIALOGS ---

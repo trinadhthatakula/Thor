@@ -31,11 +31,6 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Snackbar
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -57,7 +52,6 @@ import coil3.ImageLoader
 import coil3.request.crossfade
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
-import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.presentation.utils.AppIconFetcher
 import com.valhalla.thor.presentation.utils.AppIconKeyer
@@ -65,6 +59,7 @@ import com.valhalla.thor.presentation.widgets.AppInfoDialog
 import com.valhalla.thor.presentation.widgets.AppItemGrid
 import com.valhalla.thor.presentation.widgets.AppItemList
 import com.valhalla.thor.presentation.widgets.AppSearchBar
+import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -77,7 +72,6 @@ fun FreezerScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val snackbarHostState = remember { SnackbarHostState() }
 
     var selectedPackageName by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedAppInfo = selectedPackageName?.let { pkg -> state.freezerApps.find { it.packageName == pkg } }
@@ -110,33 +104,11 @@ fun FreezerScreen(
         }
     }
 
-    LaunchedEffect(state.freezerPrompt) {
-        state.freezerPrompt?.let { prompt ->
-            val result = snackbarHostState.showSnackbar(
-                message = "Frozen",
-                actionLabel = "Add to Freezer",
-                duration = SnackbarDuration.Short
-            )
-            if (result == SnackbarResult.ActionPerformed) {
-                viewModel.addToFreezer(prompt.packageName)
-            }
-            viewModel.dismissFreezerPrompt()
-        }
-    }
-
     BackHandler(state.multiSelection.isNotEmpty()) {
         viewModel.clearSelection()
     }
 
     Scaffold(
-        snackbarHost = {
-            SnackbarHost(hostState = snackbarHostState) { data ->
-                Snackbar(
-                    snackbarData = data,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-            }
-        },
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
@@ -300,6 +272,19 @@ fun FreezerScreen(
                 }
             }
 
+            // Frozen prompt snackbar
+            FreezerPromptSnackbar(
+                visible = state.freezerPrompt != null,
+                appName = state.freezerPrompt?.appName,
+                onAddToFreezer = {
+                    state.freezerPrompt?.let { viewModel.addToFreezer(it.packageName) }
+                },
+                onDismiss = viewModel::dismissFreezerPrompt,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 16.dp)
+            )
+
             // Floating multi-select toolbar
             if (state.multiSelection.isNotEmpty()) {
                 val selectedApps = state.freezerApps.filter { it.packageName in state.multiSelection }
@@ -308,8 +293,8 @@ fun FreezerScreen(
                     isRoot = state.isRoot,
                     isShizuku = state.isShizuku,
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 16.dp, bottom = 88.dp),
+                        .align(Alignment.BottomCenter)
+                        .padding( bottom = 16.dp),
                     onCancel = { viewModel.clearSelection() },
                     onRemoveFromFreezer = {
                         viewModel.removeFromFreezer(state.multiSelection)
