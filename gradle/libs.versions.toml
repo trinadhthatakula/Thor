@@ -22,7 +22,7 @@ dhizuku = "2.5.4"
 koin = "4.2.1"
 coil3 = "3.4.0"
 navigationCompose = "2.9.8"
-navigation3 = "1.1.1"
+navigation3 = "1.1.2"
 
 [libraries]
 accompanist-drawablepainter = { module = "com.google.accompanist:accompanist-drawablepainter", version.ref = "accompanistDrawablepainter" }
