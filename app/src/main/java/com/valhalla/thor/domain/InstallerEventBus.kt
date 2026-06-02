@@ -2,6 +2,7 @@ package com.valhalla.thor.domain
 
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
+import org.koin.core.annotation.Single
 
 /**
  * A Singleton Event Bus to bridge the gap between the Android System (BroadcastReceiver)
@@ -9,6 +10,7 @@ import kotlinx.coroutines.flow.SharedFlow
  * * Since BroadcastReceivers are instantiated by the OS, we cannot scope them to the ViewModel.
  * This Bus acts as the synapse.
  */
+@Single
 class InstallerEventBus {
     val events: SharedFlow<InstallState>
         field = MutableSharedFlow<InstallState>(replay = 1)

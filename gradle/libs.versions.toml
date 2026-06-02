@@ -20,6 +20,7 @@ splashscreen = "1.2.0"
 shizuku = "13.1.5"
 dhizuku = "2.5.4"
 koin = "4.2.1"
+koin-plugin = "1.0.0"
 coil3 = "3.4.0"
 navigationCompose = "2.9.8"
 navigation3 = "1.1.2"
@@ -67,7 +68,7 @@ dhizuku-api = { module = "io.github.iamr0s:Dhizuku-API", version.ref = "dhizuku"
 #Koin
 koin-android = { module = "io.insert-koin:koin-android", version.ref = "koin" }
 koin-androidx-compose = { module = "io.insert-koin:koin-androidx-compose", version.ref = "koin" }
-koin-androidx-startup = { module = "io.insert-koin:koin-androidx-startup", version.ref = "koin" }
+koin-annotations = { module = "io.insert-koin:koin-annotations", version.ref = "koin" }
 #Coil
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil3" }
 
@@ -80,11 +81,12 @@ android-test = { id = "com.android.test", version.ref = "agp" }
 room = { id = "androidx.room", version.ref = "room" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
+koin-compiler = { id = "io.insert-koin.compiler.plugin", version.ref = "koin-plugin" }
 
 [bundles]
 koin = [
     "koin-android",
-    "koin-androidx-startup",
+    "koin-annotations",
     "koin-androidx-compose",
 ]
 coil = [

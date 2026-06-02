@@ -5,6 +5,7 @@ package com.valhalla.thor.data.source.local.shizuku
 import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Context
+import org.koin.core.annotation.Single
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.IPackageInstaller
@@ -16,6 +17,7 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.util.Logger
 
 @SuppressLint("PrivateApi")
+@Single
 class ShizukuReflector(
     val context: Context
 ) {

@@ -27,10 +27,11 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.SplitButtonDefaults
 import androidx.compose.material3.SplitButtonLayout
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -60,6 +61,7 @@ import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.repository.InstallMode
 import kotlinx.coroutines.delay
 import org.koin.androidx.compose.koinViewModel
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,7 +73,12 @@ fun PortableInstaller(
     val availableModes by viewModel.availableModes.collectAsStateWithLifecycle()
     val installerMode by viewModel.installMode.collectAsStateWithLifecycle()
 
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        enabledValues = setOf(
+            SheetValue.Expanded, SheetValue.Hidden
+        )
+    )
     val context = LocalContext.current
 
     // Auto-start installation process if intent is present
@@ -131,7 +138,7 @@ fun PortableInstaller(
         if (state is InstallState.Success) {
             refreshLaunchState()
             if (launchIntent == null) {
-                delay(500)
+                delay(500.milliseconds)
                 refreshLaunchState()
             }
         }

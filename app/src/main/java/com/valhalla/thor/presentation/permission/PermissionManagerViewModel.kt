@@ -3,6 +3,7 @@ package com.valhalla.thor.presentation.permission
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.repository.PermissionRepository
+import org.koin.core.annotation.KoinViewModel
 import com.valhalla.thor.domain.usecase.GetAppPermissionsUseCase
 import com.valhalla.thor.domain.usecase.TogglePermissionUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -10,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+@KoinViewModel
 class PermissionManagerViewModel(
     private val getAppPermissionsUseCase: GetAppPermissionsUseCase,
     private val togglePermissionUseCase: TogglePermissionUseCase,

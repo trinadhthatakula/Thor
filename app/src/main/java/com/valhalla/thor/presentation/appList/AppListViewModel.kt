@@ -3,6 +3,7 @@ package com.valhalla.thor.presentation.appList
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.model.AppInfo
+import org.koin.core.annotation.KoinViewModel
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.MultiAppAction
@@ -50,6 +51,7 @@ data class AppListUiState(
     val actionMessage: String? = null
 )
 
+@KoinViewModel
 class AppListViewModel(
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val getAppDetailsUseCase: GetAppDetailsUseCase,

@@ -3,7 +3,9 @@ package com.valhalla.thor.data.source.local.dhizuku
 import android.content.Context
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.util.Logger
+import org.koin.core.annotation.Single
 
+@Single
 class DhizukuReflector(
     private val context: Context
 ) {

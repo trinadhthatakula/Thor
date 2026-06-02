@@ -2,6 +2,7 @@ package com.valhalla.thor.util
 
 import android.app.LocaleManager as AndroidLocaleManager
 import android.content.Context
+import org.koin.core.annotation.Single
 import android.os.Build
 import android.os.LocaleList
 import androidx.appcompat.app.AppCompatDelegate
@@ -11,6 +12,7 @@ import androidx.core.os.LocaleListCompat
  * Modern Locale Manager that uses the system LocaleManager on Android 13+ (API 33)
  * and falls back to AppCompatDelegate for older versions.
  */
+@Single
 class LocaleManager(private val context: Context) {
 
     /**

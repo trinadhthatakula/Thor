@@ -3,12 +3,14 @@ package com.valhalla.thor.presentation.security
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import org.koin.core.annotation.KoinViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
+@KoinViewModel
 class SecurityViewModel(
     preferenceRepository: PreferenceRepository
 ) : ViewModel() {

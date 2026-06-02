@@ -2,6 +2,7 @@ package com.valhalla.thor.data.repository
 
 import android.content.BroadcastReceiver
 import android.content.Context
+import org.koin.core.annotation.Single
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
@@ -20,6 +21,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+@Single(binds = [AppRepository::class])
 class AppRepositoryImpl(
     private val context: Context,
     private val appDao: AppDao

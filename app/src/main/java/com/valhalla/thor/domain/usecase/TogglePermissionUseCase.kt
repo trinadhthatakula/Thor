@@ -1,7 +1,9 @@
 package com.valhalla.thor.domain.usecase
 
 import com.valhalla.thor.domain.repository.PermissionRepository
+import org.koin.core.annotation.Factory
 
+@Factory
 class TogglePermissionUseCase(
     private val repository: PermissionRepository
 ) {

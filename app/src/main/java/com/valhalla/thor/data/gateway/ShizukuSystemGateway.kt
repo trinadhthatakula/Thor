@@ -4,9 +4,11 @@ import android.content.pm.PackageManager
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
 import com.valhalla.thor.domain.gateway.SystemGateway
+import org.koin.core.annotation.Single
 import rikka.shizuku.Shizuku
 import com.valhalla.thor.data.source.local.shizuku.Shizuku as ShizukuHelper
 
+@Single
 class ShizukuSystemGateway(
     private val reflector: ShizukuReflector
 ) : SystemGateway {

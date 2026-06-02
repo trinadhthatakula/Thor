@@ -9,6 +9,7 @@ plugins {
     alias(libs.plugins.kotlinSerialization)
     alias(libs.plugins.room)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.koin.compiler)
 }
 
 kotlin {
@@ -25,6 +26,12 @@ kotlin {
 
 room {
     schemaDirectory("$projectDir/schemas")
+}
+
+koinCompiler {
+    compileSafety = true
+    strictSafety = true
+    unsafeDslChecks = true
 }
 
 val keystorePropertiesFile: File = rootProject.file("jks.properties")
@@ -171,6 +178,7 @@ androidComponents {
         if (variant.buildType == "release") {
             val apkDir = variant.artifacts.get(SingleArtifact.APK)
             tasks.register<Copy>("copyFossReleaseApk") {
+                description = "Copy Foss Release APK to the destination"
                 dependsOn("assembleFossRelease")
                 from(apkDir) { include("*.apk") }
                 into(layout.buildDirectory.dir("distribution/foss"))
@@ -184,6 +192,7 @@ androidComponents {
         if (variant.buildType == "release") {
             val apkDir = variant.artifacts.get(SingleArtifact.APK)
             tasks.register<Copy>("copyStoreReleaseApk") {
+                description = "Copy Store Release APK to the destination"
                 dependsOn("assembleStoreRelease")
                 from(apkDir) { include("*.apk") }
                 into(layout.buildDirectory.dir("distribution/store"))
@@ -238,6 +247,7 @@ val currentVersionCode = resolveVersionCode()
 val currentVersionName = resolveVersionName(currentVersionCode)
 
 tasks.register("printVersionName") {
+    description = "Prints the Version Name"
     val vName = currentVersionName
     doLast {
         println(vName)

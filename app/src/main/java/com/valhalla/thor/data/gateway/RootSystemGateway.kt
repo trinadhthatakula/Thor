@@ -4,6 +4,7 @@ import android.content.Context
 import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.domain.gateway.SystemGateway
+import org.koin.core.annotation.Single
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -11,6 +12,7 @@ import kotlinx.coroutines.withContext
  * Modern implementation of SystemGateway using the reactive ShellRepository.
  * No more static blocking calls.
  */
+@Single
 class RootSystemGateway(
     private val context: Context,
     private val shellRepository: ShellRepository

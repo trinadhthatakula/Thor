@@ -6,13 +6,15 @@ import android.content.pm.PackageManager
 import android.content.pm.PermissionInfo
 import android.os.Build
 import com.valhalla.thor.domain.model.AppPermission
+import org.koin.core.annotation.Single
 import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+@Single(binds = [PermissionRepository::class])
 class PermissionRepositoryImpl(
-    private val context: Context,
+    context: Context,
     private val systemRepository: SystemRepository
 ) : PermissionRepository {
 
@@ -46,10 +48,7 @@ class PermissionRepositoryImpl(
 
                     val label = permInfo?.loadLabel(pm)?.toString() ?: permName.substringAfterLast('.')
                     val description = permInfo?.loadDescription(pm)?.toString() ?: ""
-                    val isRuntime = permInfo?.let {
-                        @Suppress("DEPRECATION")
-                        (it.protectionLevel and PermissionInfo.PROTECTION_DANGEROUS) != 0
-                    } ?: false
+                    val isRuntime = permInfo?.protection == PermissionInfo.PROTECTION_DANGEROUS
 
                     AppPermission(
                         name = permName,
@@ -58,7 +57,7 @@ class PermissionRepositoryImpl(
                         group = permInfo?.group,
                         isGranted = isGranted,
                         isRuntime = isRuntime,
-                        protectionLevel = permInfo?.protectionLevel ?: 0
+                        protectionLevel = permInfo?.protection ?: 0
                     )
                 }
                 Result.success(permissions)

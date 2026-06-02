@@ -6,9 +6,11 @@ import com.valhalla.thor.data.gateway.ShizukuSystemGateway
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import org.koin.core.annotation.Single
 import com.valhalla.thor.domain.repository.SystemRepository
 import kotlinx.coroutines.flow.first
 
+@Single(binds = [SystemRepository::class])
 class SystemRepositoryImpl(
     private val rootGateway: RootSystemGateway,
     private val shizukuGateway: ShizukuSystemGateway,

@@ -3,6 +3,7 @@ package com.valhalla.thor.presentation.freezer
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.model.AppInfo
+import org.koin.core.annotation.KoinViewModel
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.MultiAppAction
@@ -44,6 +45,7 @@ data class FreezerUiState(
     val actionMessage: String? = null
 )
 
+@KoinViewModel
 class FreezerViewModel(
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val manageAppUseCase: ManageAppUseCase,

@@ -4,7 +4,9 @@ import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.repository.AppRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import org.koin.core.annotation.Factory
 
+@Factory
 class GetInstalledAppsUseCase(
     private val appRepository: AppRepository
 ) {

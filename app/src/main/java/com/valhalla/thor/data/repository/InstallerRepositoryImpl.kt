@@ -3,6 +3,7 @@ package com.valhalla.thor.data.repository
 import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Context
+import org.koin.core.annotation.Single
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.database.Cursor
@@ -33,6 +34,7 @@ import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.zip.ZipInputStream
 
+@Single(binds = [InstallerRepository::class])
 class InstallerRepositoryImpl(
     private val context: Context,
     private val eventBus: InstallerEventBus,

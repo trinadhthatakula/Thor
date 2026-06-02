@@ -3,7 +3,9 @@ package com.valhalla.thor.data.gateway
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuReflector
 import com.valhalla.thor.domain.gateway.SystemGateway
+import org.koin.core.annotation.Single
 
+@Single
 class DhizukuSystemGateway(
     private val reflector: DhizukuReflector
 ) : SystemGateway {
