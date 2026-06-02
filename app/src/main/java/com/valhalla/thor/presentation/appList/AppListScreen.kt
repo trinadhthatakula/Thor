@@ -196,7 +196,7 @@ fun AppListScreen(
             onDismiss = viewModel::dismissFreezerPrompt,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 80.dp)
+                .padding(bottom = 16.dp)
         )
     }
 
