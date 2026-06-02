@@ -311,7 +311,7 @@ private fun AppQuickFilters(
 internal fun AppSearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
-    onOpenConfig: () -> Unit
+    onOpenConfig: (() -> Unit)? = null
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
     val isImeVisible = WindowInsets.isImeVisible
@@ -384,18 +384,20 @@ internal fun AppSearchBar(
             )
         }
 
-        IconButton(
-            onClick = onOpenConfig,
-            modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceContainerLow)
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.filter_list),
-                contentDescription = stringResource(R.string.cd_config),
-                tint = MaterialTheme.colorScheme.primary
-            )
+        if (onOpenConfig != null) {
+            IconButton(
+                onClick = onOpenConfig,
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.filter_list),
+                    contentDescription = stringResource(R.string.cd_config),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
         }
     }
 }

@@ -3,38 +3,49 @@ package com.valhalla.thor.presentation.freezer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.ImageLoader
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
+import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
 import com.valhalla.thor.presentation.widgets.AppIcon
+import com.valhalla.thor.presentation.widgets.AppSearchBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,9 +58,12 @@ fun ManageFreezerSheet(
     onToggle: (packageName: String, add: Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val filtered = remember(allApps, searchQuery) {
-        if (searchQuery.isBlank()) allApps
-        else allApps.filter {
+    var selectedType by rememberSaveable { mutableStateOf(AppListType.USER) }
+
+    val filtered = remember(allApps, searchQuery, selectedType) {
+        val typeFiltered = allApps.filter { it.isSystem == (selectedType == AppListType.SYSTEM) }
+        if (searchQuery.isBlank()) typeFiltered
+        else typeFiltered.filter {
             it.appName?.contains(searchQuery, ignoreCase = true) == true ||
                     it.packageName.contains(searchQuery, ignoreCase = true)
         }
@@ -59,41 +73,41 @@ fun ManageFreezerSheet(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(topStart = 48.dp, topEnd = 48.dp),
-        tonalElevation = 0.dp
+        tonalElevation = 0.dp,
+        contentWindowInsets = { BottomSheetDefaults.modalWindowInsets.union(WindowInsets.ime) }
     ) {
-        Column(modifier = Modifier.padding(horizontal = 24.dp)) {
-            Text(
-                text = "Manage Freezer",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
-                letterSpacing = (-1).sp
-            )
-            Spacer(Modifier.height(16.dp))
-
-            BasicTextField(
-                value = searchQuery,
-                onValueChange = onSearchChange,
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                textStyle = MaterialTheme.typography.bodyMedium.copy(
-                    color = MaterialTheme.colorScheme.onSurface
-                ),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                decorationBox = { inner ->
-                    if (searchQuery.isEmpty()) {
-                        Text(
-                            "Search apps…",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                    .padding(horizontal = 24.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Manage Freezer",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
+                    letterSpacing = (-1).sp
+                )
+                ConnectedButtonGroup(
+                    items = AppListType.entries.map { type ->
+                        ConnectedButtonGroupItem.Icon(
+                            iconRes = if (type == AppListType.USER) R.drawable.apps else R.drawable.android,
+                            contentDescription = type.name
                         )
-                    }
-                    inner()
-                }
+                    },
+                    selectedIndex = AppListType.entries.indexOf(selectedType),
+                    onItemSelected = { selectedType = AppListType.entries[it] }
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+
+            AppSearchBar(
+                query = searchQuery,
+                onQueryChange = onSearchChange
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(4.dp))
         }
 
         LazyVerticalGrid(
