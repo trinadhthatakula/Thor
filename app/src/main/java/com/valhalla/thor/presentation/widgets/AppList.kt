@@ -565,7 +565,7 @@ private fun AppItemList(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun AppItemGrid(
+internal fun AppItemGrid(
     app: AppInfo,
     isSelected: Boolean,
     imageLoader: ImageLoader,
@@ -641,7 +641,7 @@ private fun AppItemGrid(
 }
 
 @Composable
-private fun AppIcon(
+internal fun AppIcon(
     packageName: String,
     isEnabled: Boolean,
     isSuspended: Boolean,
