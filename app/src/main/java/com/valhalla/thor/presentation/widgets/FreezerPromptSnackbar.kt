@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.valhalla.thor.R
 import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun FreezerPromptSnackbar(
@@ -46,18 +47,19 @@ fun FreezerPromptSnackbar(
 ) {
     LaunchedEffect(visible) {
         if (visible) {
-            delay(4_000L)
+            delay(4_000L.milliseconds)
             onDismiss()
         }
     }
 
     AnimatedVisibility(
+        modifier = modifier,
         visible = visible,
         enter = slideInVertically(tween(280)) { it / 2 } + fadeIn(tween(280)),
         exit = slideOutVertically(tween(200)) { it / 2 } + fadeOut(tween(200))
     ) {
         Card(
-            modifier = modifier
+            modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             shape = RoundedCornerShape(24.dp),
