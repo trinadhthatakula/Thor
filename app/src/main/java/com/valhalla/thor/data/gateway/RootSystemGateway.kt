@@ -175,10 +175,16 @@ class RootSystemGateway(
     }
 
     override suspend fun grantPermission(packageName: String, permissionName: String): Result<Unit> {
+        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+            return Result.failure(IllegalArgumentException("Invalid package or permission name"))
+        }
         return runCommand("pm grant $packageName $permissionName")
     }
 
     override suspend fun revokePermission(packageName: String, permissionName: String): Result<Unit> {
+        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+            return Result.failure(IllegalArgumentException("Invalid package or permission name"))
+        }
         return runCommand("pm revoke $packageName $permissionName")
     }
 

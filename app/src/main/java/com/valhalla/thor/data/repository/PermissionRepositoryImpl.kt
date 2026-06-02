@@ -48,7 +48,13 @@ class PermissionRepositoryImpl(
 
                     val label = permInfo?.loadLabel(pm)?.toString() ?: permName.substringAfterLast('.')
                     val description = permInfo?.loadDescription(pm)?.toString() ?: ""
-                    val isRuntime = permInfo?.protection == PermissionInfo.PROTECTION_DANGEROUS
+                    val protectionLevel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        permInfo?.protectionLevel ?: 0
+                    } else {
+                        @Suppress("DEPRECATION")
+                        permInfo?.protection ?: 0
+                    }
+                    val isRuntime = (protectionLevel) == PermissionInfo.PROTECTION_DANGEROUS
 
                     AppPermission(
                         name = permName,
@@ -57,7 +63,7 @@ class PermissionRepositoryImpl(
                         group = permInfo?.group,
                         isGranted = isGranted,
                         isRuntime = isRuntime,
-                        protectionLevel = permInfo?.protection ?: 0
+                        protectionLevel = protectionLevel
                     )
                 }
                 Result.success(permissions)
