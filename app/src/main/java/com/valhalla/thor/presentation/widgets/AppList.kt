@@ -729,7 +729,7 @@ private fun AppFilterSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = RoundedCornerShape(topStart = 48.dp, topEnd = 48.dp),
         tonalElevation = 0.dp
     ) {

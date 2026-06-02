@@ -1,6 +1,8 @@
 package com.valhalla.thor.presentation.freezer
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -13,6 +15,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -31,7 +34,7 @@ fun FreezerSettingsSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = RoundedCornerShape(topStart = 48.dp, topEnd = 48.dp),
         tonalElevation = 0.dp
     ) {
@@ -44,20 +47,31 @@ fun FreezerSettingsSheet(
             )
             Spacer(Modifier.height(24.dp))
 
-            Text(
-                text = "VIEW",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(8.dp))
-            ConnectedButtonGroup(
-                items = listOf(
-                    ConnectedButtonGroupItem.Icon(R.drawable.grid_view, stringResource(R.string.grid)),
-                    ConnectedButtonGroupItem.Icon(R.drawable.view_stream, stringResource(R.string.list))
-                ),
-                selectedIndex = if (isGrid) 0 else 1,
-                onItemSelected = { onToggleView() }
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    stringResource(R.string.view_mode),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
+                ConnectedButtonGroup(
+                    items = listOf(
+                        ConnectedButtonGroupItem.Icon(
+                            R.drawable.grid_view,
+                            stringResource(R.string.grid)
+                        ),
+                        ConnectedButtonGroupItem.Icon(
+                            R.drawable.view_stream,
+                            stringResource(R.string.list)
+                        )
+                    ),
+                    selectedIndex = if (isGrid) 0 else 1,
+                    onItemSelected = { onToggleView() }
+                )
+            }
 
             Spacer(Modifier.height(24.dp))
 

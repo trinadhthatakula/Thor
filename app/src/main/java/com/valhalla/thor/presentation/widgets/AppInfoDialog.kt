@@ -75,7 +75,7 @@ fun AppInfoDialog(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         contentColor = MaterialTheme.colorScheme.onSurface,
         shape = RoundedCornerShape(topStart = 48.dp, topEnd = 48.dp),
         tonalElevation = 0.dp
