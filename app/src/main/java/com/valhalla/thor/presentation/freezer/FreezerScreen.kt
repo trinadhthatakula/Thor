@@ -140,11 +140,13 @@ fun FreezerScreen(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showManageSheet = true },
-                containerColor = MaterialTheme.colorScheme.primaryContainer
-            ) {
-                Icon(imageVector = Icons.Rounded.Add, contentDescription = "Manage Freezer")
+            if (state.multiSelection.isEmpty()) {
+                FloatingActionButton(
+                    onClick = { showManageSheet = true },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Icon(imageVector = Icons.Rounded.Add, contentDescription = "Manage Freezer")
+                }
             }
         }
     ) { innerPadding ->
