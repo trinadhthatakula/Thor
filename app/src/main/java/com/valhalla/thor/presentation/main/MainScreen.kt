@@ -202,8 +202,7 @@ fun MainScreen(
                             mainViewModel.onAppAction(it)
                         }
                     }
-                },
-                onMultiAppAction = { pendingMultiAction = it }
+                }
             )
         }
 
