@@ -142,4 +142,26 @@
     <string name="cd_clear">Limpiar</string>
     <string name="cd_settings">Ajustes</string>
 
+    <!-- Permission Manager -->
+    <string name="action_permissions">Permisos</string>
+    <string name="permissions_title">Permisos</string>
+    <string name="permissions_search">Buscar permisos&#8230;</string>
+    <string name="permissions_read_only_title">Modo de solo lectura</string>
+    <string name="permissions_read_only_desc">Se requiere acceso elevado (Root, Shizuku o Dhizuku) para alternar los permisos. Actualmente estás viendo los permisos en modo de solo lectura.</string>
+    <string name="permissions_sensitive_category">Sensibles y de ejecución</string>
+    <string name="permissions_normal_category">Estándar y normales</string>
+    <string name="permissions_signature_category">Sistema y firma</string>
+    <string name="permissions_no_found">Esta aplicación no ha solicitado permisos</string>
+    <string name="permission_state_granted">Concedido</string>
+    <string name="permission_state_denied">Denegado</string>
+
+    <!-- Quick Settings Tile -->
+    <string name="tile_no_privilege">No se otorgó el privilegio</string>
+    <string name="tile_no_apps">No hay aplicaciones</string>
+    <string name="tile_subtitle_format">%1$d aplicaciones · toca para congelar</string>
+    <string name="tile_grant_privilege_toast">Concede Root / Shizuku / Dhizuku primero</string>
+    <string name="tile_no_apps_toast">No hay aplicaciones en el Congelador</string>
+    <string name="tile_freeze_success">Se congelaron %1$d aplicaciones</string>
+    <string name="tile_freeze_partial_failure">Se congelaron %1$d/%2$d aplicaciones (%3$d fallaron)</string>
+
 </resources>

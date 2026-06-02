@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import androidx.room.Room
 import com.valhalla.superuser.ktx.RealShellRepository
 import com.valhalla.superuser.ktx.ShellRepository
+import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.room.AppDao
 import com.valhalla.thor.data.source.local.room.AppDatabase
 import com.valhalla.thor.data.source.local.room.FreezerDao
@@ -22,10 +23,15 @@ class AppModule {
     fun packageManager(context: Context): PackageManager = context.packageManager
 
     @Single
-    fun appDatabase(context: Context): AppDatabase =
-        Room.databaseBuilder(context, AppDatabase::class.java, "thor_database")
-            .fallbackToDestructiveMigration(dropAllTables = true)
-            .build()
+    fun appDatabase(context: Context): AppDatabase {
+        val builder = Room.databaseBuilder(context, AppDatabase::class.java, "thor_database")
+            .addMigrations(AppDatabase.MIGRATION_1_2)
+
+        if (BuildConfig.DEBUG) {
+            builder.fallbackToDestructiveMigration(dropAllTables = true)
+        }
+        return builder.build()
+    }
 
     @Single
     fun appDao(appDatabase: AppDatabase): AppDao = appDatabase.appDao()

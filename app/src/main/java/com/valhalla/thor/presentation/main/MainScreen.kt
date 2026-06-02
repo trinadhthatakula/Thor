@@ -13,6 +13,8 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -259,7 +261,34 @@ fun MainScreen(
             NavDisplay(
                 backStack = activeBackStack,
                 onBack = { activeBackStack.removeLastOrNull() },
-                entryProvider = entryProvider
+                entryProvider = entryProvider,
+                transitionSpec = {
+                    (fadeIn(animationSpec = tween(300)) + slideInHorizontally(
+                        initialOffsetX = { it },
+                        animationSpec = tween(300)
+                    )) togetherWith (fadeOut(animationSpec = tween(300)) + slideOutHorizontally(
+                        targetOffsetX = { -it },
+                        animationSpec = tween(300)
+                    ))
+                },
+                popTransitionSpec = {
+                    (fadeIn(animationSpec = tween(300)) + slideInHorizontally(
+                        initialOffsetX = { -it },
+                        animationSpec = tween(300)
+                    )) togetherWith (fadeOut(animationSpec = tween(300)) + slideOutHorizontally(
+                        targetOffsetX = { it },
+                        animationSpec = tween(300)
+                    ))
+                },
+                predictivePopTransitionSpec = {
+                    (fadeIn(animationSpec = tween(300)) + slideInHorizontally(
+                        initialOffsetX = { -it },
+                        animationSpec = tween(300)
+                    )) togetherWith (fadeOut(animationSpec = tween(300)) + slideOutHorizontally(
+                        targetOffsetX = { it },
+                        animationSpec = tween(300)
+                    ))
+                }
             )
 
             // --- GLOBAL OVERLAYS (Unchanged) ---

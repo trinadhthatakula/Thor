@@ -138,9 +138,8 @@ fun PermissionManagerScreen(
 
                 // Split into categories
                 val runtimePermissions = filteredList.filter { it.isRuntime }
-                val normalPermissions = filteredList.filter { !it.isRuntime && (it.protectionLevel and 0x2) == 0 }
-                val signaturePermissions = filteredList.filter { !it.isRuntime && (it.protectionLevel and 0x2) != 0 }
-
+                val normalPermissions = filteredList.filter { !it.isRuntime && (it.protectionLevel ) != android.content.pm.PermissionInfo.PROTECTION_SIGNATURE }
+                val signaturePermissions = filteredList.filter { !it.isRuntime && (it.protectionLevel ) == android.content.pm.PermissionInfo.PROTECTION_SIGNATURE }
                 val displayedLists = when (selectedTab) {
                     0 -> Triple(runtimePermissions, normalPermissions, signaturePermissions)
                     1 -> Triple(runtimePermissions, emptyList(), emptyList())
@@ -423,8 +422,6 @@ private fun PermissionRow(
     isPrivilegeMode: Boolean,
     onToggle: (Boolean) -> Unit
 ) {
-    var checked by remember(permission.isGranted) { mutableIntStateOf(if (permission.isGranted) 1 else 0) }
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -432,9 +429,7 @@ private fun PermissionRow(
             .clip(RoundedCornerShape(24.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f))
             .clickable(enabled = isPrivilegeMode) {
-                val nextChecked = checked == 0
-                checked = if (nextChecked) 1 else 0
-                onToggle(nextChecked)
+                onToggle(!permission.isGranted)
             }
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -487,9 +482,8 @@ private fun PermissionRow(
 
         if (isPrivilegeMode) {
             Switch(
-                checked = checked == 1,
+                checked = permission.isGranted,
                 onCheckedChange = { isChecked ->
-                    checked = if (isChecked) 1 else 0
                     onToggle(isChecked)
                 }
             )

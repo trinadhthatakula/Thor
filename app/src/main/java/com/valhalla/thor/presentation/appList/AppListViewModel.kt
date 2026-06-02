@@ -116,6 +116,18 @@ class AppListViewModel(
         viewModelScope.launch {
             val result = manageAppUseCase.setAppDisabled(packageName, freeze)
             result.onSuccess {
+                // Update the app's enabled state in our local list immediately for UI responsiveness
+                _rawState.update { state ->
+                    state.copy(
+                        allUserApps = state.allUserApps.map {
+                            if (it.packageName == packageName) it.copy(enabled = !freeze) else it
+                        },
+                        allSystemApps = state.allSystemApps.map {
+                            if (it.packageName == packageName) it.copy(enabled = !freeze) else it
+                        }
+                    )
+                }
+
                 if (freeze) {
                     val inFreezer = withContext(Dispatchers.IO) {
                         freezerRepository.contains(packageName)
@@ -153,17 +165,37 @@ class AppListViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             when (action) {
                 is MultiAppAction.Freeze -> {
+                    val packageNames = action.appList.map { it.packageName }.toSet()
                     action.appList.forEach { manageAppUseCase.setAppDisabled(it.packageName, true) }
-                    _rawState.update { it.copy(actionMessage = "Froze ${action.appList.size} apps") }
-                    loadApps()
+                    _rawState.update { state ->
+                        state.copy(
+                            allUserApps = state.allUserApps.map {
+                                if (it.packageName in packageNames) it.copy(enabled = false) else it
+                            },
+                            allSystemApps = state.allSystemApps.map {
+                                if (it.packageName in packageNames) it.copy(enabled = false) else it
+                            },
+                            actionMessage = "Froze ${action.appList.size} apps"
+                        )
+                    }
                 }
 
                 is MultiAppAction.UnFreeze -> {
+                    val packageNames = action.appList.map { it.packageName }.toSet()
                     action.appList.forEach {
                         manageAppUseCase.setAppDisabled(it.packageName, false)
                     }
-                    _rawState.update { it.copy(actionMessage = "Unfrozen ${action.appList.size} apps") }
-                    loadApps()
+                    _rawState.update { state ->
+                        state.copy(
+                            allUserApps = state.allUserApps.map {
+                                if (it.packageName in packageNames) it.copy(enabled = true) else it
+                            },
+                            allSystemApps = state.allSystemApps.map {
+                                if (it.packageName in packageNames) it.copy(enabled = true) else it
+                            },
+                            actionMessage = "Unfrozen ${action.appList.size} apps"
+                        )
+                    }
                 }
 
                 else -> {

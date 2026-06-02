@@ -8,6 +8,8 @@ import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -90,12 +92,12 @@ class FreezerViewModel(
     fun freezeAll() {
         viewModelScope.launch(Dispatchers.IO) {
             val pkgs = _uiState.value.freezerPackageNames.toList()
-            var failures = 0
-            pkgs.forEach { pkg ->
-                manageAppUseCase.setAppDisabled(pkg, true).onFailure { failures++ }
-            }
+            val results = pkgs.map { pkg ->
+                async { manageAppUseCase.setAppDisabled(pkg, true) }
+            }.awaitAll()
+            val failures = results.count { it.isFailure }
             val msg = if (failures == 0) "Froze ${pkgs.size} apps"
-                      else "Froze ${pkgs.size - failures}/${pkgs.size} apps (${failures} failed)"
+            else "Froze ${pkgs.size - failures}/${pkgs.size} apps (${failures} failed)"
             _uiState.update { it.copy(actionMessage = msg) }
         }
     }
@@ -103,12 +105,12 @@ class FreezerViewModel(
     fun unfreezeAll() {
         viewModelScope.launch(Dispatchers.IO) {
             val pkgs = _uiState.value.freezerPackageNames.toList()
-            var failures = 0
-            pkgs.forEach { pkg ->
-                manageAppUseCase.setAppDisabled(pkg, false).onFailure { failures++ }
-            }
+            val results = pkgs.map { pkg ->
+                async { manageAppUseCase.setAppDisabled(pkg, false) }
+            }.awaitAll()
+            val failures = results.count { it.isFailure }
             val msg = if (failures == 0) "Unfroze ${pkgs.size} apps"
-                      else "Unfroze ${pkgs.size - failures}/${pkgs.size} apps (${failures} failed)"
+            else "Unfroze ${pkgs.size - failures}/${pkgs.size} apps (${failures} failed)"
             _uiState.update { it.copy(actionMessage = msg) }
         }
     }
@@ -146,11 +148,21 @@ class FreezerViewModel(
     fun toggleManaged(packageName: String, add: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             if (add) {
-                freezerRepository.add(packageName)
                 manageAppUseCase.setAppDisabled(packageName, true)
+                    .onSuccess {
+                        freezerRepository.add(packageName)
+                    }
+                    .onFailure { e ->
+                        _uiState.update { it.copy(actionMessage = "Failed to freeze: ${e.message}") }
+                    }
             } else {
-                freezerRepository.remove(packageName)
                 manageAppUseCase.setAppDisabled(packageName, false)
+                    .onSuccess {
+                        freezerRepository.remove(packageName)
+                    }
+                    .onFailure { e ->
+                        _uiState.update { it.copy(actionMessage = "Failed to unfreeze: ${e.message}") }
+                    }
             }
         }
     }

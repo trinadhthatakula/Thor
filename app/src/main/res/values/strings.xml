@@ -155,4 +155,13 @@
     <string name="permission_state_granted">Granted</string>
     <string name="permission_state_denied">Denied</string>
 
+    <!-- Quick Settings Tile -->
+    <string name="tile_no_privilege">No privilege granted</string>
+    <string name="tile_no_apps">No apps</string>
+    <string name="tile_subtitle_format">%1$d apps · tap to freeze</string>
+    <string name="tile_grant_privilege_toast">Grant Root / Shizuku / Dhizuku first</string>
+    <string name="tile_no_apps_toast">No apps in Freezer</string>
+    <string name="tile_freeze_success">Froze %1$d apps</string>
+    <string name="tile_freeze_partial_failure">Froze %1$d/%2$d apps (%3$d failed)</string>
+
 </resources>

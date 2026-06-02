@@ -46,6 +46,7 @@ class PermissionManagerViewModel(
                     _uiState.update {
                         it.copy(
                             isLoading = false,
+                            isPrivilegeMode = isPrivilege,
                             errorMessage = error.message ?: "Failed to load permissions"
                         )
                     }
