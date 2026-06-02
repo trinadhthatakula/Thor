@@ -14,9 +14,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -60,6 +62,8 @@ import com.valhalla.thor.presentation.utils.AppIconFetcher
 import com.valhalla.thor.presentation.utils.AppIconKeyer
 import com.valhalla.thor.presentation.widgets.AppInfoDialog
 import com.valhalla.thor.presentation.widgets.AppItemGrid
+import com.valhalla.thor.presentation.widgets.AppItemList
+import com.valhalla.thor.presentation.widgets.AppSearchBar
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -77,6 +81,15 @@ fun FreezerScreen(
     val selectedAppInfo = selectedPackageName?.let { pkg -> state.freezerApps.find { it.packageName == pkg } }
     var showManageSheet by rememberSaveable { mutableStateOf(false) }
     var showSettingsSheet by rememberSaveable { mutableStateOf(false) }
+    var isGrid by rememberSaveable { mutableStateOf(true) }
+
+    val displayedApps = remember(state.freezerApps, state.searchQuery) {
+        if (state.searchQuery.isBlank()) state.freezerApps
+        else state.freezerApps.filter {
+            it.appName?.contains(state.searchQuery, ignoreCase = true) == true ||
+                    it.packageName.contains(state.searchQuery, ignoreCase = true)
+        }
+    }
 
     val imageLoader = remember(context) {
         ImageLoader.Builder(context)
@@ -123,16 +136,13 @@ fun FreezerScreen(
             }
         },
         containerColor = MaterialTheme.colorScheme.background,
-        contentWindowInsets = WindowInsets(0,0,0,0),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { showManageSheet = true },
                 containerColor = MaterialTheme.colorScheme.primaryContainer
             ) {
-                Icon(
-                    imageVector = Icons.Rounded.Add,
-                    contentDescription = "Manage Freezer"
-                )
+                Icon(imageVector = Icons.Rounded.Add, contentDescription = "Manage Freezer")
             }
         }
     ) { innerPadding ->
@@ -157,9 +167,7 @@ fun FreezerScreen(
                             text = "${state.multiSelection.size} selected",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(start = 8.dp)
+                            modifier = Modifier.weight(1f).padding(start = 8.dp)
                         )
                         Button(
                             onClick = { viewModel.removeFromFreezer(state.multiSelection) },
@@ -168,19 +176,18 @@ fun FreezerScreen(
                                 containerColor = MaterialTheme.colorScheme.errorContainer,
                                 contentColor = MaterialTheme.colorScheme.onErrorContainer
                             )
-                        ) {
-                            Text("Remove")
-                        }
+                        ) { Text("Remove") }
                         Spacer(Modifier.width(8.dp))
                         FilledTonalIconButton(onClick = { viewModel.clearSelection() }) {
                             Icon(painterResource(R.drawable.round_close), "Close")
                         }
                     }
                 } else {
+                    // Title + Freeze All
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp),
+                            .padding(horizontal = 24.dp, vertical = 16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -202,31 +209,36 @@ fun FreezerScreen(
                                 letterSpacing = (-1).sp
                             )
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(
-                                onClick = { viewModel.freezeAll() },
-                                shape = RoundedCornerShape(12.dp),
-                                enabled = state.freezerApps.isNotEmpty()
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.frozen),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text("Freeze All")
-                            }
-                            FilledTonalIconButton(onClick = { showSettingsSheet = true }) {
-                                Icon(painterResource(R.drawable.settings_outline), "Settings")
-                            }
+                        Button(
+                            onClick = { viewModel.freezeAll() },
+                            shape = RoundedCornerShape(12.dp),
+                            enabled = state.freezerApps.isNotEmpty()
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.frozen),
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("Freeze All")
                         }
                     }
+
+                    // Search bar — config icon opens settings sheet
+                    AppSearchBar(
+                        query = state.searchQuery,
+                        onQueryChange = viewModel::updateSearchQuery,
+                        onOpenConfig = { showSettingsSheet = true }
+                    )
                 }
 
-                // --- App Grid / Empty State ---
-                if (state.freezerApps.isEmpty() && !state.isLoading) {
+                // --- App List / Empty State ---
+                if (displayedApps.isEmpty() && !state.isLoading) {
                     Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Icon(
                                 painter = painterResource(R.drawable.frozen),
                                 contentDescription = null,
@@ -235,25 +247,43 @@ fun FreezerScreen(
                             )
                             Spacer(Modifier.size(12.dp))
                             Text(
-                                "No apps in Freezer",
+                                if (state.freezerApps.isEmpty()) "No apps in Freezer"
+                                else "No matching apps",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Text(
-                                "Tap + to add apps",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                            )
+                            if (state.freezerApps.isEmpty()) {
+                                Text(
+                                    "Tap + to add apps",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                            }
                         }
                     }
-                } else {
+                } else if (isGrid) {
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = 100.dp),
                         contentPadding = PaddingValues(bottom = 100.dp, top = 8.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        items(state.freezerApps, key = { it.packageName }) { app ->
+                        items(displayedApps, key = { it.packageName }) { app ->
                             AppItemGrid(
+                                app = app,
+                                isSelected = app.packageName in state.multiSelection,
+                                imageLoader = imageLoader,
+                                onClick = { selectedPackageName = app.packageName },
+                                onLongClick = { viewModel.toggleSelection(app.packageName) }
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        contentPadding = PaddingValues(bottom = 100.dp, top = 8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        items(displayedApps, key = { it.packageName }) { app ->
+                            AppItemList(
                                 app = app,
                                 isSelected = app.packageName in state.multiSelection,
                                 imageLoader = imageLoader,
@@ -264,9 +294,6 @@ fun FreezerScreen(
                     }
                 }
             }
-
-            // FAB — bottom right
-
         }
     }
 
@@ -314,6 +341,8 @@ fun FreezerScreen(
 
     if (showSettingsSheet) {
         FreezerSettingsSheet(
+            isGrid = isGrid,
+            onToggleView = { isGrid = !isGrid },
             onDismiss = { showSettingsSheet = false },
             onUnfreezeAll = viewModel::unfreezeAll
         )

@@ -28,6 +28,7 @@ data class FreezerUiState(
     val freezerPackageNames: Set<String> = emptySet(),
     val allInstalledApps: List<AppInfo> = emptyList(),
     val multiSelection: Set<String> = emptySet(),
+    val searchQuery: String = "",
     val manageSheetSearchQuery: String = "",
     val actionMessage: String? = null,
     val freezerPrompt: FreezerPrompt? = null
@@ -152,6 +153,10 @@ class FreezerViewModel(
                 manageAppUseCase.setAppDisabled(packageName, false)
             }
         }
+    }
+
+    fun updateSearchQuery(query: String) {
+        _uiState.update { it.copy(searchQuery = query) }
     }
 
     fun updateManageSheetSearch(query: String) {

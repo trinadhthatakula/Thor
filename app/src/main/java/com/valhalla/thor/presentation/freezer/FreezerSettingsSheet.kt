@@ -14,12 +14,18 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.valhalla.thor.R
+import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
+import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FreezerSettingsSheet(
+    isGrid: Boolean,
+    onToggleView: () -> Unit,
     onDismiss: () -> Unit,
     onUnfreezeAll: () -> Unit
 ) {
@@ -36,6 +42,23 @@ fun FreezerSettingsSheet(
                 fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
                 letterSpacing = (-1).sp
             )
+            Spacer(Modifier.height(24.dp))
+
+            Text(
+                text = "VIEW",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            ConnectedButtonGroup(
+                items = listOf(
+                    ConnectedButtonGroupItem.Icon(R.drawable.grid_view, stringResource(R.string.grid)),
+                    ConnectedButtonGroupItem.Icon(R.drawable.view_stream, stringResource(R.string.list))
+                ),
+                selectedIndex = if (isGrid) 0 else 1,
+                onItemSelected = { onToggleView() }
+            )
+
             Spacer(Modifier.height(24.dp))
 
             Button(

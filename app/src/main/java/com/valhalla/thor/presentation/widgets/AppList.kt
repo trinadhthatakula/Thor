@@ -308,7 +308,7 @@ private fun AppQuickFilters(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AppSearchBar(
+internal fun AppSearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
     onOpenConfig: () -> Unit
@@ -485,7 +485,7 @@ private fun AppListContent(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun AppItemList(
+internal fun AppItemList(
     app: AppInfo,
     isSelected: Boolean,
     imageLoader: ImageLoader,
