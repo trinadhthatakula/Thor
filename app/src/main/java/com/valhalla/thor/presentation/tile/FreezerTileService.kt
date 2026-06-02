@@ -49,10 +49,19 @@ class FreezerTileService : TileService() {
                 return@launch
             }
             val pkgs = withContext(Dispatchers.IO) { freezerRepository.getAllPackageNames() }
-            if (pkgs.isEmpty()) return@launch
-            pkgs.forEach { pkg ->
-                withContext(Dispatchers.IO) { manageAppUseCase.setAppDisabled(pkg, true) }
+            if (pkgs.isEmpty()) {
+                Toast.makeText(applicationContext, "No apps in Freezer", Toast.LENGTH_SHORT).show()
+                return@launch
             }
+            var failures = 0
+            pkgs.forEach { pkg ->
+                withContext(Dispatchers.IO) {
+                    manageAppUseCase.setAppDisabled(pkg, true).onFailure { failures++ }
+                }
+            }
+            val msg = if (failures == 0) "Froze ${pkgs.size} apps"
+                      else "Froze ${pkgs.size - failures}/${pkgs.size} apps (${failures} failed)"
+            Toast.makeText(applicationContext, msg, Toast.LENGTH_SHORT).show()
             refreshTile()
         }
     }
