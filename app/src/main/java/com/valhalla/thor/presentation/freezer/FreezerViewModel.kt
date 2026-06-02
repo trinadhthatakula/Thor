@@ -51,23 +51,27 @@ class FreezerViewModel(
 
     private fun observeApps() {
         viewModelScope.launch {
-            combine(
-                freezerRepository.getAll(),
-                getInstalledAppsUseCase()
-            ) { freezerPkgs, (userApps, _) ->
-                val pkgSet = freezerPkgs.toSet()
-                Triple(pkgSet, userApps.filter { it.packageName in pkgSet }, userApps)
-            }
-            .flowOn(Dispatchers.Default)
-            .collect { (pkgSet, freezerApps, allApps) ->
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        freezerPackageNames = pkgSet,
-                        freezerApps = freezerApps,
-                        allInstalledApps = allApps
-                    )
+            try {
+                combine(
+                    freezerRepository.getAll(),
+                    getInstalledAppsUseCase()
+                ) { freezerPkgs, (userApps, _) ->
+                    val pkgSet = freezerPkgs.toSet()
+                    Triple(pkgSet, userApps.filter { it.packageName in pkgSet }, userApps)
                 }
+                .flowOn(Dispatchers.Default)
+                .collect { (pkgSet, freezerApps, allApps) ->
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            freezerPackageNames = pkgSet,
+                            freezerApps = freezerApps,
+                            allInstalledApps = allApps
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, actionMessage = "Failed to load apps") }
             }
         }
     }
@@ -84,17 +88,27 @@ class FreezerViewModel(
 
     fun freezeAll() {
         viewModelScope.launch(Dispatchers.IO) {
-            val pkgs = _uiState.value.freezerPackageNames
-            pkgs.forEach { manageAppUseCase.setAppDisabled(it, true) }
-            _uiState.update { it.copy(actionMessage = "Froze ${pkgs.size} apps") }
+            val pkgs = _uiState.value.freezerPackageNames.toList()
+            var failures = 0
+            pkgs.forEach { pkg ->
+                manageAppUseCase.setAppDisabled(pkg, true).onFailure { failures++ }
+            }
+            val msg = if (failures == 0) "Froze ${pkgs.size} apps"
+                      else "Froze ${pkgs.size - failures}/${pkgs.size} apps (${failures} failed)"
+            _uiState.update { it.copy(actionMessage = msg) }
         }
     }
 
     fun unfreezeAll() {
         viewModelScope.launch(Dispatchers.IO) {
-            val pkgs = _uiState.value.freezerPackageNames
-            pkgs.forEach { manageAppUseCase.setAppDisabled(it, false) }
-            _uiState.update { it.copy(actionMessage = "Unfroze ${pkgs.size} apps") }
+            val pkgs = _uiState.value.freezerPackageNames.toList()
+            var failures = 0
+            pkgs.forEach { pkg ->
+                manageAppUseCase.setAppDisabled(pkg, false).onFailure { failures++ }
+            }
+            val msg = if (failures == 0) "Unfroze ${pkgs.size} apps"
+                      else "Unfroze ${pkgs.size - failures}/${pkgs.size} apps (${failures} failed)"
+            _uiState.update { it.copy(actionMessage = msg) }
         }
     }
 
@@ -166,18 +180,28 @@ class FreezerViewModel(
     fun freezeSingleApp(packageName: String, appName: String?, inFreezer: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             manageAppUseCase.setAppDisabled(packageName, true)
-            if (!inFreezer) {
-                _uiState.update { it.copy(freezerPrompt = FreezerPrompt(packageName, appName)) }
-            } else {
-                _uiState.update { it.copy(actionMessage = "Frozen ${appName ?: packageName}") }
-            }
+                .onSuccess {
+                    if (!inFreezer) {
+                        _uiState.update { it.copy(freezerPrompt = FreezerPrompt(packageName, appName)) }
+                    } else {
+                        _uiState.update { it.copy(actionMessage = "Frozen ${appName ?: packageName}") }
+                    }
+                }
+                .onFailure { e ->
+                    _uiState.update { it.copy(actionMessage = "Failed: ${e.message}") }
+                }
         }
     }
 
     fun unfreezeSingleApp(packageName: String, appName: String?) {
         viewModelScope.launch(Dispatchers.IO) {
             manageAppUseCase.setAppDisabled(packageName, false)
-            _uiState.update { it.copy(actionMessage = "Unfrozen ${appName ?: packageName}") }
+                .onSuccess {
+                    _uiState.update { it.copy(actionMessage = "Unfrozen ${appName ?: packageName}") }
+                }
+                .onFailure { e ->
+                    _uiState.update { it.copy(actionMessage = "Failed: ${e.message}") }
+                }
         }
     }
 
