@@ -58,6 +58,7 @@ import coil3.request.crossfade
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.presentation.utils.AppIconFetcher
 import com.valhalla.thor.presentation.utils.AppIconKeyer
 import com.valhalla.thor.presentation.widgets.AppInfoDialog
@@ -71,7 +72,8 @@ import org.koin.androidx.compose.koinViewModel
 fun FreezerScreen(
     modifier: Modifier = Modifier,
     viewModel: FreezerViewModel = koinViewModel(),
-    onAppAction: (AppClickAction) -> Unit = {}
+    onAppAction: (AppClickAction) -> Unit = {},
+    onMultiAppAction: (MultiAppAction) -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -169,15 +171,6 @@ fun FreezerScreen(
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.weight(1f).padding(start = 8.dp)
                         )
-                        Button(
-                            onClick = { viewModel.removeFromFreezer(state.multiSelection) },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.errorContainer,
-                                contentColor = MaterialTheme.colorScheme.onErrorContainer
-                            )
-                        ) { Text("Remove") }
-                        Spacer(Modifier.width(8.dp))
                         FilledTonalIconButton(onClick = { viewModel.clearSelection() }) {
                             Icon(painterResource(R.drawable.round_close), "Close")
                         }
@@ -272,7 +265,12 @@ fun FreezerScreen(
                                 app = app,
                                 isSelected = app.packageName in state.multiSelection,
                                 imageLoader = imageLoader,
-                                onClick = { selectedPackageName = app.packageName },
+                                onClick = {
+                                    if (state.multiSelection.isNotEmpty())
+                                        viewModel.toggleSelection(app.packageName)
+                                    else
+                                        selectedPackageName = app.packageName
+                                },
                                 onLongClick = { viewModel.toggleSelection(app.packageName) }
                             )
                         }
@@ -287,12 +285,38 @@ fun FreezerScreen(
                                 app = app,
                                 isSelected = app.packageName in state.multiSelection,
                                 imageLoader = imageLoader,
-                                onClick = { selectedPackageName = app.packageName },
+                                onClick = {
+                                    if (state.multiSelection.isNotEmpty())
+                                        viewModel.toggleSelection(app.packageName)
+                                    else
+                                        selectedPackageName = app.packageName
+                                },
                                 onLongClick = { viewModel.toggleSelection(app.packageName) }
                             )
                         }
                     }
                 }
+            }
+
+            // Floating multi-select toolbar
+            if (state.multiSelection.isNotEmpty()) {
+                val selectedApps = state.freezerApps.filter { it.packageName in state.multiSelection }
+                FreezerSelectToolBox(
+                    selected = selectedApps,
+                    isRoot = state.isRoot,
+                    isShizuku = state.isShizuku,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 16.dp, bottom = 88.dp),
+                    onCancel = { viewModel.clearSelection() },
+                    onRemoveFromFreezer = {
+                        viewModel.removeFromFreezer(state.multiSelection)
+                    },
+                    onMultiAppAction = { action ->
+                        viewModel.clearSelection()
+                        onMultiAppAction(action)
+                    }
+                )
             }
         }
     }
