@@ -3,6 +3,7 @@ package com.valhalla.thor.presentation.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.data.security.BiometricHelper
+import org.koin.core.annotation.KoinViewModel
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+@KoinViewModel
 class SettingsViewModel(
     private val preferenceRepository: PreferenceRepository,
     private val systemRepository: SystemRepository,

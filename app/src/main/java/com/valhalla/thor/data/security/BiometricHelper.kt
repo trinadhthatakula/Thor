@@ -2,6 +2,7 @@ package com.valhalla.thor.data.security
 
 import android.content.Context
 import androidx.biometric.BiometricManager
+import org.koin.core.annotation.Single
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
 
@@ -9,6 +10,7 @@ import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
  * Thin wrapper around [BiometricManager] that answers capability questions
  * without touching any UI. Lives in the data layer — no Compose dependency.
  */
+@Single
 class BiometricHelper(private val context: Context) {
 
     private val allowedAuthenticators = BIOMETRIC_STRONG or DEVICE_CREDENTIAL

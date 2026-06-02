@@ -23,8 +23,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -59,7 +61,12 @@ fun AppInfoDialog(
 ) {
     // FIX: skipPartiallyExpanded = true prevents the "offset not initialized" crash
     // by avoiding ambiguous anchor calculations for dynamic content.
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        enabledValues = setOf(
+            SheetValue.Expanded, SheetValue.Hidden
+        )
+    )
 
     var showUninstallConfirmation by remember { mutableStateOf(false) }
     var showReinstallWarning by remember { mutableStateOf(false) }
@@ -68,7 +75,7 @@ fun AppInfoDialog(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         contentColor = MaterialTheme.colorScheme.onSurface,
         shape = RoundedCornerShape(topStart = 48.dp, topEnd = 48.dp),
         tonalElevation = 0.dp
@@ -345,6 +352,11 @@ private fun AppActionRow(
         ActionItem(R.drawable.share, stringResource(R.string.action_share)) {
             onAction(
                 AppClickAction.Share(appInfo)
+            )
+        }
+        ActionItem(R.drawable.shield, stringResource(R.string.action_permissions)) {
+            onAction(
+                AppClickAction.ManagePermissions(appInfo)
             )
         }
 

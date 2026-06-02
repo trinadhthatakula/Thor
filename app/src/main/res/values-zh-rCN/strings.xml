@@ -142,4 +142,26 @@
     <string name="cd_clear">清除</string>
     <string name="cd_settings">设置</string>
 
+    <!-- Permission Manager -->
+    <string name="action_permissions">权限管理</string>
+    <string name="permissions_title">权限</string>
+    <string name="permissions_search">搜索权限&#8230;</string>
+    <string name="permissions_read_only_title">只读模式</string>
+    <string name="permissions_read_only_desc">切换权限需要高级访问权限（Root、Shizuku 或 Dhizuku）。您当前正在以只读模式查看权限。</string>
+    <string name="permissions_sensitive_category">敏感和运行时</string>
+    <string name="permissions_normal_category">标准和普通</string>
+    <string name="permissions_signature_category">系统和签名</string>
+    <string name="permissions_no_found">此应用未请求任何权限</string>
+    <string name="permission_state_granted">已允许</string>
+    <string name="permission_state_denied">已拒绝</string>
+
+    <!-- Quick Settings Tile -->
+    <string name="tile_no_privilege">未授予权限</string>
+    <string name="tile_no_apps">无应用</string>
+    <string name="tile_subtitle_format">%1$d 个应用 · 点击冻结</string>
+    <string name="tile_grant_privilege_toast">请先授予 Root / Shizuku / Dhizuku 权限</string>
+    <string name="tile_no_apps_toast">应用冻结中无应用</string>
+    <string name="tile_freeze_success">已冻结 %1$d 个应用</string>
+    <string name="tile_freeze_partial_failure">已冻结 %1$d/%2$d 个应用（%3$d 个失败）</string>
+
 </resources>

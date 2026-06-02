@@ -1,109 +1,45 @@
 package com.valhalla.thor.di
 
+import android.content.Context
 import android.content.pm.PackageManager
 import androidx.room.Room
 import com.valhalla.superuser.ktx.RealShellRepository
 import com.valhalla.superuser.ktx.ShellRepository
-import com.valhalla.thor.data.gateway.DhizukuSystemGateway
-import com.valhalla.thor.data.gateway.RootSystemGateway
-import com.valhalla.thor.data.gateway.ShizukuSystemGateway
-import com.valhalla.thor.data.repository.AppAnalyzerImpl
-import com.valhalla.thor.data.repository.AppRepositoryImpl
-import com.valhalla.thor.data.repository.InstallerRepositoryImpl
-import com.valhalla.thor.data.repository.PreferenceRepositoryImpl
-import com.valhalla.thor.data.repository.SystemRepositoryImpl
-import com.valhalla.thor.data.security.BiometricHelper
-import com.valhalla.thor.data.source.local.dhizuku.DhizukuReflector
+import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.data.source.local.room.AppDao
 import com.valhalla.thor.data.source.local.room.AppDatabase
-import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
-import com.valhalla.thor.data.util.ApksMetadataGenerator
-import com.valhalla.thor.domain.InstallerEventBus
-import com.valhalla.thor.domain.repository.AppAnalyzer
-import com.valhalla.thor.domain.repository.AppRepository
-import com.valhalla.thor.domain.repository.InstallerRepository
-import com.valhalla.thor.domain.repository.PreferenceRepository
-import com.valhalla.thor.domain.repository.SystemRepository
-import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
-import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
-import com.valhalla.thor.domain.usecase.ManageAppUseCase
-import com.valhalla.thor.domain.usecase.ShareAppUseCase
-import com.valhalla.thor.presentation.appList.AppListViewModel
-import com.valhalla.thor.presentation.freezer.FreezerViewModel
-import com.valhalla.thor.presentation.home.HomeViewModel
-import com.valhalla.thor.presentation.installer.InstallerViewModel
-import com.valhalla.thor.presentation.main.MainViewModel
-import com.valhalla.thor.presentation.security.SecurityViewModel
-import com.valhalla.thor.presentation.settings.SettingsViewModel
-import com.valhalla.thor.util.LocaleManager
-import org.koin.android.ext.koin.androidContext
-import org.koin.core.module.dsl.factoryOf
-import org.koin.core.module.dsl.singleOf
-import org.koin.core.module.dsl.viewModelOf
-import org.koin.dsl.bind
-import org.koin.dsl.module
+import com.valhalla.thor.data.source.local.room.FreezerDao
+import org.koin.core.annotation.ComponentScan
+import org.koin.core.annotation.Configuration
+import org.koin.core.annotation.Module
+import org.koin.core.annotation.Single
 
-val commonModule = module {
-    single<PackageManager> { androidContext().packageManager }
-    singleOf(::LocaleManager)
-    singleOf(::ApksMetadataGenerator)
-    single<AppRepository> { AppRepositoryImpl(androidContext(), get()) }
-    factory { GetInstalledAppsUseCase(get()) }
-    factory { GetAppDetailsUseCase(get()) }
-    factory { ManageAppUseCase(get()) }
-    factoryOf(::ShareAppUseCase)
-}
+@Module
+@ComponentScan("com.valhalla.thor")
+@Configuration
+class AppModule {
 
-val roomModule = module {
-    single {
-        Room.databaseBuilder(
-            androidContext(),
-            AppDatabase::class.java,
-            "thor_database"
-        ).fallbackToDestructiveMigration(dropAllTables = true).build()
+    @Single
+    fun packageManager(context: Context): PackageManager = context.packageManager
+
+    @Single
+    fun appDatabase(context: Context): AppDatabase {
+        val builder = Room.databaseBuilder(context, AppDatabase::class.java, "thor_database")
+            .addMigrations(AppDatabase.MIGRATION_1_2)
+
+        if (BuildConfig.DEBUG) {
+            builder.fallbackToDestructiveMigration(dropAllTables = true)
+        }
+        return builder.build()
     }
-    single { get<AppDatabase>().appDao() }
-}
 
-val installerModule = module {
-    // 1. The Singleton Event Bus (Critical for Receiver <-> VM comms)
-    singleOf(::InstallerEventBus)
-    single<InstallerRepository> {
-        InstallerRepositoryImpl(
-            context = androidContext(),
-            eventBus = get(),
-            rootGateway = get(),
-            shizukuReflector = get()
-        )
-    }
-    single<PackageManager> {
-        androidContext().packageManager
-    }
-    single<AppAnalyzer> { AppAnalyzerImpl(androidContext()) }
-}
+    @Single
+    fun appDao(appDatabase: AppDatabase): AppDao = appDatabase.appDao()
 
-val preferenceModule = module {
-    single<PreferenceRepository> { PreferenceRepositoryImpl(get()) }
-}
+    @Single
+    fun freezerDao(appDatabase: AppDatabase): FreezerDao = appDatabase.freezerDao()
 
-val presentationModule = module {
-    viewModelOf(::MainViewModel)
-    viewModelOf(::HomeViewModel)
-    viewModelOf(::AppListViewModel)
-    viewModelOf(::FreezerViewModel)
-    viewModelOf(::InstallerViewModel)
-    viewModelOf(::SettingsViewModel)
-    viewModelOf(::SecurityViewModel)
-}
-
-val coreModule = module {
-    singleOf(::RealShellRepository).bind<ShellRepository>()
-    singleOf(::ShizukuReflector)
-    singleOf(::DhizukuReflector)
-    singleOf(::BiometricHelper)
-    // Singletons for the Gateways
-    single { RootSystemGateway(androidContext(), get()) }
-    single { ShizukuSystemGateway(get()) }
-    single { DhizukuSystemGateway(get()) }
-    // The Repository interacts with the Gateways
-    singleOf(::SystemRepositoryImpl).bind<SystemRepository>()
+    // RealShellRepository lives in :suCore (com.valhalla.superuser.ktx), outside the scan scope
+    @Single
+    fun shellRepository(): ShellRepository = RealShellRepository()
 }

@@ -142,4 +142,26 @@
     <string name="cd_clear">Effacer</string>
     <string name="cd_settings">Paramètres</string>
 
+    <!-- Permission Manager -->
+    <string name="action_permissions">Autorisations</string>
+    <string name="permissions_title">Autorisations</string>
+    <string name="permissions_search">Rechercher des autorisations&#8230;</string>
+    <string name="permissions_read_only_title">Mode lecture seule</string>
+    <string name="permissions_read_only_desc">Un accès élevé (Root, Shizuku ou Dhizuku) est requis pour modifier les autorisations. Vous visualisez actuellement les autorisations en mode lecture seule.</string>
+    <string name="permissions_sensitive_category">Sensibles et exécution</string>
+    <string name="permissions_normal_category">Standard et normales</string>
+    <string name="permissions_signature_category">Système et signature</string>
+    <string name="permissions_no_found">Aucune autorisation demandée par cette appli</string>
+    <string name="permission_state_granted">Accordé</string>
+    <string name="permission_state_denied">Refusé</string>
+
+    <!-- Quick Settings Tile -->
+    <string name="tile_no_privilege">Aucun privilège accordé</string>
+    <string name="tile_no_apps">Aucune application</string>
+    <string name="tile_subtitle_format">%1$d applis · appuyer pour geler</string>
+    <string name="tile_grant_privilege_toast">Accordez Root / Shizuku / Dhizuku d\'abord</string>
+    <string name="tile_no_apps_toast">Aucune application dans le Congélateur</string>
+    <string name="tile_freeze_success">%1$d applications gelées</string>
+    <string name="tile_freeze_partial_failure">%1$d/%2$d applications gelées (%3$d échouées)</string>
+
 </resources>

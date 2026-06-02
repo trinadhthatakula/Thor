@@ -1,5 +1,8 @@
 package com.valhalla.thor.domain.usecase
 
+import org.koin.core.annotation.Factory
+
+@Factory
 class ManageAppUseCase(
     private val systemRepository: com.valhalla.thor.domain.repository.SystemRepository
 ) {

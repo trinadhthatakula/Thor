@@ -142,4 +142,26 @@
     <string name="cd_clear">مسح</string>
     <string name="cd_settings">الإعدادات</string>
 
+    <!-- Permission Manager -->
+    <string name="action_permissions">الأذونات</string>
+    <string name="permissions_title">الأذونات</string>
+    <string name="permissions_search">بحث في الأذونات&#8230;</string>
+    <string name="permissions_read_only_title">وضع القراءة فقط</string>
+    <string name="permissions_read_only_desc">مطلوب وصول مرتفع (Root أو Shizuku أو Dhizuku) لتبديل الأذونات. أنت تشاهد الأذونات حالياً في وضع القراءة فقط.</string>
+    <string name="permissions_sensitive_category">حساس ووقت التشغيل</string>
+    <string name="permissions_normal_category">قياسي وعادي</string>
+    <string name="permissions_signature_category">النظام والتوقيع</string>
+    <string name="permissions_no_found">لم يطلب هذا التطبيق أي أذونات</string>
+    <string name="permission_state_granted">مسموح</string>
+    <string name="permission_state_denied">مرفوض</string>
+
+    <!-- Quick Settings Tile -->
+    <string name="tile_no_privilege">لم يتم منح الصلاحية</string>
+    <string name="tile_no_apps">لا توجد تطبيقات</string>
+    <string name="tile_subtitle_format">%1$d تطبيقات · اضغط للتجميد</string>
+    <string name="tile_grant_privilege_toast">امنح صلاحية Root / Shizuku / Dhizuku أولاً</string>
+    <string name="tile_no_apps_toast">لا توجد تطبيقات في المجمد</string>
+    <string name="tile_freeze_success">تم تجميد %1$d تطبيقات</string>
+    <string name="tile_freeze_partial_failure">تم تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
+
 </resources>

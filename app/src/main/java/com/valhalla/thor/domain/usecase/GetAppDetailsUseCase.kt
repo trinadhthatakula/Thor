@@ -2,7 +2,9 @@ package com.valhalla.thor.domain.usecase
 
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.repository.AppRepository
+import org.koin.core.annotation.Factory
 
+@Factory
 class GetAppDetailsUseCase(
     private val appRepository: AppRepository
 ) {

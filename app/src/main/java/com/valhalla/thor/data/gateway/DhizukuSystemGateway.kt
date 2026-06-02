@@ -3,7 +3,9 @@ package com.valhalla.thor.data.gateway
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuReflector
 import com.valhalla.thor.domain.gateway.SystemGateway
+import org.koin.core.annotation.Single
 
+@Single
 class DhizukuSystemGateway(
     private val reflector: DhizukuReflector
 ) : SystemGateway {
@@ -110,4 +112,31 @@ class DhizukuSystemGateway(
         return if (reflector.setAppRestricted(packageName, isRestricted)) Result.success(Unit)
         else Result.failure(Exception("Dhizuku: Set restricted state failed."))
     }
+
+    override suspend fun grantPermission(packageName: String, permissionName: String): Result<Unit> {
+        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+            return Result.failure(IllegalArgumentException("Invalid package or permission name"))
+        }
+        return try {
+            val result = DhizukuHelper.execute("pm grant $packageName $permissionName")
+            if (result.first == 0) Result.success(Unit)
+            else Result.failure(Exception("Dhizuku: pm grant failed with exit code ${result.first}: ${result.second}"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun revokePermission(packageName: String, permissionName: String): Result<Unit> {
+        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+            return Result.failure(IllegalArgumentException("Invalid package or permission name"))
+        }
+        return try {
+            val result = DhizukuHelper.execute("pm revoke $packageName $permissionName")
+            if (result.first == 0) Result.success(Unit)
+            else Result.failure(Exception("Dhizuku: pm revoke failed with exit code ${result.first}: ${result.second}"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
 }

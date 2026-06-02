@@ -2,6 +2,7 @@ package com.valhalla.thor.domain.usecase
 
 import android.content.Context
 import androidx.core.content.FileProvider
+import org.koin.core.annotation.Factory
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.util.ApksMetadataGenerator
 import com.valhalla.thor.domain.model.AppInfo
@@ -17,6 +18,7 @@ import java.io.FileOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
+@Factory
 class ShareAppUseCase(
     private val context: Context,
     private val systemRepository: SystemRepository,

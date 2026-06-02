@@ -3,6 +3,7 @@ package com.valhalla.thor.data.repository
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import org.koin.core.annotation.Single
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
@@ -21,6 +22,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipInputStream
 
+@Single(binds = [AppAnalyzer::class])
 class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
 
     @Serializable

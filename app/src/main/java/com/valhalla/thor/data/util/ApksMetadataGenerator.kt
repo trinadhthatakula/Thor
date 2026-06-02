@@ -2,10 +2,12 @@ package com.valhalla.thor.data.util
 
 import com.valhalla.thor.domain.model.AppInfo
 import kotlinx.serialization.SerialName
+import org.koin.core.annotation.Single
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
 
+@Single
 class ApksMetadataGenerator {
 
     @Serializable

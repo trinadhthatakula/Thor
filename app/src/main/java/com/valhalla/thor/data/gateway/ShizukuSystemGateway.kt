@@ -4,9 +4,11 @@ import android.content.pm.PackageManager
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
 import com.valhalla.thor.domain.gateway.SystemGateway
+import org.koin.core.annotation.Single
 import rikka.shizuku.Shizuku
 import com.valhalla.thor.data.source.local.shizuku.Shizuku as ShizukuHelper
 
+@Single
 class ShizukuSystemGateway(
     private val reflector: ShizukuReflector
 ) : SystemGateway {
@@ -102,6 +104,32 @@ class ShizukuSystemGateway(
             val result = ShizukuHelper.execute(command)
             if (result.first == 0) Result.success(Unit)
             else Result.failure(Exception("Shizuku reinstall failed: ${result.second}"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun grantPermission(packageName: String, permissionName: String): Result<Unit> {
+        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+            return Result.failure(IllegalArgumentException("Invalid package or permission name"))
+        }
+        return try {
+            val result = ShizukuHelper.execute("pm grant $packageName $permissionName")
+            if (result.first == 0) Result.success(Unit)
+            else Result.failure(Exception("Shizuku: pm grant failed with exit code ${result.first}: ${result.second}"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun revokePermission(packageName: String, permissionName: String): Result<Unit> {
+        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+            return Result.failure(IllegalArgumentException("Invalid package or permission name"))
+        }
+        return try {
+            val result = ShizukuHelper.execute("pm revoke $packageName $permissionName")
+            if (result.first == 0) Result.success(Unit)
+            else Result.failure(Exception("Shizuku: pm revoke failed with exit code ${result.first}: ${result.second}"))
         } catch (e: Exception) {
             Result.failure(e)
         }

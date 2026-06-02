@@ -3,6 +3,7 @@ package com.valhalla.thor.presentation.main
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import androidx.lifecycle.ViewModel
+import org.koin.core.annotation.KoinViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
@@ -52,6 +53,7 @@ data class MainUiState(
     val selectedDestination: AppDestinations = AppDestinations.HOME // For Bottom Nav
 )
 
+@KoinViewModel
 class MainViewModel(
     private val manageAppUseCase: ManageAppUseCase,
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
@@ -278,6 +280,10 @@ class MainViewModel(
                         it.packageName,
                         false
                     )
+                }
+
+                is AppClickAction.ManagePermissions -> {
+                    // Handled directly in Compose UI layer via Navigation 3
                 }
             }
         }

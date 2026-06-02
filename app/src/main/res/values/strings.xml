@@ -142,4 +142,26 @@
     <string name="cd_clear">Clear</string>
     <string name="cd_settings">Settings</string>
 
+    <!-- Permission Manager -->
+    <string name="action_permissions">Permissions</string>
+    <string name="permissions_title">Permissions</string>
+    <string name="permissions_search">Search permissions&#8230;</string>
+    <string name="permissions_read_only_title">Read-Only Mode</string>
+    <string name="permissions_read_only_desc">Elevated access (Root, Shizuku, or Dhizuku) is required to toggle permissions. You are currently viewing permissions in read-only mode.</string>
+    <string name="permissions_sensitive_category">Sensitive &amp; Runtime</string>
+    <string name="permissions_normal_category">Standard &amp; Normal</string>
+    <string name="permissions_signature_category">System &amp; Signature</string>
+    <string name="permissions_no_found">No permissions requested by this app</string>
+    <string name="permission_state_granted">Granted</string>
+    <string name="permission_state_denied">Denied</string>
+
+    <!-- Quick Settings Tile -->
+    <string name="tile_no_privilege">No privilege granted</string>
+    <string name="tile_no_apps">No apps</string>
+    <string name="tile_subtitle_format">%1$d apps · tap to freeze</string>
+    <string name="tile_grant_privilege_toast">Grant Root / Shizuku / Dhizuku first</string>
+    <string name="tile_no_apps_toast">No apps in Freezer</string>
+    <string name="tile_freeze_success">Froze %1$d apps</string>
+    <string name="tile_freeze_partial_failure">Froze %1$d/%2$d apps (%3$d failed)</string>
+
 </resources>

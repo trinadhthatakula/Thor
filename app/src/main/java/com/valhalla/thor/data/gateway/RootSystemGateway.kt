@@ -4,6 +4,7 @@ import android.content.Context
 import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.domain.gateway.SystemGateway
+import org.koin.core.annotation.Single
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -11,6 +12,7 @@ import kotlinx.coroutines.withContext
  * Modern implementation of SystemGateway using the reactive ShellRepository.
  * No more static blocking calls.
  */
+@Single
 class RootSystemGateway(
     private val context: Context,
     private val shellRepository: ShellRepository
@@ -170,6 +172,20 @@ class RootSystemGateway(
         val className = "com.valhalla.thor.data.source.local.root.RootMain"
         val cmd = "export CLASSPATH=$apkPath && app_process /system/bin $className $action ${args.joinToString(" ")}"
         return runCommand(cmd)
+    }
+
+    override suspend fun grantPermission(packageName: String, permissionName: String): Result<Unit> {
+        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+            return Result.failure(IllegalArgumentException("Invalid package or permission name"))
+        }
+        return runCommand("pm grant $packageName $permissionName")
+    }
+
+    override suspend fun revokePermission(packageName: String, permissionName: String): Result<Unit> {
+        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+            return Result.failure(IllegalArgumentException("Invalid package or permission name"))
+        }
+        return runCommand("pm revoke $packageName $permissionName")
     }
 
     /**

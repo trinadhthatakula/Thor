@@ -308,10 +308,10 @@ private fun AppQuickFilters(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AppSearchBar(
+internal fun AppSearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
-    onOpenConfig: () -> Unit
+    onOpenConfig: (() -> Unit)? = null
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
     val isImeVisible = WindowInsets.isImeVisible
@@ -384,18 +384,20 @@ private fun AppSearchBar(
             )
         }
 
-        IconButton(
-            onClick = onOpenConfig,
-            modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceContainerLow)
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.filter_list),
-                contentDescription = stringResource(R.string.cd_config),
-                tint = MaterialTheme.colorScheme.primary
-            )
+        if (onOpenConfig != null) {
+            IconButton(
+                onClick = onOpenConfig,
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.filter_list),
+                    contentDescription = stringResource(R.string.cd_config),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
         }
     }
 }
@@ -485,7 +487,7 @@ private fun AppListContent(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun AppItemList(
+internal fun AppItemList(
     app: AppInfo,
     isSelected: Boolean,
     imageLoader: ImageLoader,
@@ -565,7 +567,7 @@ private fun AppItemList(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun AppItemGrid(
+internal fun AppItemGrid(
     app: AppInfo,
     isSelected: Boolean,
     imageLoader: ImageLoader,
@@ -641,7 +643,7 @@ private fun AppItemGrid(
 }
 
 @Composable
-private fun AppIcon(
+internal fun AppIcon(
     packageName: String,
     isEnabled: Boolean,
     isSuspended: Boolean,
@@ -729,7 +731,7 @@ private fun AppFilterSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = RoundedCornerShape(topStart = 48.dp, topEnd = 48.dp),
         tonalElevation = 0.dp
     ) {

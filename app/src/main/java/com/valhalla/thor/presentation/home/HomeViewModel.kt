@@ -3,6 +3,7 @@ package com.valhalla.thor.presentation.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.model.AppInfo
+import org.koin.core.annotation.KoinViewModel
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.repository.PreferenceRepository
@@ -36,6 +37,7 @@ data class HomeUiState(
     val showReinstallCard: Boolean = true // <--- Controlled by DataStore
 )
 
+@KoinViewModel
 class HomeViewModel(
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val systemRepository: SystemRepository,

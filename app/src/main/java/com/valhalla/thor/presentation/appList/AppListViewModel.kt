@@ -3,6 +3,7 @@ package com.valhalla.thor.presentation.appList
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.model.AppInfo
+import org.koin.core.annotation.KoinViewModel
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.MultiAppAction
@@ -13,7 +14,10 @@ import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
+import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.presentation.freezer.FreezerPrompt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -47,15 +51,18 @@ data class AppListUiState(
     val selectedAppDetails: AppInfo? = null,
     val isLoadingDetails: Boolean = false,
     // Action Feedback
-    val actionMessage: String? = null
+    val actionMessage: String? = null,
+    val freezerPrompt: FreezerPrompt? = null
 )
 
+@KoinViewModel
 class AppListViewModel(
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val getAppDetailsUseCase: GetAppDetailsUseCase,
     private val systemRepository: SystemRepository,
     private val manageAppUseCase: ManageAppUseCase,
-    private val preferenceRepository: PreferenceRepository // Injected
+    private val preferenceRepository: PreferenceRepository,
+    private val freezerRepository: FreezerRepository
 ) : ViewModel() {
 
     private val _rawState = MutableStateFlow(AppListUiState())
@@ -106,14 +113,47 @@ class AppListViewModel(
     }
 
     fun freezeApp(packageName: String, appName: String?, freeze: Boolean) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch {
             val result = manageAppUseCase.setAppDisabled(packageName, freeze)
-            if (result.isSuccess) {
-                _rawState.update { it.copy(actionMessage = "${if (freeze) "Frozen" else "Unfrozen"} ${appName ?: packageName}") }
-                loadApps()
-            } else {
-                _rawState.update { it.copy(actionMessage = "Error: ${result.exceptionOrNull()?.message}") }
+            result.onSuccess {
+                // Update the app's enabled state in our local list immediately for UI responsiveness
+                _rawState.update { state ->
+                    state.copy(
+                        allUserApps = state.allUserApps.map {
+                            if (it.packageName == packageName) it.copy(enabled = !freeze) else it
+                        },
+                        allSystemApps = state.allSystemApps.map {
+                            if (it.packageName == packageName) it.copy(enabled = !freeze) else it
+                        }
+                    )
+                }
+
+                if (freeze) {
+                    val inFreezer = withContext(Dispatchers.IO) {
+                        freezerRepository.contains(packageName)
+                    }
+                    if (!inFreezer) {
+                        _rawState.update { it.copy(freezerPrompt = FreezerPrompt(packageName, appName)) }
+                    } else {
+                        _rawState.update { it.copy(actionMessage = "Frozen ${appName ?: packageName}") }
+                    }
+                } else {
+                    _rawState.update { it.copy(actionMessage = "Unfrozen ${appName ?: packageName}") }
+                }
+            }.onFailure { e ->
+                _rawState.update { it.copy(actionMessage = "Error: ${e.message}") }
             }
+        }
+    }
+
+    fun dismissFreezerPrompt() {
+        _rawState.update { it.copy(freezerPrompt = null) }
+    }
+
+    fun addToFreezer(packageName: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            freezerRepository.add(packageName)
+            _rawState.update { it.copy(freezerPrompt = null, actionMessage = "Added to Freezer") }
         }
     }
 
@@ -125,17 +165,37 @@ class AppListViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             when (action) {
                 is MultiAppAction.Freeze -> {
+                    val packageNames = action.appList.map { it.packageName }.toSet()
                     action.appList.forEach { manageAppUseCase.setAppDisabled(it.packageName, true) }
-                    _rawState.update { it.copy(actionMessage = "Froze ${action.appList.size} apps") }
-                    loadApps()
+                    _rawState.update { state ->
+                        state.copy(
+                            allUserApps = state.allUserApps.map {
+                                if (it.packageName in packageNames) it.copy(enabled = false) else it
+                            },
+                            allSystemApps = state.allSystemApps.map {
+                                if (it.packageName in packageNames) it.copy(enabled = false) else it
+                            },
+                            actionMessage = "Froze ${action.appList.size} apps"
+                        )
+                    }
                 }
 
                 is MultiAppAction.UnFreeze -> {
+                    val packageNames = action.appList.map { it.packageName }.toSet()
                     action.appList.forEach {
                         manageAppUseCase.setAppDisabled(it.packageName, false)
                     }
-                    _rawState.update { it.copy(actionMessage = "Unfrozen ${action.appList.size} apps") }
-                    loadApps()
+                    _rawState.update { state ->
+                        state.copy(
+                            allUserApps = state.allUserApps.map {
+                                if (it.packageName in packageNames) it.copy(enabled = true) else it
+                            },
+                            allSystemApps = state.allSystemApps.map {
+                                if (it.packageName in packageNames) it.copy(enabled = true) else it
+                            },
+                            actionMessage = "Unfrozen ${action.appList.size} apps"
+                        )
+                    }
                 }
 
                 else -> {
