@@ -15,7 +15,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
 
 // packageName + appName of an app frozen outside the freezer list — drives the "Add to Freezer" snackbar
