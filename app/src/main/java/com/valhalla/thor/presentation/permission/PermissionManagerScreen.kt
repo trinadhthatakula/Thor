@@ -436,37 +436,37 @@ private fun PermissionRow(
                 checked = if (nextChecked) 1 else 0
                 onToggle(nextChecked)
             }
-            .padding(16.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Column(
-            modifier = Modifier.weight(1f)
-        ) {
+        Column(modifier = Modifier.weight(1f)) {
+            // Label takes remaining space; badge is always measured first so it's never clipped
             Row(
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
+                    modifier = Modifier.weight(1f, fill = false),
                     text = permission.label,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.width(8.dp))
                 if (permission.isRuntime) {
                     StatusBadge(text = "Sensitive", color = MaterialTheme.colorScheme.errorContainer)
                 }
             }
 
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(3.dp))
 
+            // Allow 2 lines so long reverse-domain names can wrap instead of truncate
             Text(
                 text = permission.name,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 fontFamily = com.valhalla.thor.presentation.theme.firaMonoFontFamily
             )
@@ -477,13 +477,13 @@ private fun PermissionRow(
                     text = permission.description,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
             }
         }
 
-        Spacer(modifier = Modifier.width(16.dp))
+        Spacer(modifier = Modifier.width(12.dp))
 
         if (isPrivilegeMode) {
             Switch(
@@ -494,7 +494,6 @@ private fun PermissionRow(
                 }
             )
         } else {
-            // Read-Only Status Chip
             val isGranted = permission.isGranted
             val chipText = stringResource(if (isGranted) R.string.permission_state_granted else R.string.permission_state_denied)
             val chipColor = if (isGranted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest
@@ -502,12 +501,13 @@ private fun PermissionRow(
 
             Text(
                 text = chipText,
-                style = MaterialTheme.typography.labelMedium,
+                style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
+                softWrap = false,
                 modifier = Modifier
                     .clip(CircleShape)
                     .background(chipColor)
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
                 color = chipTextColor
             )
         }
