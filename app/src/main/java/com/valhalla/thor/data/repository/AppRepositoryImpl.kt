@@ -11,7 +11,10 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.room.AppDao
 import com.valhalla.thor.data.source.local.room.AppEntity
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.DetailedAppInfo
+import com.valhalla.thor.domain.model.PermissionDetail
 import com.valhalla.thor.domain.repository.AppRepository
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
@@ -180,6 +183,80 @@ class AppRepositoryImpl(
             } catch (e: Exception) {
                 if (BuildConfig.DEBUG)
                     e.printStackTrace()
+                null
+            }
+        }
+
+    override suspend fun getDetailedAppInfo(packageName: String): DetailedAppInfo? =
+        withContext(Dispatchers.IO) {
+            try {
+                val appInfo = getAppDetails(packageName) ?: return@withContext null
+
+                val flags = (PackageManager.GET_ACTIVITIES or
+                        PackageManager.GET_SERVICES or
+                        PackageManager.GET_RECEIVERS or
+                        PackageManager.GET_PROVIDERS or
+                        PackageManager.GET_PERMISSIONS or
+                        PackageManager.GET_CONFIGURATIONS or
+                        PackageManager.MATCH_UNINSTALLED_PACKAGES or
+                        PackageManager.MATCH_DISABLED_COMPONENTS or
+                        PackageManager.MATCH_DISABLED_UNTIL_USED_COMPONENTS).toLong()
+
+                val packInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    pm.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(flags))
+                } else {
+                    @Suppress("DEPRECATION")
+                    pm.getPackageInfo(packageName, flags.toInt())
+                }
+
+                val activities = packInfo.activities?.map { it.name } ?: emptyList()
+                val services = packInfo.services?.map { it.name } ?: emptyList()
+                val receivers = packInfo.receivers?.map { it.name } ?: emptyList()
+                val providers = packInfo.providers?.map { it.name } ?: emptyList()
+                val reqFeatures = packInfo.reqFeatures?.map { it.name ?: "GlEsVersion: ${it.reqGlEsVersion}" } ?: emptyList()
+
+                val requestedPermissions = packInfo.requestedPermissions ?: emptyArray()
+                val permissions = requestedPermissions.map { permName ->
+                    val isGranted = pm.checkPermission(permName, packageName) == PackageManager.PERMISSION_GRANTED
+                    val protection = try {
+                        val permInfo = pm.getPermissionInfo(permName, 0)
+                        val base = permInfo.protectionLevel and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE
+                        when (base) {
+                            android.content.pm.PermissionInfo.PROTECTION_NORMAL -> "Normal"
+                            android.content.pm.PermissionInfo.PROTECTION_DANGEROUS -> "Dangerous"
+                            android.content.pm.PermissionInfo.PROTECTION_SIGNATURE -> "Signature"
+                            android.content.pm.PermissionInfo.PROTECTION_SIGNATURE_OR_SYSTEM -> "Signature/System"
+                            else -> "Unknown (${permInfo.protectionLevel})"
+                        }
+                    } catch (_: Exception) {
+                        "Unknown"
+                    }
+                    PermissionDetail(permName, isGranted, protection)
+                }
+
+                val hasWakelockPermission = requestedPermissions.contains(android.Manifest.permission.WAKE_LOCK)
+
+                val nativeLibDir = packInfo.applicationInfo?.nativeLibraryDir
+                val nativeLibs = if (nativeLibDir != null) {
+                    val dir = File(nativeLibDir)
+                    if (dir.exists() && dir.isDirectory) {
+                        dir.listFiles()?.map { it.name } ?: emptyList()
+                    } else emptyList()
+                } else emptyList()
+
+                DetailedAppInfo(
+                    appInfo = appInfo,
+                    activities = activities,
+                    services = services,
+                    receivers = receivers,
+                    providers = providers,
+                    permissions = permissions,
+                    nativeLibs = nativeLibs,
+                    reqFeatures = reqFeatures,
+                    hasWakelockPermission = hasWakelockPermission
+                )
+            } catch (e: Exception) {
+                if (BuildConfig.DEBUG) e.printStackTrace()
                 null
             }
         }
