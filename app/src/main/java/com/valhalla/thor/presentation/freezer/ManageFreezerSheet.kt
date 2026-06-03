@@ -38,7 +38,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.ImageLoader
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
@@ -53,7 +52,6 @@ fun ManageFreezerSheet(
     allApps: List<AppInfo>,
     freezerPackageNames: Set<String>,
     searchQuery: String,
-    imageLoader: ImageLoader,
     onSearchChange: (String) -> Unit,
     onToggle: (packageName: String, add: Boolean) -> Unit,
     onDismiss: () -> Unit
@@ -121,7 +119,6 @@ fun ManageFreezerSheet(
                 FreezerManageItem(
                     app = app,
                     inFreezer = inFreezer,
-                    imageLoader = imageLoader,
                     onClick = { onToggle(app.packageName, !inFreezer) }
                 )
             }
@@ -133,7 +130,6 @@ fun ManageFreezerSheet(
 private fun FreezerManageItem(
     app: AppInfo,
     inFreezer: Boolean,
-    imageLoader: ImageLoader,
     onClick: () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -154,7 +150,7 @@ private fun FreezerManageItem(
             .padding(16.dp)
     ) {
         Box {
-            AppIcon(app.packageName, app.enabled, app.isSuspended, 56.dp, imageLoader)
+            AppIcon(app.packageName, app.enabled, app.isSuspended, 56.dp)
             if (inFreezer) {
                 Icon(
                     painter = painterResource(R.drawable.check_circle),

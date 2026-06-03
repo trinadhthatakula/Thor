@@ -41,15 +41,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil3.ImageLoader
 import coil3.compose.rememberAsyncImagePainter
-import coil3.request.crossfade
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.MultiAppAction
-import com.valhalla.thor.presentation.utils.AppIconFetcher
-import com.valhalla.thor.presentation.utils.AppIconKeyer
 import com.valhalla.thor.presentation.utils.getAppIcon
 import com.valhalla.thor.presentation.widgets.AppInfoDialog
 import com.valhalla.thor.presentation.widgets.AppList
@@ -69,18 +65,6 @@ fun AppListScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-
-    // Create a custom ImageLoader that knows how to fetch App Icons in the background.
-    // We use 'remember' so we don't recreate the loader on every recomposition.
-    val imageLoader = remember(context) {
-        ImageLoader.Builder(context)
-            .components {
-                add(AppIconKeyer())
-                add(AppIconFetcher.Factory(context))
-            }
-            .crossfade(true)
-            .build()
-    }
 
     LaunchedEffect(Unit) {
         if (state.allUserApps.isEmpty() && state.allSystemApps.isEmpty() && state.isLoading) {
@@ -162,7 +146,6 @@ fun AppListScreen(
                     isShizuku = state.isShizuku,
                     isDhizuku = state.isDhizuku,
                     startAsGrid = true,
-                    imageLoader = imageLoader,
                     installerNameMap = state.installerNameMap,
                     // Actions forwarded to ViewModel
                     onFilterTypeChanged = viewModel::updateFilterType,

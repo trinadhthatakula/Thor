@@ -48,13 +48,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil3.ImageLoader
-import coil3.request.crossfade
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.MultiAppAction
-import com.valhalla.thor.presentation.utils.AppIconFetcher
-import com.valhalla.thor.presentation.utils.AppIconKeyer
 import com.valhalla.thor.presentation.widgets.AppInfoDialog
 import com.valhalla.thor.presentation.widgets.AppItemGrid
 import com.valhalla.thor.presentation.widgets.AppItemList
@@ -88,15 +84,6 @@ fun FreezerScreen(
         }
     }
 
-    val imageLoader = remember(context) {
-        ImageLoader.Builder(context)
-            .components {
-                add(AppIconKeyer())
-                add(AppIconFetcher.Factory(context))
-            }
-            .crossfade(true)
-            .build()
-    }
 
     LaunchedEffect(state.actionMessage) {
         state.actionMessage?.let {
@@ -239,7 +226,6 @@ fun FreezerScreen(
                             AppItemGrid(
                                 app = app,
                                 isSelected = app.packageName in state.multiSelection,
-                                imageLoader = imageLoader,
                                 onClick = {
                                     if (state.multiSelection.isNotEmpty())
                                         viewModel.toggleSelection(app.packageName)
@@ -259,7 +245,6 @@ fun FreezerScreen(
                             AppItemList(
                                 app = app,
                                 isSelected = app.packageName in state.multiSelection,
-                                imageLoader = imageLoader,
                                 onClick = {
                                     if (state.multiSelection.isNotEmpty())
                                         viewModel.toggleSelection(app.packageName)
@@ -346,7 +331,6 @@ fun FreezerScreen(
             allApps = state.allInstalledApps,
             freezerPackageNames = state.freezerPackageNames,
             searchQuery = state.manageSheetSearchQuery,
-            imageLoader = imageLoader,
             onSearchChange = viewModel::updateManageSheetSearch,
             onToggle = { pkg, add -> viewModel.toggleManaged(pkg, add) },
             onDismiss = { showManageSheet = false }

@@ -18,9 +18,25 @@ import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.annotation.KoinApplication
 import org.koin.plugin.module.dsl.startKoin
+import coil3.ImageLoader
+import coil3.PlatformContext
+import coil3.SingletonImageLoader
+import coil3.request.crossfade
+import com.valhalla.thor.presentation.utils.AppIconKeyer
+import com.valhalla.thor.presentation.utils.AppIconFetcher
 
 @KoinApplication
-class ThorApplication : Application() {
+class ThorApplication : Application(), SingletonImageLoader.Factory {
+
+    override fun newImageLoader(context: PlatformContext): ImageLoader {
+        return ImageLoader.Builder(context)
+            .components {
+                add(AppIconKeyer())
+                add(AppIconFetcher.Factory(context))
+            }
+            .crossfade(true)
+            .build()
+    }
 
     private val preferenceRepository: PreferenceRepository by inject()
     private val localeManager: LocaleManager by inject()
