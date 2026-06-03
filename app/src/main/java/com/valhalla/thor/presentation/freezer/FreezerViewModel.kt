@@ -162,10 +162,8 @@ class FreezerViewModel(
                         _uiState.update { it.copy(actionMessage = "Failed to freeze: ${e.message}") }
                     }
             } else {
+                freezerRepository.remove(packageName)
                 manageAppUseCase.setAppDisabled(packageName, false)
-                    .onSuccess {
-                        freezerRepository.remove(packageName)
-                    }
                     .onFailure { e ->
                         _uiState.update { it.copy(actionMessage = "Failed to unfreeze: ${e.message}") }
                     }
