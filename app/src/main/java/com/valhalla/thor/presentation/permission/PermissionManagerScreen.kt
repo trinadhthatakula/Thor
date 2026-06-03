@@ -137,9 +137,11 @@ fun PermissionManagerScreen(
                 }
 
                 // Split into categories
-                val runtimePermissions = filteredList.filter { it.isRuntime }
-                val normalPermissions = filteredList.filter { !it.isRuntime && (it.protectionLevel ) != android.content.pm.PermissionInfo.PROTECTION_SIGNATURE }
-                val signaturePermissions = filteredList.filter { !it.isRuntime && (it.protectionLevel ) == android.content.pm.PermissionInfo.PROTECTION_SIGNATURE }
+                 val runtimePermissions = filteredList.filter { it.isRuntime }
+                @Suppress("DEPRECATION")
+                val normalPermissions = filteredList.filter { !it.isRuntime && (it.protectionLevel and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE) != android.content.pm.PermissionInfo.PROTECTION_SIGNATURE }
+                @Suppress("DEPRECATION")
+                val signaturePermissions = filteredList.filter { !it.isRuntime && (it.protectionLevel and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE) == android.content.pm.PermissionInfo.PROTECTION_SIGNATURE }
                 val displayedLists = when (selectedTab) {
                     0 -> Triple(runtimePermissions, normalPermissions, signaturePermissions)
                     1 -> Triple(runtimePermissions, emptyList(), emptyList())

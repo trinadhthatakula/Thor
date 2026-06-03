@@ -54,7 +54,8 @@ class PermissionRepositoryImpl(
                         @Suppress("DEPRECATION")
                         permInfo?.protection ?: 0
                     }
-                    val isRuntime = (protectionLevel) == PermissionInfo.PROTECTION_DANGEROUS
+                    @Suppress("DEPRECATION")
+                    val isRuntime = (protectionLevel and PermissionInfo.PROTECTION_MASK_BASE) == PermissionInfo.PROTECTION_DANGEROUS
 
                     AppPermission(
                         name = permName,
