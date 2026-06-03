@@ -38,8 +38,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import android.graphics.drawable.Drawable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -225,6 +229,11 @@ private fun PermissionTopAppBar(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val appIcon by produceState<Drawable?>(initialValue = null, packageName, context) {
+        value = withContext(Dispatchers.IO) {
+            getAppIcon(packageName, context)
+        }
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -244,7 +253,7 @@ private fun PermissionTopAppBar(
 
         // App Icon
         Image(
-            painter = rememberAsyncImagePainter(getAppIcon(packageName, context)),
+            painter = rememberAsyncImagePainter(appIcon),
             contentDescription = null,
             modifier = Modifier
                 .size(40.dp)
