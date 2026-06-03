@@ -65,9 +65,10 @@ class FreezerViewModel(
                 combine(
                     freezerRepository.getAll(),
                     getInstalledAppsUseCase()
-                ) { freezerPkgs, (userApps, _) ->
+                ) { freezerPkgs, (userApps, systemApps) ->
                     val pkgSet = freezerPkgs.toSet()
-                    Triple(pkgSet, userApps.filter { it.packageName in pkgSet }, userApps)
+                    val allApps = userApps + systemApps
+                    Triple(pkgSet, allApps.filter { it.packageName in pkgSet }, allApps)
                 }
                 .flowOn(Dispatchers.Default)
                 .collect { (pkgSet, freezerApps, allApps) ->
