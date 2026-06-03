@@ -164,4 +164,85 @@
     <string name="tile_freeze_success">%1$d applications gelées</string>
     <string name="tile_freeze_partial_failure">%1$d/%2$d applications gelées (%3$d échouées)</string>
 
+    <!-- Freezer Settings & Actions -->
+    <string name="freezer_settings">Paramètres du congélateur</string>
+    <string name="unfreeze_all">Tout dégeler</string>
+    <string name="unfreeze_all_apps">Dégeler toutes les applications</string>
+    <string name="unfreeze_all_apps_desc">Activer toutes les applications actuellement dans le Congélateur</string>
+    <string name="auto_freeze">Gel automatique</string>
+    <string name="auto_freeze_desc">Geler automatiquement les applications lorsque l\'écran est verrouillé</string>
+    <string name="privilege_required_warning">Privilège requis (Root, Shizuku ou Dhizuku)</string>
+    <string name="unfreeze_all_confirmation_title">Dégeler toutes les applications ?</string>
+    <string name="unfreeze_all_confirmation_desc">Cela va dégeler (activer) toutes les applications actuellement dans le congélateur. Voulez-vous vraiment continuer ?</string>
+
+    <!-- UiText Messages -->
+    <string name="action_completed_format">%1$s effectué : %2$s</string>
+    <string name="frozen_success">%1$s gelé</string>
+    <string name="unfrozen_success">%1$s dégelé</string>
+    <string name="added_to_freezer_success">Ajouté au congélateur</string>
+    <string name="unfrozen_count_success">%1$d applications dégelées</string>
+    <string name="tile_unfreeze_partial_failure">%1$d/%2$d applications dégelées (%3$d échouées)</string>
+    <string name="error_format">Erreur : %1$s</string>
+    <string name="failed_to_load_apps">Échec du chargement des applications</string>
+    <string name="removed_from_freezer_success">%1$d application(s) retirée(s) du congélateur</string>
+    <string name="killed_success">%1$s arrêté</string>
+    <string name="cache_cleared_success">Cache de %1$s vidé</string>
+    <string name="data_cleared_success">Données de %1$s effacées</string>
+    <string name="suspended_success">%1$s suspendu</string>
+    <string name="unsuspended_success">%1$s réactivé</string>
+    <string name="unfreezing_app">Dégel de %1$s…</string>
+    <string name="uninstall_success">%1$s désinstallé</string>
+    <string name="batch_share_not_supported">Partage groupé non supporté pour le moment</string>
+    <string name="error_app_info_missing">Erreur : informations de l\'application manquantes pour l\'action</string>
+    <string name="failed_to_load_app_details">Échec du chargement des détails de l\'application</string>
+
+    <!-- App Info Details Screen -->
+    <string name="app_details_title">Détails de l\'application</string>
+    <string name="retry_label">Réessayer</string>
+    <string name="unknown_error_occurred">Une erreur inconnue est survenue</string>
+    <string name="toast_copied_class_name">Nom de classe copié</string>
+    <string name="toast_copy_saved">Copié dans le presse-papiers</string>
+    <string name="not_available">N/D</string>
+    <string name="tab_overview_title">Général</string>
+    <string name="tab_components">Composants</string>
+    <string name="tab_libs_features">Bibliothèques et fonctionnalités</string>
+    <string name="chip_system">Système</string>
+    <string name="chip_user">Utilisateur</string>
+    <string name="chip_debug">Déboguer</string>
+    <string name="dialog_clear_data_desc">Tous les fichiers, paramètres et bases de données de cette application seront définitivement supprimés.</string>
+    <string name="uninstall_app_title">Désinstaller l\'application ?</string>
+    <string name="uninstall_app_desc">Êtes-vous sûr de vouloir désinstaller %1$s ?</string>
+    <string name="action_open">Ouvrir</string>
+    <string name="action_force_stop">Forcer l\'arrêt</string>
+    <string name="action_in_freezer">Dans le congélateur</string>
+    <string name="action_add_freezer">Ajouter au congélateur</string>
+    <string name="action_clear_cache">Vider le cache</string>
+    <string name="action_clear_data">Effacer les données</string>
+    <string name="info_app_version">Version de l\'application</string>
+    <string name="info_sdk_details">Détails du SDK</string>
+    <string name="info_sdk_details_format">SDK cible : %1$d   |   SDK min : %2$d</string>
+    <string name="info_installer_source">Source de l\'installateur</string>
+    <string name="info_install_time">Heure d\'installation</string>
+    <string name="info_last_update_time">Heure de dernière mise à jour</string>
+    <string name="info_apk_path">Chemin source de l\'APK</string>
+    <string name="info_data_dir">Répertoire de données</string>
+    <string name="info_obb_dir">Répertoire OBB</string>
+    <string name="info_shared_data_dir">Répertoire de données partagées</string>
+    <string name="info_signature_sha256">Empreinte numérique de signature SHA-256</string>
+    <string name="no_permissions_found">Aucun permis trouvé</string>
+    <string name="search_components_placeholder">Rechercher des composants&#8230;</string>
+    <string name="section_activities_title">Activités (%1$d)</string>
+    <string name="section_services_title">Services (%1$d)</string>
+    <string name="section_receivers_title">Récepteurs de diffusion (%1$d)</string>
+    <string name="section_providers_title">Fournisseurs de contenu (%1$d)</string>
+    <string name="cd_collapse">Réduire</string>
+    <string name="cd_expand">Développer</string>
+    <string name="components_none_declared">Aucun déclaré</string>
+    <string name="section_native_libs_title">Bibliothèques natives (.so)</string>
+    <string name="no_native_libs_found">Aucune bibliothèque native trouvée</string>
+    <string name="section_req_features_title">Fonctionnalités requises</string>
+    <string name="no_req_features_found">Aucune fonctionnalité requise demandée</string>
+    <string name="share_via">Partager via</string>
+    <string name="version_format">v%1$s</string>
+
 </resources>

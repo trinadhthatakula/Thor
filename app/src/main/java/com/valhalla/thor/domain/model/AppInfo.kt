@@ -6,34 +6,36 @@ import android.content.pm.PackageManager
 import android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
 import android.os.Build
 import android.os.Environment
+import androidx.compose.runtime.Immutable
 import kotlinx.serialization.Serializable
 import java.io.File
 
 @Serializable
+@Immutable
 data class AppInfo(
-    var appName: String? = null,
-    var packageName: String = "",
-    var versionName: String? = "",
-    var versionCode: Int = 0,
-    var minSdk: Int = 0,
-    var targetSdk: Int = 0,
-    var isSystem: Boolean = false,
-    var installerPackageName: String? = null,
-    var publicSourceDir: String? = null,
-    var splitPublicSourceDirs: List<String> = emptyList(),
-    var enabled: Boolean = true,
-    var enabledState: Int = COMPONENT_ENABLED_STATE_DEFAULT,
-    var dataDir: String? = null,
-    var nativeLibraryDir: String? = null,
-    var deviceProtectedDataDir: String? = null,
-    var sharedLibraryFiles: List<String>? = emptyList(),
-    var obbFilePath: String? = null,
-    var sourceDir: String? = null,
-    var sharedDataDir: String = "",
-    var lastUpdateTime: Long = 0L,
-    var firstInstallTime: Long = 0L,
+    val appName: String? = null,
+    val packageName: String = "",
+    val versionName: String? = "",
+    val versionCode: Int = 0,
+    val minSdk: Int = 0,
+    val targetSdk: Int = 0,
+    val isSystem: Boolean = false,
+    val installerPackageName: String? = null,
+    val publicSourceDir: String? = null,
+    val splitPublicSourceDirs: List<String> = emptyList(),
+    val enabled: Boolean = true,
+    val enabledState: Int = COMPONENT_ENABLED_STATE_DEFAULT,
+    val dataDir: String? = null,
+    val nativeLibraryDir: String? = null,
+    val deviceProtectedDataDir: String? = null,
+    val sharedLibraryFiles: List<String>? = emptyList(),
+    val obbFilePath: String? = null,
+    val sourceDir: String? = null,
+    val sharedDataDir: String = "",
+    val lastUpdateTime: Long = 0L,
+    val firstInstallTime: Long = 0L,
     val isDebuggable: Boolean = false,
-    var isSuspended: Boolean = false,
+    val isSuspended: Boolean = false,
 ) {
     companion object {
 
@@ -44,7 +46,35 @@ data class AppInfo(
             isLightweight: Boolean = false
         ): AppInfo {
             val isDebuggable = (appInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
-            @Suppress("DEPRECATION") val mapped = AppInfo(
+
+            val sharedLibraryFiles = if (!isLightweight) {
+                appInfo.sharedLibraryFiles?.toList() ?: emptyList()
+            } else {
+                emptyList()
+            }
+
+            val obbFilePath = if (!isLightweight) {
+                val obbFile = File(
+                    Environment.getExternalStorageDirectory(),
+                    "Android/obb/${appInfo.packageName}"
+                )
+                if (obbFile.exists()) obbFile.absolutePath else null
+            } else {
+                null
+            }
+
+            val sharedDataDir = if (!isLightweight) {
+                val dataFile = File(
+                    Environment.getExternalStorageDirectory(),
+                    "Android/data/${appInfo.packageName}"
+                )
+                dataFile.absolutePath
+            } else {
+                ""
+            }
+
+            @Suppress("DEPRECATION")
+            return AppInfo(
                 appName = appInfo.loadLabel(pm).toString(),
                 packageName = packInfo.packageName,
                 versionName = packInfo.versionName,
@@ -56,39 +86,18 @@ data class AppInfo(
                 publicSourceDir = appInfo.publicSourceDir,
                 splitPublicSourceDirs = appInfo.splitPublicSourceDirs?.toList() ?: emptyList(),
                 enabled = appInfo.enabled,
-                // enabledState = pm.getApplicationEnabledSetting(packInfo.packageName), // Warning: This can be slow, use cautiously
                 dataDir = appInfo.dataDir,
                 nativeLibraryDir = appInfo.nativeLibraryDir,
                 deviceProtectedDataDir = appInfo.deviceProtectedDataDir,
+                sharedLibraryFiles = sharedLibraryFiles,
+                obbFilePath = obbFilePath,
                 sourceDir = appInfo.sourceDir,
+                sharedDataDir = sharedDataDir,
                 lastUpdateTime = packInfo.lastUpdateTime,
                 firstInstallTime = packInfo.firstInstallTime,
                 isDebuggable = isDebuggable,
                 isSuspended = (appInfo.flags and ApplicationInfo.FLAG_SUSPENDED) != 0
             )
-
-            // The "Heavy" Logic - Only run if explicitly requested
-            if (!isLightweight) {
-                mapped.sharedLibraryFiles = appInfo.sharedLibraryFiles?.toList() ?: emptyList()
-
-                // OBB Check
-                val obbFile = File(
-                    Environment.getExternalStorageDirectory(),
-                    "Android/obb/${appInfo.packageName}"
-                )
-                if (obbFile.exists()) {
-                    mapped.obbFilePath = obbFile.absolutePath
-                }
-
-                // Data Dir Check
-                val dataFile = File(
-                    Environment.getExternalStorageDirectory(),
-                    "Android/data/${appInfo.packageName}"
-                )
-                mapped.sharedDataDir = dataFile.absolutePath
-            }
-
-            return mapped
         }
 
         fun getInstallerPackageName(packageName: String, pm: PackageManager): String? {

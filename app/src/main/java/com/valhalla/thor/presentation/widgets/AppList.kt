@@ -56,6 +56,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
@@ -71,7 +72,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
@@ -102,7 +102,7 @@ fun AppList(
     startAsGrid: Boolean = true,
     isRoot: Boolean = false,
     isShizuku: Boolean = false,
-    imageLoader: ImageLoader,
+    isDhizuku: Boolean = false,
     installerNameMap: Map<String, String> = emptyMap(),
     onSortOrderSelected: (SortOrder) -> Unit = {},
     onSortByChanged: (SortBy) -> Unit = {},
@@ -212,7 +212,6 @@ fun AppList(
                     list = appList,
                     isGrid = isGrid,
                     selectedPackageNames = selectedPackageNames, // Pass Set instead of List
-                    imageLoader = imageLoader,
                     onAppClick = { app ->
                         if (isMultiSelectMode) {
                             multiSelection = toggleSelection(multiSelection, app)
@@ -236,6 +235,7 @@ fun AppList(
                     .align(Alignment.BottomEnd),
                 isRoot = isRoot,
                 isShizuku = isShizuku,
+                isDhizuku = isDhizuku,
                 onCancel = { multiSelection = emptyList() },
                 onMultiAppAction = { action ->
                     onMultiAppAction(action)
@@ -311,7 +311,8 @@ private fun AppQuickFilters(
 internal fun AppSearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
-    onOpenConfig: (() -> Unit)? = null
+    onOpenConfig: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
     val isImeVisible = WindowInsets.isImeVisible
@@ -322,7 +323,7 @@ internal fun AppSearchBar(
     }
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 24.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -448,7 +449,6 @@ private fun AppListContent(
     list: List<AppInfo>,
     isGrid: Boolean,
     selectedPackageNames: Set<String>,
-    imageLoader: ImageLoader,
     onAppClick: (AppInfo) -> Unit,
     onAppLongClick: (AppInfo) -> Unit
 ) {
@@ -464,7 +464,6 @@ private fun AppListContent(
                 AppItemGrid(
                     app = app,
                     isSelected = selectedPackageNames.contains(app.packageName),
-                    imageLoader = imageLoader,
                     onClick = { onAppClick(app) },
                     onLongClick = { onAppLongClick(app) }
                 )
@@ -476,7 +475,6 @@ private fun AppListContent(
                 AppItemList(
                     app = app,
                     isSelected = selectedPackageNames.contains(app.packageName),
-                    imageLoader = imageLoader,
                     onClick = { onAppClick(app) },
                     onLongClick = { onAppLongClick(app) }
                 )
@@ -490,7 +488,6 @@ private fun AppListContent(
 internal fun AppItemList(
     app: AppInfo,
     isSelected: Boolean,
-    imageLoader: ImageLoader,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
@@ -510,7 +507,7 @@ internal fun AppItemList(
                 else MaterialTheme.colorScheme.surfaceContainerLow
             ),
         leadingContent = {
-            AppIcon(app.packageName, app.enabled, app.isSuspended, 48.dp, imageLoader)
+            AppIcon(app.packageName, app.enabled, app.isSuspended, 48.dp)
         },
         headlineContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -570,7 +567,6 @@ internal fun AppItemList(
 internal fun AppItemGrid(
     app: AppInfo,
     isSelected: Boolean,
-    imageLoader: ImageLoader,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
@@ -593,7 +589,7 @@ internal fun AppItemGrid(
             .padding(16.dp)
     ) {
         Box {
-            AppIcon(app.packageName, app.enabled, app.isSuspended, 56.dp, imageLoader)
+            AppIcon(app.packageName, app.enabled, app.isSuspended, 56.dp)
             if (isSelected) {
                 Icon(
                     painterResource(R.drawable.check_circle),
@@ -647,8 +643,7 @@ internal fun AppIcon(
     packageName: String,
     isEnabled: Boolean,
     isSuspended: Boolean,
-    size: androidx.compose.ui.unit.Dp,
-    imageLoader: ImageLoader
+    size: androidx.compose.ui.unit.Dp
 ) {
     // Hoisted static matrices to avoid recreation
     val greyScaleMatrix = remember { ColorMatrix().apply { setToSaturation(0f) } }
@@ -657,7 +652,6 @@ internal fun AppIcon(
     Box(contentAlignment = Alignment.Center) {
         AsyncImage(
             model = AppIconModel(packageName),
-            imageLoader = imageLoader,
             contentDescription = null,
             modifier = Modifier
                 .size(size)

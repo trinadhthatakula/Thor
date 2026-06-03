@@ -49,29 +49,50 @@ class SystemRepositoryImpl(
         }
     }
 
-    override suspend fun forceStopApp(packageName: String): Result<Unit> =
+    override suspend fun forceStopApp(packageName: String): Result<Unit> = try {
         getActiveGateway().forceStopApp(packageName)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
 
-    override suspend fun clearCache(packageName: String): Result<Unit> =
+    override suspend fun clearCache(packageName: String): Result<Unit> = try {
         getActiveGateway().clearCache(packageName)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
 
-    override suspend fun clearAppData(packageName: String): Result<Unit> =
+    override suspend fun clearAppData(packageName: String): Result<Unit> = try {
         getActiveGateway().clearAppData(packageName)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
 
-    override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> =
+    override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> = try {
         getActiveGateway().setAppDisabled(packageName, isDisabled)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
 
-    override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> =
+    override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> = try {
         getActiveGateway().setAppSuspended(packageName, isSuspended)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
 
     override suspend fun setAppRestricted(
         packageName: String,
         isRestricted: Boolean
-    ): Result<Unit> =
+    ): Result<Unit> = try {
         getActiveGateway().setAppRestricted(packageName, isRestricted)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
 
-    override suspend fun uninstallApp(packageName: String): Result<Unit> =
+    override suspend fun uninstallApp(packageName: String): Result<Unit> = try {
         getActiveGateway().uninstallApp(packageName)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
 
     override suspend fun rebootDevice(reason: String): Result<Unit> {
         return if (rootGateway.isRootAvailable()) {
@@ -92,8 +113,11 @@ class SystemRepositoryImpl(
         }
     }
 
-    override suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> =
+    override suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> = try {
         getActiveGateway().reinstallAppWithGoogle(packageName)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
 
     override suspend fun copyFileWithRoot(
         sourcePath: String,

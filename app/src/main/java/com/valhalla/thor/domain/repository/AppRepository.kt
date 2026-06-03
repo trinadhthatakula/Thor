@@ -1,6 +1,7 @@
 package com.valhalla.thor.domain.repository
 
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.DetailedAppInfo
 import kotlinx.coroutines.flow.Flow
 
 interface AppRepository {
@@ -17,6 +18,11 @@ interface AppRepository {
      * so we don't slow down the main list.
      */
     suspend fun getAppDetails(packageName: String): AppInfo?
+
+    /**
+     * Fetches heavy details (activities, permissions, services, etc.) dynamically.
+     */
+    suspend fun getDetailedAppInfo(packageName: String): DetailedAppInfo?
 
     // Parser for XAPK/APK installation features
     suspend fun getApkDetails(apkPath: String): AppInfo?

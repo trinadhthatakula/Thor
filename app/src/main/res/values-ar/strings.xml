@@ -164,4 +164,85 @@
     <string name="tile_freeze_success">تم تجميد %1$d تطبيقات</string>
     <string name="tile_freeze_partial_failure">تم تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
 
+    <!-- Freezer Settings & Actions -->
+    <string name="freezer_settings">إعدادات المجمد</string>
+    <string name="unfreeze_all">إلغاء تجميد الكل</string>
+    <string name="unfreeze_all_apps">إلغاء تجميد جميع التطبيقات</string>
+    <string name="unfreeze_all_apps_desc">تمكين جميع التطبيقات الموجودة حالياً في قائمة المجمد</string>
+    <string name="auto_freeze">تجميد تلقائي</string>
+    <string name="auto_freeze_desc">تجميد التطبيقات تلقائياً عند قفل الشاشة</string>
+    <string name="privilege_required_warning">الصلاحية مطلوبة (Root أو Shizuku أو Dhizuku)</string>
+    <string name="unfreeze_all_confirmation_title">إلغاء تجميد جميع التطبيقات؟</string>
+    <string name="unfreeze_all_confirmation_desc">سيؤدي هذا إلى إلغاء تجميد (تمكين) جميع التطبيقات الموجودة حالياً في قائمة المجمد. هل أنت متأكد أنك تريد المتابعة؟</string>
+
+    <!-- UiText Messages -->
+    <string name="action_completed_format">تم إكمال %1$s: %2$s</string>
+    <string name="frozen_success">تم تجميد %1$s</string>
+    <string name="unfrozen_success">تم إلغاء تجميد %1$s</string>
+    <string name="added_to_freezer_success">تمت الإضافة إلى المجمد</string>
+    <string name="unfrozen_count_success">تم إلغاء تجميد %1$d تطبيقات</string>
+    <string name="tile_unfreeze_partial_failure">تم إلغاء تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
+    <string name="error_format">خطأ: %1$s</string>
+    <string name="failed_to_load_apps">فشل في تحميل التطبيقات</string>
+    <string name="removed_from_freezer_success">تمت إزالة %1$d تطبيقات من المجمد</string>
+    <string name="killed_success">تم إنهاء %1$s</string>
+    <string name="cache_cleared_success">تم مسح ذاكرة التخزين المؤقت لـ %1$s</string>
+    <string name="data_cleared_success">تم مسح بيانات %1$s</string>
+    <string name="suspended_success">تم تعليق %1$s</string>
+    <string name="unsuspended_success">تم إلغاء تعليق %1$s</string>
+    <string name="unfreezing_app">جاري إلغاء تجميد %1$s…</string>
+    <string name="uninstall_success">تم إلغاء تثبيت %1$s</string>
+    <string name="batch_share_not_supported">المشاركة الجماعية غير مدعومة بعد</string>
+    <string name="error_app_info_missing">خطأ: معلومات التطبيق مفقودة للإجراء</string>
+    <string name="failed_to_load_app_details">فشل في تحميل تفاصيل التطبيق</string>
+
+    <!-- App Info Details Screen -->
+    <string name="app_details_title">تفاصيل التطبيق</string>
+    <string name="retry_label">إعادة المحاولة</string>
+    <string name="unknown_error_occurred">حدث خطأ غير معروف</string>
+    <string name="toast_copied_class_name">تم نسخ اسم الفئة</string>
+    <string name="toast_copy_saved">تم النسخ إلى الحافظة</string>
+    <string name="not_available">غير متاح</string>
+    <string name="tab_overview_title">عام</string>
+    <string name="tab_components">المكونات</string>
+    <string name="tab_libs_features">المكتبات والميزات</string>
+    <string name="chip_system">نظام</string>
+    <string name="chip_user">مستخدم</string>
+    <string name="chip_debug">تصحيح</string>
+    <string name="dialog_clear_data_desc">سيتم حذف جميع الملفات والإعدادات وقواعد البيانات الخاصة بهذا التطبيق نهائيًا.</string>
+    <string name="uninstall_app_title">هل تريد إلغاء تثبيت التطبيق؟</string>
+    <string name="uninstall_app_desc">هل أنت متأكد من إلغاء تثبيت %1$s؟</string>
+    <string name="action_open">فتح</string>
+    <string name="action_force_stop">فرض الإيقاف</string>
+    <string name="action_in_freezer">في المجمد</string>
+    <string name="action_add_freezer">إضافة للمجمد</string>
+    <string name="action_clear_cache">مسح التخزين المؤقت</string>
+    <string name="action_clear_data">مسح البيانات</string>
+    <string name="info_app_version">إصدار التطبيق</string>
+    <string name="info_sdk_details">تفاصيل SDK</string>
+    <string name="info_sdk_details_format">SDK المستهدف: %1$d   |   SDK الأدنى: %2$d</string>
+    <string name="info_installer_source">مصدر التثبيت</string>
+    <string name="info_install_time">وقت التثبيت</string>
+    <string name="info_last_update_time">وقت آخر تحديث</string>
+    <string name="info_apk_path">مسار ملف APK</string>
+    <string name="info_data_dir">دليل البيانات</string>
+    <string name="info_obb_dir">دليل OBB</string>
+    <string name="info_shared_data_dir">دليل البيانات المشتركة</string>
+    <string name="info_signature_sha256">بصمة توقيع SHA-256</string>
+    <string name="no_permissions_found">لم يتم العثور على أذونات</string>
+    <string name="search_components_placeholder">البحث عن المكونات&#8230;</string>
+    <string name="section_activities_title">الأنشطة (%1$d)</string>
+    <string name="section_services_title">الخدمات (%1$d)</string>
+    <string name="section_receivers_title">مستقبلات البث (%1$d)</string>
+    <string name="section_providers_title">موفرو المحتوى (%1$d)</string>
+    <string name="cd_collapse">طوي</string>
+    <string name="cd_expand">توسيع</string>
+    <string name="components_none_declared">لم يتم الإعلان عن أي منها</string>
+    <string name="section_native_libs_title">المكتبات الأصلية (.so)</string>
+    <string name="no_native_libs_found">لم يتم العثور على مكتبات أصلية</string>
+    <string name="section_req_features_title">الميزات المطلوبة</string>
+    <string name="no_req_features_found">لم يتم طلب أي ميزات مطلوبة</string>
+    <string name="share_via">مشاركة عبر</string>
+    <string name="version_format">v%1$s</string>
+
 </resources>

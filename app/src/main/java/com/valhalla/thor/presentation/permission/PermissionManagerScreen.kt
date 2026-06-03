@@ -38,8 +38,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import android.graphics.drawable.Drawable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -138,8 +142,21 @@ fun PermissionManagerScreen(
 
                 // Split into categories
                 val runtimePermissions = filteredList.filter { it.isRuntime }
-                val normalPermissions = filteredList.filter { !it.isRuntime && (it.protectionLevel ) != android.content.pm.PermissionInfo.PROTECTION_SIGNATURE }
-                val signaturePermissions = filteredList.filter { !it.isRuntime && (it.protectionLevel ) == android.content.pm.PermissionInfo.PROTECTION_SIGNATURE }
+                @Suppress("DEPRECATION")
+                val normalPermissions = filteredList.filter {
+                    if (it.isRuntime) return@filter false
+                    val base = it.protectionLevel and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE
+                    base == android.content.pm.PermissionInfo.PROTECTION_NORMAL ||
+                            base == android.content.pm.PermissionInfo.PROTECTION_DANGEROUS
+                }
+                @Suppress("DEPRECATION")
+                val signaturePermissions = filteredList.filter {
+                    if (it.isRuntime) return@filter false
+                    val base = it.protectionLevel and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE
+                    base == android.content.pm.PermissionInfo.PROTECTION_SIGNATURE ||
+                            base == android.content.pm.PermissionInfo.PROTECTION_SIGNATURE_OR_SYSTEM ||
+                            base == android.content.pm.PermissionInfo.PROTECTION_INTERNAL
+                }
                 val displayedLists = when (selectedTab) {
                     0 -> Triple(runtimePermissions, normalPermissions, signaturePermissions)
                     1 -> Triple(runtimePermissions, emptyList(), emptyList())
@@ -223,6 +240,11 @@ private fun PermissionTopAppBar(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val appIcon by produceState<Drawable?>(initialValue = null, packageName, context) {
+        value = withContext(Dispatchers.IO) {
+            getAppIcon(packageName, context)
+        }
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -242,7 +264,7 @@ private fun PermissionTopAppBar(
 
         // App Icon
         Image(
-            painter = rememberAsyncImagePainter(getAppIcon(packageName, context)),
+            painter = rememberAsyncImagePainter(appIcon),
             contentDescription = null,
             modifier = Modifier
                 .size(40.dp)

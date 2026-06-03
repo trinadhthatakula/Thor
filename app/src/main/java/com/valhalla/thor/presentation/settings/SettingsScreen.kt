@@ -19,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -26,14 +27,17 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -59,8 +63,47 @@ fun SettingsScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val prefs = state.prefs
+    val hasPrivilege = state.isRootAvailable || state.isShizukuAvailable || state.isDhizukuAvailable
     val context = LocalContext.current
     var showLanguageSheet by remember { mutableStateOf(false) }
+    var showUnfreezeConfirmation by remember { mutableStateOf(false) }
+
+    LaunchedEffect(state.actionMessage) {
+        state.actionMessage?.let {
+            android.widget.Toast.makeText(context, it.asString(context), android.widget.Toast.LENGTH_SHORT).show()
+            viewModel.consumeMessage()
+        }
+    }
+
+    if (showUnfreezeConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showUnfreezeConfirmation = false },
+            icon = {
+                Icon(
+                    painter = painterResource(R.drawable.warning),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text(stringResource(R.string.unfreeze_all_confirmation_title)) },
+            text = { Text(stringResource(R.string.unfreeze_all_confirmation_desc)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.unfreezeAll()
+                        showUnfreezeConfirmation = false
+                    }
+                ) {
+                    Text(stringResource(R.string.proceed))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUnfreezeConfirmation = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
 
     val versionName = remember(context) {
         runCatching {
@@ -212,6 +255,37 @@ fun SettingsScreen(
                 checked = prefs.biometricLockEnabled,
                 enabled = state.canUseBiometric,
                 onCheckedChange = { viewModel.setBiometricLock(it) }
+            )
+        }
+
+        Spacer(Modifier.height(32.dp))
+
+        // ── FREEZER ─────────────────────────────────────────────────────────
+        SettingsSectionLabel(stringResource(R.string.freezer))
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(32.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            SettingsSwitchRow(
+                icon = R.drawable.frozen,
+                title = stringResource(R.string.auto_freeze),
+                subtitle = if (hasPrivilege) stringResource(R.string.auto_freeze_desc) else stringResource(R.string.privilege_required_warning),
+                checked = prefs.autoFreezeEnabled,
+                enabled = hasPrivilege,
+                onCheckedChange = { viewModel.setAutoFreezeEnabled(it) }
+            )
+
+            SettingsClickRow(
+                icon = R.drawable.unfreeze,
+                title = stringResource(R.string.unfreeze_all_apps),
+                subtitle = if (hasPrivilege) stringResource(R.string.unfreeze_all_apps_desc) else stringResource(R.string.privilege_required_warning),
+                enabled = hasPrivilege,
+                onClick = { showUnfreezeConfirmation = true }
             )
         }
 
@@ -478,6 +552,7 @@ private fun SettingsClickRow(
     icon: Int,
     title: String,
     subtitle: String,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     Row(
@@ -485,7 +560,8 @@ private fun SettingsClickRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f))
-            .clickable { onClick() }
+            .clickable(enabled = enabled) { onClick() }
+            .alpha(if (enabled) 1f else 0.5f)
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

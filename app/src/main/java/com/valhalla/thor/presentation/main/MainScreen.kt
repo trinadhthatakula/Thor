@@ -33,6 +33,7 @@ import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.presentation.appList.AppListScreen
 import com.valhalla.thor.presentation.appList.AppListViewModel
+import com.valhalla.thor.presentation.appList.AppInfoDetailsScreen
 import com.valhalla.thor.presentation.freezer.FreezerScreen
 import com.valhalla.thor.presentation.freezer.FreezerViewModel
 import com.valhalla.thor.presentation.home.AppDestinations
@@ -149,7 +150,7 @@ fun MainScreen(
 
     LaunchedEffect(state.actionMessage) {
         state.actionMessage?.let { msg ->
-            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, msg.asString(context), Toast.LENGTH_SHORT).show()
             mainViewModel.consumeMessage()
         }
     }
@@ -178,6 +179,9 @@ fun MainScreen(
         entry<ThorRoute.Apps> {
             AppListScreen(
                 viewModel = appListViewModel,
+                onNavigateToAppInfo = { pkg, name ->
+                    activeBackStack.add(ThorRoute.AppInfoDetails(pkg, name))
+                },
                 onAppAction = { action ->
                     if (action is AppClickAction.ManagePermissions) {
                         activeBackStack.add(
@@ -226,6 +230,17 @@ fun MainScreen(
                 packageName = route.packageName,
                 appName = route.appName,
                 onBack = { activeBackStack.removeLastOrNull() }
+            )
+        }
+
+        entry<ThorRoute.AppInfoDetails> { route ->
+            AppInfoDetailsScreen(
+                packageName = route.packageName,
+                appName = route.appName,
+                onBack = { activeBackStack.removeLastOrNull() },
+                onNavigateToPermissionManager = { pkg, name ->
+                    activeBackStack.add(ThorRoute.PermissionManager(pkg, name))
+                }
             )
         }
     }

@@ -48,13 +48,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil3.ImageLoader
-import coil3.request.crossfade
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.MultiAppAction
-import com.valhalla.thor.presentation.utils.AppIconFetcher
-import com.valhalla.thor.presentation.utils.AppIconKeyer
 import com.valhalla.thor.presentation.widgets.AppInfoDialog
 import com.valhalla.thor.presentation.widgets.AppItemGrid
 import com.valhalla.thor.presentation.widgets.AppItemList
@@ -72,6 +68,7 @@ fun FreezerScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val hasPrivilege = state.isRoot || state.isShizuku || state.isDhizuku
 
     var selectedPackageName by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedAppInfo = selectedPackageName?.let { pkg -> state.freezerApps.find { it.packageName == pkg } }
@@ -87,19 +84,10 @@ fun FreezerScreen(
         }
     }
 
-    val imageLoader = remember(context) {
-        ImageLoader.Builder(context)
-            .components {
-                add(AppIconKeyer())
-                add(AppIconFetcher.Factory(context))
-            }
-            .crossfade(true)
-            .build()
-    }
 
     LaunchedEffect(state.actionMessage) {
         state.actionMessage?.let {
-            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, it.asString(context), Toast.LENGTH_SHORT).show()
             viewModel.dismissMessage()
         }
     }
@@ -112,7 +100,7 @@ fun FreezerScreen(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
-            if (state.multiSelection.isEmpty()) {
+            if (state.multiSelection.isEmpty() && hasPrivilege) {
                 FloatingActionButton(
                     onClick = { showManageSheet = true },
                     containerColor = MaterialTheme.colorScheme.primaryContainer
@@ -179,7 +167,7 @@ fun FreezerScreen(
                         Button(
                             onClick = { viewModel.freezeAll() },
                             shape = RoundedCornerShape(12.dp),
-                            enabled = state.freezerApps.isNotEmpty()
+                            enabled = state.freezerApps.isNotEmpty() && hasPrivilege
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.frozen),
@@ -238,7 +226,6 @@ fun FreezerScreen(
                             AppItemGrid(
                                 app = app,
                                 isSelected = app.packageName in state.multiSelection,
-                                imageLoader = imageLoader,
                                 onClick = {
                                     if (state.multiSelection.isNotEmpty())
                                         viewModel.toggleSelection(app.packageName)
@@ -258,7 +245,6 @@ fun FreezerScreen(
                             AppItemList(
                                 app = app,
                                 isSelected = app.packageName in state.multiSelection,
-                                imageLoader = imageLoader,
                                 onClick = {
                                     if (state.multiSelection.isNotEmpty())
                                         viewModel.toggleSelection(app.packageName)
@@ -292,6 +278,7 @@ fun FreezerScreen(
                     selected = selectedApps,
                     isRoot = state.isRoot,
                     isShizuku = state.isShizuku,
+                    isDhizuku = state.isDhizuku,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding( bottom = 16.dp),
@@ -314,6 +301,7 @@ fun FreezerScreen(
             appInfo = app,
             isRoot = state.isRoot,
             isShizuku = state.isShizuku,
+            isDhizuku = state.isDhizuku,
             onDismiss = { selectedPackageName = null },
             onAppAction = { action ->
                 when (action) {
@@ -343,7 +331,6 @@ fun FreezerScreen(
             allApps = state.allInstalledApps,
             freezerPackageNames = state.freezerPackageNames,
             searchQuery = state.manageSheetSearchQuery,
-            imageLoader = imageLoader,
             onSearchChange = viewModel::updateManageSheetSearch,
             onToggle = { pkg, add -> viewModel.toggleManaged(pkg, add) },
             onDismiss = { showManageSheet = false }
@@ -353,7 +340,10 @@ fun FreezerScreen(
     if (showSettingsSheet) {
         FreezerSettingsSheet(
             isGrid = isGrid,
+            autoFreezeEnabled = state.autoFreezeEnabled,
+            hasPrivilege = hasPrivilege,
             onToggleView = { isGrid = !isGrid },
+            onToggleAutoFreeze = viewModel::setAutoFreezeEnabled,
             onDismiss = { showSettingsSheet = false },
             onUnfreezeAll = viewModel::unfreezeAll
         )
