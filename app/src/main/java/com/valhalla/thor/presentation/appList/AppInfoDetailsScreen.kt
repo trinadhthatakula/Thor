@@ -190,6 +190,12 @@ fun AppInfoDetailsScreen(
                                 if (intent != null) context.startActivity(intent)
                                 else Toast.makeText(context, "Cannot launch this application", Toast.LENGTH_SHORT).show()
                             },
+                            onSystemSettings = {
+                                val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = android.net.Uri.parse("package:$packageName")
+                                }
+                                context.startActivity(intent)
+                            },
                             onFreezeToggle = {
                                 viewModel.toggleFreezerState(packageName, appInfo.appName, it)
                             },
@@ -257,7 +263,6 @@ fun AppInfoDetailsScreen(
                             }
                         }
 
-                        // 4. HorizontalPager
                         HorizontalPager(
                             state = pagerState,
                             modifier = Modifier
@@ -265,7 +270,7 @@ fun AppInfoDetailsScreen(
                                 .weight(1f)
                         ) { page ->
                             when (page) {
-                                0 -> GeneralTabScreen(appInfo = appInfo)
+                                0 -> GeneralTabScreen(details = details)
                                 1 -> PermissionsTabScreen(permissions = details.permissions)
                                 2 -> ComponentsTabScreen(details = details)
                                 3 -> LibsAndFeaturesTabScreen(details = details)
@@ -443,6 +448,7 @@ private fun AppDetailsActionRow(
     isDhizuku: Boolean,
     isInFreezer: Boolean,
     onLaunch: () -> Unit,
+    onSystemSettings: () -> Unit,
     onFreezeToggle: (Boolean) -> Unit,
     onSuspendToggle: (Boolean) -> Unit,
     onForceStop: () -> Unit,
@@ -471,6 +477,13 @@ private fun AppDetailsActionRow(
             label = "Open",
             enabled = appInfo.enabled,
             onClick = onLaunch
+        )
+
+        // 1b. System Settings
+        ActionItem(
+            icon = R.drawable.settings,
+            label = "Settings",
+            onClick = onSystemSettings
         )
 
         // 2. Freeze / Unfreeze
@@ -590,7 +603,8 @@ private fun ActionItem(
 }
 
 @Composable
-private fun GeneralTabScreen(appInfo: AppInfo) {
+private fun GeneralTabScreen(details: DetailedAppInfo) {
+    val appInfo = details.appInfo
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -628,6 +642,11 @@ private fun GeneralTabScreen(appInfo: AppInfo) {
                 InfoCard(title = "Shared data directory", value = appInfo.sharedDataDir)
             }
         }
+        details.signatureSha256?.let { sha256 ->
+            item {
+                InfoCard(title = "SHA-256 signature fingerprint", value = sha256)
+            }
+        }
     }
 }
 
@@ -635,7 +654,8 @@ private fun GeneralTabScreen(appInfo: AppInfo) {
 private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
     var searchQuery by remember { mutableStateOf("") }
     val filteredPermissions = permissions.filter {
-        it.name.contains(searchQuery, ignoreCase = true)
+        it.name.contains(searchQuery, ignoreCase = true) ||
+                (it.label?.contains(searchQuery, ignoreCase = true) ?: false)
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -682,8 +702,9 @@ private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             val simpleName = perm.name.substringAfterLast('.')
+                            val displayName = perm.label ?: simpleName
                             Text(
-                                text = simpleName,
+                                text = displayName,
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
@@ -695,6 +716,16 @@ private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontFamily = firaMonoFontFamily
                             )
+                            perm.description?.let { desc ->
+                                if (desc.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = desc,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                    )
+                                }
+                            }
                         }
 
                         Spacer(modifier = Modifier.width(8.dp))
@@ -726,23 +757,53 @@ private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
 
 @Composable
 private fun ComponentsTabScreen(details: DetailedAppInfo) {
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            CollapsibleSection(title = "Activities (${details.activities.size})", items = details.activities)
-        }
-        item {
-            CollapsibleSection(title = "Services (${details.services.size})", items = details.services)
-        }
-        item {
-            CollapsibleSection(title = "Broadcast Receivers (${details.receivers.size})", items = details.receivers)
-        }
-        item {
-            CollapsibleSection(title = "Content Providers (${details.providers.size})", items = details.providers)
+    var searchQuery by remember { mutableStateOf("") }
+    val filter = { items: List<String> ->
+        if (searchQuery.isEmpty()) items
+        else items.filter { it.contains(searchQuery, ignoreCase = true) }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            placeholder = { Text("Search components...") },
+            leadingIcon = { Icon(painterResource(R.drawable.round_search), contentDescription = null) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest
+            )
+        )
+
+        val filteredActivities = filter(details.activities)
+        val filteredServices = filter(details.services)
+        val filteredReceivers = filter(details.receivers)
+        val filteredProviders = filter(details.providers)
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item {
+                CollapsibleSection(title = "Activities (${filteredActivities.size})", items = filteredActivities)
+            }
+            item {
+                CollapsibleSection(title = "Services (${filteredServices.size})", items = filteredServices)
+            }
+            item {
+                CollapsibleSection(title = "Broadcast Receivers (${filteredReceivers.size})", items = filteredReceivers)
+            }
+            item {
+                CollapsibleSection(title = "Content Providers (${filteredProviders.size})", items = filteredProviders)
+            }
         }
     }
 }

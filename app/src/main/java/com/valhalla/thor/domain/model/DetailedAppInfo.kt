@@ -14,7 +14,8 @@ data class DetailedAppInfo(
     val permissions: List<PermissionDetail> = emptyList(),
     val nativeLibs: List<String> = emptyList(),
     val reqFeatures: List<String> = emptyList(),
-    val hasWakelockPermission: Boolean = false
+    val hasWakelockPermission: Boolean = false,
+    val signatureSha256: String? = null
 )
 
 @Serializable
@@ -22,5 +23,7 @@ data class DetailedAppInfo(
 data class PermissionDetail(
     val name: String,
     val isGranted: Boolean,
-    val protectionLevel: String
+    val protectionLevel: String,
+    val label: String? = null,
+    val description: String? = null
 )

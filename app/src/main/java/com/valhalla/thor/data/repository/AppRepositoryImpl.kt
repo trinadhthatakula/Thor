@@ -200,7 +200,8 @@ class AppRepositoryImpl(
                         PackageManager.GET_CONFIGURATIONS or
                         PackageManager.MATCH_UNINSTALLED_PACKAGES or
                         PackageManager.MATCH_DISABLED_COMPONENTS or
-                        PackageManager.MATCH_DISABLED_UNTIL_USED_COMPONENTS).toLong()
+                        PackageManager.MATCH_DISABLED_UNTIL_USED_COMPONENTS or
+                        PackageManager.GET_SIGNING_CERTIFICATES).toLong()
 
                 val packInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     pm.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(flags))
@@ -218,8 +219,12 @@ class AppRepositoryImpl(
                 val requestedPermissions = packInfo.requestedPermissions ?: emptyArray()
                 val permissions = requestedPermissions.map { permName ->
                     val isGranted = pm.checkPermission(permName, packageName) == PackageManager.PERMISSION_GRANTED
+                    var label: String? = null
+                    var description: String? = null
                     val protection = try {
                         val permInfo = pm.getPermissionInfo(permName, 0)
+                        label = permInfo.loadLabel(pm).toString()
+                        description = permInfo.loadDescription(pm)?.toString()
                         val base = permInfo.protectionLevel and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE
                         when (base) {
                             android.content.pm.PermissionInfo.PROTECTION_NORMAL -> "Normal"
@@ -231,7 +236,13 @@ class AppRepositoryImpl(
                     } catch (_: Exception) {
                         "Unknown"
                     }
-                    PermissionDetail(permName, isGranted, protection)
+                    PermissionDetail(
+                        name = permName,
+                        isGranted = isGranted,
+                        protectionLevel = protection,
+                        label = label,
+                        description = description
+                    )
                 }
 
                 val hasWakelockPermission = requestedPermissions.contains(android.Manifest.permission.WAKE_LOCK)
@@ -244,6 +255,23 @@ class AppRepositoryImpl(
                     } else emptyList()
                 } else emptyList()
 
+                val signatureSha256 = try {
+                    val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        packInfo.signingInfo?.signingCertificateHistory
+                    } else {
+                        @Suppress("DEPRECATION")
+                        packInfo.signatures
+                    }
+                    if (signatures != null && signatures.isNotEmpty()) {
+                        val cert = signatures[0].toByteArray()
+                        val md = java.security.MessageDigest.getInstance("SHA-256")
+                        val digest = md.digest(cert)
+                        digest.joinToString(":") { "%02X".format(it) }
+                    } else null
+                } catch (_: Exception) {
+                    null
+                }
+
                 DetailedAppInfo(
                     appInfo = appInfo,
                     activities = activities,
@@ -253,7 +281,8 @@ class AppRepositoryImpl(
                     permissions = permissions,
                     nativeLibs = nativeLibs,
                     reqFeatures = reqFeatures,
-                    hasWakelockPermission = hasWakelockPermission
+                    hasWakelockPermission = hasWakelockPermission,
+                    signatureSha256 = signatureSha256
                 )
             } catch (e: Exception) {
                 if (BuildConfig.DEBUG) e.printStackTrace()
