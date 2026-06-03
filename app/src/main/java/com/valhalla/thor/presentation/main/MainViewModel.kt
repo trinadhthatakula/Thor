@@ -13,6 +13,8 @@ import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.domain.usecase.ShareAppUseCase
 import com.valhalla.thor.presentation.home.AppDestinations
+import com.valhalla.thor.R
+import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,7 +50,7 @@ data class LoggerState(
  * Main UI State holding global feedback.
  */
 data class MainUiState(
-    val actionMessage: String? = null, // For transient Toasts
+    val actionMessage: UiText? = null, // For transient Toasts
     val loggerState: LoggerState = LoggerState(), // For persistent Logs
     val selectedDestination: AppDestinations = AppDestinations.HOME // For Bottom Nav
 )
@@ -146,14 +148,14 @@ class MainViewModel(
                     if (!action.appInfo.enabled) {
                         // Quick toast for feedback, or could use logger if preferred.
                         // Using Toast here for speed.
-                        _uiState.update { it.copy(actionMessage = "Unfreezing ${action.appInfo.appName}...") }
+                        _uiState.update { it.copy(actionMessage = UiText.StringResource(R.string.unfreezing_app, action.appInfo.appName ?: action.appInfo.packageName)) }
 
                         val result =
                             manageAppUseCase.setAppDisabled(action.appInfo.packageName, false)
                         if (result.isSuccess) {
                             _effect.send(MainSideEffect.LaunchApp(action.appInfo.packageName))
                         } else {
-                            _uiState.update { it.copy(actionMessage = "Failed to unfreeze: ${result.exceptionOrNull()?.message}") }
+                            _uiState.update { it.copy(actionMessage = UiText.StringResource(R.string.error_format, result.exceptionOrNull()?.message ?: "")) }
                         }
                     } else {
                         _effect.send(MainSideEffect.LaunchApp(action.appInfo.packageName))
@@ -216,7 +218,7 @@ class MainViewModel(
                         viewModelScope.launch(Dispatchers.IO) {
                             val result = manageAppUseCase.uninstallApp(action.appInfo.packageName)
                             if (result.isSuccess) {
-                                _uiState.update { it.copy(actionMessage = "Uninstalled ${action.appInfo.appName}") }
+                                _uiState.update { it.copy(actionMessage = UiText.StringResource(R.string.uninstall_success, action.appInfo.appName ?: action.appInfo.packageName)) }
                             } else {
                                 _effect.send(MainSideEffect.NormalUninstall(action.appInfo.packageName))
                             }
@@ -376,7 +378,7 @@ class MainViewModel(
                 }
 
                 else -> {
-                    _uiState.update { it.copy(actionMessage = "Batch Share not supported yet") }
+                    _uiState.update { it.copy(actionMessage = UiText.StringResource(R.string.batch_share_not_supported)) }
                 }
             }
         }
@@ -417,17 +419,29 @@ class MainViewModel(
         block: suspend (AppInfo) -> Result<Unit>
     ) {
         val app = action.appInfo()
-        val actionName = action.javaClass.simpleName
         if (app != null)
             block(app)
                 .onSuccess {
-                    _uiState.update { it.copy(actionMessage = "$actionName ${app.appName}") }
+                    _uiState.update { it.copy(actionMessage = getSuccessMessage(action, app.appName ?: app.packageName)) }
                 }
                 .onFailure { e ->
-                    _uiState.update { it.copy(actionMessage = "Error: ${e.message}") }
+                    _uiState.update { it.copy(actionMessage = UiText.StringResource(R.string.error_format, e.message ?: "")) }
                 }
         else {
-            _uiState.update { it.copy(actionMessage = "Error: App info missing for action") }
+            _uiState.update { it.copy(actionMessage = UiText.StringResource(R.string.error_app_info_missing)) }
+        }
+    }
+
+    private fun getSuccessMessage(action: AppClickAction, appName: String): UiText {
+        return when (action) {
+            is AppClickAction.Kill -> UiText.StringResource(R.string.killed_success, appName)
+            is AppClickAction.Freeze -> UiText.StringResource(R.string.frozen_success, appName)
+            is AppClickAction.UnFreeze -> UiText.StringResource(R.string.unfrozen_success, appName)
+            is AppClickAction.ClearCache -> UiText.StringResource(R.string.cache_cleared_success, appName)
+            is AppClickAction.ClearData -> UiText.StringResource(R.string.data_cleared_success, appName)
+            is AppClickAction.Suspend -> UiText.StringResource(R.string.suspended_success, appName)
+            is AppClickAction.UnSuspend -> UiText.StringResource(R.string.unsuspended_success, appName)
+            else -> UiText.DynamicString("${action.javaClass.simpleName} $appName")
         }
     }
 

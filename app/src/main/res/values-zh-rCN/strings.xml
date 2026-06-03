@@ -175,4 +175,23 @@
     <string name="unfreeze_all_confirmation_title">解冻所有应用？</string>
     <string name="unfreeze_all_confirmation_desc">这将解冻（启用）目前在冻结列表中的所有应用。确定要继续吗？</string>
 
+    <!-- UiText Messages -->
+    <string name="frozen_success">已冻结 %1$s</string>
+    <string name="unfrozen_success">已解冻 %1$s</string>
+    <string name="added_to_freezer_success">已添加到冻结列表</string>
+    <string name="unfrozen_count_success">已解冻 %1$d 个应用</string>
+    <string name="tile_unfreeze_partial_failure">已解冻 %1$d/%2$d 个应用（%3$d 个失败）</string>
+    <string name="error_format">错误: %1$s</string>
+    <string name="failed_to_load_apps">加载应用失败</string>
+    <string name="removed_from_freezer_success">已从冻结列表中移除 %1$d 个应用</string>
+    <string name="killed_success">已强行停止 %1$s</string>
+    <string name="cache_cleared_success">已清除 %1$s 的缓存</string>
+    <string name="data_cleared_success">已清除 %1$s 的数据</string>
+    <string name="suspended_success">已暂停 %1$s</string>
+    <string name="unsuspended_success">已恢复 %1$s</string>
+    <string name="unfreezing_app">正在解冻 %1$s…</string>
+    <string name="uninstall_success">已卸载 %1$s</string>
+    <string name="batch_share_not_supported">暂不支持批量分享</string>
+    <string name="error_app_info_missing">错误：缺少操作所需的应用信息</string>
+
 </resources>

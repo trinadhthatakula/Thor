@@ -149,7 +149,7 @@ fun MainScreen(
 
     LaunchedEffect(state.actionMessage) {
         state.actionMessage?.let { msg ->
-            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, msg.asString(context), Toast.LENGTH_SHORT).show()
             mainViewModel.consumeMessage()
         }
     }

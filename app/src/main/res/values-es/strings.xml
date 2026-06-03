@@ -175,4 +175,23 @@
     <string name="unfreeze_all_confirmation_title">¿Descongelar todas las aplicaciones?</string>
     <string name="unfreeze_all_confirmation_desc">Esto descongelará (habilitará) todas las aplicaciones actualmente en la lista del Congelador. ¿Estás seguro de que quieres continuar?</string>
 
+    <!-- UiText Messages -->
+    <string name="frozen_success">Se congeló %1$s</string>
+    <string name="unfrozen_success">Se descongeló %1$s</string>
+    <string name="added_to_freezer_success">Añadido al congelador</string>
+    <string name="unfrozen_count_success">Se descongelaron %1$d aplicaciones</string>
+    <string name="tile_unfreeze_partial_failure">Se descongelaron %1$d/%2$d aplicaciones (%3$d fallaron)</string>
+    <string name="error_format">Error: %1$s</string>
+    <string name="failed_to_load_apps">Error al cargar las aplicaciones</string>
+    <string name="removed_from_freezer_success">Se eliminaron %1$d aplicaciones del Congelador</string>
+    <string name="killed_success">Se detuvo %1$s</string>
+    <string name="cache_cleared_success">Caché de %1$s borrada</string>
+    <string name="data_cleared_success">Datos de %1$s borrados</string>
+    <string name="suspended_success">%1$s suspendido</string>
+    <string name="unsuspended_success">%1$s reanudado</string>
+    <string name="unfreezing_app">Descongelando %1$s…</string>
+    <string name="uninstall_success">Se desinstaló %1$s</string>
+    <string name="batch_share_not_supported">El uso compartido por lotes aún no es compatible</string>
+    <string name="error_app_info_missing">Error: Falta la información de la aplicación para la acción</string>
+
 </resources>

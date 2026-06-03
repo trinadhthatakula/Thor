@@ -175,4 +175,23 @@
     <string name="unfreeze_all_confirmation_title">Unfreeze All Apps?</string>
     <string name="unfreeze_all_confirmation_desc">This will unfreeze (enable) all apps currently in the Freezer list. Are you sure you want to proceed?</string>
 
+    <!-- UiText Messages -->
+    <string name="frozen_success">Frozen %1$s</string>
+    <string name="unfrozen_success">Unfrozen %1$s</string>
+    <string name="added_to_freezer_success">Added to Freezer</string>
+    <string name="unfrozen_count_success">Unfrozen %1$d apps</string>
+    <string name="tile_unfreeze_partial_failure">Unfroze %1$d/%2$d apps (%3$d failed)</string>
+    <string name="error_format">Error: %1$s</string>
+    <string name="failed_to_load_apps">Failed to load apps</string>
+    <string name="removed_from_freezer_success">Removed %1$d app(s) from Freezer</string>
+    <string name="killed_success">Killed %1$s</string>
+    <string name="cache_cleared_success">Cleared cache of %1$s</string>
+    <string name="data_cleared_success">Cleared data of %1$s</string>
+    <string name="suspended_success">Suspended %1$s</string>
+    <string name="unsuspended_success">Unsuspended %1$s</string>
+    <string name="unfreezing_app">Unfreezing %1$s…</string>
+    <string name="uninstall_success">Uninstalled %1$s</string>
+    <string name="batch_share_not_supported">Batch Share not supported yet</string>
+    <string name="error_app_info_missing">Error: App info missing for action</string>
+
 </resources>

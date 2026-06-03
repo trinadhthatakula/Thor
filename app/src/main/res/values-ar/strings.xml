@@ -175,4 +175,23 @@
     <string name="unfreeze_all_confirmation_title">إلغاء تجميد جميع التطبيقات؟</string>
     <string name="unfreeze_all_confirmation_desc">سيؤدي هذا إلى إلغاء تجميد (تمكين) جميع التطبيقات الموجودة حالياً في قائمة المجمد. هل أنت متأكد أنك تريد المتابعة؟</string>
 
+    <!-- UiText Messages -->
+    <string name="frozen_success">تم تجميد %1$s</string>
+    <string name="unfrozen_success">تم إلغاء تجميد %1$s</string>
+    <string name="added_to_freezer_success">تمت الإضافة إلى المجمد</string>
+    <string name="unfrozen_count_success">تم إلغاء تجميد %1$d تطبيقات</string>
+    <string name="tile_unfreeze_partial_failure">تم إلغاء تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
+    <string name="error_format">خطأ: %1$s</string>
+    <string name="failed_to_load_apps">فشل في تحميل التطبيقات</string>
+    <string name="removed_from_freezer_success">تمت إزالة %1$d تطبيقات من المجمد</string>
+    <string name="killed_success">تم إنهاء %1$s</string>
+    <string name="cache_cleared_success">تم مسح ذاكرة التخزين المؤقت لـ %1$s</string>
+    <string name="data_cleared_success">تم مسح بيانات %1$s</string>
+    <string name="suspended_success">تم تعليق %1$s</string>
+    <string name="unsuspended_success">تم إلغاء تعليق %1$s</string>
+    <string name="unfreezing_app">جاري إلغاء تجميد %1$s…</string>
+    <string name="uninstall_success">تم إلغاء تثبيت %1$s</string>
+    <string name="batch_share_not_supported">المشاركة الجماعية غير مدعومة بعد</string>
+    <string name="error_app_info_missing">خطأ: معلومات التطبيق مفقودة للإجراء</string>
+
 </resources>

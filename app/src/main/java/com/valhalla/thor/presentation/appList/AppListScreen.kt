@@ -91,7 +91,7 @@ fun AppListScreen(
     // Handle Feedback (Toasts)
     LaunchedEffect(state.actionMessage) {
         state.actionMessage?.let { message ->
-            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, message.asString(context), Toast.LENGTH_SHORT).show()
             viewModel.dismissMessage()
         }
     }

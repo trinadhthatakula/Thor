@@ -9,6 +9,8 @@ import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
+import com.valhalla.thor.R
+import com.valhalla.thor.util.UiText
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
@@ -52,7 +54,7 @@ data class AppListUiState(
     val selectedAppDetails: AppInfo? = null,
     val isLoadingDetails: Boolean = false,
     // Action Feedback
-    val actionMessage: String? = null,
+    val actionMessage: UiText? = null,
     val freezerPrompt: FreezerPrompt? = null
 )
 
@@ -138,13 +140,13 @@ class AppListViewModel(
                     if (!inFreezer) {
                         _rawState.update { it.copy(freezerPrompt = FreezerPrompt(packageName, appName)) }
                     } else {
-                        _rawState.update { it.copy(actionMessage = "Frozen ${appName ?: packageName}") }
+                        _rawState.update { it.copy(actionMessage = UiText.StringResource(R.string.frozen_success, appName ?: packageName)) }
                     }
                 } else {
-                    _rawState.update { it.copy(actionMessage = "Unfrozen ${appName ?: packageName}") }
+                    _rawState.update { it.copy(actionMessage = UiText.StringResource(R.string.unfrozen_success, appName ?: packageName)) }
                 }
             }.onFailure { e ->
-                _rawState.update { it.copy(actionMessage = "Error: ${e.message}") }
+                _rawState.update { it.copy(actionMessage = UiText.StringResource(R.string.error_format, e.message ?: "")) }
             }
         }
     }
@@ -156,7 +158,7 @@ class AppListViewModel(
     fun addToFreezer(packageName: String) {
         viewModelScope.launch(Dispatchers.IO) {
             freezerRepository.add(packageName)
-            _rawState.update { it.copy(freezerPrompt = null, actionMessage = "Added to Freezer") }
+            _rawState.update { it.copy(freezerPrompt = null, actionMessage = UiText.StringResource(R.string.added_to_freezer_success)) }
         }
     }
 
@@ -178,7 +180,7 @@ class AppListViewModel(
                             allSystemApps = state.allSystemApps.map {
                                 if (it.packageName in packageNames) it.copy(enabled = false) else it
                             },
-                            actionMessage = "Froze ${action.appList.size} apps"
+                            actionMessage = UiText.StringResource(R.string.tile_freeze_success, action.appList.size)
                         )
                     }
                 }
@@ -196,7 +198,7 @@ class AppListViewModel(
                             allSystemApps = state.allSystemApps.map {
                                 if (it.packageName in packageNames) it.copy(enabled = true) else it
                             },
-                            actionMessage = "Unfrozen ${action.appList.size} apps"
+                            actionMessage = UiText.StringResource(R.string.unfrozen_count_success, action.appList.size)
                         )
                     }
                 }

@@ -70,7 +70,7 @@ fun SettingsScreen(
 
     LaunchedEffect(state.actionMessage) {
         state.actionMessage?.let {
-            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(context, it.asString(context), android.widget.Toast.LENGTH_SHORT).show()
             viewModel.consumeMessage()
         }
     }

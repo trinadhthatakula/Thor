@@ -12,6 +12,8 @@ import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.LocaleManager
+import com.valhalla.thor.R
+import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -42,10 +44,10 @@ class SettingsViewModel(
         val isDhizukuAvailable: Boolean = false,
         val canUseBiometric: Boolean = false,
         val hasBiometricHardware: Boolean = false,
-        val actionMessage: String? = null
+        val actionMessage: UiText? = null
     )
 
-    private val _actionMessage = MutableStateFlow<String?>(null)
+    private val _actionMessage = MutableStateFlow<UiText?>(null)
 
     private val _systemStatus = combine(
         preferenceRepository.userPreferences,
@@ -136,7 +138,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             val pkgs = freezerRepository.getAllPackageNames()
             if (pkgs.isEmpty()) {
-                _actionMessage.value = "No apps in Freezer"
+                _actionMessage.value = UiText.StringResource(R.string.tile_no_apps_toast)
                 return@launch
             }
             val results = withContext(Dispatchers.IO) {
@@ -145,9 +147,17 @@ class SettingsViewModel(
                 }.awaitAll()
             }
             val failures = results.count { it.isFailure }
-            val msg = if (failures == 0) "Unfroze ${pkgs.size} apps"
-            else "Unfroze ${pkgs.size - failures}/${pkgs.size} apps (${failures} failed)"
-            _actionMessage.value = msg
+            val uiText = if (failures == 0) {
+                UiText.StringResource(R.string.unfrozen_count_success, pkgs.size)
+            } else {
+                UiText.StringResource(
+                    R.string.tile_unfreeze_partial_failure,
+                    pkgs.size - failures,
+                    pkgs.size,
+                    failures
+                )
+            }
+            _actionMessage.value = uiText
         }
     }
 }

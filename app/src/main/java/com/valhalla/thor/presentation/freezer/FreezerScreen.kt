@@ -100,7 +100,7 @@ fun FreezerScreen(
 
     LaunchedEffect(state.actionMessage) {
         state.actionMessage?.let {
-            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, it.asString(context), Toast.LENGTH_SHORT).show()
             viewModel.dismissMessage()
         }
     }
