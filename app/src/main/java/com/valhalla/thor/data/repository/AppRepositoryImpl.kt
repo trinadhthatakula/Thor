@@ -198,8 +198,8 @@ class AppRepositoryImpl(
             publicSourceDir = apkPath
         } ?: return@withContext null
 
-        AppInfo.mapToAppInfo(packInfo, appInfo, pm, isLightweight = false).apply {
-            this.appName = pm.getApplicationLabel(appInfo).toString()
-        }
+        AppInfo.mapToAppInfo(packInfo, appInfo, pm, isLightweight = false).copy(
+            appName = pm.getApplicationLabel(appInfo).toString()
+        )
     }
 }
