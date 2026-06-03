@@ -13,6 +13,7 @@ import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -29,6 +30,9 @@ class AutoFreezeManager(
     private val systemRepository: SystemRepository
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var observationJob: Job? = null
+    private var isObserving = false
     private var isReceiverRegistered = false
 
     private val screenReceiver = object : BroadcastReceiver() {
@@ -98,8 +102,11 @@ class AutoFreezeManager(
         }
     }
 
+    @Synchronized
     fun startObserving() {
-        CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
+        if (isObserving) return
+        isObserving = true
+        observationJob = mainScope.launch {
             preferenceRepository.userPreferences.collectLatest { prefs ->
                 if (prefs.autoFreezeEnabled) {
                     registerReceiver()
@@ -108,6 +115,15 @@ class AutoFreezeManager(
                 }
             }
         }
+    }
+
+    @Synchronized
+    fun stopObserving() {
+        if (!isObserving) return
+        isObserving = false
+        observationJob?.cancel()
+        observationJob = null
+        unregisterReceiver()
     }
 
     @Synchronized
