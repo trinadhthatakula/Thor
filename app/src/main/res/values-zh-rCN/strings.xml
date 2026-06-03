@@ -194,5 +194,6 @@
     <string name="uninstall_success">已卸载 %1$s</string>
     <string name="batch_share_not_supported">暂不支持批量分享</string>
     <string name="error_app_info_missing">错误：缺少操作所需的应用信息</string>
+    <string name="failed_to_load_app_details">加载应用详细信息失败</string>
 
 </resources>

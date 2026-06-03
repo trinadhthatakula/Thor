@@ -194,5 +194,6 @@
     <string name="uninstall_success">Uninstalled %1$s</string>
     <string name="batch_share_not_supported">Batch Share not supported yet</string>
     <string name="error_app_info_missing">Error: App info missing for action</string>
+    <string name="failed_to_load_app_details">Failed to load application details</string>
 
 </resources>

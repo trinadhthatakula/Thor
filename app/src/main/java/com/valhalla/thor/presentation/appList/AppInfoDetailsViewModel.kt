@@ -25,7 +25,7 @@ data class AppInfoDetailsUiState(
     val detailedInfo: DetailedAppInfo? = null,
     val isInFreezer: Boolean = false,
     val actionMessage: UiText? = null,
-    val errorMessage: String? = null
+    val errorMessage: UiText? = null
 )
 
 @KoinViewModel
@@ -70,7 +70,7 @@ class AppInfoDetailsViewModel(
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        errorMessage = "Failed to load application details."
+                        errorMessage = UiText.StringResource(R.string.failed_to_load_app_details)
                     )
                 }
             }
@@ -127,8 +127,9 @@ class AppInfoDetailsViewModel(
         viewModelScope.launch {
             val result = manageAppUseCase.forceStop(packageName)
             result.onSuccess {
+                val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
                 _uiState.update {
-                    it.copy(actionMessage = UiText.DynamicString("Force stopped successfully"))
+                    it.copy(actionMessage = UiText.StringResource(R.string.killed_success, appName))
                 }
                 loadAppDetails(packageName)
             }.onFailure { e ->
@@ -145,8 +146,9 @@ class AppInfoDetailsViewModel(
         viewModelScope.launch {
             val result = manageAppUseCase.clearCache(packageName)
             result.onSuccess {
+                val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
                 _uiState.update {
-                    it.copy(actionMessage = UiText.DynamicString("Cache cleared successfully"))
+                    it.copy(actionMessage = UiText.StringResource(R.string.cache_cleared_success, appName))
                 }
                 loadAppDetails(packageName)
             }.onFailure { e ->
@@ -163,8 +165,9 @@ class AppInfoDetailsViewModel(
         viewModelScope.launch {
             val result = manageAppUseCase.clearAppData(packageName)
             result.onSuccess {
+                val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
                 _uiState.update {
-                    it.copy(actionMessage = UiText.DynamicString("App data cleared successfully"))
+                    it.copy(actionMessage = UiText.StringResource(R.string.data_cleared_success, appName))
                 }
                 loadAppDetails(packageName)
             }.onFailure { e ->
@@ -185,7 +188,7 @@ class AppInfoDetailsViewModel(
                 _uiState.update {
                     it.copy(
                         isInFreezer = false,
-                        actionMessage = UiText.DynamicString("Removed from Freezer list")
+                        actionMessage = UiText.StringResource(R.string.removed_from_freezer_success, 1)
                     )
                 }
             } else {
@@ -193,7 +196,7 @@ class AppInfoDetailsViewModel(
                 _uiState.update {
                     it.copy(
                         isInFreezer = true,
-                        actionMessage = UiText.DynamicString("Added to Freezer list")
+                        actionMessage = UiText.StringResource(R.string.added_to_freezer_success)
                     )
                 }
             }

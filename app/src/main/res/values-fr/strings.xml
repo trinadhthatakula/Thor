@@ -194,5 +194,6 @@
     <string name="uninstall_success">%1$s désinstallé</string>
     <string name="batch_share_not_supported">Partage groupé non supporté pour le moment</string>
     <string name="error_app_info_missing">Erreur : informations de l\'application manquantes pour l\'action</string>
+    <string name="failed_to_load_app_details">Échec du chargement des détails de l\'application</string>
 
 </resources>

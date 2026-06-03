@@ -194,5 +194,6 @@
     <string name="uninstall_success">Se desinstaló %1$s</string>
     <string name="batch_share_not_supported">El uso compartido por lotes aún no es compatible</string>
     <string name="error_app_info_missing">Error: Falta la información de la aplicación para la acción</string>
+    <string name="failed_to_load_app_details">Error al cargar los detalles de la aplicación</string>
 
 </resources>

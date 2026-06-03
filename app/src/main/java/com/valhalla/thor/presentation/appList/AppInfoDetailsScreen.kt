@@ -159,7 +159,7 @@ fun AppInfoDetailsScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = state.errorMessage ?: "Unknown error occurred",
+                        text = state.errorMessage?.asString(context) ?: "Unknown error occurred",
                         style = MaterialTheme.typography.bodyLarge,
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onBackground

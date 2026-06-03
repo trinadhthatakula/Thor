@@ -194,5 +194,6 @@
     <string name="uninstall_success">تم إلغاء تثبيت %1$s</string>
     <string name="batch_share_not_supported">المشاركة الجماعية غير مدعومة بعد</string>
     <string name="error_app_info_missing">خطأ: معلومات التطبيق مفقودة للإجراء</string>
+    <string name="failed_to_load_app_details">فشل في تحميل تفاصيل التطبيق</string>
 
 </resources>
