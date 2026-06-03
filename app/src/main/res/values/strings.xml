@@ -164,4 +164,15 @@
     <string name="tile_freeze_success">Froze %1$d apps</string>
     <string name="tile_freeze_partial_failure">Froze %1$d/%2$d apps (%3$d failed)</string>
 
+    <!-- Freezer Settings & Actions -->
+    <string name="freezer_settings">Freezer Settings</string>
+    <string name="unfreeze_all">Unfreeze All</string>
+    <string name="unfreeze_all_apps">Unfreeze All Apps</string>
+    <string name="unfreeze_all_apps_desc">Enable all apps currently in the Freezer list</string>
+    <string name="auto_freeze">Auto Freeze</string>
+    <string name="auto_freeze_desc">Freeze apps automatically when screen is locked</string>
+    <string name="privilege_required_warning">Privilege required (Root, Shizuku or Dhizuku)</string>
+    <string name="unfreeze_all_confirmation_title">Unfreeze All Apps?</string>
+    <string name="unfreeze_all_confirmation_desc">This will unfreeze (enable) all apps currently in the Freezer list. Are you sure you want to proceed?</string>
+
 </resources>

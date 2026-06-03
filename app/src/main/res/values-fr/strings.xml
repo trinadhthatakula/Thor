@@ -164,4 +164,15 @@
     <string name="tile_freeze_success">%1$d applications gelées</string>
     <string name="tile_freeze_partial_failure">%1$d/%2$d applications gelées (%3$d échouées)</string>
 
+    <!-- Freezer Settings & Actions -->
+    <string name="freezer_settings">Paramètres du congélateur</string>
+    <string name="unfreeze_all">Tout dégeler</string>
+    <string name="unfreeze_all_apps">Dégeler toutes les applications</string>
+    <string name="unfreeze_all_apps_desc">Activer toutes les applications actuellement dans le Congélateur</string>
+    <string name="auto_freeze">Gel automatique</string>
+    <string name="auto_freeze_desc">Geler automatiquement les applications lorsque l\'écran est verrouillé</string>
+    <string name="privilege_required_warning">Privilège requis (Root, Shizuku ou Dhizuku)</string>
+    <string name="unfreeze_all_confirmation_title">Dégeler toutes les applications ?</string>
+    <string name="unfreeze_all_confirmation_desc">Cela va dégeler (activer) toutes les applications actuellement dans le congélateur. Voulez-vous vraiment continuer ?</string>
+
 </resources>

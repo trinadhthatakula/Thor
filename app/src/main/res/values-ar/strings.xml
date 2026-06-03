@@ -164,4 +164,15 @@
     <string name="tile_freeze_success">تم تجميد %1$d تطبيقات</string>
     <string name="tile_freeze_partial_failure">تم تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
 
+    <!-- Freezer Settings & Actions -->
+    <string name="freezer_settings">إعدادات المجمد</string>
+    <string name="unfreeze_all">إلغاء تجميد الكل</string>
+    <string name="unfreeze_all_apps">إلغاء تجميد جميع التطبيقات</string>
+    <string name="unfreeze_all_apps_desc">تمكين جميع التطبيقات الموجودة حالياً في قائمة المجمد</string>
+    <string name="auto_freeze">تجميد تلقائي</string>
+    <string name="auto_freeze_desc">تجميد التطبيقات تلقائياً عند قفل الشاشة</string>
+    <string name="privilege_required_warning">الصلاحية مطلوبة (Root أو Shizuku أو Dhizuku)</string>
+    <string name="unfreeze_all_confirmation_title">إلغاء تجميد جميع التطبيقات؟</string>
+    <string name="unfreeze_all_confirmation_desc">سيؤدي هذا إلى إلغاء تجميد (تمكين) جميع التطبيقات الموجودة حالياً في قائمة المجمد. هل أنت متأكد أنك تريد المتابعة؟</string>
+
 </resources>

@@ -56,8 +56,8 @@ fun FreezerSettingsSheet(
                     tint = MaterialTheme.colorScheme.error
                 )
             },
-            title = { Text("Unfreeze All Apps?") },
-            text = { Text("This will unfreeze (enable) all apps currently in the Freezer list. Are you sure you want to proceed?") },
+            title = { Text(stringResource(R.string.unfreeze_all_confirmation_title)) },
+            text = { Text(stringResource(R.string.unfreeze_all_confirmation_desc)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -66,12 +66,12 @@ fun FreezerSettingsSheet(
                         onDismiss()
                     }
                 ) {
-                    Text("Proceed")
+                    Text(stringResource(R.string.proceed))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showUnfreezeConfirmation = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -85,7 +85,7 @@ fun FreezerSettingsSheet(
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
             Text(
-                text = "Freezer Settings",
+                text = stringResource(R.string.freezer_settings),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
                 letterSpacing = (-1).sp
@@ -134,7 +134,7 @@ fun FreezerSettingsSheet(
                 ),
                 shape = RoundedCornerShape(16.dp)
             ) {
-                Text("Unfreeze All")
+                Text(stringResource(R.string.unfreeze_all))
             }
 
             Spacer(Modifier.height(24.dp))
@@ -146,12 +146,12 @@ fun FreezerSettingsSheet(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Auto Freeze",
+                        text = stringResource(R.string.auto_freeze),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                     )
                     Text(
-                        text = if (hasPrivilege) "Freeze apps automatically when screen is locked" else "Privilege required (Root, Shizuku or Dhizuku)",
+                        text = if (hasPrivilege) stringResource(R.string.auto_freeze_desc) else stringResource(R.string.privilege_required_warning),
                         style = MaterialTheme.typography.bodySmall,
                         color = if (hasPrivilege) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f) else MaterialTheme.colorScheme.error
                     )

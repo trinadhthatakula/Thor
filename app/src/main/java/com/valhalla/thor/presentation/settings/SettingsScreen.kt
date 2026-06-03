@@ -85,8 +85,8 @@ fun SettingsScreen(
                     tint = MaterialTheme.colorScheme.error
                 )
             },
-            title = { Text("Unfreeze All Apps?") },
-            text = { Text("This will unfreeze (enable) all apps currently in the Freezer list. Are you sure you want to proceed?") },
+            title = { Text(stringResource(R.string.unfreeze_all_confirmation_title)) },
+            text = { Text(stringResource(R.string.unfreeze_all_confirmation_desc)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -94,12 +94,12 @@ fun SettingsScreen(
                         showUnfreezeConfirmation = false
                     }
                 ) {
-                    Text("Proceed")
+                    Text(stringResource(R.string.proceed))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showUnfreezeConfirmation = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -273,8 +273,8 @@ fun SettingsScreen(
         ) {
             SettingsSwitchRow(
                 icon = R.drawable.frozen,
-                title = "Auto Freeze",
-                subtitle = if (hasPrivilege) "Freeze apps automatically when screen is locked" else "Privilege required (Root, Shizuku or Dhizuku)",
+                title = stringResource(R.string.auto_freeze),
+                subtitle = if (hasPrivilege) stringResource(R.string.auto_freeze_desc) else stringResource(R.string.privilege_required_warning),
                 checked = prefs.autoFreezeEnabled,
                 enabled = hasPrivilege,
                 onCheckedChange = { viewModel.setAutoFreezeEnabled(it) }
@@ -282,8 +282,8 @@ fun SettingsScreen(
 
             SettingsClickRow(
                 icon = R.drawable.unfreeze,
-                title = "Unfreeze All Apps",
-                subtitle = if (hasPrivilege) "Enable all apps currently in the Freezer list" else "Privilege required (Root, Shizuku or Dhizuku)",
+                title = stringResource(R.string.unfreeze_all_apps),
+                subtitle = if (hasPrivilege) stringResource(R.string.unfreeze_all_apps_desc) else stringResource(R.string.privilege_required_warning),
                 enabled = hasPrivilege,
                 onClick = { showUnfreezeConfirmation = true }
             )

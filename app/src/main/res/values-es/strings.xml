@@ -164,4 +164,15 @@
     <string name="tile_freeze_success">Se congelaron %1$d aplicaciones</string>
     <string name="tile_freeze_partial_failure">Se congelaron %1$d/%2$d aplicaciones (%3$d fallaron)</string>
 
+    <!-- Freezer Settings & Actions -->
+    <string name="freezer_settings">Ajustes del congelador</string>
+    <string name="unfreeze_all">Descongelar todo</string>
+    <string name="unfreeze_all_apps">Descongelar todas las aplicaciones</string>
+    <string name="unfreeze_all_apps_desc">Habilitar todas las aplicaciones en la lista del Congelador</string>
+    <string name="auto_freeze">Congelación automática</string>
+    <string name="auto_freeze_desc">Congelar aplicaciones automáticamente al bloquear la pantalla</string>
+    <string name="privilege_required_warning">Se requiere privilegio (Root, Shizuku o Dhizuku)</string>
+    <string name="unfreeze_all_confirmation_title">¿Descongelar todas las aplicaciones?</string>
+    <string name="unfreeze_all_confirmation_desc">Esto descongelará (habilitará) todas las aplicaciones actualmente en la lista del Congelador. ¿Estás seguro de que quieres continuar?</string>
+
 </resources>

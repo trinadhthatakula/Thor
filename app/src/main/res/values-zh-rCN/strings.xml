@@ -164,4 +164,15 @@
     <string name="tile_freeze_success">已冻结 %1$d 个应用</string>
     <string name="tile_freeze_partial_failure">已冻结 %1$d/%2$d 个应用（%3$d 个失败）</string>
 
+    <!-- Freezer Settings & Actions -->
+    <string name="freezer_settings">冻结设置</string>
+    <string name="unfreeze_all">全部解冻</string>
+    <string name="unfreeze_all_apps">解冻所有应用</string>
+    <string name="unfreeze_all_apps_desc">启用目前在冻结列表中的所有应用</string>
+    <string name="auto_freeze">自动冻结</string>
+    <string name="auto_freeze_desc">屏幕锁定后自动冻结应用</string>
+    <string name="privilege_required_warning">需要权限 (Root、Shizuku 或 Dhizuku)</string>
+    <string name="unfreeze_all_confirmation_title">解冻所有应用？</string>
+    <string name="unfreeze_all_confirmation_desc">这将解冻（启用）目前在冻结列表中的所有应用。确定要继续吗？</string>
+
 </resources>
