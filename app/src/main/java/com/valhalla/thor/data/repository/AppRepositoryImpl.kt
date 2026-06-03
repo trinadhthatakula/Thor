@@ -214,7 +214,20 @@ class AppRepositoryImpl(
                 val services = packInfo.services?.map { it.name } ?: emptyList()
                 val receivers = packInfo.receivers?.map { it.name } ?: emptyList()
                 val providers = packInfo.providers?.map { it.name } ?: emptyList()
-                val reqFeatures = packInfo.reqFeatures?.map { it.name ?: "GlEsVersion: ${it.reqGlEsVersion}" } ?: emptyList()
+                val reqFeatures = packInfo.reqFeatures?.map {
+                    if (it.name != null) {
+                        it.name
+                    } else {
+                        val glEs = it.glEsVersion
+                        if (!glEs.isNullOrEmpty()) {
+                            "GlEsVersion: $glEs"
+                        } else {
+                            val major = it.reqGlEsVersion shr 16
+                            val minor = it.reqGlEsVersion and 0xFFFF
+                            "GlEsVersion: $major.$minor"
+                        }
+                    }
+                } ?: emptyList()
 
                 val requestedPermissions = packInfo.requestedPermissions ?: emptyArray()
                 val permissions = requestedPermissions.map { permName ->

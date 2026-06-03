@@ -1,5 +1,6 @@
 package com.valhalla.thor.presentation.appList
 
+import android.content.Context
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -66,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.rememberAsyncImagePainter
 import com.valhalla.thor.R
+import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.PermissionDetail
@@ -73,7 +75,7 @@ import com.valhalla.thor.presentation.theme.bodyFontFamily
 import com.valhalla.thor.presentation.theme.firaMonoFontFamily
 import com.valhalla.thor.presentation.utils.getAppIcon
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
+import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
 
@@ -121,7 +123,7 @@ fun AppInfoDetailsScreen(
                 }
                 Spacer(modifier = Modifier.width(16.dp))
                 Text(
-                    text = "App Details",
+                    text = stringResource(R.string.app_details_title),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.onSurface
@@ -159,21 +161,26 @@ fun AppInfoDetailsScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = state.errorMessage?.asString(context) ?: "Unknown error occurred",
+                        text = state.errorMessage?.asString(context) ?: stringResource(R.string.unknown_error_occurred),
                         style = MaterialTheme.typography.bodyLarge,
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Spacer(modifier = Modifier.height(24.dp))
                     TextButton(onClick = { viewModel.loadAppDetails(packageName) }) {
-                        Text("Retry")
+                        Text(stringResource(R.string.retry_label))
                     }
                 }
             } else {
                 state.detailedInfo?.let { details ->
                     val appInfo = details.appInfo
                     val coroutineScope = rememberCoroutineScope()
-                    val tabTitles = listOf("General", "Permissions", "Components", "Libs & Features")
+                    val tabTitles = listOf(
+                        stringResource(R.string.tab_overview_title),
+                        stringResource(R.string.permissions_title),
+                        stringResource(R.string.tab_components),
+                        stringResource(R.string.tab_libs_features)
+                    )
                     val pagerState = rememberPagerState(pageCount = { tabTitles.size })
 
                     Column(modifier = Modifier.fillMaxSize()) {
@@ -190,7 +197,7 @@ fun AppInfoDetailsScreen(
                             onLaunch = {
                                 val intent = context.packageManager.getLaunchIntentForPackage(packageName)
                                 if (intent != null) context.startActivity(intent)
-                                else Toast.makeText(context, "Cannot launch this application", Toast.LENGTH_SHORT).show()
+                                else Toast.makeText(context, context.getString(R.string.cannot_launch_app), Toast.LENGTH_SHORT).show()
                             },
                             onSystemSettings = {
                                 val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
@@ -227,7 +234,7 @@ fun AppInfoDetailsScreen(
                                     type = "text/plain"
                                     putExtra(android.content.Intent.EXTRA_TEXT, "Market link: market://details?id=$packageName")
                                 }
-                                context.startActivity(android.content.Intent.createChooser(intent, "Share via"))
+                                context.startActivity(android.content.Intent.createChooser(intent, context.getString(R.string.share_via)))
                             }
                         )
 
@@ -289,17 +296,17 @@ fun AppInfoDetailsScreen(
                     tint = MaterialTheme.colorScheme.error
                 )
             },
-            title = { Text("Clear App Data?") },
-            text = { Text("All files, settings, and databases for this application will be permanently deleted.") },
+            title = { Text(stringResource(R.string.clear_app_data_title)) },
+            text = { Text(stringResource(R.string.dialog_clear_data_desc)) },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.clearData(packageName)
                     showClearDataConfirmation = false
-                }) { Text("Clear Data", color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(R.string.action_clear_data), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
                 TextButton(onClick = { showClearDataConfirmation = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -315,8 +322,8 @@ fun AppInfoDetailsScreen(
                     tint = MaterialTheme.colorScheme.error
                 )
             },
-            title = { Text("Uninstall Application?") },
-            text = { Text("Are you sure you want to uninstall $appName?") },
+            title = { Text(stringResource(R.string.uninstall_app_title)) },
+            text = { Text(stringResource(R.string.uninstall_app_desc, appName)) },
             confirmButton = {
                 TextButton(onClick = {
                     val intent = android.content.Intent(android.content.Intent.ACTION_DELETE).apply {
@@ -324,11 +331,11 @@ fun AppInfoDetailsScreen(
                     }
                     context.startActivity(intent)
                     showUninstallConfirmation = false
-                }) { Text("Uninstall", color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(R.string.action_uninstall), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
                 TextButton(onClick = { showUninstallConfirmation = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -391,25 +398,25 @@ private fun AppDetailsHeader(appInfo: AppInfo) {
                 modifier = Modifier.horizontalScroll(rememberScrollState())
             ) {
                 if (appInfo.isSystem) {
-                    StatusChip(text = "System", color = MaterialTheme.colorScheme.tertiaryContainer)
+                    StatusChip(text = stringResource(R.string.chip_system), color = MaterialTheme.colorScheme.tertiaryContainer)
                 } else {
-                    StatusChip(text = "User", color = MaterialTheme.colorScheme.primaryContainer)
+                    StatusChip(text = stringResource(R.string.chip_user), color = MaterialTheme.colorScheme.primaryContainer)
                 }
 
                 if (!appInfo.enabled) {
-                    StatusChip(text = "Frozen", color = MaterialTheme.colorScheme.errorContainer)
+                    StatusChip(text = stringResource(R.string.frozen), color = MaterialTheme.colorScheme.errorContainer)
                 }
 
                 if (appInfo.isSuspended) {
-                    StatusChip(text = "Suspended", color = MaterialTheme.colorScheme.secondaryContainer)
+                    StatusChip(text = stringResource(R.string.suspended), color = MaterialTheme.colorScheme.secondaryContainer)
                 }
 
                 if (appInfo.isDebuggable) {
-                    StatusChip(text = "Debug", color = MaterialTheme.colorScheme.outlineVariant)
+                    StatusChip(text = stringResource(R.string.chip_debug), color = MaterialTheme.colorScheme.outlineVariant)
                 }
 
                 StatusChip(
-                    text = "v${appInfo.versionName}",
+                    text = stringResource(R.string.version_format, appInfo.versionName ?: ""),
                     color = MaterialTheme.colorScheme.surfaceContainerHighest,
                     textColor = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -470,7 +477,7 @@ private fun AppDetailsActionRow(
         // 1. Launch / Open
         ActionItem(
             icon = R.drawable.open_in_new,
-            label = "Open",
+            label = stringResource(R.string.action_open),
             enabled = appInfo.enabled,
             onClick = onLaunch
         )
@@ -478,13 +485,14 @@ private fun AppDetailsActionRow(
         // 1b. System Settings
         ActionItem(
             icon = R.drawable.settings,
-            label = "Settings",
+            label = stringResource(R.string.settings),
             onClick = onSystemSettings
         )
 
         // 2. Freeze / Unfreeze
         if (hasPrivilege) {
-            val (freezeIcon, freezeLabel) = if (isFrozen) R.drawable.freeze_off to "Unfreeze" else R.drawable.frozen to "Freeze"
+            val freezeLabel = if (isFrozen) stringResource(R.string.action_unfreeze) else stringResource(R.string.action_freeze)
+            val freezeIcon = if (isFrozen) R.drawable.freeze_off else R.drawable.frozen
             ActionItem(
                 icon = freezeIcon,
                 label = freezeLabel,
@@ -492,7 +500,8 @@ private fun AppDetailsActionRow(
             )
 
             // 3. Suspend / Unsuspend
-            val (suspendIcon, suspendLabel) = if (isSuspended) R.drawable.bolt to "Unsuspend" else R.drawable.warning to "Suspend"
+            val suspendLabel = if (isSuspended) stringResource(R.string.action_unsuspend) else stringResource(R.string.action_suspend)
+            val suspendIcon = if (isSuspended) R.drawable.bolt else R.drawable.warning
             ActionItem(
                 icon = suspendIcon,
                 label = suspendLabel,
@@ -503,7 +512,7 @@ private fun AppDetailsActionRow(
             if (appInfo.enabled) {
                 ActionItem(
                     icon = R.drawable.force_close,
-                    label = "Force Stop",
+                    label = stringResource(R.string.action_force_stop),
                     onClick = onForceStop
                 )
             }
@@ -512,14 +521,14 @@ private fun AppDetailsActionRow(
         // 5. Manage Permissions
         ActionItem(
             icon = R.drawable.shield,
-            label = "Permissions",
+            label = stringResource(R.string.action_permissions),
             onClick = onManagePermissions
         )
 
         // 6. Toggle Freezer
-        val (freezerIcon, freezerLabel) = if (isInFreezer) R.drawable.snowflake to "In Freezer" else R.drawable.snowflake to "Add Freezer"
+        val freezerLabel = if (isInFreezer) stringResource(R.string.action_in_freezer) else stringResource(R.string.action_add_freezer)
         ActionItem(
-            icon = freezerIcon,
+            icon = R.drawable.snowflake,
             label = freezerLabel,
             tintColor = if (isInFreezer) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
             onClick = onToggleFreezerMembership
@@ -529,12 +538,12 @@ private fun AppDetailsActionRow(
         if (hasPrivilege) {
             ActionItem(
                 icon = R.drawable.clear_all,
-                label = "Clear Cache",
+                label = stringResource(R.string.action_clear_cache),
                 onClick = onClearCache
             )
             ActionItem(
                 icon = R.drawable.delete,
-                label = "Clear Data",
+                label = stringResource(R.string.action_clear_data),
                 onClick = onClearData
             )
         }
@@ -542,15 +551,15 @@ private fun AppDetailsActionRow(
         // 8. Share
         ActionItem(
             icon = R.drawable.share,
-            label = "Share",
+            label = stringResource(R.string.action_share),
             onClick = onShare
         )
 
         // 9. Uninstall
-        if (appInfo.packageName != "com.valhalla.thor") {
+        if (appInfo.packageName != BuildConfig.APPLICATION_ID) {
             ActionItem(
                 icon = R.drawable.delete_forever,
-                label = "Uninstall",
+                label = stringResource(R.string.action_uninstall),
                 onClick = onUninstall
             )
         }
@@ -601,6 +610,7 @@ private fun ActionItem(
 @Composable
 private fun GeneralTabScreen(details: DetailedAppInfo) {
     val appInfo = details.appInfo
+    val context = LocalContext.current
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -608,39 +618,39 @@ private fun GeneralTabScreen(details: DetailedAppInfo) {
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            InfoCard(title = "App version", value = "${appInfo.versionName} (${appInfo.versionCode})")
+            InfoCard(title = stringResource(R.string.info_app_version), value = "${appInfo.versionName} (${appInfo.versionCode})")
         }
         item {
-            InfoCard(title = "SDK details", value = "Target SDK: ${appInfo.targetSdk}   |   Min SDK: ${appInfo.minSdk}")
+            InfoCard(title = stringResource(R.string.info_sdk_details), value = stringResource(R.string.info_sdk_details_format, appInfo.targetSdk, appInfo.minSdk))
         }
         item {
-            InfoCard(title = "Installer source", value = appInfo.installerPackageName ?: "Unknown")
+            InfoCard(title = stringResource(R.string.info_installer_source), value = appInfo.installerPackageName ?: stringResource(R.string.unknown))
         }
         item {
-            InfoCard(title = "Install time", value = formatTime(appInfo.firstInstallTime))
+            InfoCard(title = stringResource(R.string.info_install_time), value = formatTime(appInfo.firstInstallTime, context))
         }
         item {
-            InfoCard(title = "Last update time", value = formatTime(appInfo.lastUpdateTime))
+            InfoCard(title = stringResource(R.string.info_last_update_time), value = formatTime(appInfo.lastUpdateTime, context))
         }
         item {
-            InfoCard(title = "APK source path", value = appInfo.sourceDir ?: "N/A")
+            InfoCard(title = stringResource(R.string.info_apk_path), value = appInfo.sourceDir ?: stringResource(R.string.not_available))
         }
         item {
-            InfoCard(title = "Data directory", value = appInfo.dataDir ?: "N/A")
+            InfoCard(title = stringResource(R.string.info_data_dir), value = appInfo.dataDir ?: stringResource(R.string.not_available))
         }
         appInfo.obbFilePath?.let { obb ->
             item {
-                InfoCard(title = "OBB directory", value = obb)
+                InfoCard(title = stringResource(R.string.info_obb_dir), value = obb)
             }
         }
         if (appInfo.sharedDataDir.isNotEmpty()) {
             item {
-                InfoCard(title = "Shared data directory", value = appInfo.sharedDataDir)
+                InfoCard(title = stringResource(R.string.info_shared_data_dir), value = appInfo.sharedDataDir)
             }
         }
         details.signatureSha256?.let { sha256 ->
             item {
-                InfoCard(title = "SHA-256 signature fingerprint", value = sha256)
+                InfoCard(title = stringResource(R.string.info_signature_sha256), value = sha256)
             }
         }
     }
@@ -658,7 +668,7 @@ private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
-            placeholder = { Text("Search permissions...") },
+            placeholder = { Text(stringResource(R.string.permissions_search)) },
             leadingIcon = { Icon(painterResource(R.drawable.round_search), contentDescription = null) },
             modifier = Modifier
                 .fillMaxWidth()
@@ -675,7 +685,7 @@ private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
         if (filteredPermissions.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    text = "No permissions found",
+                    text = stringResource(R.string.no_permissions_found),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -728,7 +738,7 @@ private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
 
                         Column(horizontalAlignment = Alignment.End) {
                             StatusChip(
-                                text = if (perm.isGranted) "Granted" else "Denied",
+                                text = if (perm.isGranted) stringResource(R.string.permission_state_granted) else stringResource(R.string.permission_state_denied),
                                 color = if (perm.isGranted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer,
                                 textColor = if (perm.isGranted) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
                             )
@@ -763,7 +773,7 @@ private fun ComponentsTabScreen(details: DetailedAppInfo) {
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
-            placeholder = { Text("Search components...") },
+            placeholder = { Text(stringResource(R.string.search_components_placeholder)) },
             leadingIcon = { Icon(painterResource(R.drawable.round_search), contentDescription = null) },
             modifier = Modifier
                 .fillMaxWidth()
@@ -789,16 +799,16 @@ private fun ComponentsTabScreen(details: DetailedAppInfo) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
-                CollapsibleSection(title = "Activities (${filteredActivities.size})", items = filteredActivities)
+                CollapsibleSection(title = stringResource(R.string.section_activities_title, filteredActivities.size), items = filteredActivities)
             }
             item {
-                CollapsibleSection(title = "Services (${filteredServices.size})", items = filteredServices)
+                CollapsibleSection(title = stringResource(R.string.section_services_title, filteredServices.size), items = filteredServices)
             }
             item {
-                CollapsibleSection(title = "Broadcast Receivers (${filteredReceivers.size})", items = filteredReceivers)
+                CollapsibleSection(title = stringResource(R.string.section_receivers_title, filteredReceivers.size), items = filteredReceivers)
             }
             item {
-                CollapsibleSection(title = "Content Providers (${filteredProviders.size})", items = filteredProviders)
+                CollapsibleSection(title = stringResource(R.string.section_providers_title, filteredProviders.size), items = filteredProviders)
             }
         }
     }
@@ -831,7 +841,7 @@ private fun CollapsibleSection(title: String, items: List<String>) {
                 painter = painterResource(
                     if (expanded) R.drawable.arrow_upward else R.drawable.arrow_downward
                 ),
-                contentDescription = if (expanded) "Collapse" else "Expand",
+                contentDescription = if (expanded) stringResource(R.string.cd_collapse) else stringResource(R.string.cd_expand),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -840,7 +850,7 @@ private fun CollapsibleSection(title: String, items: List<String>) {
             Column(modifier = Modifier.padding(top = 12.dp)) {
                 if (items.isEmpty()) {
                     Text(
-                        text = "None declared",
+                        text = stringResource(R.string.components_none_declared),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 4.dp)
@@ -855,7 +865,7 @@ private fun CollapsibleSection(title: String, items: List<String>) {
                                 .clip(RoundedCornerShape(12.dp))
                                 .clickable {
                                     clipboardManager.setText(AnnotatedString(className))
-                                    Toast.makeText(context, "Copied class name", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, context.getString(R.string.toast_copied_class_name), Toast.LENGTH_SHORT).show()
                                 }
                                 .padding(vertical = 6.dp, horizontal = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -892,7 +902,7 @@ private fun LibsAndFeaturesTabScreen(details: DetailedAppInfo) {
                     .padding(16.dp)
             ) {
                 Text(
-                    text = "Native Libraries (.so)",
+                    text = stringResource(R.string.section_native_libs_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -900,7 +910,7 @@ private fun LibsAndFeaturesTabScreen(details: DetailedAppInfo) {
                 Spacer(modifier = Modifier.height(8.dp))
                 if (details.nativeLibs.isEmpty()) {
                     Text(
-                        text = "No native libraries found",
+                        text = stringResource(R.string.no_native_libs_found),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -927,7 +937,7 @@ private fun LibsAndFeaturesTabScreen(details: DetailedAppInfo) {
                     .padding(16.dp)
             ) {
                 Text(
-                    text = "Required Features",
+                    text = stringResource(R.string.section_req_features_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -935,7 +945,7 @@ private fun LibsAndFeaturesTabScreen(details: DetailedAppInfo) {
                 Spacer(modifier = Modifier.height(8.dp))
                 if (details.reqFeatures.isEmpty()) {
                     Text(
-                        text = "No required features requested",
+                        text = stringResource(R.string.no_req_features_found),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -966,7 +976,7 @@ private fun InfoCard(title: String, value: String) {
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .clickable {
                 clipboardManager.setText(AnnotatedString(value))
-                Toast.makeText(context, "Copied details to clipboard", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.toast_copy_saved), Toast.LENGTH_SHORT).show()
             }
             .padding(16.dp)
     ) {
@@ -986,12 +996,12 @@ private fun InfoCard(title: String, value: String) {
     }
 }
 
-private fun formatTime(timestamp: Long): String {
-    if (timestamp == 0L) return "N/A"
+private fun formatTime(timestamp: Long, context: Context): String {
+    if (timestamp == 0L) return context.getString(R.string.not_available)
     return try {
-        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-        sdf.format(Date(timestamp))
+        val formatter = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.MEDIUM, Locale.getDefault())
+        formatter.format(Date(timestamp))
     } catch (e: Exception) {
-        "N/A"
+        context.getString(R.string.not_available)
     }
 }

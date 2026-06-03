@@ -196,4 +196,53 @@
     <string name="error_app_info_missing">Error: Falta la información de la aplicación para la acción</string>
     <string name="failed_to_load_app_details">Error al cargar los detalles de la aplicación</string>
 
+    <!-- App Info Details Screen -->
+    <string name="app_details_title">Detalles de la aplicación</string>
+    <string name="retry_label">Reintentar</string>
+    <string name="unknown_error_occurred">Ocurrió un error desconocido</string>
+    <string name="toast_copied_class_name">Nombre de clase copiado</string>
+    <string name="toast_copy_saved">Copiado al portapapeles</string>
+    <string name="not_available">N/D</string>
+    <string name="tab_overview_title">General</string>
+    <string name="tab_components">Componentes</string>
+    <string name="tab_libs_features">Librerías y características</string>
+    <string name="chip_system">Sistema</string>
+    <string name="chip_user">Usuario</string>
+    <string name="chip_debug">Depuración</string>
+    <string name="dialog_clear_data_desc">Todos los archivos, ajustes y bases de datos de esta aplicación se eliminarán permanentemente.</string>
+    <string name="uninstall_app_title">¿Desinstalar aplicación?</string>
+    <string name="uninstall_app_desc">¿Estás seguro de que quieres desinstalar %1$s?</string>
+    <string name="action_open">Abrir</string>
+    <string name="action_force_stop">Forzar detención</string>
+    <string name="action_in_freezer">En congelador</string>
+    <string name="action_add_freezer">Añadir congelador</string>
+    <string name="action_clear_cache">Limpiar caché</string>
+    <string name="action_clear_data">Borrar datos</string>
+    <string name="info_app_version">Versión de la aplicación</string>
+    <string name="info_sdk_details">Detalles del SDK</string>
+    <string name="info_sdk_details_format">SDK objetivo: %1$d   |   SDK mínimo: %2$d</string>
+    <string name="info_installer_source">Origen del instalador</string>
+    <string name="info_install_time">Hora de instalación</string>
+    <string name="info_last_update_time">Hora de última actualización</string>
+    <string name="info_apk_path">Ruta de origen del APK</string>
+    <string name="info_data_dir">Directorio de datos</string>
+    <string name="info_obb_dir">Directorio OBB</string>
+    <string name="info_shared_data_dir">Directorio de datos compartidos</string>
+    <string name="info_signature_sha256">Huella digital de firma SHA-256</string>
+    <string name="no_permissions_found">No se encontraron permisos</string>
+    <string name="search_components_placeholder">Buscar componentes&#8230;</string>
+    <string name="section_activities_title">Actividades (%1$d)</string>
+    <string name="section_services_title">Servicios (%1$d)</string>
+    <string name="section_receivers_title">Receptores de transmisión (%1$d)</string>
+    <string name="section_providers_title">Proveedores de contenido (%1$d)</string>
+    <string name="cd_collapse">Colapsar</string>
+    <string name="cd_expand">Expandir</string>
+    <string name="components_none_declared">Ninguno declarado</string>
+    <string name="section_native_libs_title">Librerías nativas (.so)</string>
+    <string name="no_native_libs_found">No se encontraron librerías nativas</string>
+    <string name="section_req_features_title">Características requeridas</string>
+    <string name="no_req_features_found">No se solicitaron características requeridas</string>
+    <string name="share_via">Compartir con</string>
+    <string name="version_format">v%1$s</string>
+
 </resources>

@@ -196,4 +196,53 @@
     <string name="error_app_info_missing">错误：缺少操作所需的应用信息</string>
     <string name="failed_to_load_app_details">加载应用详细信息失败</string>
 
+    <!-- App Info Details Screen -->
+    <string name="app_details_title">应用详情</string>
+    <string name="retry_label">重试</string>
+    <string name="unknown_error_occurred">发生未知错误</string>
+    <string name="toast_copied_class_name">已复制类名</string>
+    <string name="toast_copy_saved">已复制到剪贴板</string>
+    <string name="not_available">无</string>
+    <string name="tab_overview_title">常规</string>
+    <string name="tab_components">组件</string>
+    <string name="tab_libs_features">库与功能</string>
+    <string name="chip_system">系统</string>
+    <string name="chip_user">用户</string>
+    <string name="chip_debug">调试</string>
+    <string name="dialog_clear_data_desc">此应用的所有文件、设置和数据库将被永久删除。</string>
+    <string name="uninstall_app_title">卸载应用？</string>
+    <string name="uninstall_app_desc">确定要卸载 %1$s 吗？</string>
+    <string name="action_open">打开</string>
+    <string name="action_force_stop">强行停止</string>
+    <string name="action_in_freezer">已冷冻</string>
+    <string name="action_add_freezer">添加冷冻</string>
+    <string name="action_clear_cache">清除缓存</string>
+    <string name="action_clear_data">清除数据</string>
+    <string name="info_app_version">应用版本</string>
+    <string name="info_sdk_details">SDK 详情</string>
+    <string name="info_sdk_details_format">目标 SDK: %1$d   |   最小 SDK: %2$d</string>
+    <string name="info_installer_source">安装源</string>
+    <string name="info_install_time">安装时间</string>
+    <string name="info_last_update_time">最后更新时间</string>
+    <string name="info_apk_path">APK 源路径</string>
+    <string name="info_data_dir">数据目录</string>
+    <string name="info_obb_dir">OBB 目录</string>
+    <string name="info_shared_data_dir">共享数据目录</string>
+    <string name="info_signature_sha256">SHA-256 签名指纹</string>
+    <string name="no_permissions_found">未找到权限</string>
+    <string name="search_components_placeholder">搜索组件&#8230;</string>
+    <string name="section_activities_title">活动 (%1$d)</string>
+    <string name="section_services_title">服务 (%1$d)</string>
+    <string name="section_receivers_title">广播接收器 (%1$d)</string>
+    <string name="section_providers_title">内容提供者 (%1$d)</string>
+    <string name="cd_collapse">折叠</string>
+    <string name="cd_expand">展开</string>
+    <string name="components_none_declared">未声明</string>
+    <string name="section_native_libs_title">原生库 (.so)</string>
+    <string name="no_native_libs_found">未找到原生库</string>
+    <string name="section_req_features_title">所需功能</string>
+    <string name="no_req_features_found">未请求所需功能</string>
+    <string name="share_via">分享方式</string>
+    <string name="version_format">v%1$s</string>
+
 </resources>

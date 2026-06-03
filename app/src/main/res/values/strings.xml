@@ -196,4 +196,53 @@
     <string name="error_app_info_missing">Error: App info missing for action</string>
     <string name="failed_to_load_app_details">Failed to load application details</string>
 
+    <!-- App Info Details Screen -->
+    <string name="app_details_title">App Details</string>
+    <string name="retry_label">Retry</string>
+    <string name="unknown_error_occurred">Unknown error occurred</string>
+    <string name="toast_copied_class_name">Copied class name</string>
+    <string name="toast_copy_saved">Copied to clipboard</string>
+    <string name="not_available">N/A</string>
+    <string name="tab_overview_title">General</string>
+    <string name="tab_components">Components</string>
+    <string name="tab_libs_features">Libs &amp; Features</string>
+    <string name="chip_system">System</string>
+    <string name="chip_user">User</string>
+    <string name="chip_debug">Debug</string>
+    <string name="dialog_clear_data_desc">All files, settings, and databases for this application will be permanently deleted.</string>
+    <string name="uninstall_app_title">Uninstall Application?</string>
+    <string name="uninstall_app_desc">Are you sure you want to uninstall %1$s?</string>
+    <string name="action_open">Open</string>
+    <string name="action_force_stop">Force Stop</string>
+    <string name="action_in_freezer">In Freezer</string>
+    <string name="action_add_freezer">Add Freezer</string>
+    <string name="action_clear_cache">Clear Cache</string>
+    <string name="action_clear_data">Clear Data</string>
+    <string name="info_app_version">App version</string>
+    <string name="info_sdk_details">SDK details</string>
+    <string name="info_sdk_details_format">Target SDK: %1$d   |   Min SDK: %2$d</string>
+    <string name="info_installer_source">Installer source</string>
+    <string name="info_install_time">Install time</string>
+    <string name="info_last_update_time">Last update time</string>
+    <string name="info_apk_path">APK source path</string>
+    <string name="info_data_dir">Data directory</string>
+    <string name="info_obb_dir">OBB directory</string>
+    <string name="info_shared_data_dir">Shared data directory</string>
+    <string name="info_signature_sha256">SHA-256 signature fingerprint</string>
+    <string name="no_permissions_found">No permissions found</string>
+    <string name="search_components_placeholder">Search components&#8230;</string>
+    <string name="section_activities_title">Activities (%1$d)</string>
+    <string name="section_services_title">Services (%1$d)</string>
+    <string name="section_receivers_title">Broadcast Receivers (%1$d)</string>
+    <string name="section_providers_title">Content Providers (%1$d)</string>
+    <string name="cd_collapse">Collapse</string>
+    <string name="cd_expand">Expand</string>
+    <string name="components_none_declared">None declared</string>
+    <string name="section_native_libs_title">Native Libraries (.so)</string>
+    <string name="no_native_libs_found">No native libraries found</string>
+    <string name="section_req_features_title">Required Features</string>
+    <string name="no_req_features_found">No required features requested</string>
+    <string name="share_via">Share via</string>
+    <string name="version_format">v%1$s</string>
+
 </resources>
