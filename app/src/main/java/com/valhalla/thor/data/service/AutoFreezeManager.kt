@@ -15,6 +15,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import org.koin.core.annotation.Single
 
 @Single
@@ -54,26 +56,31 @@ class AutoFreezeManager(
                     }
 
                     val pm = ctx.packageManager
-                    var frozenCount = 0
+                    val semaphore = Semaphore(5)
+
                     pkgs.forEach { pkg ->
-                        try {
-                            val appInfo = pm.getApplicationInfo(pkg, 0)
-                            if (appInfo.enabled) {
-                                Logger.d("AutoFreezeManager", "Auto-freezing app: $pkg")
-                                val result = manageAppUseCase.setAppDisabled(pkg, true)
-                                if (result.isSuccess) {
-                                    frozenCount++
-                                } else {
-                                    Logger.e("AutoFreezeManager", "Failed to freeze $pkg: ${result.exceptionOrNull()?.message}")
+                        scope.launch {
+                            semaphore.withPermit {
+                                try {
+                                    val appInfo = pm.getApplicationInfo(pkg, 0)
+                                    if (appInfo.enabled) {
+                                        Logger.d("AutoFreezeManager", "Auto-freezing app: $pkg")
+                                        val result = manageAppUseCase.setAppDisabled(pkg, true)
+                                        if (result.isSuccess) {
+                                            Logger.d("AutoFreezeManager", "Auto-froze: $pkg")
+                                        } else {
+                                            Logger.e("AutoFreezeManager", "Failed to freeze $pkg: ${result.exceptionOrNull()?.message}")
+                                        }
+                                    }
+                                } catch (e: PackageManager.NameNotFoundException) {
+                                    Logger.d("AutoFreezeManager", "App $pkg not found, skipping")
+                                } catch (e: Exception) {
+                                    Logger.e("AutoFreezeManager", "Failed to check/freeze $pkg", e)
                                 }
                             }
-                        } catch (e: PackageManager.NameNotFoundException) {
-                            Logger.d("AutoFreezeManager", "App $pkg not found, skipping")
-                        } catch (e: Exception) {
-                            Logger.e("AutoFreezeManager", "Failed to check/freeze $pkg", e)
                         }
                     }
-                    Logger.d("AutoFreezeManager", "Auto-freeze complete. Froze $frozenCount app(s).")
+                    Logger.d("AutoFreezeManager", "Scheduled auto-freeze for ${pkgs.size} apps.")
                 } catch (e: Exception) {
                     Logger.e("AutoFreezeManager", "Error in auto-freeze process", e)
                 } finally {
