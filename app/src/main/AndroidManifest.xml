@@ -21,6 +21,7 @@
 
     <uses-permission android:name="shizuku.permission.API_V23" />
     <uses-permission android:name="com.rosan.dhizuku.permission.API" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
 
     <application
@@ -109,6 +110,14 @@
             android:exported="false">
             <intent-filter>
                 <action android:name="com.valhalla.thor.INSTALL_STATUS" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".data.receivers.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
 

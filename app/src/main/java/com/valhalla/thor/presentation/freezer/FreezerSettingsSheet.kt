@@ -13,6 +13,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -28,7 +29,9 @@ import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
 @Composable
 fun FreezerSettingsSheet(
     isGrid: Boolean,
+    autoFreezeEnabled: Boolean,
     onToggleView: () -> Unit,
+    onToggleAutoFreeze: (Boolean) -> Unit,
     onDismiss: () -> Unit,
     onUnfreezeAll: () -> Unit
 ) {
@@ -92,17 +95,28 @@ fun FreezerSettingsSheet(
 
             Spacer(Modifier.height(24.dp))
 
-            Text(
-                text = "AUTO FREEZE",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "Coming soon — automatically freeze apps on a schedule or trigger.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Auto Freeze",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    )
+                    Text(
+                        text = "Freeze apps automatically when screen is locked",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                    )
+                }
+                Switch(
+                    checked = autoFreezeEnabled,
+                    onCheckedChange = onToggleAutoFreeze
+                )
+            }
             Spacer(Modifier.height(24.dp))
         }
     }

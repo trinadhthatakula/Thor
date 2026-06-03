@@ -353,7 +353,9 @@ fun FreezerScreen(
     if (showSettingsSheet) {
         FreezerSettingsSheet(
             isGrid = isGrid,
+            autoFreezeEnabled = state.autoFreezeEnabled,
             onToggleView = { isGrid = !isGrid },
+            onToggleAutoFreeze = viewModel::setAutoFreezeEnabled,
             onDismiss = { showSettingsSheet = false },
             onUnfreezeAll = viewModel::unfreezeAll
         )

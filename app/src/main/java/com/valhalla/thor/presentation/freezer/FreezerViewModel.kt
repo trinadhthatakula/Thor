@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
@@ -33,7 +34,8 @@ data class FreezerUiState(
     val searchQuery: String = "",
     val manageSheetSearchQuery: String = "",
     val actionMessage: String? = null,
-    val freezerPrompt: FreezerPrompt? = null
+    val freezerPrompt: FreezerPrompt? = null,
+    val autoFreezeEnabled: Boolean = false
 )
 
 @KoinViewModel
@@ -41,7 +43,8 @@ class FreezerViewModel(
     private val freezerRepository: FreezerRepository,
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val manageAppUseCase: ManageAppUseCase,
-    private val systemRepository: SystemRepository
+    private val systemRepository: SystemRepository,
+    private val preferenceRepository: PreferenceRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FreezerUiState())
@@ -49,6 +52,7 @@ class FreezerViewModel(
 
     init {
         observeApps()
+        observePreferences()
         loadPrivileges()
     }
 
@@ -226,5 +230,19 @@ class FreezerViewModel(
 
     fun dismissMessage() {
         _uiState.update { it.copy(actionMessage = null) }
+    }
+
+    private fun observePreferences() {
+        viewModelScope.launch {
+            preferenceRepository.userPreferences.collect { prefs ->
+                _uiState.update { it.copy(autoFreezeEnabled = prefs.autoFreezeEnabled) }
+            }
+        }
+    }
+
+    fun setAutoFreezeEnabled(enabled: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            preferenceRepository.setAutoFreezeEnabled(enabled)
+        }
     }
 }

@@ -32,4 +32,7 @@ interface PreferenceRepository {
 
     // --- Localization ---
     suspend fun setLanguage(language: String?)
+
+    // --- Auto Freeze ---
+    suspend fun setAutoFreezeEnabled(enabled: Boolean)
 }

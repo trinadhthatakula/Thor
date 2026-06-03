@@ -23,6 +23,9 @@ data class UserPreferences(
 
     // Localization
     val language: String? = null, // null means System Default
+
+    // Auto Freeze
+    val autoFreezeEnabled: Boolean = false,
 )
 
 

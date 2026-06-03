@@ -4,6 +4,7 @@ import android.app.Application
 import com.rosan.dhizuku.api.Dhizuku
 import com.valhalla.bypass.Bypass
 import com.valhalla.thor.core.ThorShellConfig
+import com.valhalla.thor.data.service.AutoFreezeManager
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.util.LocaleManager
 import com.valhalla.thor.util.Logger
@@ -23,6 +24,7 @@ class ThorApplication : Application() {
 
     private val preferenceRepository: PreferenceRepository by inject()
     private val localeManager: LocaleManager by inject()
+    private val autoFreezeManager: AutoFreezeManager by inject()
 
     override fun onCreate() {
         super.onCreate()
@@ -43,6 +45,8 @@ class ThorApplication : Application() {
         } catch (e: Exception) {
             Logger.e("ThorApp", "Dhizuku init failed", e)
         }
+
+        autoFreezeManager.startObserving()
 
         MainScope().launch {
             val prefs = preferenceRepository.userPreferences.first()

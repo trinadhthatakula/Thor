@@ -46,6 +46,9 @@ class PreferenceRepositoryImpl(
 
         // Localization
         val LANGUAGE = stringPreferencesKey("language")
+
+        // Auto Freeze
+        val AUTO_FREEZE = booleanPreferencesKey("auto_freeze")
     }
 
     override val userPreferences: Flow<UserPreferences> = context.dataStore.data
@@ -81,7 +84,8 @@ class PreferenceRepositoryImpl(
                 useAmoled = prefs[Keys.USE_AMOLED] ?: false,
                 biometricLockEnabled = prefs[Keys.BIOMETRIC_LOCK] ?: false,
                 preferredPrivilegeMode = privilegeMode,
-                language = prefs[Keys.LANGUAGE]
+                language = prefs[Keys.LANGUAGE],
+                autoFreezeEnabled = prefs[Keys.AUTO_FREEZE] ?: false
             )
         }
 
@@ -139,6 +143,12 @@ class PreferenceRepositoryImpl(
         context.dataStore.edit {
             if (language == null) it.remove(Keys.LANGUAGE)
             else it[Keys.LANGUAGE] = language
+        }
+    }
+
+    override suspend fun setAutoFreezeEnabled(enabled: Boolean) {
+        context.dataStore.edit {
+            it[Keys.AUTO_FREEZE] = enabled
         }
     }
 }
