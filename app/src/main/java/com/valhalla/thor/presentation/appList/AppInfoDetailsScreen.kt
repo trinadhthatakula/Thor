@@ -236,7 +236,7 @@ fun AppInfoDetailsScreen(
                         // 3. SecondaryScrollableTabRow
                         SecondaryScrollableTabRow(
                             selectedTabIndex = pagerState.currentPage,
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                            containerColor = MaterialTheme.colorScheme.background,
                             contentColor = MaterialTheme.colorScheme.onSurface,
                             edgePadding = 16.dp
                         ) {
