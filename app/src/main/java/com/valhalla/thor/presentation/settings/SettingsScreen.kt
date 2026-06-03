@@ -37,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -62,6 +63,7 @@ fun SettingsScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val prefs = state.prefs
+    val hasPrivilege = state.isRootAvailable || state.isShizukuAvailable || state.isDhizukuAvailable
     val context = LocalContext.current
     var showLanguageSheet by remember { mutableStateOf(false) }
     var showUnfreezeConfirmation by remember { mutableStateOf(false) }
@@ -272,15 +274,17 @@ fun SettingsScreen(
             SettingsSwitchRow(
                 icon = R.drawable.frozen,
                 title = "Auto Freeze",
-                subtitle = "Freeze apps automatically when screen is locked",
+                subtitle = if (hasPrivilege) "Freeze apps automatically when screen is locked" else "Privilege required (Root, Shizuku or Dhizuku)",
                 checked = prefs.autoFreezeEnabled,
+                enabled = hasPrivilege,
                 onCheckedChange = { viewModel.setAutoFreezeEnabled(it) }
             )
 
             SettingsClickRow(
                 icon = R.drawable.unfreeze,
                 title = "Unfreeze All Apps",
-                subtitle = "Enable all apps currently in the Freezer list",
+                subtitle = if (hasPrivilege) "Enable all apps currently in the Freezer list" else "Privilege required (Root, Shizuku or Dhizuku)",
+                enabled = hasPrivilege,
                 onClick = { showUnfreezeConfirmation = true }
             )
         }
@@ -548,6 +552,7 @@ private fun SettingsClickRow(
     icon: Int,
     title: String,
     subtitle: String,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     Row(
@@ -555,7 +560,8 @@ private fun SettingsClickRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f))
-            .clickable { onClick() }
+            .clickable(enabled = enabled) { onClick() }
+            .alpha(if (enabled) 1f else 0.5f)
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

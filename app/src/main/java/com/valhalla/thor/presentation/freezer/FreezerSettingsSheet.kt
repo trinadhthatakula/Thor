@@ -38,6 +38,7 @@ import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
 fun FreezerSettingsSheet(
     isGrid: Boolean,
     autoFreezeEnabled: Boolean,
+    hasPrivilege: Boolean,
     onToggleView: () -> Unit,
     onToggleAutoFreeze: (Boolean) -> Unit,
     onDismiss: () -> Unit,
@@ -123,10 +124,13 @@ fun FreezerSettingsSheet(
                 onClick = {
                     showUnfreezeConfirmation = true
                 },
+                enabled = hasPrivilege,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
                 ),
                 shape = RoundedCornerShape(16.dp)
             ) {
@@ -147,14 +151,15 @@ fun FreezerSettingsSheet(
                         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                     )
                     Text(
-                        text = "Freeze apps automatically when screen is locked",
+                        text = if (hasPrivilege) "Freeze apps automatically when screen is locked" else "Privilege required (Root, Shizuku or Dhizuku)",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        color = if (hasPrivilege) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f) else MaterialTheme.colorScheme.error
                     )
                 }
                 Switch(
                     checked = autoFreezeEnabled,
-                    onCheckedChange = onToggleAutoFreeze
+                    onCheckedChange = onToggleAutoFreeze,
+                    enabled = hasPrivilege
                 )
             }
             Spacer(Modifier.height(24.dp))

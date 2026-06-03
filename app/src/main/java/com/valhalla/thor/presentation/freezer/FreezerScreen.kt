@@ -72,6 +72,7 @@ fun FreezerScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val hasPrivilege = state.isRoot || state.isShizuku || state.isDhizuku
 
     var selectedPackageName by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedAppInfo = selectedPackageName?.let { pkg -> state.freezerApps.find { it.packageName == pkg } }
@@ -112,7 +113,7 @@ fun FreezerScreen(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
-            if (state.multiSelection.isEmpty()) {
+            if (state.multiSelection.isEmpty() && hasPrivilege) {
                 FloatingActionButton(
                     onClick = { showManageSheet = true },
                     containerColor = MaterialTheme.colorScheme.primaryContainer
@@ -179,7 +180,7 @@ fun FreezerScreen(
                         Button(
                             onClick = { viewModel.freezeAll() },
                             shape = RoundedCornerShape(12.dp),
-                            enabled = state.freezerApps.isNotEmpty()
+                            enabled = state.freezerApps.isNotEmpty() && hasPrivilege
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.frozen),
@@ -356,6 +357,7 @@ fun FreezerScreen(
         FreezerSettingsSheet(
             isGrid = isGrid,
             autoFreezeEnabled = state.autoFreezeEnabled,
+            hasPrivilege = hasPrivilege,
             onToggleView = { isGrid = !isGrid },
             onToggleAutoFreeze = viewModel::setAutoFreezeEnabled,
             onDismiss = { showSettingsSheet = false },
