@@ -55,7 +55,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -817,6 +818,7 @@ private fun ComponentsTabScreen(details: DetailedAppInfo) {
 @Composable
 private fun CollapsibleSection(title: String, items: List<String>) {
     var expanded by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -856,7 +858,7 @@ private fun CollapsibleSection(title: String, items: List<String>) {
                         modifier = Modifier.padding(vertical = 4.dp)
                     )
                 } else {
-                    val clipboardManager = LocalClipboardManager.current
+                    val clipboard = LocalClipboard.current
                     val context = LocalContext.current
                     items.forEach { className ->
                         Row(
@@ -864,7 +866,9 @@ private fun CollapsibleSection(title: String, items: List<String>) {
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
                                 .clickable {
-                                    clipboardManager.setText(AnnotatedString(className))
+                                    coroutineScope.launch {
+                                        clipboard.setClipEntry(ClipEntry(android.content.ClipData.newPlainText("class name", className)))
+                                    }
                                     Toast.makeText(context, context.getString(R.string.toast_copied_class_name), Toast.LENGTH_SHORT).show()
                                 }
                                 .padding(vertical = 6.dp, horizontal = 8.dp),
@@ -967,7 +971,8 @@ private fun LibsAndFeaturesTabScreen(details: DetailedAppInfo) {
 
 @Composable
 private fun InfoCard(title: String, value: String) {
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
     Column(
         modifier = Modifier
@@ -975,7 +980,9 @@ private fun InfoCard(title: String, value: String) {
             .clip(RoundedCornerShape(20.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .clickable {
-                clipboardManager.setText(AnnotatedString(value))
+                coroutineScope.launch {
+                    clipboard.setClipEntry(ClipEntry(android.content.ClipData.newPlainText("value", value)))
+                }
                 Toast.makeText(context, context.getString(R.string.toast_copy_saved), Toast.LENGTH_SHORT).show()
             }
             .padding(16.dp)
