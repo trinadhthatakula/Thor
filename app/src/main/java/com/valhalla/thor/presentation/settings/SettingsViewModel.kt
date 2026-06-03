@@ -7,21 +7,32 @@ import org.koin.core.annotation.KoinViewModel
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.LocaleManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @KoinViewModel
 class SettingsViewModel(
     private val preferenceRepository: PreferenceRepository,
     private val systemRepository: SystemRepository,
     private val biometricHelper: BiometricHelper,
-    private val localeManager: LocaleManager
+    private val localeManager: LocaleManager,
+    private val freezerRepository: FreezerRepository,
+    private val manageAppUseCase: ManageAppUseCase
 ) : ViewModel() {
 
     data class SettingsUiState(
@@ -30,15 +41,16 @@ class SettingsViewModel(
         val isShizukuAvailable: Boolean = false,
         val isDhizukuAvailable: Boolean = false,
         val canUseBiometric: Boolean = false,
-        val hasBiometricHardware: Boolean = false
+        val hasBiometricHardware: Boolean = false,
+        val actionMessage: String? = null
     )
+
+    private val _actionMessage = MutableStateFlow<String?>(null)
 
     private val _systemStatus = combine(
         preferenceRepository.userPreferences,
-        // We can't really observe system status easily without a flow, 
-        // but we can check it once or periodically.
-        // For simplicity, let's just use a flow that emits once and then combine.
-        kotlinx.coroutines.flow.flow {
+        _actionMessage,
+        flow {
             emit(
                 Triple(
                     systemRepository.isRootAvailable(),
@@ -47,14 +59,15 @@ class SettingsViewModel(
                 )
             )
         }
-    ) { prefs, status ->
+    ) { prefs, message, status ->
         SettingsUiState(
             prefs = prefs,
             isRootAvailable = status.first,
             isShizukuAvailable = status.second,
             isDhizukuAvailable = status.third,
             canUseBiometric = biometricHelper.canAuthenticate(),
-            hasBiometricHardware = biometricHelper.hasHardware()
+            hasBiometricHardware = biometricHelper.hasHardware(),
+            actionMessage = message
         )
     }
 
@@ -106,6 +119,35 @@ class SettingsViewModel(
         viewModelScope.launch {
             preferenceRepository.setLanguage(language)
             localeManager.applyLocale(language)
+        }
+    }
+
+    fun consumeMessage() {
+        _actionMessage.value = null
+    }
+
+    fun setAutoFreezeEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferenceRepository.setAutoFreezeEnabled(enabled)
+        }
+    }
+
+    fun unfreezeAll() {
+        viewModelScope.launch {
+            val pkgs = freezerRepository.getAllPackageNames()
+            if (pkgs.isEmpty()) {
+                _actionMessage.value = "No apps in Freezer"
+                return@launch
+            }
+            val results = withContext(Dispatchers.IO) {
+                pkgs.map { pkg ->
+                    async { manageAppUseCase.setAppDisabled(pkg, false) }
+                }.awaitAll()
+            }
+            val failures = results.count { it.isFailure }
+            val msg = if (failures == 0) "Unfroze ${pkgs.size} apps"
+            else "Unfroze ${pkgs.size - failures}/${pkgs.size} apps (${failures} failed)"
+            _actionMessage.value = msg
         }
     }
 }

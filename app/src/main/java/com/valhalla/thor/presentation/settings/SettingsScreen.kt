@@ -19,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -26,8 +27,10 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,6 +64,44 @@ fun SettingsScreen(
     val prefs = state.prefs
     val context = LocalContext.current
     var showLanguageSheet by remember { mutableStateOf(false) }
+    var showUnfreezeConfirmation by remember { mutableStateOf(false) }
+
+    LaunchedEffect(state.actionMessage) {
+        state.actionMessage?.let {
+            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
+            viewModel.consumeMessage()
+        }
+    }
+
+    if (showUnfreezeConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showUnfreezeConfirmation = false },
+            icon = {
+                Icon(
+                    painter = painterResource(R.drawable.warning),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text("Unfreeze All Apps?") },
+            text = { Text("This will unfreeze (enable) all apps currently in the Freezer list. Are you sure you want to proceed?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.unfreezeAll()
+                        showUnfreezeConfirmation = false
+                    }
+                ) {
+                    Text("Proceed")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUnfreezeConfirmation = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     val versionName = remember(context) {
         runCatching {
@@ -212,6 +253,35 @@ fun SettingsScreen(
                 checked = prefs.biometricLockEnabled,
                 enabled = state.canUseBiometric,
                 onCheckedChange = { viewModel.setBiometricLock(it) }
+            )
+        }
+
+        Spacer(Modifier.height(32.dp))
+
+        // ── FREEZER ─────────────────────────────────────────────────────────
+        SettingsSectionLabel(stringResource(R.string.freezer))
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(32.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            SettingsSwitchRow(
+                icon = R.drawable.frozen,
+                title = "Auto Freeze",
+                subtitle = "Freeze apps automatically when screen is locked",
+                checked = prefs.autoFreezeEnabled,
+                onCheckedChange = { viewModel.setAutoFreezeEnabled(it) }
+            )
+
+            SettingsClickRow(
+                icon = R.drawable.unfreeze,
+                title = "Unfreeze All Apps",
+                subtitle = "Enable all apps currently in the Freezer list",
+                onClick = { showUnfreezeConfirmation = true }
             )
         }
 
