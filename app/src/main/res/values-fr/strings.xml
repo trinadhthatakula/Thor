@@ -176,6 +176,7 @@
     <string name="unfreeze_all_confirmation_desc">Cela va dégeler (activer) toutes les applications actuellement dans le congélateur. Voulez-vous vraiment continuer ?</string>
 
     <!-- UiText Messages -->
+    <string name="action_completed_format">%1$s effectué : %2$s</string>
     <string name="frozen_success">%1$s gelé</string>
     <string name="unfrozen_success">%1$s dégelé</string>
     <string name="added_to_freezer_success">Ajouté au congélateur</string>

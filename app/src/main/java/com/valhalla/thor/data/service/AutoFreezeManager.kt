@@ -46,7 +46,7 @@ class AutoFreezeManager(
                 try {
                     // Check if the device is locked (Keyguard active)
                     val keyguardManager = ctx.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
-                    if (!keyguardManager.isKeyguardLocked) {
+                    if (!keyguardManager.isDeviceLocked) {
                         Logger.d("AutoFreezeManager", "Device screen off but keyguard not locked. Skipping auto-freeze.")
                         return@launch
                     }

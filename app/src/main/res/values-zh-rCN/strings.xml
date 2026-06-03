@@ -176,6 +176,7 @@
     <string name="unfreeze_all_confirmation_desc">这将解冻（启用）目前在冻结列表中的所有应用。确定要继续吗？</string>
 
     <!-- UiText Messages -->
+    <string name="action_completed_format">%1$s 已完成：%2$s</string>
     <string name="frozen_success">已冻结 %1$s</string>
     <string name="unfrozen_success">已解冻 %1$s</string>
     <string name="added_to_freezer_success">已添加到冻结列表</string>

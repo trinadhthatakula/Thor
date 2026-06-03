@@ -176,6 +176,7 @@
     <string name="unfreeze_all_confirmation_desc">This will unfreeze (enable) all apps currently in the Freezer list. Are you sure you want to proceed?</string>
 
     <!-- UiText Messages -->
+    <string name="action_completed_format">%1$s completed: %2$s</string>
     <string name="frozen_success">Frozen %1$s</string>
     <string name="unfrozen_success">Unfrozen %1$s</string>
     <string name="added_to_freezer_success">Added to Freezer</string>

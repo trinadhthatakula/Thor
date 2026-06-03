@@ -176,6 +176,7 @@
     <string name="unfreeze_all_confirmation_desc">سيؤدي هذا إلى إلغاء تجميد (تمكين) جميع التطبيقات الموجودة حالياً في قائمة المجمد. هل أنت متأكد أنك تريد المتابعة؟</string>
 
     <!-- UiText Messages -->
+    <string name="action_completed_format">تم إكمال %1$s: %2$s</string>
     <string name="frozen_success">تم تجميد %1$s</string>
     <string name="unfrozen_success">تم إلغاء تجميد %1$s</string>
     <string name="added_to_freezer_success">تمت الإضافة إلى المجمد</string>

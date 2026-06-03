@@ -441,7 +441,7 @@ class MainViewModel(
             is AppClickAction.ClearData -> UiText.StringResource(R.string.data_cleared_success, appName)
             is AppClickAction.Suspend -> UiText.StringResource(R.string.suspended_success, appName)
             is AppClickAction.UnSuspend -> UiText.StringResource(R.string.unsuspended_success, appName)
-            else -> UiText.DynamicString("${action.javaClass.simpleName} $appName")
+            else -> UiText.StringResource(R.string.action_completed_format, action.javaClass.simpleName, appName)
         }
     }
 
