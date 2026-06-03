@@ -83,6 +83,7 @@ class FreezerTileService : TileService() {
                 )
             }
             Toast.makeText(applicationContext, msg, Toast.LENGTH_SHORT).show()
+            refreshTile()
         }
     }
 
