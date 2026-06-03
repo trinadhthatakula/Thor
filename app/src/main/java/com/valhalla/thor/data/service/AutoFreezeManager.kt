@@ -1,5 +1,6 @@
 package com.valhalla.thor.data.service
 
+import android.app.KeyguardManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -39,6 +40,13 @@ class AutoFreezeManager(
 
             scope.launch {
                 try {
+                    // Check if the device is locked (Keyguard active)
+                    val keyguardManager = ctx.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+                    if (!keyguardManager.isKeyguardLocked) {
+                        Logger.d("AutoFreezeManager", "Device screen off but keyguard not locked. Skipping auto-freeze.")
+                        return@launch
+                    }
+
                     // Check if privilege is available
                     val hasPrivilege = systemRepository.isRootAvailable() ||
                             systemRepository.isShizukuAvailable() ||
@@ -72,7 +80,7 @@ class AutoFreezeManager(
                                             Logger.e("AutoFreezeManager", "Failed to freeze $pkg: ${result.exceptionOrNull()?.message}")
                                         }
                                     }
-                                } catch (e: PackageManager.NameNotFoundException) {
+                                } catch (_: PackageManager.NameNotFoundException) {
                                     Logger.d("AutoFreezeManager", "App $pkg not found, skipping")
                                 } catch (e: Exception) {
                                     Logger.e("AutoFreezeManager", "Failed to check/freeze $pkg", e)
