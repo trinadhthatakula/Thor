@@ -38,6 +38,7 @@ fun MultiSelectToolBox(
     selected: List<AppInfo> = emptyList(),
     isRoot: Boolean = false,
     isShizuku: Boolean = false,
+    isDhizuku: Boolean = false,
     onCancel: () -> Unit = {},
     onMultiAppAction: (MultiAppAction) -> Unit = {}
 ) {
@@ -83,8 +84,8 @@ fun MultiSelectToolBox(
                 )
             }
 
-            // Freeze/Unfreeze (Root OR Shizuku)
-            if (isRoot || isShizuku) {
+            // Freeze/Unfreeze (Root OR Shizuku OR Dhizuku)
+            if (isRoot || isShizuku || isDhizuku) {
                 if (hasUnFrozen) {
                     ToolBoxItem(
                         icon = R.drawable.frozen,

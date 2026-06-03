@@ -102,6 +102,7 @@ fun AppList(
     startAsGrid: Boolean = true,
     isRoot: Boolean = false,
     isShizuku: Boolean = false,
+    isDhizuku: Boolean = false,
     imageLoader: ImageLoader,
     installerNameMap: Map<String, String> = emptyMap(),
     onSortOrderSelected: (SortOrder) -> Unit = {},
@@ -236,6 +237,7 @@ fun AppList(
                     .align(Alignment.BottomEnd),
                 isRoot = isRoot,
                 isShizuku = isShizuku,
+                isDhizuku = isDhizuku,
                 onCancel = { multiSelection = emptyList() },
                 onMultiAppAction = { action ->
                     onMultiAppAction(action)

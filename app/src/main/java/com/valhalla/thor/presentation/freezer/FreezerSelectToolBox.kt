@@ -40,6 +40,7 @@ fun FreezerSelectToolBox(
     selected: List<AppInfo>,
     isRoot: Boolean = false,
     isShizuku: Boolean = false,
+    isDhizuku: Boolean = false,
     onCancel: () -> Unit = {},
     onRemoveFromFreezer: () -> Unit = {},
     onMultiAppAction: (MultiAppAction) -> Unit = {}
@@ -68,7 +69,7 @@ fun FreezerSelectToolBox(
         ) {
             FreezerToolItem(icon = R.drawable.round_close, label = "Close", onClick = onCancel)
 
-            if (isRoot || isShizuku) {
+            if (isRoot || isShizuku || isDhizuku) {
                 if (hasUnFrozen) {
                     FreezerToolItem(
                         icon = R.drawable.frozen,

@@ -35,7 +35,8 @@ data class FreezerUiState(
     val manageSheetSearchQuery: String = "",
     val actionMessage: String? = null,
     val freezerPrompt: FreezerPrompt? = null,
-    val autoFreezeEnabled: Boolean = false
+    val autoFreezeEnabled: Boolean = false,
+    val isDhizuku: Boolean = false
 )
 
 @KoinViewModel
@@ -87,7 +88,8 @@ class FreezerViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             val hasRoot = systemRepository.isRootAvailable()
             val hasShizuku = systemRepository.isShizukuAvailable()
-            _uiState.update { it.copy(isRoot = hasRoot, isShizuku = hasShizuku) }
+            val hasDhizuku = systemRepository.isDhizukuAvailable()
+            _uiState.update { it.copy(isRoot = hasRoot, isShizuku = hasShizuku, isDhizuku = hasDhizuku) }
         }
     }
 

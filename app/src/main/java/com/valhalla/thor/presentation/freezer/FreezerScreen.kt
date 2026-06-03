@@ -292,6 +292,7 @@ fun FreezerScreen(
                     selected = selectedApps,
                     isRoot = state.isRoot,
                     isShizuku = state.isShizuku,
+                    isDhizuku = state.isDhizuku,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding( bottom = 16.dp),
@@ -314,6 +315,7 @@ fun FreezerScreen(
             appInfo = app,
             isRoot = state.isRoot,
             isShizuku = state.isShizuku,
+            isDhizuku = state.isDhizuku,
             onDismiss = { selectedPackageName = null },
             onAppAction = { action ->
                 when (action) {

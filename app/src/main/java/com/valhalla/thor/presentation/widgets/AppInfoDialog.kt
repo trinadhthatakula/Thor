@@ -56,6 +56,7 @@ fun AppInfoDialog(
     appInfo: AppInfo,
     isRoot: Boolean = false,
     isShizuku: Boolean = false,
+    isDhizuku: Boolean = false,
     onDismiss: () -> Unit,
     onAppAction: (AppClickAction) -> Unit = {}
 ) {
@@ -98,6 +99,7 @@ fun AppInfoDialog(
                 appInfo = appInfo,
                 isRoot = isRoot,
                 isShizuku = isShizuku,
+                isDhizuku = isDhizuku,
                 onAction = { action ->
                     // Intercept dangerous actions for local confirmation
                     when (action) {
@@ -329,9 +331,10 @@ private fun AppActionRow(
     appInfo: AppInfo,
     isRoot: Boolean,
     isShizuku: Boolean,
+    isDhizuku: Boolean,
     onAction: (AppClickAction) -> Unit
 ) {
-    val hasPrivilege = isRoot || isShizuku
+    val hasPrivilege = isRoot || isShizuku || isDhizuku
     val isFrozen = !appInfo.enabled
     val isSuspended = appInfo.isSuspended // Need to ensure this is in AppInfo
 

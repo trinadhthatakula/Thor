@@ -33,6 +33,7 @@ data class AppListUiState(
     // Privileges
     val isRoot: Boolean = false,
     val isShizuku: Boolean = false,
+    val isDhizuku: Boolean = false,
     // Raw Data
     val allUserApps: List<AppInfo> = emptyList(),
     val allSystemApps: List<AppInfo> = emptyList(),
@@ -98,12 +99,14 @@ class AppListViewModel(
 
             val hasRoot = systemRepository.isRootAvailable()
             val hasShizuku = systemRepository.isShizukuAvailable()
+            val hasDhizuku = systemRepository.isDhizukuAvailable()
             getInstalledAppsUseCase().collect { (user, system) ->
                 _rawState.update {
                     it.copy(
                         isLoading = false,
                         isRoot = hasRoot,
                         isShizuku = hasShizuku,
+                        isDhizuku = hasDhizuku,
                         allUserApps = user,
                         allSystemApps = system
                     )

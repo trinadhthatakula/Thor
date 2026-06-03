@@ -160,6 +160,7 @@ fun AppListScreen(
                     appList = state.displayedApps,
                     isRoot = state.isRoot,
                     isShizuku = state.isShizuku,
+                    isDhizuku = state.isDhizuku,
                     startAsGrid = true,
                     imageLoader = imageLoader,
                     installerNameMap = state.installerNameMap,
@@ -223,6 +224,7 @@ fun AppListScreen(
             onDismiss = { viewModel.clearSelection() },
             isRoot = state.isRoot,
             isShizuku = state.isShizuku,
+            isDhizuku = state.isDhizuku,
             onAppAction = { action ->
                 when (action) {
                     is AppClickAction.Reinstall -> {
