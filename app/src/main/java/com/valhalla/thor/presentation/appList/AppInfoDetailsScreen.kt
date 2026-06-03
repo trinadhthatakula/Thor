@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -36,7 +37,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
-import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
@@ -126,7 +127,8 @@ fun AppInfoDetailsScreen(
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
-        }
+        },
+        contentWindowInsets = WindowInsets(0,0,0,0)
     ) { innerPadding ->
         Box(
             modifier = Modifier
@@ -231,18 +233,12 @@ fun AppInfoDetailsScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // 3. ScrollableTabRow
-                        ScrollableTabRow(
+                        // 3. SecondaryScrollableTabRow
+                        SecondaryScrollableTabRow(
                             selectedTabIndex = pagerState.currentPage,
                             containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                             contentColor = MaterialTheme.colorScheme.onSurface,
-                            edgePadding = 16.dp,
-                            indicator = { tabPositions ->
-                                TabRowDefaults.SecondaryIndicator(
-                                    modifier = Modifier.tabIndicatorOffset(tabPositions[pagerState.currentPage]),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
+                            edgePadding = 16.dp
                         ) {
                             tabTitles.forEachIndexed { index, title ->
                                 Tab(
