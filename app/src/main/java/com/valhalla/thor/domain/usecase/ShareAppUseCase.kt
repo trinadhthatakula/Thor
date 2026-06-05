@@ -36,7 +36,7 @@ class ShareAppUseCase(
                 val finalFile: File
 
                 // 2. Check for Splits
-                if (appInfo.splitPublicSourceDirs.isNullOrEmpty()) {
+                if (appInfo.splitPublicSourceDirs.isEmpty()) {
                     // --- Single APK Mode ---
                     val sourcePath = appInfo.publicSourceDir ?: appInfo.sourceDir
                     ?: return@withContext Result.failure(Exception("No source path found"))

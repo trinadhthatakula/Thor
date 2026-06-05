@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
+import kotlin.time.Duration.Companion.milliseconds
 
 // ... AppListUiState remains same ...
 data class AppListUiState(
@@ -97,7 +98,7 @@ class AppListViewModel(
             _rawState.update { it.copy(isLoading = true) }
 
             // Allow navigation/bottom bar animations to finish fluidly
-            delay(800)
+            delay(800.milliseconds)
 
             val hasRoot = systemRepository.isRootAvailable()
             val hasShizuku = systemRepository.isShizukuAvailable()

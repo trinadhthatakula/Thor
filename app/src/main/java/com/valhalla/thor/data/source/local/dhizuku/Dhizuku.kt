@@ -272,7 +272,7 @@ object DhizukuHelper {
                     null
                 }
 
-                val caller = com.valhalla.thor.BuildConfig.APPLICATION_ID
+                val caller = BuildConfig.APPLICATION_ID
 
                 try {
                     // Try Android 13+ (8 args)

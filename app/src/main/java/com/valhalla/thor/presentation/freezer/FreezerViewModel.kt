@@ -9,6 +9,7 @@ import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
+import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -82,6 +83,7 @@ class FreezerViewModel(
                         }
                     }
             } catch (e: Exception) {
+                Logger.e("FreezeViewModel", "observe apps failed", e)
                 _uiState.update {
                     it.copy(
                         isLoading = false,
