@@ -6,11 +6,11 @@ import android.content.pm.PackageManager
 import android.content.pm.PermissionInfo
 import android.os.Build
 import com.valhalla.thor.domain.model.AppPermission
-import org.koin.core.annotation.Single
 import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.koin.core.annotation.Single
 
 @Single(binds = [PermissionRepository::class])
 class PermissionRepositoryImpl(
@@ -20,14 +20,17 @@ class PermissionRepositoryImpl(
 
     private val pm = context.packageManager
 
+    @Suppress("DEPRECATION")
     override suspend fun getAppPermissions(packageName: String): Result<List<AppPermission>> =
         withContext(Dispatchers.IO) {
             try {
                 val flags = PackageManager.GET_PERMISSIONS
                 val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    pm.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(flags.toLong()))
+                    pm.getPackageInfo(
+                        packageName,
+                        PackageManager.PackageInfoFlags.of(flags.toLong())
+                    )
                 } else {
-                    @Suppress("DEPRECATION")
                     pm.getPackageInfo(packageName, PackageManager.GET_PERMISSIONS)
                 }
 
@@ -46,16 +49,16 @@ class PermissionRepositoryImpl(
                         null
                     }
 
-                    val label = permInfo?.loadLabel(pm)?.toString() ?: permName.substringAfterLast('.')
+                    val label =
+                        permInfo?.loadLabel(pm)?.toString() ?: permName.substringAfterLast('.')
                     val description = permInfo?.loadDescription(pm)?.toString() ?: ""
                     val protectionLevel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                         permInfo?.protectionLevel ?: 0
                     } else {
-                        @Suppress("DEPRECATION")
-                        permInfo?.protection ?: 0
+                        (permInfo?.protection ?: 0) or (permInfo?.protectionFlags ?: 0)
                     }
-                    @Suppress("DEPRECATION")
-                    val isRuntime = (protectionLevel and PermissionInfo.PROTECTION_MASK_BASE) == PermissionInfo.PROTECTION_DANGEROUS
+                    val isRuntime =
+                        (protectionLevel and PermissionInfo.PROTECTION_MASK_BASE) == PermissionInfo.PROTECTION_DANGEROUS
 
                     AppPermission(
                         name = permName,
@@ -73,11 +76,17 @@ class PermissionRepositoryImpl(
             }
         }
 
-    override suspend fun grantPermission(packageName: String, permissionName: String): Result<Unit> {
+    override suspend fun grantPermission(
+        packageName: String,
+        permissionName: String
+    ): Result<Unit> {
         return systemRepository.grantPermission(packageName, permissionName)
     }
 
-    override suspend fun revokePermission(packageName: String, permissionName: String): Result<Unit> {
+    override suspend fun revokePermission(
+        packageName: String,
+        permissionName: String
+    ): Result<Unit> {
         return systemRepository.revokePermission(packageName, permissionName)
     }
 

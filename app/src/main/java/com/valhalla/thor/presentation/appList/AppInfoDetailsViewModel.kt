@@ -100,7 +100,10 @@ class AppInfoDetailsViewModel(
             }.onFailure { e ->
                 _uiState.update {
                     it.copy(
-                        actionMessage = UiText.StringResource(R.string.error_format, e.message ?: "")
+                        actionMessage = UiText.StringResource(
+                            R.string.error_format,
+                            e.message ?: ""
+                        )
                     )
                 }
             }
@@ -116,7 +119,10 @@ class AppInfoDetailsViewModel(
             }.onFailure { e ->
                 _uiState.update {
                     it.copy(
-                        actionMessage = UiText.StringResource(R.string.error_format, e.message ?: "")
+                        actionMessage = UiText.StringResource(
+                            R.string.error_format,
+                            e.message ?: ""
+                        )
                     )
                 }
             }
@@ -135,7 +141,10 @@ class AppInfoDetailsViewModel(
             }.onFailure { e ->
                 _uiState.update {
                     it.copy(
-                        actionMessage = UiText.StringResource(R.string.error_format, e.message ?: "")
+                        actionMessage = UiText.StringResource(
+                            R.string.error_format,
+                            e.message ?: ""
+                        )
                     )
                 }
             }
@@ -148,13 +157,21 @@ class AppInfoDetailsViewModel(
             result.onSuccess {
                 val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
                 _uiState.update {
-                    it.copy(actionMessage = UiText.StringResource(R.string.cache_cleared_success, appName))
+                    it.copy(
+                        actionMessage = UiText.StringResource(
+                            R.string.cache_cleared_success,
+                            appName
+                        )
+                    )
                 }
                 loadAppDetails(packageName)
             }.onFailure { e ->
                 _uiState.update {
                     it.copy(
-                        actionMessage = UiText.StringResource(R.string.error_format, e.message ?: "")
+                        actionMessage = UiText.StringResource(
+                            R.string.error_format,
+                            e.message ?: ""
+                        )
                     )
                 }
             }
@@ -167,13 +184,21 @@ class AppInfoDetailsViewModel(
             result.onSuccess {
                 val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
                 _uiState.update {
-                    it.copy(actionMessage = UiText.StringResource(R.string.data_cleared_success, appName))
+                    it.copy(
+                        actionMessage = UiText.StringResource(
+                            R.string.data_cleared_success,
+                            appName
+                        )
+                    )
                 }
                 loadAppDetails(packageName)
             }.onFailure { e ->
                 _uiState.update {
                     it.copy(
-                        actionMessage = UiText.StringResource(R.string.error_format, e.message ?: "")
+                        actionMessage = UiText.StringResource(
+                            R.string.error_format,
+                            e.message ?: ""
+                        )
                     )
                 }
             }
@@ -188,7 +213,10 @@ class AppInfoDetailsViewModel(
                 _uiState.update {
                     it.copy(
                         isInFreezer = false,
-                        actionMessage = UiText.StringResource(R.string.removed_from_freezer_success, 1)
+                        actionMessage = UiText.StringResource(
+                            R.string.removed_from_freezer_success,
+                            1
+                        )
                     )
                 }
             } else {

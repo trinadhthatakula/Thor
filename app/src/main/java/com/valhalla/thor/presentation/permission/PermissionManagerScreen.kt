@@ -1,5 +1,6 @@
 package com.valhalla.thor.presentation.permission
 
+import android.graphics.drawable.Drawable
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -24,7 +25,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -41,9 +41,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import android.graphics.drawable.Drawable
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,6 +56,8 @@ import coil3.compose.rememberAsyncImagePainter
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppPermission
 import com.valhalla.thor.presentation.utils.getAppIcon
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -142,17 +141,21 @@ fun PermissionManagerScreen(
 
                 // Split into categories
                 val runtimePermissions = filteredList.filter { it.isRuntime }
+
                 @Suppress("DEPRECATION")
                 val normalPermissions = filteredList.filter {
                     if (it.isRuntime) return@filter false
-                    val base = it.protectionLevel and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE
+                    val base =
+                        it.protectionLevel and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE
                     base == android.content.pm.PermissionInfo.PROTECTION_NORMAL ||
                             base == android.content.pm.PermissionInfo.PROTECTION_DANGEROUS
                 }
+
                 @Suppress("DEPRECATION")
                 val signaturePermissions = filteredList.filter {
                     if (it.isRuntime) return@filter false
-                    val base = it.protectionLevel and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE
+                    val base =
+                        it.protectionLevel and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE
                     base == android.content.pm.PermissionInfo.PROTECTION_SIGNATURE ||
                             base == android.content.pm.PermissionInfo.PROTECTION_SIGNATURE_OR_SYSTEM ||
                             base == android.content.pm.PermissionInfo.PROTECTION_INTERNAL
@@ -397,8 +400,12 @@ private fun CategorySelector(
     ) {
         tabs.forEachIndexed { index, title ->
             val isSelected = selectedTab == index
-            val bgColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f)
-            val textColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+            val bgColor =
+                if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest.copy(
+                    alpha = 0.6f
+                )
+            val textColor =
+                if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
 
             Box(
                 modifier = Modifier
@@ -472,7 +479,10 @@ private fun PermissionRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 if (permission.isRuntime) {
-                    StatusBadge(text = "Sensitive", color = MaterialTheme.colorScheme.errorContainer)
+                    StatusBadge(
+                        text = "Sensitive",
+                        color = MaterialTheme.colorScheme.errorContainer
+                    )
                 }
             }
 
@@ -511,9 +521,12 @@ private fun PermissionRow(
             )
         } else {
             val isGranted = permission.isGranted
-            val chipText = stringResource(if (isGranted) R.string.permission_state_granted else R.string.permission_state_denied)
-            val chipColor = if (isGranted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest
-            val chipTextColor = if (isGranted) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+            val chipText =
+                stringResource(if (isGranted) R.string.permission_state_granted else R.string.permission_state_denied)
+            val chipColor =
+                if (isGranted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest
+            val chipTextColor =
+                if (isGranted) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
 
             Text(
                 text = chipText,

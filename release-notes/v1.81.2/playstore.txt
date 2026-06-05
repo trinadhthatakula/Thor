@@ -1,0 +1,4 @@
+- Added dynamic shell-first execution fallback for Android 16.1+ compatibility.
+- Fixed cursor jumping issue in the search bar on the App List screen.
+- Resolved unreadable status chips text contrast issues on App Details screen.
+- Standardized performance logging and updated internal dependencies.

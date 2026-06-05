@@ -58,12 +58,68 @@ jobs:
           KEYSTORE_FILE_PATH: ${{ github.workspace }}/app/release.jks
         run: fastlane android distribute_dev
 
-      # --- 3. TELEGRAM ---
+      # --- 3. PREPARE RELEASE NOTES ---
+      - name: Prepare Release Notes
+        id: prep_notes
+        run: |
+          if [ ! -f version_name.txt ] || [ ! -f version_code.txt ]; then
+            echo "Error: version_name.txt or version_code.txt is missing!" >&2
+            exit 1
+          fi
+          VERSION_NAME=$(cat version_name.txt)
+          VERSION_CODE=$(cat version_code.txt)
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          
+          # Resolve GitHub notes
+          GITHUB_NOTES_FILE="release-notes/v${VERSION_NAME}/github.md"
+          if [ ! -f "$GITHUB_NOTES_FILE" ]; then
+            GITHUB_NOTES_FILE="release-notes/${VERSION_NAME}/github.md"
+          fi
+          
+          if [ -f "$GITHUB_NOTES_FILE" ]; then
+            echo "github_notes_path=$GITHUB_NOTES_FILE" >> "$GITHUB_OUTPUT"
+          else
+            # Fallback to generating commit log since the last tag
+            FALLBACK_FILE="github_release_notes_fallback.md"
+            echo "### Changelog (Dev Build)" > "$FALLBACK_FILE"
+            echo "" >> "$FALLBACK_FILE"
+            
+            # Find last tag and get commits
+            LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ -n "$LAST_TAG" ]; then
+              echo "Commits since $LAST_TAG:" >> "$FALLBACK_FILE"
+              git log "$LAST_TAG..HEAD" --oneline >> "$FALLBACK_FILE"
+            else
+              echo "Recent commits:" >> "$FALLBACK_FILE"
+              git log --oneline -n 20 >> "$FALLBACK_FILE"
+            fi
+            echo "github_notes_path=$FALLBACK_FILE" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Resolve Telegram notes
+          TELEGRAM_NOTES_FILE="release-notes/v${VERSION_NAME}/telegram.md"
+          if [ ! -f "$TELEGRAM_NOTES_FILE" ]; then
+            TELEGRAM_NOTES_FILE="release-notes/${VERSION_NAME}/telegram.md"
+          fi
+          
+          if [ -f "$TELEGRAM_NOTES_FILE" ]; then
+            echo "telegram_notes_path=$TELEGRAM_NOTES_FILE" >> "$GITHUB_OUTPUT"
+            echo "has_telegram_notes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_telegram_notes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # --- 4. TELEGRAM ---
       - name: Send APK to Telegram
         if: success()
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          HAS_TELEGRAM_NOTES: ${{ steps.prep_notes.outputs.has_telegram_notes }}
+          TELEGRAM_NOTES_PATH: ${{ steps.prep_notes.outputs.telegram_notes_path }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_ACTOR: ${{ github.actor }}
         run: |
           # Fastlane 'copyStoreReleaseApk' task puts it here
           APK_PATH=$(find app/build/distribution/store -name "*.apk" | head -n 1)
@@ -75,12 +131,13 @@ jobs:
 
           echo "Sending $APK_PATH to Telegram..."
           
-          CAPTION="🚀 *Thor (Valhalla) Dev Build*
-          
-          branch: ${{ github.ref_name }}
-          author: ${{ github.actor }}
-          track: Internal Testing
-          status: Uploaded to Play Store & GitHub"
+          CAPTION=$(printf "🚀 *Thor (Valhalla) Dev Build*\n\nBranch: %s\nAuthor: %s\nTrack: Internal Testing\nStatus: Uploaded to Play Store & GitHub" "$GITHUB_REF_NAME" "$GITHUB_ACTOR")
+
+          if [ "$HAS_TELEGRAM_NOTES" = "true" ] && [ -r "$TELEGRAM_NOTES_PATH" ]; then
+            CAPTION=$(printf "%s\n\n%s" "$CAPTION" "$(cat "$TELEGRAM_NOTES_PATH")")
+          else
+            CAPTION=$(printf "%s\n\n• Bug fixes and performance improvements" "$CAPTION")
+          fi
 
           curl -s -F "chat_id=$TELEGRAM_CHAT_ID" \
                -F "document=@$APK_PATH" \
@@ -88,19 +145,14 @@ jobs:
                -F "parse_mode=Markdown" \
                "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendDocument" > /dev/null
 
-      # --- 4. GITHUB RELEASE (PRE-RELEASE) ---
-      - name: Read Version Info
-        id: get_version
-        run: |
-          VERSION_NAME=$(cat version_name.txt)
-          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
-
+      # --- 5. GITHUB RELEASE (PRE-RELEASE) ---
       - name: Create GitHub Pre-Release
         uses: softprops/action-gh-release@v2
         with:
           # Unique tag for dev builds: v1.0.0-dev-45
-          tag_name: v${{ steps.get_version.outputs.version_name }}-dev-${{ github.run_number }}
-          name: Dev Build v${{ steps.get_version.outputs.version_name }} (${{ github.run_number }})
+          tag_name: v${{ steps.prep_notes.outputs.version_name }}-dev-${{ github.run_number }}
+          name: Dev Build v${{ steps.prep_notes.outputs.version_name }} (${{ github.run_number }})
+          body_path: ${{ steps.prep_notes.outputs.github_notes_path }}
           files: |
             app/build/distribution/foss/foss-release.apk
             app/build/distribution/store/store-release.apk

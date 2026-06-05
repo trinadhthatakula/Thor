@@ -51,13 +51,14 @@ object DhizukuHelper {
 
     fun forceStopApp(context: Context, packageName: String): Boolean {
         val userId = Packages(context).myUserId
+        // 1. Try shell first
         val result = execute("am force-stop --user $userId $packageName")
         if (result.first == 0) return true
 
-        // Fallback to reflection
-        return runCatching {
+        // 2. Fallback to reflection
+        val reflectionResult = runCatching {
             val am = asInterface("android.app.IActivityManager", Context.ACTIVITY_SERVICE)
-                ?: return false
+                ?: return@runCatching false
             Bypass.invoke<Any?>(
                 am::class.java, am, "forceStopPackage", packageName, userId
             )
@@ -65,57 +66,89 @@ object DhizukuHelper {
         }.getOrElse {
             com.valhalla.thor.util.Logger.e(
                 "DhizukuHelper",
-                "forceStopApp failed for $packageName",
+                "forceStopApp reflection failed for $packageName",
                 it
             )
             false
         }
+        if (reflectionResult) return true
+
+        // 3. Unprivileged fallback
+        if (Packages(context).isAppStopped(packageName)) return true
+        runCatching {
+            val am =
+                context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+            am?.killBackgroundProcesses(packageName)
+        }
+        return Packages(context).isAppStopped(packageName)
     }
 
     fun setAppDisabled(context: Context, packageName: String, disabled: Boolean): Boolean {
         Packages(context).getApplicationInfoOrNull(packageName) ?: return false
         val userId = Packages(context).myUserId
+
+        // 1. Try shell first
         val command = if (disabled) {
             "pm disable-user --user $userId $packageName"
         } else {
             "pm enable --user $userId $packageName"
         }
         val result = execute(command)
-
-        if (result.first != 0) {
-            // Fallback to Bypass reflection
-            runCatching {
-                val pm =
-                    asInterface("android.content.pm.IPackageManager", "package") ?: return false
-                val newState = when {
-                    !disabled -> PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-                    else -> PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
-                }
-                Bypass.invoke<Any?>(
-                    pm.javaClass,
-                    pm,
-                    "setApplicationEnabledSetting",
-                    arrayOf(
-                        String::class.java,
-                        Int::class.javaPrimitiveType!!,
-                        Int::class.javaPrimitiveType!!,
-                        Int::class.javaPrimitiveType!!,
-                        String::class.java
-                    ),
-                    packageName,
-                    newState,
-                    0,
-                    userId,
-                    BuildConfig.APPLICATION_ID
-                )
-            }.onFailure {
-                com.valhalla.thor.util.Logger.e(
-                    "DhizukuHelper",
-                    "setAppDisabled fallback failed for $packageName",
-                    it
-                )
-            }
+        if (result.first == 0 && Packages(context).isAppDisabled(packageName) == disabled) {
+            return true
         }
+
+        // 2. Fallback to Bypass reflection
+        val reflectionResult = runCatching {
+            val pm =
+                asInterface("android.content.pm.IPackageManager", "package") ?: return@runCatching false
+            val newState = when {
+                !disabled -> PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                else -> PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
+            }
+            Bypass.invoke<Any?>(
+                pm.javaClass,
+                pm,
+                "setApplicationEnabledSetting",
+                arrayOf(
+                    String::class.java,
+                    Int::class.javaPrimitiveType!!,
+                    Int::class.javaPrimitiveType!!,
+                    Int::class.javaPrimitiveType!!,
+                    String::class.java
+                ),
+                packageName,
+                newState,
+                0,
+                userId,
+                BuildConfig.APPLICATION_ID
+            )
+            true
+        }.onFailure {
+            com.valhalla.thor.util.Logger.e(
+                "DhizukuHelper",
+                "setAppDisabled fallback reflection failed for $packageName",
+                it
+            )
+        }.getOrDefault(false)
+
+        if (reflectionResult && Packages(context).isAppDisabled(packageName) == disabled) {
+            return true
+        }
+
+        // 3. Unprivileged fallback
+        if (Packages(context).isAppDisabled(packageName) == disabled) {
+            return true
+        }
+        val newState = if (disabled) {
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+        } else {
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+        }
+        runCatching {
+            context.packageManager.setApplicationEnabledSetting(packageName, newState, 0)
+        }
+
         return Packages(context).isAppDisabled(packageName) == disabled
     }
 
@@ -140,8 +173,20 @@ object DhizukuHelper {
 
     @SuppressLint("PrivateApi")
     fun clearCache(packageName: String): Boolean {
+        // 1. Try shell first
+        val userId = android.os.Process.myUserHandle().hashCode()
+        val paths = listOf(
+            "/data/data/$packageName/cache",
+            "/data/user/$userId/$packageName/cache",
+            "/sdcard/Android/data/$packageName/cache"
+        )
+        val command = "rm -rf ${paths.joinToString(" ")}"
+        val shellResult = execute(command)
+        if (shellResult.first == 0) return true
+
+        // 2. Fallback to reflection
         val reflectionResult = runCatching {
-            val pm = asInterface("android.content.pm.IPackageManager", "package") ?: return false
+            val pm = asInterface("android.content.pm.IPackageManager", "package") ?: return@runCatching false
             val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
 
             try {
@@ -160,33 +205,24 @@ object DhizukuHelper {
                     "deleteApplicationCacheFilesAsUser",
                     arrayOf(String::class.java, Int::class.javaPrimitiveType!!, observerClass),
                     packageName,
-                    android.os.Process.myUserHandle().hashCode(),
+                    userId,
                     null
                 )
             }
             true
         }.getOrDefault(false)
 
-        if (reflectionResult) return true
-
-        // Fallback to shell rm -rf on common cache paths
-        val userId = android.os.Process.myUserHandle().hashCode()
-        val paths = listOf(
-            "/data/data/$packageName/cache",
-            "/data/user/$userId/$packageName/cache",
-            "/sdcard/Android/data/$packageName/cache"
-        )
-        val command = "rm -rf ${paths.joinToString(" ")}"
-        return execute(command).first == 0
+        return reflectionResult
     }
 
     fun clearAppData(packageName: String): Boolean {
+        // 1. Try shell first
         val result = execute("pm clear $packageName")
         if (result.first == 0) return true
 
-        // Fallback to reflection
+        // 2. Fallback to reflection
         return runCatching {
-            val pm = asInterface("android.content.pm.IPackageManager", "package") ?: return false
+            val pm = asInterface("android.content.pm.IPackageManager", "package") ?: return@runCatching false
             val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
             Bypass.invoke<Any?>(
                 pm.javaClass,
@@ -205,26 +241,38 @@ object DhizukuHelper {
         Packages(context).getApplicationInfoOrNull(packageName) ?: return false
         val userId = Packages(context).myUserId
 
-        // Try reflection first through Dhizuku's binder wrapper to show proper branding
-        if (suspended && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+        // 1. Try shell first
+        val command = if (suspended) {
+            "pm suspend --user $userId $packageName"
+        } else {
+            "pm unsuspend --user $userId $packageName"
+        }
+        val shellResult = execute(command)
+        if (shellResult.first == 0) return true
+
+        // 2. Fallback to reflection
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             val reflectionResult = runCatching {
                 val pm =
-                    asInterface("android.content.pm.IPackageManager", "package") ?: return false
+                    asInterface("android.content.pm.IPackageManager", "package") ?: return@runCatching false
                 val dialogInfoClass = Class.forName("android.content.pm.SuspendDialogInfo")
                 val builderClass = Class.forName("android.content.pm.SuspendDialogInfo\$Builder")
-                val dialogInfo = Bypass.newInstance<Any>(builderClass).let { b ->
-                    Bypass.invoke<Any>(builderClass, b, "setTitle", "Thor")
-                    Bypass.invoke<Any>(
-                        builderClass,
-                        b,
-                        "setMessage",
-                        "This app has been suspended by Thor."
-                    )
-                    Bypass.invoke<Any>(builderClass, b, "build")
+                val dialogInfo = if (suspended) {
+                    Bypass.newInstance<Any>(builderClass).let { b ->
+                        Bypass.invoke<Any>(builderClass, b, "setTitle", "Thor")
+                        Bypass.invoke<Any>(
+                            builderClass,
+                            b,
+                            "setMessage",
+                            "This app has been suspended by Thor."
+                        )
+                        Bypass.invoke<Any>(builderClass, b, "build")
+                    }
+                } else {
+                    null
                 }
 
-                // In Dhizuku mode, we can try to use Thor's package name since it's a device owner proxy
-                val caller = com.valhalla.thor.BuildConfig.APPLICATION_ID
+                val caller = BuildConfig.APPLICATION_ID
 
                 try {
                     // Try Android 13+ (8 args)
@@ -240,7 +288,13 @@ object DhizukuHelper {
                             String::class.java,
                             Int::class.javaPrimitiveType!!
                         ),
-                        arrayOf(packageName), true, null, null, dialogInfo, 0, caller, userId
+                        arrayOf(packageName),
+                        suspended,
+                        null, null,
+                        dialogInfo,
+                        0,
+                        caller,
+                        userId
                     )
                 } catch (_: NoSuchMethodException) {
                     // Try Android 10-12 (7 args)
@@ -255,7 +309,12 @@ object DhizukuHelper {
                             String::class.java,
                             Int::class.javaPrimitiveType!!
                         ),
-                        arrayOf(packageName), true, null, null, dialogInfo, caller, userId
+                        arrayOf(packageName),
+                        suspended,
+                        null, null,
+                        dialogInfo,
+                        caller,
+                        userId
                     )
                 }
                 true
@@ -264,26 +323,24 @@ object DhizukuHelper {
             if (reflectionResult) return true
         }
 
-        val command = if (suspended) {
-            "pm suspend --user $userId $packageName"
-        } else {
-            "pm unsuspend --user $userId $packageName"
-        }
-        val result = execute(command)
-        return result.first == 0
+        // 3. Unprivileged fallback
+        val currentSuspended = Packages(context).getApplicationInfoOrNull(packageName)?.run {
+            (flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED) != 0
+        } ?: false
+        return currentSuspended == suspended
     }
 
     fun setAppRestricted(context: Context, packageName: String, restricted: Boolean): Boolean {
+        // 1. Try shell first
         val result =
             execute("appops set $packageName RUN_ANY_IN_BACKGROUND ${if (restricted) "ignore" else "allow"}")
         if (result.first == 0) return true
 
-        // Fallback to reflection
+        // 2. Fallback to reflection
         return runCatching {
             val appops =
                 asInterface("com.android.internal.app.IAppOpsService", Context.APP_OPS_SERVICE)
-                    ?: return false
-            val userId = Packages(context).myUserId
+                    ?: return@runCatching false
             val uid = Packages(context).packageUid(packageName)
             Bypass.invoke<Any?>(
                 appops::class.java,

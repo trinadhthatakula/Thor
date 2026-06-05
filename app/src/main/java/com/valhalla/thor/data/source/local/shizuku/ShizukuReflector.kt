@@ -5,7 +5,6 @@ package com.valhalla.thor.data.source.local.shizuku
 import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Context
-import org.koin.core.annotation.Single
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.IPackageInstaller
@@ -15,6 +14,7 @@ import android.os.Build
 import com.valhalla.bypass.Bypass
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.util.Logger
+import org.koin.core.annotation.Single
 
 @SuppressLint("PrivateApi")
 @Single
@@ -106,8 +106,20 @@ class ShizukuReflector(
     fun setAppSuspended(packageName: String, suspended: Boolean): Boolean =
         Shizuku.setAppSuspended(context, packageName, suspended)
 
-    fun uninstallApp(packageName: String, resetToFactory: Boolean = false): Boolean {
-        return runCatching {
+    suspend fun uninstallApp(packageName: String, resetToFactory: Boolean = false): Boolean {
+        // 1. Try shell first
+        val shellResult = runCatching {
+            Shizuku.uninstallApp(context, packageName)
+        }.getOrElse {
+            if (BuildConfig.DEBUG) {
+                com.valhalla.thor.util.Logger.e("ShizukuReflector", "Shizuku.uninstallApp failed, trying fallbacks", it)
+            }
+            false
+        }
+        if (shellResult) return true
+
+        // 2. Fallback to reflection
+        val reflectionResult = runCatching {
             val packageInfo = context.packageManager.getInfoForPackage(packageName) ?: return false
             val isSystem =
                 (packageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_SYSTEM) != 0
@@ -148,14 +160,32 @@ class ShizukuReflector(
                 intent.intentSender
             )
             true
-        }.getOrElse {
-            // Fallback to Shell uninstallation
-            Logger.w(
-                "ShizukuReflector",
-                "Reflection uninstall failed, falling back to shell: ${it.message}"
-            )
-            Shizuku.uninstallApp(context, packageName)
+        }.getOrDefault(false)
+
+        if (reflectionResult) return true
+
+        // 3. Unprivileged fallback
+        if (Packages(context).isAppUninstalled(packageName)) return true
+
+        val launched = runCatching {
+            val intent = Intent(Intent.ACTION_DELETE).apply {
+                data = android.net.Uri.parse("package:$packageName")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            true
+        }.getOrDefault(false)
+
+        if (!launched) return false
+
+        // Poll for up to 20 seconds to see if the app gets uninstalled by the user
+        for (i in 0 until 40) {
+            kotlinx.coroutines.delay(500)
+            if (Packages(context).isAppUninstalled(packageName)) {
+                return true
+            }
         }
+        return false
     }
 
     /**

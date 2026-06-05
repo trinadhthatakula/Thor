@@ -1,11 +1,17 @@
 package com.valhalla.thor
 
 import android.app.Application
+import coil3.ImageLoader
+import coil3.PlatformContext
+import coil3.SingletonImageLoader
+import coil3.request.crossfade
 import com.rosan.dhizuku.api.Dhizuku
 import com.valhalla.bypass.Bypass
 import com.valhalla.thor.core.ThorShellConfig
 import com.valhalla.thor.data.service.AutoFreezeManager
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.presentation.utils.AppIconFetcher
+import com.valhalla.thor.presentation.utils.AppIconKeyer
 import com.valhalla.thor.util.LocaleManager
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.Dispatchers
@@ -18,12 +24,6 @@ import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.annotation.KoinApplication
 import org.koin.plugin.module.dsl.startKoin
-import coil3.ImageLoader
-import coil3.PlatformContext
-import coil3.SingletonImageLoader
-import coil3.request.crossfade
-import com.valhalla.thor.presentation.utils.AppIconKeyer
-import com.valhalla.thor.presentation.utils.AppIconFetcher
 
 @KoinApplication
 class ThorApplication : Application(), SingletonImageLoader.Factory {

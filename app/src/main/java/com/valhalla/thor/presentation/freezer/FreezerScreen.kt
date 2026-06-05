@@ -23,7 +23,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
@@ -71,7 +70,8 @@ fun FreezerScreen(
     val hasPrivilege = state.isRoot || state.isShizuku || state.isDhizuku
 
     var selectedPackageName by rememberSaveable { mutableStateOf<String?>(null) }
-    val selectedAppInfo = selectedPackageName?.let { pkg -> state.freezerApps.find { it.packageName == pkg } }
+    val selectedAppInfo =
+        selectedPackageName?.let { pkg -> state.freezerApps.find { it.packageName == pkg } }
     var showManageSheet by rememberSaveable { mutableStateOf(false) }
     var showSettingsSheet by rememberSaveable { mutableStateOf(false) }
     var isGrid by rememberSaveable { mutableStateOf(true) }
@@ -110,7 +110,9 @@ fun FreezerScreen(
             }
         }
     ) { innerPadding ->
-        Box(modifier = modifier.fillMaxSize().padding(innerPadding)) {
+        Box(modifier = modifier
+            .fillMaxSize()
+            .padding(innerPadding)) {
             Column(modifier = Modifier.fillMaxSize()) {
 
                 // --- Header ---
@@ -131,7 +133,9 @@ fun FreezerScreen(
                             text = "${state.multiSelection.size} selected",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.weight(1f).padding(start = 8.dp)
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 8.dp)
                         )
                         FilledTonalIconButton(onClick = { viewModel.clearSelection() }) {
                             Icon(painterResource(R.drawable.round_close), "Close")
@@ -222,7 +226,9 @@ fun FreezerScreen(
                         contentPadding = PaddingValues(bottom = 100.dp, top = 8.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        items(displayedApps.sortedBy { it.appName }, key = { it.packageName }) { app ->
+                        items(
+                            displayedApps.sortedBy { it.appName },
+                            key = { it.packageName }) { app ->
                             AppItemGrid(
                                 app = app,
                                 isSelected = app.packageName in state.multiSelection,
@@ -241,7 +247,9 @@ fun FreezerScreen(
                         contentPadding = PaddingValues(bottom = 100.dp, top = 8.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        items(displayedApps.sortedBy { it.appName }, key = { it.packageName }) { app ->
+                        items(
+                            displayedApps.sortedBy { it.appName },
+                            key = { it.packageName }) { app ->
                             AppItemList(
                                 app = app,
                                 isSelected = app.packageName in state.multiSelection,
@@ -273,7 +281,8 @@ fun FreezerScreen(
 
             // Floating multi-select toolbar
             if (state.multiSelection.isNotEmpty()) {
-                val selectedApps = state.freezerApps.filter { it.packageName in state.multiSelection }
+                val selectedApps =
+                    state.freezerApps.filter { it.packageName in state.multiSelection }
                 FreezerSelectToolBox(
                     selected = selectedApps,
                     isRoot = state.isRoot,
@@ -281,7 +290,7 @@ fun FreezerScreen(
                     isDhizuku = state.isDhizuku,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding( bottom = 16.dp),
+                        .padding(bottom = 16.dp),
                     onCancel = { viewModel.clearSelection() },
                     onRemoveFromFreezer = {
                         viewModel.removeFromFreezer(state.multiSelection)
@@ -313,10 +322,12 @@ fun FreezerScreen(
                         )
                         selectedPackageName = null
                     }
+
                     is AppClickAction.UnFreeze -> {
                         viewModel.unfreezeSingleApp(app.packageName, app.appName)
                         selectedPackageName = null
                     }
+
                     else -> {
                         onAppAction(action)
                         selectedPackageName = null

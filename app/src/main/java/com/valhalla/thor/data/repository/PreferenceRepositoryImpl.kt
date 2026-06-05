@@ -2,7 +2,6 @@ package com.valhalla.thor.data.repository
 
 import android.content.Context
 import androidx.datastore.core.DataStore
-import org.koin.core.annotation.Single
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
@@ -17,6 +16,7 @@ import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import org.koin.core.annotation.Single
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "thor_preferences")
 

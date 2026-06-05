@@ -77,8 +77,23 @@ jobs:
       - name: Read Version Info
         id: version_info
         run: |
-          echo "VERSION_NAME=$(cat version_name.txt)" >> $GITHUB_ENV
-          echo "VERSION_CODE=$(cat version_code.txt)" >> $GITHUB_ENV
+          VERSION_NAME=$(cat version_name.txt)
+          VERSION_CODE=$(cat version_code.txt)
+          echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
+          echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_ENV
+          
+          # Resolve Telegram notes
+          TELEGRAM_NOTES_FILE="release-notes/v${VERSION_NAME}/telegram.md"
+          if [ ! -f "$TELEGRAM_NOTES_FILE" ]; then
+            TELEGRAM_NOTES_FILE="release-notes/${VERSION_NAME}/telegram.md"
+          fi
+          
+          if [ -f "$TELEGRAM_NOTES_FILE" ]; then
+            echo "telegram_notes_path=$TELEGRAM_NOTES_FILE" >> "$GITHUB_OUTPUT"
+            echo "has_telegram_notes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_telegram_notes=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Check for GitHub Release
         id: check_release
@@ -104,20 +119,26 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_RELEASE_CHAT_ID }}
           RELEASE_URL: ${{ steps.check_release.outputs.release_url }}
           HAS_RELEASE: ${{ steps.check_release.outputs.has_release }}
+          HAS_TELEGRAM_NOTES: ${{ steps.version_info.outputs.has_telegram_notes }}
+          TELEGRAM_NOTES_PATH: ${{ steps.version_info.outputs.telegram_notes_path }}
+          VERSION_NAME: ${{ env.VERSION_NAME }}
+          VERSION_CODE: ${{ env.VERSION_CODE }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
         run: |
           STORE_APK="app/build/distribution/store/store-release.apk"
           FOSS_APK="app/build/distribution/foss/foss-release.apk"
           
           # 1. Construct the Caption
-          CAPTION="⚡️ *Thor v${{ env.VERSION_NAME }} Released!*
-          
-          Build: ${{ env.VERSION_CODE }}
-          Branch: ${{ github.ref_name }}"
+          CAPTION=$(printf "⚡️ *Thor v%s Released!*\n\nBuild: %s\nBranch: %s" "$VERSION_NAME" "$VERSION_CODE" "$GITHUB_REF_NAME")
+
+          if [ "$HAS_TELEGRAM_NOTES" = "true" ] && [ -f "$TELEGRAM_NOTES_PATH" ]; then
+            CAPTION=$(printf "%s\n\n%s" "$CAPTION" "$(cat "$TELEGRAM_NOTES_PATH")")
+          else
+            CAPTION=$(printf "%s\n\n• Bug fixes and performance improvements" "$CAPTION")
+          fi
           
           if [ "$HAS_RELEASE" = "true" ]; then
-            CAPTION="$CAPTION
-          
-          🔗 [View on GitHub]($RELEASE_URL)"
+            CAPTION=$(printf "%s\n\n🔗 [View on GitHub](%s)" "$CAPTION" "$RELEASE_URL")
           fi
           
           # 2. Send Store APK

@@ -3,7 +3,6 @@ package com.valhalla.thor.presentation.installer
 import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.lifecycle.ViewModel
-import org.koin.core.annotation.KoinViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
@@ -14,6 +13,7 @@ import com.valhalla.thor.domain.repository.SystemRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import org.koin.core.annotation.KoinViewModel
 
 @KoinViewModel
 class InstallerViewModel(

@@ -45,9 +45,13 @@ class AutoFreezeManager(
             scope.launch {
                 try {
                     // Check if the device is locked (Keyguard active)
-                    val keyguardManager = ctx.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+                    val keyguardManager =
+                        ctx.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
                     if (!keyguardManager.isDeviceLocked) {
-                        Logger.d("AutoFreezeManager", "Device screen off but keyguard not locked. Skipping auto-freeze.")
+                        Logger.d(
+                            "AutoFreezeManager",
+                            "Device screen off but keyguard not locked. Skipping auto-freeze."
+                        )
                         return@launch
                     }
 
@@ -57,7 +61,10 @@ class AutoFreezeManager(
                             systemRepository.isDhizukuAvailable()
 
                     if (!hasPrivilege) {
-                        Logger.d("AutoFreezeManager", "No privilege available. Skipping auto-freeze.")
+                        Logger.d(
+                            "AutoFreezeManager",
+                            "No privilege available. Skipping auto-freeze."
+                        )
                         return@launch
                     }
 
@@ -81,7 +88,10 @@ class AutoFreezeManager(
                                         if (result.isSuccess) {
                                             Logger.d("AutoFreezeManager", "Auto-froze: $pkg")
                                         } else {
-                                            Logger.e("AutoFreezeManager", "Failed to freeze $pkg: ${result.exceptionOrNull()?.message}")
+                                            Logger.e(
+                                                "AutoFreezeManager",
+                                                "Failed to freeze $pkg: ${result.exceptionOrNull()?.message}"
+                                            )
                                         }
                                     }
                                 } catch (_: PackageManager.NameNotFoundException) {

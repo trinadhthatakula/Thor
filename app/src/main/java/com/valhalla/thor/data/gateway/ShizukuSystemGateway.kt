@@ -109,7 +109,10 @@ class ShizukuSystemGateway(
         }
     }
 
-    override suspend fun grantPermission(packageName: String, permissionName: String): Result<Unit> {
+    override suspend fun grantPermission(
+        packageName: String,
+        permissionName: String
+    ): Result<Unit> {
         if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
@@ -122,7 +125,10 @@ class ShizukuSystemGateway(
         }
     }
 
-    override suspend fun revokePermission(packageName: String, permissionName: String): Result<Unit> {
+    override suspend fun revokePermission(
+        packageName: String,
+        permissionName: String
+    ): Result<Unit> {
         if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }

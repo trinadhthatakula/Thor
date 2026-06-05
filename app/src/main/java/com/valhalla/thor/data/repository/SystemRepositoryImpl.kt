@@ -6,9 +6,9 @@ import com.valhalla.thor.data.gateway.ShizukuSystemGateway
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.repository.PreferenceRepository
-import org.koin.core.annotation.Single
 import com.valhalla.thor.domain.repository.SystemRepository
 import kotlinx.coroutines.flow.first
+import org.koin.core.annotation.Single
 
 @Single(binds = [SystemRepository::class])
 class SystemRepositoryImpl(
@@ -67,17 +67,19 @@ class SystemRepositoryImpl(
         Result.failure(e)
     }
 
-    override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> = try {
-        getActiveGateway().setAppDisabled(packageName, isDisabled)
-    } catch (e: Exception) {
-        Result.failure(e)
-    }
+    override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> =
+        try {
+            getActiveGateway().setAppDisabled(packageName, isDisabled)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
 
-    override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> = try {
-        getActiveGateway().setAppSuspended(packageName, isSuspended)
-    } catch (e: Exception) {
-        Result.failure(e)
-    }
+    override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> =
+        try {
+            getActiveGateway().setAppSuspended(packageName, isSuspended)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
 
     override suspend fun setAppRestricted(
         packageName: String,
@@ -149,7 +151,10 @@ class SystemRepositoryImpl(
         }
     }
 
-    override suspend fun grantPermission(packageName: String, permissionName: String): Result<Unit> {
+    override suspend fun grantPermission(
+        packageName: String,
+        permissionName: String
+    ): Result<Unit> {
         return try {
             getActiveGateway().grantPermission(packageName, permissionName)
         } catch (e: Exception) {
@@ -157,7 +162,10 @@ class SystemRepositoryImpl(
         }
     }
 
-    override suspend fun revokePermission(packageName: String, permissionName: String): Result<Unit> {
+    override suspend fun revokePermission(
+        packageName: String,
+        permissionName: String
+    ): Result<Unit> {
         return try {
             getActiveGateway().revokePermission(packageName, permissionName)
         } catch (e: Exception) {

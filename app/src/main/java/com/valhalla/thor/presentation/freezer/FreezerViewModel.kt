@@ -2,12 +2,15 @@ package com.valhalla.thor.presentation.freezer
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
+import com.valhalla.thor.util.Logger
+import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -19,8 +22,6 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.KoinViewModel
-import com.valhalla.thor.R
-import com.valhalla.thor.util.UiText
 
 // packageName + appName of an app frozen outside the freezer list — drives the "Add to Freezer" snackbar
 data class FreezerPrompt(val packageName: String, val appName: String?)
@@ -70,19 +71,25 @@ class FreezerViewModel(
                     val allApps = userApps + systemApps
                     Triple(pkgSet, allApps.filter { it.packageName in pkgSet }, allApps)
                 }
-                .flowOn(Dispatchers.Default)
-                .collect { (pkgSet, freezerApps, allApps) ->
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            freezerPackageNames = pkgSet,
-                            freezerApps = freezerApps,
-                            allInstalledApps = allApps
-                        )
+                    .flowOn(Dispatchers.Default)
+                    .collect { (pkgSet, freezerApps, allApps) ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                freezerPackageNames = pkgSet,
+                                freezerApps = freezerApps,
+                                allInstalledApps = allApps
+                            )
+                        }
                     }
-                }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, actionMessage = UiText.StringResource(R.string.failed_to_load_apps)) }
+                Logger.e("FreezeViewModel", "observe apps failed", e)
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        actionMessage = UiText.StringResource(R.string.failed_to_load_apps)
+                    )
+                }
             }
         }
     }
@@ -92,7 +99,13 @@ class FreezerViewModel(
             val hasRoot = systemRepository.isRootAvailable()
             val hasShizuku = systemRepository.isShizukuAvailable()
             val hasDhizuku = systemRepository.isDhizukuAvailable()
-            _uiState.update { it.copy(isRoot = hasRoot, isShizuku = hasShizuku, isDhizuku = hasDhizuku) }
+            _uiState.update {
+                it.copy(
+                    isRoot = hasRoot,
+                    isShizuku = hasShizuku,
+                    isDhizuku = hasDhizuku
+                )
+            }
         }
     }
 
@@ -164,7 +177,15 @@ class FreezerViewModel(
                 freezerRepository.remove(pkg)
                 manageAppUseCase.setAppDisabled(pkg, false)
             }
-            _uiState.update { it.copy(multiSelection = emptySet(), actionMessage = UiText.StringResource(R.string.removed_from_freezer_success, packageNames.size)) }
+            _uiState.update {
+                it.copy(
+                    multiSelection = emptySet(),
+                    actionMessage = UiText.StringResource(
+                        R.string.removed_from_freezer_success,
+                        packageNames.size
+                    )
+                )
+            }
         }
     }
 
@@ -178,13 +199,27 @@ class FreezerViewModel(
                         freezerRepository.add(packageName)
                     }
                     .onFailure { e ->
-                        _uiState.update { it.copy(actionMessage = UiText.StringResource(R.string.error_format, e.message ?: "")) }
+                        _uiState.update {
+                            it.copy(
+                                actionMessage = UiText.StringResource(
+                                    R.string.error_format,
+                                    e.message ?: ""
+                                )
+                            )
+                        }
                     }
             } else {
                 freezerRepository.remove(packageName)
                 manageAppUseCase.setAppDisabled(packageName, false)
                     .onFailure { e ->
-                        _uiState.update { it.copy(actionMessage = UiText.StringResource(R.string.error_format, e.message ?: "")) }
+                        _uiState.update {
+                            it.copy(
+                                actionMessage = UiText.StringResource(
+                                    R.string.error_format,
+                                    e.message ?: ""
+                                )
+                            )
+                        }
                     }
             }
         }
@@ -203,7 +238,12 @@ class FreezerViewModel(
     fun addToFreezer(packageName: String) {
         viewModelScope.launch(Dispatchers.IO) {
             freezerRepository.add(packageName)
-            _uiState.update { it.copy(freezerPrompt = null, actionMessage = UiText.StringResource(R.string.added_to_freezer_success)) }
+            _uiState.update {
+                it.copy(
+                    freezerPrompt = null,
+                    actionMessage = UiText.StringResource(R.string.added_to_freezer_success)
+                )
+            }
         }
     }
 
@@ -222,13 +262,34 @@ class FreezerViewModel(
             manageAppUseCase.setAppDisabled(packageName, true)
                 .onSuccess {
                     if (!inFreezer) {
-                        _uiState.update { it.copy(freezerPrompt = FreezerPrompt(packageName, appName)) }
+                        _uiState.update {
+                            it.copy(
+                                freezerPrompt = FreezerPrompt(
+                                    packageName,
+                                    appName
+                                )
+                            )
+                        }
                     } else {
-                        _uiState.update { it.copy(actionMessage = UiText.StringResource(R.string.frozen_success, appName ?: packageName)) }
+                        _uiState.update {
+                            it.copy(
+                                actionMessage = UiText.StringResource(
+                                    R.string.frozen_success,
+                                    appName ?: packageName
+                                )
+                            )
+                        }
                     }
                 }
                 .onFailure { e ->
-                    _uiState.update { it.copy(actionMessage = UiText.StringResource(R.string.error_format, e.message ?: "")) }
+                    _uiState.update {
+                        it.copy(
+                            actionMessage = UiText.StringResource(
+                                R.string.error_format,
+                                e.message ?: ""
+                            )
+                        )
+                    }
                 }
         }
     }
@@ -237,10 +298,24 @@ class FreezerViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             manageAppUseCase.setAppDisabled(packageName, false)
                 .onSuccess {
-                    _uiState.update { it.copy(actionMessage = UiText.StringResource(R.string.unfrozen_success, appName ?: packageName)) }
+                    _uiState.update {
+                        it.copy(
+                            actionMessage = UiText.StringResource(
+                                R.string.unfrozen_success,
+                                appName ?: packageName
+                            )
+                        )
+                    }
                 }
                 .onFailure { e ->
-                    _uiState.update { it.copy(actionMessage = UiText.StringResource(R.string.error_format, e.message ?: "")) }
+                    _uiState.update {
+                        it.copy(
+                            actionMessage = UiText.StringResource(
+                                R.string.error_format,
+                                e.message ?: ""
+                            )
+                        )
+                    }
                 }
         }
     }

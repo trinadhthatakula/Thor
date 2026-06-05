@@ -14,7 +14,7 @@ object RootMain {
     @JvmStatic
     fun main(args: Array<String>) {
         if (args.isEmpty()) return
-        
+
         try {
             when (args[0]) {
                 "suspend" -> {
@@ -22,6 +22,7 @@ object RootMain {
                     val suspended = args[2].toBoolean()
                     setAppSuspended(packageName, suspended)
                 }
+
                 "clear-data" -> {
                     val packageName = args[1]
                     clearData(packageName)
@@ -52,13 +53,29 @@ object RootMain {
         val dialogInfo = if (suspended) buildSuspendDialogInfo() else null
 
         try {
-            callSetSuspended(pmClass, pm, dialogInfoClass, packageName, suspended, dialogInfo, BuildConfig.APPLICATION_ID)
+            callSetSuspended(
+                pmClass,
+                pm,
+                dialogInfoClass,
+                packageName,
+                suspended,
+                dialogInfo,
+                BuildConfig.APPLICATION_ID
+            )
         } catch (e: Exception) {
             // invoke() wraps the actual exception in InvocationTargetException; unwrap to check
             val cause = if (e is InvocationTargetException) e.cause else e
             if (cause is SecurityException) {
                 // Some devices reject non-privileged callers even from UID 0; fall back to shell
-                callSetSuspended(pmClass, pm, dialogInfoClass, packageName, suspended, dialogInfo, "com.android.shell")
+                callSetSuspended(
+                    pmClass,
+                    pm,
+                    dialogInfoClass,
+                    packageName,
+                    suspended,
+                    dialogInfo,
+                    "com.android.shell"
+                )
             } else throw e
         }
     }
@@ -71,9 +88,14 @@ object RootMain {
             // Android 13+ (API 33): 8-arg — extra flags Int between dialogInfo and caller
             pmClass.getDeclaredMethod(
                 "setPackagesSuspendedAsUser",
-                Array<String>::class.java, Boolean::class.javaPrimitiveType,
-                android.os.PersistableBundle::class.java, android.os.PersistableBundle::class.java,
-                dialogInfoClass, Int::class.javaPrimitiveType, String::class.java, Int::class.javaPrimitiveType
+                Array<String>::class.java,
+                Boolean::class.javaPrimitiveType,
+                android.os.PersistableBundle::class.java,
+                android.os.PersistableBundle::class.java,
+                dialogInfoClass,
+                Int::class.javaPrimitiveType,
+                String::class.java,
+                Int::class.javaPrimitiveType
             ).invoke(pm, arrayOf(packageName), suspended, null, null, dialogInfo, 0, caller, 0)
         } catch (_: NoSuchMethodException) {
             // Android 10-12 (API 29-32): 7-arg
@@ -110,7 +132,12 @@ object RootMain {
         val pm = asInterface.invoke(null, binder)
         val pmClass = Class.forName("android.content.pm.IPackageManager")
 
-        val method = pmClass.getDeclaredMethod("clearApplicationUserData", String::class.java, Class.forName("android.content.pm.IPackageDataObserver"), Int::class.javaPrimitiveType)
+        val method = pmClass.getDeclaredMethod(
+            "clearApplicationUserData",
+            String::class.java,
+            Class.forName("android.content.pm.IPackageDataObserver"),
+            Int::class.javaPrimitiveType
+        )
         method.invoke(pm, packageName, null, 0)
     }
 }

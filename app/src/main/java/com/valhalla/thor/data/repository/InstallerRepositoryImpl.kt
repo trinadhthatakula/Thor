@@ -3,7 +3,6 @@ package com.valhalla.thor.data.repository
 import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Context
-import org.koin.core.annotation.Single
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.database.Cursor
@@ -29,6 +28,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import org.koin.core.annotation.Single
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -74,8 +74,10 @@ class InstallerRepositoryImpl(
                         when {
                             entry.name.equals("manifest.json", ignoreCase = true) ->
                                 manifestBytes = zipStream.readBytes()
+
                             !entry.isDirectory && entry.name.endsWith(".apk", ignoreCase = true) ->
                                 allApkNames += entry.name
+
                             else -> zipStream.closeEntry()
                         }
                         zipStream.nextEntry.also { entry = it }
@@ -85,7 +87,8 @@ class InstallerRepositoryImpl(
 
             manifestBytes?.let { bytes ->
                 try {
-                    val files = json.decodeFromString<XapkManifest>(String(bytes)).splitApks.map { it.file }
+                    val files =
+                        json.decodeFromString<XapkManifest>(String(bytes)).splitApks.map { it.file }
                     if (files.isEmpty()) null else files
                 } catch (_: Exception) {
                     null
@@ -404,11 +407,10 @@ class InstallerRepositoryImpl(
                 Bypass.invoke<Any?>(params::class.java, params, "setRequestDowngrade", true)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                Logger.e("InstallerRepo", "Failed to setRequestDowngrade", e)
-                if (emitErrors) {
-                    eventBus.emit(InstallState.Error("Failed to request downgrade: ${e.message}"))
-                    return
-                } else throw Exception("Failed to request downgrade: ${e.message}")
+                Logger.w(
+                    "InstallerRepo",
+                    "Failed to setRequestDowngrade via reflection, proceeding without downgrade flag: ${e.message}"
+                )
             }
         }
 
@@ -529,7 +531,8 @@ class InstallerRepositoryImpl(
                         } catch (e: Exception) {
                             try {
                                 packageInstaller.abandonSession(newSessionId)
-                            } catch (_: Exception) {}
+                            } catch (_: Exception) {
+                            }
                             throw e
                         }
                     }

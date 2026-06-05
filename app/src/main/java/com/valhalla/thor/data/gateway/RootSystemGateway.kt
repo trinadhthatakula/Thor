@@ -4,9 +4,9 @@ import android.content.Context
 import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.domain.gateway.SystemGateway
-import org.koin.core.annotation.Single
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.koin.core.annotation.Single
 
 /**
  * Modern implementation of SystemGateway using the reactive ShellRepository.
@@ -27,7 +27,27 @@ class RootSystemGateway(
     override fun isDhizukuAvailable(): Boolean = false
 
     override suspend fun forceStopApp(packageName: String): Result<Unit> {
-        return runCommand("am force-stop $packageName")
+        val shellResult = runCommand("am force-stop $packageName")
+        if (shellResult.isSuccess) return shellResult
+
+        // Unprivileged check/fallback
+        val isStopped = getApplicationInfoCompat(packageName)?.run {
+            (flags and android.content.pm.ApplicationInfo.FLAG_STOPPED) != 0
+        } ?: false
+        if (isStopped) return Result.success(Unit)
+
+        runCatching {
+            val am =
+                context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+            am?.killBackgroundProcesses(packageName)
+        }
+
+        val postCheck = getApplicationInfoCompat(packageName)?.run {
+            (flags and android.content.pm.ApplicationInfo.FLAG_STOPPED) != 0
+        } ?: false
+        if (postCheck) return Result.success(Unit)
+
+        return Result.failure(Exception("Root force stop failed. Shell command failed and app is still running."))
     }
 
     override suspend fun clearCache(packageName: String): Result<Unit> {
@@ -36,23 +56,61 @@ class RootSystemGateway(
     }
 
     override suspend fun clearAppData(packageName: String): Result<Unit> {
-        return runCommand("pm clear $packageName")
+        val shellResult = runCommand("pm clear $packageName")
+        if (shellResult.isSuccess) return shellResult
+
+        // Fallback to reflection via RootMain
+        val taskResult = runRootTask("clear-data", packageName)
+        if (taskResult.isSuccess) return Result.success(Unit)
+
+        return Result.failure(Exception("Root clear app data failed. Shell command and reflection both failed."))
     }
 
     override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> {
         val state = if (isDisabled) "disable" else "enable"
-        return runCommand("pm $state $packageName")
+        val shellResult = runCommand("pm $state $packageName")
+        if (shellResult.isSuccess) return shellResult
+
+        // Check if already in the target state
+        val currentDisabled = getApplicationInfoCompat(packageName)?.enabled?.not() ?: false
+        if (currentDisabled == isDisabled) return Result.success(Unit)
+
+        // Try unprivileged API as fallback
+        val newState = if (isDisabled) {
+            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+        } else {
+            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+        }
+        val unprivilegedResult = runCatching {
+            context.packageManager.setApplicationEnabledSetting(packageName, newState, 0)
+        }
+        if (unprivilegedResult.isSuccess) {
+            val postCheck = getApplicationInfoCompat(packageName)?.enabled?.not() ?: false
+            if (postCheck == isDisabled) return Result.success(Unit)
+        }
+
+        return Result.failure(Exception("Root setAppDisabled failed."))
     }
 
     override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> {
-        // Try one-shot root task first to show proper branding
-        if (isSuspended && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+        // 1. Try shell first
+        val state = if (isSuspended) "suspend" else "unsuspend"
+        val shellResult = runCommand("pm $state $packageName")
+        if (shellResult.isSuccess) return shellResult
+
+        // 2. Fallback to reflection via RootMain
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             val taskResult = runRootTask("suspend", packageName, isSuspended.toString())
             if (taskResult.isSuccess) return Result.success(Unit)
         }
 
-        val state = if (isSuspended) "suspend" else "unsuspend"
-        return runCommand("pm $state $packageName")
+        // 3. Check if already in the target state
+        val currentSuspended = getApplicationInfoCompat(packageName)?.run {
+            (flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED) != 0
+        } ?: false
+        if (currentSuspended == isSuspended) return Result.success(Unit)
+
+        return Result.failure(Exception("Root setAppSuspended failed. Shell command and reflection both failed."))
     }
 
     override suspend fun setAppRestricted(
@@ -170,18 +228,26 @@ class RootSystemGateway(
     private suspend fun runRootTask(action: String, vararg args: String): Result<Unit> {
         val apkPath = context.packageCodePath
         val className = "com.valhalla.thor.data.source.local.root.RootMain"
-        val cmd = "export CLASSPATH=$apkPath && app_process /system/bin $className $action ${args.joinToString(" ")}"
+        val cmd = "export CLASSPATH=$apkPath && app_process /system/bin $className $action ${
+            args.joinToString(" ")
+        }"
         return runCommand(cmd)
     }
 
-    override suspend fun grantPermission(packageName: String, permissionName: String): Result<Unit> {
+    override suspend fun grantPermission(
+        packageName: String,
+        permissionName: String
+    ): Result<Unit> {
         if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
         return runCommand("pm grant $packageName $permissionName")
     }
 
-    override suspend fun revokePermission(packageName: String, permissionName: String): Result<Unit> {
+    override suspend fun revokePermission(
+        packageName: String,
+        permissionName: String
+    ): Result<Unit> {
         if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
@@ -200,4 +266,18 @@ class RootSystemGateway(
             Result.failure(result.exceptionOrNull() ?: Exception("Shell command failed: $cmd"))
         }
     }
+
+    private fun getApplicationInfoCompat(packageName: String): android.content.pm.ApplicationInfo? = runCatching {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            context.packageManager.getApplicationInfo(
+                packageName,
+                android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong())
+            )
+        } else {
+            context.packageManager.getApplicationInfo(
+                packageName,
+                android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES
+            )
+        }
+    }.getOrNull()
 }

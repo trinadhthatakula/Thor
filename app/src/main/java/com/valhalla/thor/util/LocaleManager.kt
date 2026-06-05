@@ -1,12 +1,12 @@
 package com.valhalla.thor.util
 
-import android.app.LocaleManager as AndroidLocaleManager
 import android.content.Context
-import org.koin.core.annotation.Single
 import android.os.Build
 import android.os.LocaleList
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
+import org.koin.core.annotation.Single
+import android.app.LocaleManager as AndroidLocaleManager
 
 /**
  * Modern Locale Manager that uses the system LocaleManager on Android 13+ (API 33)
@@ -21,7 +21,8 @@ class LocaleManager(private val context: Context) {
      */
     fun applyLocale(languageCode: String?) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val localeManager = context.getSystemService(Context.LOCALE_SERVICE) as AndroidLocaleManager
+            val localeManager =
+                context.getSystemService(Context.LOCALE_SERVICE) as AndroidLocaleManager
             localeManager.applicationLocales = if (languageCode == null) {
                 LocaleList.getEmptyLocaleList()
             } else {
@@ -42,7 +43,8 @@ class LocaleManager(private val context: Context) {
      */
     fun getAppliedLocales(): LocaleListCompat {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val localeManager = context.getSystemService(Context.LOCALE_SERVICE) as AndroidLocaleManager
+            val localeManager =
+                context.getSystemService(Context.LOCALE_SERVICE) as AndroidLocaleManager
             LocaleListCompat.wrap(localeManager.applicationLocales)
         } else {
             AppCompatDelegate.getApplicationLocales()

@@ -1,10 +1,10 @@
 [versions]
 accompanistDrawablepainter = "0.37.3"
-agp = "9.3.0-alpha09"
+agp = "9.3.0-alpha10"
 biometric = "1.4.0-alpha02"
 datastorePreferences = "1.2.1"
-kotlin = "2.3.21"
-coreKtx = "1.18.0"
+kotlin = "2.3.21" #koin compiler is not yet fully supported with kotlin 2.4.0 so use 2.3.21 track issue at https://github.com/InsertKoinIO/koin/issues/2431
+coreKtx = "1.19.0"
 junit = "4.13.2"
 room = "2.8.4"
 ksp = "2.3.9"
@@ -14,7 +14,7 @@ lifecycleRuntimeKtx = "2.10.0"
 activityCompose = "1.13.0"
 composeBom = "2026.05.01"
 lottieCompose = "6.7.1"
-material3 = "1.5.0-alpha20"
+material3 = "1.5.0-alpha21"
 kotlinxSerializationJson = "1.11.0"
 splashscreen = "1.2.0"
 shizuku = "13.1.5"
@@ -22,7 +22,6 @@ dhizuku = "2.5.4"
 koin = "4.2.1"
 koin-plugin = "1.0.0"
 coil3 = "3.4.0"
-navigationCompose = "2.9.8"
 navigation3 = "1.1.2"
 
 [libraries]
@@ -47,7 +46,6 @@ androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit
 androidx-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
 androidx-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
 #Navigation
-androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 androidx-navigation3-runtime = { module = "androidx.navigation3:navigation3-runtime", version.ref = "navigation3" }
 androidx-navigation3-ui = { module = "androidx.navigation3:navigation3-ui", version.ref = "navigation3" }
 #Lifecycle

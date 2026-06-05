@@ -95,7 +95,7 @@ fun ThorTheme(
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             if (darkTheme) {
                 dynamicDarkColorScheme(context).run {
-                    if(amoledMode){
+                    if (amoledMode) {
                         copy(
                             background = Color.Black,
                             surface = Color.Black,
