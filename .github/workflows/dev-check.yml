@@ -118,6 +118,8 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           HAS_TELEGRAM_NOTES: ${{ steps.prep_notes.outputs.has_telegram_notes }}
           TELEGRAM_NOTES_PATH: ${{ steps.prep_notes.outputs.telegram_notes_path }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_ACTOR: ${{ github.actor }}
         run: |
           # Fastlane 'copyStoreReleaseApk' task puts it here
           APK_PATH=$(find app/build/distribution/store -name "*.apk" | head -n 1)
@@ -129,7 +131,7 @@ jobs:
 
           echo "Sending $APK_PATH to Telegram..."
           
-          CAPTION=$(printf "🚀 *Thor (Valhalla) Dev Build*\n\nBranch: %s\nAuthor: %s\nTrack: Internal Testing\nStatus: Uploaded to Play Store & GitHub" "${{ github.ref_name }}" "${{ github.actor }}")
+          CAPTION=$(printf "🚀 *Thor (Valhalla) Dev Build*\n\nBranch: %s\nAuthor: %s\nTrack: Internal Testing\nStatus: Uploaded to Play Store & GitHub" "$GITHUB_REF_NAME" "$GITHUB_ACTOR")
 
           if [ "$HAS_TELEGRAM_NOTES" = "true" ] && [ -r "$TELEGRAM_NOTES_PATH" ]; then
             CAPTION=$(printf "%s\n\n%s" "$CAPTION" "$(cat "$TELEGRAM_NOTES_PATH")")

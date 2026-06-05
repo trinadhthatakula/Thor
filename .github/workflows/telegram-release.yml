@@ -121,12 +121,15 @@ jobs:
           HAS_RELEASE: ${{ steps.check_release.outputs.has_release }}
           HAS_TELEGRAM_NOTES: ${{ steps.version_info.outputs.has_telegram_notes }}
           TELEGRAM_NOTES_PATH: ${{ steps.version_info.outputs.telegram_notes_path }}
+          VERSION_NAME: ${{ env.VERSION_NAME }}
+          VERSION_CODE: ${{ env.VERSION_CODE }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
         run: |
           STORE_APK="app/build/distribution/store/store-release.apk"
           FOSS_APK="app/build/distribution/foss/foss-release.apk"
           
           # 1. Construct the Caption
-          CAPTION=$(printf "⚡️ *Thor v%s Released!*\n\nBuild: %s\nBranch: %s" "${{ env.VERSION_NAME }}" "${{ env.VERSION_CODE }}" "${{ github.ref_name }}")
+          CAPTION=$(printf "⚡️ *Thor v%s Released!*\n\nBuild: %s\nBranch: %s" "$VERSION_NAME" "$VERSION_CODE" "$GITHUB_REF_NAME")
 
           if [ "$HAS_TELEGRAM_NOTES" = "true" ] && [ -f "$TELEGRAM_NOTES_PATH" ]; then
             CAPTION=$(printf "%s\n\n%s" "$CAPTION" "$(cat "$TELEGRAM_NOTES_PATH")")
