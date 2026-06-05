@@ -399,9 +399,9 @@ private fun AppDetailsHeader(appInfo: AppInfo) {
                 modifier = Modifier.horizontalScroll(rememberScrollState())
             ) {
                 if (appInfo.isSystem) {
-                    StatusChip(text = stringResource(R.string.chip_system), color = MaterialTheme.colorScheme.tertiaryContainer)
+                    StatusChip(text = stringResource(R.string.chip_system), color = MaterialTheme.colorScheme.tertiaryContainer, textColor = MaterialTheme.colorScheme.onTertiaryContainer)
                 } else {
-                    StatusChip(text = stringResource(R.string.chip_user), color = MaterialTheme.colorScheme.primaryContainer)
+                    StatusChip(text = stringResource(R.string.chip_user), color = MaterialTheme.colorScheme.primaryContainer, textColor = MaterialTheme.colorScheme.onPrimaryContainer)
                 }
 
                 if (!appInfo.enabled) {
