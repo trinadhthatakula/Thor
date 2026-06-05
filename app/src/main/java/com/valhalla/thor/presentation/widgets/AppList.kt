@@ -315,10 +315,8 @@ internal fun AppSearchBar(
 ) {
     var localQuery by remember { mutableStateOf(query) }
 
-    LaunchedEffect(query) {
-        if (localQuery != query) {
-            localQuery = query
-        }
+    if (localQuery != query) {
+        localQuery = query
     }
 
     val keyboardController = LocalSoftwareKeyboardController.current
