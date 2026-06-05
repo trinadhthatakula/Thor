@@ -313,11 +313,7 @@ internal fun AppSearchBar(
     onOpenConfig: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    var localQuery by remember { mutableStateOf(query) }
-
-    if (localQuery != query) {
-        localQuery = query
-    }
+    var localQuery by remember(query) { mutableStateOf(query) }
 
     val keyboardController = LocalSoftwareKeyboardController.current
     val isImeVisible = WindowInsets.isImeVisible
