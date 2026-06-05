@@ -187,6 +187,7 @@ class AppRepositoryImpl(
             }
         }
 
+    @Suppress("DEPRECATION")
     override suspend fun getDetailedAppInfo(packageName: String): DetailedAppInfo? =
         withContext(Dispatchers.IO) {
             try {
@@ -206,7 +207,6 @@ class AppRepositoryImpl(
                 val packInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     pm.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(flags))
                 } else {
-                    @Suppress("DEPRECATION")
                     pm.getPackageInfo(packageName, flags.toInt())
                 }
 
@@ -241,9 +241,11 @@ class AppRepositoryImpl(
                         val permInfo = pm.getPermissionInfo(permName, 0)
                         label = permInfo.loadLabel(pm).toString()
                         description = permInfo.loadDescription(pm)?.toString()
-                        @Suppress("DEPRECATION")
-                        val base = permInfo.protection
-                        @Suppress("DEPRECATION")
+                        val base = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                            permInfo.protectionLevel and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE
+                        } else {
+                            permInfo.protection and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE
+                        }
                         when (base) {
                             android.content.pm.PermissionInfo.PROTECTION_NORMAL -> "Normal"
                             android.content.pm.PermissionInfo.PROTECTION_DANGEROUS -> "Dangerous"
