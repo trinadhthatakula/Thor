@@ -126,17 +126,22 @@ jobs:
           FOSS_APK="app/build/distribution/foss/foss-release.apk"
           
           # 1. Construct the Caption
-          CAPTION="⚡️ *Thor v${{ env.VERSION_NAME }} Released!*
+          CAPTION=$(cat <<'EOF'
+⚡️ *Thor v${{ env.VERSION_NAME }} Released!*
 
 Build: ${{ env.VERSION_CODE }}
 Branch: ${{ github.ref_name }}
+EOF
+)
 
-"
-          
-          if [ "$HAS_TELEGRAM_NOTES" = "true" ]; then
-            CAPTION="$CAPTION$(cat "$TELEGRAM_NOTES_PATH")"
+          if [ "$HAS_TELEGRAM_NOTES" = "true" ] && [ -f "$TELEGRAM_NOTES_PATH" ]; then
+            CAPTION="$CAPTION
+
+$(cat "$TELEGRAM_NOTES_PATH")"
           else
-            CAPTION="$CAPTION• Bug fixes and performance improvements"
+            CAPTION="$CAPTION
+
+• Bug fixes and performance improvements"
           fi
           
           if [ "$HAS_RELEASE" = "true" ]; then

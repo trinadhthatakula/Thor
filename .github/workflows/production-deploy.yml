@@ -60,6 +60,10 @@ jobs:
       - name: Prepare Release Notes
         id: prep_notes
         run: |
+          if [ ! -s version_name.txt ]; then
+            echo "Error: version_name.txt is missing or empty!" >&2
+            exit 1
+          fi
           VERSION_NAME=$(cat version_name.txt)
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           

@@ -58,7 +58,7 @@ object DhizukuHelper {
         // 2. Fallback to reflection
         val reflectionResult = runCatching {
             val am = asInterface("android.app.IActivityManager", Context.ACTIVITY_SERVICE)
-                ?: return false
+                ?: return@runCatching false
             Bypass.invoke<Any?>(
                 am::class.java, am, "forceStopPackage", packageName, userId
             )
@@ -101,7 +101,7 @@ object DhizukuHelper {
         // 2. Fallback to Bypass reflection
         val reflectionResult = runCatching {
             val pm =
-                asInterface("android.content.pm.IPackageManager", "package") ?: return false
+                asInterface("android.content.pm.IPackageManager", "package") ?: return@runCatching false
             val newState = when {
                 !disabled -> PackageManager.COMPONENT_ENABLED_STATE_ENABLED
                 else -> PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
@@ -186,7 +186,7 @@ object DhizukuHelper {
 
         // 2. Fallback to reflection
         val reflectionResult = runCatching {
-            val pm = asInterface("android.content.pm.IPackageManager", "package") ?: return false
+            val pm = asInterface("android.content.pm.IPackageManager", "package") ?: return@runCatching false
             val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
 
             try {
@@ -222,7 +222,7 @@ object DhizukuHelper {
 
         // 2. Fallback to reflection
         return runCatching {
-            val pm = asInterface("android.content.pm.IPackageManager", "package") ?: return false
+            val pm = asInterface("android.content.pm.IPackageManager", "package") ?: return@runCatching false
             val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
             Bypass.invoke<Any?>(
                 pm.javaClass,
@@ -254,7 +254,7 @@ object DhizukuHelper {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             val reflectionResult = runCatching {
                 val pm =
-                    asInterface("android.content.pm.IPackageManager", "package") ?: return false
+                    asInterface("android.content.pm.IPackageManager", "package") ?: return@runCatching false
                 val dialogInfoClass = Class.forName("android.content.pm.SuspendDialogInfo")
                 val builderClass = Class.forName("android.content.pm.SuspendDialogInfo\$Builder")
                 val dialogInfo = if (suspended) {
@@ -340,7 +340,7 @@ object DhizukuHelper {
         return runCatching {
             val appops =
                 asInterface("com.android.internal.app.IAppOpsService", Context.APP_OPS_SERVICE)
-                    ?: return false
+                    ?: return@runCatching false
             val uid = Packages(context).packageUid(packageName)
             Bypass.invoke<Any?>(
                 appops::class.java,

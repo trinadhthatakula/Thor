@@ -62,6 +62,10 @@ jobs:
       - name: Prepare Release Notes
         id: prep_notes
         run: |
+          if [ ! -f version_name.txt ] || [ ! -f version_code.txt ]; then
+            echo "Error: version_name.txt or version_code.txt is missing!" >&2
+            exit 1
+          fi
           VERSION_NAME=$(cat version_name.txt)
           VERSION_CODE=$(cat version_code.txt)
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
@@ -125,19 +129,24 @@ jobs:
 
           echo "Sending $APK_PATH to Telegram..."
           
-          CAPTION="🚀 *Thor (Valhalla) Dev Build*
+          CAPTION=$(cat <<'EOF'
+🚀 *Thor (Valhalla) Dev Build*
 
 Branch: ${{ github.ref_name }}
 Author: ${{ github.actor }}
 Track: Internal Testing
 Status: Uploaded to Play Store & GitHub
+EOF
+)
 
-"
+          if [ "$HAS_TELEGRAM_NOTES" = "true" ] && [ -r "$TELEGRAM_NOTES_PATH" ]; then
+            CAPTION="$CAPTION
 
-          if [ "$HAS_TELEGRAM_NOTES" = "true" ]; then
-            CAPTION="$CAPTION$(cat "$TELEGRAM_NOTES_PATH")"
+$(cat "$TELEGRAM_NOTES_PATH")"
           else
-            CAPTION="$CAPTION• Bug fixes and performance improvements"
+            CAPTION="$CAPTION
+
+• Bug fixes and performance improvements"
           fi
 
           curl -s -F "chat_id=$TELEGRAM_CHAT_ID" \

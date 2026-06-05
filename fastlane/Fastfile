@@ -81,9 +81,14 @@ platform :android do
         dest_dir = File.join(fastlane_dir, "metadata", "android", "en-US", "changelogs")
         FileUtils.mkdir_p(dest_dir)
         dest_file = File.join(dest_dir, "#{final_version_code}.txt")
-        FileUtils.cp(playstore_notes_path, dest_file)
-        UI.success("📝 Successfully copied Play Store release notes to #{dest_file}")
-        skip_changelogs = false
+        begin
+          FileUtils.cp(playstore_notes_path, dest_file)
+          UI.success("📝 Successfully copied Play Store release notes to #{dest_file}")
+          skip_changelogs = false
+        rescue => e
+          UI.error("❌ Failed to copy Play Store release notes from #{playstore_notes_path} to #{dest_file}: #{e.message}")
+          skip_changelogs = true
+        end
       else
         UI.important("⚠️  No Play Store release notes found at: #{playstore_notes_path}. Skipping changelog upload.")
       end

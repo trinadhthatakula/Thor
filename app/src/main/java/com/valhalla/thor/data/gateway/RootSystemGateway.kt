@@ -99,7 +99,7 @@ class RootSystemGateway(
         if (shellResult.isSuccess) return shellResult
 
         // 2. Fallback to reflection via RootMain
-        if (isSuspended && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             val taskResult = runRootTask("suspend", packageName, isSuspended.toString())
             if (taskResult.isSuccess) return Result.success(Unit)
         }
