@@ -129,24 +129,12 @@ jobs:
 
           echo "Sending $APK_PATH to Telegram..."
           
-          CAPTION=$(cat <<'EOF'
-🚀 *Thor (Valhalla) Dev Build*
-
-Branch: ${{ github.ref_name }}
-Author: ${{ github.actor }}
-Track: Internal Testing
-Status: Uploaded to Play Store & GitHub
-EOF
-)
+          CAPTION=$(printf "🚀 *Thor (Valhalla) Dev Build*\n\nBranch: %s\nAuthor: %s\nTrack: Internal Testing\nStatus: Uploaded to Play Store & GitHub" "${{ github.ref_name }}" "${{ github.actor }}")
 
           if [ "$HAS_TELEGRAM_NOTES" = "true" ] && [ -r "$TELEGRAM_NOTES_PATH" ]; then
-            CAPTION="$CAPTION
-
-$(cat "$TELEGRAM_NOTES_PATH")"
+            CAPTION=$(printf "%s\n\n%s" "$CAPTION" "$(cat "$TELEGRAM_NOTES_PATH")")
           else
-            CAPTION="$CAPTION
-
-• Bug fixes and performance improvements"
+            CAPTION=$(printf "%s\n\n• Bug fixes and performance improvements" "$CAPTION")
           fi
 
           curl -s -F "chat_id=$TELEGRAM_CHAT_ID" \

@@ -126,28 +126,16 @@ jobs:
           FOSS_APK="app/build/distribution/foss/foss-release.apk"
           
           # 1. Construct the Caption
-          CAPTION=$(cat <<'EOF'
-⚡️ *Thor v${{ env.VERSION_NAME }} Released!*
-
-Build: ${{ env.VERSION_CODE }}
-Branch: ${{ github.ref_name }}
-EOF
-)
+          CAPTION=$(printf "⚡️ *Thor v%s Released!*\n\nBuild: %s\nBranch: %s" "${{ env.VERSION_NAME }}" "${{ env.VERSION_CODE }}" "${{ github.ref_name }}")
 
           if [ "$HAS_TELEGRAM_NOTES" = "true" ] && [ -f "$TELEGRAM_NOTES_PATH" ]; then
-            CAPTION="$CAPTION
-
-$(cat "$TELEGRAM_NOTES_PATH")"
+            CAPTION=$(printf "%s\n\n%s" "$CAPTION" "$(cat "$TELEGRAM_NOTES_PATH")")
           else
-            CAPTION="$CAPTION
-
-• Bug fixes and performance improvements"
+            CAPTION=$(printf "%s\n\n• Bug fixes and performance improvements" "$CAPTION")
           fi
           
           if [ "$HAS_RELEASE" = "true" ]; then
-            CAPTION="$CAPTION
-
-🔗 [View on GitHub]($RELEASE_URL)"
+            CAPTION=$(printf "%s\n\n🔗 [View on GitHub](%s)" "$CAPTION" "$RELEASE_URL")
           fi
           
           # 2. Send Store APK
