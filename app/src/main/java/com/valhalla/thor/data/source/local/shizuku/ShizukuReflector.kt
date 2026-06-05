@@ -108,7 +108,14 @@ class ShizukuReflector(
 
     suspend fun uninstallApp(packageName: String, resetToFactory: Boolean = false): Boolean {
         // 1. Try shell first
-        val shellResult = Shizuku.uninstallApp(context, packageName)
+        val shellResult = runCatching {
+            Shizuku.uninstallApp(context, packageName)
+        }.getOrElse {
+            if (BuildConfig.DEBUG) {
+                com.valhalla.thor.util.Logger.e("ShizukuReflector", "Shizuku.uninstallApp failed, trying fallbacks", it)
+            }
+            false
+        }
         if (shellResult) return true
 
         // 2. Fallback to reflection
