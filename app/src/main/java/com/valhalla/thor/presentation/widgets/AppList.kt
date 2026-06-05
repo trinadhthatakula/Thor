@@ -314,12 +314,23 @@ internal fun AppSearchBar(
     onOpenConfig: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    var localQuery by remember { mutableStateOf(query) }
+
+    LaunchedEffect(query) {
+        if (localQuery != query) {
+            localQuery = query
+        }
+    }
+
     val keyboardController = LocalSoftwareKeyboardController.current
     val isImeVisible = WindowInsets.isImeVisible
 
-    BackHandler(enabled = isImeVisible || query.isNotEmpty()) {
+    BackHandler(enabled = isImeVisible || localQuery.isNotEmpty()) {
         if (isImeVisible) keyboardController?.hide()
-        else onQueryChange("")
+        else {
+            localQuery = ""
+            onQueryChange("")
+        }
     }
 
     Row(
@@ -337,8 +348,11 @@ internal fun AppSearchBar(
                 .padding(4.dp)
         ) {
             BasicTextField(
-                value = query,
-                onValueChange = onQueryChange,
+                value = localQuery,
+                onValueChange = {
+                    localQuery = it
+                    onQueryChange(it)
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(12.dp),
@@ -359,7 +373,7 @@ internal fun AppSearchBar(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Box(modifier = Modifier.weight(1f)) {
-                            if (query.isEmpty()) {
+                            if (localQuery.isEmpty()) {
                                 Text(
                                     stringResource(R.string.search_apps),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -369,14 +383,17 @@ internal fun AppSearchBar(
                             }
                             innerTextField()
                         }
-                        if (query.isNotEmpty()) {
+                        if (localQuery.isNotEmpty()) {
                             Icon(
                                 painter = painterResource(R.drawable.round_close),
                                 contentDescription = stringResource(R.string.cd_clear),
                                 tint = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier
                                     .clip(CircleShape)
-                                    .clickable { onQueryChange("") }
+                                    .clickable {
+                                        localQuery = ""
+                                        onQueryChange("")
+                                    }
                                     .padding(8.dp)
                             )
                         }
