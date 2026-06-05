@@ -238,13 +238,15 @@ class AppRepositoryImpl(
                         val permInfo = pm.getPermissionInfo(permName, 0)
                         label = permInfo.loadLabel(pm).toString()
                         description = permInfo.loadDescription(pm)?.toString()
-                        val base = permInfo.protectionLevel and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE
+                        @Suppress("DEPRECATION")
+                        val base = permInfo.protection
+                        @Suppress("DEPRECATION")
                         when (base) {
                             android.content.pm.PermissionInfo.PROTECTION_NORMAL -> "Normal"
                             android.content.pm.PermissionInfo.PROTECTION_DANGEROUS -> "Dangerous"
                             android.content.pm.PermissionInfo.PROTECTION_SIGNATURE -> "Signature"
                             android.content.pm.PermissionInfo.PROTECTION_SIGNATURE_OR_SYSTEM -> "Signature/System"
-                            else -> "Unknown (${permInfo.protectionLevel})"
+                            else -> "Unknown ($base)"
                         }
                     } catch (_: Exception) {
                         "Unknown"
