@@ -100,7 +100,7 @@ fun FreezerScreen(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
-            if (state.multiSelection.isEmpty() && hasPrivilege) {
+            if (state.multiSelection.isEmpty()) {
                 FloatingActionButton(
                     onClick = { showManageSheet = true },
                     containerColor = MaterialTheme.colorScheme.primaryContainer
