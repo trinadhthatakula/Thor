@@ -1,4 +1,7 @@
 [versions]
+compileSdk = "37"
+targetSdk = "37"
+minSdk = "28"
 accompanistDrawablepainter = "0.37.3"
 agp = "9.3.0-alpha10"
 biometric = "1.4.0-alpha02"

@@ -12,7 +12,7 @@ kotlin {
 
 android {
     namespace = "com.valhalla.superuser"
-    compileSdk = 36
+    compileSdk = libs.versions.compileSdk.get().toInt()
     defaultConfig {
         minSdk = 24
         consumerProguardFiles("proguard-rules.pro")
