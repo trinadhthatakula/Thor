@@ -56,18 +56,45 @@ jobs:
         # Updated to use the production lane (Closed Track)
         run: fastlane android distribute_production
 
-      # --- SYNC & RELEASE ---
-      - name: Read Version Name
-        id: get_app_version
+      # --- PREPARE RELEASE NOTES ---
+      - name: Prepare Release Notes
+        id: prep_notes
         run: |
           VERSION_NAME=$(cat version_name.txt)
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          
+          # Resolve GitHub notes
+          GITHUB_NOTES_FILE="release-notes/v${VERSION_NAME}/github.md"
+          if [ ! -f "$GITHUB_NOTES_FILE" ]; then
+            GITHUB_NOTES_FILE="release-notes/${VERSION_NAME}/github.md"
+          fi
+          
+          if [ -f "$GITHUB_NOTES_FILE" ]; then
+            echo "github_notes_path=$GITHUB_NOTES_FILE" >> "$GITHUB_OUTPUT"
+          else
+            # Fallback to generating commit log since the last tag
+            FALLBACK_FILE="github_release_notes_fallback.md"
+            echo "### Changelog" > "$FALLBACK_FILE"
+            echo "" >> "$FALLBACK_FILE"
+            
+            # Find last tag and get commits
+            LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ -n "$LAST_TAG" ]; then
+              echo "Commits since $LAST_TAG:" >> "$FALLBACK_FILE"
+              git log "$LAST_TAG..HEAD" --oneline >> "$FALLBACK_FILE"
+            else
+              echo "Recent commits:" >> "$FALLBACK_FILE"
+              git log --oneline -n 20 >> "$FALLBACK_FILE"
+            fi
+            echo "github_notes_path=$FALLBACK_FILE" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.get_app_version.outputs.version_name }}
-          name: Release v${{ steps.get_app_version.outputs.version_name }}
+          tag_name: v${{ steps.prep_notes.outputs.version_name }}
+          name: Release v${{ steps.prep_notes.outputs.version_name }}
+          body_path: ${{ steps.prep_notes.outputs.github_notes_path }}
           files: |
             app/build/distribution/foss/foss-release.apk
             app/build/distribution/store/store-release.apk

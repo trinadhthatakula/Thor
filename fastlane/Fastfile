@@ -66,12 +66,35 @@ platform :android do
       generated_aab_path = lane_context[SharedValues::GRADLE_AAB_OUTPUT_PATH]
       UI.user_error!("❌ No AAB generated") unless generated_aab_path
 
+      # Try to locate playstore.txt
+      skip_changelogs = true
+      changelog_dir = File.join(project_root, "release-notes", "v#{new_version_name}")
+      playstore_notes_path = File.join(changelog_dir, "playstore.txt")
+
+      unless File.exist?(playstore_notes_path)
+        changelog_dir = File.join(project_root, "release-notes", new_version_name)
+        playstore_notes_path = File.join(changelog_dir, "playstore.txt")
+      end
+
+      if File.exist?(playstore_notes_path)
+        require 'fileutils'
+        dest_dir = File.join(fastlane_dir, "metadata", "android", "en-US", "changelogs")
+        FileUtils.mkdir_p(dest_dir)
+        dest_file = File.join(dest_dir, "#{final_version_code}.txt")
+        FileUtils.cp(playstore_notes_path, dest_file)
+        UI.success("📝 Successfully copied Play Store release notes to #{dest_file}")
+        skip_changelogs = false
+      else
+        UI.important("⚠️  No Play Store release notes found at: #{playstore_notes_path}. Skipping changelog upload.")
+      end
+
       # Upload to specific track (internal or alpha/closed)
       upload_to_play_store(
         track: track,
         release_status: 'completed', # Draft or completed? usually completed for internal/alpha
         aab: generated_aab_path,
         skip_upload_metadata: true,
+        skip_upload_changelogs: skip_changelogs,
         skip_upload_images: true,
         skip_upload_screenshots: true,
         skip_upload_apk: true
