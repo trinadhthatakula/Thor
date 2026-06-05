@@ -31,21 +31,9 @@ class RootSystemGateway(
         if (shellResult.isSuccess) return shellResult
 
         // Unprivileged check/fallback
-        val isStopped = runCatching {
-            val appInfo =
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                    context.packageManager.getApplicationInfo(
-                        packageName,
-                        android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong())
-                    )
-                } else {
-                    context.packageManager.getApplicationInfo(
-                        packageName,
-                        android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES
-                    )
-                }
-            (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_STOPPED) != 0
-        }.getOrDefault(false)
+        val isStopped = getApplicationInfoCompat(packageName)?.run {
+            (flags and android.content.pm.ApplicationInfo.FLAG_STOPPED) != 0
+        } ?: false
         if (isStopped) return Result.success(Unit)
 
         runCatching {
@@ -54,21 +42,9 @@ class RootSystemGateway(
             am?.killBackgroundProcesses(packageName)
         }
 
-        val postCheck = runCatching {
-            val appInfo =
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                    context.packageManager.getApplicationInfo(
-                        packageName,
-                        android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong())
-                    )
-                } else {
-                    context.packageManager.getApplicationInfo(
-                        packageName,
-                        android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES
-                    )
-                }
-            (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_STOPPED) != 0
-        }.getOrDefault(false)
+        val postCheck = getApplicationInfoCompat(packageName)?.run {
+            (flags and android.content.pm.ApplicationInfo.FLAG_STOPPED) != 0
+        } ?: false
         if (postCheck) return Result.success(Unit)
 
         return Result.failure(Exception("Root force stop failed. Shell command failed and app is still running."))
@@ -96,21 +72,7 @@ class RootSystemGateway(
         if (shellResult.isSuccess) return shellResult
 
         // Check if already in the target state
-        val currentDisabled = runCatching {
-            val appInfo =
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                    context.packageManager.getApplicationInfo(
-                        packageName,
-                        android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong())
-                    )
-                } else {
-                    context.packageManager.getApplicationInfo(
-                        packageName,
-                        android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES
-                    )
-                }
-            !appInfo.enabled
-        }.getOrDefault(false)
+        val currentDisabled = getApplicationInfoCompat(packageName)?.enabled?.not() ?: false
         if (currentDisabled == isDisabled) return Result.success(Unit)
 
         // Try unprivileged API as fallback
@@ -123,21 +85,7 @@ class RootSystemGateway(
             context.packageManager.setApplicationEnabledSetting(packageName, newState, 0)
         }
         if (unprivilegedResult.isSuccess) {
-            val postCheck = runCatching {
-                val appInfo =
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                        context.packageManager.getApplicationInfo(
-                            packageName,
-                            android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong())
-                        )
-                    } else {
-                        context.packageManager.getApplicationInfo(
-                            packageName,
-                            android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES
-                        )
-                    }
-                !appInfo.enabled
-            }.getOrDefault(false)
+            val postCheck = getApplicationInfoCompat(packageName)?.enabled?.not() ?: false
             if (postCheck == isDisabled) return Result.success(Unit)
         }
 
@@ -157,21 +105,9 @@ class RootSystemGateway(
         }
 
         // 3. Check if already in the target state
-        val currentSuspended = runCatching {
-            val appInfo =
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                    context.packageManager.getApplicationInfo(
-                        packageName,
-                        android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong())
-                    )
-                } else {
-                    context.packageManager.getApplicationInfo(
-                        packageName,
-                        android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES
-                    )
-                }
-            (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED) != 0
-        }.getOrDefault(false)
+        val currentSuspended = getApplicationInfoCompat(packageName)?.run {
+            (flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED) != 0
+        } ?: false
         if (currentSuspended == isSuspended) return Result.success(Unit)
 
         return Result.failure(Exception("Root setAppSuspended failed. Shell command and reflection both failed."))
@@ -330,4 +266,18 @@ class RootSystemGateway(
             Result.failure(result.exceptionOrNull() ?: Exception("Shell command failed: $cmd"))
         }
     }
+
+    private fun getApplicationInfoCompat(packageName: String): android.content.pm.ApplicationInfo? = runCatching {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            context.packageManager.getApplicationInfo(
+                packageName,
+                android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong())
+            )
+        } else {
+            context.packageManager.getApplicationInfo(
+                packageName,
+                android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES
+            )
+        }
+    }.getOrNull()
 }
