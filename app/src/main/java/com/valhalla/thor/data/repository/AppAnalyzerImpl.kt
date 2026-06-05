@@ -3,7 +3,6 @@ package com.valhalla.thor.data.repository
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import org.koin.core.annotation.Single
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
@@ -18,6 +17,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import org.koin.core.annotation.Single
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipInputStream
@@ -64,12 +64,14 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
                                     manifestBytes = zipStream.readBytes()
                                     zipStream.closeEntry()
                                 }
+
                                 entry.name.equals("icon.png", ignoreCase = true) ||
-                                entry.name.equals("icon.jpg", ignoreCase = true) ||
-                                entry.name.equals("icon.webp", ignoreCase = true) -> {
+                                        entry.name.equals("icon.jpg", ignoreCase = true) ||
+                                        entry.name.equals("icon.webp", ignoreCase = true) -> {
                                     iconBytes = zipStream.readBytes()
                                     zipStream.closeEntry()
                                 }
+
                                 else -> zipStream.closeEntry()
                             }
                             if (manifestBytes != null && iconBytes != null) break
@@ -77,11 +79,16 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
                         }
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            }
 
             // Phase 2: If we have manifest.json, build metadata directly from it
             val manifest = manifestBytes?.let { bytes ->
-                try { json.decodeFromString<XapkManifest>(String(bytes)) } catch (_: Exception) { null }
+                try {
+                    json.decodeFromString<XapkManifest>(String(bytes))
+                } catch (_: Exception) {
+                    null
+                }
             }
 
             if (manifest != null) {
@@ -105,16 +112,18 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
 
                         if (tempFile.exists()) {
                             val pm = context.packageManager
-                            val flags = PackageManager.GET_META_DATA or PackageManager.GET_PERMISSIONS
-                            val archiveInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                pm.getPackageArchiveInfo(
-                                    tempFile.absolutePath,
-                                    PackageManager.PackageInfoFlags.of(flags.toLong())
-                                )
-                            } else {
-                                @Suppress("DEPRECATION")
-                                pm.getPackageArchiveInfo(tempFile.absolutePath, flags)
-                            }
+                            val flags =
+                                PackageManager.GET_META_DATA or PackageManager.GET_PERMISSIONS
+                            val archiveInfo =
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    pm.getPackageArchiveInfo(
+                                        tempFile.absolutePath,
+                                        PackageManager.PackageInfoFlags.of(flags.toLong())
+                                    )
+                                } else {
+                                    @Suppress("DEPRECATION")
+                                    pm.getPackageArchiveInfo(tempFile.absolutePath, flags)
+                                }
 
                             if (archiveInfo != null) {
                                 archiveInfo.applicationInfo?.sourceDir = tempFile.absolutePath
@@ -122,18 +131,25 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
 
                                 val currentIconBytes = iconBytes
                                 val iconBitmap: Bitmap? = when {
-                                    currentIconBytes != null -> BitmapFactory.decodeByteArray(currentIconBytes, 0, currentIconBytes.size)
+                                    currentIconBytes != null -> BitmapFactory.decodeByteArray(
+                                        currentIconBytes,
+                                        0,
+                                        currentIconBytes.size
+                                    )
+
                                     else -> archiveInfo.applicationInfo?.loadIcon(pm)?.toBitmap()
                                 }
 
                                 return@withContext Result.success(
                                     AppMetadata(
-                                        label = archiveInfo.applicationInfo?.loadLabel(pm)?.toString() ?: "Unknown",
+                                        label = archiveInfo.applicationInfo?.loadLabel(pm)
+                                            ?.toString() ?: "Unknown",
                                         packageName = archiveInfo.packageName,
                                         version = archiveInfo.versionName ?: "Unknown",
                                         versionCode = archiveInfo.longVersionCode,
                                         icon = iconBitmap,
-                                        permissions = archiveInfo.requestedPermissions?.toList() ?: emptyList()
+                                        permissions = archiveInfo.requestedPermissions?.toList()
+                                            ?: emptyList()
                                     )
                                 )
                             }
@@ -156,7 +172,8 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
                         while (entry != null) {
                             val name = entry.name
                             if (name.equals("base.apk", ignoreCase = true) ||
-                                name.endsWith("/base.apk", ignoreCase = true)) {
+                                name.endsWith("/base.apk", ignoreCase = true)
+                            ) {
                                 FileOutputStream(tempFile).use { fos -> zipStream.copyTo(fos) }
                                 isNestedBundle = true
                                 foundBase = true

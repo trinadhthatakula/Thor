@@ -36,11 +36,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.SecondaryScrollableTabRow
-import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -55,20 +52,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import coil3.compose.rememberAsyncImagePainter
-import com.valhalla.thor.R
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.PermissionDetail
@@ -131,7 +126,7 @@ fun AppInfoDetailsScreen(
                 )
             }
         },
-        contentWindowInsets = WindowInsets(0,0,0,0)
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { innerPadding ->
         Box(
             modifier = Modifier
@@ -162,7 +157,8 @@ fun AppInfoDetailsScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = state.errorMessage?.asString(context) ?: stringResource(R.string.unknown_error_occurred),
+                        text = state.errorMessage?.asString(context)
+                            ?: stringResource(R.string.unknown_error_occurred),
                         style = MaterialTheme.typography.bodyLarge,
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onBackground
@@ -196,14 +192,21 @@ fun AppInfoDetailsScreen(
                             isDhizuku = state.isDhizuku,
                             isInFreezer = state.isInFreezer,
                             onLaunch = {
-                                val intent = context.packageManager.getLaunchIntentForPackage(packageName)
+                                val intent =
+                                    context.packageManager.getLaunchIntentForPackage(packageName)
                                 if (intent != null) context.startActivity(intent)
-                                else Toast.makeText(context, context.getString(R.string.cannot_launch_app), Toast.LENGTH_SHORT).show()
+                                else Toast.makeText(
+                                    context,
+                                    context.getString(R.string.cannot_launch_app),
+                                    Toast.LENGTH_SHORT
+                                ).show()
                             },
                             onSystemSettings = {
-                                val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                    data = android.net.Uri.parse("package:$packageName")
-                                }
+                                val intent =
+                                    android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                        .apply {
+                                            data = android.net.Uri.parse("package:$packageName")
+                                        }
                                 context.startActivity(intent)
                             },
                             onFreezeToggle = {
@@ -231,11 +234,21 @@ fun AppInfoDetailsScreen(
                                 showUninstallConfirmation = true
                             },
                             onShare = {
-                                val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(android.content.Intent.EXTRA_TEXT, "Market link: market://details?id=$packageName")
-                                }
-                                context.startActivity(android.content.Intent.createChooser(intent, context.getString(R.string.share_via)))
+                                val intent =
+                                    android.content.Intent(android.content.Intent.ACTION_SEND)
+                                        .apply {
+                                            type = "text/plain"
+                                            putExtra(
+                                                android.content.Intent.EXTRA_TEXT,
+                                                "Market link: market://details?id=$packageName"
+                                            )
+                                        }
+                                context.startActivity(
+                                    android.content.Intent.createChooser(
+                                        intent,
+                                        context.getString(R.string.share_via)
+                                    )
+                                )
                             }
                         )
 
@@ -303,7 +316,12 @@ fun AppInfoDetailsScreen(
                 TextButton(onClick = {
                     viewModel.clearData(packageName)
                     showClearDataConfirmation = false
-                }) { Text(stringResource(R.string.action_clear_data), color = MaterialTheme.colorScheme.error) }
+                }) {
+                    Text(
+                        stringResource(R.string.action_clear_data),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
             },
             dismissButton = {
                 TextButton(onClick = { showClearDataConfirmation = false }) {
@@ -327,12 +345,18 @@ fun AppInfoDetailsScreen(
             text = { Text(stringResource(R.string.uninstall_app_desc, appName)) },
             confirmButton = {
                 TextButton(onClick = {
-                    val intent = android.content.Intent(android.content.Intent.ACTION_DELETE).apply {
-                        data = android.net.Uri.parse("package:$packageName")
-                    }
+                    val intent =
+                        android.content.Intent(android.content.Intent.ACTION_DELETE).apply {
+                            data = android.net.Uri.parse("package:$packageName")
+                        }
                     context.startActivity(intent)
                     showUninstallConfirmation = false
-                }) { Text(stringResource(R.string.action_uninstall), color = MaterialTheme.colorScheme.error) }
+                }) {
+                    Text(
+                        stringResource(R.string.action_uninstall),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
             },
             dismissButton = {
                 TextButton(onClick = { showUninstallConfirmation = false }) {
@@ -399,21 +423,38 @@ private fun AppDetailsHeader(appInfo: AppInfo) {
                 modifier = Modifier.horizontalScroll(rememberScrollState())
             ) {
                 if (appInfo.isSystem) {
-                    StatusChip(text = stringResource(R.string.chip_system), color = MaterialTheme.colorScheme.tertiaryContainer, textColor = MaterialTheme.colorScheme.onTertiaryContainer)
+                    StatusChip(
+                        text = stringResource(R.string.chip_system),
+                        color = MaterialTheme.colorScheme.tertiaryContainer,
+                        textColor = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
                 } else {
-                    StatusChip(text = stringResource(R.string.chip_user), color = MaterialTheme.colorScheme.primaryContainer, textColor = MaterialTheme.colorScheme.onPrimaryContainer)
+                    StatusChip(
+                        text = stringResource(R.string.chip_user),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        textColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
                 }
 
                 if (!appInfo.enabled) {
-                    StatusChip(text = stringResource(R.string.frozen), color = MaterialTheme.colorScheme.errorContainer)
+                    StatusChip(
+                        text = stringResource(R.string.frozen),
+                        color = MaterialTheme.colorScheme.errorContainer
+                    )
                 }
 
                 if (appInfo.isSuspended) {
-                    StatusChip(text = stringResource(R.string.suspended), color = MaterialTheme.colorScheme.secondaryContainer)
+                    StatusChip(
+                        text = stringResource(R.string.suspended),
+                        color = MaterialTheme.colorScheme.secondaryContainer
+                    )
                 }
 
                 if (appInfo.isDebuggable) {
-                    StatusChip(text = stringResource(R.string.chip_debug), color = MaterialTheme.colorScheme.outlineVariant)
+                    StatusChip(
+                        text = stringResource(R.string.chip_debug),
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
                 }
 
                 StatusChip(
@@ -492,7 +533,8 @@ private fun AppDetailsActionRow(
 
         // 2. Freeze / Unfreeze
         if (hasPrivilege) {
-            val freezeLabel = if (isFrozen) stringResource(R.string.action_unfreeze) else stringResource(R.string.action_freeze)
+            val freezeLabel =
+                if (isFrozen) stringResource(R.string.action_unfreeze) else stringResource(R.string.action_freeze)
             val freezeIcon = if (isFrozen) R.drawable.freeze_off else R.drawable.frozen
             ActionItem(
                 icon = freezeIcon,
@@ -501,7 +543,8 @@ private fun AppDetailsActionRow(
             )
 
             // 3. Suspend / Unsuspend
-            val suspendLabel = if (isSuspended) stringResource(R.string.action_unsuspend) else stringResource(R.string.action_suspend)
+            val suspendLabel =
+                if (isSuspended) stringResource(R.string.action_unsuspend) else stringResource(R.string.action_suspend)
             val suspendIcon = if (isSuspended) R.drawable.bolt else R.drawable.warning
             ActionItem(
                 icon = suspendIcon,
@@ -527,7 +570,8 @@ private fun AppDetailsActionRow(
         )
 
         // 6. Toggle Freezer
-        val freezerLabel = if (isInFreezer) stringResource(R.string.action_in_freezer) else stringResource(R.string.action_add_freezer)
+        val freezerLabel =
+            if (isInFreezer) stringResource(R.string.action_in_freezer) else stringResource(R.string.action_add_freezer)
         ActionItem(
             icon = R.drawable.snowflake,
             label = freezerLabel,
@@ -619,25 +663,50 @@ private fun GeneralTabScreen(details: DetailedAppInfo) {
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            InfoCard(title = stringResource(R.string.info_app_version), value = "${appInfo.versionName} (${appInfo.versionCode})")
+            InfoCard(
+                title = stringResource(R.string.info_app_version),
+                value = "${appInfo.versionName} (${appInfo.versionCode})"
+            )
         }
         item {
-            InfoCard(title = stringResource(R.string.info_sdk_details), value = stringResource(R.string.info_sdk_details_format, appInfo.targetSdk, appInfo.minSdk))
+            InfoCard(
+                title = stringResource(R.string.info_sdk_details),
+                value = stringResource(
+                    R.string.info_sdk_details_format,
+                    appInfo.targetSdk,
+                    appInfo.minSdk
+                )
+            )
         }
         item {
-            InfoCard(title = stringResource(R.string.info_installer_source), value = appInfo.installerPackageName ?: stringResource(R.string.unknown))
+            InfoCard(
+                title = stringResource(R.string.info_installer_source),
+                value = appInfo.installerPackageName ?: stringResource(R.string.unknown)
+            )
         }
         item {
-            InfoCard(title = stringResource(R.string.info_install_time), value = formatTime(appInfo.firstInstallTime, context))
+            InfoCard(
+                title = stringResource(R.string.info_install_time),
+                value = formatTime(appInfo.firstInstallTime, context)
+            )
         }
         item {
-            InfoCard(title = stringResource(R.string.info_last_update_time), value = formatTime(appInfo.lastUpdateTime, context))
+            InfoCard(
+                title = stringResource(R.string.info_last_update_time),
+                value = formatTime(appInfo.lastUpdateTime, context)
+            )
         }
         item {
-            InfoCard(title = stringResource(R.string.info_apk_path), value = appInfo.sourceDir ?: stringResource(R.string.not_available))
+            InfoCard(
+                title = stringResource(R.string.info_apk_path),
+                value = appInfo.sourceDir ?: stringResource(R.string.not_available)
+            )
         }
         item {
-            InfoCard(title = stringResource(R.string.info_data_dir), value = appInfo.dataDir ?: stringResource(R.string.not_available))
+            InfoCard(
+                title = stringResource(R.string.info_data_dir),
+                value = appInfo.dataDir ?: stringResource(R.string.not_available)
+            )
         }
         appInfo.obbFilePath?.let { obb ->
             item {
@@ -646,7 +715,10 @@ private fun GeneralTabScreen(details: DetailedAppInfo) {
         }
         if (appInfo.sharedDataDir.isNotEmpty()) {
             item {
-                InfoCard(title = stringResource(R.string.info_shared_data_dir), value = appInfo.sharedDataDir)
+                InfoCard(
+                    title = stringResource(R.string.info_shared_data_dir),
+                    value = appInfo.sharedDataDir
+                )
             }
         }
         details.signatureSha256?.let { sha256 ->
@@ -670,7 +742,12 @@ private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
             value = searchQuery,
             onValueChange = { searchQuery = it },
             placeholder = { Text(stringResource(R.string.permissions_search)) },
-            leadingIcon = { Icon(painterResource(R.drawable.round_search), contentDescription = null) },
+            leadingIcon = {
+                Icon(
+                    painterResource(R.drawable.round_search),
+                    contentDescription = null
+                )
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
@@ -729,7 +806,9 @@ private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
                                     Text(
                                         text = desc,
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                            alpha = 0.8f
+                                        )
                                     )
                                 }
                             }
@@ -739,7 +818,9 @@ private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
 
                         Column(horizontalAlignment = Alignment.End) {
                             StatusChip(
-                                text = if (perm.isGranted) stringResource(R.string.permission_state_granted) else stringResource(R.string.permission_state_denied),
+                                text = if (perm.isGranted) stringResource(R.string.permission_state_granted) else stringResource(
+                                    R.string.permission_state_denied
+                                ),
                                 color = if (perm.isGranted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer,
                                 textColor = if (perm.isGranted) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
                             )
@@ -747,7 +828,10 @@ private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
                             StatusChip(
                                 text = perm.protectionLevel,
                                 color = when (perm.protectionLevel) {
-                                    "Dangerous" -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                                    "Dangerous" -> MaterialTheme.colorScheme.errorContainer.copy(
+                                        alpha = 0.5f
+                                    )
+
                                     "Signature" -> MaterialTheme.colorScheme.tertiaryContainer
                                     "Normal" -> MaterialTheme.colorScheme.secondaryContainer
                                     else -> MaterialTheme.colorScheme.surfaceContainerHighest
@@ -775,7 +859,12 @@ private fun ComponentsTabScreen(details: DetailedAppInfo) {
             value = searchQuery,
             onValueChange = { searchQuery = it },
             placeholder = { Text(stringResource(R.string.search_components_placeholder)) },
-            leadingIcon = { Icon(painterResource(R.drawable.round_search), contentDescription = null) },
+            leadingIcon = {
+                Icon(
+                    painterResource(R.drawable.round_search),
+                    contentDescription = null
+                )
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
@@ -800,16 +889,36 @@ private fun ComponentsTabScreen(details: DetailedAppInfo) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
-                CollapsibleSection(title = stringResource(R.string.section_activities_title, filteredActivities.size), items = filteredActivities)
+                CollapsibleSection(
+                    title = stringResource(
+                        R.string.section_activities_title,
+                        filteredActivities.size
+                    ), items = filteredActivities
+                )
             }
             item {
-                CollapsibleSection(title = stringResource(R.string.section_services_title, filteredServices.size), items = filteredServices)
+                CollapsibleSection(
+                    title = stringResource(
+                        R.string.section_services_title,
+                        filteredServices.size
+                    ), items = filteredServices
+                )
             }
             item {
-                CollapsibleSection(title = stringResource(R.string.section_receivers_title, filteredReceivers.size), items = filteredReceivers)
+                CollapsibleSection(
+                    title = stringResource(
+                        R.string.section_receivers_title,
+                        filteredReceivers.size
+                    ), items = filteredReceivers
+                )
             }
             item {
-                CollapsibleSection(title = stringResource(R.string.section_providers_title, filteredProviders.size), items = filteredProviders)
+                CollapsibleSection(
+                    title = stringResource(
+                        R.string.section_providers_title,
+                        filteredProviders.size
+                    ), items = filteredProviders
+                )
             }
         }
     }
@@ -843,7 +952,9 @@ private fun CollapsibleSection(title: String, items: List<String>) {
                 painter = painterResource(
                     if (expanded) R.drawable.arrow_upward else R.drawable.arrow_downward
                 ),
-                contentDescription = if (expanded) stringResource(R.string.cd_collapse) else stringResource(R.string.cd_expand),
+                contentDescription = if (expanded) stringResource(R.string.cd_collapse) else stringResource(
+                    R.string.cd_expand
+                ),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -867,9 +978,20 @@ private fun CollapsibleSection(title: String, items: List<String>) {
                                 .clip(RoundedCornerShape(12.dp))
                                 .clickable {
                                     coroutineScope.launch {
-                                        clipboard.setClipEntry(ClipEntry(android.content.ClipData.newPlainText("class name", className)))
+                                        clipboard.setClipEntry(
+                                            ClipEntry(
+                                                android.content.ClipData.newPlainText(
+                                                    "class name",
+                                                    className
+                                                )
+                                            )
+                                        )
                                     }
-                                    Toast.makeText(context, context.getString(R.string.toast_copied_class_name), Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.toast_copied_class_name),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 }
                                 .padding(vertical = 6.dp, horizontal = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -981,9 +1103,20 @@ private fun InfoCard(title: String, value: String) {
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .clickable {
                 coroutineScope.launch {
-                    clipboard.setClipEntry(ClipEntry(android.content.ClipData.newPlainText("value", value)))
+                    clipboard.setClipEntry(
+                        ClipEntry(
+                            android.content.ClipData.newPlainText(
+                                "value",
+                                value
+                            )
+                        )
+                    )
                 }
-                Toast.makeText(context, context.getString(R.string.toast_copy_saved), Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.toast_copy_saved),
+                    Toast.LENGTH_SHORT
+                ).show()
             }
             .padding(16.dp)
     ) {
@@ -1006,9 +1139,13 @@ private fun InfoCard(title: String, value: String) {
 private fun formatTime(timestamp: Long, context: Context): String {
     if (timestamp == 0L) return context.getString(R.string.not_available)
     return try {
-        val formatter = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.MEDIUM, Locale.getDefault())
+        val formatter = DateFormat.getDateTimeInstance(
+            DateFormat.MEDIUM,
+            DateFormat.MEDIUM,
+            Locale.getDefault()
+        )
         formatter.format(Date(timestamp))
-    } catch (e: Exception) {
+    } catch (_: Exception) {
         context.getString(R.string.not_available)
     }
 }

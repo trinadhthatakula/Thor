@@ -4,9 +4,9 @@ import android.content.Context
 import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.domain.gateway.SystemGateway
-import org.koin.core.annotation.Single
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.koin.core.annotation.Single
 
 /**
  * Modern implementation of SystemGateway using the reactive ShellRepository.
@@ -32,26 +32,41 @@ class RootSystemGateway(
 
         // Unprivileged check/fallback
         val isStopped = runCatching {
-            val appInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                context.packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong()))
-            } else {
-                context.packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES)
-            }
+            val appInfo =
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    context.packageManager.getApplicationInfo(
+                        packageName,
+                        android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong())
+                    )
+                } else {
+                    context.packageManager.getApplicationInfo(
+                        packageName,
+                        android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES
+                    )
+                }
             (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_STOPPED) != 0
         }.getOrDefault(false)
         if (isStopped) return Result.success(Unit)
 
         runCatching {
-            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+            val am =
+                context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
             am?.killBackgroundProcesses(packageName)
         }
 
         val postCheck = runCatching {
-            val appInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                context.packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong()))
-            } else {
-                context.packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES)
-            }
+            val appInfo =
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    context.packageManager.getApplicationInfo(
+                        packageName,
+                        android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong())
+                    )
+                } else {
+                    context.packageManager.getApplicationInfo(
+                        packageName,
+                        android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES
+                    )
+                }
             (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_STOPPED) != 0
         }.getOrDefault(false)
         if (postCheck) return Result.success(Unit)
@@ -82,11 +97,18 @@ class RootSystemGateway(
 
         // Check if already in the target state
         val currentDisabled = runCatching {
-            val appInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                context.packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong()))
-            } else {
-                context.packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES)
-            }
+            val appInfo =
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    context.packageManager.getApplicationInfo(
+                        packageName,
+                        android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong())
+                    )
+                } else {
+                    context.packageManager.getApplicationInfo(
+                        packageName,
+                        android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES
+                    )
+                }
             !appInfo.enabled
         }.getOrDefault(false)
         if (currentDisabled == isDisabled) return Result.success(Unit)
@@ -102,11 +124,18 @@ class RootSystemGateway(
         }
         if (unprivilegedResult.isSuccess) {
             val postCheck = runCatching {
-                val appInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                    context.packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong()))
-                } else {
-                    context.packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES)
-                }
+                val appInfo =
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        context.packageManager.getApplicationInfo(
+                            packageName,
+                            android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong())
+                        )
+                    } else {
+                        context.packageManager.getApplicationInfo(
+                            packageName,
+                            android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES
+                        )
+                    }
                 !appInfo.enabled
             }.getOrDefault(false)
             if (postCheck == isDisabled) return Result.success(Unit)
@@ -129,11 +158,18 @@ class RootSystemGateway(
 
         // 3. Check if already in the target state
         val currentSuspended = runCatching {
-            val appInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                context.packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong()))
-            } else {
-                context.packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES)
-            }
+            val appInfo =
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    context.packageManager.getApplicationInfo(
+                        packageName,
+                        android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong())
+                    )
+                } else {
+                    context.packageManager.getApplicationInfo(
+                        packageName,
+                        android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES
+                    )
+                }
             (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED) != 0
         }.getOrDefault(false)
         if (currentSuspended == isSuspended) return Result.success(Unit)
@@ -256,18 +292,26 @@ class RootSystemGateway(
     private suspend fun runRootTask(action: String, vararg args: String): Result<Unit> {
         val apkPath = context.packageCodePath
         val className = "com.valhalla.thor.data.source.local.root.RootMain"
-        val cmd = "export CLASSPATH=$apkPath && app_process /system/bin $className $action ${args.joinToString(" ")}"
+        val cmd = "export CLASSPATH=$apkPath && app_process /system/bin $className $action ${
+            args.joinToString(" ")
+        }"
         return runCommand(cmd)
     }
 
-    override suspend fun grantPermission(packageName: String, permissionName: String): Result<Unit> {
+    override suspend fun grantPermission(
+        packageName: String,
+        permissionName: String
+    ): Result<Unit> {
         if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
         return runCommand("pm grant $packageName $permissionName")
     }
 
-    override suspend fun revokePermission(packageName: String, permissionName: String): Result<Unit> {
+    override suspend fun revokePermission(
+        packageName: String,
+        permissionName: String
+    ): Result<Unit> {
         if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }

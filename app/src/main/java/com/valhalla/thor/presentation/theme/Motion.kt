@@ -2,15 +2,11 @@ package com.valhalla.thor.presentation.theme
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.interaction.InteractionSource
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -49,6 +45,7 @@ fun Modifier.expressivePress(
                         animationSpec = motionScheme.fastSpatialSpec()
                     )
                 }
+
                 is PressInteraction.Release, is PressInteraction.Cancel -> launch {
                     animatable.animateTo(
                         targetValue = 1f,

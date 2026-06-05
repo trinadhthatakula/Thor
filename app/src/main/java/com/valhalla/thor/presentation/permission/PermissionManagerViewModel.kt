@@ -3,13 +3,13 @@ package com.valhalla.thor.presentation.permission
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.repository.PermissionRepository
-import org.koin.core.annotation.KoinViewModel
 import com.valhalla.thor.domain.usecase.GetAppPermissionsUseCase
 import com.valhalla.thor.domain.usecase.TogglePermissionUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.koin.core.annotation.KoinViewModel
 
 @KoinViewModel
 class PermissionManagerViewModel(
@@ -68,7 +68,10 @@ class PermissionManagerViewModel(
                         val updated = state.permissions.map {
                             if (it.name == permissionName) it.copy(isGranted = grant) else it
                         }
-                        state.copy(permissions = updated, successMessage = "Permission status updated")
+                        state.copy(
+                            permissions = updated,
+                            successMessage = "Permission status updated"
+                        )
                     }
                 }
                 .onFailure { error ->

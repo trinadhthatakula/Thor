@@ -2,9 +2,9 @@ package com.valhalla.thor.data.security
 
 import android.content.Context
 import androidx.biometric.BiometricManager
-import org.koin.core.annotation.Single
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
+import org.koin.core.annotation.Single
 
 /**
  * Thin wrapper around [BiometricManager] that answers capability questions

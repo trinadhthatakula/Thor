@@ -2,7 +2,6 @@ package com.valhalla.thor.data.repository
 
 import android.content.BroadcastReceiver
 import android.content.Context
-import org.koin.core.annotation.Single
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
@@ -14,7 +13,6 @@ import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.PermissionDetail
 import com.valhalla.thor.domain.repository.AppRepository
-import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
@@ -23,6 +21,8 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.koin.core.annotation.Single
+import java.io.File
 
 @Single(binds = [AppRepository::class])
 class AppRepositoryImpl(
@@ -231,7 +231,10 @@ class AppRepositoryImpl(
 
                 val requestedPermissions = packInfo.requestedPermissions ?: emptyArray()
                 val permissions = requestedPermissions.map { permName ->
-                    val isGranted = pm.checkPermission(permName, packageName) == PackageManager.PERMISSION_GRANTED
+                    val isGranted = pm.checkPermission(
+                        permName,
+                        packageName
+                    ) == PackageManager.PERMISSION_GRANTED
                     var label: String? = null
                     var description: String? = null
                     val protection = try {
@@ -260,7 +263,8 @@ class AppRepositoryImpl(
                     )
                 }
 
-                val hasWakelockPermission = requestedPermissions.contains(android.Manifest.permission.WAKE_LOCK)
+                val hasWakelockPermission =
+                    requestedPermissions.contains(android.Manifest.permission.WAKE_LOCK)
 
                 val nativeLibDir = packInfo.applicationInfo?.nativeLibraryDir
                 val nativeLibs = if (nativeLibDir != null) {

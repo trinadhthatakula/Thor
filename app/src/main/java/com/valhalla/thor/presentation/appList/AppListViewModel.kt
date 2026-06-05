@@ -2,24 +2,22 @@ package com.valhalla.thor.presentation.appList
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
-import org.koin.core.annotation.KoinViewModel
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
-import com.valhalla.thor.R
-import com.valhalla.thor.util.UiText
+import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
-import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
+import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -28,6 +26,8 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.koin.core.annotation.KoinViewModel
 
 // ... AppListUiState remains same ...
 data class AppListUiState(
@@ -138,15 +138,43 @@ class AppListViewModel(
                         freezerRepository.contains(packageName)
                     }
                     if (!inFreezer) {
-                        _rawState.update { it.copy(freezerPrompt = FreezerPrompt(packageName, appName)) }
+                        _rawState.update {
+                            it.copy(
+                                freezerPrompt = FreezerPrompt(
+                                    packageName,
+                                    appName
+                                )
+                            )
+                        }
                     } else {
-                        _rawState.update { it.copy(actionMessage = UiText.StringResource(R.string.frozen_success, appName ?: packageName)) }
+                        _rawState.update {
+                            it.copy(
+                                actionMessage = UiText.StringResource(
+                                    R.string.frozen_success,
+                                    appName ?: packageName
+                                )
+                            )
+                        }
                     }
                 } else {
-                    _rawState.update { it.copy(actionMessage = UiText.StringResource(R.string.unfrozen_success, appName ?: packageName)) }
+                    _rawState.update {
+                        it.copy(
+                            actionMessage = UiText.StringResource(
+                                R.string.unfrozen_success,
+                                appName ?: packageName
+                            )
+                        )
+                    }
                 }
             }.onFailure { e ->
-                _rawState.update { it.copy(actionMessage = UiText.StringResource(R.string.error_format, e.message ?: "")) }
+                _rawState.update {
+                    it.copy(
+                        actionMessage = UiText.StringResource(
+                            R.string.error_format,
+                            e.message ?: ""
+                        )
+                    )
+                }
             }
         }
     }
@@ -158,7 +186,12 @@ class AppListViewModel(
     fun addToFreezer(packageName: String) {
         viewModelScope.launch(Dispatchers.IO) {
             freezerRepository.add(packageName)
-            _rawState.update { it.copy(freezerPrompt = null, actionMessage = UiText.StringResource(R.string.added_to_freezer_success)) }
+            _rawState.update {
+                it.copy(
+                    freezerPrompt = null,
+                    actionMessage = UiText.StringResource(R.string.added_to_freezer_success)
+                )
+            }
         }
     }
 
@@ -180,7 +213,10 @@ class AppListViewModel(
                             allSystemApps = state.allSystemApps.map {
                                 if (it.packageName in packageNames) it.copy(enabled = false) else it
                             },
-                            actionMessage = UiText.StringResource(R.string.tile_freeze_success, action.appList.size)
+                            actionMessage = UiText.StringResource(
+                                R.string.tile_freeze_success,
+                                action.appList.size
+                            )
                         )
                     }
                 }
@@ -198,7 +234,10 @@ class AppListViewModel(
                             allSystemApps = state.allSystemApps.map {
                                 if (it.packageName in packageNames) it.copy(enabled = true) else it
                             },
-                            actionMessage = UiText.StringResource(R.string.unfrozen_count_success, action.appList.size)
+                            actionMessage = UiText.StringResource(
+                                R.string.unfrozen_count_success,
+                                action.appList.size
+                            )
                         )
                     }
                 }

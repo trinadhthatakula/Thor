@@ -2,7 +2,6 @@ package com.valhalla.thor.domain.usecase
 
 import android.content.Context
 import androidx.core.content.FileProvider
-import org.koin.core.annotation.Factory
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.util.ApksMetadataGenerator
 import com.valhalla.thor.domain.model.AppInfo
@@ -10,6 +9,7 @@ import com.valhalla.thor.domain.model.formattedAppName
 import com.valhalla.thor.domain.repository.SystemRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.koin.core.annotation.Factory
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File

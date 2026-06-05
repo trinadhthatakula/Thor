@@ -59,7 +59,8 @@ object Shizuku {
         // 3. Unprivileged fallback
         if (Packages(context).isAppStopped(packageName)) return true
         runCatching {
-            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+            val am =
+                context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
             am?.killBackgroundProcesses(packageName)
         }
         return Packages(context).isAppStopped(packageName)
@@ -68,7 +69,7 @@ object Shizuku {
     fun setAppDisabled(context: Context, packageName: String, disabled: Boolean): Boolean {
         Packages(context).getApplicationInfoOrNull(packageName) ?: return false
         val userId = Packages(context).myUserId
-        
+
         // 1. Try shell first
         val command = if (disabled) {
             "pm disable-user --user $userId $packageName"

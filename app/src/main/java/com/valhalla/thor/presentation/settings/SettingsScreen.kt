@@ -70,7 +70,11 @@ fun SettingsScreen(
 
     LaunchedEffect(state.actionMessage) {
         state.actionMessage?.let {
-            android.widget.Toast.makeText(context, it.asString(context), android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(
+                context,
+                it.asString(context),
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
             viewModel.consumeMessage()
         }
     }
@@ -274,7 +278,9 @@ fun SettingsScreen(
             SettingsSwitchRow(
                 icon = R.drawable.frozen,
                 title = stringResource(R.string.auto_freeze),
-                subtitle = if (hasPrivilege) stringResource(R.string.auto_freeze_desc) else stringResource(R.string.privilege_required_warning),
+                subtitle = if (hasPrivilege) stringResource(R.string.auto_freeze_desc) else stringResource(
+                    R.string.privilege_required_warning
+                ),
                 checked = prefs.autoFreezeEnabled,
                 enabled = hasPrivilege,
                 onCheckedChange = { viewModel.setAutoFreezeEnabled(it) }
@@ -283,7 +289,9 @@ fun SettingsScreen(
             SettingsClickRow(
                 icon = R.drawable.unfreeze,
                 title = stringResource(R.string.unfreeze_all_apps),
-                subtitle = if (hasPrivilege) stringResource(R.string.unfreeze_all_apps_desc) else stringResource(R.string.privilege_required_warning),
+                subtitle = if (hasPrivilege) stringResource(R.string.unfreeze_all_apps_desc) else stringResource(
+                    R.string.privilege_required_warning
+                ),
                 enabled = hasPrivilege,
                 onClick = { showUnfreezeConfirmation = true }
             )
