@@ -27,7 +27,36 @@ class RootSystemGateway(
     override fun isDhizukuAvailable(): Boolean = false
 
     override suspend fun forceStopApp(packageName: String): Result<Unit> {
-        return runCommand("am force-stop $packageName")
+        val shellResult = runCommand("am force-stop $packageName")
+        if (shellResult.isSuccess) return shellResult
+
+        // Unprivileged check/fallback
+        val isStopped = runCatching {
+            val appInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong()))
+            } else {
+                context.packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES)
+            }
+            (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_STOPPED) != 0
+        }.getOrDefault(false)
+        if (isStopped) return Result.success(Unit)
+
+        runCatching {
+            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+            am?.killBackgroundProcesses(packageName)
+        }
+
+        val postCheck = runCatching {
+            val appInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong()))
+            } else {
+                context.packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES)
+            }
+            (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_STOPPED) != 0
+        }.getOrDefault(false)
+        if (postCheck) return Result.success(Unit)
+
+        return Result.failure(Exception("Root force stop failed. Shell command failed and app is still running."))
     }
 
     override suspend fun clearCache(packageName: String): Result<Unit> {
@@ -36,23 +65,80 @@ class RootSystemGateway(
     }
 
     override suspend fun clearAppData(packageName: String): Result<Unit> {
-        return runCommand("pm clear $packageName")
+        val shellResult = runCommand("pm clear $packageName")
+        if (shellResult.isSuccess) return shellResult
+
+        // Fallback to reflection via RootMain
+        val taskResult = runRootTask("clear-data", packageName)
+        if (taskResult.isSuccess) return Result.success(Unit)
+
+        return Result.failure(Exception("Root clear app data failed. Shell command and reflection both failed."))
     }
 
     override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> {
         val state = if (isDisabled) "disable" else "enable"
-        return runCommand("pm $state $packageName")
+        val shellResult = runCommand("pm $state $packageName")
+        if (shellResult.isSuccess) return shellResult
+
+        // Check if already in the target state
+        val currentDisabled = runCatching {
+            val appInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong()))
+            } else {
+                context.packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES)
+            }
+            !appInfo.enabled
+        }.getOrDefault(false)
+        if (currentDisabled == isDisabled) return Result.success(Unit)
+
+        // Try unprivileged API as fallback
+        val newState = if (isDisabled) {
+            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+        } else {
+            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+        }
+        val unprivilegedResult = runCatching {
+            context.packageManager.setApplicationEnabledSetting(packageName, newState, 0)
+        }
+        if (unprivilegedResult.isSuccess) {
+            val postCheck = runCatching {
+                val appInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    context.packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong()))
+                } else {
+                    context.packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES)
+                }
+                !appInfo.enabled
+            }.getOrDefault(false)
+            if (postCheck == isDisabled) return Result.success(Unit)
+        }
+
+        return Result.failure(Exception("Root setAppDisabled failed."))
     }
 
     override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> {
-        // Try one-shot root task first to show proper branding
+        // 1. Try shell first
+        val state = if (isSuspended) "suspend" else "unsuspend"
+        val shellResult = runCommand("pm $state $packageName")
+        if (shellResult.isSuccess) return shellResult
+
+        // 2. Fallback to reflection via RootMain
         if (isSuspended && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             val taskResult = runRootTask("suspend", packageName, isSuspended.toString())
             if (taskResult.isSuccess) return Result.success(Unit)
         }
 
-        val state = if (isSuspended) "suspend" else "unsuspend"
-        return runCommand("pm $state $packageName")
+        // 3. Check if already in the target state
+        val currentSuspended = runCatching {
+            val appInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.ApplicationInfoFlags.of(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong()))
+            } else {
+                context.packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES)
+            }
+            (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED) != 0
+        }.getOrDefault(false)
+        if (currentSuspended == isSuspended) return Result.success(Unit)
+
+        return Result.failure(Exception("Root setAppSuspended failed. Shell command and reflection both failed."))
     }
 
     override suspend fun setAppRestricted(

@@ -404,11 +404,7 @@ class InstallerRepositoryImpl(
                 Bypass.invoke<Any?>(params::class.java, params, "setRequestDowngrade", true)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                Logger.e("InstallerRepo", "Failed to setRequestDowngrade", e)
-                if (emitErrors) {
-                    eventBus.emit(InstallState.Error("Failed to request downgrade: ${e.message}"))
-                    return
-                } else throw Exception("Failed to request downgrade: ${e.message}")
+                Logger.w("InstallerRepo", "Failed to setRequestDowngrade via reflection, proceeding without downgrade flag: ${e.message}")
             }
         }
 

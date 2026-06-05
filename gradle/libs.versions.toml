@@ -22,7 +22,6 @@ dhizuku = "2.5.4"
 koin = "4.2.1"
 koin-plugin = "1.0.0"
 coil3 = "3.4.0"
-navigationCompose = "2.9.8"
 navigation3 = "1.1.2"
 
 [libraries]
@@ -47,7 +46,6 @@ androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit
 androidx-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
 androidx-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
 #Navigation
-androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 androidx-navigation3-runtime = { module = "androidx.navigation3:navigation3-runtime", version.ref = "navigation3" }
 androidx-navigation3-ui = { module = "androidx.navigation3:navigation3-ui", version.ref = "navigation3" }
 #Lifecycle

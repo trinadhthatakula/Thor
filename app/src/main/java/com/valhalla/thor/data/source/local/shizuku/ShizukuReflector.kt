@@ -107,7 +107,12 @@ class ShizukuReflector(
         Shizuku.setAppSuspended(context, packageName, suspended)
 
     fun uninstallApp(packageName: String, resetToFactory: Boolean = false): Boolean {
-        return runCatching {
+        // 1. Try shell first
+        val shellResult = Shizuku.uninstallApp(context, packageName)
+        if (shellResult) return true
+
+        // 2. Fallback to reflection
+        val reflectionResult = runCatching {
             val packageInfo = context.packageManager.getInfoForPackage(packageName) ?: return false
             val isSystem =
                 (packageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_SYSTEM) != 0
@@ -148,14 +153,21 @@ class ShizukuReflector(
                 intent.intentSender
             )
             true
-        }.getOrElse {
-            // Fallback to Shell uninstallation
-            Logger.w(
-                "ShizukuReflector",
-                "Reflection uninstall failed, falling back to shell: ${it.message}"
-            )
-            Shizuku.uninstallApp(context, packageName)
-        }
+        }.getOrDefault(false)
+
+        if (reflectionResult) return true
+
+        // 3. Unprivileged fallback
+        if (Packages(context).isAppUninstalled(packageName)) return true
+
+        return runCatching {
+            val intent = Intent(Intent.ACTION_DELETE).apply {
+                data = android.net.Uri.parse("package:$packageName")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            true
+        }.getOrDefault(false)
     }
 
     /**
