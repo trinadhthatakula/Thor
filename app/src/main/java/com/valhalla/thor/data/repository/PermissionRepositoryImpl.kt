@@ -20,6 +20,7 @@ class PermissionRepositoryImpl(
 
     private val pm = context.packageManager
 
+    @Suppress("DEPRECATION")
     override suspend fun getAppPermissions(packageName: String): Result<List<AppPermission>> =
         withContext(Dispatchers.IO) {
             try {
@@ -30,7 +31,6 @@ class PermissionRepositoryImpl(
                         PackageManager.PackageInfoFlags.of(flags.toLong())
                     )
                 } else {
-                    @Suppress("DEPRECATION")
                     pm.getPackageInfo(packageName, PackageManager.GET_PERMISSIONS)
                 }
 
@@ -52,10 +52,13 @@ class PermissionRepositoryImpl(
                     val label =
                         permInfo?.loadLabel(pm)?.toString() ?: permName.substringAfterLast('.')
                     val description = permInfo?.loadDescription(pm)?.toString() ?: ""
-                    val protectionLevel =
+                    val protectionLevel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        permInfo?.protectionLevel ?: 0
+                    } else {
                         (permInfo?.protection ?: 0) or (permInfo?.protectionFlags ?: 0)
+                    }
                     val isRuntime =
-                        (permInfo?.protection ?: 0) == PermissionInfo.PROTECTION_DANGEROUS
+                        (protectionLevel and PermissionInfo.PROTECTION_MASK_BASE) == PermissionInfo.PROTECTION_DANGEROUS
 
                     AppPermission(
                         name = permName,
