@@ -32,7 +32,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
-import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
@@ -74,19 +73,14 @@ fun MainScreen(
     var showExitConfirmation by remember { mutableStateOf(false) }
 
     // --- Navigation 3 Setup ---
-    val homeBackStack = rememberNavBackStack(ThorRoute.Home)
-    val appsBackStack = rememberNavBackStack(ThorRoute.Apps)
-    val freezerBackStack = rememberNavBackStack(ThorRoute.Freezer)
-    val settingsBackStack = rememberNavBackStack(ThorRoute.Settings)
+    val backStack = rememberNavBackStack(ThorRoute.Home)
 
-    var activeTab by remember { mutableStateOf<ThorRoute>(ThorRoute.Home) }
-
-    val activeBackStack: NavBackStack<NavKey> = when (activeTab) {
-        ThorRoute.Home -> homeBackStack
-        ThorRoute.Apps -> appsBackStack
-        ThorRoute.Freezer -> freezerBackStack
-        ThorRoute.Settings -> settingsBackStack
-        else -> homeBackStack
+    val activeTab = when (val root = backStack.firstOrNull()) {
+        is ThorRoute.Home -> ThorRoute.Home
+        is ThorRoute.Apps -> ThorRoute.Apps
+        is ThorRoute.Freezer -> ThorRoute.Freezer
+        is ThorRoute.Settings -> ThorRoute.Settings
+        else -> ThorRoute.Home
     }
 
     val selectedDestination = when (activeTab) {
@@ -97,20 +91,21 @@ fun MainScreen(
         else -> AppDestinations.HOME
     }
 
-    val showBottomBar = activeBackStack.lastOrNull()?.let {
+    val showBottomBar = backStack.lastOrNull()?.let {
         it == ThorRoute.Home || it == ThorRoute.Apps || it == ThorRoute.Freezer || it == ThorRoute.Settings
     } ?: true
 
     // Handle Back Press to Show Exit Confirmation when at the root of Home stack
-    val isAtRoot = activeBackStack.size == 1 && activeTab == ThorRoute.Home
+    val isAtRoot = backStack.size == 1 && activeTab == ThorRoute.Home
     BackHandler(enabled = isAtRoot) {
         showExitConfirmation = true
     }
 
     // Handle Back Press to return to Home stack when at the root of another tab
-    val isNonStartRoot = activeBackStack.size == 1 && activeTab != ThorRoute.Home
+    val isNonStartRoot = backStack.size == 1 && activeTab != ThorRoute.Home
     BackHandler(enabled = isNonStartRoot) {
-        activeTab = ThorRoute.Home
+        backStack.clear()
+        backStack.add(ThorRoute.Home)
     }
 
     val canNotLaunchApp = stringResource(R.string.cannot_launch_app)
@@ -171,12 +166,14 @@ fun MainScreen(
                     destinations = AppDestinations.entries,
                     selectedDestination = selectedDestination,
                     onDestinationSelected = { dest ->
-                        activeTab = when (dest) {
+                        val route = when (dest) {
                             AppDestinations.HOME -> ThorRoute.Home
                             AppDestinations.APPS -> ThorRoute.Apps
                             AppDestinations.FREEZER -> ThorRoute.Freezer
                             AppDestinations.SETTINGS -> ThorRoute.Settings
                         }
+                        backStack.clear()
+                        backStack.add(route)
                     }
                 )
             }
@@ -191,10 +188,12 @@ fun MainScreen(
                     HomeScreen(
                         viewModel = homeViewModel,
                         onNavigateToApps = {
-                            activeTab = ThorRoute.Apps
+                            backStack.clear()
+                            backStack.add(ThorRoute.Apps)
                         },
                         onNavigateToFreezer = {
-                            activeTab = ThorRoute.Freezer
+                            backStack.clear()
+                            backStack.add(ThorRoute.Freezer)
                         },
                         onReinstallAll = {
                             checkAndProcessAction(
@@ -212,11 +211,11 @@ fun MainScreen(
                         viewModel = appListViewModel,
                         sharedTransitionScope = this@SharedTransitionLayout,
                         onNavigateToAppInfo = { pkg, name ->
-                            activeBackStack.add(ThorRoute.AppInfoDetails(pkg, name))
+                            backStack.add(ThorRoute.AppInfoDetails(pkg, name))
                         },
                         onAppAction = { action ->
                             if (action is AppClickAction.ManagePermissions) {
-                                activeBackStack.add(
+                                backStack.add(
                                     ThorRoute.PermissionManager(
                                         action.appInfo.packageName,
                                         action.appInfo.appName ?: ""
@@ -238,7 +237,7 @@ fun MainScreen(
                         sharedTransitionScope = this@SharedTransitionLayout,
                         onAppAction = { action ->
                             if (action is AppClickAction.ManagePermissions) {
-                                activeBackStack.add(
+                                backStack.add(
                                     ThorRoute.PermissionManager(
                                         action.appInfo.packageName,
                                         action.appInfo.appName ?: ""
@@ -263,7 +262,7 @@ fun MainScreen(
                         packageName = route.packageName,
                         appName = route.appName,
                         sharedTransitionScope = this@SharedTransitionLayout,
-                        onBack = { activeBackStack.removeLastOrNull() }
+                        onBack = { backStack.removeLastOrNull() }
                     )
                 }
 
@@ -272,9 +271,9 @@ fun MainScreen(
                         packageName = route.packageName,
                         appName = route.appName,
                         sharedTransitionScope = this@SharedTransitionLayout,
-                        onBack = { activeBackStack.removeLastOrNull() },
+                        onBack = { backStack.removeLastOrNull() },
                         onNavigateToPermissionManager = { pkg, name ->
-                            activeBackStack.add(ThorRoute.PermissionManager(pkg, name))
+                            backStack.add(ThorRoute.PermissionManager(pkg, name))
                         }
                     )
                 }
@@ -286,8 +285,8 @@ fun MainScreen(
                     .fillMaxSize()
             ) {
                 NavDisplay(
-                    backStack = activeBackStack,
-                    onBack = { activeBackStack.removeLastOrNull() },
+                    backStack = backStack,
+                    onBack = { backStack.removeLastOrNull() },
                     entryDecorators = listOf(
                         rememberSaveableStateHolderNavEntryDecorator(),
                         rememberViewModelStoreNavEntryDecorator()
