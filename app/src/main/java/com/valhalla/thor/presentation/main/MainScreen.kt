@@ -61,6 +61,8 @@ import org.koin.androidx.compose.koinViewModel
 fun MainScreen(
     mainViewModel: MainViewModel = koinViewModel(),
     homeViewModel: HomeViewModel = koinViewModel(),
+    appListViewModel: AppListViewModel = koinViewModel(),
+    freezerViewModel: FreezerViewModel = koinViewModel(),
     onExit: () -> Unit,
 ) {
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
@@ -206,7 +208,6 @@ fun MainScreen(
                 }
 
                 entry<ThorRoute.Apps> {
-                    val appListViewModel: AppListViewModel = koinViewModel()
                     AppListScreen(
                         viewModel = appListViewModel,
                         sharedTransitionScope = this@SharedTransitionLayout,
@@ -232,7 +233,6 @@ fun MainScreen(
                 }
 
                 entry<ThorRoute.Freezer> {
-                    val freezerViewModel: FreezerViewModel = koinViewModel()
                     FreezerScreen(
                         viewModel = freezerViewModel,
                         sharedTransitionScope = this@SharedTransitionLayout,
