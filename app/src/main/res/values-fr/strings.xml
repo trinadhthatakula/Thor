@@ -245,4 +245,47 @@
     <string name="share_via">Partager via</string>
     <string name="version_format">v%1$s</string>
 
+    <!-- Hardcoded string replacements -->
+    <string name="manage_freezer">Gérer le Congélateur</string>
+    <string name="freeze_all">Tout geler</string>
+    <string name="add">Ajouter</string>
+    <string name="unlock_to_continue">Déverrouiller pour continuer</string>
+    <string name="auth_failed">Échec de l\'authentification</string>
+    <string name="try_again">Réessayer</string>
+    <string name="exit">Quitter</string>
+    <string name="title_thor_installer">Installateur Thor</string>
+    <string name="install_analyzing">Analyse du paquet…</string>
+    <string name="install_downgrade_warning">Cela va dégrader l\'application.</string>
+    <string name="install_update_warning">Cela va mettre à jour l\'application existante.</string>
+    <string name="install_permissions_singular">Ce paquet demande %1$d autorisation. %2$s</string>
+    <string name="install_permissions_plural">Ce paquet demande %1$d autorisations. %2$s</string>
+    <string name="install_options_title">Options d\'installation : </string>
+    <string name="install_mode_normal">Normal</string>
+    <string name="install_mode_shizuku">Shizuku</string>
+    <string name="install_mode_dhizuku">Dhizuku</string>
+    <string name="install_mode_root">Root</string>
+    <string name="install_mode_external_short">Externe</string>
+    <string name="install_mode_normal_format">%1$s normal</string>
+    <string name="install_mode_shizuku_format">%1$s via Shizuku</string>
+    <string name="install_mode_dhizuku_format">%1$s via Dhizuku</string>
+    <string name="install_mode_root_format">%1$s avec Root</string>
+    <string name="install_mode_external">Ouvrir avec…</string>
+    <string name="install_assembling_progress">Assemblage : %1$d%%</string>
+    <string name="install_confirm_system_dialog">Veuillez confirmer l\'installation dans la boîte de dialogue système.</string>
+    <string name="install_success">Installé avec succès</string>
+    <string name="install_action_downgrade">Installer quand même</string>
+    <string name="install_action_update">Mettre à jour</string>
+    <string name="install_action_install">Installer</string>
+    <string name="install_word_downgrade">rétrograder</string>
+    <string name="install_word_update">mettre à jour</string>
+    <string name="install_word_install">installer</string>
+    <string name="install_warning_downgrade">Avertissement : L\'installation d\'une version antérieure peut causer des problèmes.</string>
+    <string name="sensitive">Sensible</string>
+    <string name="protection_normal">Normal</string>
+    <string name="protection_dangerous">Dangereux</string>
+    <string name="protection_signature">Signature</string>
+    <string name="protection_signature_system">Signature/Système</string>
+    <string name="expanded">Développé</string>
+    <string name="collapsed">Réduit</string>
+
 </resources>

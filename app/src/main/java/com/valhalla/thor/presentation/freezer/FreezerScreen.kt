@@ -133,7 +133,7 @@ fun FreezerScreen(
                             }
                         )
                         Text(
-                            text = "${state.multiSelection.size} selected",
+                            text = stringResource(R.string.selected_count, state.multiSelection.size),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier
@@ -141,7 +141,7 @@ fun FreezerScreen(
                                 .padding(start = 8.dp)
                         )
                         FilledTonalIconButton(onClick = { viewModel.clearSelection() }) {
-                            Icon(painterResource(R.drawable.round_close), "Close")
+                            Icon(painterResource(R.drawable.round_close), stringResource(R.string.cd_close))
                         }
                     }
                 } else {
@@ -182,7 +182,7 @@ fun FreezerScreen(
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(Modifier.width(6.dp))
-                            Text("Freeze All")
+                            Text(stringResource(R.string.freeze_all))
                         }
                     }
 

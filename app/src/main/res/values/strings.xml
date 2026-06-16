@@ -245,4 +245,47 @@
     <string name="share_via">Share via</string>
     <string name="version_format">v%1$s</string>
 
+    <!-- Hardcoded string replacements -->
+    <string name="manage_freezer">Manage Freezer</string>
+    <string name="freeze_all">Freeze All</string>
+    <string name="add">Add</string>
+    <string name="unlock_to_continue">Unlock to continue</string>
+    <string name="auth_failed">Authentication Failed</string>
+    <string name="try_again">Try Again</string>
+    <string name="exit">Exit</string>
+    <string name="title_thor_installer">Thor Installer</string>
+    <string name="install_analyzing">Analyzing Package…</string>
+    <string name="install_downgrade_warning">This will downgrade the app.</string>
+    <string name="install_update_warning">This will update the existing app.</string>
+    <string name="install_permissions_singular">This package requests %1$d permission. %2$s</string>
+    <string name="install_permissions_plural">This package requests %1$d permissions. %2$s</string>
+    <string name="install_options_title">Install Options: </string>
+    <string name="install_mode_normal">Normal</string>
+    <string name="install_mode_shizuku">Shizuku</string>
+    <string name="install_mode_dhizuku">Dhizuku</string>
+    <string name="install_mode_root">Root</string>
+    <string name="install_mode_external_short">External</string>
+    <string name="install_mode_normal_format">Normal %1$s</string>
+    <string name="install_mode_shizuku_format">%1$s via Shizuku</string>
+    <string name="install_mode_dhizuku_format">%1$s via Dhizuku</string>
+    <string name="install_mode_root_format">%1$s with Root</string>
+    <string name="install_mode_external">Open with&#8230;</string>
+    <string name="install_assembling_progress">Assembling: %1$d%%</string>
+    <string name="install_confirm_system_dialog">Please confirm installation in the system dialog.</string>
+    <string name="install_success">Installed Successfully</string>
+    <string name="install_action_downgrade">Install Anyway</string>
+    <string name="install_action_update">Update</string>
+    <string name="install_action_install">Install</string>
+    <string name="install_word_downgrade">downgrade</string>
+    <string name="install_word_update">update</string>
+    <string name="install_word_install">install</string>
+    <string name="install_warning_downgrade">Warning: Installing an older version may cause issues.</string>
+    <string name="sensitive">Sensitive</string>
+    <string name="protection_normal">Normal</string>
+    <string name="protection_dangerous">Dangerous</string>
+    <string name="protection_signature">Signature</string>
+    <string name="protection_signature_system">Signature/System</string>
+    <string name="expanded">Expanded</string>
+    <string name="collapsed">Collapsed</string>
+
 </resources>

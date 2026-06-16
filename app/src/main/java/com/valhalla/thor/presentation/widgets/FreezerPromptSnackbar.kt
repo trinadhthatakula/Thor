@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -95,7 +96,7 @@ fun FreezerPromptSnackbar(
                 // Text
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Frozen",
+                        text = stringResource(R.string.frozen),
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -130,7 +131,7 @@ fun FreezerPromptSnackbar(
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        text = "Add",
+                        text = stringResource(R.string.add),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold
                     )

@@ -245,4 +245,47 @@
     <string name="share_via">مشاركة عبر</string>
     <string name="version_format">v%1$s</string>
 
+    <!-- Hardcoded string replacements -->
+    <string name="manage_freezer">إدارة المجمد</string>
+    <string name="freeze_all">تجميد الكل</string>
+    <string name="add">إضافة</string>
+    <string name="unlock_to_continue">فتح القفل للمتابعة</string>
+    <string name="auth_failed">فشل المصادقة</string>
+    <string name="try_again">حاول مجدداً</string>
+    <string name="exit">خروج</string>
+    <string name="title_thor_installer">مثبت Thor</string>
+    <string name="install_analyzing">جاري تحليل الحزمة…</string>
+    <string name="install_downgrade_warning">سيؤدي هذا إلى خفض إصدار التطبيق.</string>
+    <string name="install_update_warning">سيؤدي هذا إلى تحديث التطبيق الحالي.</string>
+    <string name="install_permissions_singular">تطلب هذه الحزمة %1$d إذن. %2$s</string>
+    <string name="install_permissions_plural">تطلب هذه الحزمة %1$d أذونات. %2$s</string>
+    <string name="install_options_title">خيارات التثبيت: </string>
+    <string name="install_mode_normal">عادي</string>
+    <string name="install_mode_shizuku">Shizuku</string>
+    <string name="install_mode_dhizuku">Dhizuku</string>
+    <string name="install_mode_root">Root</string>
+    <string name="install_mode_external_short">خارجي</string>
+    <string name="install_mode_normal_format">تثبيت عادي (%1$s)</string>
+    <string name="install_mode_shizuku_format">%1$s عبر Shizuku</string>
+    <string name="install_mode_dhizuku_format">%1$s عبر Dhizuku</string>
+    <string name="install_mode_root_format">%1$s باستخدام روت (Root)</string>
+    <string name="install_mode_external">فتح باستخدام…</string>
+    <string name="install_assembling_progress">تجميع: %1$d%%</string>
+    <string name="install_confirm_system_dialog">يرجى تأكيد التثبيت في نافذة النظام الحوارية.</string>
+    <string name="install_success">تم التثبيت بنجاح</string>
+    <string name="install_action_downgrade">التثبيت على أي حال</string>
+    <string name="install_action_update">تحديث</string>
+    <string name="install_action_install">تثبيت</string>
+    <string name="install_word_downgrade">خفض الإصدار</string>
+    <string name="install_word_update">تحديث</string>
+    <string name="install_word_install">تثبيت</string>
+    <string name="install_warning_downgrade">تحذير: قد يؤدي تثبيت إصدار أقدم إلى حدوث مشكلات.</string>
+    <string name="sensitive">حساس</string>
+    <string name="protection_normal">عادي</string>
+    <string name="protection_dangerous">خطير</string>
+    <string name="protection_signature">توقيع</string>
+    <string name="protection_signature_system">توقيع/نظام</string>
+    <string name="expanded">موسع</string>
+    <string name="collapsed">مطوي</string>
+
 </resources>

@@ -245,4 +245,47 @@
     <string name="share_via">Compartir con</string>
     <string name="version_format">v%1$s</string>
 
+    <!-- Hardcoded string replacements -->
+    <string name="manage_freezer">Gestionar Congelador</string>
+    <string name="freeze_all">Congelar todo</string>
+    <string name="add">Añadir</string>
+    <string name="unlock_to_continue">Desbloquear para continuar</string>
+    <string name="auth_failed">Error de autenticación</string>
+    <string name="try_again">Intentar de nuevo</string>
+    <string name="exit">Salir</string>
+    <string name="title_thor_installer">Instalador Thor</string>
+    <string name="install_analyzing">Analizando paquete…</string>
+    <string name="install_downgrade_warning">Esto degradará la aplicación.</string>
+    <string name="install_update_warning">Esto actualizará la aplicación existente.</string>
+    <string name="install_permissions_singular">Este paquete solicita %1$d permiso. %2$s</string>
+    <string name="install_permissions_plural">Este paquete solicita %1$d permisos. %2$s</string>
+    <string name="install_options_title">Opciones de instalación: </string>
+    <string name="install_mode_normal">Normal</string>
+    <string name="install_mode_shizuku">Shizuku</string>
+    <string name="install_mode_dhizuku">Dhizuku</string>
+    <string name="install_mode_root">Root</string>
+    <string name="install_mode_external_short">Externo</string>
+    <string name="install_mode_normal_format">%1$s normal</string>
+    <string name="install_mode_shizuku_format">%1$s mediante Shizuku</string>
+    <string name="install_mode_dhizuku_format">%1$s mediante Dhizuku</string>
+    <string name="install_mode_root_format">%1$s con Root</string>
+    <string name="install_mode_external">Abrir con…</string>
+    <string name="install_assembling_progress">Ensamblando: %1$d%%</string>
+    <string name="install_confirm_system_dialog">Por favor, confirme la instalación en el diálogo del sistema.</string>
+    <string name="install_success">Instalado correctamente</string>
+    <string name="install_action_downgrade">Instalar de todos modos</string>
+    <string name="install_action_update">Actualizar</string>
+    <string name="install_action_install">Instalar</string>
+    <string name="install_word_downgrade">degradar</string>
+    <string name="install_word_update">actualizar</string>
+    <string name="install_word_install">instalar</string>
+    <string name="install_warning_downgrade">Advertencia: Instalar una versión anterior puede causar problemas.</string>
+    <string name="sensitive">Sensible</string>
+    <string name="protection_normal">Normal</string>
+    <string name="protection_dangerous">Peligroso</string>
+    <string name="protection_signature">Firma</string>
+    <string name="protection_signature_system">Firma/Sistema</string>
+    <string name="expanded">Expandido</string>
+    <string name="collapsed">Contraído</string>
+
 </resources>

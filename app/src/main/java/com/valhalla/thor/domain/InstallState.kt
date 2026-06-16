@@ -28,18 +28,17 @@ sealed interface InstallState {
             }
         }
 
-        fun getActionButtonText(): String {
+        fun getActionButtonText(): com.valhalla.thor.util.UiText {
             return when {
-                isDowngrade -> "Install Anyway"
-                isUpdate -> "Update"
-                else -> "Install"
+                isDowngrade -> com.valhalla.thor.util.UiText.StringResource(com.valhalla.thor.R.string.install_action_downgrade)
+                isUpdate -> com.valhalla.thor.util.UiText.StringResource(com.valhalla.thor.R.string.install_action_update)
+                else -> com.valhalla.thor.util.UiText.StringResource(com.valhalla.thor.R.string.install_action_install)
             }
         }
 
-        fun getWarningMessage(): String? {
+        fun getWarningMessage(): com.valhalla.thor.util.UiText? {
             return when {
-                isDowngrade -> "Warning: Installing an older version may cause issues."
-                isUpdate -> null
+                isDowngrade -> com.valhalla.thor.util.UiText.StringResource(com.valhalla.thor.R.string.install_warning_downgrade)
                 else -> null
             }
         }
@@ -48,11 +47,11 @@ sealed interface InstallState {
             return isDowngrade
         }
 
-        fun getActionWord(): String {
+        fun getActionWord(): com.valhalla.thor.util.UiText {
             return when {
-                isDowngrade -> "downgrade"
-                isUpdate -> "update"
-                else -> "install"
+                isDowngrade -> com.valhalla.thor.util.UiText.StringResource(com.valhalla.thor.R.string.install_word_downgrade)
+                isUpdate -> com.valhalla.thor.util.UiText.StringResource(com.valhalla.thor.R.string.install_word_update)
+                else -> com.valhalla.thor.util.UiText.StringResource(com.valhalla.thor.R.string.install_word_install)
             }
         }
 

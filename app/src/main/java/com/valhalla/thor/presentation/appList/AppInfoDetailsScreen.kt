@@ -433,7 +433,7 @@ private fun AppDetailsHeader(
                 Modifier
             }
             Text(
-                text = appInfo.appName ?: "Unknown",
+                text = appInfo.appName ?: stringResource(R.string.unknown),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Black,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -860,9 +860,18 @@ private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
                                 color = if (perm.isGranted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer,
                                 textColor = if (perm.isGranted) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
+                            val localizedProtection = when {
+                                perm.protectionLevel == "Normal" -> stringResource(R.string.protection_normal)
+                                perm.protectionLevel == "Dangerous" -> stringResource(R.string.protection_dangerous)
+                                perm.protectionLevel == "Signature" -> stringResource(R.string.protection_signature)
+                                perm.protectionLevel == "Signature/System" -> stringResource(R.string.protection_signature_system)
+                                perm.protectionLevel.startsWith("Unknown") -> {
+                                    perm.protectionLevel.replace("Unknown", stringResource(R.string.unknown))
+                                }
+                                else -> perm.protectionLevel
+                            }
                             StatusChip(
-                                text = perm.protectionLevel,
+                                text = localizedProtection,
                                 color = when (perm.protectionLevel) {
                                     "Dangerous" -> MaterialTheme.colorScheme.errorContainer.copy(
                                         alpha = 0.5f

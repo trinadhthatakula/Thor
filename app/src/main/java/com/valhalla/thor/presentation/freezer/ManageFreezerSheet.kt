@@ -40,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.valhalla.thor.R
@@ -94,7 +95,7 @@ fun ManageFreezerSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Manage Freezer",
+                    text = stringResource(R.string.manage_freezer),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
                     letterSpacing = (-1).sp

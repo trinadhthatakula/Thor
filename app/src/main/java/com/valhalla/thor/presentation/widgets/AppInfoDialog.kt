@@ -289,7 +289,7 @@ private fun AppHeader(
                 )
             }
             StatusChip(
-                text = "v${appInfo.versionName}",
+                text = stringResource(R.string.version_format, appInfo.versionName ?: ""),
                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
                 textColor = MaterialTheme.colorScheme.onSurfaceVariant
             )

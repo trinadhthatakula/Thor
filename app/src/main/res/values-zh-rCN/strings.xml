@@ -245,4 +245,47 @@
     <string name="share_via">分享方式</string>
     <string name="version_format">v%1$s</string>
 
+    <!-- Hardcoded string replacements -->
+    <string name="manage_freezer">管理冻结室</string>
+    <string name="freeze_all">冻结全部</string>
+    <string name="add">添加</string>
+    <string name="unlock_to_continue">解锁以继续</string>
+    <string name="auth_failed">身份验证失败</string>
+    <string name="try_again">重试</string>
+    <string name="exit">退出</string>
+    <string name="title_thor_installer">Thor 安装器</string>
+    <string name="install_analyzing">正在解析包…</string>
+    <string name="install_downgrade_warning">这将降级该应用。</string>
+    <string name="install_update_warning">这将更新现有应用。</string>
+    <string name="install_permissions_singular">此包请求 %1$d 个权限。%2$s</string>
+    <string name="install_permissions_plural">此包请求 %1$d 个权限。%2$s</string>
+    <string name="install_options_title">安装选项：</string>
+    <string name="install_mode_normal">普通</string>
+    <string name="install_mode_shizuku">Shizuku</string>
+    <string name="install_mode_dhizuku">Dhizuku</string>
+    <string name="install_mode_root">Root</string>
+    <string name="install_mode_external_short">外部</string>
+    <string name="install_mode_normal_format">普通 %1$s</string>
+    <string name="install_mode_shizuku_format">通过 Shizuku %1$s</string>
+    <string name="install_mode_dhizuku_format">通过 Dhizuku %1$s</string>
+    <string name="install_mode_root_format">使用 Root 权限 %1$s</string>
+    <string name="install_mode_external">打开方式…</string>
+    <string name="install_assembling_progress">正在组装：%1$d%%</string>
+    <string name="install_confirm_system_dialog">请在系统对话框中确认安装。</string>
+    <string name="install_success">安装成功</string>
+    <string name="install_action_downgrade">仍然安装</string>
+    <string name="install_action_update">更新</string>
+    <string name="install_action_install">安装</string>
+    <string name="install_word_downgrade">降级</string>
+    <string name="install_word_update">更新</string>
+    <string name="install_word_install">安装</string>
+    <string name="install_warning_downgrade">警告：安装较旧版本可能会导致问题。</string>
+    <string name="sensitive">敏感</string>
+    <string name="protection_normal">普通</string>
+    <string name="protection_dangerous">危险</string>
+    <string name="protection_signature">签名</string>
+    <string name="protection_signature_system">签名/系统</string>
+    <string name="expanded">已展开</string>
+    <string name="collapsed">已折叠</string>
+
 </resources>

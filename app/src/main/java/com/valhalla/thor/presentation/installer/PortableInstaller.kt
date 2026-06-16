@@ -47,6 +47,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -58,6 +59,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.InstallState
+import com.valhalla.thor.util.UiText
 import com.valhalla.thor.domain.repository.InstallMode
 import kotlinx.coroutines.delay
 import org.koin.androidx.compose.koinViewModel
@@ -169,7 +171,7 @@ fun PortableInstaller(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "THOR INSTALLER",
+                    text = stringResource(R.string.title_thor_installer).uppercase(),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold,
@@ -189,7 +191,7 @@ fun PortableInstaller(
                             color = MaterialTheme.colorScheme.primary
                         )
                         Spacer(Modifier.height(16.dp))
-                        Text("Analyzing Package...", style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(R.string.install_analyzing), style = MaterialTheme.typography.bodyMedium)
                     }
                 }
 
@@ -230,7 +232,7 @@ fun PortableInstaller(
 
                     if (s.isUpdate) {
                         Text(
-                            text = if (s.isDowngrade) "This will downgrade the app." else "This will update the existing app.",
+                            text = if (s.isDowngrade) stringResource(R.string.install_downgrade_warning) else stringResource(R.string.install_update_warning),
                             style = MaterialTheme.typography.bodySmall,
                             color = if (s.isDowngrade) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                             modifier = Modifier.fillMaxWidth(),
@@ -243,9 +245,14 @@ fun PortableInstaller(
                     ) {
                         if (totalPermissions > 0) {
                             val warningMessage =
-                                if (s.shouldShowWarning()) s.getWarningMessage().orEmpty() else ""
+                                if (s.shouldShowWarning()) s.getWarningMessage()?.asString().orEmpty() else ""
+                            val permissionsMsg = if (totalPermissions > 1) {
+                                stringResource(R.string.install_permissions_plural, totalPermissions, warningMessage)
+                            } else {
+                                stringResource(R.string.install_permissions_singular, totalPermissions, warningMessage)
+                            }
                             Text(
-                                "This package requests $totalPermissions permission${if (totalPermissions > 1) "s" else ""}. $warningMessage",
+                                permissionsMsg,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier
@@ -262,7 +269,7 @@ fun PortableInstaller(
                                 )
                             ) {
                                 Text(
-                                    s.getActionButtonText()
+                                    s.getActionButtonText().asString()
                                 )
                             }
                         } else {
@@ -290,21 +297,30 @@ fun PortableInstaller(
                                                     }
                                                 ),
                                                 modifier = Modifier.size(SplitButtonDefaults.LeadingIconSize),
-                                                contentDescription = "Install Mode Icon",
+                                                contentDescription = null,
                                             )
                                             Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                                            Text(s.getActionButtonText())
+                                            Text(s.getActionButtonText().asString())
                                         }
                                     },
                                     trailingButton = {
+                                        val normalStr = stringResource(R.string.install_mode_normal)
+                                        val shizukuStr = stringResource(R.string.install_mode_shizuku)
+                                        val dhizukuStr = stringResource(R.string.install_mode_dhizuku)
+                                        val rootStr = stringResource(R.string.install_mode_root)
+                                        val externalStr = stringResource(R.string.install_mode_external_short)
+                                        val installOptionsPrefix = stringResource(R.string.install_options_title)
+                                        val expandedStr = stringResource(R.string.expanded)
+                                        val collapsedStr = stringResource(R.string.collapsed)
+
                                         val description =
-                                            "Install Options: " + availableModes.joinToString(", ") { mode ->
+                                            installOptionsPrefix + availableModes.joinToString(", ") { mode ->
                                                 when (mode) {
-                                                    InstallMode.NORMAL -> "Normal"
-                                                    InstallMode.SHIZUKU -> "Shizuku"
-                                                    InstallMode.DHIZUKU -> "Dhizuku"
-                                                    InstallMode.ROOT -> "Root"
-                                                    InstallMode.EXTERNAL -> "External"
+                                                    InstallMode.NORMAL -> normalStr
+                                                    InstallMode.SHIZUKU -> shizukuStr
+                                                    InstallMode.DHIZUKU -> dhizukuStr
+                                                    InstallMode.ROOT -> rootStr
+                                                    InstallMode.EXTERNAL -> externalStr
                                                 }
                                             }
                                         SplitButtonDefaults.ElevatedTrailingButton(
@@ -313,7 +329,7 @@ fun PortableInstaller(
                                             modifier =
                                                 Modifier.semantics {
                                                     stateDescription =
-                                                        if (checked) "Expanded" else "Collapsed"
+                                                        if (checked) expandedStr else collapsedStr
                                                     this.contentDescription = description
                                                 },
                                             colors = ButtonDefaults.buttonColors(
@@ -348,11 +364,11 @@ fun PortableInstaller(
                                             text = {
                                                 Text(
                                                     when (mode) {
-                                                        InstallMode.NORMAL -> "Normal ${s.getActionWord()}"
-                                                        InstallMode.SHIZUKU -> "${s.getActionWord()} via Shizuku"
-                                                        InstallMode.DHIZUKU -> "${s.getActionWord()} via Dhizuku"
-                                                        InstallMode.ROOT -> "${s.getActionWord()} with Root"
-                                                        InstallMode.EXTERNAL -> "Open with..."
+                                                        InstallMode.NORMAL -> stringResource(R.string.install_mode_normal_format, s.getActionWord().asString())
+                                                        InstallMode.SHIZUKU -> stringResource(R.string.install_mode_shizuku_format, s.getActionWord().asString())
+                                                        InstallMode.DHIZUKU -> stringResource(R.string.install_mode_dhizuku_format, s.getActionWord().asString())
+                                                        InstallMode.ROOT -> stringResource(R.string.install_mode_root_format, s.getActionWord().asString())
+                                                        InstallMode.EXTERNAL -> stringResource(R.string.install_mode_external)
                                                     }
                                                 )
                                             },
@@ -379,7 +395,7 @@ fun PortableInstaller(
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            "Assembling: $percentage%",
+                            stringResource(R.string.install_assembling_progress, percentage),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -398,7 +414,7 @@ fun PortableInstaller(
                         )
                         Spacer(Modifier.height(16.dp))
                         Text(
-                            "Please confirm installation in the system dialog.",
+                            stringResource(R.string.install_confirm_system_dialog),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.tertiary,
                             fontWeight = FontWeight.Medium
@@ -409,7 +425,7 @@ fun PortableInstaller(
                 is InstallState.Success -> {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            "Installed Successfully",
+                            stringResource(R.string.install_success),
                             color = Color.Green,
                             fontWeight = FontWeight.Bold
                         )
@@ -424,7 +440,7 @@ fun PortableInstaller(
                                 },
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Text("Done")
+                                Text(stringResource(R.string.done))
                             }
 
                             if (launchIntent != null) {
@@ -439,7 +455,7 @@ fun PortableInstaller(
                                     },
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Text("Open")
+                                    Text(stringResource(R.string.action_open))
                                 }
                             }
                         }
@@ -448,12 +464,12 @@ fun PortableInstaller(
 
                 is InstallState.Error -> {
                     Text(
-                        "Error: ${s.message}",
+                        stringResource(R.string.error_format, s.message),
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Button(onClick = onDismiss) {
-                        Text("Close")
+                        Text(stringResource(R.string.close))
                     }
                 }
             }
