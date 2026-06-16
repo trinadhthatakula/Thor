@@ -59,5 +59,6 @@
       <option name="previewFile" value="true" />
     </inspection_tool>
     <inspection_tool class="UnusedSymbol" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="UnusedVersionCatalogEntry" enabled="false" level="WARNING" enabled_by_default="false" />
   </profile>
 </component>
