@@ -250,7 +250,7 @@ private fun PermissionTopAppBar(
     packageName: String,
     onBack: () -> Unit,
     sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope
+    animatedVisibilityScope: AnimatedVisibilityScope?
 ) {
     Row(
         modifier = Modifier
@@ -270,11 +270,15 @@ private fun PermissionTopAppBar(
         Spacer(modifier = Modifier.width(8.dp))
 
         // App Icon
-        val sharedModifier = with(sharedTransitionScope) {
-            Modifier.sharedElement(
-                sharedContentState = rememberSharedContentState(key = "icon-$packageName"),
-                animatedVisibilityScope = animatedVisibilityScope
-            )
+        val sharedModifier = if (animatedVisibilityScope != null) {
+            with(sharedTransitionScope) {
+                Modifier.sharedElement(
+                    sharedContentState = rememberSharedContentState(key = "icon-$packageName"),
+                    animatedVisibilityScope = animatedVisibilityScope
+                )
+            }
+        } else {
+            Modifier
         }
         AsyncImage(
             model = AppIconModel(packageName),
@@ -288,11 +292,15 @@ private fun PermissionTopAppBar(
         Spacer(modifier = Modifier.width(12.dp))
 
         Column(modifier = Modifier.weight(1f)) {
-            val textSharedModifier = with(sharedTransitionScope) {
-                Modifier.sharedBounds(
-                    sharedContentState = rememberSharedContentState(key = "name-$packageName"),
-                    animatedVisibilityScope = animatedVisibilityScope
-                ).skipToLookaheadSize()
+            val textSharedModifier = if (animatedVisibilityScope != null) {
+                with(sharedTransitionScope) {
+                    Modifier.sharedBounds(
+                        sharedContentState = rememberSharedContentState(key = "name-$packageName"),
+                        animatedVisibilityScope = animatedVisibilityScope
+                    ).skipToLookaheadSize()
+                }
+            } else {
+                Modifier
             }
             Text(
                 text = appName,

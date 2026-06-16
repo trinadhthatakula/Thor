@@ -380,7 +380,7 @@ fun AppInfoDetailsScreen(
 private fun AppDetailsHeader(
     appInfo: AppInfo,
     sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope
+    animatedVisibilityScope: AnimatedVisibilityScope?
 ) {
     val context = LocalContext.current
     Row(
@@ -400,11 +400,15 @@ private fun AppDetailsHeader(
                 .padding(12.dp),
             contentAlignment = Alignment.Center
         ) {
-            val sharedModifier = with(sharedTransitionScope) {
-                Modifier.sharedElement(
-                    sharedContentState = rememberSharedContentState(key = "icon-${appInfo.packageName}"),
-                    animatedVisibilityScope = animatedVisibilityScope
-                )
+            val sharedModifier = if (animatedVisibilityScope != null) {
+                with(sharedTransitionScope) {
+                    Modifier.sharedElement(
+                        sharedContentState = rememberSharedContentState(key = "icon-${appInfo.packageName}"),
+                        animatedVisibilityScope = animatedVisibilityScope
+                    )
+                }
+            } else {
+                Modifier
             }
             AsyncImage(
                 model = AppIconModel(appInfo.packageName),
@@ -418,11 +422,15 @@ private fun AppDetailsHeader(
         Spacer(modifier = Modifier.width(16.dp))
 
         Column(modifier = Modifier.weight(1f)) {
-            val textSharedModifier = with(sharedTransitionScope) {
-                Modifier.sharedBounds(
-                    sharedContentState = rememberSharedContentState(key = "name-${appInfo.packageName}"),
-                    animatedVisibilityScope = animatedVisibilityScope
-                ).skipToLookaheadSize()
+            val textSharedModifier = if (animatedVisibilityScope != null) {
+                with(sharedTransitionScope) {
+                    Modifier.sharedBounds(
+                        sharedContentState = rememberSharedContentState(key = "name-${appInfo.packageName}"),
+                        animatedVisibilityScope = animatedVisibilityScope
+                    ).skipToLookaheadSize()
+                }
+            } else {
+                Modifier
             }
             Text(
                 text = appInfo.appName ?: "Unknown",
