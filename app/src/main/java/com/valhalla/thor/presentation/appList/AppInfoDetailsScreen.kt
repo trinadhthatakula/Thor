@@ -61,7 +61,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil3.compose.rememberAsyncImagePainter
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.SharedTransitionScope
+import androidx.navigation3.ui.LocalNavAnimatedContentScope
+import coil3.compose.AsyncImage
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
@@ -69,7 +72,7 @@ import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.PermissionDetail
 import com.valhalla.thor.presentation.theme.bodyFontFamily
 import com.valhalla.thor.presentation.theme.firaMonoFontFamily
-import com.valhalla.thor.presentation.utils.getAppIcon
+import com.valhalla.thor.presentation.utils.AppIconModel
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
@@ -80,6 +83,7 @@ import java.util.Locale
 fun AppInfoDetailsScreen(
     packageName: String,
     appName: String,
+    sharedTransitionScope: SharedTransitionScope,
     onBack: () -> Unit,
     onNavigateToPermissionManager: (packageName: String, appName: String) -> Unit,
     viewModel: AppInfoDetailsViewModel = org.koin.androidx.compose.koinViewModel()
@@ -180,9 +184,14 @@ fun AppInfoDetailsScreen(
                     )
                     val pagerState = rememberPagerState(pageCount = { tabTitles.size })
 
+                    val animatedVisibilityScope = LocalNavAnimatedContentScope.current
                     Column(modifier = Modifier.fillMaxSize()) {
                         // 1. Header (Icon + Name + Chips)
-                        AppDetailsHeader(appInfo = appInfo)
+                        AppDetailsHeader(
+                            appInfo = appInfo,
+                            sharedTransitionScope = sharedTransitionScope,
+                            animatedVisibilityScope = animatedVisibilityScope
+                        )
 
                         // 2. Action buttons
                         AppDetailsActionRow(
@@ -368,7 +377,11 @@ fun AppInfoDetailsScreen(
 }
 
 @Composable
-private fun AppDetailsHeader(appInfo: AppInfo) {
+private fun AppDetailsHeader(
+    appInfo: AppInfo,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope
+) {
     val context = LocalContext.current
     Row(
         modifier = Modifier
@@ -387,23 +400,38 @@ private fun AppDetailsHeader(appInfo: AppInfo) {
                 .padding(12.dp),
             contentAlignment = Alignment.Center
         ) {
-            Image(
-                painter = rememberAsyncImagePainter(getAppIcon(appInfo.packageName, context)),
+            val sharedModifier = with(sharedTransitionScope) {
+                Modifier.sharedElement(
+                    sharedContentState = rememberSharedContentState(key = "icon-${appInfo.packageName}"),
+                    animatedVisibilityScope = animatedVisibilityScope
+                )
+            }
+            AsyncImage(
+                model = AppIconModel(appInfo.packageName),
                 contentDescription = null,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(sharedModifier)
             )
         }
 
         Spacer(modifier = Modifier.width(16.dp))
 
         Column(modifier = Modifier.weight(1f)) {
+            val textSharedModifier = with(sharedTransitionScope) {
+                Modifier.sharedBounds(
+                    sharedContentState = rememberSharedContentState(key = "name-${appInfo.packageName}"),
+                    animatedVisibilityScope = animatedVisibilityScope
+                ).skipToLookaheadSize()
+            }
             Text(
                 text = appInfo.appName ?: "Unknown",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Black,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.then(textSharedModifier)
             )
 
             Spacer(modifier = Modifier.height(4.dp))

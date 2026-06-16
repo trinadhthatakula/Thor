@@ -52,10 +52,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.rememberAsyncImagePainter
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.SharedTransitionScope
+import androidx.navigation3.ui.LocalNavAnimatedContentScope
+import coil3.compose.AsyncImage
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppPermission
-import com.valhalla.thor.presentation.utils.getAppIcon
+import com.valhalla.thor.presentation.utils.AppIconModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.koin.androidx.compose.koinViewModel
@@ -65,6 +68,7 @@ import org.koin.androidx.compose.koinViewModel
 fun PermissionManagerScreen(
     packageName: String,
     appName: String,
+    sharedTransitionScope: SharedTransitionScope,
     onBack: () -> Unit,
     viewModel: PermissionManagerViewModel = koinViewModel()
 ) {
@@ -86,12 +90,16 @@ fun PermissionManagerScreen(
         }
     }
 
+    val animatedVisibilityScope = LocalNavAnimatedContentScope.current
+
     Scaffold(
         topBar = {
             PermissionTopAppBar(
                 appName = appName,
                 packageName = packageName,
-                onBack = onBack
+                onBack = onBack,
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope
             )
         }
     ) { innerPadding ->
@@ -240,14 +248,10 @@ fun PermissionManagerScreen(
 private fun PermissionTopAppBar(
     appName: String,
     packageName: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope
 ) {
-    val context = LocalContext.current
-    val appIcon by produceState<Drawable?>(initialValue = null, packageName, context) {
-        value = withContext(Dispatchers.IO) {
-            getAppIcon(packageName, context)
-        }
-    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -266,24 +270,38 @@ private fun PermissionTopAppBar(
         Spacer(modifier = Modifier.width(8.dp))
 
         // App Icon
-        Image(
-            painter = rememberAsyncImagePainter(appIcon),
+        val sharedModifier = with(sharedTransitionScope) {
+            Modifier.sharedElement(
+                sharedContentState = rememberSharedContentState(key = "icon-$packageName"),
+                animatedVisibilityScope = animatedVisibilityScope
+            )
+        }
+        AsyncImage(
+            model = AppIconModel(packageName),
             contentDescription = null,
             modifier = Modifier
                 .size(40.dp)
                 .clip(RoundedCornerShape(12.dp))
+                .then(sharedModifier)
         )
 
         Spacer(modifier = Modifier.width(12.dp))
 
         Column(modifier = Modifier.weight(1f)) {
+            val textSharedModifier = with(sharedTransitionScope) {
+                Modifier.sharedBounds(
+                    sharedContentState = rememberSharedContentState(key = "name-$packageName"),
+                    animatedVisibilityScope = animatedVisibilityScope
+                ).skipToLookaheadSize()
+            }
             Text(
                 text = appName,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Black,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.then(textSharedModifier)
             )
             Text(
                 text = packageName,

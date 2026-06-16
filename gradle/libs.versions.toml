@@ -6,7 +6,7 @@ accompanistDrawablepainter = "0.37.3"
 agp = "9.3.0-alpha12"
 biometric = "1.4.0-alpha02"
 datastorePreferences = "1.2.1"
-kotlin = "2.4.0" #koin compiler is not yet fully supported with kotlin 2.4.0 so use 2.3.21 track issue at https://github.com/InsertKoinIO/koin/issues/2431
+kotlin = "2.4.0"
 coreKtx = "1.19.0"
 junit = "4.13.2"
 room = "2.8.4"
@@ -40,6 +40,7 @@ androidx-biometric = { module = "androidx.biometric:biometric-ktx", version.ref 
 #Compose
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+androidx-compose-animation = { group = "androidx.compose.animation", name = "animation" }
 androidx-ui = { group = "androidx.compose.ui", name = "ui" }
 androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
 androidx-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }

@@ -46,6 +46,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.SharedTransitionScope
+import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
@@ -62,6 +64,7 @@ import org.koin.androidx.compose.koinViewModel
 fun FreezerScreen(
     modifier: Modifier = Modifier,
     viewModel: FreezerViewModel = koinViewModel(),
+    sharedTransitionScope: SharedTransitionScope,
     onAppAction: (AppClickAction) -> Unit = {},
     onMultiAppAction: (MultiAppAction) -> Unit = {}
 ) {
@@ -192,6 +195,7 @@ fun FreezerScreen(
                 }
 
                 // --- App List / Empty State ---
+                val animatedVisibilityScope = LocalNavAnimatedContentScope.current
                 if (displayedApps.isEmpty() && !state.isLoading) {
                     Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
                         Column(
@@ -238,7 +242,9 @@ fun FreezerScreen(
                                     else
                                         selectedPackageName = app.packageName
                                 },
-                                onLongClick = { viewModel.toggleSelection(app.packageName) }
+                                onLongClick = { viewModel.toggleSelection(app.packageName) },
+                                sharedTransitionScope = sharedTransitionScope,
+                                animatedVisibilityScope = animatedVisibilityScope
                             )
                         }
                     }
@@ -259,7 +265,9 @@ fun FreezerScreen(
                                     else
                                         selectedPackageName = app.packageName
                                 },
-                                onLongClick = { viewModel.toggleSelection(app.packageName) }
+                                onLongClick = { viewModel.toggleSelection(app.packageName) },
+                                sharedTransitionScope = sharedTransitionScope,
+                                animatedVisibilityScope = animatedVisibilityScope
                             )
                         }
                     }
