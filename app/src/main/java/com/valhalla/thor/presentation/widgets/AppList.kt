@@ -174,7 +174,11 @@ fun AppList(
             }
 
             // Headers (Control Bar)
-            if (!isMultiSelectMode) {
+            this@Column.AnimatedVisibility(
+                visible = !isMultiSelectMode,
+                enter = expandVertically(),
+                exit = shrinkVertically()
+            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
