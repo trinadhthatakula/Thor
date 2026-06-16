@@ -15,15 +15,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.MultiAppAction
 
 @Composable
 fun AffirmationDialog(
     modifier: Modifier = Modifier,
-    title: String = "Are you sure?",
+    title: String = stringResource(R.string.are_you_sure),
     text: String = "Some Message",
     icon: Int? = null,
     onConfirm: () -> Unit,
@@ -37,7 +39,7 @@ fun AffirmationDialog(
         confirmButton = {
             TextButton(onClick = onConfirm) {
                 Text(
-                    "Confirm",
+                    stringResource(R.string.confirm),
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -45,7 +47,7 @@ fun AffirmationDialog(
         },
         dismissButton = {
             TextButton(onClick = onRejected) {
-                Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.cancel), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         icon = {
@@ -88,7 +90,7 @@ fun AffirmationDialog(
 fun MultiAppAffirmationDialog(
     modifier: Modifier = Modifier,
     multiAppAction: MultiAppAction,
-    title: String = "Are you sure?",
+    title: String = stringResource(R.string.are_you_sure),
     onConfirm: () -> Unit,
     onRejected: () -> Unit
 ) {
@@ -100,7 +102,7 @@ fun MultiAppAffirmationDialog(
         confirmButton = {
             TextButton(onClick = onConfirm) {
                 Text(
-                    "Confirm",
+                    stringResource(R.string.confirm),
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -108,7 +110,7 @@ fun MultiAppAffirmationDialog(
         },
         dismissButton = {
             TextButton(onClick = onRejected) {
-                Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.cancel), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         title = {

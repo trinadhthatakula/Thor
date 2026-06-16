@@ -2,10 +2,8 @@ package com.valhalla.thor.presentation.main
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
+import com.valhalla.thor.presentation.theme.animateExpressiveResize
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -82,27 +80,26 @@ private fun ThorNavigationBarItem(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
 
-    // Snappier spring for transitions
-    val snappySpring = spring<Float>(
-        dampingRatio = Spring.DampingRatioNoBouncy,
-        stiffness = Spring.StiffnessMedium
-    )
+    val containerColorSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Color>()
+    val contentColorSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Color>()
+    val alphaEffectsSpec = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+    val spatialSpec = MaterialTheme.motionScheme.fastSpatialSpec<androidx.compose.ui.unit.IntSize>()
 
     val containerColor by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-        animationSpec = spring(stiffness = Spring.StiffnessMedium),
+        animationSpec = containerColorSpec,
         label = "containerColor"
     )
 
     val contentColor by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = spring(stiffness = Spring.StiffnessMedium),
+        animationSpec = contentColorSpec,
         label = "contentColor"
     )
 
     val contentAlpha by animateFloatAsState(
         targetValue = if (selected) 1f else 0.7f,
-        animationSpec = snappySpring,
+        animationSpec = alphaEffectsSpec,
         label = "contentAlpha"
     )
 
@@ -116,12 +113,7 @@ private fun ThorNavigationBarItem(
                 indication = null,
                 onClick = onClick
             )
-            .animateContentSize(
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMedium
-                )
-            )
+            .animateExpressiveResize()
             .padding(horizontal = if (selected) 20.dp else 16.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -138,19 +130,13 @@ private fun ThorNavigationBarItem(
 
             AnimatedVisibility(
                 visible = selected,
-                enter = fadeIn(animationSpec = snappySpring) +
+                enter = fadeIn(animationSpec = alphaEffectsSpec) +
                         expandHorizontally(
-                            animationSpec = spring(
-                                stiffness = Spring.StiffnessMedium,
-                                dampingRatio = Spring.DampingRatioNoBouncy
-                            )
+                            animationSpec = spatialSpec
                         ),
-                exit = fadeOut(animationSpec = snappySpring) +
+                exit = fadeOut(animationSpec = alphaEffectsSpec) +
                         shrinkHorizontally(
-                            animationSpec = spring(
-                                stiffness = Spring.StiffnessMedium,
-                                dampingRatio = Spring.DampingRatioNoBouncy
-                            )
+                            animationSpec = spatialSpec
                         )
             ) {
                 Text(

@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -160,14 +161,14 @@ private fun BiometricLockView(
 
         // Typography Header
         Text(
-            text = "Thor",
+            text = stringResource(R.string.app_name),
             style = MaterialTheme.typography.displayLarge,
             fontWeight = FontWeight.Black,
             color = MaterialTheme.colorScheme.onSurface,
             letterSpacing = (-2).sp
         )
         Text(
-            text = "Unlock to continue",
+            text = stringResource(R.string.unlock_to_continue),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
         )
@@ -257,7 +258,7 @@ private fun BiometricErrorView(
         Spacer(modifier = Modifier.height(24.dp))
 
         Text(
-            text = "Authentication Failed",
+            text = stringResource(R.string.auth_failed),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface
@@ -283,7 +284,7 @@ private fun BiometricErrorView(
                 .padding(horizontal = 32.dp, vertical = 12.dp)
         ) {
             Text(
-                text = "TRY AGAIN",
+                text = stringResource(R.string.try_again).uppercase(),
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onErrorContainer
@@ -293,7 +294,7 @@ private fun BiometricErrorView(
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "EXIT",
+            text = stringResource(R.string.exit).uppercase(),
             modifier = Modifier
                 .clickable { onExit() }
                 .padding(16.dp),

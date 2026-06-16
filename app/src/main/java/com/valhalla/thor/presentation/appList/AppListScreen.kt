@@ -29,6 +29,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.animation.SharedTransitionScope
+import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.MultiAppAction
@@ -43,6 +45,7 @@ fun AppListScreen(
     title: String = stringResource(R.string.apps),
     icon: Int = R.drawable.thor_mono,
     viewModel: AppListViewModel = koinViewModel(),
+    sharedTransitionScope: SharedTransitionScope,
     onNavigateToAppInfo: (packageName: String, appName: String) -> Unit,
     // These actions bubble up to MainScreen/HomeViewModel for execution
     onAppAction: (AppClickAction) -> Unit = {},
@@ -115,6 +118,7 @@ fun AppListScreen(
                 state = refreshState,
                 modifier = Modifier.weight(1f) // Fill remaining space
             ) {
+                val animatedVisibilityScope = LocalNavAnimatedContentScope.current
                 // Using your existing AppList widget, but feeding it PURE STATE
                 AppList(
                     appListType = state.appListType,
@@ -131,6 +135,8 @@ fun AppListScreen(
                     isDhizuku = state.isDhizuku,
                     startAsGrid = true,
                     installerNameMap = state.installerNameMap,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
                     // Actions forwarded to ViewModel
                     onFilterTypeChanged = viewModel::updateFilterType,
                     onSortByChanged = viewModel::updateSort,

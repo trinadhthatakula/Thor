@@ -5,14 +5,17 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -28,11 +31,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation3.runtime.NavBackStack
+import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.MultiAppAction
@@ -69,19 +73,14 @@ fun MainScreen(
     var showExitConfirmation by remember { mutableStateOf(false) }
 
     // --- Navigation 3 Setup ---
-    val homeBackStack = rememberNavBackStack(ThorRoute.Home)
-    val appsBackStack = rememberNavBackStack(ThorRoute.Apps)
-    val freezerBackStack = rememberNavBackStack(ThorRoute.Freezer)
-    val settingsBackStack = rememberNavBackStack(ThorRoute.Settings)
+    val backStack = rememberNavBackStack(ThorRoute.Home)
 
-    var activeTab by remember { mutableStateOf<ThorRoute>(ThorRoute.Home) }
-
-    val activeBackStack: NavBackStack<NavKey> = when (activeTab) {
-        ThorRoute.Home -> homeBackStack
-        ThorRoute.Apps -> appsBackStack
-        ThorRoute.Freezer -> freezerBackStack
-        ThorRoute.Settings -> settingsBackStack
-        else -> homeBackStack
+    val activeTab = when (val root = backStack.firstOrNull()) {
+        is ThorRoute.Home -> ThorRoute.Home
+        is ThorRoute.Apps -> ThorRoute.Apps
+        is ThorRoute.Freezer -> ThorRoute.Freezer
+        is ThorRoute.Settings -> ThorRoute.Settings
+        else -> ThorRoute.Home
     }
 
     val selectedDestination = when (activeTab) {
@@ -92,20 +91,21 @@ fun MainScreen(
         else -> AppDestinations.HOME
     }
 
-    val showBottomBar = activeBackStack.lastOrNull()?.let {
+    val showBottomBar = backStack.lastOrNull()?.let {
         it == ThorRoute.Home || it == ThorRoute.Apps || it == ThorRoute.Freezer || it == ThorRoute.Settings
     } ?: true
 
     // Handle Back Press to Show Exit Confirmation when at the root of Home stack
-    val isAtRoot = activeBackStack.size == 1 && activeTab == ThorRoute.Home
+    val isAtRoot = backStack.size == 1 && activeTab == ThorRoute.Home
     BackHandler(enabled = isAtRoot) {
         showExitConfirmation = true
     }
 
     // Handle Back Press to return to Home stack when at the root of another tab
-    val isNonStartRoot = activeBackStack.size == 1 && activeTab != ThorRoute.Home
+    val isNonStartRoot = backStack.size == 1 && activeTab != ThorRoute.Home
     BackHandler(enabled = isNonStartRoot) {
-        activeTab = ThorRoute.Home
+        backStack.clear()
+        backStack.add(ThorRoute.Home)
     }
 
     val canNotLaunchApp = stringResource(R.string.cannot_launch_app)
@@ -155,96 +155,6 @@ fun MainScreen(
         }
     }
 
-    val entryProvider = entryProvider<NavKey> {
-        entry<ThorRoute.Home> {
-            HomeScreen(
-                viewModel = homeViewModel,
-                onNavigateToApps = {
-                    activeTab = ThorRoute.Apps
-                },
-                onNavigateToFreezer = {
-                    activeTab = ThorRoute.Freezer
-                },
-                onReinstallAll = {
-                    checkAndProcessAction(
-                        AppClickAction.ReinstallAll,
-                        { pendingSingleAction = it },
-                        { mainViewModel.onAppAction(it) }
-                    )
-                },
-                onClearAllCache = { type -> mainViewModel.clearAllCache(type) }
-            )
-        }
-
-        entry<ThorRoute.Apps> {
-            AppListScreen(
-                viewModel = appListViewModel,
-                onNavigateToAppInfo = { pkg, name ->
-                    activeBackStack.add(ThorRoute.AppInfoDetails(pkg, name))
-                },
-                onAppAction = { action ->
-                    if (action is AppClickAction.ManagePermissions) {
-                        activeBackStack.add(
-                            ThorRoute.PermissionManager(
-                                action.appInfo.packageName,
-                                action.appInfo.appName ?: ""
-                            )
-                        )
-                    } else {
-                        checkAndProcessAction(action, { pendingSingleAction = it }) {
-                            mainViewModel.onAppAction(it)
-                        }
-                    }
-                },
-                onMultiAppAction = { pendingMultiAction = it }
-            )
-        }
-
-        entry<ThorRoute.Freezer> {
-            FreezerScreen(
-                viewModel = freezerViewModel,
-                onAppAction = { action ->
-                    if (action is AppClickAction.ManagePermissions) {
-                        activeBackStack.add(
-                            ThorRoute.PermissionManager(
-                                action.appInfo.packageName,
-                                action.appInfo.appName ?: ""
-                            )
-                        )
-                    } else {
-                        checkAndProcessAction(action, { pendingSingleAction = it }) {
-                            mainViewModel.onAppAction(it)
-                        }
-                    }
-                },
-                onMultiAppAction = { pendingMultiAction = it }
-            )
-        }
-
-        entry<ThorRoute.Settings> {
-            SettingsScreen()
-        }
-
-        entry<ThorRoute.PermissionManager> { route ->
-            PermissionManagerScreen(
-                packageName = route.packageName,
-                appName = route.appName,
-                onBack = { activeBackStack.removeLastOrNull() }
-            )
-        }
-
-        entry<ThorRoute.AppInfoDetails> { route ->
-            AppInfoDetailsScreen(
-                packageName = route.packageName,
-                appName = route.appName,
-                onBack = { activeBackStack.removeLastOrNull() },
-                onNavigateToPermissionManager = { pkg, name ->
-                    activeBackStack.add(ThorRoute.PermissionManager(pkg, name))
-                }
-            )
-        }
-    }
-
     Scaffold(
         bottomBar = {
             AnimatedVisibility(
@@ -256,126 +166,231 @@ fun MainScreen(
                     destinations = AppDestinations.entries,
                     selectedDestination = selectedDestination,
                     onDestinationSelected = { dest ->
-                        activeTab = when (dest) {
+                        val route = when (dest) {
                             AppDestinations.HOME -> ThorRoute.Home
                             AppDestinations.APPS -> ThorRoute.Apps
                             AppDestinations.FREEZER -> ThorRoute.Freezer
                             AppDestinations.SETTINGS -> ThorRoute.Settings
                         }
+                        backStack.clear()
+                        backStack.add(route)
                     }
                 )
             }
         }
     ) { innerPadding ->
+        val spatialSpec = MaterialTheme.motionScheme.slowSpatialSpec<IntOffset>()
+        val effectsSpec = MaterialTheme.motionScheme.slowEffectsSpec<Float>()
 
-        Box(
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-        ) {
-            NavDisplay(
-                backStack = activeBackStack,
-                onBack = { activeBackStack.removeLastOrNull() },
-                entryProvider = entryProvider,
-                transitionSpec = {
-                    (fadeIn(animationSpec = tween(300)) + slideInHorizontally(
-                        initialOffsetX = { it },
-                        animationSpec = tween(300)
-                    )) togetherWith (fadeOut(animationSpec = tween(300)) + slideOutHorizontally(
-                        targetOffsetX = { -it },
-                        animationSpec = tween(300)
-                    ))
-                },
-                popTransitionSpec = {
-                    (fadeIn(animationSpec = tween(300)) + slideInHorizontally(
-                        initialOffsetX = { -it },
-                        animationSpec = tween(300)
-                    )) togetherWith (fadeOut(animationSpec = tween(300)) + slideOutHorizontally(
-                        targetOffsetX = { it },
-                        animationSpec = tween(300)
-                    ))
-                },
-                predictivePopTransitionSpec = {
-                    (fadeIn(animationSpec = tween(300)) + slideInHorizontally(
-                        initialOffsetX = { -it },
-                        animationSpec = tween(300)
-                    )) togetherWith (fadeOut(animationSpec = tween(300)) + slideOutHorizontally(
-                        targetOffsetX = { it },
-                        animationSpec = tween(300)
-                    ))
-                }
-            )
-
-            // --- GLOBAL OVERLAYS (Unchanged) ---
-            if (pendingMultiAction != null) {
-                MultiAppAffirmationDialog(
-                    multiAppAction = pendingMultiAction!!,
-                    onConfirm = {
-                        mainViewModel.onMultiAppAction(pendingMultiAction!!)
-                        pendingMultiAction = null
-                    },
-                    onRejected = { pendingMultiAction = null }
-                )
-            }
-
-            if (pendingSingleAction != null) {
-                val action = pendingSingleAction!!
-                val (title, text, icon) = when (action) {
-                    is AppClickAction.Kill -> Triple(
-                        stringResource(R.string.kill_app_title),
-                        stringResource(R.string.kill_app_desc, action.appInfo.appName ?: ""),
-                        R.drawable.danger
-                    )
-
-                    AppClickAction.ReinstallAll -> Triple(
-                        stringResource(R.string.reinstall_all),
-                        stringResource(R.string.risk_warning_desc),
-                        R.drawable.apk_install
-                    )
-
-                    else -> Triple(
-                        stringResource(R.string.confirm),
-                        stringResource(R.string.are_you_sure),
-                        R.drawable.thor_mono
+        SharedTransitionLayout {
+            val entryProvider = entryProvider<NavKey> {
+                entry<ThorRoute.Home> {
+                    HomeScreen(
+                        viewModel = homeViewModel,
+                        onNavigateToApps = {
+                            backStack.clear()
+                            backStack.add(ThorRoute.Apps)
+                        },
+                        onNavigateToFreezer = {
+                            backStack.clear()
+                            backStack.add(ThorRoute.Freezer)
+                        },
+                        onReinstallAll = {
+                            checkAndProcessAction(
+                                AppClickAction.ReinstallAll,
+                                { pendingSingleAction = it },
+                                { mainViewModel.onAppAction(it) }
+                            )
+                        },
+                        onClearAllCache = { type -> mainViewModel.clearAllCache(type) }
                     )
                 }
 
-                AffirmationDialog(
-                    title = title,
-                    text = text,
-                    icon = icon,
-                    onConfirm = {
-                        mainViewModel.onAppAction(action)
-                        pendingSingleAction = null
-                    },
-                    onRejected = { pendingSingleAction = null }
-                )
+                entry<ThorRoute.Apps> {
+                    AppListScreen(
+                        viewModel = appListViewModel,
+                        sharedTransitionScope = this@SharedTransitionLayout,
+                        onNavigateToAppInfo = { pkg, name ->
+                            backStack.add(ThorRoute.AppInfoDetails(pkg, name))
+                        },
+                        onAppAction = { action ->
+                            if (action is AppClickAction.ManagePermissions) {
+                                backStack.add(
+                                    ThorRoute.PermissionManager(
+                                        action.appInfo.packageName,
+                                        action.appInfo.appName ?: ""
+                                    )
+                                )
+                            } else {
+                                checkAndProcessAction(action, { pendingSingleAction = it }) {
+                                    mainViewModel.onAppAction(it)
+                                }
+                            }
+                        },
+                        onMultiAppAction = { pendingMultiAction = it }
+                    )
+                }
+
+                entry<ThorRoute.Freezer> {
+                    FreezerScreen(
+                        viewModel = freezerViewModel,
+                        sharedTransitionScope = this@SharedTransitionLayout,
+                        onAppAction = { action ->
+                            if (action is AppClickAction.ManagePermissions) {
+                                backStack.add(
+                                    ThorRoute.PermissionManager(
+                                        action.appInfo.packageName,
+                                        action.appInfo.appName ?: ""
+                                    )
+                                )
+                            } else {
+                                checkAndProcessAction(action, { pendingSingleAction = it }) {
+                                    mainViewModel.onAppAction(it)
+                                }
+                            }
+                        },
+                        onMultiAppAction = { pendingMultiAction = it }
+                    )
+                }
+
+                entry<ThorRoute.Settings> {
+                    SettingsScreen()
+                }
+
+                entry<ThorRoute.PermissionManager> { route ->
+                    PermissionManagerScreen(
+                        packageName = route.packageName,
+                        appName = route.appName,
+                        sharedTransitionScope = this@SharedTransitionLayout,
+                        onBack = { backStack.removeLastOrNull() }
+                    )
+                }
+
+                entry<ThorRoute.AppInfoDetails> { route ->
+                    AppInfoDetailsScreen(
+                        packageName = route.packageName,
+                        appName = route.appName,
+                        sharedTransitionScope = this@SharedTransitionLayout,
+                        onBack = { backStack.removeLastOrNull() },
+                        onNavigateToPermissionManager = { pkg, name ->
+                            backStack.add(ThorRoute.PermissionManager(pkg, name))
+                        }
+                    )
+                }
             }
 
-            if (state.loggerState.isVisible) {
-                TermLoggerDialog(
-                    title = state.loggerState.title,
-                    logs = state.loggerState.logs,
-                    isOperationComplete = state.loggerState.isComplete,
-                    onDismiss = { mainViewModel.dismissLogger() }
-                )
-            }
-
-            if (showExitConfirmation) {
-                AffirmationDialog(
-                    title = stringResource(R.string.exit_thor_title),
-                    text = stringResource(R.string.exit_thor_desc),
-                    icon = R.drawable.exit_to_app,
-                    onConfirm = {
-                        showExitConfirmation = false
-                        onExit()
+            Box(
+                modifier = Modifier
+                    .padding(innerPadding)
+                    .fillMaxSize()
+            ) {
+                NavDisplay(
+                    backStack = backStack,
+                    onBack = { backStack.removeLastOrNull() },
+                    entryDecorators = listOf(
+                        rememberSaveableStateHolderNavEntryDecorator(),
+                        rememberViewModelStoreNavEntryDecorator()
+                    ),
+                    entryProvider = entryProvider,
+                    transitionSpec = {
+                        (fadeIn(animationSpec = effectsSpec) + slideInHorizontally(
+                            initialOffsetX = { it },
+                            animationSpec = spatialSpec
+                        )) togetherWith (fadeOut(animationSpec = effectsSpec) + slideOutHorizontally(
+                            targetOffsetX = { -it },
+                            animationSpec = spatialSpec
+                        ))
                     },
-                    onRejected = { showExitConfirmation = false }
+                    popTransitionSpec = {
+                        (fadeIn(animationSpec = effectsSpec) + slideInHorizontally(
+                            initialOffsetX = { -it },
+                            animationSpec = spatialSpec
+                        )) togetherWith (fadeOut(animationSpec = effectsSpec) + slideOutHorizontally(
+                            targetOffsetX = { it },
+                            animationSpec = spatialSpec
+                        ))
+                    },
+                    predictivePopTransitionSpec = {
+                        (fadeIn(animationSpec = effectsSpec) + slideInHorizontally(
+                            initialOffsetX = { -it },
+                            animationSpec = spatialSpec
+                        )) togetherWith (fadeOut(animationSpec = effectsSpec) + slideOutHorizontally(
+                            targetOffsetX = { it },
+                            animationSpec = spatialSpec
+                        ))
+                    }
                 )
+
+                // --- GLOBAL OVERLAYS (Unchanged) ---
+                if (pendingMultiAction != null) {
+                    MultiAppAffirmationDialog(
+                        multiAppAction = pendingMultiAction!!,
+                        onConfirm = {
+                            mainViewModel.onMultiAppAction(pendingMultiAction!!)
+                            pendingMultiAction = null
+                        },
+                        onRejected = { pendingMultiAction = null }
+                    )
+                }
+
+                if (pendingSingleAction != null) {
+                    val action = pendingSingleAction!!
+                    val (title, text, icon) = when (action) {
+                        is AppClickAction.Kill -> Triple(
+                            stringResource(R.string.kill_app_title),
+                            stringResource(R.string.kill_app_desc, action.appInfo.appName ?: ""),
+                            R.drawable.danger
+                        )
+
+                        AppClickAction.ReinstallAll -> Triple(
+                            stringResource(R.string.reinstall_all),
+                            stringResource(R.string.risk_warning_desc),
+                            R.drawable.apk_install
+                        )
+
+                        else -> Triple(
+                            stringResource(R.string.confirm),
+                            stringResource(R.string.are_you_sure),
+                            R.drawable.thor_mono
+                        )
+                    }
+
+                    AffirmationDialog(
+                        title = title,
+                        text = text,
+                        icon = icon,
+                        onConfirm = {
+                            mainViewModel.onAppAction(action)
+                            pendingSingleAction = null
+                        },
+                        onRejected = { pendingSingleAction = null }
+                    )
+                }
+
+                if (state.loggerState.isVisible) {
+                    TermLoggerDialog(
+                        title = state.loggerState.title,
+                        logs = state.loggerState.logs,
+                        isOperationComplete = state.loggerState.isComplete,
+                        onDismiss = { mainViewModel.dismissLogger() }
+                    )
+                }
+
+                if (showExitConfirmation) {
+                    AffirmationDialog(
+                        title = stringResource(R.string.exit_thor_title),
+                        text = stringResource(R.string.exit_thor_desc),
+                        icon = R.drawable.exit_to_app,
+                        onConfirm = {
+                            showExitConfirmation = false
+                            onExit()
+                        },
+                        onRejected = { showExitConfirmation = false }
+                    )
+                }
             }
         }
     }
-
 }
 
 private fun checkAndProcessAction(

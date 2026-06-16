@@ -2,6 +2,8 @@ package com.valhalla.thor.presentation.widgets
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -110,7 +112,9 @@ fun AppList(
     onFilterTypeChanged: (FilterType) -> Unit = {},
     onListTypeChanged: (AppListType) -> Unit = {},
     onAppInfoSelected: (AppInfo) -> Unit,
-    onMultiAppAction: (MultiAppAction) -> Unit = {}
+    onMultiAppAction: (MultiAppAction) -> Unit = {},
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
     // 1. Local State
     var isGrid by rememberSaveable { mutableStateOf(startAsGrid) }
@@ -139,43 +143,8 @@ fun AppList(
                 onOpenConfig = { showFilterSheet = true }
             )
 
-            // System App Warning
-            if (appListType == AppListType.SYSTEM) {
-                Text(
-                    text = stringResource(R.string.system_apps_warning),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp),
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                )
-            }
-
-            // Headers (Control Bar or MultiSelect Header)
-            Box {
-                this@Column.AnimatedVisibility(
-                    visible = !isMultiSelectMode,
-                    enter = expandVertically(),
-                    exit = shrinkVertically()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        AppQuickFilters(
-                            installers = installers,
-                            selectedFilter = selectedFilter,
-                            filterType = filterType,
-                            appListType = appListType,
-                            installerNameMap = installerNameMap,
-                            onFilterSelected = onFilterSelected
-                        )
-                    }
-                }
-
+            // Multi-Select Header (Action Menu)
+            Box(modifier = Modifier.fillMaxWidth()) {
                 this@Column.AnimatedVisibility(
                     visible = isMultiSelectMode,
                     enter = expandVertically(),
@@ -188,6 +157,42 @@ fun AppList(
                             multiSelection = if (selectAll) appList else emptyList()
                         },
                         onClear = { multiSelection = emptyList() }
+                    )
+                }
+            }
+
+            // System App Warning
+            if (appListType == AppListType.SYSTEM && !isMultiSelectMode) {
+                Text(
+                    text = stringResource(R.string.system_apps_warning),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp),
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+            }
+
+            // Headers (Control Bar)
+            this@Column.AnimatedVisibility(
+                visible = !isMultiSelectMode,
+                enter = expandVertically(),
+                exit = shrinkVertically()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    AppQuickFilters(
+                        installers = installers,
+                        selectedFilter = selectedFilter,
+                        filterType = filterType,
+                        appListType = appListType,
+                        installerNameMap = installerNameMap,
+                        onFilterSelected = onFilterSelected
                     )
                 }
             }
@@ -219,8 +224,12 @@ fun AppList(
                         }
                     },
                     onAppLongClick = { app ->
-                        multiSelection = toggleSelection(multiSelection, app)
-                    }
+                        if (!isMultiSelectMode) {
+                            multiSelection = toggleSelection(multiSelection, app)
+                        }
+                    },
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope
                 )
             }
         }
@@ -460,7 +469,9 @@ private fun AppListContent(
     isGrid: Boolean,
     selectedPackageNames: Set<String>,
     onAppClick: (AppInfo) -> Unit,
-    onAppLongClick: (AppInfo) -> Unit
+    onAppLongClick: (AppInfo) -> Unit,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
     // Shared padding for list/grid
     val padding = PaddingValues(bottom = 100.dp, top = 8.dp)
@@ -475,7 +486,9 @@ private fun AppListContent(
                     app = app,
                     isSelected = selectedPackageNames.contains(app.packageName),
                     onClick = { onAppClick(app) },
-                    onLongClick = { onAppLongClick(app) }
+                    onLongClick = { onAppLongClick(app) },
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope
                 )
             }
         }
@@ -486,7 +499,9 @@ private fun AppListContent(
                     app = app,
                     isSelected = selectedPackageNames.contains(app.packageName),
                     onClick = { onAppClick(app) },
-                    onLongClick = { onAppLongClick(app) }
+                    onLongClick = { onAppLongClick(app) },
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope
                 )
             }
         }
@@ -499,7 +514,9 @@ internal fun AppItemList(
     app: AppInfo,
     isSelected: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     ListItem(
@@ -517,16 +534,35 @@ internal fun AppItemList(
                 else MaterialTheme.colorScheme.surfaceContainerLow
             ),
         leadingContent = {
-            AppIcon(app.packageName, app.enabled, app.isSuspended, 48.dp)
+            AppIcon(
+                packageName = app.packageName,
+                isEnabled = app.enabled,
+                isSuspended = app.isSuspended,
+                size = 48.dp,
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope
+            )
         },
         headlineContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                val textSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+                    with(sharedTransitionScope) {
+                        Modifier.sharedBounds(
+                            sharedContentState = rememberSharedContentState(key = "name-${app.packageName}"),
+                            animatedVisibilityScope = animatedVisibilityScope
+                        ).skipToLookaheadSize()
+                    }
+                } else {
+                    Modifier
+                }
                 Text(
                     app.appName ?: stringResource(R.string.unknown),
                     maxLines = 1,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .then(textSharedModifier)
                 )
                 if (!app.enabled) {
                     Icon(
@@ -578,7 +614,9 @@ internal fun AppItemGrid(
     app: AppInfo,
     isSelected: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     Column(
@@ -599,7 +637,14 @@ internal fun AppItemGrid(
             .padding(16.dp)
     ) {
         Box {
-            AppIcon(app.packageName, app.enabled, app.isSuspended, 56.dp)
+            AppIcon(
+                packageName = app.packageName,
+                isEnabled = app.enabled,
+                isSuspended = app.isSuspended,
+                size = 56.dp,
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope
+            )
             if (isSelected) {
                 Icon(
                     painterResource(R.drawable.check_circle),
@@ -637,13 +682,24 @@ internal fun AppItemGrid(
             }
         }
         Spacer(Modifier.height(8.dp))
+        val textSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+            with(sharedTransitionScope) {
+                Modifier.sharedBounds(
+                    sharedContentState = rememberSharedContentState(key = "name-${app.packageName}"),
+                    animatedVisibilityScope = animatedVisibilityScope
+                ).skipToLookaheadSize()
+            }
+        } else {
+            Modifier
+        }
         Text(
             text = app.appName ?: stringResource(R.string.unknown),
             maxLines = 1,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
             textAlign = TextAlign.Center,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            modifier = Modifier.then(textSharedModifier)
         )
     }
 }
@@ -653,19 +709,34 @@ internal fun AppIcon(
     packageName: String,
     isEnabled: Boolean,
     isSuspended: Boolean,
-    size: androidx.compose.ui.unit.Dp
+    size: androidx.compose.ui.unit.Dp,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
     // Hoisted static matrices to avoid recreation
     val greyScaleMatrix = remember { ColorMatrix().apply { setToSaturation(0f) } }
     val dullMatrix = remember { ColorMatrix().apply { setToSaturation(0.3f) } }
 
+    val imageModifier = Modifier
+        .size(size)
+        .then(if (isSuspended && isEnabled) Modifier.graphicsLayer(alpha = 0.7f) else Modifier)
+
+    val sharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.sharedElement(
+                sharedContentState = rememberSharedContentState(key = "icon-$packageName"),
+                animatedVisibilityScope = animatedVisibilityScope
+            )
+        }
+    } else {
+        Modifier
+    }
+
     Box(contentAlignment = Alignment.Center) {
         AsyncImage(
             model = AppIconModel(packageName),
             contentDescription = null,
-            modifier = Modifier
-                .size(size)
-                .then(if (isSuspended && isEnabled) Modifier.graphicsLayer(alpha = 0.7f) else Modifier),
+            modifier = imageModifier.then(sharedModifier),
             colorFilter = when {
                 !isEnabled -> ColorFilter.colorMatrix(greyScaleMatrix)
                 isSuspended -> ColorFilter.colorMatrix(dullMatrix)
