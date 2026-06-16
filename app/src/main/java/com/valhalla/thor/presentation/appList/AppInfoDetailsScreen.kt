@@ -379,8 +379,8 @@ fun AppInfoDetailsScreen(
 @Composable
 private fun AppDetailsHeader(
     appInfo: AppInfo,
-    sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope?
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
     val context = LocalContext.current
     Row(
@@ -400,7 +400,7 @@ private fun AppDetailsHeader(
                 .padding(12.dp),
             contentAlignment = Alignment.Center
         ) {
-            val sharedModifier = if (animatedVisibilityScope != null) {
+            val sharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
                 with(sharedTransitionScope) {
                     Modifier.sharedElement(
                         sharedContentState = rememberSharedContentState(key = "icon-${appInfo.packageName}"),
@@ -422,7 +422,7 @@ private fun AppDetailsHeader(
         Spacer(modifier = Modifier.width(16.dp))
 
         Column(modifier = Modifier.weight(1f)) {
-            val textSharedModifier = if (animatedVisibilityScope != null) {
+            val textSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
                 with(sharedTransitionScope) {
                     Modifier.sharedBounds(
                         sharedContentState = rememberSharedContentState(key = "name-${appInfo.packageName}"),

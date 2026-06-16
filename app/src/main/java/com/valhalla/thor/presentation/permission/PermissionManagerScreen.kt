@@ -249,8 +249,8 @@ private fun PermissionTopAppBar(
     appName: String,
     packageName: String,
     onBack: () -> Unit,
-    sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope?
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
     Row(
         modifier = Modifier
@@ -270,7 +270,7 @@ private fun PermissionTopAppBar(
         Spacer(modifier = Modifier.width(8.dp))
 
         // App Icon
-        val sharedModifier = if (animatedVisibilityScope != null) {
+        val sharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
             with(sharedTransitionScope) {
                 Modifier.sharedElement(
                     sharedContentState = rememberSharedContentState(key = "icon-$packageName"),
@@ -292,7 +292,7 @@ private fun PermissionTopAppBar(
         Spacer(modifier = Modifier.width(12.dp))
 
         Column(modifier = Modifier.weight(1f)) {
-            val textSharedModifier = if (animatedVisibilityScope != null) {
+            val textSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
                 with(sharedTransitionScope) {
                     Modifier.sharedBounds(
                         sharedContentState = rememberSharedContentState(key = "name-$packageName"),
