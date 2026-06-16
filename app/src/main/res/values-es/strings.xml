@@ -257,8 +257,10 @@
     <string name="install_analyzing">Analizando paquete…</string>
     <string name="install_downgrade_warning">Esto degradará la aplicación.</string>
     <string name="install_update_warning">Esto actualizará la aplicación existente.</string>
-    <string name="install_permissions_singular">Este paquete solicita %1$d permiso. %2$s</string>
-    <string name="install_permissions_plural">Este paquete solicita %1$d permisos. %2$s</string>
+    <plurals name="install_permissions">
+        <item quantity="one">Este paquete solicita %1$d permiso. %2$s</item>
+        <item quantity="other">Este paquete solicita %1$d permisos. %2$s</item>
+    </plurals>
     <string name="install_options_title">Opciones de instalación: </string>
     <string name="install_mode_normal">Normal</string>
     <string name="install_mode_shizuku">Shizuku</string>

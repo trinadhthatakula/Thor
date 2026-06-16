@@ -257,8 +257,9 @@
     <string name="install_analyzing">正在解析包…</string>
     <string name="install_downgrade_warning">这将降级该应用。</string>
     <string name="install_update_warning">这将更新现有应用。</string>
-    <string name="install_permissions_singular">此包请求 %1$d 个权限。%2$s</string>
-    <string name="install_permissions_plural">此包请求 %1$d 个权限。%2$s</string>
+    <plurals name="install_permissions">
+        <item quantity="other">此包请求 %1$d 个权限。%2$s</item>
+    </plurals>
     <string name="install_options_title">安装选项：</string>
     <string name="install_mode_normal">普通</string>
     <string name="install_mode_shizuku">Shizuku</string>

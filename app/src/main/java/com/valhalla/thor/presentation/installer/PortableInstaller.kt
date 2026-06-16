@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -246,11 +247,12 @@ fun PortableInstaller(
                         if (totalPermissions > 0) {
                             val warningMessage =
                                 if (s.shouldShowWarning()) s.getWarningMessage()?.asString().orEmpty() else ""
-                            val permissionsMsg = if (totalPermissions > 1) {
-                                stringResource(R.string.install_permissions_plural, totalPermissions, warningMessage)
-                            } else {
-                                stringResource(R.string.install_permissions_singular, totalPermissions, warningMessage)
-                            }
+                            val permissionsMsg = pluralStringResource(
+                                R.plurals.install_permissions,
+                                totalPermissions,
+                                totalPermissions,
+                                warningMessage
+                            )
                             Text(
                                 permissionsMsg,
                                 style = MaterialTheme.typography.bodySmall,
