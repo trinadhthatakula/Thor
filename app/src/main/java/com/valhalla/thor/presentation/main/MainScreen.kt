@@ -5,7 +5,7 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -267,6 +267,8 @@ fun MainScreen(
             }
         }
     ) { innerPadding ->
+        val spatialSpec = MaterialTheme.motionScheme.slowSpatialSpec<androidx.compose.ui.unit.IntOffset>()
+        val effectsSpec = MaterialTheme.motionScheme.slowEffectsSpec<Float>()
 
         Box(
             modifier = Modifier
@@ -278,30 +280,30 @@ fun MainScreen(
                 onBack = { activeBackStack.removeLastOrNull() },
                 entryProvider = entryProvider,
                 transitionSpec = {
-                    (fadeIn(animationSpec = tween(300)) + slideInHorizontally(
+                    (fadeIn(animationSpec = effectsSpec) + slideInHorizontally(
                         initialOffsetX = { it },
-                        animationSpec = tween(300)
-                    )) togetherWith (fadeOut(animationSpec = tween(300)) + slideOutHorizontally(
+                        animationSpec = spatialSpec
+                    )) togetherWith (fadeOut(animationSpec = effectsSpec) + slideOutHorizontally(
                         targetOffsetX = { -it },
-                        animationSpec = tween(300)
+                        animationSpec = spatialSpec
                     ))
                 },
                 popTransitionSpec = {
-                    (fadeIn(animationSpec = tween(300)) + slideInHorizontally(
+                    (fadeIn(animationSpec = effectsSpec) + slideInHorizontally(
                         initialOffsetX = { -it },
-                        animationSpec = tween(300)
-                    )) togetherWith (fadeOut(animationSpec = tween(300)) + slideOutHorizontally(
+                        animationSpec = spatialSpec
+                    )) togetherWith (fadeOut(animationSpec = effectsSpec) + slideOutHorizontally(
                         targetOffsetX = { it },
-                        animationSpec = tween(300)
+                        animationSpec = spatialSpec
                     ))
                 },
                 predictivePopTransitionSpec = {
-                    (fadeIn(animationSpec = tween(300)) + slideInHorizontally(
+                    (fadeIn(animationSpec = effectsSpec) + slideInHorizontally(
                         initialOffsetX = { -it },
-                        animationSpec = tween(300)
-                    )) togetherWith (fadeOut(animationSpec = tween(300)) + slideOutHorizontally(
+                        animationSpec = spatialSpec
+                    )) togetherWith (fadeOut(animationSpec = effectsSpec) + slideOutHorizontally(
                         targetOffsetX = { it },
-                        animationSpec = tween(300)
+                        animationSpec = spatialSpec
                     ))
                 }
             )

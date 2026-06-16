@@ -1,7 +1,6 @@
 package com.valhalla.thor.presentation.widgets
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -52,11 +51,14 @@ fun FreezerPromptSnackbar(
         }
     }
 
+    val spatialSpec = MaterialTheme.motionScheme.defaultSpatialSpec<androidx.compose.ui.unit.IntOffset>()
+    val effectsSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+
     AnimatedVisibility(
         modifier = modifier,
         visible = visible,
-        enter = slideInVertically(tween(280)) { it / 2 } + fadeIn(tween(280)),
-        exit = slideOutVertically(tween(200)) { it / 2 } + fadeOut(tween(200))
+        enter = slideInVertically(animationSpec = spatialSpec) { it / 2 } + fadeIn(animationSpec = effectsSpec),
+        exit = slideOutVertically(animationSpec = spatialSpec) { it / 2 } + fadeOut(animationSpec = effectsSpec)
     ) {
         Card(
             modifier = Modifier

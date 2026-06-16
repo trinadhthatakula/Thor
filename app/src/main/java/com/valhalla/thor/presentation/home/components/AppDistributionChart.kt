@@ -1,8 +1,6 @@
 package com.valhalla.thor.presentation.home.components
 
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -97,10 +95,7 @@ private fun DistributionBar(
 
     val animatedProgress by animateFloatAsState(
         targetValue = startAnimation,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioLowBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
+        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
         label = "barAnimation"
     )
 
