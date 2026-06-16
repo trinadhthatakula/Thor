@@ -284,8 +284,7 @@ class AppListViewModel(
     fun updateFilter(filter: String) {
         viewModelScope.launch {
             // We need to know current filter type to update properly
-            // We read from _rawState because uiState might be updating asynchronously
-            val currentType = _rawState.value.filterType
+            val currentType = uiState.value.filterType
             preferenceRepository.updateAppFilter(currentType, filter)
         }
     }
