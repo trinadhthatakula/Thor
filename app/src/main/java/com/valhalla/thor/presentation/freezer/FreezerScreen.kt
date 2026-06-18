@@ -53,6 +53,7 @@ import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
+import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.presentation.widgets.AppInfoDialog
 import com.valhalla.thor.presentation.widgets.AppItemGrid
@@ -96,9 +97,10 @@ fun FreezerScreen(
         }
     }
 
-    val displayedApps = remember(state.freezerApps, state.searchQuery) {
-        if (state.searchQuery.isBlank()) state.freezerApps
-        else state.freezerApps.filter {
+    val displayedApps = remember(state.freezerApps, state.searchQuery, state.appListType) {
+        val filteredByType = state.freezerApps.filter { it.isSystem == (state.appListType == AppListType.SYSTEM) }
+        if (state.searchQuery.isBlank()) filteredByType
+        else filteredByType.filter {
             it.appName?.contains(state.searchQuery, ignoreCase = true) == true ||
                     it.packageName.contains(state.searchQuery, ignoreCase = true)
         }
@@ -144,9 +146,9 @@ fun FreezerScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Checkbox(
-                            checked = state.multiSelection.size == state.freezerApps.size && state.freezerApps.isNotEmpty(),
+                            checked = state.multiSelection.size == displayedApps.size && displayedApps.isNotEmpty(),
                             onCheckedChange = { checked ->
-                                if (checked) viewModel.selectAll() else viewModel.clearSelection()
+                                if (checked) viewModel.selectAll(displayedApps.map { it.packageName }) else viewModel.clearSelection()
                             }
                         )
                         Text(
@@ -378,6 +380,8 @@ fun FreezerScreen(
             isGrid = isGrid,
             autoFreezeEnabled = state.autoFreezeEnabled,
             hasPrivilege = hasPrivilege,
+            showImportDisabledApps = disabledAppsNotInFreezer.isNotEmpty(),
+            appListType = state.appListType,
             onToggleView = { isGrid = !isGrid },
             onToggleAutoFreeze = viewModel::setAutoFreezeEnabled,
             onDismiss = { showSettingsSheet = false },
@@ -389,7 +393,8 @@ fun FreezerScreen(
                 } else {
                     Toast.makeText(context, context.getString(R.string.no_disabled_apps_found), Toast.LENGTH_SHORT).show()
                 }
-            }
+            },
+            onListTypeChanged = viewModel::updateListType
         )
     }
 

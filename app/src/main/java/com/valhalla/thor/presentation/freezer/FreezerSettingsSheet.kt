@@ -30,6 +30,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
 import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
 
@@ -39,11 +40,14 @@ fun FreezerSettingsSheet(
     isGrid: Boolean,
     autoFreezeEnabled: Boolean,
     hasPrivilege: Boolean,
+    showImportDisabledApps: Boolean,
+    appListType: AppListType,
     onToggleView: () -> Unit,
     onToggleAutoFreeze: (Boolean) -> Unit,
     onDismiss: () -> Unit,
     onUnfreezeAll: () -> Unit,
-    onImportDisabledApps: () -> Unit
+    onImportDisabledApps: () -> Unit,
+    onListTypeChanged: (AppListType) -> Unit
 ) {
     var showUnfreezeConfirmation by remember { mutableStateOf(false) }
 
@@ -93,6 +97,31 @@ fun FreezerSettingsSheet(
             )
             Spacer(Modifier.height(24.dp))
 
+            // 1. App Type Selector (User vs System)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    stringResource(R.string.apps),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
+                ConnectedButtonGroup(
+                    items = AppListType.entries.map { type ->
+                        ConnectedButtonGroupItem.Icon(
+                            iconRes = if (type == AppListType.USER) R.drawable.apps else R.drawable.android,
+                            contentDescription = type.name
+                        )
+                    },
+                    selectedIndex = AppListType.entries.indexOf(appListType),
+                    onItemSelected = { onListTypeChanged(AppListType.entries[it]) }
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -138,20 +167,22 @@ fun FreezerSettingsSheet(
                 Text(stringResource(R.string.unfreeze_all))
             }
 
-            Spacer(Modifier.height(12.dp))
+            if (showImportDisabledApps) {
+                Spacer(Modifier.height(12.dp))
 
-            Button(
-                onClick = {
-                    onImportDisabledApps()
-                },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                ),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Text(stringResource(R.string.import_disabled_apps_button))
+                Button(
+                    onClick = {
+                        onImportDisabledApps()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                    ),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text(stringResource(R.string.import_disabled_apps_button))
+                }
             }
 
             Spacer(Modifier.height(24.dp))
