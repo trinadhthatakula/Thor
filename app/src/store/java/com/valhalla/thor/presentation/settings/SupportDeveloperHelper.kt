@@ -52,7 +52,7 @@ fun SupportDeveloperHelper(
 
     val billingClient = remember {
         lateinit var client: BillingClient
-        client = BillingClient.newBuilder(context)
+        client = BillingClient.newBuilder(context.applicationContext)
             .setListener { billingResult, purchases ->
                 if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
                     for (purchase in purchases) {
