@@ -93,7 +93,6 @@ fun FreezerScreen(
         if (!state.isLoading && !state.hasShownDisabledAppsPrompt && !hasCheckedAutoPrompt && disabledAppsNotInFreezer.isNotEmpty()) {
             showImportDialog = true
             hasCheckedAutoPrompt = true
-            viewModel.markDisabledAppsPromptShown()
         }
     }
 
@@ -400,7 +399,10 @@ fun FreezerScreen(
 
     if (showImportDialog) {
         AlertDialog(
-            onDismissRequest = { showImportDialog = false },
+            onDismissRequest = {
+                viewModel.markDisabledAppsPromptShown()
+                showImportDialog = false
+            },
             icon = {
                 Icon(
                     painter = painterResource(R.drawable.frozen),
@@ -414,6 +416,7 @@ fun FreezerScreen(
                 TextButton(
                     onClick = {
                         viewModel.addAppsToFreezer(disabledAppsNotInFreezer.map { it.packageName })
+                        viewModel.markDisabledAppsPromptShown()
                         showImportDialog = false
                     }
                 ) {
@@ -421,7 +424,12 @@ fun FreezerScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showImportDialog = false }) {
+                TextButton(
+                    onClick = {
+                        viewModel.markDisabledAppsPromptShown()
+                        showImportDialog = false
+                    }
+                ) {
                     Text(stringResource(R.string.cancel))
                 }
             }
