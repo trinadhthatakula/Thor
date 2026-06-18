@@ -1,0 +1,7 @@
+- Added a "Support Developer" dialog shown after app actions (FOSS: Patreon/PayPal; Store: Play Billing 9 subscriptions).
+- Added a dedicated "Support & Community" card with Play Store, GitHub, and Telegram links.
+- Added User/System app filtering in Freezer Settings.
+- Automatically import disabled apps outside the Freezer.
+- Root dashboard option to clear user/system app caches.
+- Upgraded app sharing to export actual APK/APKS files.
+- Fixed AppList state filtering bugs.

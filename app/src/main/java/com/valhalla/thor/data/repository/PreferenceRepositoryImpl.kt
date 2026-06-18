@@ -52,6 +52,9 @@ class PreferenceRepositoryImpl(
 
         // Freezer Prompts
         val HAS_SHOWN_DISABLED_APPS_PROMPT = booleanPreferencesKey("has_shown_disabled_apps_prompt")
+
+        // Support Developer Prompt
+        val HAS_SHOWN_SUPPORT_DEVELOPER_PROMPT = booleanPreferencesKey("has_shown_support_developer_prompt")
     }
 
     override val userPreferences: Flow<UserPreferences> = context.dataStore.data
@@ -89,7 +92,8 @@ class PreferenceRepositoryImpl(
                 preferredPrivilegeMode = privilegeMode,
                 language = prefs[Keys.LANGUAGE],
                 autoFreezeEnabled = prefs[Keys.AUTO_FREEZE] ?: false,
-                hasShownDisabledAppsPrompt = prefs[Keys.HAS_SHOWN_DISABLED_APPS_PROMPT] ?: false
+                hasShownDisabledAppsPrompt = prefs[Keys.HAS_SHOWN_DISABLED_APPS_PROMPT] ?: false,
+                hasShownSupportDeveloperPrompt = prefs[Keys.HAS_SHOWN_SUPPORT_DEVELOPER_PROMPT] ?: false
             )
         }
 
@@ -159,6 +163,12 @@ class PreferenceRepositoryImpl(
     override suspend fun setHasShownDisabledAppsPrompt(hasShown: Boolean) {
         context.dataStore.edit {
             it[Keys.HAS_SHOWN_DISABLED_APPS_PROMPT] = hasShown
+        }
+    }
+
+    override suspend fun setHasShownSupportDeveloperPrompt(hasShown: Boolean) {
+        context.dataStore.edit {
+            it[Keys.HAS_SHOWN_SUPPORT_DEVELOPER_PROMPT] = hasShown
         }
     }
 }

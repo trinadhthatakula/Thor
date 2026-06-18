@@ -45,8 +45,9 @@ import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.presentation.home.components.AppDistributionChart
 import com.valhalla.thor.presentation.home.components.DashboardHeader
-import com.valhalla.thor.presentation.home.components.SocialLinksRow
+import com.valhalla.thor.presentation.home.components.SupportCommunitySection
 import com.valhalla.thor.presentation.home.components.SummaryStatRow
+import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
 import com.valhalla.thor.presentation.installer.InstallerViewModel
 import com.valhalla.thor.presentation.installer.PortableInstaller
 import org.koin.androidx.compose.koinViewModel
@@ -66,6 +67,7 @@ fun HomeScreen(
     var showPrivilegeDialog by remember { mutableStateOf(false) }
 
     var showInstallerSheet by remember { mutableStateOf(false) }
+    var showSupportSheet by remember { mutableStateOf(false) }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -198,7 +200,7 @@ fun HomeScreen(
 
         // 4. Social Links
         Spacer(Modifier.height(8.dp))
-        SocialLinksRow()
+        SupportCommunitySection(onSupportClick = { showSupportSheet = true })
         Spacer(Modifier.height(32.dp))
     }
 
@@ -272,6 +274,12 @@ fun HomeScreen(
         PortableInstaller(
             onDismiss = { showInstallerSheet = false },
             viewModel = installerViewModel
+        )
+    }
+
+    if (showSupportSheet) {
+        SupportDeveloperHelper(
+            onDismiss = { showSupportSheet = false }
         )
     }
 }

@@ -12,6 +12,7 @@ import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.domain.usecase.ShareAppUseCase
+import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.presentation.home.AppDestinations
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.Dispatchers
@@ -53,7 +54,9 @@ data class LoggerState(
 data class MainUiState(
     val actionMessage: UiText? = null, // For transient Toasts
     val loggerState: LoggerState = LoggerState(), // For persistent Logs
-    val selectedDestination: AppDestinations = AppDestinations.HOME // For Bottom Nav
+    val selectedDestination: AppDestinations = AppDestinations.HOME, // For Bottom Nav
+    val hasShownSupportDeveloperPrompt: Boolean = true,
+    val showSupportDeveloperPrompt: Boolean = false
 )
 
 @KoinViewModel
@@ -61,7 +64,8 @@ class MainViewModel(
     private val manageAppUseCase: ManageAppUseCase,
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val shareAppUseCase: ShareAppUseCase,
-    private val packageManager: PackageManager
+    private val packageManager: PackageManager,
+    private val preferenceRepository: PreferenceRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MainUiState())
@@ -70,6 +74,50 @@ class MainViewModel(
         SharingStarted.WhileSubscribed(5000),
         MainUiState()
     )
+
+    private var pendingSupportPrompt = false
+
+    init {
+        observePreferences()
+    }
+
+    private fun observePreferences() {
+        viewModelScope.launch {
+            preferenceRepository.userPreferences.collect { prefs ->
+                _uiState.update {
+                    it.copy(
+                        hasShownSupportDeveloperPrompt = prefs.hasShownSupportDeveloperPrompt
+                    )
+                }
+            }
+        }
+    }
+
+    fun markSupportDeveloperPromptShown() {
+        viewModelScope.launch(Dispatchers.IO) {
+            preferenceRepository.setHasShownSupportDeveloperPrompt(true)
+        }
+        _uiState.update {
+            it.copy(
+                showSupportDeveloperPrompt = false,
+                hasShownSupportDeveloperPrompt = true
+            )
+        }
+    }
+
+    fun dismissSupportDeveloperPrompt() {
+        _uiState.update { it.copy(showSupportDeveloperPrompt = false) }
+    }
+
+    private fun triggerSupportPromptIfNeeded() {
+        if (!_uiState.value.hasShownSupportDeveloperPrompt) {
+            if (_uiState.value.loggerState.isVisible) {
+                pendingSupportPrompt = true
+            } else {
+                _uiState.update { it.copy(showSupportDeveloperPrompt = true) }
+            }
+        }
+    }
 
     private val _effect = Channel<MainSideEffect>()
     val effect = _effect.receiveAsFlow()
@@ -82,6 +130,10 @@ class MainViewModel(
 
     fun dismissLogger() {
         _uiState.update { it.copy(loggerState = LoggerState(isVisible = false)) }
+        if (pendingSupportPrompt) {
+            pendingSupportPrompt = false
+            triggerSupportPromptIfNeeded()
+        }
     }
 
     fun onDestinationSelected(destination: AppDestinations) {
@@ -208,7 +260,10 @@ class MainViewModel(
                     withContext(Dispatchers.IO) {
                         val result =
                             manageAppUseCase.reinstallAppWithGoogle(action.appInfo.packageName)
-                        if (result.isSuccess) addLog("✔ Reinstall successful")
+                        if (result.isSuccess) {
+                            addLog("✔ Reinstall successful")
+                            triggerSupportPromptIfNeeded()
+                        }
                         else addLog("✘ Failed: ${result.exceptionOrNull()?.message}")
                     }
                     finishLogger()
@@ -221,7 +276,10 @@ class MainViewModel(
                         addLog("Target: ${action.appInfo.appName}")
                         withContext(Dispatchers.IO) {
                             val result = manageAppUseCase.uninstallApp(action.appInfo.packageName)
-                            if (result.isSuccess) addLog("✔ Uninstall successful")
+                            if (result.isSuccess) {
+                                addLog("✔ Uninstall successful")
+                                triggerSupportPromptIfNeeded()
+                            }
                             else {
                                 addLog("✘ Privileged uninstall failed")
                                 addLog("Attempting system uninstall...")
@@ -241,6 +299,7 @@ class MainViewModel(
                                         )
                                     )
                                 }
+                                triggerSupportPromptIfNeeded()
                             } else {
                                 _effect.send(MainSideEffect.NormalUninstall(action.appInfo.packageName))
                             }
@@ -440,6 +499,7 @@ class MainViewModel(
         block: suspend (AppInfo) -> Result<Unit>
     ) {
         startLogger(title)
+        var hasAtLeastOneSuccess = false
 
         withContext(Dispatchers.IO) {
             apps.forEachIndexed { index, app ->
@@ -447,6 +507,7 @@ class MainViewModel(
                 val result = block(app)
                 if (result.isSuccess) {
                     addLog(" -> Success")
+                    hasAtLeastOneSuccess = true
                 } else {
                     addLog(" -> Failed: ${result.exceptionOrNull()?.message}")
                 }
@@ -454,6 +515,9 @@ class MainViewModel(
         }
 
         finishLogger()
+        if (hasAtLeastOneSuccess) {
+            triggerSupportPromptIfNeeded()
+        }
     }
 
     /**
@@ -475,6 +539,7 @@ class MainViewModel(
                             )
                         )
                     }
+                    triggerSupportPromptIfNeeded()
                 }
                 .onFailure { e ->
                     _uiState.update {

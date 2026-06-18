@@ -67,6 +67,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     var showLanguageSheet by remember { mutableStateOf(false) }
     var showUnfreezeConfirmation by remember { mutableStateOf(false) }
+    var showSupportSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.actionMessage) {
         state.actionMessage?.let {
@@ -363,6 +364,12 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            SettingsClickRow(
+                icon = R.drawable.shield_with_heart,
+                title = stringResource(R.string.support_developer),
+                subtitle = stringResource(R.string.support_developer_desc),
+                onClick = { showSupportSheet = true }
+            )
             // Version Tile
             Row(
                 modifier = Modifier
@@ -484,6 +491,12 @@ fun SettingsScreen(
                 showLanguageSheet = false
             },
             onDismiss = { showLanguageSheet = false }
+        )
+    }
+
+    if (showSupportSheet) {
+        SupportDeveloperHelper(
+            onDismiss = { showSupportSheet = false }
         )
     }
 }

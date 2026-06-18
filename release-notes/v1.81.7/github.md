@@ -1,8 +1,16 @@
-# Thor v1.81.6 Release Notes
+# Thor v1.81.7 Release Notes
 
-This release introduces major enhancements to app management and sharing, featuring advanced Freezer filtering, direct APK/APKs sharing, centralized cache clearing options for root users, and critical bug fixes.
+This release introduces major enhancements to app management, sharing, and project support. It features advanced Freezer filtering, direct APK/APKs sharing, centralized cache clearing options for root users, flavor-separated support developer channels, a redesigned dashboard community section, and critical bug fixes.
 
 ## What's Changed
+
+### 💖 Support Developer & Community
+*   **Support Developer Bottom Sheet**: Added a modal bottom sheet to easily support the developer, triggered automatically exactly once after successfully completing any action (freeze, unfreeze, reinstall, etc.), or manually from the Settings screen.
+*   **Support & Community Dashboard Card**: Replaced the low-prominence social links row with a beautifully styled "Support & Community" card below the App Distribution Chart, featuring a primary button to support the developer and redirect actions to open the Play Store listing (enabling easy rating), the GitHub repository, and the Telegram channel.
+*   **Improved Action Flow**: Defer showing the automatic Support Developer prompt until the `TermLoggerDialog` is dismissed, ensuring a seamless user experience.
+*   **Google Play Billing 9.0.0**: Integrated native subscriptions ($5, $10, $25, $50) for the Google Play Store variant.
+*   **Patreon & PayPal Fallback**: FOSS build remains completely free of proprietary Billing SDKs. It links directly to Patreon and PayPal. The Store variant also falls back to these links plus Rate App/Play Store dev page if billing is offline/unavailable.
+*   **Isolated Permissions**: `INTERNET` and `com.android.vending.BILLING` permissions are strictly isolated to the Google Play Store build manifest.
 
 ### 🚀 Features & UX Enhancements
 *   **User/System App Filter**: Added a User/System app toggle inside the Freezer Settings sheet using the custom `ConnectedButtonGroup` component to easily partition apps.

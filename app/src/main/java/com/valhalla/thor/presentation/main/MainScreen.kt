@@ -51,6 +51,7 @@ import com.valhalla.thor.presentation.home.HomeViewModel
 import com.valhalla.thor.presentation.navigation.ThorRoute
 import com.valhalla.thor.presentation.permission.PermissionManagerScreen
 import com.valhalla.thor.presentation.settings.SettingsScreen
+import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
 import com.valhalla.thor.presentation.widgets.AffirmationDialog
 import com.valhalla.thor.presentation.widgets.MultiAppAffirmationDialog
 import com.valhalla.thor.presentation.widgets.TermLoggerDialog
@@ -400,6 +401,12 @@ fun MainScreen(
                             onExit()
                         },
                         onRejected = { showExitConfirmation = false }
+                    )
+                }
+
+                if (state.showSupportDeveloperPrompt) {
+                    SupportDeveloperHelper(
+                        onDismiss = { mainViewModel.markSupportDeveloperPromptShown() }
                     )
                 }
             }

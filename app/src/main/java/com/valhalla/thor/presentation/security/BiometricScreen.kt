@@ -105,6 +105,8 @@ private fun BiometricLockView(
     onError: (String) -> Unit,
     handler: BiometricPromptHandler
 ) {
+    val unlockTitle = stringResource(R.string.biometric_unlock_title)
+    val unlockSubtitle = stringResource(R.string.biometric_unlock_subtitle)
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -208,8 +210,8 @@ private fun BiometricLockView(
                     )
                     .clickable {
                         handler.authenticate(
-                            title = "Unlock Thor",
-                            subtitle = "Authenticate to continue",
+                            title = unlockTitle,
+                            subtitle = unlockSubtitle,
                             onAuthenticated = onAuthenticated,
                             onError = onError
                         )
@@ -218,7 +220,7 @@ private fun BiometricLockView(
             ) {
                 Icon(
                     painter = painterResource(R.drawable.round_key), // Fingerprint icon fallback
-                    contentDescription = "Unlock",
+                    contentDescription = stringResource(R.string.unlock),
                     modifier = Modifier.size(48.dp),
                     tint = Color.Black
                 )
@@ -229,8 +231,8 @@ private fun BiometricLockView(
     // Auto-trigger on first launch
     LaunchedEffect(Unit) {
         handler.authenticate(
-            title = "Unlock Thor",
-            subtitle = "Authenticate to continue",
+            title = unlockTitle,
+            subtitle = unlockSubtitle,
             onAuthenticated = onAuthenticated,
             onError = onError
         )
