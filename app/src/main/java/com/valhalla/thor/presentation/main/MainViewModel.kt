@@ -55,7 +55,7 @@ data class MainUiState(
     val actionMessage: UiText? = null, // For transient Toasts
     val loggerState: LoggerState = LoggerState(), // For persistent Logs
     val selectedDestination: AppDestinations = AppDestinations.HOME, // For Bottom Nav
-    val hasShownSupportDeveloperPrompt: Boolean = false,
+    val hasShownSupportDeveloperPrompt: Boolean = true,
     val showSupportDeveloperPrompt: Boolean = false
 )
 
