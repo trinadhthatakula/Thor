@@ -1,4 +1,4 @@
-⚡️ **Thor v1.81.6 is out!**
+⚡️ **Thor v1.81.7 is out!**
 
 A major update bringing advanced Freezer app filtering, direct APK/APKs sharing, root cache clearing, flavor-separated developer support, and critical filter fixes!
 

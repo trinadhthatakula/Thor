@@ -1,4 +1,4 @@
-# Thor v1.81.6 Release Notes
+# Thor v1.81.7 Release Notes
 
 This release introduces major enhancements to app management, sharing, and project support. It features advanced Freezer filtering, direct APK/APKs sharing, centralized cache clearing options for root users, flavor-separated support developer channels, and critical bug fixes.
 
