@@ -1,6 +1,6 @@
-- Added User/System app filtering to the Freezer Settings sheet to easily partition applications.
-- Implemented automatic and manual import for disabled apps outside the Freezer, with robust interaction tracking and auto-hiding settings row.
-- Added a dashboard option for root users to clear cache files for user or system apps.
-- Upgraded app sharing to export the actual APK (or APKS package for split APKs with manifest.json).
-- Added batch app sharing to the multi-select toolbar.
-- Fixed AppList screen filters when filtering by activity state.
+- Added User/System app filtering to Freezer Settings.
+- Automatically import disabled apps outside Freezer with auto-hiding settings row and robust tracking.
+- Added root option on dashboard to clear user or system app cache.
+- Share actual APK/APKs (including split packages with manifest) instead of store links.
+- Added batch app sharing to multi-select toolbar.
+- Fixed activity state filters in AppList screen.
