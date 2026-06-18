@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.valhalla.thor.R
 
@@ -120,8 +121,9 @@ fun SupportCommunitySection(
                     Spacer(Modifier.width(4.dp))
                     Text(
                         text = stringResource(link.titleRes),
-                        style = MaterialTheme.typography.labelMedium,
-                        maxLines = 1
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }

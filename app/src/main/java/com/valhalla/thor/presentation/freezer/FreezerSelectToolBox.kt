@@ -24,12 +24,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
@@ -113,9 +116,10 @@ private fun FreezerToolItem(icon: Int, label: String, onClick: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
+            .width(72.dp)
             .clip(RoundedCornerShape(24.dp))
             .clickable(onClick = onClick)
-            .padding(8.dp)
+            .padding(vertical = 8.dp)
     ) {
         Box(
             modifier = Modifier
@@ -136,7 +140,9 @@ private fun FreezerToolItem(icon: Int, label: String, onClick: () -> Unit) {
             text = label,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
-            maxLines = 1
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
         )
     }
 }
