@@ -85,6 +85,7 @@ class ShareAppUseCase(
 
                     // D. Zip Everything (APKs + JSON)
                     zipFiles(filesToZip, finalFile)
+                    tempSplitDir.deleteRecursively()
                 }
 
                 // 3. Generate URI
