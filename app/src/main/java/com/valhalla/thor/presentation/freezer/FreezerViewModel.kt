@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
@@ -40,7 +41,8 @@ data class FreezerUiState(
     val freezerPrompt: FreezerPrompt? = null,
     val autoFreezeEnabled: Boolean = false,
     val isDhizuku: Boolean = false,
-    val hasShownDisabledAppsPrompt: Boolean = false
+    val hasShownDisabledAppsPrompt: Boolean = false,
+    val appListType: AppListType = AppListType.USER
 )
 
 @KoinViewModel
@@ -168,8 +170,12 @@ class FreezerViewModel(
         _uiState.update { it.copy(multiSelection = emptySet()) }
     }
 
-    fun selectAll() {
-        _uiState.update { it.copy(multiSelection = it.freezerPackageNames.toSet()) }
+    fun selectAll(packageNames: Collection<String> = _uiState.value.freezerPackageNames) {
+        _uiState.update { it.copy(multiSelection = packageNames.toSet()) }
+    }
+
+    fun updateListType(type: AppListType) {
+        _uiState.update { it.copy(appListType = type) }
     }
 
     fun removeFromFreezer(packageNames: Set<String>) {
