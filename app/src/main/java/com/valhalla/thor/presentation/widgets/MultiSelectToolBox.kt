@@ -123,6 +123,11 @@ fun MultiSelectToolBox(
                 onClick = { onMultiAppAction(MultiAppAction.ClearCache(selected)) }
             )
             ToolBoxItem(
+                icon = R.drawable.share,
+                label = "Share",
+                onClick = { onMultiAppAction(MultiAppAction.Share(selected)) }
+            )
+            ToolBoxItem(
                 icon = R.drawable.delete_forever,
                 label = "Uninstall",
                 onClick = { onMultiAppAction(MultiAppAction.Uninstall(selected)) }

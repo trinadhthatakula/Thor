@@ -138,6 +138,15 @@ fun MainScreen(
                     context.startActivity(Intent.createChooser(intent, shareApp))
                 }
 
+                is MainSideEffect.ShareApps -> {
+                    val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                        type = "*/*"
+                        putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(effect.uris))
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(intent, shareApp))
+                }
+
                 is MainSideEffect.NormalUninstall -> {
                     val intent = Intent(Intent.ACTION_DELETE).apply {
                         data = "package:${effect.packageName}".toUri()
@@ -274,6 +283,11 @@ fun MainScreen(
                         onBack = { backStack.removeLastOrNull() },
                         onNavigateToPermissionManager = { pkg, name ->
                             backStack.add(ThorRoute.PermissionManager(pkg, name))
+                        },
+                        onAppAction = { action ->
+                            checkAndProcessAction(action, { pendingSingleAction = it }) {
+                                mainViewModel.onAppAction(it)
+                            }
                         }
                     )
                 }

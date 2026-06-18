@@ -73,11 +73,15 @@ class ShareAppUseCase(
                         return@withContext Result.failure(Exception("Failed to copy any APK files"))
                     }
 
-                    // C. GENERATE METADATA (The Missing Piece)
-                    // We generate "metadata.json" so installers know what this bundle is.
+                    // C. GENERATE METADATA & MANIFEST (The Missing Piece)
+                    // We generate "metadata.json" and "manifest.json" so installers know what this bundle is.
                     val metadataFile = File(tempSplitDir, "metadata.json")
                     apksMetadataGenerator.generateJson(appInfo, metadataFile)
                     filesToZip.add(metadataFile)
+
+                    val manifestFile = File(tempSplitDir, "manifest.json")
+                    apksMetadataGenerator.generateManifestJson(appInfo, manifestFile)
+                    filesToZip.add(manifestFile)
 
                     // D. Zip Everything (APKs + JSON)
                     zipFiles(filesToZip, finalFile)
