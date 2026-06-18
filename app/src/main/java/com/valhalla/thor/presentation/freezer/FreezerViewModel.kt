@@ -39,7 +39,8 @@ data class FreezerUiState(
     val actionMessage: UiText? = null,
     val freezerPrompt: FreezerPrompt? = null,
     val autoFreezeEnabled: Boolean = false,
-    val isDhizuku: Boolean = false
+    val isDhizuku: Boolean = false,
+    val hasShownDisabledAppsPrompt: Boolean = false
 )
 
 @KoinViewModel
@@ -329,7 +330,12 @@ class FreezerViewModel(
     private fun observePreferences() {
         viewModelScope.launch {
             preferenceRepository.userPreferences.collect { prefs ->
-                _uiState.update { it.copy(autoFreezeEnabled = prefs.autoFreezeEnabled) }
+                _uiState.update {
+                    it.copy(
+                        autoFreezeEnabled = prefs.autoFreezeEnabled,
+                        hasShownDisabledAppsPrompt = prefs.hasShownDisabledAppsPrompt
+                    )
+                }
             }
         }
     }
@@ -337,6 +343,28 @@ class FreezerViewModel(
     fun setAutoFreezeEnabled(enabled: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             preferenceRepository.setAutoFreezeEnabled(enabled)
+        }
+    }
+
+    fun markDisabledAppsPromptShown() {
+        viewModelScope.launch(Dispatchers.IO) {
+            preferenceRepository.setHasShownDisabledAppsPrompt(true)
+        }
+    }
+
+    fun addAppsToFreezer(packageNames: List<String>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            packageNames.forEach { pkg ->
+                freezerRepository.add(pkg)
+            }
+            _uiState.update {
+                it.copy(
+                    actionMessage = UiText.StringResource(
+                        R.string.added_to_freezer_count_success,
+                        packageNames.size
+                    )
+                )
+            }
         }
     }
 }

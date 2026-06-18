@@ -26,6 +26,9 @@ data class UserPreferences(
 
     // Auto Freeze
     val autoFreezeEnabled: Boolean = false,
+
+    // Freezer Prompts
+    val hasShownDisabledAppsPrompt: Boolean = false
 )
 
 

@@ -177,6 +177,11 @@
     <string name="privilege_required_warning">Privilege required (Root, Shizuku or Dhizuku)</string>
     <string name="unfreeze_all_confirmation_title">Unfreeze All Apps?</string>
     <string name="unfreeze_all_confirmation_desc">This will unfreeze (enable) all apps currently in the Freezer list. Are you sure you want to proceed?</string>
+    <string name="import_disabled_apps_title">Import Disabled Apps</string>
+    <string name="import_disabled_apps_desc">There are %1$d disabled apps that are not in your Freezer. Would you like to add them to the Freezer?</string>
+    <string name="import_disabled_apps_button">Import disabled apps</string>
+    <string name="no_disabled_apps_found">No other disabled apps found.</string>
+    <string name="added_to_freezer_count_success">Added %1$d apps to Freezer</string>
 
     <!-- UiText Messages -->
     <string name="action_completed_format">%1$s completed: %2$s</string>

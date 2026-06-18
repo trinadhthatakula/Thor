@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,6 +32,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -78,6 +80,21 @@ fun FreezerScreen(
     var showManageSheet by rememberSaveable { mutableStateOf(false) }
     var showSettingsSheet by rememberSaveable { mutableStateOf(false) }
     var isGrid by rememberSaveable { mutableStateOf(true) }
+
+    var showImportDialog by rememberSaveable { mutableStateOf(false) }
+    var hasCheckedAutoPrompt by rememberSaveable { mutableStateOf(false) }
+
+    val disabledAppsNotInFreezer = remember(state.allInstalledApps, state.freezerPackageNames) {
+        state.allInstalledApps.filter { !it.enabled && it.packageName !in state.freezerPackageNames }
+    }
+
+    LaunchedEffect(state.isLoading, state.hasShownDisabledAppsPrompt, disabledAppsNotInFreezer) {
+        if (!state.isLoading && !state.hasShownDisabledAppsPrompt && !hasCheckedAutoPrompt && disabledAppsNotInFreezer.isNotEmpty()) {
+            showImportDialog = true
+            hasCheckedAutoPrompt = true
+            viewModel.markDisabledAppsPromptShown()
+        }
+    }
 
     val displayedApps = remember(state.freezerApps, state.searchQuery) {
         if (state.searchQuery.isBlank()) state.freezerApps
@@ -364,7 +381,45 @@ fun FreezerScreen(
             onToggleView = { isGrid = !isGrid },
             onToggleAutoFreeze = viewModel::setAutoFreezeEnabled,
             onDismiss = { showSettingsSheet = false },
-            onUnfreezeAll = viewModel::unfreezeAll
+            onUnfreezeAll = viewModel::unfreezeAll,
+            onImportDisabledApps = {
+                showSettingsSheet = false
+                if (disabledAppsNotInFreezer.isNotEmpty()) {
+                    showImportDialog = true
+                } else {
+                    Toast.makeText(context, context.getString(R.string.no_disabled_apps_found), Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
+    }
+
+    if (showImportDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportDialog = false },
+            icon = {
+                Icon(
+                    painter = painterResource(R.drawable.frozen),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = { Text(stringResource(R.string.import_disabled_apps_title)) },
+            text = { Text(stringResource(R.string.import_disabled_apps_desc, disabledAppsNotInFreezer.size)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.addAppsToFreezer(disabledAppsNotInFreezer.map { it.packageName })
+                        showImportDialog = false
+                    }
+                ) {
+                    Text(stringResource(R.string.confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
         )
     }
 }

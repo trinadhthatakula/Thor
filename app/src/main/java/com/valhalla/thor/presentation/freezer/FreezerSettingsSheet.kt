@@ -42,7 +42,8 @@ fun FreezerSettingsSheet(
     onToggleView: () -> Unit,
     onToggleAutoFreeze: (Boolean) -> Unit,
     onDismiss: () -> Unit,
-    onUnfreezeAll: () -> Unit
+    onUnfreezeAll: () -> Unit,
+    onImportDisabledApps: () -> Unit
 ) {
     var showUnfreezeConfirmation by remember { mutableStateOf(false) }
 
@@ -135,6 +136,22 @@ fun FreezerSettingsSheet(
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Text(stringResource(R.string.unfreeze_all))
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            Button(
+                onClick = {
+                    onImportDisabledApps()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                ),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Text(stringResource(R.string.import_disabled_apps_button))
             }
 
             Spacer(Modifier.height(24.dp))
