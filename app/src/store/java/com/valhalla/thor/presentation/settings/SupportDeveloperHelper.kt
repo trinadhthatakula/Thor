@@ -184,7 +184,7 @@ fun SupportDeveloperHelper(
                 )
             )
         } else {
-            val sortedDetails = productDetailsList.sortedBy { details ->
+            val sortedDetails = productDetailsList.filter { it.subscriptionOfferDetails?.isNotEmpty() == true }.sortedBy { details ->
                 when (details.productId) {
                     "support_tier_5" -> 5
                     "support_tier_10" -> 10
