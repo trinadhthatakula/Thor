@@ -320,5 +320,9 @@
     <string name="community_telegram">Telegram</string>
     <string name="community_play_store">Play Store</string>
     <string name="thank_you_support">Thank you for your support!</string>
+    <string name="action_remove">Remove</string>
+    <string name="biometric_unlock_title">Unlock Thor</string>
+    <string name="biometric_unlock_subtitle">Authenticate to continue</string>
+    <string name="unlock">Unlock</string>
 
 </resources>

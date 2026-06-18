@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
@@ -71,7 +72,7 @@ fun MultiSelectToolBox(
             // Close Action (Leftmost for easy exit)
             ToolBoxItem(
                 icon = R.drawable.round_close,
-                label = "Close",
+                label = stringResource(R.string.close),
                 onClick = onCancel
             )
 
@@ -79,7 +80,7 @@ fun MultiSelectToolBox(
             if (isRoot) {
                 ToolBoxItem(
                     icon = R.drawable.apk_install,
-                    label = "ReInstall",
+                    label = stringResource(R.string.action_reinstall),
                     onClick = { onMultiAppAction(MultiAppAction.ReInstall(selected)) }
                 )
             }
@@ -89,28 +90,28 @@ fun MultiSelectToolBox(
                 if (hasUnFrozen) {
                     ToolBoxItem(
                         icon = R.drawable.frozen,
-                        label = "Freeze",
+                        label = stringResource(R.string.action_freeze),
                         onClick = { onMultiAppAction(MultiAppAction.Freeze(selected)) }
                     )
                 }
                 if (hasFrozen) {
                     ToolBoxItem(
                         icon = R.drawable.unfreeze,
-                        label = "UnFreeze",
+                        label = stringResource(R.string.action_unfreeze),
                         onClick = { onMultiAppAction(MultiAppAction.UnFreeze(selected)) }
                     )
                 }
                 if (hasUnSuspended) {
                     ToolBoxItem(
                         icon = R.drawable.warning,
-                        label = "Suspend",
+                        label = stringResource(R.string.action_suspend),
                         onClick = { onMultiAppAction(MultiAppAction.Suspend(selected)) }
                     )
                 }
                 if (hasSuspended) {
                     ToolBoxItem(
                         icon = R.drawable.bolt,
-                        label = "Unsuspend",
+                        label = stringResource(R.string.action_unsuspend),
                         onClick = { onMultiAppAction(MultiAppAction.UnSuspend(selected)) }
                     )
                 }
@@ -119,22 +120,22 @@ fun MultiSelectToolBox(
             // Standard Actions
             ToolBoxItem(
                 icon = R.drawable.clear_all,
-                label = "Cache",
+                label = stringResource(R.string.action_cache),
                 onClick = { onMultiAppAction(MultiAppAction.ClearCache(selected)) }
             )
             ToolBoxItem(
                 icon = R.drawable.share,
-                label = "Share",
+                label = stringResource(R.string.action_share),
                 onClick = { onMultiAppAction(MultiAppAction.Share(selected)) }
             )
             ToolBoxItem(
                 icon = R.drawable.delete_forever,
-                label = "Uninstall",
+                label = stringResource(R.string.action_uninstall),
                 onClick = { onMultiAppAction(MultiAppAction.Uninstall(selected)) }
             )
             ToolBoxItem(
                 icon = R.drawable.danger,
-                label = "Kill",
+                label = stringResource(R.string.action_kill),
                 onClick = { onMultiAppAction(MultiAppAction.Kill(selected)) }
             )
         }

@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.valhalla.thor.R
@@ -67,20 +68,20 @@ fun FreezerSelectToolBox(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            FreezerToolItem(icon = R.drawable.round_close, label = "Close", onClick = onCancel)
+            FreezerToolItem(icon = R.drawable.round_close, label = stringResource(R.string.close), onClick = onCancel)
 
             if (isRoot || isShizuku || isDhizuku) {
                 if (hasUnFrozen) {
                     FreezerToolItem(
                         icon = R.drawable.frozen,
-                        label = "Freeze",
+                        label = stringResource(R.string.action_freeze),
                         onClick = { onMultiAppAction(MultiAppAction.Freeze(selected)) }
                     )
                 }
                 if (hasFrozen) {
                     FreezerToolItem(
                         icon = R.drawable.unfreeze,
-                        label = "Unfreeze",
+                        label = stringResource(R.string.action_unfreeze),
                         onClick = { onMultiAppAction(MultiAppAction.UnFreeze(selected)) }
                     )
                 }
@@ -88,19 +89,19 @@ fun FreezerSelectToolBox(
 
             FreezerToolItem(
                 icon = R.drawable.delete,
-                label = "Remove",
+                label = stringResource(R.string.action_remove),
                 onClick = onRemoveFromFreezer
             )
 
             FreezerToolItem(
                 icon = R.drawable.share,
-                label = "Share",
+                label = stringResource(R.string.action_share),
                 onClick = { onMultiAppAction(MultiAppAction.Share(selected)) }
             )
 
             FreezerToolItem(
                 icon = R.drawable.delete_forever,
-                label = "Uninstall",
+                label = stringResource(R.string.action_uninstall),
                 onClick = { onMultiAppAction(MultiAppAction.Uninstall(selected)) }
             )
         }
