@@ -1,5 +1,0 @@
-- Implemented smooth shared element transitions for app icons and names between list and detail screens.
-- Migrated legacy UI and navigation transitions to centralized physics-based Material Expressive Motion.
-- Upgraded Lifecycle library to 2.11+ and optimized memory scoping for screen-level ViewModels.
-- Fixed privilege loading delay to render the Freezer screen Floating Action Button (FAB) immediately.
-- Cleaned up build files and updated internal library dependencies.
