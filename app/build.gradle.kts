@@ -242,6 +242,10 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
+
+    // Store-only dependencies
+    "storeImplementation"(libs.play.billing)
+    "storeImplementation"(libs.play.billing.ktx)
 }
 
 // These rely on the private functions above, which is allowed in the same file scope

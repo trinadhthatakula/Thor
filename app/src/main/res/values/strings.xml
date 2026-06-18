@@ -298,4 +298,19 @@
     <string name="expanded">Expanded</string>
     <string name="collapsed">Collapsed</string>
 
+    <!-- Support Developer -->
+    <string name="support_developer">Support Developer</string>
+    <string name="support_developer_desc">Support ongoing development of Thor</string>
+    <string name="support_developer_desc_detailed">Thor is open source and completely ad-free. If it has been helpful to you, please consider supporting my work:</string>
+    <string name="become_patreon_title">Become a Patreon</string>
+    <string name="become_patreon_desc">Support ongoing development with a monthly subscription</string>
+    <string name="rate_play_store_title">Rate on Play Store</string>
+    <string name="rate_play_store_desc">Leave a 5-star review to help others discover Thor</string>
+    <string name="explore_other_apps_title">Explore Other Apps</string>
+    <string name="explore_other_apps_desc">Check out my developer console and try other apps</string>
+    <string name="donate_paypal_title">Donate via PayPal</string>
+    <string name="donate_paypal_desc">Send a one-time donation directly</string>
+    <string name="choose_subscription_tier">Choose a Support Tier</string>
+    <string name="billing_error">Billing Error</string>
+
 </resources>

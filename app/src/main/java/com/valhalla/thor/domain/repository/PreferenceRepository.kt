@@ -38,4 +38,7 @@ interface PreferenceRepository {
 
     // --- Freezer Prompts ---
     suspend fun setHasShownDisabledAppsPrompt(hasShown: Boolean)
+
+    // --- Support Developer Prompt ---
+    suspend fun setHasShownSupportDeveloperPrompt(hasShown: Boolean)
 }
