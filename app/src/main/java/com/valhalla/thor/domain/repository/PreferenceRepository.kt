@@ -35,4 +35,7 @@ interface PreferenceRepository {
 
     // --- Auto Freeze ---
     suspend fun setAutoFreezeEnabled(enabled: Boolean)
+
+    // --- Freezer Prompts ---
+    suspend fun setHasShownDisabledAppsPrompt(hasShown: Boolean)
 }

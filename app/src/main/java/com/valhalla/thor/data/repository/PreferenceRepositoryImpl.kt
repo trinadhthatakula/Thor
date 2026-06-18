@@ -49,6 +49,9 @@ class PreferenceRepositoryImpl(
 
         // Auto Freeze
         val AUTO_FREEZE = booleanPreferencesKey("auto_freeze")
+
+        // Freezer Prompts
+        val HAS_SHOWN_DISABLED_APPS_PROMPT = booleanPreferencesKey("has_shown_disabled_apps_prompt")
     }
 
     override val userPreferences: Flow<UserPreferences> = context.dataStore.data
@@ -85,7 +88,8 @@ class PreferenceRepositoryImpl(
                 biometricLockEnabled = prefs[Keys.BIOMETRIC_LOCK] ?: false,
                 preferredPrivilegeMode = privilegeMode,
                 language = prefs[Keys.LANGUAGE],
-                autoFreezeEnabled = prefs[Keys.AUTO_FREEZE] ?: false
+                autoFreezeEnabled = prefs[Keys.AUTO_FREEZE] ?: false,
+                hasShownDisabledAppsPrompt = prefs[Keys.HAS_SHOWN_DISABLED_APPS_PROMPT] ?: false
             )
         }
 
@@ -149,6 +153,12 @@ class PreferenceRepositoryImpl(
     override suspend fun setAutoFreezeEnabled(enabled: Boolean) {
         context.dataStore.edit {
             it[Keys.AUTO_FREEZE] = enabled
+        }
+    }
+
+    override suspend fun setHasShownDisabledAppsPrompt(hasShown: Boolean) {
+        context.dataStore.edit {
+            it[Keys.HAS_SHOWN_DISABLED_APPS_PROMPT] = hasShown
         }
     }
 }
