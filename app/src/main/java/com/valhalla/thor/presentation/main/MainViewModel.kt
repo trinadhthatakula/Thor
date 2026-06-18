@@ -96,7 +96,12 @@ class MainViewModel(
     fun markSupportDeveloperPromptShown() {
         viewModelScope.launch(Dispatchers.IO) {
             preferenceRepository.setHasShownSupportDeveloperPrompt(true)
-            _uiState.update { it.copy(showSupportDeveloperPrompt = false) }
+        }
+        _uiState.update {
+            it.copy(
+                showSupportDeveloperPrompt = false,
+                hasShownSupportDeveloperPrompt = true
+            )
         }
     }
 
@@ -494,6 +499,7 @@ class MainViewModel(
         block: suspend (AppInfo) -> Result<Unit>
     ) {
         startLogger(title)
+        var hasAtLeastOneSuccess = false
 
         withContext(Dispatchers.IO) {
             apps.forEachIndexed { index, app ->
@@ -501,6 +507,7 @@ class MainViewModel(
                 val result = block(app)
                 if (result.isSuccess) {
                     addLog(" -> Success")
+                    hasAtLeastOneSuccess = true
                 } else {
                     addLog(" -> Failed: ${result.exceptionOrNull()?.message}")
                 }
@@ -508,7 +515,9 @@ class MainViewModel(
         }
 
         finishLogger()
-        triggerSupportPromptIfNeeded()
+        if (hasAtLeastOneSuccess) {
+            triggerSupportPromptIfNeeded()
+        }
     }
 
     /**

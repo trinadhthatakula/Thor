@@ -24,7 +24,7 @@ fun SupportDeveloperHelper(
                 description = context.getString(R.string.become_patreon_desc),
                 onClick = {
                     val intent = Intent(Intent.ACTION_VIEW, "https://www.patreon.com/trinadh".toUri())
-                    context.startActivity(intent)
+                    runCatching { context.startActivity(intent) }
                     onDismiss()
                 }
             ),
@@ -34,7 +34,7 @@ fun SupportDeveloperHelper(
                 description = context.getString(R.string.donate_paypal_desc),
                 onClick = {
                     val intent = Intent(Intent.ACTION_VIEW, "https://www.paypal.me/trinadhthatakula".toUri())
-                    context.startActivity(intent)
+                    runCatching { context.startActivity(intent) }
                     onDismiss()
                 }
             )

@@ -319,5 +319,6 @@
     <string name="community_github">GitHub</string>
     <string name="community_telegram">Telegram</string>
     <string name="community_play_store">Play Store</string>
+    <string name="thank_you_support">Thank you for your support!</string>
 
 </resources>

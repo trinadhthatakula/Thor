@@ -64,7 +64,7 @@ fun SupportDeveloperHelper(
                                 val ackResult = client.acknowledgePurchase(acknowledgePurchaseParams)
                                 if (ackResult.responseCode == BillingClient.BillingResponseCode.OK) {
                                     withContext(Dispatchers.Main) {
-                                        Toast.makeText(context, "Thank you for your support!", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, context.getString(R.string.thank_you_support), Toast.LENGTH_SHORT).show()
                                     }
                                 }
                             }
@@ -144,7 +144,7 @@ fun SupportDeveloperHelper(
                     description = context.getString(R.string.become_patreon_desc),
                     onClick = {
                         val intent = Intent(Intent.ACTION_VIEW, "https://www.patreon.com/trinadh".toUri())
-                        context.startActivity(intent)
+                        runCatching { context.startActivity(intent) }
                         onDismiss()
                     }
                 ),
@@ -154,7 +154,7 @@ fun SupportDeveloperHelper(
                     description = context.getString(R.string.donate_paypal_desc),
                     onClick = {
                         val intent = Intent(Intent.ACTION_VIEW, "https://www.paypal.me/trinadhthatakula".toUri())
-                        context.startActivity(intent)
+                        runCatching { context.startActivity(intent) }
                         onDismiss()
                     }
                 ),
@@ -167,7 +167,8 @@ fun SupportDeveloperHelper(
                             addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY or Intent.FLAG_ACTIVITY_NEW_DOCUMENT or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
                         }
                         runCatching { context.startActivity(intent) }.onFailure {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, "https://play.google.com/store/apps/details?id=com.valhalla.thor".toUri()))
+                            val webIntent = Intent(Intent.ACTION_VIEW, "https://play.google.com/store/apps/details?id=com.valhalla.thor".toUri())
+                            runCatching { context.startActivity(webIntent) }
                         }
                         onDismiss()
                     }
@@ -178,7 +179,7 @@ fun SupportDeveloperHelper(
                     description = context.getString(R.string.explore_other_apps_desc),
                     onClick = {
                         val intent = Intent(Intent.ACTION_VIEW, "https://play.google.com/store/apps/developer?id=Spectra+Apps".toUri())
-                        context.startActivity(intent)
+                        runCatching { context.startActivity(intent) }
                         onDismiss()
                     }
                 )
@@ -194,9 +195,11 @@ fun SupportDeveloperHelper(
                 }
             }
 
-            sortedDetails.map { productDetails ->
+            sortedDetails.mapNotNull { productDetails ->
                 val basePlan = productDetails.subscriptionOfferDetails?.firstOrNull()
-                val priceText = basePlan?.pricingPhases?.pricingPhaseList?.firstOrNull()?.formattedPrice ?: ""
+                val offerToken = basePlan?.offerToken
+                if (offerToken.isNullOrEmpty()) return@mapNotNull null
+                val priceText = basePlan.pricingPhases.pricingPhaseList.firstOrNull()?.formattedPrice ?: ""
                 SupportAction(
                     iconRes = R.drawable.shield_with_heart,
                     title = productDetails.name,
@@ -206,7 +209,7 @@ fun SupportDeveloperHelper(
                             val productDetailsParamsList = listOf(
                                 BillingFlowParams.ProductDetailsParams.newBuilder()
                                     .setProductDetails(productDetails)
-                                    .setOfferToken(basePlan?.offerToken ?: "")
+                                    .setOfferToken(offerToken)
                                     .build()
                             )
                             val billingFlowParams = BillingFlowParams.newBuilder()
