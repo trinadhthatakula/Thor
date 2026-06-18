@@ -105,9 +105,8 @@ private fun BiometricLockView(
     onError: (String) -> Unit,
     handler: BiometricPromptHandler
 ) {
-    val context = LocalContext.current
-    val unlockTitle = remember(context) { context.getString(R.string.biometric_unlock_title) }
-    val unlockSubtitle = remember(context) { context.getString(R.string.biometric_unlock_subtitle) }
+    val unlockTitle = stringResource(R.string.biometric_unlock_title)
+    val unlockSubtitle = stringResource(R.string.biometric_unlock_subtitle)
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
