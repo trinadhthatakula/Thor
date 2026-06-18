@@ -145,7 +145,7 @@ fun FreezerScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Checkbox(
-                            checked = state.multiSelection.size == displayedApps.size && displayedApps.isNotEmpty(),
+                            checked = displayedApps.isNotEmpty() && displayedApps.all { it.packageName in state.multiSelection },
                             onCheckedChange = { checked ->
                                 if (checked) viewModel.selectAll(displayedApps.map { it.packageName }) else viewModel.clearSelection()
                             }
