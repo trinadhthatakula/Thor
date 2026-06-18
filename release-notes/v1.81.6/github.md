@@ -6,7 +6,7 @@ This release introduces major enhancements to app management and sharing, featur
 
 ### 🚀 Features & UX Enhancements
 *   **User/System App Filter**: Added a User/System app toggle inside the Freezer Settings sheet using the custom `ConnectedButtonGroup` component to easily partition apps.
-*   **Automatic Disabled Apps Import**: Automatically detects disabled apps outside the Freezer and prompts the user on first launch to import them.
+*   **Automatic Disabled Apps Import**: Automatically detects disabled apps outside the Freezer and prompts the user on first launch to import them. The prompt state is robustly marked as shown only when the user explicitly interacts (confirms, cancels, or dismisses) with the dialog.
 *   **Settings Auto-Hide**: The "Import disabled apps" button in the Freezer settings sheet automatically hides if there are no disabled apps outside the freezer left to import.
 *   **App Filtering & Selection Improvements**: Multi-select actions (like Select All and selection counts) on the Freezer screen now operate exclusively on the currently visible filtered apps.
 *   **Direct APK & APKS Sharing**: Upgraded sharing behavior to share the actual base APK (or a packaged `.apks` zip with split APKs and standard `manifest.json` metadata) instead of a simple market link.
