@@ -7,6 +7,7 @@ import com.android.billingclient.api.AcknowledgePurchaseParams
 import com.android.billingclient.api.BillingClient
 import com.android.billingclient.api.BillingClientStateListener
 import com.android.billingclient.api.BillingFlowParams
+import com.android.billingclient.api.BillingFlowParams.ProductDetailsParams.SubscriptionProductReplacementParams
 import com.android.billingclient.api.BillingResult
 import com.android.billingclient.api.PendingPurchasesParams
 import com.android.billingclient.api.ProductDetails
@@ -157,10 +158,16 @@ class BillingProcessorImpl(
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                 val active = purchaseList.firstOrNull { it.purchaseState == Purchase.PurchaseState.PURCHASED }
                 if (active != null) {
-                    _activeSubscription.value = ActiveSubscription(
-                        productId = active.products.firstOrNull() ?: "",
-                        purchaseToken = active.purchaseToken
-                    )
+                    val activeProductId = active.products.firstOrNull()
+                    if (!activeProductId.isNullOrEmpty()) {
+                        _activeSubscription.value = ActiveSubscription(
+                            productId = activeProductId,
+                            purchaseToken = active.purchaseToken
+                        )
+                    } else {
+                        Logger.w("BillingProcessor", "Active purchase has empty or null product list")
+                        _activeSubscription.value = null
+                    }
                 } else {
                     _activeSubscription.value = null
                 }
@@ -189,8 +196,12 @@ class BillingProcessorImpl(
         }
     }
 
-    @Suppress("DEPRECATION")
-    override fun launchBillingFlow(activity: Activity, productId: String, oldPurchaseToken: String?) {
+    override fun launchBillingFlow(
+        activity: Activity,
+        productId: String,
+        oldPurchaseToken: String?,
+        oldProductId: String?
+    ) {
         val productDetails = productDetailsMap[productId]
         if (productDetails == null) {
             Logger.e("BillingProcessor", "Product details not found for $productId")
@@ -203,21 +214,25 @@ class BillingProcessorImpl(
             return
         }
 
-        val productDetailsParamsList = listOf(
-            BillingFlowParams.ProductDetailsParams.newBuilder()
-                .setProductDetails(productDetails)
-                .setOfferToken(offerToken)
+        val productDetailsParamsBuilder = BillingFlowParams.ProductDetailsParams.newBuilder()
+            .setProductDetails(productDetails)
+            .setOfferToken(offerToken)
+
+        if (!oldProductId.isNullOrEmpty()) {
+            val replacementParams = SubscriptionProductReplacementParams.newBuilder()
+                .setOldProductId(oldProductId)
+                .setReplacementMode(SubscriptionProductReplacementParams.ReplacementMode.CHARGE_PRORATED_PRICE)
                 .build()
-        )
+            productDetailsParamsBuilder.setSubscriptionProductReplacementParams(replacementParams)
+        }
+
+        val productDetailsParamsList = listOf(productDetailsParamsBuilder.build())
         val billingFlowParamsBuilder = BillingFlowParams.newBuilder()
             .setProductDetailsParamsList(productDetailsParamsList)
 
         if (!oldPurchaseToken.isNullOrEmpty()) {
             val updateParams = BillingFlowParams.SubscriptionUpdateParams.newBuilder()
                 .setOldPurchaseToken(oldPurchaseToken)
-                .setSubscriptionReplacementMode(
-                    BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.CHARGE_PRORATED_PRICE
-                )
                 .build()
             billingFlowParamsBuilder.setSubscriptionUpdateParams(updateParams)
         }

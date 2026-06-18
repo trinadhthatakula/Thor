@@ -9,7 +9,12 @@ interface BillingProcessor {
     val activeSubscription: StateFlow<ActiveSubscription?>
     val showThankYouDialog: StateFlow<Boolean>
 
-    fun launchBillingFlow(activity: Activity, productId: String, oldPurchaseToken: String? = null)
+    fun launchBillingFlow(
+        activity: Activity,
+        productId: String,
+        oldPurchaseToken: String? = null,
+        oldProductId: String? = null
+    )
     fun dismissThankYouDialog()
 }
 

@@ -12,7 +12,12 @@ class BillingProcessorImpl : BillingProcessor {
     override val activeSubscription: StateFlow<ActiveSubscription?> = MutableStateFlow(null)
     override val showThankYouDialog: StateFlow<Boolean> = MutableStateFlow(false)
 
-    override fun launchBillingFlow(activity: Activity, productId: String, oldPurchaseToken: String?) {
+    override fun launchBillingFlow(
+        activity: Activity,
+        productId: String,
+        oldPurchaseToken: String?,
+        oldProductId: String?
+    ) {
         // No-op in FOSS flavor
     }
 

@@ -140,7 +140,12 @@ fun SupportDeveloperHelper(
             onConfirm = {
                 val productId = pendingChangeProductId
                 if (activity != null && productId != null) {
-                    billingProcessor.launchBillingFlow(activity, productId, activeSubscription?.purchaseToken)
+                    billingProcessor.launchBillingFlow(
+                        activity = activity,
+                        productId = productId,
+                        oldPurchaseToken = activeSubscription?.purchaseToken,
+                        oldProductId = activeSubscription?.productId
+                    )
                 }
                 pendingChangeProductId = null
                 onDismiss()

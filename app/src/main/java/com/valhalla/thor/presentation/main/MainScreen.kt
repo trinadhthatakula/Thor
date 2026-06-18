@@ -51,7 +51,6 @@ import com.valhalla.thor.presentation.home.HomeViewModel
 import com.valhalla.thor.presentation.navigation.ThorRoute
 import com.valhalla.thor.presentation.permission.PermissionManagerScreen
 import com.valhalla.thor.presentation.settings.SettingsScreen
-import androidx.compose.runtime.collectAsState
 import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
 import com.valhalla.thor.presentation.widgets.AffirmationDialog
@@ -409,7 +408,7 @@ fun MainScreen(
                     )
                 }
 
-                val showThankYouDialog by billingProcessor.showThankYouDialog.collectAsState()
+                val showThankYouDialog by billingProcessor.showThankYouDialog.collectAsStateWithLifecycle()
                 if (showThankYouDialog) {
                     ThankYouDialog(
                         onDismiss = { billingProcessor.dismissThankYouDialog() }
