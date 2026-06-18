@@ -75,6 +75,8 @@ class MainViewModel(
         MainUiState()
     )
 
+    private var pendingSupportPrompt = false
+
     init {
         observePreferences()
     }
@@ -104,7 +106,11 @@ class MainViewModel(
 
     private fun triggerSupportPromptIfNeeded() {
         if (!_uiState.value.hasShownSupportDeveloperPrompt) {
-            _uiState.update { it.copy(showSupportDeveloperPrompt = true) }
+            if (_uiState.value.loggerState.isVisible) {
+                pendingSupportPrompt = true
+            } else {
+                _uiState.update { it.copy(showSupportDeveloperPrompt = true) }
+            }
         }
     }
 
@@ -119,6 +125,10 @@ class MainViewModel(
 
     fun dismissLogger() {
         _uiState.update { it.copy(loggerState = LoggerState(isVisible = false)) }
+        if (pendingSupportPrompt) {
+            pendingSupportPrompt = false
+            triggerSupportPromptIfNeeded()
+        }
     }
 
     fun onDestinationSelected(destination: AppDestinations) {

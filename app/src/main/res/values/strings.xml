@@ -313,4 +313,11 @@
     <string name="choose_subscription_tier">Choose a Support Tier</string>
     <string name="billing_error">Billing Error</string>
 
+    <!-- Support & Community Dashboard Section -->
+    <string name="support_community_title">Support &amp; Community</string>
+    <string name="support_community_desc">Help us maintain and improve Thor by supporting development or joining our community.</string>
+    <string name="community_github">GitHub</string>
+    <string name="community_telegram">Telegram</string>
+    <string name="community_play_store">Play Store</string>
+
 </resources>
