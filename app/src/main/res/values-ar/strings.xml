@@ -294,4 +294,35 @@
     <string name="expanded">موسع</string>
     <string name="collapsed">مطوي</string>
 
+    <!-- Support Developer -->
+    <string name="support_developer">دعم المطور</string>
+    <string name="support_developer_desc">دعم التطوير المستمر لـ Thor</string>
+    <string name="support_developer_desc_detailed">Thor مفتوح المصدر وخالٍ تمامًا من الإعلانات. إذا كان مفيدًا لك، يرجى التفكير في دعم عملي:</string>
+    <string name="become_patreon_title">كن داعمًا على Patreon</string>
+    <string name="become_patreon_desc">دعم التطوير المستمر باشتراك شهري</string>
+    <string name="rate_play_store_title">التقييم على متجر Play</string>
+    <string name="rate_play_store_desc">اترك تقييمًا بـ 5 نجوم لمساعدة الآخرين في اكتشاف Thor</string>
+    <string name="explore_other_apps_title">استكشاف تطبيقات أخرى</string>
+    <string name="explore_other_apps_desc">ألقِ نظرة على لوحة تحكم المطور وجرب تطبيقات أخرى</string>
+    <string name="donate_paypal_title">التبرع عبر PayPal</string>
+    <string name="donate_paypal_desc">أرسل تبرعًا لمرة واحدة مباشرة</string>
+    <string name="choose_subscription_tier">اختر مستوى الدعم</string>
+    <string name="billing_error">خطأ في الدفع</string>
+
+    <!-- Support & Community Dashboard Section -->
+    <string name="support_community_title">الدعم والمجتمع</string>
+    <string name="support_community_desc">ساعدنا في الحفاظ على Thor وتحسينه من خلال دعم التطوير أو الانضمام إلى مجتمعنا.</string>
+    <string name="community_github">GitHub</string>
+    <string name="community_telegram">Telegram</string>
+    <string name="community_play_store">متجر Play</string>
+    <string name="thank_you_support">شكرًا لك على دعمك!</string>
+    <string name="action_remove">إزالة</string>
+    <string name="biometric_unlock_title">إلغاء قفل Thor</string>
+    <string name="biometric_unlock_subtitle">قم بالمصادقة للمتابعة</string>
+    <string name="unlock">إلغاء القفل</string>
+    <string name="thank_you_support_desc">اشتراكك نشط الآن. شكرًا لك على المساعدة في دعم تطوير Thor!</string>
+    <string name="change_support_plan_title">هل تريد تغيير خطة الدعم؟</string>
+    <string name="change_support_plan_desc">أنت تدعم المطور بالفعل بخطة نشطة. سيؤدي ترقية خطتك أو تغييرها إلى إلغاء اشتراكك القديم واستبداله بالاشتراك الجديد. هل تريد الاستمرار؟</string>
+    <string name="active_plan">الخطة النشطة</string>
+
 </resources>

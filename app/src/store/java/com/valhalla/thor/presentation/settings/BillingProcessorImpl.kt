@@ -7,11 +7,13 @@ import com.android.billingclient.api.AcknowledgePurchaseParams
 import com.android.billingclient.api.BillingClient
 import com.android.billingclient.api.BillingClientStateListener
 import com.android.billingclient.api.BillingFlowParams
+import com.android.billingclient.api.BillingFlowParams.ProductDetailsParams.SubscriptionProductReplacementParams
 import com.android.billingclient.api.BillingResult
 import com.android.billingclient.api.PendingPurchasesParams
 import com.android.billingclient.api.ProductDetails
 import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.QueryProductDetailsParams
+import com.android.billingclient.api.QueryPurchasesParams
 import com.android.billingclient.api.acknowledgePurchase
 import com.android.billingclient.api.queryProductDetails
 import com.valhalla.thor.R
@@ -23,7 +25,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Single
 import java.util.concurrent.ConcurrentHashMap
 
@@ -39,6 +40,12 @@ class BillingProcessorImpl(
 
     private val _products = MutableStateFlow<List<BillingProduct>>(emptyList())
     override val products: StateFlow<List<BillingProduct>> = _products.asStateFlow()
+
+    private val _activeSubscription = MutableStateFlow<ActiveSubscription?>(null)
+    override val activeSubscription: StateFlow<ActiveSubscription?> = _activeSubscription.asStateFlow()
+
+    private val _showThankYouDialog = MutableStateFlow(false)
+    override val showThankYouDialog: StateFlow<Boolean> = _showThankYouDialog.asStateFlow()
 
     private val productDetailsMap = ConcurrentHashMap<String, ProductDetails>()
 
@@ -76,6 +83,7 @@ class BillingProcessorImpl(
             override fun onBillingSetupFinished(billingResult: BillingResult) {
                 if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                     queryProducts()
+                    queryActiveSubscriptions()
                 } else {
                     _isBillingAvailable.value = false
                 }
@@ -141,6 +149,34 @@ class BillingProcessorImpl(
         }
     }
 
+    private fun queryActiveSubscriptions() {
+        if (!billingClient.isReady) return
+        val params = QueryPurchasesParams.newBuilder()
+            .setProductType(BillingClient.ProductType.SUBS)
+            .build()
+        billingClient.queryPurchasesAsync(params) { billingResult, purchaseList ->
+            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                val active = purchaseList.firstOrNull { it.purchaseState == Purchase.PurchaseState.PURCHASED }
+                if (active != null) {
+                    val activeProductId = active.products.firstOrNull()
+                    if (!activeProductId.isNullOrEmpty()) {
+                        _activeSubscription.value = ActiveSubscription(
+                            productId = activeProductId,
+                            purchaseToken = active.purchaseToken
+                        )
+                    } else {
+                        Logger.w("BillingProcessor", "Active purchase has empty or null product list")
+                        _activeSubscription.value = null
+                    }
+                } else {
+                    _activeSubscription.value = null
+                }
+            } else {
+                Logger.e("BillingProcessor", "Failed to query active purchases: ${billingResult.responseCode}")
+            }
+        }
+    }
+
     private fun acknowledgePurchase(purchase: Purchase) {
         val acknowledgePurchaseParams = AcknowledgePurchaseParams.newBuilder()
             .setPurchaseToken(purchase.purchaseToken)
@@ -149,13 +185,8 @@ class BillingProcessorImpl(
             try {
                 val ackResult = billingClient.acknowledgePurchase(acknowledgePurchaseParams)
                 if (ackResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(
-                            context,
-                            context.getString(R.string.thank_you_support),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
+                    _showThankYouDialog.value = true
+                    queryActiveSubscriptions()
                 } else {
                     Logger.e("BillingProcessor", "Failed to acknowledge purchase: ${ackResult.responseCode}")
                 }
@@ -165,7 +196,12 @@ class BillingProcessorImpl(
         }
     }
 
-    override fun launchBillingFlow(activity: Activity, productId: String) {
+    override fun launchBillingFlow(
+        activity: Activity,
+        productId: String,
+        oldPurchaseToken: String?,
+        oldProductId: String?
+    ) {
         val productDetails = productDetailsMap[productId]
         if (productDetails == null) {
             Logger.e("BillingProcessor", "Product details not found for $productId")
@@ -178,20 +214,39 @@ class BillingProcessorImpl(
             return
         }
 
-        val productDetailsParamsList = listOf(
-            BillingFlowParams.ProductDetailsParams.newBuilder()
-                .setProductDetails(productDetails)
-                .setOfferToken(offerToken)
+        val productDetailsParamsBuilder = BillingFlowParams.ProductDetailsParams.newBuilder()
+            .setProductDetails(productDetails)
+            .setOfferToken(offerToken)
+
+        if (!oldProductId.isNullOrEmpty()) {
+            val replacementParams = SubscriptionProductReplacementParams.newBuilder()
+                .setOldProductId(oldProductId)
+                .setReplacementMode(SubscriptionProductReplacementParams.ReplacementMode.CHARGE_PRORATED_PRICE)
                 .build()
-        )
-        val billingFlowParams = BillingFlowParams.newBuilder()
+            productDetailsParamsBuilder.setSubscriptionProductReplacementParams(replacementParams)
+        }
+
+        val productDetailsParamsList = listOf(productDetailsParamsBuilder.build())
+        val billingFlowParamsBuilder = BillingFlowParams.newBuilder()
             .setProductDetailsParamsList(productDetailsParamsList)
-            .build()
+
+        if (!oldPurchaseToken.isNullOrEmpty()) {
+            val updateParams = BillingFlowParams.SubscriptionUpdateParams.newBuilder()
+                .setOldPurchaseToken(oldPurchaseToken)
+                .build()
+            billingFlowParamsBuilder.setSubscriptionUpdateParams(updateParams)
+        }
+
+        val billingFlowParams = billingFlowParamsBuilder.build()
 
         if (billingClient.isReady) {
             billingClient.launchBillingFlow(activity, billingFlowParams)
         } else {
             Logger.e("BillingProcessor", "BillingClient is not ready to launch billing flow")
         }
+    }
+
+    override fun dismissThankYouDialog() {
+        _showThankYouDialog.value = false
     }
 }

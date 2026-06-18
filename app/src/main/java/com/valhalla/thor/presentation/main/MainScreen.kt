@@ -51,11 +51,14 @@ import com.valhalla.thor.presentation.home.HomeViewModel
 import com.valhalla.thor.presentation.navigation.ThorRoute
 import com.valhalla.thor.presentation.permission.PermissionManagerScreen
 import com.valhalla.thor.presentation.settings.SettingsScreen
+import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
 import com.valhalla.thor.presentation.widgets.AffirmationDialog
 import com.valhalla.thor.presentation.widgets.MultiAppAffirmationDialog
 import com.valhalla.thor.presentation.widgets.TermLoggerDialog
+import com.valhalla.thor.presentation.widgets.ThankYouDialog
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 
 @Composable
 fun MainScreen(
@@ -64,6 +67,7 @@ fun MainScreen(
     appListViewModel: AppListViewModel = koinViewModel(),
     freezerViewModel: FreezerViewModel = koinViewModel(),
     onExit: () -> Unit,
+    billingProcessor: BillingProcessor = koinInject(),
 ) {
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -401,6 +405,13 @@ fun MainScreen(
                             onExit()
                         },
                         onRejected = { showExitConfirmation = false }
+                    )
+                }
+
+                val showThankYouDialog by billingProcessor.showThankYouDialog.collectAsStateWithLifecycle()
+                if (showThankYouDialog) {
+                    ThankYouDialog(
+                        onDismiss = { billingProcessor.dismissThankYouDialog() }
                     )
                 }
 

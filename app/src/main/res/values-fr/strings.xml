@@ -290,4 +290,35 @@
     <string name="expanded">Développé</string>
     <string name="collapsed">Réduit</string>
 
+    <!-- Support Developer -->
+    <string name="support_developer">Soutenir le développeur</string>
+    <string name="support_developer_desc">Soutenir le développement continu de Thor</string>
+    <string name="support_developer_desc_detailed">Thor est open source et complètement sans publicité. S\'il vous a été utile, merci de considérer de soutenir mon travail :</string>
+    <string name="become_patreon_title">Devenir Patreon</string>
+    <string name="become_patreon_desc">Soutenir le développement continu avec un abonnement mensuel</string>
+    <string name="rate_play_store_title">Évaluer sur le Play Store</string>
+    <string name="rate_play_store_desc">Laissez un avis 5 étoiles pour aider d\'autres à découvrir Thor</string>
+    <string name="explore_other_apps_title">Explorer d\'autres applications</string>
+    <string name="explore_other_apps_desc">Découvrez ma console développeur et essayez d\'autres applications</string>
+    <string name="donate_paypal_title">Faire un don via PayPal</string>
+    <string name="donate_paypal_desc">Envoyer un don unique directement</string>
+    <string name="choose_subscription_tier">Choisir un niveau de soutien</string>
+    <string name="billing_error">Erreur de facturation</string>
+
+    <!-- Support & Community Dashboard Section -->
+    <string name="support_community_title">Support &amp; Communauté</string>
+    <string name="support_community_desc">Aidez-nous à maintenir et améliorer Thor en soutenant le développement ou en rejoignant notre communauté.</string>
+    <string name="community_github">GitHub</string>
+    <string name="community_telegram">Telegram</string>
+    <string name="community_play_store">Play Store</string>
+    <string name="thank_you_support">Merci pour votre soutien !</string>
+    <string name="action_remove">Supprimer</string>
+    <string name="biometric_unlock_title">Déverrouiller Thor</string>
+    <string name="biometric_unlock_subtitle">Authentifiez-vous pour continuer</string>
+    <string name="unlock">Déverrouiller</string>
+    <string name="thank_you_support_desc">Votre abonnement est actif. Merci d\'aider à soutenir le développement de Thor !</string>
+    <string name="change_support_plan_title">Modifier le plan de soutien ?</string>
+    <string name="change_support_plan_desc">Vous soutenez déjà le développeur avec un plan actif. Mettre à niveau ou modifier votre plan annulera votre ancien abonnement et le remplacera par le nouveau. Voulez-vous continuer ?</string>
+    <string name="active_plan">Plan actif</string>
+
 </resources>
