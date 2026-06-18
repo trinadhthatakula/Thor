@@ -9,8 +9,14 @@ import org.koin.core.annotation.Single
 class BillingProcessorImpl : BillingProcessor {
     override val isBillingAvailable: StateFlow<Boolean> = MutableStateFlow(false)
     override val products: StateFlow<List<BillingProduct>> = MutableStateFlow(emptyList())
+    override val activeSubscription: StateFlow<ActiveSubscription?> = MutableStateFlow(null)
+    override val showThankYouDialog: StateFlow<Boolean> = MutableStateFlow(false)
 
-    override fun launchBillingFlow(activity: Activity, productId: String) {
+    override fun launchBillingFlow(activity: Activity, productId: String, oldPurchaseToken: String?) {
+        // No-op in FOSS flavor
+    }
+
+    override fun dismissThankYouDialog() {
         // No-op in FOSS flavor
     }
 }

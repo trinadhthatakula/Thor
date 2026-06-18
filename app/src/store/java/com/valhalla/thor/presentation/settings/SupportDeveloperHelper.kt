@@ -7,10 +7,14 @@ import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.core.net.toUri
 import com.valhalla.thor.R
+import com.valhalla.thor.presentation.widgets.AffirmationDialog
 import com.valhalla.thor.presentation.widgets.SupportAction
 import com.valhalla.thor.presentation.widgets.SupportDeveloperBottomSheet
 import org.koin.compose.koinInject
@@ -31,8 +35,11 @@ fun SupportDeveloperHelper(
 
     val isBillingAvailable by billingProcessor.isBillingAvailable.collectAsState()
     val products by billingProcessor.products.collectAsState()
+    val activeSubscription by billingProcessor.activeSubscription.collectAsState()
 
-    val actions = remember(products, isBillingAvailable) {
+    var pendingChangeProductId by remember { mutableStateOf<String?>(null) }
+
+    val actions = remember(products, isBillingAvailable, activeSubscription) {
         if (!isBillingAvailable || products.isEmpty()) {
             listOf(
                 SupportAction(
@@ -93,19 +100,55 @@ fun SupportDeveloperHelper(
             }
 
             sortedProducts.map { product ->
+                val isActive = activeSubscription?.productId == product.id
+                val descriptionText = if (isActive) {
+                    context.getString(R.string.active_plan)
+                } else if (product.formattedPrice.isNotEmpty()) {
+                    "${product.formattedPrice} / month"
+                } else {
+                    product.description
+                }
+
                 SupportAction(
-                    iconRes = R.drawable.shield_with_heart,
+                    iconRes = if (isActive) R.drawable.check_circle else R.drawable.shield_with_heart,
                     title = product.name,
-                    description = if (product.formattedPrice.isNotEmpty()) "${product.formattedPrice} / month" else product.description,
+                    description = descriptionText,
                     onClick = {
-                        if (activity != null) {
-                            billingProcessor.launchBillingFlow(activity, product.id)
+                        if (isActive) {
+                            // Already active, do nothing
+                        } else {
+                            if (activeSubscription != null) {
+                                pendingChangeProductId = product.id
+                            } else {
+                                if (activity != null) {
+                                    billingProcessor.launchBillingFlow(activity, product.id)
+                                }
+                                onDismiss()
+                            }
                         }
-                        onDismiss()
                     }
                 )
             }
         }
+    }
+
+    if (pendingChangeProductId != null) {
+        AffirmationDialog(
+            title = stringResource(R.string.change_support_plan_title),
+            text = stringResource(R.string.change_support_plan_desc),
+            icon = R.drawable.shield_with_heart,
+            onConfirm = {
+                val productId = pendingChangeProductId
+                if (activity != null && productId != null) {
+                    billingProcessor.launchBillingFlow(activity, productId, activeSubscription?.purchaseToken)
+                }
+                pendingChangeProductId = null
+                onDismiss()
+            },
+            onRejected = {
+                pendingChangeProductId = null
+            }
+        )
     }
 
     SupportDeveloperBottomSheet(
