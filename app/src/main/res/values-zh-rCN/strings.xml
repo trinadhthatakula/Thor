@@ -289,4 +289,35 @@
     <string name="expanded">已展开</string>
     <string name="collapsed">已折叠</string>
 
+    <!-- Support Developer -->
+    <string name="support_developer">支持开发者</string>
+    <string name="support_developer_desc">支持 Thor 的持续开发</string>
+    <string name="support_developer_desc_detailed">Thor 是开源且完全无广告的。如果它对您有所帮助，请考虑支持我的工作：</string>
+    <string name="become_patreon_title">成为 Patreon 赞助者</string>
+    <string name="become_patreon_desc">通过按月订阅支持持续开发</string>
+    <string name="rate_play_store_title">在 Play 商店评分</string>
+    <string name="rate_play_store_desc">留下 5 星好评，帮助其他人发现 Thor</string>
+    <string name="explore_other_apps_title">探索其他应用</string>
+    <string name="explore_other_apps_desc">查看我的开发者控制台并体验其他应用</string>
+    <string name="donate_paypal_title">通过 PayPal 捐赠</string>
+    <string name="donate_paypal_desc">直接发送一次性捐赠</string>
+    <string name="choose_subscription_tier">选择支持层级</string>
+    <string name="billing_error">支付出错</string>
+
+    <!-- Support & Community Dashboard Section -->
+    <string name="support_community_title">支持与社区</string>
+    <string name="support_community_desc">通过支持开发或加入我们的社区，帮助我们维护和改进 Thor。</string>
+    <string name="community_github">GitHub</string>
+    <string name="community_telegram">Telegram</string>
+    <string name="community_play_store">Play 商店</string>
+    <string name="thank_you_support">感谢您的支持！</string>
+    <string name="action_remove">移除</string>
+    <string name="biometric_unlock_title">解锁 Thor</string>
+    <string name="biometric_unlock_subtitle">进行身份验证以继续</string>
+    <string name="unlock">解锁</string>
+    <string name="thank_you_support_desc">您的订阅已生效。感谢您支持 Thor 的开发！</string>
+    <string name="change_support_plan_title">更改支持计划？</string>
+    <string name="change_support_plan_desc">您已拥有有效的支持计划。升级或更改计划将取消您以前的订阅，并由新订阅替代。您要继续吗？</string>
+    <string name="active_plan">当前生效计划</string>
+
 </resources>
