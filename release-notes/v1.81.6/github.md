@@ -1,0 +1,20 @@
+# Thor v1.81.6 Release Notes
+
+This release introduces major enhancements to app management and sharing, featuring advanced Freezer filtering, direct APK/APKs sharing, centralized cache clearing options for root users, and critical bug fixes.
+
+## What's Changed
+
+### 🚀 Features & UX Enhancements
+*   **User/System App Filter**: Added a User/System app toggle inside the Freezer Settings sheet using the custom `ConnectedButtonGroup` component to easily partition apps.
+*   **Automatic Disabled Apps Import**: Automatically detects disabled apps outside the Freezer and prompts the user on first launch to import them.
+*   **Settings Auto-Hide**: The "Import disabled apps" button in the Freezer settings sheet automatically hides if there are no disabled apps outside the freezer left to import.
+*   **App Filtering & Selection Improvements**: Multi-select actions (like Select All and selection counts) on the Freezer screen now operate exclusively on the currently visible filtered apps.
+*   **Direct APK & APKS Sharing**: Upgraded sharing behavior to share the actual base APK (or a packaged `.apks` zip with split APKs and standard `manifest.json` metadata) instead of a simple market link.
+*   **Batch Sharing**: Added a Share option to the multi-select toolbar to share multiple app packages at once.
+
+### 🧹 Cache Management (Root Users)
+*   **Clear Cache Dashboard Option**: Added a clear cache option on the dashboard for root users, supporting custom selection between user and system app cache clearing with confirmation safeguards.
+
+### 🛠️ Bug Fixes & Under-The-Hood
+*   **App List Filtering**: Fixed the AppList screen filters where choosing an activity state (like frozen) could result in an empty list due to stale raw cache states.
+*   **Dependencies**: Centralized build versioning (`compileSdk`, `targetSdk`, and `minSdk`) in `libs.versions.toml` and upgraded Maven dependency packages.
