@@ -1,9 +1,10 @@
 ⚡️ **Thor v1.81.7 is out!**
 
-A major update bringing advanced Freezer app filtering, direct APK/APKs sharing, root cache clearing, flavor-separated developer support, and critical filter fixes!
+A major update bringing advanced Freezer app filtering, direct APK/APKs sharing, root cache clearing, flavor-separated developer support, a redesigned dashboard community section, and critical filter fixes!
 
 **Key Highlights:**
-💖 **Support Developer**: Added a Support Developer bottom sheet shown once after any app action, or manually from settings.
+💖 **Support Developer**: Added a Support Developer bottom sheet shown once after any app action (deferred until closing the logs console), or manually from settings.
+*   **Dashboard Section**: Replaced the social icon row with a dedicated, beautiful Support & Community card featuring rating links, GitHub, and Telegram.
 *   **Store Variant**: Google Play Billing 9 subscriptions ($5 to $50).
 *   **FOSS Variant**: Completely free of Billing SDKs; provides links to Patreon and PayPal.
 *   **Isolated Permissions**: Internet and Billing permissions are restricted purely to the Store build.
