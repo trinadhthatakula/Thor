@@ -68,6 +68,9 @@
     <string name="others">Others</string>
     <string name="clear_all_cache">Clear All Cache</string>
     <string name="clear_cache_prompt">Which apps would you like to clear?</string>
+    <string name="clear_all_cache_subtitle">Clear cached files of all apps to reclaim storage space</string>
+    <string name="clear_system_cache_title">Clear System Cache?</string>
+    <string name="clear_system_cache_desc">Clearing the cache of system apps might cause temporary instability. Are you sure you want to proceed?</string>
     <string name="user_apps">User Apps</string>
     <string name="system_apps">System Apps</string>
     <string name="active">Active</string>

@@ -67,6 +67,7 @@ import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import coil3.compose.AsyncImage
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.PermissionDetail
@@ -86,6 +87,7 @@ fun AppInfoDetailsScreen(
     sharedTransitionScope: SharedTransitionScope,
     onBack: () -> Unit,
     onNavigateToPermissionManager: (packageName: String, appName: String) -> Unit,
+    onAppAction: (AppClickAction) -> Unit = {},
     viewModel: AppInfoDetailsViewModel = org.koin.androidx.compose.koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -243,21 +245,7 @@ fun AppInfoDetailsScreen(
                                 showUninstallConfirmation = true
                             },
                             onShare = {
-                                val intent =
-                                    android.content.Intent(android.content.Intent.ACTION_SEND)
-                                        .apply {
-                                            type = "text/plain"
-                                            putExtra(
-                                                android.content.Intent.EXTRA_TEXT,
-                                                "Market link: market://details?id=$packageName"
-                                            )
-                                        }
-                                context.startActivity(
-                                    android.content.Intent.createChooser(
-                                        intent,
-                                        context.getString(R.string.share_via)
-                                    )
-                                )
+                                onAppAction(AppClickAction.Share(appInfo))
                             }
                         )
 

@@ -33,6 +33,7 @@ sealed interface MainSideEffect {
     data class LaunchApp(val packageName: String) : MainSideEffect
     data class OpenAppSettings(val packageName: String) : MainSideEffect
     data class ShareApp(val uri: android.net.Uri) : MainSideEffect
+    data class ShareApps(val uris: List<android.net.Uri>) : MainSideEffect
     data class NormalUninstall(val packageName: String) : MainSideEffect
 }
 
@@ -398,8 +399,31 @@ class MainViewModel(
                     manageAppUseCase.clearAppData(it.packageName)
                 }
 
-                else -> {
-                    _uiState.update { it.copy(actionMessage = UiText.StringResource(R.string.batch_share_not_supported)) }
+                is MultiAppAction.Share -> {
+                    viewModelScope.launch {
+                        startLogger("Sharing Apps")
+                        val uris = mutableListOf<android.net.Uri>()
+
+                        withContext(Dispatchers.IO) {
+                            action.appList.forEachIndexed { index, app ->
+                                addLog("[${index + 1}/${action.appList.size}] Preparing ${app.appName}...")
+                                val result = shareAppUseCase(app)
+                                if (result.isSuccess) {
+                                    uris.add(result.getOrThrow())
+                                    addLog(" -> Ready")
+                                } else {
+                                    addLog(" -> Failed: ${result.exceptionOrNull()?.message}")
+                                }
+                            }
+                        }
+
+                        if (uris.isNotEmpty()) {
+                            dismissLogger()
+                            _effect.send(MainSideEffect.ShareApps(uris))
+                        } else {
+                            finishLogger()
+                        }
+                    }
                 }
             }
         }

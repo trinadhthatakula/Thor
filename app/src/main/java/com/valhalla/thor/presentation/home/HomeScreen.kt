@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.presentation.home.components.AppDistributionChart
 import com.valhalla.thor.presentation.home.components.DashboardHeader
 import com.valhalla.thor.presentation.home.components.SocialLinksRow
@@ -61,6 +62,7 @@ fun HomeScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showCacheDialog by remember { mutableStateOf(false) }
+    var showSystemCacheConfirmDialog by remember { mutableStateOf(false) }
     var showPrivilegeDialog by remember { mutableStateOf(false) }
 
     var showInstallerSheet by remember { mutableStateOf(false) }
@@ -140,6 +142,18 @@ fun HomeScreen(
             }
         )
 
+        AnimatedVisibility(state.activePrivilegeMode == PrivilegeMode.ROOT) {
+            Column {
+                Spacer(Modifier.height(12.dp))
+                ActionCard(
+                    title = stringResource(R.string.clear_all_cache),
+                    subtitle = stringResource(R.string.clear_all_cache_subtitle),
+                    icon = R.drawable.clear_all,
+                    onClick = { showCacheDialog = true }
+                )
+            }
+        }
+
         Spacer(Modifier.height(24.dp))
 
         // 3. Distribution Chart
@@ -203,9 +217,29 @@ fun HomeScreen(
             },
             dismissButton = {
                 OutlinedButton(onClick = {
-                    onClearAllCache(AppListType.SYSTEM)
                     showCacheDialog = false
+                    showSystemCacheConfirmDialog = true
                 }) { Text(stringResource(R.string.system_apps)) }
+            }
+        )
+    }
+
+    if (showSystemCacheConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showSystemCacheConfirmDialog = false },
+            icon = { Icon(painterResource(R.drawable.warning), null) },
+            title = { Text(stringResource(R.string.clear_system_cache_title)) },
+            text = { Text(stringResource(R.string.clear_system_cache_desc)) },
+            confirmButton = {
+                Button(onClick = {
+                    onClearAllCache(AppListType.SYSTEM)
+                    showSystemCacheConfirmDialog = false
+                }) { Text(stringResource(R.string.proceed)) }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showSystemCacheConfirmDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
             }
         )
     }
