@@ -186,15 +186,19 @@ object DhizukuHelper {
             }
         }
 
-        outThread.start()
-        errThread.start()
+        try {
+            outThread.start()
+            errThread.start()
 
-        val exitCode = process.waitFor()
+            val exitCode = process.waitFor()
 
-        outThread.join()
-        errThread.join()
+            outThread.join()
+            errThread.join()
 
-        exitCode to (output.ifBlank { error })
+            exitCode to (output.ifBlank { error })
+        } finally {
+            process.destroy()
+        }
     }.getOrElse { err ->
         Logger.e("Dhizuku", "Command execution failed: $command", err)
         -1 to err.stackTraceToString()
