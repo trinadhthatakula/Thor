@@ -337,6 +337,7 @@
     <string name="animation_intensity_desc">Control navigation animations and transitions</string>
     <string name="animation_intensity_low">Low</string>
     <string name="animation_intensity_medium">Medium</string>
-    <string name="animation_intensity_high">High</string>
+    <string name="animation_intensity_high">High</string>    <string name="suspended_app_dialog_title">Thor</string>
+    <string name="suspended_app_dialog_message">This app has been suspended by Thor.</string>
 
 </resources>

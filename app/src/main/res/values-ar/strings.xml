@@ -333,6 +333,7 @@
     <string name="animation_intensity_desc">التحكم في سرعة ورسوم التنقل والانتقالات</string>
     <string name="animation_intensity_low">منخفضة</string>
     <string name="animation_intensity_medium">متوسطة</string>
-    <string name="animation_intensity_high">عالية</string>
+    <string name="animation_intensity_high">عالية</string>    <string name="suspended_app_dialog_title">Thor</string>
+    <string name="suspended_app_dialog_message">تم تعليق هذا التطبيق بواسطة Thor.</string>
 
 </resources>

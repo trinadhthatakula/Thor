@@ -4,6 +4,8 @@ import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuReflector
 import com.valhalla.thor.domain.gateway.SystemGateway
 import org.koin.core.annotation.Single
+import com.valhalla.thor.util.Logger
+import com.valhalla.superuser.ShellUtils
 
 @Single
 class DhizukuSystemGateway(
@@ -72,8 +74,9 @@ class DhizukuSystemGateway(
             return Result.failure(Exception("Cannot reinstall Thor"))
 
         return try {
+            val escapedPackageName = ShellUtils.escapedString(packageName)
             // 1. Get the APK path(s)
-            val pathResult = DhizukuHelper.execute("pm path $packageName")
+            val pathResult = DhizukuHelper.execute("pm path $escapedPackageName")
             val paths = pathResult.second?.lines()
                 ?.filter { it.isNotBlank() }
                 ?.map { it.removePrefix("package:").trim() } ?: emptyList()
@@ -82,12 +85,16 @@ class DhizukuSystemGateway(
                 return Result.failure(Exception("Dhizuku: Could not find APK path for $packageName"))
             }
 
-            val combinedPath = paths.joinToString(" ") { "\"$it\"" }
+            val combinedPath = paths.joinToString(" ") { ShellUtils.escapedString(it) }
 
             // 2. Get Current User ID
             val userResult = DhizukuHelper.execute("am get-current-user")
             val currentUser = userResult.second?.trim()
                 ?: return Result.failure(Exception("Dhizuku: Could not determine current user"))
+
+            if (!currentUser.matches(Regex("^\\d+$"))) {
+                return Result.failure(Exception("Dhizuku: Invalid user ID format: $currentUser"))
+            }
 
             // 3. Execute the reinstallation command
             val command =
@@ -96,6 +103,7 @@ class DhizukuSystemGateway(
             if (result.first == 0) Result.success(Unit)
             else Result.failure(Exception("Dhizuku: Reinstall failed: ${result.second}"))
         } catch (e: Exception) {
+            Logger.e("DhizukuSystemGateway", "Reinstall with Google failed for $packageName", e)
             Result.failure(e)
         }
     }

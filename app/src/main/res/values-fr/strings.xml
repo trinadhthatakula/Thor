@@ -329,6 +329,7 @@
     <string name="animation_intensity_desc">Contrôler la vitesse, les animations et les transitions de navigation</string>
     <string name="animation_intensity_low">Faible</string>
     <string name="animation_intensity_medium">Moyenne</string>
-    <string name="animation_intensity_high">Élevée</string>
+    <string name="animation_intensity_high">Élevée</string>    <string name="suspended_app_dialog_title">Thor</string>
+    <string name="suspended_app_dialog_message">Cette application a été suspendue par Thor.</string>
 
 </resources>

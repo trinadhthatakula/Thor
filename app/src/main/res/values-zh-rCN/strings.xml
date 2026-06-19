@@ -328,6 +328,7 @@
     <string name="animation_intensity_desc">控制导航动画与转场速度</string>
     <string name="animation_intensity_low">低</string>
     <string name="animation_intensity_medium">中</string>
-    <string name="animation_intensity_high">高</string>
+    <string name="animation_intensity_high">高</string>    <string name="suspended_app_dialog_title">Thor</string>
+    <string name="suspended_app_dialog_message">此应用已被 Thor 暂停。</string>
 
 </resources>

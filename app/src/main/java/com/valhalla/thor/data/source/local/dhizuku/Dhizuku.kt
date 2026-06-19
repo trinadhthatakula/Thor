@@ -10,6 +10,8 @@ import com.valhalla.thor.data.source.local.shizuku.Packages
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
 import com.rosan.dhizuku.api.Dhizuku as DhizukuAPI
+import com.valhalla.thor.util.Logger
+import com.valhalla.thor.R
 
 /**
  * Helper to interact with Dhizuku service using the actual API.
@@ -64,7 +66,7 @@ object DhizukuHelper {
             )
             true
         }.getOrElse {
-            com.valhalla.thor.util.Logger.e(
+            Logger.e(
                 "DhizukuHelper",
                 "forceStopApp reflection failed for $packageName",
                 it
@@ -125,7 +127,7 @@ object DhizukuHelper {
             )
             true
         }.onFailure {
-            com.valhalla.thor.util.Logger.e(
+            Logger.e(
                 "DhizukuHelper",
                 "setAppDisabled fallback reflection failed for $packageName",
                 it
@@ -165,11 +167,38 @@ object DhizukuHelper {
     fun execute(command: String): Pair<Int, String?> = runCatching {
         // Dhizuku 2.x supports newProcess for shell commands
         val process = DhizukuAPI.newProcess(arrayOf("sh", "-c", command), null, null)
+        var output = ""
+        var error = ""
+
+        val outThread = Thread {
+            runCatching {
+                output = process.inputStream.bufferedReader().use { it.readText() }
+            }.onFailure { err ->
+                Logger.e("Dhizuku", "Failed to read standard output", err)
+            }
+        }
+
+        val errThread = Thread {
+            runCatching {
+                error = process.errorStream.bufferedReader().use { it.readText() }
+            }.onFailure { err ->
+                Logger.e("Dhizuku", "Failed to read error output", err)
+            }
+        }
+
+        outThread.start()
+        errThread.start()
+
         val exitCode = process.waitFor()
-        val output = process.inputStream.bufferedReader().readText()
-        val error = process.errorStream.bufferedReader().readText()
+
+        outThread.join()
+        errThread.join()
+
         exitCode to (output.ifBlank { error })
-    }.getOrElse { -1 to it.stackTraceToString() }
+    }.getOrElse { err ->
+        Logger.e("Dhizuku", "Command execution failed: $command", err)
+        -1 to err.stackTraceToString()
+    }
 
     @SuppressLint("PrivateApi")
     fun clearCache(packageName: String): Boolean {
@@ -259,12 +288,14 @@ object DhizukuHelper {
                 val builderClass = Class.forName("android.content.pm.SuspendDialogInfo\$Builder")
                 val dialogInfo = if (suspended) {
                     Bypass.newInstance<Any>(builderClass).let { b ->
-                        Bypass.invoke<Any>(builderClass, b, "setTitle", "Thor")
+                        val title = context.getString(R.string.suspended_app_dialog_title)
+                        val message = context.getString(R.string.suspended_app_dialog_message)
+                        Bypass.invoke<Any>(builderClass, b, "setTitle", title)
                         Bypass.invoke<Any>(
                             builderClass,
                             b,
                             "setMessage",
-                            "This app has been suspended by Thor."
+                            message
                         )
                         Bypass.invoke<Any>(builderClass, b, "build")
                     }

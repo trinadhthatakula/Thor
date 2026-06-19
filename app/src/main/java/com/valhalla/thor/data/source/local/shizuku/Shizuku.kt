@@ -10,6 +10,7 @@ import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
 import java.text.NumberFormat
 import java.util.Locale
+import com.valhalla.thor.util.Logger
 
 object Shizuku {
 
@@ -33,7 +34,7 @@ object Shizuku {
         get() = runCatching {
             execute("input keyevent 26").first == 0
         }.getOrElse {
-            it.printStackTrace()
+            Logger.e("Shizuku", "lockScreen event trigger failed", it)
             false
         }
 
@@ -51,7 +52,7 @@ object Shizuku {
             )
             true
         }.getOrElse {
-            it.printStackTrace()
+            Logger.e("Shizuku", "forceStopApp reflection failed for $packageName", it)
             false
         }
         if (reflectionResult) return true
@@ -150,12 +151,14 @@ object Shizuku {
                 val builderClass = Class.forName("android.content.pm.SuspendDialogInfo\$Builder")
                 val dialogInfo = if (suspended) {
                     Bypass.newInstance<Any>(builderClass).let { b ->
-                        Bypass.invoke<Any>(builderClass, b, "setTitle", "Thor")
+                        val title = context.getString(com.valhalla.thor.R.string.suspended_app_dialog_title)
+                        val message = context.getString(com.valhalla.thor.R.string.suspended_app_dialog_message)
+                        Bypass.invoke<Any>(builderClass, b, "setTitle", title)
                         Bypass.invoke<Any>(
                             builderClass,
                             b,
                             "setMessage",
-                            "This app has been suspended by Thor."
+                            message
                         )
                         Bypass.invoke<Any>(builderClass, b, "build")
                     }
@@ -304,7 +307,7 @@ object Shizuku {
                         NumberFormat.getNumberInstance(Locale.US).parse(sizeString)?.toLong() ?: 0L
                     totalCacheBytes += bytes
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    Logger.e("Shizuku", "Failed to parse cache size line: $trimmedLine", e)
                 }
             }
         }
@@ -353,15 +356,54 @@ object Shizuku {
         execute("pm install-existing --user current $packageName").first == 0
 
     fun execute(command: String, root: Boolean = isRoot): Pair<Int, String?> = runCatching {
-        IShizukuService.Stub.asInterface(Shizuku.getBinder())
+        val binder = Shizuku.getBinder() ?: return -1 to "Shizuku binder is null"
+        IShizukuService.Stub.asInterface(binder)
             .newProcess(arrayOf(if (root) "su" else "sh"), null, null)
             .run {
-                ParcelFileDescriptor.AutoCloseOutputStream(outputStream).use {
-                    it.write(command.toByteArray())
+                var output = ""
+                var error = ""
+
+                val outThread = Thread {
+                    runCatching {
+                        output = inputStream.text
+                    }.onFailure { err ->
+                        Logger.e("Shizuku", "Failed to read standard output", err)
+                    }
                 }
-                waitFor() to inputStream.text.ifBlank { errorStream.text }.also { destroy() }
+
+                val errThread = Thread {
+                    runCatching {
+                        error = errorStream.text
+                    }.onFailure { err ->
+                        Logger.e("Shizuku", "Failed to read error output", err)
+                    }
+                }
+
+                outThread.start()
+                errThread.start()
+
+                runCatching {
+                    ParcelFileDescriptor.AutoCloseOutputStream(outputStream).use {
+                        it.write((command + "\nexit\n").toByteArray())
+                        it.flush()
+                    }
+                }.onFailure { err ->
+                    Logger.e("Shizuku", "Failed to write command to process outputStream", err)
+                }
+
+                val exitCode = waitFor()
+
+                outThread.join()
+                errThread.join()
+
+                destroy()
+
+                exitCode to output.ifBlank { error }
             }
-    }.getOrElse { -1 to it.stackTraceToString() }
+    }.getOrElse { err ->
+        Logger.e("Shizuku", "Command execution failed: $command", err)
+        -1 to err.stackTraceToString()
+    }
 
     private val ParcelFileDescriptor.text
         get() = ParcelFileDescriptor.AutoCloseInputStream(this)
