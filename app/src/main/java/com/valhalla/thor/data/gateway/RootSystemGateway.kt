@@ -10,6 +10,9 @@ import org.koin.core.annotation.Single
 import com.valhalla.thor.util.Logger
 import com.valhalla.superuser.ShellUtils
 
+private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
+private val USER_ID_REGEX = Regex("^\\d+$")
+
 /**
  * Modern implementation of SystemGateway using the reactive ShellRepository.
  * No more static blocking calls.
@@ -29,7 +32,7 @@ class RootSystemGateway(
     override fun isDhizukuAvailable(): Boolean = false
 
     override suspend fun forceStopApp(packageName: String): Result<Unit> {
-        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = ShellUtils.escapedString(packageName)
@@ -57,7 +60,7 @@ class RootSystemGateway(
     }
 
     override suspend fun clearCache(packageName: String): Result<Unit> {
-        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = ShellUtils.escapedString(packageName)
@@ -66,7 +69,7 @@ class RootSystemGateway(
     }
 
     override suspend fun clearAppData(packageName: String): Result<Unit> {
-        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = ShellUtils.escapedString(packageName)
@@ -81,7 +84,7 @@ class RootSystemGateway(
     }
 
     override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> {
-        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = ShellUtils.escapedString(packageName)
@@ -111,7 +114,7 @@ class RootSystemGateway(
     }
 
     override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> {
-        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = ShellUtils.escapedString(packageName)
@@ -139,7 +142,7 @@ class RootSystemGateway(
         packageName: String,
         isRestricted: Boolean
     ): Result<Unit> {
-        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = ShellUtils.escapedString(packageName)
@@ -154,7 +157,7 @@ class RootSystemGateway(
     }
 
     override suspend fun uninstallApp(packageName: String): Result<Unit> {
-        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = ShellUtils.escapedString(packageName)
@@ -180,7 +183,7 @@ class RootSystemGateway(
     }
 
     override suspend fun getAppCacheSize(packageName: String): Long {
-        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return 0L
         }
         return try {
@@ -208,7 +211,7 @@ class RootSystemGateway(
     override suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> {
         if (packageName == BuildConfig.APPLICATION_ID)
             return Result.failure(Exception("Cannot reinstall Thor"))
-        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
 
@@ -227,7 +230,7 @@ class RootSystemGateway(
                 val currentUser = userResult.getOrNull()?.firstOrNull()?.trim()
                     ?: return@withContext Result.failure(Exception("Could not determine current user"))
 
-                if (!currentUser.matches(Regex("^\\d+$"))) {
+                if (!currentUser.matches(USER_ID_REGEX)) {
                     return@withContext Result.failure(Exception("Invalid user ID format: $currentUser"))
                 }
 
@@ -260,7 +263,7 @@ class RootSystemGateway(
      * Retrieves all APK paths (Base + Splits) for a package.
      */
     suspend fun getAppPaths(packageName: String): List<String> {
-        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return emptyList()
         }
         val escapedPackage = ShellUtils.escapedString(packageName)
@@ -288,7 +291,7 @@ class RootSystemGateway(
         packageName: String,
         permissionName: String
     ): Result<Unit> {
-        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+        if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
         val escapedPackage = ShellUtils.escapedString(packageName)
@@ -300,7 +303,7 @@ class RootSystemGateway(
         packageName: String,
         permissionName: String
     ): Result<Unit> {
-        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+        if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
         val escapedPackage = ShellUtils.escapedString(packageName)

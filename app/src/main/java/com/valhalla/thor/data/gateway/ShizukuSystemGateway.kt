@@ -10,6 +10,9 @@ import com.valhalla.thor.data.source.local.shizuku.Shizuku as ShizukuHelper
 import com.valhalla.thor.util.Logger
 import com.valhalla.superuser.ShellUtils
 
+private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
+private val USER_ID_REGEX = Regex("^\\d+$")
+
 @Single
 class ShizukuSystemGateway(
     private val reflector: ShizukuReflector
@@ -101,7 +104,7 @@ class ShizukuSystemGateway(
             val currentUser = userResult.second?.trim()
                 ?: return Result.failure(Exception("Could not determine current user"))
 
-            if (!currentUser.matches(Regex("^\\d+$"))) {
+            if (!currentUser.matches(USER_ID_REGEX)) {
                 return Result.failure(Exception("Invalid user ID format: $currentUser"))
             }
 
@@ -121,7 +124,7 @@ class ShizukuSystemGateway(
         packageName: String,
         permissionName: String
     ): Result<Unit> {
-        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+        if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
         return try {
@@ -137,7 +140,7 @@ class ShizukuSystemGateway(
         packageName: String,
         permissionName: String
     ): Result<Unit> {
-        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+        if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
         return try {
