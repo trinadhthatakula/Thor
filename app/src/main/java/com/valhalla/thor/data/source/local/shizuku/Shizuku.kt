@@ -379,26 +379,28 @@ object Shizuku {
                     }
                 }
 
-                outThread.start()
-                errThread.start()
+                try {
+                    outThread.start()
+                    errThread.start()
 
-                runCatching {
-                    ParcelFileDescriptor.AutoCloseOutputStream(outputStream).use {
-                        it.write((command + "\nexit\n").toByteArray())
-                        it.flush()
+                    runCatching {
+                        ParcelFileDescriptor.AutoCloseOutputStream(outputStream).use {
+                            it.write((command + "\nexit\n").toByteArray())
+                            it.flush()
+                        }
+                    }.onFailure { err ->
+                        Logger.e("Shizuku", "Failed to write command to process outputStream", err)
                     }
-                }.onFailure { err ->
-                    Logger.e("Shizuku", "Failed to write command to process outputStream", err)
+
+                    val exitCode = waitFor()
+
+                    outThread.join()
+                    errThread.join()
+
+                    exitCode to output.ifBlank { error }
+                } finally {
+                    destroy()
                 }
-
-                val exitCode = waitFor()
-
-                outThread.join()
-                errThread.join()
-
-                destroy()
-
-                exitCode to output.ifBlank { error }
             }
     }.getOrElse { err ->
         Logger.e("Shizuku", "Command execution failed: $command", err)
