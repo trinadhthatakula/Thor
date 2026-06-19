@@ -3,7 +3,7 @@ compileSdk = "37"
 targetSdk = "37"
 minSdk = "28"
 accompanistDrawablepainter = "0.37.3"
-agp = "9.3.0-rc01"
+agp = "9.4.0-alpha01"
 biometric = "1.4.0-alpha02"
 datastorePreferences = "1.2.1"
 kotlin = "2.4.0"
@@ -26,7 +26,7 @@ koin = "4.2.2"
 koin-plugin = "1.0.1"
 coil3 = "3.5.0"
 navigation3 = "1.1.3"
-play-billing = "9.0.0"
+play-billing = "9.1.0"
 
 [libraries]
 accompanist-drawablepainter = { module = "com.google.accompanist:accompanist-drawablepainter", version.ref = "accompanistDrawablepainter" }

@@ -56,7 +56,8 @@ data class AppListUiState(
     val isLoadingDetails: Boolean = false,
     // Action Feedback
     val actionMessage: UiText? = null,
-    val freezerPrompt: FreezerPrompt? = null
+    val freezerPrompt: FreezerPrompt? = null,
+    val useDetailedView: Boolean = true
 )
 
 @KoinViewModel
@@ -78,7 +79,8 @@ class AppListViewModel(
             sortBy = prefs.appSortBy,
             sortOrder = prefs.appSortOrder,
             filterType = prefs.appFilterType,
-            selectedFilter = prefs.appSelectedFilter
+            selectedFilter = prefs.appSelectedFilter,
+            useDetailedView = prefs.useDetailedView
         )
         processList(mergedState)
     }

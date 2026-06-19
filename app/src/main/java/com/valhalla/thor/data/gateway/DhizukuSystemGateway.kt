@@ -4,6 +4,11 @@ import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuReflector
 import com.valhalla.thor.domain.gateway.SystemGateway
 import org.koin.core.annotation.Single
+import com.valhalla.thor.util.Logger
+import com.valhalla.superuser.ShellUtils
+
+private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
+private val USER_ID_REGEX = Regex("^\\d+$")
 
 @Single
 class DhizukuSystemGateway(
@@ -72,8 +77,9 @@ class DhizukuSystemGateway(
             return Result.failure(Exception("Cannot reinstall Thor"))
 
         return try {
+            val escapedPackageName = ShellUtils.escapedString(packageName)
             // 1. Get the APK path(s)
-            val pathResult = DhizukuHelper.execute("pm path $packageName")
+            val pathResult = DhizukuHelper.execute("pm path $escapedPackageName")
             val paths = pathResult.second?.lines()
                 ?.filter { it.isNotBlank() }
                 ?.map { it.removePrefix("package:").trim() } ?: emptyList()
@@ -82,12 +88,16 @@ class DhizukuSystemGateway(
                 return Result.failure(Exception("Dhizuku: Could not find APK path for $packageName"))
             }
 
-            val combinedPath = paths.joinToString(" ") { "\"$it\"" }
+            val combinedPath = paths.joinToString(" ") { ShellUtils.escapedString(it) }
 
             // 2. Get Current User ID
             val userResult = DhizukuHelper.execute("am get-current-user")
             val currentUser = userResult.second?.trim()
                 ?: return Result.failure(Exception("Dhizuku: Could not determine current user"))
+
+            if (!currentUser.matches(USER_ID_REGEX)) {
+                return Result.failure(Exception("Dhizuku: Invalid user ID format: $currentUser"))
+            }
 
             // 3. Execute the reinstallation command
             val command =
@@ -96,6 +106,7 @@ class DhizukuSystemGateway(
             if (result.first == 0) Result.success(Unit)
             else Result.failure(Exception("Dhizuku: Reinstall failed: ${result.second}"))
         } catch (e: Exception) {
+            Logger.e("DhizukuSystemGateway", "Reinstall with Google failed for $packageName", e)
             Result.failure(e)
         }
     }
@@ -117,11 +128,13 @@ class DhizukuSystemGateway(
         packageName: String,
         permissionName: String
     ): Result<Unit> {
-        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+        if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
+        val escapedPackageName = ShellUtils.escapedString(packageName)
+        val escapedPermissionName = ShellUtils.escapedString(permissionName)
         return try {
-            val result = DhizukuHelper.execute("pm grant $packageName $permissionName")
+            val result = DhizukuHelper.execute("pm grant $escapedPackageName $escapedPermissionName")
             if (result.first == 0) Result.success(Unit)
             else Result.failure(Exception("Dhizuku: pm grant failed with exit code ${result.first}: ${result.second}"))
         } catch (e: Exception) {
@@ -133,11 +146,13 @@ class DhizukuSystemGateway(
         packageName: String,
         permissionName: String
     ): Result<Unit> {
-        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+        if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
+        val escapedPackageName = ShellUtils.escapedString(packageName)
+        val escapedPermissionName = ShellUtils.escapedString(permissionName)
         return try {
-            val result = DhizukuHelper.execute("pm revoke $packageName $permissionName")
+            val result = DhizukuHelper.execute("pm revoke $escapedPackageName $escapedPermissionName")
             if (result.first == 0) Result.success(Unit)
             else Result.failure(Exception("Dhizuku: pm revoke failed with exit code ${result.first}: ${result.second}"))
         } catch (e: Exception) {

@@ -67,7 +67,7 @@ import org.koin.androidx.compose.koinViewModel
 fun FreezerScreen(
     modifier: Modifier = Modifier,
     viewModel: FreezerViewModel = koinViewModel(),
-    sharedTransitionScope: SharedTransitionScope,
+    sharedTransitionScope: SharedTransitionScope? = null,
     onAppAction: (AppClickAction) -> Unit = {},
     onMultiAppAction: (MultiAppAction) -> Unit = {}
 ) {

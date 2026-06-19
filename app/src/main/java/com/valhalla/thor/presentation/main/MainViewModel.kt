@@ -9,6 +9,7 @@ import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.domain.usecase.ShareAppUseCase
@@ -56,7 +57,8 @@ data class MainUiState(
     val loggerState: LoggerState = LoggerState(), // For persistent Logs
     val selectedDestination: AppDestinations = AppDestinations.HOME, // For Bottom Nav
     val hasShownSupportDeveloperPrompt: Boolean = true,
-    val showSupportDeveloperPrompt: Boolean = false
+    val showSupportDeveloperPrompt: Boolean = false,
+    val prefs: UserPreferences = UserPreferences()
 )
 
 @KoinViewModel
@@ -86,7 +88,8 @@ class MainViewModel(
             preferenceRepository.userPreferences.collect { prefs ->
                 _uiState.update {
                     it.copy(
-                        hasShownSupportDeveloperPrompt = prefs.hasShownSupportDeveloperPrompt
+                        hasShownSupportDeveloperPrompt = prefs.hasShownSupportDeveloperPrompt,
+                        prefs = prefs
                     )
                 }
             }
@@ -366,6 +369,10 @@ class MainViewModel(
                 }
 
                 is AppClickAction.ManagePermissions -> {
+                    // Handled directly in Compose UI layer via Navigation 3
+                }
+
+                is AppClickAction.OpenDetails -> {
                     // Handled directly in Compose UI layer via Navigation 3
                 }
             }

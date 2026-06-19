@@ -7,6 +7,11 @@ import com.valhalla.thor.domain.gateway.SystemGateway
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Single
+import com.valhalla.thor.util.Logger
+import com.valhalla.superuser.ShellUtils
+
+private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
+private val USER_ID_REGEX = Regex("^\\d+$")
 
 /**
  * Modern implementation of SystemGateway using the reactive ShellRepository.
@@ -27,7 +32,11 @@ class RootSystemGateway(
     override fun isDhizukuAvailable(): Boolean = false
 
     override suspend fun forceStopApp(packageName: String): Result<Unit> {
-        val shellResult = runCommand("am force-stop $packageName")
+        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
+            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+        }
+        val escapedPackage = ShellUtils.escapedString(packageName)
+        val shellResult = runCommand("am force-stop $escapedPackage")
         if (shellResult.isSuccess) return shellResult
 
         // Unprivileged check/fallback
@@ -51,12 +60,20 @@ class RootSystemGateway(
     }
 
     override suspend fun clearCache(packageName: String): Result<Unit> {
-        val command = "rm -rf /data/data/$packageName/cache /sdcard/Android/data/$packageName/cache"
+        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
+            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+        }
+        val escapedPackage = ShellUtils.escapedString(packageName)
+        val command = "rm -rf /data/data/$escapedPackage/cache /sdcard/Android/data/$escapedPackage/cache"
         return runCommand(command)
     }
 
     override suspend fun clearAppData(packageName: String): Result<Unit> {
-        val shellResult = runCommand("pm clear $packageName")
+        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
+            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+        }
+        val escapedPackage = ShellUtils.escapedString(packageName)
+        val shellResult = runCommand("pm clear $escapedPackage")
         if (shellResult.isSuccess) return shellResult
 
         // Fallback to reflection via RootMain
@@ -67,8 +84,12 @@ class RootSystemGateway(
     }
 
     override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> {
+        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
+            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+        }
+        val escapedPackage = ShellUtils.escapedString(packageName)
         val state = if (isDisabled) "disable" else "enable"
-        val shellResult = runCommand("pm $state $packageName")
+        val shellResult = runCommand("pm $state $escapedPackage")
         if (shellResult.isSuccess) return shellResult
 
         // Check if already in the target state
@@ -93,9 +114,13 @@ class RootSystemGateway(
     }
 
     override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> {
+        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
+            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+        }
+        val escapedPackage = ShellUtils.escapedString(packageName)
         // 1. Try shell first
         val state = if (isSuspended) "suspend" else "unsuspend"
-        val shellResult = runCommand("pm $state $packageName")
+        val shellResult = runCommand("pm $state $escapedPackage")
         if (shellResult.isSuccess) return shellResult
 
         // 2. Fallback to reflection via RootMain
@@ -117,22 +142,31 @@ class RootSystemGateway(
         packageName: String,
         isRestricted: Boolean
     ): Result<Unit> {
+        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
+            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+        }
+        val escapedPackage = ShellUtils.escapedString(packageName)
         val state = if (isRestricted) "ignore" else "allow"
-        return runCommand("appops set $packageName RUN_ANY_IN_BACKGROUND $state")
+        return runCommand("appops set $escapedPackage RUN_ANY_IN_BACKGROUND $state")
     }
 
     override suspend fun rebootDevice(reason: String): Result<Unit> {
+        val escapedReason = ShellUtils.escapedString(reason)
         // executeResult returns success if ANY of the commands succeed in the chain logic
-        return runCommand("svc power reboot $reason || reboot $reason")
+        return runCommand("svc power reboot $escapedReason || reboot $escapedReason")
     }
 
     override suspend fun uninstallApp(packageName: String): Result<Unit> {
-        return runCommand("pm uninstall --user 0 $packageName")
+        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
+            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+        }
+        val escapedPackage = ShellUtils.escapedString(packageName)
+        return runCommand("pm uninstall --user 0 $escapedPackage")
     }
 
     override suspend fun installApp(apkPath: String, canDowngrade: Boolean): Result<Unit> {
         val command = "pm install -r -g${if (canDowngrade) " -d" else ""} ${
-            com.valhalla.superuser.ShellUtils.escapedString(apkPath)
+            ShellUtils.escapedString(apkPath)
         }"
         return runCommand(command)
     }
@@ -142,15 +176,19 @@ class RootSystemGateway(
             return Result.failure(Exception("No APK paths provided for multi-install"))
         }
         val escapedPaths = apkPaths.joinToString(" ") {
-            com.valhalla.superuser.ShellUtils.escapedString(it)
+            ShellUtils.escapedString(it)
         }
         val command = "pm install-multiple -r -g${if (canDowngrade) " -d" else ""} $escapedPaths"
         return runCommand(command)
     }
 
     override suspend fun getAppCacheSize(packageName: String): Long {
+        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
+            return 0L
+        }
         return try {
-            val result = shellRepository.runCommand("du -s /data/data/$packageName/cache")
+            val escapedPackage = ShellUtils.escapedString(packageName)
+            val result = shellRepository.runCommand("du -s /data/data/$escapedPackage/cache")
             val outputLine = result.getOrNull()?.firstOrNull() ?: return 0L
 
             // Output format is usually "12345   /path/to/file"
@@ -160,7 +198,8 @@ class RootSystemGateway(
 
             // du usually returns 1k blocks
             sizeInBlocks * 1024
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Logger.e("RootSystemGateway", "Failed to get app cache size for $packageName", e)
             0L
         }
     }
@@ -172,6 +211,9 @@ class RootSystemGateway(
     override suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> {
         if (packageName == BuildConfig.APPLICATION_ID)
             return Result.failure(Exception("Cannot reinstall Thor"))
+        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
+            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+        }
 
         return withContext(Dispatchers.IO) {
             try {
@@ -181,18 +223,23 @@ class RootSystemGateway(
                     return@withContext Result.failure(Exception("Could not find APK path for $packageName"))
                 }
 
-                val combinedPath = paths.joinToString(" ") { "\"$it\"" }
+                val combinedPath = paths.joinToString(" ") { ShellUtils.escapedString(it) }
 
                 // 2. Get Current User ID
                 val userResult = shellRepository.runCommand("am get-current-user")
                 val currentUser = userResult.getOrNull()?.firstOrNull()?.trim()
                     ?: return@withContext Result.failure(Exception("Could not determine current user"))
 
+                if (!currentUser.matches(USER_ID_REGEX)) {
+                    return@withContext Result.failure(Exception("Invalid user ID format: $currentUser"))
+                }
+
                 // 3. Execute the reinstallation command
                 val command =
                     "pm install -r -d -i \"com.android.vending\" --user $currentUser --install-reason 0 $combinedPath"
                 runCommand(command)
             } catch (e: Exception) {
+                Logger.e("RootSystemGateway", "Reinstall with Google failed for $packageName", e)
                 Result.failure(e)
             }
         }
@@ -202,7 +249,9 @@ class RootSystemGateway(
      * Copies a file using Root privileges.
      */
     suspend fun copyFile(source: String, destination: String) {
-        val command = "cp \"$source\" \"$destination\""
+        val escapedSource = ShellUtils.escapedString(source)
+        val escapedDest = ShellUtils.escapedString(destination)
+        val command = "cp $escapedSource $escapedDest"
         val result = runCommand(command)
 
         if (result.isFailure) {
@@ -214,7 +263,11 @@ class RootSystemGateway(
      * Retrieves all APK paths (Base + Splits) for a package.
      */
     suspend fun getAppPaths(packageName: String): List<String> {
-        val result = shellRepository.runCommand("pm path \"$packageName\"")
+        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
+            return emptyList()
+        }
+        val escapedPackage = ShellUtils.escapedString(packageName)
+        val result = shellRepository.runCommand("pm path $escapedPackage")
         val lines = result.getOrNull() ?: emptyList()
 
         return lines
@@ -228,9 +281,9 @@ class RootSystemGateway(
     private suspend fun runRootTask(action: String, vararg args: String): Result<Unit> {
         val apkPath = context.packageCodePath
         val className = "com.valhalla.thor.data.source.local.root.RootMain"
-        val cmd = "export CLASSPATH=$apkPath && app_process /system/bin $className $action ${
-            args.joinToString(" ")
-        }"
+        val escapedApk = ShellUtils.escapedString(apkPath)
+        val escapedArgs = args.joinToString(" ") { ShellUtils.escapedString(it) }
+        val cmd = "export CLASSPATH=$escapedApk && app_process /system/bin $className $action $escapedArgs"
         return runCommand(cmd)
     }
 
@@ -238,20 +291,24 @@ class RootSystemGateway(
         packageName: String,
         permissionName: String
     ): Result<Unit> {
-        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+        if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
-        return runCommand("pm grant $packageName $permissionName")
+        val escapedPackage = ShellUtils.escapedString(packageName)
+        val escapedPerm = ShellUtils.escapedString(permissionName)
+        return runCommand("pm grant $escapedPackage $escapedPerm")
     }
 
     override suspend fun revokePermission(
         packageName: String,
         permissionName: String
     ): Result<Unit> {
-        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+        if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
-        return runCommand("pm revoke $packageName $permissionName")
+        val escapedPackage = ShellUtils.escapedString(packageName)
+        val escapedPerm = ShellUtils.escapedString(permissionName)
+        return runCommand("pm revoke $escapedPackage $escapedPerm")
     }
 
     /**
@@ -262,8 +319,9 @@ class RootSystemGateway(
         return if (result.isSuccess) {
             Result.success(Unit)
         } else {
-            // Forward the exception from the repository or create a new one
-            Result.failure(result.exceptionOrNull() ?: Exception("Shell command failed: $cmd"))
+            val exception = result.exceptionOrNull() ?: Exception("Shell command failed: $cmd")
+            Logger.e("RootSystemGateway", "Command execution failed: $cmd", exception)
+            Result.failure(exception)
         }
     }
 

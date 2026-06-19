@@ -7,6 +7,11 @@ import com.valhalla.thor.domain.gateway.SystemGateway
 import org.koin.core.annotation.Single
 import rikka.shizuku.Shizuku
 import com.valhalla.thor.data.source.local.shizuku.Shizuku as ShizukuHelper
+import com.valhalla.thor.util.Logger
+import com.valhalla.superuser.ShellUtils
+
+private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
+private val USER_ID_REGEX = Regex("^\\d+$")
 
 @Single
 class ShizukuSystemGateway(
@@ -81,8 +86,9 @@ class ShizukuSystemGateway(
             return Result.failure(Exception("Cannot reinstall Thor"))
 
         return try {
+            val escapedPackageName = ShellUtils.escapedString(packageName)
             // 1. Get the APK path(s)
-            val pathResult = ShizukuHelper.execute("pm path $packageName")
+            val pathResult = ShizukuHelper.execute("pm path $escapedPackageName")
             val paths = pathResult.second?.lines()
                 ?.filter { it.isNotBlank() }
                 ?.map { it.removePrefix("package:").trim() } ?: emptyList()
@@ -91,12 +97,16 @@ class ShizukuSystemGateway(
                 return Result.failure(Exception("Could not find APK path for $packageName"))
             }
 
-            val combinedPath = paths.joinToString(" ") { "\"$it\"" }
+            val combinedPath = paths.joinToString(" ") { ShellUtils.escapedString(it) }
 
             // 2. Get Current User ID
             val userResult = ShizukuHelper.execute("am get-current-user")
             val currentUser = userResult.second?.trim()
                 ?: return Result.failure(Exception("Could not determine current user"))
+
+            if (!currentUser.matches(USER_ID_REGEX)) {
+                return Result.failure(Exception("Invalid user ID format: $currentUser"))
+            }
 
             // 3. Execute the reinstallation command
             val command =
@@ -105,6 +115,7 @@ class ShizukuSystemGateway(
             if (result.first == 0) Result.success(Unit)
             else Result.failure(Exception("Shizuku reinstall failed: ${result.second}"))
         } catch (e: Exception) {
+            Logger.e("ShizukuSystemGateway", "Reinstall with Google failed for $packageName", e)
             Result.failure(e)
         }
     }
@@ -113,11 +124,13 @@ class ShizukuSystemGateway(
         packageName: String,
         permissionName: String
     ): Result<Unit> {
-        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+        if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
+        val escapedPackageName = ShellUtils.escapedString(packageName)
+        val escapedPermissionName = ShellUtils.escapedString(permissionName)
         return try {
-            val result = ShizukuHelper.execute("pm grant $packageName $permissionName")
+            val result = ShizukuHelper.execute("pm grant $escapedPackageName $escapedPermissionName")
             if (result.first == 0) Result.success(Unit)
             else Result.failure(Exception("Shizuku: pm grant failed with exit code ${result.first}: ${result.second}"))
         } catch (e: Exception) {
@@ -129,11 +142,13 @@ class ShizukuSystemGateway(
         packageName: String,
         permissionName: String
     ): Result<Unit> {
-        if (!packageName.matches(Regex("^[a-zA-Z0-9._]+$")) || !permissionName.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+        if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
+        val escapedPackageName = ShellUtils.escapedString(packageName)
+        val escapedPermissionName = ShellUtils.escapedString(permissionName)
         return try {
-            val result = ShizukuHelper.execute("pm revoke $packageName $permissionName")
+            val result = ShizukuHelper.execute("pm revoke $escapedPackageName $escapedPermissionName")
             if (result.first == 0) Result.success(Unit)
             else Result.failure(Exception("Shizuku: pm revoke failed with exit code ${result.first}: ${result.second}"))
         } catch (e: Exception) {
@@ -152,8 +167,7 @@ class ShizukuSystemGateway(
             if (action()) Result.success(Unit)
             else Result.failure(Exception("Action failed. This may happen if reflection is blocked or shell lacks permissions."))
         } catch (e: Exception) {
-            if (BuildConfig.DEBUG)
-                e.printStackTrace()
+            Logger.e("ShizukuSystemGateway", "Action execution failed", e)
             Result.failure(e)
         }
     }

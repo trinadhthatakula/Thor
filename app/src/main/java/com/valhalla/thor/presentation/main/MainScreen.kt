@@ -15,6 +15,8 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.snap
+import com.valhalla.thor.domain.model.AnimationIntensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -193,10 +195,20 @@ fun MainScreen(
             }
         }
     ) { innerPadding ->
-        val spatialSpec = MaterialTheme.motionScheme.slowSpatialSpec<IntOffset>()
-        val effectsSpec = MaterialTheme.motionScheme.slowEffectsSpec<Float>()
+        val spatialSpec = when (state.prefs.animationIntensity) {
+            AnimationIntensity.LOW -> snap<IntOffset>()
+            AnimationIntensity.MEDIUM,
+            AnimationIntensity.HIGH -> MaterialTheme.motionScheme.slowSpatialSpec<IntOffset>()
+        }
+        val effectsSpec = when (state.prefs.animationIntensity) {
+            AnimationIntensity.LOW -> snap<Float>()
+            AnimationIntensity.MEDIUM,
+            AnimationIntensity.HIGH -> MaterialTheme.motionScheme.slowEffectsSpec<Float>()
+        }
+        val useSharedTransitions = state.prefs.animationIntensity == AnimationIntensity.HIGH
 
         SharedTransitionLayout {
+            val sharedScope = if (useSharedTransitions) this@SharedTransitionLayout else null
             val entryProvider = entryProvider<NavKey> {
                 entry<ThorRoute.Home> {
                     HomeScreen(
@@ -223,7 +235,7 @@ fun MainScreen(
                 entry<ThorRoute.Apps> {
                     AppListScreen(
                         viewModel = appListViewModel,
-                        sharedTransitionScope = this@SharedTransitionLayout,
+                        sharedTransitionScope = sharedScope,
                         onNavigateToAppInfo = { pkg, name ->
                             backStack.add(ThorRoute.AppInfoDetails(pkg, name))
                         },
@@ -231,6 +243,13 @@ fun MainScreen(
                             if (action is AppClickAction.ManagePermissions) {
                                 backStack.add(
                                     ThorRoute.PermissionManager(
+                                        action.appInfo.packageName,
+                                        action.appInfo.appName ?: ""
+                                    )
+                                )
+                            } else if (action is AppClickAction.OpenDetails) {
+                                backStack.add(
+                                    ThorRoute.AppInfoDetails(
                                         action.appInfo.packageName,
                                         action.appInfo.appName ?: ""
                                     )
@@ -248,11 +267,18 @@ fun MainScreen(
                 entry<ThorRoute.Freezer> {
                     FreezerScreen(
                         viewModel = freezerViewModel,
-                        sharedTransitionScope = this@SharedTransitionLayout,
+                        sharedTransitionScope = sharedScope,
                         onAppAction = { action ->
                             if (action is AppClickAction.ManagePermissions) {
                                 backStack.add(
                                     ThorRoute.PermissionManager(
+                                        action.appInfo.packageName,
+                                        action.appInfo.appName ?: ""
+                                    )
+                                )
+                            } else if (action is AppClickAction.OpenDetails) {
+                                backStack.add(
+                                    ThorRoute.AppInfoDetails(
                                         action.appInfo.packageName,
                                         action.appInfo.appName ?: ""
                                     )
@@ -275,7 +301,7 @@ fun MainScreen(
                     PermissionManagerScreen(
                         packageName = route.packageName,
                         appName = route.appName,
-                        sharedTransitionScope = this@SharedTransitionLayout,
+                        sharedTransitionScope = sharedScope,
                         onBack = { backStack.removeLastOrNull() }
                     )
                 }
@@ -284,7 +310,7 @@ fun MainScreen(
                     AppInfoDetailsScreen(
                         packageName = route.packageName,
                         appName = route.appName,
-                        sharedTransitionScope = this@SharedTransitionLayout,
+                        sharedTransitionScope = sharedScope,
                         onBack = { backStack.removeLastOrNull() },
                         onNavigateToPermissionManager = { pkg, name ->
                             backStack.add(ThorRoute.PermissionManager(pkg, name))

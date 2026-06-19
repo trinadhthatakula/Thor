@@ -3,6 +3,7 @@ package com.valhalla.thor.presentation.settings
 import android.content.Intent
 import android.os.Build
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
@@ -159,6 +161,15 @@ fun SettingsScreen(
                 checked = prefs.showReinstallAllCard,
                 onCheckedChange = { viewModel.setReinstallAllCardVisibility(it) }
             )
+
+            SettingsSwitchRow(
+                icon = R.drawable.apps,
+                title = stringResource(R.string.detailed_view),
+                subtitle = stringResource(R.string.detailed_view_desc),
+                checked = prefs.useDetailedView,
+                enableMarqueeOnClick = true,
+                onCheckedChange = { viewModel.setDetailedViewEnabled(it) }
+            )
         }
 
         Spacer(Modifier.height(32.dp))
@@ -234,6 +245,54 @@ fun SettingsScreen(
                     else -> stringResource(R.string.system_default)
                 },
                 onClick = { showLanguageSheet = true }
+            )
+        }
+
+        Spacer(Modifier.height(32.dp))
+
+        // ── ANIMATION INTENSITY ─────────────────────────────────────────────
+        SettingsSectionLabel(stringResource(R.string.animation_intensity))
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(32.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .padding(16.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconBox(R.drawable.bolt)
+                Spacer(Modifier.width(16.dp))
+                Column {
+                    Text(
+                        stringResource(R.string.animation_intensity),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        stringResource(R.string.animation_intensity_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            ConnectedButtonGroup(
+                items = AnimationIntensity.entries.map {
+                    val label = when (it) {
+                        AnimationIntensity.LOW -> stringResource(R.string.animation_intensity_low)
+                        AnimationIntensity.MEDIUM -> stringResource(R.string.animation_intensity_medium)
+                        AnimationIntensity.HIGH -> stringResource(R.string.animation_intensity_high)
+                    }
+                    ConnectedButtonGroupItem.Label(label)
+                },
+                selectedIndex = AnimationIntensity.entries.indexOf(prefs.animationIntensity),
+                onItemSelected = { viewModel.setAnimationIntensity(AnimationIntensity.entries[it]) },
+                modifier = Modifier.fillMaxWidth()
             )
         }
 
@@ -636,6 +695,7 @@ private fun SettingsSwitchRow(
     subtitle: String,
     checked: Boolean,
     enabled: Boolean = true,
+    enableMarqueeOnClick: Boolean = false,
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
@@ -659,12 +719,25 @@ private fun SettingsSwitchRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                var startMarquee by remember { mutableStateOf(false) }
+                val textModifier = if (enableMarqueeOnClick && startMarquee) {
+                    Modifier.basicMarquee()
+                } else {
+                    Modifier
+                }
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = if (enableMarqueeOnClick && startMarquee) TextOverflow.Clip else TextOverflow.Ellipsis,
+                    modifier = textModifier.then(
+                        if (enableMarqueeOnClick && enabled) {
+                            Modifier.clickable { startMarquee = !startMarquee }
+                        } else {
+                            Modifier
+                        }
+                    )
                 )
             }
         }

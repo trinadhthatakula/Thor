@@ -114,7 +114,7 @@ fun AppInfoDialog(
                         is AppClickAction.ClearData -> showClearDataConfirmation = true
                         else -> {
                             onAppAction(action)
-                            if (action is AppClickAction.Launch) onDismiss()
+                            if (action is AppClickAction.Launch || action is AppClickAction.OpenDetails) onDismiss()
                         }
                     }
                 }
@@ -351,16 +351,6 @@ private fun AppActionRow(
                 AppClickAction.Launch(appInfo)
             )
         }
-        ActionItem(R.drawable.share, stringResource(R.string.action_share)) {
-            onAction(
-                AppClickAction.Share(appInfo)
-            )
-        }
-        ActionItem(R.drawable.shield, stringResource(R.string.action_permissions)) {
-            onAction(
-                AppClickAction.ManagePermissions(appInfo)
-            )
-        }
 
         // 2. Privileged Actions
         if (hasPrivilege) {
@@ -419,6 +409,26 @@ private fun AppActionRow(
                 onAction(AppClickAction.Uninstall(appInfo))
             }
         }
+
+        ActionItem(R.drawable.share, stringResource(R.string.action_share)) {
+            onAction(
+                AppClickAction.Share(appInfo)
+            )
+        }
+
+        ActionItem(R.drawable.shield, stringResource(R.string.action_permissions)) {
+            onAction(
+                AppClickAction.ManagePermissions(appInfo)
+            )
+        }
+
+        ActionItem(R.drawable.list_alt, stringResource(R.string.action_details)) {
+            onAction(
+                AppClickAction.OpenDetails(appInfo)
+            )
+        }
+
+
     }
 }
 

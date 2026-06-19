@@ -1,5 +1,6 @@
 package com.valhalla.thor.domain.repository
 
+import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.SortBy
@@ -41,4 +42,8 @@ interface PreferenceRepository {
 
     // --- Support Developer Prompt ---
     suspend fun setHasShownSupportDeveloperPrompt(hasShown: Boolean)
+
+    // --- App Redirection & Animations ---
+    suspend fun setDetailedViewEnabled(enabled: Boolean)
+    suspend fun setAnimationIntensity(intensity: AnimationIntensity)
 }

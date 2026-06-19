@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.SortBy
@@ -55,6 +56,10 @@ class PreferenceRepositoryImpl(
 
         // Support Developer Prompt
         val HAS_SHOWN_SUPPORT_DEVELOPER_PROMPT = booleanPreferencesKey("has_shown_support_developer_prompt")
+
+        // App Redirection & Animations
+        val USE_DETAILED_VIEW = booleanPreferencesKey("use_detailed_view")
+        val ANIMATION_INTENSITY = stringPreferencesKey("animation_intensity")
     }
 
     override val userPreferences: Flow<UserPreferences> = context.dataStore.data
@@ -79,6 +84,12 @@ class PreferenceRepositoryImpl(
             val privilegeMode = prefs[Keys.PRIVILEGE_MODE]
                 ?.let { runCatching { PrivilegeMode.valueOf(it) }.getOrNull() }
 
+            val animationIntensity = prefs[Keys.ANIMATION_INTENSITY]
+                ?.let { runCatching { AnimationIntensity.valueOf(it) }.getOrNull() }
+                ?: AnimationIntensity.MEDIUM
+
+            val useDetailedView = prefs[Keys.USE_DETAILED_VIEW] ?: true
+
             UserPreferences(
                 appSortBy = sortBy,
                 appSortOrder = sortOrder,
@@ -93,7 +104,9 @@ class PreferenceRepositoryImpl(
                 language = prefs[Keys.LANGUAGE],
                 autoFreezeEnabled = prefs[Keys.AUTO_FREEZE] ?: false,
                 hasShownDisabledAppsPrompt = prefs[Keys.HAS_SHOWN_DISABLED_APPS_PROMPT] ?: false,
-                hasShownSupportDeveloperPrompt = prefs[Keys.HAS_SHOWN_SUPPORT_DEVELOPER_PROMPT] ?: false
+                hasShownSupportDeveloperPrompt = prefs[Keys.HAS_SHOWN_SUPPORT_DEVELOPER_PROMPT] ?: false,
+                useDetailedView = useDetailedView,
+                animationIntensity = animationIntensity
             )
         }
 
@@ -169,6 +182,18 @@ class PreferenceRepositoryImpl(
     override suspend fun setHasShownSupportDeveloperPrompt(hasShown: Boolean) {
         context.dataStore.edit {
             it[Keys.HAS_SHOWN_SUPPORT_DEVELOPER_PROMPT] = hasShown
+        }
+    }
+
+    override suspend fun setDetailedViewEnabled(enabled: Boolean) {
+        context.dataStore.edit {
+            it[Keys.USE_DETAILED_VIEW] = enabled
+        }
+    }
+
+    override suspend fun setAnimationIntensity(intensity: AnimationIntensity) {
+        context.dataStore.edit {
+            it[Keys.ANIMATION_INTENSITY] = intensity.name
         }
     }
 }

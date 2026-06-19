@@ -79,8 +79,8 @@ fun MultiSelectToolBox(
                 onClick = onCancel
             )
 
-            // ReInstall (Root only)
-            if (isRoot) {
+            // ReInstall (Root OR Shizuku OR Dhizuku)
+            if (isRoot || isShizuku || isDhizuku) {
                 ToolBoxItem(
                     icon = R.drawable.apk_install,
                     label = stringResource(R.string.action_reinstall),

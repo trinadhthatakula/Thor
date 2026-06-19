@@ -328,5 +328,16 @@
     <string name="change_support_plan_title">Change Support Plan?</string>
     <string name="change_support_plan_desc">You are already supporting the developer with an active plan. Upgrading or changing your plan will cancel your old subscription and replace it with the new one. Do you want to proceed?</string>
     <string name="active_plan">Active Plan</string>
+    
+    <!-- Detailed View & Animation Intensity -->
+    <string name="action_details">Details</string>
+    <string name="detailed_view">Detailed View</string>
+    <string name="detailed_view_desc">Click directly to details screen instead of dialog</string>
+    <string name="animation_intensity">Animation Intensity</string>
+    <string name="animation_intensity_desc">Control navigation animations and transitions</string>
+    <string name="animation_intensity_low">Low</string>
+    <string name="animation_intensity_medium">Medium</string>
+    <string name="animation_intensity_high">High</string>    <string name="suspended_app_dialog_title">Thor</string>
+    <string name="suspended_app_dialog_message">This app has been suspended by Thor.</string>
 
 </resources>

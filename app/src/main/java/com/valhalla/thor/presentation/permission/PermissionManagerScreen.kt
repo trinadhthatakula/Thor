@@ -68,7 +68,7 @@ import org.koin.androidx.compose.koinViewModel
 fun PermissionManagerScreen(
     packageName: String,
     appName: String,
-    sharedTransitionScope: SharedTransitionScope,
+    sharedTransitionScope: SharedTransitionScope? = null,
     onBack: () -> Unit,
     viewModel: PermissionManagerViewModel = koinViewModel()
 ) {
