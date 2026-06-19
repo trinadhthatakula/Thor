@@ -732,7 +732,7 @@ private fun SettingsSwitchRow(
                     maxLines = 1,
                     overflow = if (enableMarqueeOnClick && startMarquee) TextOverflow.Clip else TextOverflow.Ellipsis,
                     modifier = textModifier.then(
-                        if (enableMarqueeOnClick) {
+                        if (enableMarqueeOnClick && enabled) {
                             Modifier.clickable { startMarquee = !startMarquee }
                         } else {
                             Modifier

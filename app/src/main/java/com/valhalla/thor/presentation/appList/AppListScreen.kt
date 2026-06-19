@@ -154,7 +154,7 @@ fun AppListScreen(
                         }
                     },
                     onAppInfoSelected = { appInfo ->
-                        if (state.prefs.useDetailedView) {
+                        if (state.useDetailedView) {
                             onNavigateToAppInfo(appInfo.packageName, appInfo.appName ?: "")
                         } else {
                             selectedAppForDialog = appInfo

@@ -127,8 +127,10 @@ class ShizukuSystemGateway(
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
+        val escapedPackageName = ShellUtils.escapedString(packageName)
+        val escapedPermissionName = ShellUtils.escapedString(permissionName)
         return try {
-            val result = ShizukuHelper.execute("pm grant $packageName $permissionName")
+            val result = ShizukuHelper.execute("pm grant $escapedPackageName $escapedPermissionName")
             if (result.first == 0) Result.success(Unit)
             else Result.failure(Exception("Shizuku: pm grant failed with exit code ${result.first}: ${result.second}"))
         } catch (e: Exception) {
@@ -143,8 +145,10 @@ class ShizukuSystemGateway(
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
+        val escapedPackageName = ShellUtils.escapedString(packageName)
+        val escapedPermissionName = ShellUtils.escapedString(permissionName)
         return try {
-            val result = ShizukuHelper.execute("pm revoke $packageName $permissionName")
+            val result = ShizukuHelper.execute("pm revoke $escapedPackageName $escapedPermissionName")
             if (result.first == 0) Result.success(Unit)
             else Result.failure(Exception("Shizuku: pm revoke failed with exit code ${result.first}: ${result.second}"))
         } catch (e: Exception) {
