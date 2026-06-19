@@ -324,5 +324,15 @@
     <string name="change_support_plan_title">هل تريد تغيير خطة الدعم؟</string>
     <string name="change_support_plan_desc">أنت تدعم المطور بالفعل بخطة نشطة. سيؤدي ترقية خطتك أو تغييرها إلى إلغاء اشتراكك القديم واستبداله بالاشتراك الجديد. هل تريد الاستمرار؟</string>
     <string name="active_plan">الخطة النشطة</string>
+    
+    <!-- Detailed View & Animation Intensity -->
+    <string name="action_details">التفاصيل</string>
+    <string name="detailed_view">عرض مفصل</string>
+    <string name="detailed_view_desc">الانتقال مباشرةً إلى شاشة التفاصيل بدلاً من الحوار عند النقر</string>
+    <string name="animation_intensity">كثافة الرسوم المتحركة</string>
+    <string name="animation_intensity_desc">التحكم في سرعة ورسوم التنقل والانتقالات</string>
+    <string name="animation_intensity_low">منخفضة</string>
+    <string name="animation_intensity_medium">متوسطة</string>
+    <string name="animation_intensity_high">عالية</string>
 
 </resources>

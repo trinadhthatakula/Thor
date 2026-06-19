@@ -320,5 +320,15 @@
     <string name="change_support_plan_title">Modifier le plan de soutien ?</string>
     <string name="change_support_plan_desc">Vous soutenez déjà le développeur avec un plan actif. Mettre à niveau ou modifier votre plan annulera votre ancien abonnement et le remplacera par le nouveau. Voulez-vous continuer ?</string>
     <string name="active_plan">Plan actif</string>
+    
+    <!-- Detailed View & Animation Intensity -->
+    <string name="action_details">Détails</string>
+    <string name="detailed_view">Vue détaillée</string>
+    <string name="detailed_view_desc">Cliquer pour aller directement à l\'écran de détails au lieu d\'afficher le dialogue</string>
+    <string name="animation_intensity">Intensité de l\'animation</string>
+    <string name="animation_intensity_desc">Contrôler la vitesse, les animations et les transitions de navigation</string>
+    <string name="animation_intensity_low">Faible</string>
+    <string name="animation_intensity_medium">Moyenne</string>
+    <string name="animation_intensity_high">Élevée</string>
 
 </resources>

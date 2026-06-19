@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
 import com.valhalla.thor.data.security.BiometricHelper
+import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
@@ -157,6 +158,18 @@ class SettingsViewModel(
                 )
             }
             _actionMessage.value = uiText
+        }
+    }
+
+    fun setDetailedViewEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferenceRepository.setDetailedViewEnabled(enabled)
+        }
+    }
+
+    fun setAnimationIntensity(intensity: AnimationIntensity) {
+        viewModelScope.launch {
+            preferenceRepository.setAnimationIntensity(intensity)
         }
     }
 }

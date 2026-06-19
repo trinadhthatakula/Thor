@@ -114,7 +114,7 @@ fun AppInfoDialog(
                         is AppClickAction.ClearData -> showClearDataConfirmation = true
                         else -> {
                             onAppAction(action)
-                            if (action is AppClickAction.Launch) onDismiss()
+                            if (action is AppClickAction.Launch || action is AppClickAction.OpenDetails) onDismiss()
                         }
                     }
                 }
@@ -359,6 +359,11 @@ private fun AppActionRow(
         ActionItem(R.drawable.shield, stringResource(R.string.action_permissions)) {
             onAction(
                 AppClickAction.ManagePermissions(appInfo)
+            )
+        }
+        ActionItem(R.drawable.open_in, stringResource(R.string.action_details)) {
+            onAction(
+                AppClickAction.OpenDetails(appInfo)
             )
         }
 

@@ -31,11 +31,16 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.animation.SharedTransitionScope
 import androidx.navigation3.ui.LocalNavAnimatedContentScope
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.presentation.widgets.AppList
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
+import com.valhalla.thor.presentation.widgets.AppInfoDialog
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -45,7 +50,7 @@ fun AppListScreen(
     title: String = stringResource(R.string.apps),
     icon: Int = R.drawable.thor_mono,
     viewModel: AppListViewModel = koinViewModel(),
-    sharedTransitionScope: SharedTransitionScope,
+    sharedTransitionScope: SharedTransitionScope? = null,
     onNavigateToAppInfo: (packageName: String, appName: String) -> Unit,
     // These actions bubble up to MainScreen/HomeViewModel for execution
     onAppAction: (AppClickAction) -> Unit = {},
@@ -53,6 +58,7 @@ fun AppListScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    var selectedAppForDialog by remember { mutableStateOf<AppInfo?>(null) }
 
     LaunchedEffect(Unit) {
         if (state.allUserApps.isEmpty() && state.allSystemApps.isEmpty() && state.isLoading) {
@@ -148,7 +154,11 @@ fun AppListScreen(
                         }
                     },
                     onAppInfoSelected = { appInfo ->
-                        onNavigateToAppInfo(appInfo.packageName, appInfo.appName ?: "")
+                        if (state.prefs.useDetailedView) {
+                            onNavigateToAppInfo(appInfo.packageName, appInfo.appName ?: "")
+                        } else {
+                            selectedAppForDialog = appInfo
+                        }
                     },
                     onListTypeChanged = { viewModel.updateListType(it) },
                     onMultiAppAction = { action ->
@@ -172,5 +182,23 @@ fun AppListScreen(
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 16.dp)
         )
+
+        selectedAppForDialog?.let { app ->
+            AppInfoDialog(
+                appInfo = app,
+                isRoot = state.isRoot,
+                isShizuku = state.isShizuku,
+                isDhizuku = state.isDhizuku,
+                onDismiss = { selectedAppForDialog = null },
+                onAppAction = { action ->
+                    if (action is AppClickAction.OpenDetails) {
+                        onNavigateToAppInfo(app.packageName, app.appName ?: "")
+                    } else {
+                        onAppAction(action)
+                    }
+                    selectedAppForDialog = null
+                }
+            )
+        }
     }
 }

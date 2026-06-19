@@ -319,5 +319,15 @@
     <string name="change_support_plan_title">更改支持计划？</string>
     <string name="change_support_plan_desc">您已拥有有效的支持计划。升级或更改计划将取消您以前的订阅，并由新订阅替代。您要继续吗？</string>
     <string name="active_plan">当前生效计划</string>
+    
+    <!-- Detailed View & Animation Intensity -->
+    <string name="action_details">详情</string>
+    <string name="detailed_view">详细视图</string>
+    <string name="detailed_view_desc">点击直接进入应用详情屏幕，而不显示对话框</string>
+    <string name="animation_intensity">动画强度</string>
+    <string name="animation_intensity_desc">控制导航动画与转场速度</string>
+    <string name="animation_intensity_low">低</string>
+    <string name="animation_intensity_medium">中</string>
+    <string name="animation_intensity_high">高</string>
 
 </resources>

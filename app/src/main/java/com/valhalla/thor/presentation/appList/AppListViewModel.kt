@@ -9,6 +9,7 @@ import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
+import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
@@ -56,7 +57,8 @@ data class AppListUiState(
     val isLoadingDetails: Boolean = false,
     // Action Feedback
     val actionMessage: UiText? = null,
-    val freezerPrompt: FreezerPrompt? = null
+    val freezerPrompt: FreezerPrompt? = null,
+    val prefs: UserPreferences = UserPreferences()
 )
 
 @KoinViewModel
@@ -78,7 +80,8 @@ class AppListViewModel(
             sortBy = prefs.appSortBy,
             sortOrder = prefs.appSortOrder,
             filterType = prefs.appFilterType,
-            selectedFilter = prefs.appSelectedFilter
+            selectedFilter = prefs.appSelectedFilter,
+            prefs = prefs
         )
         processList(mergedState)
     }

@@ -1,0 +1,3 @@
+- Added detailed view setting to redirect app list click directly to details screen.
+- Added Details button to App Info Dialog for quick redirection.
+- Introduced 3-level Animation Intensity configuration (Low, Medium, High) to control UI transitions and shared elements for optimal performance on all devices.

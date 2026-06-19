@@ -84,7 +84,7 @@ import java.util.Locale
 fun AppInfoDetailsScreen(
     packageName: String,
     appName: String,
-    sharedTransitionScope: SharedTransitionScope,
+    sharedTransitionScope: SharedTransitionScope? = null,
     onBack: () -> Unit,
     onNavigateToPermissionManager: (packageName: String, appName: String) -> Unit,
     onAppAction: (AppClickAction) -> Unit = {},
