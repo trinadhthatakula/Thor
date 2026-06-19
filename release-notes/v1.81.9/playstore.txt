@@ -1,3 +1,5 @@
-- Added detailed view setting to redirect app list click directly to details screen.
-- Added Details button to App Info Dialog for quick redirection.
-- Introduced 3-level Animation Intensity configuration (Low, Medium, High) to control UI transitions and shared elements for optimal performance on all devices.
+- Added Detailed View switch to navigate directly to Details screen.
+- Added Details button to App Info Dialog.
+- Added 3-level Animation Intensity (Low, Medium, High) for transition customizability.
+- Enabled reinstall action for Shizuku & Dhizuku in multi-select toolbar.
+- Refined Root/Shizuku/Dhizuku gateways with safe shell escaping, input validation, localized suspend prompts, and deadlock prevention.
