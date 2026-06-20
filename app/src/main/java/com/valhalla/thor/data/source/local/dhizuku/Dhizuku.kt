@@ -156,7 +156,7 @@ object DhizukuHelper {
 
     private var cachedUserId: String? = null
 
-    private fun getCachedUserId(): String {
+    fun getCurrentUserId(): String {
         cachedUserId?.let { return it }
         val userId = try {
             val userResult = execute("am get-current-user")
@@ -169,7 +169,7 @@ object DhizukuHelper {
     }
 
     fun uninstallApp(packageName: String): Boolean {
-        val currentUser = getCachedUserId()
+        val currentUser = getCurrentUserId()
         return execute(
             "pm uninstall --user $currentUser ${
                 com.valhalla.superuser.ShellUtils.escapedString(
@@ -180,7 +180,7 @@ object DhizukuHelper {
     }
 
     fun reinstallApp(packageName: String): Boolean {
-        val currentUser = getCachedUserId()
+        val currentUser = getCurrentUserId()
         return execute(
             "pm install-existing --user $currentUser ${
                 com.valhalla.superuser.ShellUtils.escapedString(

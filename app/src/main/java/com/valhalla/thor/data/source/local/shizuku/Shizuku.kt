@@ -352,7 +352,7 @@ object Shizuku {
 
     private var cachedUserId: String? = null
 
-    private fun getCachedUserId(): String {
+    fun getCurrentUserId(): String {
         cachedUserId?.let { return it }
         val userId = try {
             val userResult = execute("am get-current-user")
@@ -369,12 +369,12 @@ object Shizuku {
         if (normally) {
             return execute("pm uninstall $packageName").first == 0
         }
-        val currentUser = getCachedUserId()
+        val currentUser = getCurrentUserId()
         return execute("pm uninstall --user $currentUser $packageName").first == 0
     }
 
     fun reinstallApp(packageName: String): Boolean {
-        val currentUser = getCachedUserId()
+        val currentUser = getCurrentUserId()
         return execute("pm install-existing --user $currentUser $packageName").first == 0
     }
 

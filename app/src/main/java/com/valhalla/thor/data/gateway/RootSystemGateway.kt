@@ -251,13 +251,7 @@ class RootSystemGateway(
                 val combinedPath = paths.joinToString(" ") { ShellUtils.escapedString(it) }
 
                 // 2. Get Current User ID
-                val userResult = shellRepository.runCommand("am get-current-user")
-                val currentUser = userResult.getOrNull()?.firstOrNull()?.trim()
-                    ?: return@withContext Result.failure(Exception("Could not determine current user"))
-
-                if (!currentUser.matches(USER_ID_REGEX)) {
-                    return@withContext Result.failure(Exception("Invalid user ID format: $currentUser"))
-                }
+                val currentUser = getCurrentUserId()
 
                 // 3. Execute the reinstallation command
                 val command =

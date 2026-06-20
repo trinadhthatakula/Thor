@@ -109,13 +109,7 @@ class ShizukuSystemGateway(
             val combinedPath = paths.joinToString(" ") { ShellUtils.escapedString(it) }
 
             // 2. Get Current User ID
-            val userResult = ShizukuHelper.execute("am get-current-user")
-            val currentUser = userResult.second?.trim()
-                ?: return Result.failure(Exception("Could not determine current user"))
-
-            if (!currentUser.matches(USER_ID_REGEX)) {
-                return Result.failure(Exception("Invalid user ID format: $currentUser"))
-            }
+            val currentUser = ShizukuHelper.getCurrentUserId()
 
             // 3. Execute the reinstallation command
             val command =
