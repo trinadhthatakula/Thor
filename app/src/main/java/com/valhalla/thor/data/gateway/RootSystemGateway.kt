@@ -364,13 +364,18 @@ class RootSystemGateway(
         }
     }.getOrNull()
 
+    private var cachedUserId: String? = null
+
     private suspend fun getCurrentUserId(): String {
+        cachedUserId?.let { return it }
         val userResult = shellRepository.runCommand("am get-current-user")
         val currentUser = userResult.getOrNull()?.firstOrNull()?.trim()
-        return if (currentUser != null && currentUser.matches(USER_ID_REGEX)) {
+        val userId = if (currentUser != null && currentUser.matches(USER_ID_REGEX)) {
             currentUser
         } else {
             "0"
         }
+        cachedUserId = userId
+        return userId
     }
 }

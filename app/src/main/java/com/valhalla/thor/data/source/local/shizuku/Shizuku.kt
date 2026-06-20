@@ -350,27 +350,31 @@ object Shizuku {
         }.getOrElse { false }
     }
 
+    private var cachedUserId: String? = null
+
+    private fun getCachedUserId(): String {
+        cachedUserId?.let { return it }
+        val userId = try {
+            val userResult = execute("am get-current-user")
+            userResult.second?.trim()?.takeIf { it.matches(Regex("^\\d+$")) } ?: "0"
+        } catch (_: Exception) {
+            "0"
+        }
+        cachedUserId = userId
+        return userId
+    }
+
     fun uninstallApp(context: Context, packageName: String): Boolean {
         val normally = Packages(context).canUninstallNormally(packageName)
         if (normally) {
             return execute("pm uninstall $packageName").first == 0
         }
-        val currentUser = try {
-            val userResult = execute("am get-current-user")
-            userResult.second?.trim()?.takeIf { it.matches(Regex("^\\d+$")) } ?: "0"
-        } catch (_: Exception) {
-            "0"
-        }
+        val currentUser = getCachedUserId()
         return execute("pm uninstall --user $currentUser $packageName").first == 0
     }
 
     fun reinstallApp(packageName: String): Boolean {
-        val currentUser = try {
-            val userResult = execute("am get-current-user")
-            userResult.second?.trim()?.takeIf { it.matches(Regex("^\\d+$")) } ?: "0"
-        } catch (_: Exception) {
-            "0"
-        }
+        val currentUser = getCachedUserId()
         return execute("pm install-existing --user $currentUser $packageName").first == 0
     }
 
