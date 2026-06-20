@@ -153,54 +153,79 @@ fun AppInfoDialog(
 
     if (showUninstallConfirmation) {
         val recommendation = appInfo.bloatRecommendation?.lowercase()
-        val isUnsafe = recommendation == "unsafe" || recommendation == "expert"
+        val isUnsafe = recommendation == "unsafe"
+        val isExpert = recommendation == "expert"
         AlertDialog(
             onDismissRequest = { showUninstallConfirmation = false },
             title = {
                 Text(
-                    text = if (isUnsafe) "Warning: Unsafe Uninstall" else stringResource(R.string.uninstall_system_app_title),
-                    color = if (isUnsafe) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                    text = when {
+                        isUnsafe -> "Uninstall Blocked"
+                        isExpert -> "Warning: Expert Uninstall"
+                        else -> stringResource(R.string.uninstall_system_app_title)
+                    },
+                    color = if (isUnsafe || isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
                 )
             },
             text = {
-                Column {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    appInfo.bloatRecommendation?.let { rec ->
+                        val (color, textColor) = when (rec.lowercase()) {
+                            "recommended" -> Color(0xFFC8E6C9) to Color(0xFF1B5E20)
+                            "advanced" -> Color(0xFFFFF9C4) to Color(0xFFF57F17)
+                            "expert" -> Color(0xFFFFE0B2) to Color(0xFFE65100)
+                            "unsafe" -> Color(0xFFFFCDD2) to Color(0xFFB71C1C)
+                            else -> MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                        StatusChip(
+                            text = rec,
+                            color = color,
+                            textColor = textColor
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+
                     if (isUnsafe) {
                         Text(
-                            text = "Removing this system app is classified as ${appInfo.bloatRecommendation.uppercase()}.",
-                            color = MaterialTheme.colorScheme.error,
-                            fontWeight = FontWeight.Bold
+                            text = "This system app is classified as UNSAFE. Removing it has an extremely high risk of bootlooping your device, so uninstallation is blocked.",
+                            textAlign = TextAlign.Center
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(text = "This can break vital parts of your system and may cause a bootloop! Are you absolutely sure you want to proceed?")
-                    } else {
-                        Text(stringResource(R.string.uninstall_system_app_desc))
-                    }
-                    appInfo.bloatDescription?.let { desc ->
-                        Spacer(modifier = Modifier.height(12.dp))
+                    } else if (isExpert) {
                         Text(
-                            text = desc,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = "This system app is classified as EXPERT. Removing it breaks important functionality. Are you sure you want to proceed?",
+                            textAlign = TextAlign.Center
+                        )
+                    } else {
+                        Text(
+                            text = stringResource(R.string.uninstall_system_app_desc),
+                            textAlign = TextAlign.Center
                         )
                     }
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    onAppAction(AppClickAction.Uninstall(appInfo))
-                    showUninstallConfirmation = false
-                    onDismiss()
-                }) {
-                    Text(
-                        text = if (isUnsafe) "Uninstall Anyway" else stringResource(R.string.yes),
-                        color = if (isUnsafe) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                    )
+                if (!isUnsafe) {
+                    TextButton(onClick = {
+                        onAppAction(AppClickAction.Uninstall(appInfo))
+                        showUninstallConfirmation = false
+                        onDismiss()
+                    }) {
+                        Text(
+                            text = if (isExpert) "Uninstall Anyway" else stringResource(R.string.yes),
+                            color = if (isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             },
             dismissButton = {
                 TextButton(onClick = {
                     showUninstallConfirmation = false
-                }) { Text(stringResource(R.string.no)) }
+                }) {
+                    Text(if (isUnsafe) "Close" else stringResource(R.string.no))
+                }
             }
         )
     }
@@ -353,16 +378,7 @@ private fun AppHeader(
             fontFamily = com.valhalla.thor.presentation.theme.firaMonoFontFamily
         )
 
-        appInfo.bloatDescription?.let { desc ->
-            Spacer(Modifier.height(16.dp))
-            Text(
-                text = desc,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-        }
+        // UAD Description skipped by user request
     }
 }
 
