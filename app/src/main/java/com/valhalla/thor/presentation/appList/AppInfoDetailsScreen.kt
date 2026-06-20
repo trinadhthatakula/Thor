@@ -340,8 +340,8 @@ fun AppInfoDetailsScreen(
                 title = {
                     Text(
                         text = when {
-                            isUnsafe -> "Uninstall Blocked"
-                            isExpert -> "Warning: Expert Uninstall"
+                            isUnsafe -> stringResource(R.string.uninstall_blocked)
+                            isExpert -> stringResource(R.string.uninstall_expert_warning)
                             isSystem -> stringResource(R.string.uninstall_system_app_title)
                             else -> stringResource(R.string.uninstall_app_title)
                         },

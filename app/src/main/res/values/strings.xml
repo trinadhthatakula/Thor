@@ -102,6 +102,8 @@
     <string name="clear_all_data">Clear All Data</string>
     <string name="uninstall_system_app_title">Uninstall System App?</string>
     <string name="uninstall_system_app_desc">This will uninstall the system app for the current user. Proceed?</string>
+    <string name="uninstall_blocked">Uninstall Blocked</string>
+    <string name="uninstall_expert_warning">Warning: Expert Uninstall</string>
     <string name="risk_warning_title">Risk Warning</string>
     <string name="risk_warning_desc">This forces the installer record to \'Google Play Store\'.\n\nUpdates may fail if the signature doesn\'t match the official store version.</string>
     <string name="reinstall_play_store_title">Reinstall with Play Store?</string>

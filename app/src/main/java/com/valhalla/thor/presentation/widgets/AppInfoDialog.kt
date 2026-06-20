@@ -160,8 +160,8 @@ fun AppInfoDialog(
             title = {
                 Text(
                     text = when {
-                        isUnsafe -> "Uninstall Blocked"
-                        isExpert -> "Warning: Expert Uninstall"
+                        isUnsafe -> stringResource(R.string.uninstall_blocked)
+                        isExpert -> stringResource(R.string.uninstall_expert_warning)
                         else -> stringResource(R.string.uninstall_system_app_title)
                     },
                     color = if (isUnsafe || isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface

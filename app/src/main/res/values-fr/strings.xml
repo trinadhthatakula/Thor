@@ -99,6 +99,8 @@
     <string name="clear_all_data">Effacer toutes les données</string>
     <string name="uninstall_system_app_title">Désinstaller l\'appli système ?</string>
     <string name="uninstall_system_app_desc">Cela va désinstaller l\'application système pour l\'utilisateur actuel. Continuer ?</string>
+    <string name="uninstall_blocked">Désinstallation bloquée</string>
+    <string name="uninstall_expert_warning">Avertissement : Désinstallation experte</string>
     <string name="risk_warning_title">Avertissement de risque</string>
     <string name="risk_warning_desc">Ceci force l\'enregistrement de l\'installateur sur \'Google Play Store\'.\n\nLes mises à jour peuvent échouer si la signature ne correspond pas à la version officielle du store.</string>
     <string name="reinstall_play_store_title">Réinstaller avec Play Store ?</string>
