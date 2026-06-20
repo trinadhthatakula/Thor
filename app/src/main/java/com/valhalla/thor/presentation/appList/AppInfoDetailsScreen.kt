@@ -333,19 +333,21 @@ fun AppInfoDetailsScreen(
         if (appInfo != null) {
             val recommendation = appInfo.bloatRecommendation?.lowercase()
             val isSystem = appInfo.isSystem
+            val isUadFailed = isSystem && appInfo.isUadLoadFailed
             val isUnsafe = isSystem && recommendation == "unsafe"
-            val isExpert = isSystem && recommendation == "expert"
+            val isExpert = isSystem && recommendation == "expert" && !isUadFailed
+            val isBlocked = isUnsafe || isUadFailed
             AlertDialog(
                 onDismissRequest = { showUninstallConfirmation = false },
                 title = {
                     Text(
                         text = when {
-                            isUnsafe -> stringResource(R.string.uninstall_blocked)
+                            isBlocked -> stringResource(R.string.uninstall_blocked)
                             isExpert -> stringResource(R.string.uninstall_expert_warning)
                             isSystem -> stringResource(R.string.uninstall_system_app_title)
                             else -> stringResource(R.string.uninstall_app_title)
                         },
-                        color = if (isUnsafe || isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                        color = if (isBlocked || isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
                     )
                 },
                 text = {
@@ -353,7 +355,7 @@ fun AppInfoDetailsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        if (isSystem) {
+                        if (isSystem && !isUadFailed) {
                             appInfo.bloatRecommendation?.let { rec ->
                                 val (color, textColor) = when (rec.lowercase()) {
                                     "recommended" -> Color(0xFFC8E6C9) to Color(0xFF1B5E20)
@@ -371,7 +373,12 @@ fun AppInfoDetailsScreen(
                             }
                         }
 
-                        if (isUnsafe) {
+                        if (isUadFailed) {
+                            Text(
+                                text = stringResource(R.string.uad_load_failed_desc),
+                                textAlign = TextAlign.Center
+                            )
+                        } else if (isUnsafe) {
                             Text(
                                 text = "This system app is classified as UNSAFE. Removing it has an extremely high risk of bootlooping your device, so uninstallation is blocked.",
                                 textAlign = TextAlign.Center
@@ -395,7 +402,7 @@ fun AppInfoDetailsScreen(
                     }
                 },
                 confirmButton = {
-                    if (!isUnsafe) {
+                    if (!isBlocked) {
                         TextButton(onClick = {
                             if (isSystem) {
                                 onAppAction(AppClickAction.Uninstall(appInfo))
@@ -419,7 +426,7 @@ fun AppInfoDetailsScreen(
                     TextButton(onClick = {
                         showUninstallConfirmation = false
                     }) {
-                        Text(if (isUnsafe) "Close" else if (isSystem) stringResource(R.string.no) else stringResource(R.string.cancel))
+                        Text(if (isBlocked) "Close" else if (isSystem) stringResource(R.string.no) else stringResource(R.string.cancel))
                     }
                 }
             )

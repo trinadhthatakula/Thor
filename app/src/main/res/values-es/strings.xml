@@ -101,6 +101,7 @@
     <string name="uninstall_system_app_desc">Esto desinstalará la aplicación del sistema para el usuario actual. ¿Proceder?</string>
     <string name="uninstall_blocked">Desinstalación bloqueada</string>
     <string name="uninstall_expert_warning">Advertencia: Desinstalación experta</string>
+    <string name="uad_load_failed_desc">Error al cargar los metadatos de seguridad UAD. La desinstalación de aplicaciones del sistema está bloqueada para evitar posibles fallos de arranque o problemas en el dispositivo.</string>
     <string name="risk_warning_title">Advertencia de riesgo</string>
     <string name="risk_warning_desc">Esto fuerza el registro del instalador a \'Google Play Store\'.\n\nLas actualizaciones pueden fallar si la firma no coincide con la versión oficial de la tienda.</string>
     <string name="reinstall_play_store_title">¿Reinstalar con Play Store?</string>

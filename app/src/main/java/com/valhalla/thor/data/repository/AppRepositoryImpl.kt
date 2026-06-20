@@ -112,7 +112,8 @@ class AppRepositoryImpl(
                             currentList.add(domain.copy(
                                 bloatRecommendation = bloat?.removal,
                                 bloatDescription = bloat?.description,
-                                isInstalled = isInstalled
+                                isInstalled = isInstalled,
+                                isUadLoadFailed = uadHelper.didLoadFail
                             ))
                         } else {
                             val mapped =
@@ -120,7 +121,8 @@ class AppRepositoryImpl(
                             val bloat = uadMap[mapped.packageName]
                             val mappedWithBloat = mapped.copy(
                                 bloatRecommendation = bloat?.removal,
-                                bloatDescription = bloat?.description
+                                bloatDescription = bloat?.description,
+                                isUadLoadFailed = uadHelper.didLoadFail
                             )
                             currentList.add(mappedWithBloat)
                             val entity = AppEntity.fromDomain(mapped)
@@ -205,7 +207,8 @@ class AppRepositoryImpl(
                 val bloat = uadHelper.uadMap[packageName]
                 mapped.copy(
                     bloatRecommendation = bloat?.removal,
-                    bloatDescription = bloat?.description
+                    bloatDescription = bloat?.description,
+                    isUadLoadFailed = uadHelper.didLoadFail
                 )
             } catch (e: Exception) {
                 if (BuildConfig.DEBUG)

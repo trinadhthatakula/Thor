@@ -39,6 +39,7 @@ data class AppInfo(
     val bloatRecommendation: String? = null,
     val bloatDescription: String? = null,
     val isInstalled: Boolean = true,
+    val isUadLoadFailed: Boolean = false,
 ) {
     companion object {
 

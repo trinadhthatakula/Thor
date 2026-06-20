@@ -13,6 +13,9 @@ data class UadEntry(
 @Single
 class UadHelper(private val context: Context) {
 
+    var didLoadFail = false
+        private set
+
     val uadMap: Map<String, UadEntry> by lazy {
         loadUadList()
     }
@@ -29,8 +32,10 @@ class UadHelper(private val context: Context) {
                 val removal = valueObj.optString("removal", "")
                 map[key] = UadEntry(list, description, removal)
             }
+            didLoadFail = false
         } catch (e: Exception) {
             e.printStackTrace()
+            didLoadFail = true
         }
         return map
     }

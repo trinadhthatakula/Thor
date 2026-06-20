@@ -153,18 +153,20 @@ fun AppInfoDialog(
 
     if (showUninstallConfirmation) {
         val recommendation = appInfo.bloatRecommendation?.lowercase()
+        val isUadFailed = appInfo.isSystem && appInfo.isUadLoadFailed
         val isUnsafe = recommendation == "unsafe"
-        val isExpert = recommendation == "expert"
+        val isExpert = recommendation == "expert" && !isUadFailed
+        val isBlocked = isUnsafe || isUadFailed
         AlertDialog(
             onDismissRequest = { showUninstallConfirmation = false },
             title = {
                 Text(
                     text = when {
-                        isUnsafe -> stringResource(R.string.uninstall_blocked)
+                        isBlocked -> stringResource(R.string.uninstall_blocked)
                         isExpert -> stringResource(R.string.uninstall_expert_warning)
                         else -> stringResource(R.string.uninstall_system_app_title)
                     },
-                    color = if (isUnsafe || isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                    color = if (isBlocked || isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
                 )
             },
             text = {
@@ -172,23 +174,30 @@ fun AppInfoDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    appInfo.bloatRecommendation?.let { rec ->
-                        val (color, textColor) = when (rec.lowercase()) {
-                            "recommended" -> Color(0xFFC8E6C9) to Color(0xFF1B5E20)
-                            "advanced" -> Color(0xFFFFF9C4) to Color(0xFFF57F17)
-                            "expert" -> Color(0xFFFFE0B2) to Color(0xFFE65100)
-                            "unsafe" -> Color(0xFFFFCDD2) to Color(0xFFB71C1C)
-                            else -> MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant
+                    if (!isUadFailed) {
+                        appInfo.bloatRecommendation?.let { rec ->
+                            val (color, textColor) = when (rec.lowercase()) {
+                                "recommended" -> Color(0xFFC8E6C9) to Color(0xFF1B5E20)
+                                "advanced" -> Color(0xFFFFF9C4) to Color(0xFFF57F17)
+                                "expert" -> Color(0xFFFFE0B2) to Color(0xFFE65100)
+                                "unsafe" -> Color(0xFFFFCDD2) to Color(0xFFB71C1C)
+                                else -> MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                            StatusChip(
+                                text = rec,
+                                color = color,
+                                textColor = textColor
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
                         }
-                        StatusChip(
-                            text = rec,
-                            color = color,
-                            textColor = textColor
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
                     }
 
-                    if (isUnsafe) {
+                    if (isUadFailed) {
+                        Text(
+                            text = stringResource(R.string.uad_load_failed_desc),
+                            textAlign = TextAlign.Center
+                        )
+                    } else if (isUnsafe) {
                         Text(
                             text = "This system app is classified as UNSAFE. Removing it has an extremely high risk of bootlooping your device, so uninstallation is blocked.",
                             textAlign = TextAlign.Center
@@ -207,7 +216,7 @@ fun AppInfoDialog(
                 }
             },
             confirmButton = {
-                if (!isUnsafe) {
+                if (!isBlocked) {
                     TextButton(onClick = {
                         onAppAction(AppClickAction.Uninstall(appInfo))
                         showUninstallConfirmation = false
@@ -224,7 +233,7 @@ fun AppInfoDialog(
                 TextButton(onClick = {
                     showUninstallConfirmation = false
                 }) {
-                    Text(if (isUnsafe) "Close" else stringResource(R.string.no))
+                    Text(if (isBlocked) "Close" else stringResource(R.string.no))
                 }
             }
         )
