@@ -15,6 +15,7 @@ import com.valhalla.bypass.Bypass
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.util.Logger
 import org.koin.core.annotation.Single
+import kotlin.time.Duration.Companion.milliseconds
 
 @SuppressLint("PrivateApi")
 @Single
@@ -180,7 +181,7 @@ class ShizukuReflector(
 
         // Poll for up to 20 seconds to see if the app gets uninstalled by the user
         for (i in 0 until 40) {
-            kotlinx.coroutines.delay(500)
+            kotlinx.coroutines.delay(500.milliseconds)
             if (Packages(context).isAppUninstalled(packageName)) {
                 return true
             }
@@ -210,7 +211,7 @@ class ShizukuReflector(
     }
 
     /**
-     * Reinstalls app using Shizuku. See <a
+     * Reinstall app using Shizuku. See <a
      * href="https://cs.android.com/android/platform/superproject/main/+/main:frameworks/base/services/core/java/com/android/server/pm/PackageManagerShellCommand.java;drc=bcb2b436bde55ee40050400783a9c083e77ce2fe;l=1408>PackageManagerShellCommand.java</a>
      * @param packageName package name of the app to reinstall (must pre-install on the phone)
      */
