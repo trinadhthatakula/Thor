@@ -128,7 +128,9 @@ class ShizukuReflector(
                 (packageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
 
             val shouldReset = resetToFactory && isSystem && hasUpdates
-            val broadcastIntent = Intent("${context.packageName}.UNINSTALL_RESULT_ACTION")
+            val broadcastIntent = Intent("${context.packageName}.UNINSTALL_RESULT_ACTION").apply {
+                setPackage(context.packageName)
+            }
             val intent = PendingIntent.getBroadcast(
                 context,
                 0,
@@ -216,7 +218,9 @@ class ShizukuReflector(
      * @param packageName package name of the app to reinstall (must pre-install on the phone)
      */
     private fun reinstallApp(packageName: String): Boolean {
-        val broadcastIntent = Intent("${context.packageName}.INSTALL_RESULT_ACTION")
+        val broadcastIntent = Intent("${context.packageName}.INSTALL_RESULT_ACTION").apply {
+            setPackage(context.packageName)
+        }
         val intent =
             PendingIntent.getBroadcast(
                 context,
