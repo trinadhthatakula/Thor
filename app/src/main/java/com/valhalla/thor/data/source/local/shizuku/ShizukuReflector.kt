@@ -15,6 +15,7 @@ import com.valhalla.bypass.Bypass
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.util.Logger
 import org.koin.core.annotation.Single
+import kotlin.time.Duration.Companion.milliseconds
 
 @SuppressLint("PrivateApi")
 @Single
@@ -112,7 +113,7 @@ class ShizukuReflector(
             Shizuku.uninstallApp(context, packageName)
         }.getOrElse {
             if (BuildConfig.DEBUG) {
-                com.valhalla.thor.util.Logger.e("ShizukuReflector", "Shizuku.uninstallApp failed, trying fallbacks", it)
+                Logger.e("ShizukuReflector", "Shizuku.uninstallApp failed, trying fallbacks", it)
             }
             false
         }
@@ -127,7 +128,9 @@ class ShizukuReflector(
                 (packageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
 
             val shouldReset = resetToFactory && isSystem && hasUpdates
-            val broadcastIntent = Intent("io.github.samolego.canta.UNINSTALL_RESULT_ACTION")
+            val broadcastIntent = Intent("${context.packageName}.UNINSTALL_RESULT_ACTION").apply {
+                setPackage(context.packageName)
+            }
             val intent = PendingIntent.getBroadcast(
                 context,
                 0,
@@ -180,7 +183,7 @@ class ShizukuReflector(
 
         // Poll for up to 20 seconds to see if the app gets uninstalled by the user
         for (i in 0 until 40) {
-            kotlinx.coroutines.delay(500)
+            kotlinx.coroutines.delay(500.milliseconds)
             if (Packages(context).isAppUninstalled(packageName)) {
                 return true
             }
@@ -210,12 +213,14 @@ class ShizukuReflector(
     }
 
     /**
-     * Reinstalls app using Shizuku. See <a
+     * Reinstall app using Shizuku. See <a
      * href="https://cs.android.com/android/platform/superproject/main/+/main:frameworks/base/services/core/java/com/android/server/pm/PackageManagerShellCommand.java;drc=bcb2b436bde55ee40050400783a9c083e77ce2fe;l=1408>PackageManagerShellCommand.java</a>
      * @param packageName package name of the app to reinstall (must pre-install on the phone)
      */
     private fun reinstallApp(packageName: String): Boolean {
-        val broadcastIntent = Intent("io.github.samolego.canta.INSTALL_RESULT_ACTION")
+        val broadcastIntent = Intent("${context.packageName}.INSTALL_RESULT_ACTION").apply {
+            setPackage(context.packageName)
+        }
         val intent =
             PendingIntent.getBroadcast(
                 context,
