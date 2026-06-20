@@ -90,7 +90,7 @@ object Shizuku {
                 isRoot -> android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED
                 else -> android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
             }
-            val caller = if (isRoot) com.valhalla.thor.BuildConfig.APPLICATION_ID else "com.android.shell"
+            val caller = if (isRoot) context.packageName else "com.android.shell"
             Bypass.invoke<Any?>(
                 pm.javaClass,
                 pm,
