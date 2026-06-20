@@ -112,7 +112,7 @@ class ShizukuReflector(
             Shizuku.uninstallApp(context, packageName)
         }.getOrElse {
             if (BuildConfig.DEBUG) {
-                com.valhalla.thor.util.Logger.e("ShizukuReflector", "Shizuku.uninstallApp failed, trying fallbacks", it)
+                Logger.e("ShizukuReflector", "Shizuku.uninstallApp failed, trying fallbacks", it)
             }
             false
         }
@@ -127,7 +127,7 @@ class ShizukuReflector(
                 (packageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
 
             val shouldReset = resetToFactory && isSystem && hasUpdates
-            val broadcastIntent = Intent("io.github.samolego.canta.UNINSTALL_RESULT_ACTION")
+            val broadcastIntent = Intent("${context.packageName}.UNINSTALL_RESULT_ACTION")
             val intent = PendingIntent.getBroadcast(
                 context,
                 0,
@@ -215,7 +215,7 @@ class ShizukuReflector(
      * @param packageName package name of the app to reinstall (must pre-install on the phone)
      */
     private fun reinstallApp(packageName: String): Boolean {
-        val broadcastIntent = Intent("io.github.samolego.canta.INSTALL_RESULT_ACTION")
+        val broadcastIntent = Intent("${context.packageName}.INSTALL_RESULT_ACTION")
         val intent =
             PendingIntent.getBroadcast(
                 context,
