@@ -152,16 +152,50 @@ fun AppInfoDialog(
     }
 
     if (showUninstallConfirmation) {
+        val recommendation = appInfo.bloatRecommendation?.lowercase()
+        val isUnsafe = recommendation == "unsafe" || recommendation == "expert"
         AlertDialog(
             onDismissRequest = { showUninstallConfirmation = false },
-            title = { Text(stringResource(R.string.uninstall_system_app_title)) },
-            text = { Text(stringResource(R.string.uninstall_system_app_desc)) },
+            title = {
+                Text(
+                    text = if (isUnsafe) "Warning: Unsafe Uninstall" else stringResource(R.string.uninstall_system_app_title),
+                    color = if (isUnsafe) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                )
+            },
+            text = {
+                Column {
+                    if (isUnsafe) {
+                        Text(
+                            text = "Removing this system app is classified as ${appInfo.bloatRecommendation.uppercase()}.",
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(text = "This can break vital parts of your system and may cause a bootloop! Are you absolutely sure you want to proceed?")
+                    } else {
+                        Text(stringResource(R.string.uninstall_system_app_desc))
+                    }
+                    appInfo.bloatDescription?.let { desc ->
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = desc,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     onAppAction(AppClickAction.Uninstall(appInfo))
                     showUninstallConfirmation = false
                     onDismiss()
-                }) { Text(stringResource(R.string.yes)) }
+                }) {
+                    Text(
+                        text = if (isUnsafe) "Uninstall Anyway" else stringResource(R.string.yes),
+                        color = if (isUnsafe) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                    )
+                }
             },
             dismissButton = {
                 TextButton(onClick = {
@@ -288,6 +322,20 @@ private fun AppHeader(
                     color = MaterialTheme.colorScheme.secondaryContainer
                 )
             }
+            appInfo.bloatRecommendation?.let { recommendation ->
+                val (color, textColor) = when (recommendation.lowercase()) {
+                    "recommended" -> Color(0xFFC8E6C9) to Color(0xFF1B5E20)
+                    "advanced" -> Color(0xFFFFF9C4) to Color(0xFFF57F17)
+                    "expert" -> Color(0xFFFFE0B2) to Color(0xFFE65100)
+                    "unsafe" -> Color(0xFFFFCDD2) to Color(0xFFB71C1C)
+                    else -> MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                StatusChip(
+                    text = recommendation,
+                    color = color,
+                    textColor = textColor
+                )
+            }
             StatusChip(
                 text = stringResource(R.string.version_format, appInfo.versionName ?: ""),
                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -304,6 +352,17 @@ private fun AppHeader(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontFamily = com.valhalla.thor.presentation.theme.firaMonoFontFamily
         )
+
+        appInfo.bloatDescription?.let { desc ->
+            Spacer(Modifier.height(16.dp))
+            Text(
+                text = desc,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+        }
     }
 }
 

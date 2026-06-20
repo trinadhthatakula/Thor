@@ -329,6 +329,9 @@ fun AppInfoDetailsScreen(
     }
 
     if (showUninstallConfirmation) {
+        val appInfo = state.detailedInfo?.appInfo
+        val recommendation = appInfo?.bloatRecommendation?.lowercase()
+        val isUnsafe = appInfo != null && appInfo.isSystem && (recommendation == "unsafe" || recommendation == "expert")
         AlertDialog(
             onDismissRequest = { showUninstallConfirmation = false },
             icon = {
@@ -338,11 +341,37 @@ fun AppInfoDetailsScreen(
                     tint = MaterialTheme.colorScheme.error
                 )
             },
-            title = { Text(stringResource(R.string.uninstall_app_title)) },
-            text = { Text(stringResource(R.string.uninstall_app_desc, appName)) },
+            title = {
+                Text(
+                    text = if (isUnsafe) "Warning: Unsafe Uninstall" else stringResource(R.string.uninstall_app_title),
+                    color = if (isUnsafe) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                )
+            },
+            text = {
+                Column {
+                    if (isUnsafe) {
+                        Text(
+                            text = "Removing this system app is classified as ${appInfo.bloatRecommendation.uppercase()}.",
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(text = "This can break vital parts of your system and may cause a bootloop! Are you absolutely sure you want to proceed?")
+                    } else {
+                        Text(stringResource(R.string.uninstall_app_desc, appName))
+                    }
+                    appInfo?.bloatDescription?.let { desc ->
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = desc,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
-                    val appInfo = state.detailedInfo?.appInfo
                     if (appInfo != null && appInfo.isSystem) {
                         onAppAction(AppClickAction.Uninstall(appInfo))
                     } else {
@@ -355,7 +384,7 @@ fun AppInfoDetailsScreen(
                     showUninstallConfirmation = false
                 }) {
                     Text(
-                        stringResource(R.string.action_uninstall),
+                        text = if (isUnsafe) "Uninstall Anyway" else stringResource(R.string.action_uninstall),
                         color = MaterialTheme.colorScheme.error
                     )
                 }
@@ -486,6 +515,20 @@ private fun AppDetailsHeader(
                     )
                 }
 
+                appInfo.bloatRecommendation?.let { recommendation ->
+                    val (chipColor, chipTextColor) = when (recommendation.lowercase()) {
+                        "recommended" -> Color(0xFFC8E6C9) to Color(0xFF1B5E20)
+                        "advanced" -> Color(0xFFFFF9C4) to Color(0xFFF57F17)
+                        "expert" -> Color(0xFFFFE0B2) to Color(0xFFE65100)
+                        "unsafe" -> Color(0xFFFFCDD2) to Color(0xFFB71C1C)
+                        else -> MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                    StatusChip(
+                        text = recommendation,
+                        color = chipColor,
+                        textColor = chipTextColor
+                    )
+                }
                 StatusChip(
                     text = stringResource(R.string.version_format, appInfo.versionName ?: ""),
                     color = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -691,6 +734,22 @@ private fun GeneralTabScreen(details: DetailedAppInfo) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        appInfo.bloatRecommendation?.let { recommendation ->
+            item {
+                InfoCard(
+                    title = "Debloat Recommendation",
+                    value = recommendation
+                )
+            }
+        }
+        appInfo.bloatDescription?.let { description ->
+            item {
+                InfoCard(
+                    title = "Debloat Description",
+                    value = description
+                )
+            }
+        }
         item {
             InfoCard(
                 title = stringResource(R.string.info_app_version),

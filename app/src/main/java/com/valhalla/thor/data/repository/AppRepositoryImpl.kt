@@ -7,6 +7,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.data.source.local.UadHelper
 import com.valhalla.thor.data.source.local.room.AppDao
 import com.valhalla.thor.data.source.local.room.AppEntity
 import com.valhalla.thor.domain.model.AppInfo
@@ -27,7 +28,8 @@ import java.io.File
 @Single(binds = [AppRepository::class])
 class AppRepositoryImpl(
     private val context: Context,
-    private val appDao: AppDao
+    private val appDao: AppDao,
+    private val uadHelper: UadHelper
 ) : AppRepository {
 
     private val pm = context.packageManager
@@ -98,17 +100,28 @@ class AppRepositoryImpl(
                         val isInstalled = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0
                         val isEnabled = appInfo.enabled && isInstalled
 
+                        val uadMap = uadHelper.uadMap
                         if (!forceRefresh &&
                             cachedEntry != null &&
                             cachedEntry.lastUpdateTime == packInfo.lastUpdateTime &&
                             cachedEntry.enabled == isEnabled &&
                             cachedEntry.isSuspended == isSuspended
                         ) {
-                            currentList.add(cachedEntry.toDomain())
+                            val domain = cachedEntry.toDomain()
+                            val bloat = uadMap[domain.packageName]
+                            currentList.add(domain.copy(
+                                bloatRecommendation = bloat?.removal,
+                                bloatDescription = bloat?.description
+                            ))
                         } else {
                             val mapped =
                                 AppInfo.mapToAppInfo(packInfo, appInfo, pm, isLightweight = true)
-                            currentList.add(mapped)
+                            val bloat = uadMap[mapped.packageName]
+                            val mappedWithBloat = mapped.copy(
+                                bloatRecommendation = bloat?.removal,
+                                bloatDescription = bloat?.description
+                            )
+                            currentList.add(mappedWithBloat)
                             val entity = AppEntity.fromDomain(mapped)
                             toUpdate.add(entity)
                             cachedMap[packageName] = entity
@@ -187,7 +200,12 @@ class AppRepositoryImpl(
                 }
                 val appInfo = packInfo.applicationInfo ?: return@withContext null
 
-                AppInfo.mapToAppInfo(packInfo, appInfo, pm, isLightweight = false)
+                val mapped = AppInfo.mapToAppInfo(packInfo, appInfo, pm, isLightweight = false)
+                val bloat = uadHelper.uadMap[packageName]
+                mapped.copy(
+                    bloatRecommendation = bloat?.removal,
+                    bloatDescription = bloat?.description
+                )
             } catch (e: Exception) {
                 if (BuildConfig.DEBUG)
                     e.printStackTrace()
