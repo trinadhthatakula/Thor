@@ -98,7 +98,7 @@
     <string name="clear_app_data_desc">这将永久删除 %1$s 的所有数据。此操作无法撤销。</string>
     <string name="clear_all_data">清除所有数据</string>
     <string name="uninstall_system_app_title">卸载系统应用？</string>
-    <string name="uninstall_system_app_desc">这允许您卸载更新或恢复此系统应用的出厂设置。继续吗？</string>
+    <string name="uninstall_system_app_desc">这将为当前用户卸载此系统应用。继续吗？</string>
     <string name="risk_warning_title">风险警告</string>
     <string name="risk_warning_desc">这会强制将安装程序记录更改为“Google Play 商店”。\n\n如果签名与官方商店版本不匹配，更新可能会失败。</string>
     <string name="reinstall_play_store_title">使用 Play 商店重新安装？</string>

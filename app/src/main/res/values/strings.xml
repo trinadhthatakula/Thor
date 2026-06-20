@@ -101,7 +101,7 @@
     <string name="clear_app_data_desc">This will permanently delete all data for %1$s. This action cannot be undone.</string>
     <string name="clear_all_data">Clear All Data</string>
     <string name="uninstall_system_app_title">Uninstall System App?</string>
-    <string name="uninstall_system_app_desc">This allows you to uninstall updates or factory reset this system app. Proceed?</string>
+    <string name="uninstall_system_app_desc">This will uninstall the system app for the current user. Proceed?</string>
     <string name="risk_warning_title">Risk Warning</string>
     <string name="risk_warning_desc">This forces the installer record to \'Google Play Store\'.\n\nUpdates may fail if the signature doesn\'t match the official store version.</string>
     <string name="reinstall_play_store_title">Reinstall with Play Store?</string>

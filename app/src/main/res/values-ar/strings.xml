@@ -98,7 +98,7 @@
     <string name="clear_app_data_desc">سيؤدي هذا إلى حذف جميع بيانات %1$s نهائياً. لا يمكن التراجع عن هذا الإجراء.</string>
     <string name="clear_all_data">مسح جميع البيانات</string>
     <string name="uninstall_system_app_title">إلغاء تثبيت تطبيق النظام؟</string>
-    <string name="uninstall_system_app_desc">يتيح لك هذا إلغاء تثبيت التحديثات أو استعادة ضبط المصنع لتطبيق النظام هذا. متابعة؟</string>
+    <string name="uninstall_system_app_desc">سيؤدي هذا إلى إلغاء تثبيت تطبيق النظام للمستخدم الحالي. متابعة؟</string>
     <string name="risk_warning_title">تحذير من المخاطر</string>
     <string name="risk_warning_desc">هذا يجبر سجل المثبت على \'Google Play Store\'.\n\nقد تفشل التحديثات إذا لم يتطابق التوقيع مع نسخة المتجر الرسمية.</string>
     <string name="reinstall_play_store_title">إعادة التثبيت باستخدام متجر Play؟</string>

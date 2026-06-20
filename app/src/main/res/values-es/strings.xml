@@ -98,7 +98,7 @@
     <string name="clear_app_data_desc">Esto borrará permanentemente todos los datos de %1$s. Esta acción no se puede deshacer.</string>
     <string name="clear_all_data">Borrar todos los datos</string>
     <string name="uninstall_system_app_title">¿Desinstalar aplicación del sistema?</string>
-    <string name="uninstall_system_app_desc">Esto te permite desinstalar actualizaciones o restablecer de fábrica esta aplicación del sistema. ¿Continuar?</string>
+    <string name="uninstall_system_app_desc">Esto desinstalará la aplicación del sistema para el usuario actual. ¿Proceder?</string>
     <string name="risk_warning_title">Advertencia de riesgo</string>
     <string name="risk_warning_desc">Esto fuerza el registro del instalador a \'Google Play Store\'.\n\nLas actualizaciones pueden fallar si la firma no coincide con la versión oficial de la tienda.</string>
     <string name="reinstall_play_store_title">¿Reinstalar con Play Store?</string>
