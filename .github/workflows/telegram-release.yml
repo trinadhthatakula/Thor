@@ -33,10 +33,8 @@ jobs:
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.0'
-
-      - name: Install Fastlane
-        run: gem install fastlane
+          ruby-version: '3.3'
+          bundler-cache: true
 
       # --- SECRET DECODING ---
       - name: Decode Keystore
@@ -69,7 +67,7 @@ jobs:
           # Pass arguments to the lane using key:value syntax
           # If INPUT_VERSION_CODE is empty, Fastlane receives nil/empty string and logic handles it
           
-          fastlane android build_release_candidates \
+          bundle exec fastlane android build_release_candidates \
             version_code:"$INPUT_VERSION_CODE" \
             increment:"$INPUT_INCREMENT"
 

@@ -23,10 +23,8 @@ jobs:
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.0'
-
-      - name: Install Fastlane
-        run: gem install fastlane
+          ruby-version: '3.3'
+          bundler-cache: true
 
       # --- SECRET DECODING (Required for Play Store Version Check & Signing) ---
       - name: Decode Keystore
@@ -51,7 +49,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEYSTORE_FILE_PATH: ${{ github.workspace }}/app/release.jks
-        run: fastlane android build_release_candidates
+        run: bundle exec fastlane android build_release_candidates
 
       # --- ARTIFACT UPLOAD ---
       - name: Read Version Info
