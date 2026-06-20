@@ -43,11 +43,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.rememberAsyncImagePainter
+import coil3.compose.AsyncImage
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
-import com.valhalla.thor.presentation.utils.getAppIcon
+import com.valhalla.thor.presentation.utils.AppIconModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -303,8 +303,8 @@ private fun AppHeader(
                 .padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
-            Image(
-                painter = rememberAsyncImagePainter(getAppIcon(appInfo.packageName, context)),
+            AsyncImage(
+                model = AppIconModel(appInfo.packageName),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize()
             )
