@@ -155,8 +155,14 @@ object DhizukuHelper {
     }
 
     fun uninstallApp(packageName: String): Boolean {
+        val currentUser = try {
+            val userResult = execute("am get-current-user")
+            userResult.second?.trim()?.takeIf { it.matches(Regex("^\\d+$")) } ?: "0"
+        } catch (_: Exception) {
+            "0"
+        }
         return execute(
-            "pm uninstall --user current ${
+            "pm uninstall --user $currentUser ${
                 com.valhalla.superuser.ShellUtils.escapedString(
                     packageName
                 )
@@ -165,8 +171,14 @@ object DhizukuHelper {
     }
 
     fun reinstallApp(packageName: String): Boolean {
+        val currentUser = try {
+            val userResult = execute("am get-current-user")
+            userResult.second?.trim()?.takeIf { it.matches(Regex("^\\d+$")) } ?: "0"
+        } catch (_: Exception) {
+            "0"
+        }
         return execute(
-            "pm install-existing --user current ${
+            "pm install-existing --user $currentUser ${
                 com.valhalla.superuser.ShellUtils.escapedString(
                     packageName
                 )
