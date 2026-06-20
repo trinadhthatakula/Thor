@@ -98,7 +98,10 @@
     <string name="clear_app_data_desc">Cela supprimera définitivement toutes les données de %1$s. Cette action est irréversible.</string>
     <string name="clear_all_data">Effacer toutes les données</string>
     <string name="uninstall_system_app_title">Désinstaller l\'appli système ?</string>
-    <string name="uninstall_system_app_desc">Cela vous permet de désinstaller les mises à jour ou de réinitialiser cette application système. Continuer ?</string>
+    <string name="uninstall_system_app_desc">Cela va désinstaller l\'application système pour l\'utilisateur actuel. Continuer ?</string>
+    <string name="uninstall_blocked">Désinstallation bloquée</string>
+    <string name="uninstall_expert_warning">Avertissement : Désinstallation experte</string>
+    <string name="uad_load_failed_desc">Échec du chargement des métadonnées de sécurité UAD. La désinstallation d\'applications système est bloquée pour éviter les boucles de démarrage ou les dysfonctionnements du système.</string>
     <string name="risk_warning_title">Avertissement de risque</string>
     <string name="risk_warning_desc">Ceci force l\'enregistrement de l\'installateur sur \'Google Play Store\'.\n\nLes mises à jour peuvent échouer si la signature ne correspond pas à la version officielle du store.</string>
     <string name="reinstall_play_store_title">Réinstaller avec Play Store ?</string>
@@ -136,6 +139,7 @@
     <string name="cd_config">Configuration</string>
     <string name="cd_close">Fermer</string>
     <string name="cd_frozen">Gelé</string>
+    <string name="cd_uninstalled">Désinstallé</string>
     <string name="cd_suspended">Suspendu</string>
     <string name="cd_selected">Sélectionné</string>
     <string name="cd_search">Rechercher</string>
@@ -180,6 +184,7 @@
     <string name="frozen_success">%1$s gelé</string>
     <string name="unfrozen_success">%1$s dégelé</string>
     <string name="added_to_freezer_success">Ajouté au congélateur</string>
+    <string name="add_to_freezer">Ajouter au congélateur</string>
     <string name="unfrozen_count_success">%1$d applications dégelées</string>
     <string name="tile_unfreeze_partial_failure">%1$d/%2$d applications dégelées (%3$d échouées)</string>
     <string name="error_format">Erreur : %1$s</string>

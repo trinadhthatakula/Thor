@@ -329,38 +329,108 @@ fun AppInfoDetailsScreen(
     }
 
     if (showUninstallConfirmation) {
-        AlertDialog(
-            onDismissRequest = { showUninstallConfirmation = false },
-            icon = {
-                Icon(
-                    painter = painterResource(R.drawable.delete_forever),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
-                )
-            },
-            title = { Text(stringResource(R.string.uninstall_app_title)) },
-            text = { Text(stringResource(R.string.uninstall_app_desc, appName)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    val intent =
-                        android.content.Intent(android.content.Intent.ACTION_DELETE).apply {
-                            data = android.net.Uri.parse("package:$packageName")
-                        }
-                    context.startActivity(intent)
-                    showUninstallConfirmation = false
-                }) {
+        val appInfo = state.detailedInfo?.appInfo
+        if (appInfo != null) {
+            val recommendation = appInfo.bloatRecommendation?.lowercase()
+            val isSystem = appInfo.isSystem
+            val isUadFailed = isSystem && appInfo.isUadLoadFailed
+            val isUnsafe = isSystem && recommendation == "unsafe"
+            val isExpert = isSystem && recommendation == "expert" && !isUadFailed
+            val isBlocked = isUnsafe || isUadFailed
+            AlertDialog(
+                onDismissRequest = { showUninstallConfirmation = false },
+                title = {
                     Text(
-                        stringResource(R.string.action_uninstall),
-                        color = MaterialTheme.colorScheme.error
+                        text = when {
+                            isBlocked -> stringResource(R.string.uninstall_blocked)
+                            isExpert -> stringResource(R.string.uninstall_expert_warning)
+                            isSystem -> stringResource(R.string.uninstall_system_app_title)
+                            else -> stringResource(R.string.uninstall_app_title)
+                        },
+                        color = if (isBlocked || isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
                     )
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        if (isSystem && !isUadFailed) {
+                            appInfo.bloatRecommendation?.let { rec ->
+                                val (color, textColor) = when (rec.lowercase()) {
+                                    "recommended" -> Color(0xFFC8E6C9) to Color(0xFF1B5E20)
+                                    "advanced" -> Color(0xFFFFF9C4) to Color(0xFFF57F17)
+                                    "expert" -> Color(0xFFFFE0B2) to Color(0xFFE65100)
+                                    "unsafe" -> Color(0xFFFFCDD2) to Color(0xFFB71C1C)
+                                    else -> MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                                StatusChip(
+                                    text = rec,
+                                    color = color,
+                                    textColor = textColor
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                            }
+                        }
+
+                        if (isUadFailed) {
+                            Text(
+                                text = stringResource(R.string.uad_load_failed_desc),
+                                textAlign = TextAlign.Center
+                            )
+                        } else if (isUnsafe) {
+                            Text(
+                                text = "This system app is classified as UNSAFE. Removing it has an extremely high risk of bootlooping your device, so uninstallation is blocked.",
+                                textAlign = TextAlign.Center
+                            )
+                        } else if (isExpert) {
+                            Text(
+                                text = "This system app is classified as EXPERT. Removing it breaks important functionality. Are you sure you want to proceed?",
+                                textAlign = TextAlign.Center
+                            )
+                        } else if (isSystem) {
+                            Text(
+                                text = stringResource(R.string.uninstall_system_app_desc),
+                                textAlign = TextAlign.Center
+                            )
+                        } else {
+                            Text(
+                                text = stringResource(R.string.uninstall_app_desc, appName),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    if (!isBlocked) {
+                        TextButton(onClick = {
+                            if (isSystem) {
+                                onAppAction(AppClickAction.Uninstall(appInfo))
+                            } else {
+                                val intent =
+                                    android.content.Intent(android.content.Intent.ACTION_DELETE).apply {
+                                        data = android.net.Uri.parse("package:$packageName")
+                                    }
+                                context.startActivity(intent)
+                            }
+                            showUninstallConfirmation = false
+                        }) {
+                            Text(
+                                text = if (isExpert) "Uninstall Anyway" else if (isSystem) stringResource(R.string.yes) else stringResource(R.string.action_uninstall),
+                                color = if (isExpert || !isSystem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        showUninstallConfirmation = false
+                    }) {
+                        Text(if (isBlocked) "Close" else if (isSystem) stringResource(R.string.no) else stringResource(R.string.cancel))
+                    }
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showUninstallConfirmation = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            }
-        )
+            )
+        }
     }
 }
 
@@ -481,6 +551,20 @@ private fun AppDetailsHeader(
                     )
                 }
 
+                appInfo.bloatRecommendation?.let { recommendation ->
+                    val (chipColor, chipTextColor) = when (recommendation.lowercase()) {
+                        "recommended" -> Color(0xFFC8E6C9) to Color(0xFF1B5E20)
+                        "advanced" -> Color(0xFFFFF9C4) to Color(0xFFF57F17)
+                        "expert" -> Color(0xFFFFE0B2) to Color(0xFFE65100)
+                        "unsafe" -> Color(0xFFFFCDD2) to Color(0xFFB71C1C)
+                        else -> MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                    StatusChip(
+                        text = recommendation,
+                        color = chipColor,
+                        textColor = chipTextColor
+                    )
+                }
                 StatusChip(
                     text = stringResource(R.string.version_format, appInfo.versionName ?: ""),
                     color = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -686,6 +770,15 @@ private fun GeneralTabScreen(details: DetailedAppInfo) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        appInfo.bloatRecommendation?.let { recommendation ->
+            item {
+                InfoCard(
+                    title = "Debloat Recommendation",
+                    value = recommendation
+                )
+            }
+        }
+
         item {
             InfoCard(
                 title = stringResource(R.string.info_app_version),

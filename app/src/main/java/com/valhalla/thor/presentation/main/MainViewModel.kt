@@ -14,6 +14,7 @@ import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.domain.usecase.ShareAppUseCase
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.presentation.home.AppDestinations
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.Dispatchers
@@ -67,7 +68,8 @@ class MainViewModel(
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val shareAppUseCase: ShareAppUseCase,
     private val packageManager: PackageManager,
-    private val preferenceRepository: PreferenceRepository
+    private val preferenceRepository: PreferenceRepository,
+    private val freezerRepository: FreezerRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MainUiState())
@@ -281,6 +283,7 @@ class MainViewModel(
                             val result = manageAppUseCase.uninstallApp(action.appInfo.packageName)
                             if (result.isSuccess) {
                                 addLog("✔ Uninstall successful")
+                                freezerRepository.add(action.appInfo.packageName)
                                 triggerSupportPromptIfNeeded()
                             }
                             else {
@@ -440,8 +443,12 @@ class MainViewModel(
                 is MultiAppAction.Uninstall -> performLoggedMultiAction(
                     "Uninstalling Apps",
                     action.appList
-                ) {
-                    manageAppUseCase.uninstallApp(it.packageName)
+                ) { appInfo ->
+                    val result = manageAppUseCase.uninstallApp(appInfo.packageName)
+                    if (result.isSuccess && appInfo.isSystem) {
+                        freezerRepository.add(appInfo.packageName)
+                    }
+                    result
                 }
 
                 is MultiAppAction.Suspend -> performLoggedMultiAction(

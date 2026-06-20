@@ -212,12 +212,24 @@ class ShizukuReflector(
         }
     }
 
+    fun reinstallExistingApp(packageName: String): Boolean {
+        // 1. Try shell first
+        if (Shizuku.reinstallApp(packageName)) return true
+
+        // 2. Fallback to reflection
+        return reinstallApp(packageName)
+    }
+
+    fun isSystemApp(packageName: String): Boolean = getApplicationInfoOrNull(packageName)?.let {
+        (it.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+    } ?: false
+
     /**
      * Reinstall app using Shizuku. See <a
      * href="https://cs.android.com/android/platform/superproject/main/+/main:frameworks/base/services/core/java/com/android/server/pm/PackageManagerShellCommand.java;drc=bcb2b436bde55ee40050400783a9c083e77ce2fe;l=1408>PackageManagerShellCommand.java</a>
      * @param packageName package name of the app to reinstall (must pre-install on the phone)
      */
-    private fun reinstallApp(packageName: String): Boolean {
+    fun reinstallApp(packageName: String): Boolean {
         val broadcastIntent = Intent("${context.packageName}.INSTALL_RESULT_ACTION").apply {
             setPackage(context.packageName)
         }

@@ -154,14 +154,47 @@ object DhizukuHelper {
         return Packages(context).isAppDisabled(packageName) == disabled
     }
 
+    private var cachedUserId: String? = null
+
+    fun getCurrentUserId(): String {
+        cachedUserId?.let { return it }
+        val userResult = execute("am get-current-user")
+        val output = userResult.second?.trim()
+        if (userResult.first != 0 || output == null || !output.matches(Regex("^\\d+$"))) {
+            throw IllegalStateException("Failed to determine current user ID: exitCode=${userResult.first}, output=$output")
+        }
+        cachedUserId = output
+        return output
+    }
+
     fun uninstallApp(packageName: String): Boolean {
-        return execute(
-            "pm uninstall --user current ${
-                com.valhalla.superuser.ShellUtils.escapedString(
-                    packageName
-                )
-            }"
-        ).first == 0
+        return try {
+            val currentUser = getCurrentUserId()
+            execute(
+                "pm uninstall --user $currentUser ${
+                    com.valhalla.superuser.ShellUtils.escapedString(
+                        packageName
+                    )
+                }"
+            ).first == 0
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun reinstallApp(packageName: String): Boolean {
+        return try {
+            val currentUser = getCurrentUserId()
+            execute(
+                "pm install-existing --user $currentUser ${
+                    com.valhalla.superuser.ShellUtils.escapedString(
+                        packageName
+                    )
+                }"
+            ).first == 0
+        } catch (_: Exception) {
+            false
+        }
     }
 
     fun execute(command: String): Pair<Int, String?> = runCatching {

@@ -64,7 +64,9 @@ class Packages(private val app: Context) {
     } ?: false
 
     fun canUninstallNormally(packageName: String): Boolean =
-        getApplicationInfoOrNull(packageName)?.sourceDir?.startsWith("/data") ?: false
+        getApplicationInfoOrNull(packageName)?.let {
+            (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0
+        } ?: false
 
     fun forceStopApp(packageName: String): Boolean = runCatching {
         app.getSystemService<ActivityManager>()?.let {

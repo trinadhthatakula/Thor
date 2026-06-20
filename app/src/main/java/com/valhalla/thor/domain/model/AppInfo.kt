@@ -36,6 +36,10 @@ data class AppInfo(
     val firstInstallTime: Long = 0L,
     val isDebuggable: Boolean = false,
     val isSuspended: Boolean = false,
+    val bloatRecommendation: String? = null,
+    val bloatDescription: String? = null,
+    val isInstalled: Boolean = true,
+    val isUadLoadFailed: Boolean = false,
 ) {
     companion object {
 
@@ -85,7 +89,7 @@ data class AppInfo(
                 installerPackageName = getInstallerPackageName(packInfo.packageName, pm),
                 publicSourceDir = appInfo.publicSourceDir,
                 splitPublicSourceDirs = appInfo.splitPublicSourceDirs?.toList() ?: emptyList(),
-                enabled = appInfo.enabled,
+                enabled = appInfo.enabled && (appInfo.flags and ApplicationInfo.FLAG_INSTALLED) != 0,
                 dataDir = appInfo.dataDir,
                 nativeLibraryDir = appInfo.nativeLibraryDir,
                 deviceProtectedDataDir = appInfo.deviceProtectedDataDir,
@@ -96,7 +100,8 @@ data class AppInfo(
                 lastUpdateTime = packInfo.lastUpdateTime,
                 firstInstallTime = packInfo.firstInstallTime,
                 isDebuggable = isDebuggable,
-                isSuspended = (appInfo.flags and ApplicationInfo.FLAG_SUSPENDED) != 0
+                isSuspended = (appInfo.flags and ApplicationInfo.FLAG_SUSPENDED) != 0,
+                isInstalled = (appInfo.flags and ApplicationInfo.FLAG_INSTALLED) != 0
             )
         }
 

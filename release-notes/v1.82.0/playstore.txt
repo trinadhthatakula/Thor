@@ -1,0 +1,5 @@
+- Overhauled Freezer UI with bottom horizontal floating toolbar (Freeze, Add, Unfreeze) and app filters.
+- Safe system app disabling: uninstalls system apps for current user (PM uninstall) and restores them via install-existing (for Root/Shizuku/Dhizuku).
+- Preserves app icons locally for uninstalled system apps.
+- Integrates Universal Android Debloater (UAD) safety chips; blocks unsafe system app uninstalls.
+- Bug fixes & stability improvements.

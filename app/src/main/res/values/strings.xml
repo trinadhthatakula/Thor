@@ -101,7 +101,10 @@
     <string name="clear_app_data_desc">This will permanently delete all data for %1$s. This action cannot be undone.</string>
     <string name="clear_all_data">Clear All Data</string>
     <string name="uninstall_system_app_title">Uninstall System App?</string>
-    <string name="uninstall_system_app_desc">This allows you to uninstall updates or factory reset this system app. Proceed?</string>
+    <string name="uninstall_system_app_desc">This will uninstall the system app for the current user. Proceed?</string>
+    <string name="uninstall_blocked">Uninstall Blocked</string>
+    <string name="uninstall_expert_warning">Warning: Expert Uninstall</string>
+    <string name="uad_load_failed_desc">UAD safety metadata failed to load. System app uninstallation is blocked to prevent potential bootloops or device issues.</string>
     <string name="risk_warning_title">Risk Warning</string>
     <string name="risk_warning_desc">This forces the installer record to \'Google Play Store\'.\n\nUpdates may fail if the signature doesn\'t match the official store version.</string>
     <string name="reinstall_play_store_title">Reinstall with Play Store?</string>
@@ -139,6 +142,7 @@
     <string name="cd_config">Config</string>
     <string name="cd_close">Close</string>
     <string name="cd_frozen">Frozen</string>
+    <string name="cd_uninstalled">Uninstalled</string>
     <string name="cd_suspended">Suspended</string>
     <string name="cd_selected">Selected</string>
     <string name="cd_search">Search</string>
@@ -182,6 +186,7 @@
     <string name="import_disabled_apps_button">Import disabled apps</string>
     <string name="no_disabled_apps_found">No other disabled apps found.</string>
     <string name="added_to_freezer_count_success">Added %1$d apps to Freezer</string>
+    <string name="add_to_freezer">Add to Freezer</string>
 
     <!-- UiText Messages -->
     <string name="action_completed_format">%1$s completed: %2$s</string>

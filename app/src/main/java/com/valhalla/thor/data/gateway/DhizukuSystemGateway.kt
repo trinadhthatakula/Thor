@@ -39,8 +39,19 @@ class DhizukuSystemGateway(
     }
 
     override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> {
-        return if (reflector.setAppEnabled(packageName, !isDisabled)) Result.success(Unit)
-        else Result.failure(Exception("Dhizuku: Set enabled state failed. Shell and reflection both failed."))
+        val isSystem = reflector.isSystemApp(packageName)
+        return if (isSystem) {
+            if (isDisabled) {
+                if (reflector.uninstallApp(packageName)) Result.success(Unit)
+                else Result.failure(Exception("Dhizuku: Failed to uninstall system app $packageName"))
+            } else {
+                if (reflector.reinstallExistingApp(packageName)) Result.success(Unit)
+                else Result.failure(Exception("Dhizuku: Failed to reinstall system app $packageName"))
+            }
+        } else {
+            if (reflector.setAppEnabled(packageName, !isDisabled)) Result.success(Unit)
+            else Result.failure(Exception("Dhizuku: Set enabled state failed. Shell and reflection both failed."))
+        }
     }
 
     override suspend fun rebootDevice(reason: String): Result<Unit> {
@@ -91,13 +102,7 @@ class DhizukuSystemGateway(
             val combinedPath = paths.joinToString(" ") { ShellUtils.escapedString(it) }
 
             // 2. Get Current User ID
-            val userResult = DhizukuHelper.execute("am get-current-user")
-            val currentUser = userResult.second?.trim()
-                ?: return Result.failure(Exception("Dhizuku: Could not determine current user"))
-
-            if (!currentUser.matches(USER_ID_REGEX)) {
-                return Result.failure(Exception("Dhizuku: Invalid user ID format: $currentUser"))
-            }
+            val currentUser = DhizukuHelper.getCurrentUserId()
 
             // 3. Execute the reinstallation command
             val command =

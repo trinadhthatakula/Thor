@@ -350,11 +350,40 @@ object Shizuku {
         }.getOrElse { false }
     }
 
-    fun uninstallApp(context: Context, packageName: String): Boolean =
-        execute("pm ${if (Packages(context).canUninstallNormally(packageName)) "uninstall" else "uninstall --user current"} $packageName").first == 0
+    private var cachedUserId: String? = null
 
-    fun reinstallApp(packageName: String): Boolean =
-        execute("pm install-existing --user current $packageName").first == 0
+    fun getCurrentUserId(): String {
+        cachedUserId?.let { return it }
+        val userResult = execute("am get-current-user")
+        val output = userResult.second?.trim()
+        if (userResult.first != 0 || output == null || !output.matches(Regex("^\\d+$"))) {
+            throw IllegalStateException("Failed to determine current user ID: exitCode=${userResult.first}, output=$output")
+        }
+        cachedUserId = output
+        return output
+    }
+
+    fun uninstallApp(context: Context, packageName: String): Boolean {
+        val normally = Packages(context).canUninstallNormally(packageName)
+        if (normally) {
+            return execute("pm uninstall $packageName").first == 0
+        }
+        return try {
+            val currentUser = getCurrentUserId()
+            execute("pm uninstall --user $currentUser $packageName").first == 0
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun reinstallApp(packageName: String): Boolean {
+        return try {
+            val currentUser = getCurrentUserId()
+            execute("pm install-existing --user $currentUser $packageName").first == 0
+        } catch (_: Exception) {
+            false
+        }
+    }
 
     fun execute(command: String, root: Boolean = isRoot): Pair<Int, String?> = runCatching {
         val binder = Shizuku.getBinder() ?: return -1 to "Shizuku binder is null"

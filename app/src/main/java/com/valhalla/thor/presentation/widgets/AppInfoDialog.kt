@@ -43,11 +43,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.rememberAsyncImagePainter
+import coil3.compose.AsyncImage
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
-import com.valhalla.thor.presentation.utils.getAppIcon
+import com.valhalla.thor.presentation.utils.AppIconModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -152,21 +152,89 @@ fun AppInfoDialog(
     }
 
     if (showUninstallConfirmation) {
+        val recommendation = appInfo.bloatRecommendation?.lowercase()
+        val isUadFailed = appInfo.isSystem && appInfo.isUadLoadFailed
+        val isUnsafe = recommendation == "unsafe"
+        val isExpert = recommendation == "expert" && !isUadFailed
+        val isBlocked = isUnsafe || isUadFailed
         AlertDialog(
             onDismissRequest = { showUninstallConfirmation = false },
-            title = { Text(stringResource(R.string.uninstall_system_app_title)) },
-            text = { Text(stringResource(R.string.uninstall_system_app_desc)) },
+            title = {
+                Text(
+                    text = when {
+                        isBlocked -> stringResource(R.string.uninstall_blocked)
+                        isExpert -> stringResource(R.string.uninstall_expert_warning)
+                        else -> stringResource(R.string.uninstall_system_app_title)
+                    },
+                    color = if (isBlocked || isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    if (!isUadFailed) {
+                        appInfo.bloatRecommendation?.let { rec ->
+                            val (color, textColor) = when (rec.lowercase()) {
+                                "recommended" -> Color(0xFFC8E6C9) to Color(0xFF1B5E20)
+                                "advanced" -> Color(0xFFFFF9C4) to Color(0xFFF57F17)
+                                "expert" -> Color(0xFFFFE0B2) to Color(0xFFE65100)
+                                "unsafe" -> Color(0xFFFFCDD2) to Color(0xFFB71C1C)
+                                else -> MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                            StatusChip(
+                                text = rec,
+                                color = color,
+                                textColor = textColor
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
+                    }
+
+                    if (isUadFailed) {
+                        Text(
+                            text = stringResource(R.string.uad_load_failed_desc),
+                            textAlign = TextAlign.Center
+                        )
+                    } else if (isUnsafe) {
+                        Text(
+                            text = "This system app is classified as UNSAFE. Removing it has an extremely high risk of bootlooping your device, so uninstallation is blocked.",
+                            textAlign = TextAlign.Center
+                        )
+                    } else if (isExpert) {
+                        Text(
+                            text = "This system app is classified as EXPERT. Removing it breaks important functionality. Are you sure you want to proceed?",
+                            textAlign = TextAlign.Center
+                        )
+                    } else {
+                        Text(
+                            text = stringResource(R.string.uninstall_system_app_desc),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            },
             confirmButton = {
-                TextButton(onClick = {
-                    onAppAction(AppClickAction.Uninstall(appInfo))
-                    showUninstallConfirmation = false
-                    onDismiss()
-                }) { Text(stringResource(R.string.yes)) }
+                if (!isBlocked) {
+                    TextButton(onClick = {
+                        onAppAction(AppClickAction.Uninstall(appInfo))
+                        showUninstallConfirmation = false
+                        onDismiss()
+                    }) {
+                        Text(
+                            text = if (isExpert) "Uninstall Anyway" else stringResource(R.string.yes),
+                            color = if (isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
             },
             dismissButton = {
                 TextButton(onClick = {
                     showUninstallConfirmation = false
-                }) { Text(stringResource(R.string.no)) }
+                }) {
+                    Text(if (isBlocked) "Close" else stringResource(R.string.no))
+                }
             }
         )
     }
@@ -244,8 +312,8 @@ private fun AppHeader(
                 .padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
-            Image(
-                painter = rememberAsyncImagePainter(getAppIcon(appInfo.packageName, context)),
+            AsyncImage(
+                model = AppIconModel(appInfo.packageName),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize()
             )
@@ -288,6 +356,20 @@ private fun AppHeader(
                     color = MaterialTheme.colorScheme.secondaryContainer
                 )
             }
+            appInfo.bloatRecommendation?.let { recommendation ->
+                val (color, textColor) = when (recommendation.lowercase()) {
+                    "recommended" -> Color(0xFFC8E6C9) to Color(0xFF1B5E20)
+                    "advanced" -> Color(0xFFFFF9C4) to Color(0xFFF57F17)
+                    "expert" -> Color(0xFFFFE0B2) to Color(0xFFE65100)
+                    "unsafe" -> Color(0xFFFFCDD2) to Color(0xFFB71C1C)
+                    else -> MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                StatusChip(
+                    text = recommendation,
+                    color = color,
+                    textColor = textColor
+                )
+            }
             StatusChip(
                 text = stringResource(R.string.version_format, appInfo.versionName ?: ""),
                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -304,6 +386,8 @@ private fun AppHeader(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontFamily = com.valhalla.thor.presentation.theme.firaMonoFontFamily
         )
+
+        // UAD Description skipped by user request
     }
 }
 

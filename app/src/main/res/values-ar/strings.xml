@@ -98,7 +98,10 @@
     <string name="clear_app_data_desc">سيؤدي هذا إلى حذف جميع بيانات %1$s نهائياً. لا يمكن التراجع عن هذا الإجراء.</string>
     <string name="clear_all_data">مسح جميع البيانات</string>
     <string name="uninstall_system_app_title">إلغاء تثبيت تطبيق النظام؟</string>
-    <string name="uninstall_system_app_desc">يتيح لك هذا إلغاء تثبيت التحديثات أو استعادة ضبط المصنع لتطبيق النظام هذا. متابعة؟</string>
+    <string name="uninstall_system_app_desc">سيؤدي هذا إلى إلغاء تثبيت تطبيق النظام للمستخدم الحالي. متابعة؟</string>
+    <string name="uninstall_blocked">إلغاء التثبيت محظور</string>
+    <string name="uninstall_expert_warning">تحذير: إلغاء تثبيت خبير</string>
+    <string name="uad_load_failed_desc">فشل تحميل بيانات الأمان UAD. تم حظر إلغاء تثبيت تطبيقات النظام لمنع حدوث مشاكل في التشغيل أو الجهاز.</string>
     <string name="risk_warning_title">تحذير من المخاطر</string>
     <string name="risk_warning_desc">هذا يجبر سجل المثبت على \'Google Play Store\'.\n\nقد تفشل التحديثات إذا لم يتطابق التوقيع مع نسخة المتجر الرسمية.</string>
     <string name="reinstall_play_store_title">إعادة التثبيت باستخدام متجر Play؟</string>
@@ -136,6 +139,7 @@
     <string name="cd_config">تكوين</string>
     <string name="cd_close">إغلاق</string>
     <string name="cd_frozen">مجمد</string>
+    <string name="cd_uninstalled">تم إلغاء التثبيت</string>
     <string name="cd_suspended">معلق</string>
     <string name="cd_selected">مختار</string>
     <string name="cd_search">بحث</string>
@@ -180,6 +184,7 @@
     <string name="frozen_success">تم تجميد %1$s</string>
     <string name="unfrozen_success">تم إلغاء تجميد %1$s</string>
     <string name="added_to_freezer_success">تمت الإضافة إلى المجمد</string>
+    <string name="add_to_freezer">إضافة للمجمد</string>
     <string name="unfrozen_count_success">تم إلغاء تجميد %1$d تطبيقات</string>
     <string name="tile_unfreeze_partial_failure">تم إلغاء تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
     <string name="error_format">خطأ: %1$s</string>

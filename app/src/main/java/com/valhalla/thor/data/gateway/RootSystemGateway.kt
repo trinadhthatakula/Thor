@@ -87,27 +87,51 @@ class RootSystemGateway(
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
+        val appInfo = getApplicationInfoCompat(packageName)
+        val isSystem = appInfo != null && (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
         val escapedPackage = ShellUtils.escapedString(packageName)
-        val state = if (isDisabled) "disable" else "enable"
-        val shellResult = runCommand("pm $state $escapedPackage")
+        val currentUser = getCurrentUserId()
+
+        val shellResult = if (isSystem) {
+            if (isDisabled) {
+                runCommand("pm uninstall --user $currentUser $escapedPackage")
+            } else {
+                runCommand("pm install-existing --user $currentUser $escapedPackage")
+            }
+        } else {
+            val state = if (isDisabled) "disable" else "enable"
+            runCommand("pm $state $escapedPackage")
+        }
+
         if (shellResult.isSuccess) return shellResult
 
         // Check if already in the target state
-        val currentDisabled = getApplicationInfoCompat(packageName)?.enabled?.not() ?: false
-        if (currentDisabled == isDisabled) return Result.success(Unit)
+        if (appInfo != null) {
+            val currentInstalled = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0
+            val currentEnabled = appInfo.enabled && currentInstalled
+            val currentDisabled = !currentEnabled
+            if (currentDisabled == isDisabled) return Result.success(Unit)
+        }
 
-        // Try unprivileged API as fallback
-        val newState = if (isDisabled) {
-            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED
-        } else {
-            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-        }
-        val unprivilegedResult = runCatching {
-            context.packageManager.setApplicationEnabledSetting(packageName, newState, 0)
-        }
-        if (unprivilegedResult.isSuccess) {
-            val postCheck = getApplicationInfoCompat(packageName)?.enabled?.not() ?: false
-            if (postCheck == isDisabled) return Result.success(Unit)
+        // Try unprivileged API as fallback (only for non-system apps)
+        if (!isSystem) {
+            val newState = if (isDisabled) {
+                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+            } else {
+                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            }
+            val unprivilegedResult = runCatching {
+                context.packageManager.setApplicationEnabledSetting(packageName, newState, 0)
+            }
+            if (unprivilegedResult.isSuccess) {
+                val postAppInfo = getApplicationInfoCompat(packageName)
+                if (postAppInfo != null) {
+                    val postInstalled = (postAppInfo.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0
+                    val postEnabled = postAppInfo.enabled && postInstalled
+                    val postDisabled = !postEnabled
+                    if (postDisabled == isDisabled) return Result.success(Unit)
+                }
+            }
         }
 
         return Result.failure(Exception("Root setAppDisabled failed."))
@@ -160,8 +184,9 @@ class RootSystemGateway(
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
+        val currentUser = getCurrentUserId()
         val escapedPackage = ShellUtils.escapedString(packageName)
-        return runCommand("pm uninstall --user 0 $escapedPackage")
+        return runCommand("pm uninstall --user $currentUser $escapedPackage")
     }
 
     override suspend fun installApp(apkPath: String, canDowngrade: Boolean): Result<Unit> {
@@ -226,13 +251,7 @@ class RootSystemGateway(
                 val combinedPath = paths.joinToString(" ") { ShellUtils.escapedString(it) }
 
                 // 2. Get Current User ID
-                val userResult = shellRepository.runCommand("am get-current-user")
-                val currentUser = userResult.getOrNull()?.firstOrNull()?.trim()
-                    ?: return@withContext Result.failure(Exception("Could not determine current user"))
-
-                if (!currentUser.matches(USER_ID_REGEX)) {
-                    return@withContext Result.failure(Exception("Invalid user ID format: $currentUser"))
-                }
+                val currentUser = getCurrentUserId()
 
                 // 3. Execute the reinstallation command
                 val command =
@@ -338,4 +357,19 @@ class RootSystemGateway(
             )
         }
     }.getOrNull()
+
+    private var cachedUserId: String? = null
+
+    private suspend fun getCurrentUserId(): String {
+        cachedUserId?.let { return it }
+        val userResult = shellRepository.runCommand("am get-current-user")
+        val currentUser = userResult.getOrNull()?.firstOrNull()?.trim()
+        val userId = if (currentUser != null && currentUser.matches(USER_ID_REGEX)) {
+            currentUser
+        } else {
+            "0"
+        }
+        cachedUserId = userId
+        return userId
+    }
 }

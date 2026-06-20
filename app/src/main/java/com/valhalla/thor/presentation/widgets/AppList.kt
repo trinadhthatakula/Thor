@@ -564,7 +564,16 @@ internal fun AppItemList(
                         .weight(1f, fill = false)
                         .then(textSharedModifier)
                 )
-                if (!app.enabled) {
+                if (app.isSystem && !app.isInstalled) {
+                    Icon(
+                        painterResource(R.drawable.danger),
+                        stringResource(R.string.cd_uninstalled),
+                        modifier = Modifier
+                            .size(16.dp)
+                            .padding(start = 4.dp),
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                } else if (!app.enabled) {
                     Icon(
                         painterResource(R.drawable.frozen),
                         stringResource(R.string.cd_frozen),
@@ -656,7 +665,18 @@ internal fun AppItemGrid(
                 )
             } else {
                 // Status Indicator
-                if (!app.enabled) {
+                if (app.isSystem && !app.isInstalled) {
+                    Icon(
+                        painterResource(R.drawable.danger),
+                        stringResource(R.string.cd_uninstalled),
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .size(16.dp)
+                            .background(MaterialTheme.colorScheme.surface, CircleShape)
+                            .padding(2.dp)
+                    )
+                } else if (!app.enabled) {
                     Icon(
                         painterResource(R.drawable.frozen),
                         stringResource(R.string.cd_frozen),
@@ -834,7 +854,9 @@ private fun AppFilterSheet(
                     items = AppListType.entries.map { type ->
                         ConnectedButtonGroupItem.Icon(
                             iconRes = if (type == AppListType.USER) R.drawable.apps else R.drawable.android,
-                            contentDescription = type.name
+                            contentDescription = stringResource(
+                                if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
+                            )
                         )
                     },
                     selectedIndex = AppListType.entries.indexOf(appListType),
