@@ -39,8 +39,19 @@ class DhizukuSystemGateway(
     }
 
     override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> {
-        return if (reflector.setAppEnabled(packageName, !isDisabled)) Result.success(Unit)
-        else Result.failure(Exception("Dhizuku: Set enabled state failed. Shell and reflection both failed."))
+        val isSystem = reflector.isSystemApp(packageName)
+        return if (isSystem) {
+            if (isDisabled) {
+                if (reflector.uninstallApp(packageName)) Result.success(Unit)
+                else Result.failure(Exception("Dhizuku: Failed to uninstall system app $packageName"))
+            } else {
+                if (reflector.reinstallExistingApp(packageName)) Result.success(Unit)
+                else Result.failure(Exception("Dhizuku: Failed to reinstall system app $packageName"))
+            }
+        } else {
+            if (reflector.setAppEnabled(packageName, !isDisabled)) Result.success(Unit)
+            else Result.failure(Exception("Dhizuku: Set enabled state failed. Shell and reflection both failed."))
+        }
     }
 
     override suspend fun rebootDevice(reason: String): Result<Unit> {

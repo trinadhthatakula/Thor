@@ -342,11 +342,16 @@ fun AppInfoDetailsScreen(
             text = { Text(stringResource(R.string.uninstall_app_desc, appName)) },
             confirmButton = {
                 TextButton(onClick = {
-                    val intent =
-                        android.content.Intent(android.content.Intent.ACTION_DELETE).apply {
-                            data = android.net.Uri.parse("package:$packageName")
-                        }
-                    context.startActivity(intent)
+                    val appInfo = state.detailedInfo?.appInfo
+                    if (appInfo != null && appInfo.isSystem) {
+                        onAppAction(AppClickAction.Uninstall(appInfo))
+                    } else {
+                        val intent =
+                            android.content.Intent(android.content.Intent.ACTION_DELETE).apply {
+                                data = android.net.Uri.parse("package:$packageName")
+                            }
+                        context.startActivity(intent)
+                    }
                     showUninstallConfirmation = false
                 }) {
                     Text(

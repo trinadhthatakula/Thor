@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AddCircle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -55,6 +56,12 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.MultiAppAction
+import androidx.compose.material3.HorizontalFloatingToolbar
+import androidx.compose.material3.FloatingToolbarDefaults
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
+import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
 import com.valhalla.thor.presentation.widgets.AppInfoDialog
 import com.valhalla.thor.presentation.widgets.AppItemGrid
 import com.valhalla.thor.presentation.widgets.AppItemList
@@ -119,17 +126,7 @@ fun FreezerScreen(
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        floatingActionButton = {
-            if (state.multiSelection.isEmpty()) {
-                FloatingActionButton(
-                    onClick = { showManageSheet = true },
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                ) {
-                    Icon(imageVector = Icons.Rounded.Add, contentDescription = "Manage Freezer")
-                }
-            }
-        }
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { innerPadding ->
         Box(modifier = modifier
             .fillMaxSize()
@@ -189,19 +186,16 @@ fun FreezerScreen(
                                 letterSpacing = (-1).sp
                             )
                         }
-                        Button(
-                            onClick = { viewModel.freezeAll() },
-                            shape = RoundedCornerShape(12.dp),
-                            enabled = state.freezerApps.isNotEmpty() && hasPrivilege
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.frozen),
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(stringResource(R.string.freeze_all))
-                        }
+                        ConnectedButtonGroup(
+                            items = AppListType.entries.map { type ->
+                                ConnectedButtonGroupItem.Icon(
+                                    iconRes = if (type == AppListType.USER) R.drawable.apps else R.drawable.android,
+                                    contentDescription = type.name
+                                )
+                            },
+                            selectedIndex = AppListType.entries.indexOf(state.appListType),
+                            onItemSelected = { viewModel.updateListType(AppListType.entries[it]) }
+                        )
                     }
 
                     // Search bar — config icon opens settings sheet
@@ -324,6 +318,55 @@ fun FreezerScreen(
                     onMultiAppAction = { action ->
                         viewModel.clearSelection()
                         onMultiAppAction(action)
+                    }
+                )
+            }
+
+            // Floating toolbar for Add, Freeze, Unfreeze
+            if (state.multiSelection.isEmpty()) {
+                HorizontalFloatingToolbar(
+                    expanded = true,
+                    colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
+                        toolbarContainerColor = MaterialTheme.colorScheme.primary,
+                        toolbarContentColor = MaterialTheme.colorScheme.onPrimary
+                    ),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(bottom = 16.dp, end = 16.dp),
+                    content = {
+                        val iconButtonColors = IconButtonDefaults.iconButtonColors(
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                            disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.38f)
+                        )
+                        IconButton(
+                            onClick = { viewModel.freezeAll() },
+                            enabled = state.freezerApps.any { it.enabled } && hasPrivilege,
+                            colors = iconButtonColors
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.frozen),
+                                contentDescription = stringResource(R.string.action_freeze)
+                            )
+                        }
+                        IconButton(
+                            onClick = { showManageSheet = true },
+                            colors = iconButtonColors
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.AddCircle,
+                                contentDescription = stringResource(R.string.add_to_freezer)
+                            )
+                        }
+                        IconButton(
+                            onClick = { viewModel.unfreezeAll() },
+                            enabled = state.freezerApps.any { !it.enabled } && hasPrivilege,
+                            colors = iconButtonColors
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.unfreeze),
+                                contentDescription = stringResource(R.string.action_unfreeze)
+                            )
+                        }
                     }
                 )
             }

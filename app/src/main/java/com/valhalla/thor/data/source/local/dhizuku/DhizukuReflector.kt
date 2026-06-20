@@ -1,6 +1,8 @@
 package com.valhalla.thor.data.source.local.dhizuku
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.util.Logger
 import org.koin.core.annotation.Single
@@ -50,6 +52,33 @@ class DhizukuReflector(
     fun uninstallApp(packageName: String): Boolean {
         return try {
             DhizukuHelper.uninstallApp(packageName)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun reinstallExistingApp(packageName: String): Boolean {
+        return try {
+            DhizukuHelper.reinstallApp(packageName)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun isSystemApp(packageName: String): Boolean {
+        return try {
+            val appInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getApplicationInfo(
+                    packageName,
+                    PackageManager.ApplicationInfoFlags.of(PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong())
+                )
+            } else {
+                context.packageManager.getApplicationInfo(
+                    packageName,
+                    PackageManager.MATCH_UNINSTALLED_PACKAGES
+                )
+            }
+            (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
         } catch (_: Exception) {
             false
         }

@@ -85,7 +85,7 @@ data class AppInfo(
                 installerPackageName = getInstallerPackageName(packInfo.packageName, pm),
                 publicSourceDir = appInfo.publicSourceDir,
                 splitPublicSourceDirs = appInfo.splitPublicSourceDirs?.toList() ?: emptyList(),
-                enabled = appInfo.enabled,
+                enabled = appInfo.enabled && (appInfo.flags and ApplicationInfo.FLAG_INSTALLED) != 0,
                 dataDir = appInfo.dataDir,
                 nativeLibraryDir = appInfo.nativeLibraryDir,
                 deviceProtectedDataDir = appInfo.deviceProtectedDataDir,

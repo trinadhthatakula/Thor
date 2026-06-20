@@ -180,6 +180,7 @@
     <string name="frozen_success">已冻结 %1$s</string>
     <string name="unfrozen_success">已解冻 %1$s</string>
     <string name="added_to_freezer_success">已添加到冻结列表</string>
+    <string name="add_to_freezer">添加至冻结室</string>
     <string name="unfrozen_count_success">已解冻 %1$d 个应用</string>
     <string name="tile_unfreeze_partial_failure">已解冻 %1$d/%2$d 个应用（%3$d 个失败）</string>
     <string name="error_format">错误: %1$s</string>

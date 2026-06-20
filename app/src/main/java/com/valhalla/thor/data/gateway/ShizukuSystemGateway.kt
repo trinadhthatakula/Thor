@@ -43,7 +43,16 @@ class ShizukuSystemGateway(
     }
 
     override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> {
-        return runAction { reflector.setAppEnabled(packageName, !isDisabled) }
+        val isSystem = reflector.isSystemApp(packageName)
+        return if (isSystem) {
+            if (isDisabled) {
+                runAction { reflector.uninstallApp(packageName) }
+            } else {
+                runAction { reflector.reinstallExistingApp(packageName) }
+            }
+        } else {
+            runAction { reflector.setAppEnabled(packageName, !isDisabled) }
+        }
     }
 
     override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> {
@@ -159,7 +168,7 @@ class ShizukuSystemGateway(
     /**
      * Standardizes error handling for reflection and shell actions.
      */
-    private inline fun runAction(action: () -> Boolean): Result<Unit> {
+    private suspend inline fun runAction(action: suspend () -> Boolean): Result<Unit> {
         if (!isShizukuAvailable()) {
             return Result.failure(Exception("Shizuku is not available or permission denied."))
         }

@@ -182,6 +182,7 @@
     <string name="import_disabled_apps_button">Import disabled apps</string>
     <string name="no_disabled_apps_found">No other disabled apps found.</string>
     <string name="added_to_freezer_count_success">Added %1$d apps to Freezer</string>
+    <string name="add_to_freezer">Add to Freezer</string>
 
     <!-- UiText Messages -->
     <string name="action_completed_format">%1$s completed: %2$s</string>

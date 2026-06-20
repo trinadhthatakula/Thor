@@ -180,6 +180,7 @@
     <string name="frozen_success">%1$s gelé</string>
     <string name="unfrozen_success">%1$s dégelé</string>
     <string name="added_to_freezer_success">Ajouté au congélateur</string>
+    <string name="add_to_freezer">Ajouter au congélateur</string>
     <string name="unfrozen_count_success">%1$d applications dégelées</string>
     <string name="tile_unfreeze_partial_failure">%1$d/%2$d applications dégelées (%3$d échouées)</string>
     <string name="error_format">Erreur : %1$s</string>

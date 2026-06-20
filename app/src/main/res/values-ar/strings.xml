@@ -180,6 +180,7 @@
     <string name="frozen_success">تم تجميد %1$s</string>
     <string name="unfrozen_success">تم إلغاء تجميد %1$s</string>
     <string name="added_to_freezer_success">تمت الإضافة إلى المجمد</string>
+    <string name="add_to_freezer">إضافة للمجمد</string>
     <string name="unfrozen_count_success">تم إلغاء تجميد %1$d تطبيقات</string>
     <string name="tile_unfreeze_partial_failure">تم إلغاء تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
     <string name="error_format">خطأ: %1$s</string>

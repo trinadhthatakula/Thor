@@ -95,10 +95,13 @@ class AppRepositoryImpl(
                         val isSuspended =
                             (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED) != 0
 
+                        val isInstalled = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0
+                        val isEnabled = appInfo.enabled && isInstalled
+
                         if (!forceRefresh &&
                             cachedEntry != null &&
                             cachedEntry.lastUpdateTime == packInfo.lastUpdateTime &&
-                            cachedEntry.enabled == appInfo.enabled &&
+                            cachedEntry.enabled == isEnabled &&
                             cachedEntry.isSuspended == isSuspended
                         ) {
                             currentList.add(cachedEntry.toDomain())
@@ -118,7 +121,12 @@ class AppRepositoryImpl(
 
                     if (toUpdate.isNotEmpty() || toDelete.isNotEmpty()) {
                         appDao.syncCache(toUpdate, toDelete)
-                        toDelete.forEach { cachedMap.remove(it) }
+                        toDelete.forEach { pkgName ->
+                            cachedMap.remove(pkgName)
+                            try {
+                                File(context.filesDir, "app_icons/$pkgName.png").delete()
+                            } catch (_: Exception) {}
+                        }
                     }
 
                     // Emit a single complete snapshot of all installed apps

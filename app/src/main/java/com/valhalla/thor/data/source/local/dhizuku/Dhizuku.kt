@@ -164,6 +164,16 @@ object DhizukuHelper {
         ).first == 0
     }
 
+    fun reinstallApp(packageName: String): Boolean {
+        return execute(
+            "pm install-existing --user current ${
+                com.valhalla.superuser.ShellUtils.escapedString(
+                    packageName
+                )
+            }"
+        ).first == 0
+    }
+
     fun execute(command: String): Pair<Int, String?> = runCatching {
         // Dhizuku 2.x supports newProcess for shell commands
         val process = DhizukuAPI.newProcess(arrayOf("sh", "-c", command), null, null)
