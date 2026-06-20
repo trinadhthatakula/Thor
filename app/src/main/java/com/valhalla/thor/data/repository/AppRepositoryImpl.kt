@@ -111,7 +111,8 @@ class AppRepositoryImpl(
                             val bloat = uadMap[domain.packageName]
                             currentList.add(domain.copy(
                                 bloatRecommendation = bloat?.removal,
-                                bloatDescription = bloat?.description
+                                bloatDescription = bloat?.description,
+                                isInstalled = isInstalled
                             ))
                         } else {
                             val mapped =

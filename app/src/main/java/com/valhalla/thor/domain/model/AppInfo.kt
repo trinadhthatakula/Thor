@@ -38,6 +38,7 @@ data class AppInfo(
     val isSuspended: Boolean = false,
     val bloatRecommendation: String? = null,
     val bloatDescription: String? = null,
+    val isInstalled: Boolean = true,
 ) {
     companion object {
 
@@ -98,7 +99,8 @@ data class AppInfo(
                 lastUpdateTime = packInfo.lastUpdateTime,
                 firstInstallTime = packInfo.firstInstallTime,
                 isDebuggable = isDebuggable,
-                isSuspended = (appInfo.flags and ApplicationInfo.FLAG_SUSPENDED) != 0
+                isSuspended = (appInfo.flags and ApplicationInfo.FLAG_SUSPENDED) != 0,
+                isInstalled = (appInfo.flags and ApplicationInfo.FLAG_INSTALLED) != 0
             )
         }
 

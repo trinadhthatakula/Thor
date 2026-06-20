@@ -139,6 +139,7 @@
     <string name="cd_config">Config</string>
     <string name="cd_close">Close</string>
     <string name="cd_frozen">Frozen</string>
+    <string name="cd_uninstalled">Uninstalled</string>
     <string name="cd_suspended">Suspended</string>
     <string name="cd_selected">Selected</string>
     <string name="cd_search">Search</string>

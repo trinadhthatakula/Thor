@@ -136,6 +136,7 @@
     <string name="cd_config">Configuración</string>
     <string name="cd_close">Cerrar</string>
     <string name="cd_frozen">Congelado</string>
+    <string name="cd_uninstalled">Desinstalado</string>
     <string name="cd_suspended">Suspendido</string>
     <string name="cd_selected">Seleccionado</string>
     <string name="cd_search">Buscar</string>

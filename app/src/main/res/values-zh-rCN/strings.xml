@@ -136,6 +136,7 @@
     <string name="cd_config">配置</string>
     <string name="cd_close">关闭</string>
     <string name="cd_frozen">已冻结</string>
+    <string name="cd_uninstalled">已卸载</string>
     <string name="cd_suspended">已暂停</string>
     <string name="cd_selected">已选择</string>
     <string name="cd_search">搜索</string>
