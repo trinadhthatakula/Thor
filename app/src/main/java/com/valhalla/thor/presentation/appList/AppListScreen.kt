@@ -119,7 +119,9 @@ fun AppListScreen(
                     items = AppListType.entries.map { type ->
                         ConnectedButtonGroupItem.Icon(
                             iconRes = if (type == AppListType.USER) R.drawable.apps else R.drawable.android,
-                            contentDescription = type.name
+                            contentDescription = stringResource(
+                                if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
+                            )
                         )
                     },
                     selectedIndex = AppListType.entries.indexOf(state.appListType),
