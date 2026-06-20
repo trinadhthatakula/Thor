@@ -158,36 +158,43 @@ object DhizukuHelper {
 
     fun getCurrentUserId(): String {
         cachedUserId?.let { return it }
-        val userId = try {
-            val userResult = execute("am get-current-user")
-            userResult.second?.trim()?.takeIf { it.matches(Regex("^\\d+$")) } ?: "0"
-        } catch (_: Exception) {
-            "0"
+        val userResult = execute("am get-current-user")
+        val output = userResult.second?.trim()
+        if (userResult.first != 0 || output == null || !output.matches(Regex("^\\d+$"))) {
+            throw IllegalStateException("Failed to determine current user ID: exitCode=${userResult.first}, output=$output")
         }
-        cachedUserId = userId
-        return userId
+        cachedUserId = output
+        return output
     }
 
     fun uninstallApp(packageName: String): Boolean {
-        val currentUser = getCurrentUserId()
-        return execute(
-            "pm uninstall --user $currentUser ${
-                com.valhalla.superuser.ShellUtils.escapedString(
-                    packageName
-                )
-            }"
-        ).first == 0
+        return try {
+            val currentUser = getCurrentUserId()
+            execute(
+                "pm uninstall --user $currentUser ${
+                    com.valhalla.superuser.ShellUtils.escapedString(
+                        packageName
+                    )
+                }"
+            ).first == 0
+        } catch (_: Exception) {
+            false
+        }
     }
 
     fun reinstallApp(packageName: String): Boolean {
-        val currentUser = getCurrentUserId()
-        return execute(
-            "pm install-existing --user $currentUser ${
-                com.valhalla.superuser.ShellUtils.escapedString(
-                    packageName
-                )
-            }"
-        ).first == 0
+        return try {
+            val currentUser = getCurrentUserId()
+            execute(
+                "pm install-existing --user $currentUser ${
+                    com.valhalla.superuser.ShellUtils.escapedString(
+                        packageName
+                    )
+                }"
+            ).first == 0
+        } catch (_: Exception) {
+            false
+        }
     }
 
     fun execute(command: String): Pair<Int, String?> = runCatching {
