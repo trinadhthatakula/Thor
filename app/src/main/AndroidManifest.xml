@@ -77,9 +77,13 @@
                 <data android:mimeType="application/zip" />
                 <data android:mimeType="application/x-zip-compressed" />
                 <data android:mimeType="application/x-apks" />
+                <data android:mimeType="application/vnd.apks" />
                 <data android:mimeType="application/x-xapk" />
+                <data android:mimeType="application/vnd.xapk" />
                 <data android:mimeType="application/x-apkm" />
                 <data android:mimeType="application/apkm" />
+                <data android:mimeType="application/vnd.apkm" />
+                <data android:mimeType="application/vnd.apkm-archive" />
             </intent-filter>
 
             <!-- Match by extension for content/file URIs with a wildcard MIME type (common in modern file managers) -->
