@@ -439,12 +439,12 @@ fun PortableInstaller(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(12.dp))
                                             .background(
-                                                if (selected) MaterialTheme.colorScheme.primaryContainer
+                                                if (selected) MaterialTheme.colorScheme.primary
                                                 else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
                                             )
                                             .border(
                                                 width = 1.dp,
-                                                color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                                color = if (selected) Color.Transparent else Color.Transparent,
                                                 shape = RoundedCornerShape(12.dp)
                                             )
                                             .clickable { viewModel.setInstallMode(mode) }
@@ -458,12 +458,12 @@ fun PortableInstaller(
                                                 painter = painterResource(icon),
                                                 contentDescription = null,
                                                 modifier = Modifier.size(16.dp),
-                                                tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                tint = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                             Text(
                                                 text = label,
                                                 style = MaterialTheme.typography.labelMedium,
-                                                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
                                             )
                                         }
