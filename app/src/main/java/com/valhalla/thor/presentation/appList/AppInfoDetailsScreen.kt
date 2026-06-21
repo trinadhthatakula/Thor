@@ -106,6 +106,7 @@ fun AppInfoDetailsScreen(
 
     var showClearDataConfirmation by remember { mutableStateOf(false) }
     var showUninstallConfirmation by remember { mutableStateOf(false) }
+    var showFreezeConfirmation by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -220,8 +221,12 @@ fun AppInfoDetailsScreen(
                                         }
                                 context.startActivity(intent)
                             },
-                            onFreezeToggle = {
-                                viewModel.toggleFreezerState(packageName, appInfo.appName, it)
+                            onFreezeToggle = { freeze ->
+                                if (freeze && appInfo.isSystem) {
+                                    showFreezeConfirmation = true
+                                } else {
+                                    viewModel.toggleFreezerState(packageName, appInfo.appName, freeze)
+                                }
                             },
                             onSuspendToggle = {
                                 viewModel.toggleSuspendState(packageName, it)
@@ -427,6 +432,97 @@ fun AppInfoDetailsScreen(
                         showUninstallConfirmation = false
                     }) {
                         Text(if (isBlocked) "Close" else if (isSystem) stringResource(R.string.no) else stringResource(R.string.cancel))
+                    }
+                }
+            )
+        }
+    }
+
+    if (showFreezeConfirmation) {
+        val appInfo = state.detailedInfo?.appInfo
+        if (appInfo != null) {
+            val recommendation = appInfo.bloatRecommendation?.lowercase()
+            val isSystem = appInfo.isSystem
+            val isUadFailed = isSystem && appInfo.isUadLoadFailed
+            val isUnsafe = isSystem && recommendation == "unsafe"
+            val isExpert = isSystem && recommendation == "expert" && !isUadFailed
+            val isBlocked = isUnsafe || isUadFailed
+            AlertDialog(
+                onDismissRequest = { showFreezeConfirmation = false },
+                title = {
+                    Text(
+                        text = when {
+                            isBlocked -> stringResource(R.string.freeze_blocked)
+                            isExpert -> stringResource(R.string.freeze_expert_warning)
+                            else -> stringResource(R.string.freeze_system_app_title)
+                        },
+                        color = if (isBlocked || isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                    )
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        if (isSystem && !isUadFailed) {
+                            appInfo.bloatRecommendation?.let { rec ->
+                                val (color, textColor) = when (rec.lowercase()) {
+                                    "recommended" -> Color(0xFFC8E6C9) to Color(0xFF1B5E20)
+                                    "advanced" -> Color(0xFFFFF9C4) to Color(0xFFF57F17)
+                                    "expert" -> Color(0xFFFFE0B2) to Color(0xFFE65100)
+                                    "unsafe" -> Color(0xFFFFCDD2) to Color(0xFFB71C1C)
+                                    else -> MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                                StatusChip(
+                                    text = rec,
+                                    color = color,
+                                    textColor = textColor
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                            }
+                        }
+
+                        if (isUadFailed) {
+                            Text(
+                                text = stringResource(R.string.uad_load_failed_freeze_desc),
+                                textAlign = TextAlign.Center
+                            )
+                        } else if (isUnsafe) {
+                            Text(
+                                text = stringResource(R.string.freeze_unsafe_desc),
+                                textAlign = TextAlign.Center
+                            )
+                        } else if (isExpert) {
+                            Text(
+                                text = stringResource(R.string.freeze_expert_desc),
+                                textAlign = TextAlign.Center
+                            )
+                        } else {
+                            Text(
+                                text = stringResource(R.string.freeze_system_app_desc),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    if (!isBlocked) {
+                        TextButton(onClick = {
+                            viewModel.toggleFreezerState(packageName, appInfo.appName, true)
+                            showFreezeConfirmation = false
+                        }) {
+                            Text(
+                                text = if (isExpert) stringResource(R.string.freeze_anyway) else stringResource(R.string.yes),
+                                color = if (isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        showFreezeConfirmation = false
+                    }) {
+                        Text(if (isBlocked) "Close" else stringResource(R.string.no))
                     }
                 }
             )

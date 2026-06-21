@@ -418,8 +418,15 @@ class MainViewModel(
                 is MultiAppAction.Freeze -> performLoggedMultiAction(
                     "Freezing Apps",
                     action.appList
-                ) {
-                    manageAppUseCase.setAppDisabled(it.packageName, disabled = true)
+                ) { appInfo ->
+                    val isSystem = appInfo.isSystem
+                    val isUadFailed = isSystem && appInfo.isUadLoadFailed
+                    val isUnsafe = isSystem && appInfo.bloatRecommendation?.lowercase() == "unsafe"
+                    if (isUadFailed || isUnsafe) {
+                        Result.failure(Exception("Skipped: System app is UNSAFE / safety check failed"))
+                    } else {
+                        manageAppUseCase.setAppDisabled(appInfo.packageName, disabled = true)
+                    }
                 }
 
                 is MultiAppAction.UnFreeze -> performLoggedMultiAction(
@@ -444,11 +451,18 @@ class MainViewModel(
                     "Uninstalling Apps",
                     action.appList
                 ) { appInfo ->
-                    val result = manageAppUseCase.uninstallApp(appInfo.packageName)
-                    if (result.isSuccess && appInfo.isSystem) {
-                        freezerRepository.add(appInfo.packageName)
+                    val isSystem = appInfo.isSystem
+                    val isUadFailed = isSystem && appInfo.isUadLoadFailed
+                    val isUnsafe = isSystem && appInfo.bloatRecommendation?.lowercase() == "unsafe"
+                    if (isUadFailed || isUnsafe) {
+                        Result.failure(Exception("Skipped: System app is UNSAFE / safety check failed"))
+                    } else {
+                        val result = manageAppUseCase.uninstallApp(appInfo.packageName)
+                        if (result.isSuccess && appInfo.isSystem) {
+                            freezerRepository.add(appInfo.packageName)
+                        }
+                        result
                     }
-                    result
                 }
 
                 is MultiAppAction.Suspend -> performLoggedMultiAction(

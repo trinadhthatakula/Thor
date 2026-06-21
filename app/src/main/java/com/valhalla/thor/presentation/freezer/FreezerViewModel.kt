@@ -116,18 +116,25 @@ class FreezerViewModel(
 
     fun freezeAll() {
         viewModelScope.launch(Dispatchers.IO) {
-            val pkgs = _uiState.value.freezerPackageNames.toList()
-            val results = pkgs.map { pkg ->
-                async { manageAppUseCase.setAppDisabled(pkg, true) }
+            val apps = _uiState.value.freezerApps
+            val eligibleApps = apps.filter { appInfo ->
+                val isSystem = appInfo.isSystem
+                val isUadFailed = isSystem && appInfo.isUadLoadFailed
+                val isUnsafe = isSystem && appInfo.bloatRecommendation?.lowercase() == "unsafe"
+                !(isUadFailed || isUnsafe)
+            }
+            val skippedCount = apps.size - eligibleApps.size
+            val results = eligibleApps.map { app ->
+                async { manageAppUseCase.setAppDisabled(app.packageName, true) }
             }.awaitAll()
-            val failures = results.count { it.isFailure }
+            val failures = results.count { it.isFailure } + skippedCount
             val uiText = if (failures == 0) {
-                UiText.StringResource(R.string.tile_freeze_success, pkgs.size)
+                UiText.StringResource(R.string.tile_freeze_success, eligibleApps.size)
             } else {
                 UiText.StringResource(
                     R.string.tile_freeze_partial_failure,
-                    pkgs.size - failures,
-                    pkgs.size,
+                    eligibleApps.size - results.count { it.isFailure },
+                    apps.size,
                     failures
                 )
             }

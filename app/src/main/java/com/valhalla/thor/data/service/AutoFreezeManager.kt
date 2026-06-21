@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
@@ -27,7 +28,8 @@ class AutoFreezeManager(
     private val preferenceRepository: PreferenceRepository,
     private val freezerRepository: FreezerRepository,
     private val manageAppUseCase: ManageAppUseCase,
-    private val systemRepository: SystemRepository
+    private val systemRepository: SystemRepository,
+    private val appRepository: AppRepository
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -81,6 +83,16 @@ class AutoFreezeManager(
                         scope.launch {
                             semaphore.withPermit {
                                 try {
+                                    val detailedApp = appRepository.getAppDetails(pkg)
+                                    if (detailedApp != null) {
+                                        val isSystem = detailedApp.isSystem
+                                        val isUadFailed = isSystem && detailedApp.isUadLoadFailed
+                                        val isUnsafe = isSystem && detailedApp.bloatRecommendation?.lowercase() == "unsafe"
+                                        if (isSystem && (isUadFailed || isUnsafe)) {
+                                            Logger.d("AutoFreezeManager", "Skipping auto-freeze for UNSAFE system app: $pkg")
+                                            return@launch
+                                        }
+                                    }
                                     val appInfo = pm.getApplicationInfo(pkg, 0)
                                     if (appInfo.enabled) {
                                         Logger.d("AutoFreezeManager", "Auto-freezing app: $pkg")
