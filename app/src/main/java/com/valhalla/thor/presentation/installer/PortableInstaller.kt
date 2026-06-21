@@ -6,7 +6,19 @@ import android.content.Intent
 import android.content.IntentFilter
 import androidx.activity.ComponentActivity
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.FastOutSlowInEasing
+import com.valhalla.thor.domain.model.AppMetadata
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +28,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -27,6 +41,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.SplitButtonDefaults
 import androidx.compose.material3.SplitButtonLayout
@@ -42,6 +57,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
@@ -75,6 +91,13 @@ fun PortableInstaller(
     val state by viewModel.installState.collectAsState(initial = InstallState.Idle)
     val availableModes by viewModel.availableModes.collectAsStateWithLifecycle()
     val installerMode by viewModel.installMode.collectAsStateWithLifecycle()
+
+    var lastMeta by remember { mutableStateOf<AppMetadata?>(null) }
+    LaunchedEffect(state) {
+        if (state is InstallState.ReadyToInstall) {
+            lastMeta = (state as InstallState.ReadyToInstall).meta
+        }
+    }
 
     val sheetState = rememberBottomSheetState(
         initialValue = SheetValue.Hidden,
@@ -199,7 +222,11 @@ fun PortableInstaller(
                 is InstallState.ReadyToInstall -> {
                     val meta = s.meta
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
@@ -207,24 +234,24 @@ fun PortableInstaller(
                             Image(
                                 bitmap = meta.icon.asImageBitmap(),
                                 contentDescription = null,
-                                modifier = Modifier.size(64.dp)
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                    .padding(4.dp)
                             )
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = meta.label,
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "${meta.version} (${meta.versionCode})",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
                                 text = meta.packageName,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -232,209 +259,468 @@ fun PortableInstaller(
                     }
 
                     if (s.isUpdate) {
-                        Text(
-                            text = if (s.isDowngrade) stringResource(R.string.install_downgrade_warning) else stringResource(R.string.install_update_warning),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (s.isDowngrade) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.fillMaxWidth(),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                    val totalPermissions = remember(s.meta) { s.meta.permissions.size }
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (totalPermissions > 0) {
-                            val warningMessage =
-                                if (s.shouldShowWarning()) s.getWarningMessage()?.asString().orEmpty() else ""
-                            val permissionsMsg = pluralStringResource(
-                                R.plurals.install_permissions,
-                                totalPermissions,
-                                totalPermissions,
-                                warningMessage
-                            )
-                            Text(
-                                permissionsMsg,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .padding(horizontal = 4.dp)
-                            )
-                        }
-                        if (availableModes.size == 1) {
-                            Button(
-                                onClick = { viewModel.confirmInstall() },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary
-                                )
-                            ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceAround
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
-                                    s.getActionButtonText().asString()
+                                    text = "INSTALLED",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = s.oldVersion ?: "—",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium
                                 )
                             }
-                        } else {
-                            Box(
-                                modifier = Modifier
-                            ) {
-                                var checked by remember { mutableStateOf(false) }
-                                SplitButtonLayout(
-                                    leadingButton = {
-                                        SplitButtonDefaults.ElevatedLeadingButton(
-                                            onClick = { viewModel.confirmInstall() },
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = MaterialTheme.colorScheme.primary,
-                                                contentColor = MaterialTheme.colorScheme.onPrimary
-                                            )
-                                        ) {
-                                            Icon(
-                                                painterResource(
-                                                    when (installerMode) {
-                                                        InstallMode.ROOT -> R.drawable.magisk_icon
-                                                        InstallMode.SHIZUKU -> R.drawable.shizuku
-                                                        InstallMode.DHIZUKU -> R.drawable.dhizuku // Placeholder
-                                                        InstallMode.NORMAL -> R.drawable.ic_launcher_foreground // Fallback
-                                                        InstallMode.EXTERNAL -> R.drawable.open_in
-                                                    }
-                                                ),
-                                                modifier = Modifier.size(SplitButtonDefaults.LeadingIconSize),
-                                                contentDescription = null,
-                                            )
-                                            Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                                            Text(s.getActionButtonText().asString())
-                                        }
-                                    },
-                                    trailingButton = {
-                                        val normalStr = stringResource(R.string.install_mode_normal)
-                                        val shizukuStr = stringResource(R.string.install_mode_shizuku)
-                                        val dhizukuStr = stringResource(R.string.install_mode_dhizuku)
-                                        val rootStr = stringResource(R.string.install_mode_root)
-                                        val externalStr = stringResource(R.string.install_mode_external_short)
-                                        val installOptionsPrefix = stringResource(R.string.install_options_title)
-                                        val expandedStr = stringResource(R.string.expanded)
-                                        val collapsedStr = stringResource(R.string.collapsed)
-
-                                        val description =
-                                            installOptionsPrefix + availableModes.joinToString(", ") { mode ->
-                                                when (mode) {
-                                                    InstallMode.NORMAL -> normalStr
-                                                    InstallMode.SHIZUKU -> shizukuStr
-                                                    InstallMode.DHIZUKU -> dhizukuStr
-                                                    InstallMode.ROOT -> rootStr
-                                                    InstallMode.EXTERNAL -> externalStr
-                                                }
-                                            }
-                                        SplitButtonDefaults.ElevatedTrailingButton(
-                                            checked = checked,
-                                            onCheckedChange = { checked = it },
-                                            modifier =
-                                                Modifier.semantics {
-                                                    stateDescription =
-                                                        if (checked) expandedStr else collapsedStr
-                                                    this.contentDescription = description
-                                                },
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = MaterialTheme.colorScheme.primary,
-                                                contentColor = MaterialTheme.colorScheme.onPrimary
-                                            )
-                                        ) {
-                                            val rotation: Float by
-                                            animateFloatAsState(
-                                                targetValue = if (checked) 180f else 0f,
-                                                label = "Trailing Icon Rotation",
-                                            )
-                                            Icon(
-                                                painterResource(R.drawable.arrow_drop_down),
-                                                modifier =
-                                                    Modifier
-                                                        .size(SplitButtonDefaults.TrailingIconSize)
-                                                        .graphicsLayer {
-                                                            this.rotationZ = rotation
-                                                        },
-                                                contentDescription = "Localized description",
-                                            )
-                                        }
-                                    },
-                                    modifier = Modifier
+                            Icon(
+                                painter = painterResource(R.drawable.open_in_new),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "NEW VERSION",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                DropdownMenu(
-                                    expanded = checked,
-                                    onDismissRequest = { checked = false }) {
-                                    availableModes.forEach { mode ->
-                                        DropdownMenuItem(
-                                            text = {
-                                                Text(
-                                                    when (mode) {
-                                                        InstallMode.NORMAL -> stringResource(R.string.install_mode_normal_format, s.getActionWord().asString())
-                                                        InstallMode.SHIZUKU -> stringResource(R.string.install_mode_shizuku_format, s.getActionWord().asString())
-                                                        InstallMode.DHIZUKU -> stringResource(R.string.install_mode_dhizuku_format, s.getActionWord().asString())
-                                                        InstallMode.ROOT -> stringResource(R.string.install_mode_root_format, s.getActionWord().asString())
-                                                        InstallMode.EXTERNAL -> stringResource(R.string.install_mode_external)
-                                                    }
-                                                )
-                                            },
-                                            onClick = {
-                                                viewModel.setInstallModeAlsoInstall(mode)
-                                                checked = false
-                                            }
-                                        )
+                                Text(
+                                    text = meta.version,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = "Version: ",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "${meta.version} (${meta.versionCode})",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
+                    if (s.isDowngrade) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f))
+                                .border(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.danger),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                            Text(
+                                text = stringResource(R.string.install_downgrade_warning),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    } else if (s.isUpdate) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f))
+                                .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.warning),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = stringResource(R.string.install_update_warning),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+
+                    val totalPermissions = remember(s.meta) { s.meta.permissions.size }
+                    if (totalPermissions > 0) {
+                        val warningMessage = if (s.shouldShowWarning()) s.getWarningMessage()?.asString().orEmpty() else ""
+                        val permissionsMsg = pluralStringResource(
+                            R.plurals.install_permissions,
+                            totalPermissions,
+                            totalPermissions,
+                            warningMessage
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.shield),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.secondary
+                            )
+                            Text(
+                                text = permissionsMsg,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    if (availableModes.size > 1) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.configuration),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                availableModes.forEach { mode ->
+                                    val selected = mode == installerMode
+                                    val icon = when (mode) {
+                                        InstallMode.ROOT -> R.drawable.magisk_icon
+                                        InstallMode.SHIZUKU -> R.drawable.shizuku
+                                        InstallMode.DHIZUKU -> R.drawable.dhizuku
+                                        InstallMode.NORMAL -> R.drawable.android
+                                        InstallMode.EXTERNAL -> R.drawable.open_in
+                                    }
+                                    val label = when (mode) {
+                                        InstallMode.NORMAL -> stringResource(R.string.install_mode_normal)
+                                        InstallMode.SHIZUKU -> stringResource(R.string.install_mode_shizuku)
+                                        InstallMode.DHIZUKU -> stringResource(R.string.install_mode_dhizuku)
+                                        InstallMode.ROOT -> stringResource(R.string.install_mode_root)
+                                        InstallMode.EXTERNAL -> stringResource(R.string.install_mode_external_short)
+                                    }
+                                    
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(
+                                                if (selected) MaterialTheme.colorScheme.primaryContainer
+                                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                            )
+                                            .border(
+                                                width = 1.dp,
+                                                color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                                shape = RoundedCornerShape(12.dp)
+                                            )
+                                            .clickable { viewModel.setInstallMode(mode) }
+                                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                painter = painterResource(icon),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp),
+                                                tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = label,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.resetState()
+                                onDismiss()
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(stringResource(R.string.cancel))
+                        }
+
+                        Button(
+                            onClick = { viewModel.confirmInstall() },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(s.getActionButtonText().asString())
+                        }
+                    }
                 }
 
                 is InstallState.Installing -> {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        val percentage = (s.progress * 100).toInt()
-                        LinearProgressIndicator(
-                            progress = { s.progress },
-                            modifier = Modifier.fillMaxWidth(),
-                            color = MaterialTheme.colorScheme.primary,
-                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            stringResource(R.string.install_assembling_progress, percentage),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    val percentage = (s.progress * 100).toInt()
+                    
+                    // Outer pulse animation setup
+                    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+                    val pulseScale by infiniteTransition.animateFloat(
+                        initialValue = 1f,
+                        targetValue = 1.08f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(1200, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "pulseScale"
+                    )
+                    val pulseAlpha by infiniteTransition.animateFloat(
+                        initialValue = 0.6f,
+                        targetValue = 0.15f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(1200, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "pulseAlpha"
+                    )
+
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(20.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        // App Icon with pulsing backdrop
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.size(100.dp)
+                        ) {
+                            // Pulsing backdrop circle
+                            Box(
+                                modifier = Modifier
+                                    .size(80.dp)
+                                    .graphicsLayer {
+                                        scaleX = pulseScale
+                                        scaleY = pulseScale
+                                        alpha = pulseAlpha
+                                    }
+                                    .clip(RoundedCornerShape(24.dp))
+                                    .background(MaterialTheme.colorScheme.primary)
+                            )
+                            
+                            // App Icon container
+                            val iconBitmap = lastMeta?.icon
+                            if (iconBitmap != null) {
+                                Image(
+                                    bitmap = iconBitmap.asImageBitmap(),
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(72.dp)
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                        .padding(4.dp)
+                                )
+                            } else {
+                                Icon(
+                                    painter = painterResource(R.drawable.apk_install),
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(72.dp)
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                        .padding(16.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = lastMeta?.label ?: stringResource(R.string.title_thor_installer),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = lastMeta?.packageName ?: "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        // Progress section
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                                .padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.install_assembling_progress, percentage),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            
+                            LinearProgressIndicator(
+                                progress = { s.progress },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .clip(RoundedCornerShape(4.dp)),
+                                color = MaterialTheme.colorScheme.primary,
+                                trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                            )
+                        }
                     }
                 }
 
                 is InstallState.UserConfirmationRequired -> {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(20.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
+                        // Alert / warning circle
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(80.dp)
+                                .clip(RoundedCornerShape(40.dp))
+                                .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f))
+                                .border(2.dp, MaterialTheme.colorScheme.tertiary, RoundedCornerShape(40.dp))
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.warning),
+                                contentDescription = null,
+                                modifier = Modifier.size(40.dp),
+                                tint = MaterialTheme.colorScheme.tertiary
+                            )
+                        }
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.install_confirm_system_dialog),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.Medium,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+                        }
+
                         LinearProgressIndicator(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp)),
                             color = MaterialTheme.colorScheme.tertiary,
                             trackColor = MaterialTheme.colorScheme.surfaceVariant
-                        )
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            stringResource(R.string.install_confirm_system_dialog),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.tertiary,
-                            fontWeight = FontWeight.Medium
                         )
                     }
                 }
 
                 is InstallState.Success -> {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            stringResource(R.string.install_success),
-                            color = Color.Green,
-                            fontWeight = FontWeight.Bold
-                        )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(20.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        // Success circle/icon
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(80.dp)
+                                .clip(RoundedCornerShape(40.dp))
+                                .background(Color(0xFF2E7D32).copy(alpha = 0.15f))
+                                .border(2.dp, Color(0xFF2E7D32), RoundedCornerShape(40.dp))
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.check_circle),
+                                contentDescription = null,
+                                modifier = Modifier.size(40.dp),
+                                tint = Color(0xFF2E7D32)
+                            )
+                        }
 
-                        Spacer(Modifier.height(16.dp))
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.install_success),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            if (lastMeta != null) {
+                                Text(
+                                    text = lastMeta?.label ?: "",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
                             OutlinedButton(
                                 onClick = {
                                     viewModel.resetState()
@@ -465,13 +751,67 @@ fun PortableInstaller(
                 }
 
                 is InstallState.Error -> {
-                    Text(
-                        stringResource(R.string.error_format, s.message),
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Button(onClick = onDismiss) {
-                        Text(stringResource(R.string.close))
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(20.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        // Error circle/icon
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(80.dp)
+                                .clip(RoundedCornerShape(40.dp))
+                                .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f))
+                                .border(2.dp, MaterialTheme.colorScheme.error, RoundedCornerShape(40.dp))
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.danger),
+                                contentDescription = null,
+                                modifier = Modifier.size(40.dp),
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.error_format, "").replace(":", "").trim(),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f))
+                                    .border(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                                    .padding(12.dp)
+                            ) {
+                                Text(
+                                    text = s.message,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = onDismiss,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error,
+                                contentColor = MaterialTheme.colorScheme.onError
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(stringResource(R.string.close))
+                        }
                     }
                 }
             }
