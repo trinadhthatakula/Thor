@@ -329,7 +329,7 @@ fun PortableInstaller(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f))
+                                .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f))
                                 .border(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
                                 .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -343,7 +343,7 @@ fun PortableInstaller(
                             Text(
                                 text = stringResource(R.string.install_downgrade_warning),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onErrorContainer
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                         }
                     } else if (s.isUpdate) {
@@ -351,7 +351,7 @@ fun PortableInstaller(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f))
+                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f))
                                 .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
                                 .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -365,7 +365,7 @@ fun PortableInstaller(
                             Text(
                                 text = stringResource(R.string.install_update_warning),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                         }
                     }
