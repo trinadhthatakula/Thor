@@ -93,7 +93,11 @@ fun FreezerScreen(
     var hasCheckedAutoPrompt by rememberSaveable { mutableStateOf(false) }
 
     val disabledAppsNotInFreezer = remember(state.allInstalledApps, state.freezerPackageNames) {
-        state.allInstalledApps.filter { !it.enabled && it.packageName !in state.freezerPackageNames }
+        state.allInstalledApps.filter { 
+            !it.enabled && 
+            it.packageName !in state.freezerPackageNames &&
+            !it.isSystem
+        }
     }
 
     LaunchedEffect(state.isLoading, state.hasShownDisabledAppsPrompt, disabledAppsNotInFreezer) {

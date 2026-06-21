@@ -27,12 +27,11 @@ fun SummaryStatRow(
     suspendedCount: Int,
     onActiveClick: () -> Unit,
     onFrozenClick: () -> Unit,
-    onSuspendedClick: () -> Unit
+    onSuspendedClick: () -> Unit,
+    modifier: Modifier = Modifier.padding(horizontal = 24.dp)
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp),
+        modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         StatCard(

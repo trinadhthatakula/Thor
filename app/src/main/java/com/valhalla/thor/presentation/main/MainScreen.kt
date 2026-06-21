@@ -18,6 +18,15 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.snap
 import com.valhalla.thor.domain.model.AnimationIntensity
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -27,16 +36,26 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import android.content.res.Configuration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.core.net.toUri
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
+import androidx.window.core.layout.WindowSizeClass
+import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
+import androidx.compose.material3.adaptive.navigation3.rememberListDetailSceneStrategy
+import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.runtime.rememberDecoratedNavEntries
 import androidx.navigation3.ui.NavDisplay
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import com.valhalla.thor.R
@@ -62,6 +81,7 @@ import com.valhalla.thor.presentation.widgets.ThankYouDialog
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun MainScreen(
     mainViewModel: MainViewModel = koinViewModel(),
@@ -79,40 +99,65 @@ fun MainScreen(
     var pendingSingleAction by remember { mutableStateOf<AppClickAction?>(null) }
     var showExitConfirmation by remember { mutableStateOf(false) }
 
-    // --- Navigation 3 Setup ---
-    val backStack = rememberNavBackStack(ThorRoute.Home)
+    // --- Navigation 3 Setup (Multiple Backstacks) ---
+    var activeDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
 
-    val activeTab = when (val root = backStack.firstOrNull()) {
-        is ThorRoute.Home -> ThorRoute.Home
-        is ThorRoute.Apps -> ThorRoute.Apps
-        is ThorRoute.Freezer -> ThorRoute.Freezer
-        is ThorRoute.Settings -> ThorRoute.Settings
-        else -> ThorRoute.Home
+    val activeTab = when (activeDestination) {
+        AppDestinations.HOME -> ThorRoute.Home
+        AppDestinations.APPS -> ThorRoute.Apps
+        AppDestinations.FREEZER -> ThorRoute.Freezer
+        AppDestinations.SETTINGS -> ThorRoute.Settings
     }
 
-    val selectedDestination = when (activeTab) {
-        ThorRoute.Home -> AppDestinations.HOME
-        ThorRoute.Apps -> AppDestinations.APPS
-        ThorRoute.Freezer -> AppDestinations.FREEZER
-        ThorRoute.Settings -> AppDestinations.SETTINGS
-        else -> AppDestinations.HOME
+    val homeBackStack = rememberNavBackStack(ThorRoute.Home)
+    val appsBackStack = rememberNavBackStack(ThorRoute.Apps)
+    val freezerBackStack = rememberNavBackStack(ThorRoute.Freezer)
+    val settingsBackStack = rememberNavBackStack(ThorRoute.Settings)
+
+    val backStacks = remember {
+        mapOf(
+            ThorRoute.Home to homeBackStack,
+            ThorRoute.Apps to appsBackStack,
+            ThorRoute.Freezer to freezerBackStack,
+            ThorRoute.Settings to settingsBackStack
+        )
     }
 
-    val showBottomBar = backStack.lastOrNull()?.let {
+    val currentBackStack = backStacks[activeTab] ?: homeBackStack
+
+    val listDetailStrategy = rememberListDetailSceneStrategy<NavKey>()
+
+    val adaptiveInfo = currentWindowAdaptiveInfoV2()
+    val isWideScreen = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
+    val showNavRailLabel = adaptiveInfo.windowSizeClass.isHeightAtLeastBreakpoint(600)
+    
+    val configuration = LocalConfiguration.current
+    val isLandscapePhone = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
+            configuration.smallestScreenWidthDp < 600
+
+    val selectedDestination = activeDestination
+
+    val showBottomBar = currentBackStack.lastOrNull()?.let {
         it == ThorRoute.Home || it == ThorRoute.Apps || it == ThorRoute.Freezer || it == ThorRoute.Settings
     } ?: true
 
-    // Handle Back Press to Show Exit Confirmation when at the root of Home stack
-    val isAtRoot = backStack.size == 1 && activeTab == ThorRoute.Home
-    BackHandler(enabled = isAtRoot) {
-        showExitConfirmation = true
+    // System Back Press Handler: 
+    // 1. Pop from the active stack if there are sub-screens (size > 1)
+    val canGoBackInActiveTab = (backStacks[activeTab]?.size ?: 0) > 1
+    BackHandler(enabled = canGoBackInActiveTab) {
+        backStacks[activeTab]?.removeLastOrNull()
     }
 
-    // Handle Back Press to return to Home stack when at the root of another tab
-    val isNonStartRoot = backStack.size == 1 && activeTab != ThorRoute.Home
+    // 2. Switch to Home tab if at the root of a non-Home tab
+    val isNonStartRoot = activeDestination != AppDestinations.HOME && (backStacks[activeTab]?.size ?: 0) == 1
     BackHandler(enabled = isNonStartRoot) {
-        backStack.clear()
-        backStack.add(ThorRoute.Home)
+        activeDestination = AppDestinations.HOME
+    }
+
+    // 3. Show exit confirmation dialog if at the root of the Home tab
+    val isAtRoot = activeDestination == AppDestinations.HOME && (backStacks[ThorRoute.Home]?.size ?: 0) == 1
+    BackHandler(enabled = isAtRoot) {
+        showExitConfirmation = true
     }
 
     val canNotLaunchApp = stringResource(R.string.cannot_launch_app)
@@ -171,14 +216,14 @@ fun MainScreen(
         }
     }
 
-    Scaffold(
-        bottomBar = {
+    Row(modifier = Modifier.fillMaxSize()) {
+        if (isWideScreen) {
             AnimatedVisibility(
                 visible = showBottomBar,
-                enter = slideInVertically(initialOffsetY = { it }),
-                exit = slideOutVertically(targetOffsetY = { it })
+                enter = slideInHorizontally(initialOffsetX = { -it }),
+                exit = slideOutHorizontally(targetOffsetX = { -it })
             ) {
-                ThorNavigationBar(
+                ThorNavigationRail(
                     destinations = AppDestinations.entries,
                     selectedDestination = selectedDestination,
                     onDestinationSelected = { dest ->
@@ -188,13 +233,53 @@ fun MainScreen(
                             AppDestinations.FREEZER -> ThorRoute.Freezer
                             AppDestinations.SETTINGS -> ThorRoute.Settings
                         }
-                        backStack.clear()
-                        backStack.add(route)
-                    }
+                        if (activeDestination == dest) {
+                            val stack = backStacks[route]
+                            while ((stack?.size ?: 0) > 1) {
+                                stack?.removeLastOrNull()
+                            }
+                        } else {
+                            activeDestination = dest
+                        }
+                    },
+                    showLabel = showNavRailLabel
                 )
             }
         }
-    ) { innerPadding ->
+
+        Scaffold(
+            modifier = Modifier.weight(1f),
+            bottomBar = {
+                if (!isWideScreen) {
+                    AnimatedVisibility(
+                        visible = showBottomBar,
+                        enter = slideInVertically(initialOffsetY = { it }),
+                        exit = slideOutVertically(targetOffsetY = { it })
+                    ) {
+                        ThorNavigationBar(
+                            destinations = AppDestinations.entries,
+                            selectedDestination = selectedDestination,
+                            onDestinationSelected = { dest ->
+                                val route = when (dest) {
+                                    AppDestinations.HOME -> ThorRoute.Home
+                                    AppDestinations.APPS -> ThorRoute.Apps
+                                    AppDestinations.FREEZER -> ThorRoute.Freezer
+                                    AppDestinations.SETTINGS -> ThorRoute.Settings
+                                }
+                                if (activeDestination == dest) {
+                                    val stack = backStacks[route]
+                                    while ((stack?.size ?: 0) > 1) {
+                                        stack?.removeLastOrNull()
+                                    }
+                                } else {
+                                    activeDestination = dest
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        ) { innerPadding ->
         val spatialSpec = when (state.prefs.animationIntensity) {
             AnimationIntensity.LOW -> snap<IntOffset>()
             AnimationIntensity.MEDIUM,
@@ -214,12 +299,10 @@ fun MainScreen(
                     HomeScreen(
                         viewModel = homeViewModel,
                         onNavigateToApps = {
-                            backStack.clear()
-                            backStack.add(ThorRoute.Apps)
+                            activeDestination = AppDestinations.APPS
                         },
                         onNavigateToFreezer = {
-                            backStack.clear()
-                            backStack.add(ThorRoute.Freezer)
+                            activeDestination = AppDestinations.FREEZER
                         },
                         onReinstallAll = {
                             checkAndProcessAction(
@@ -232,95 +315,193 @@ fun MainScreen(
                     )
                 }
 
-                entry<ThorRoute.Apps> {
-                    AppListScreen(
-                        viewModel = appListViewModel,
-                        sharedTransitionScope = sharedScope,
-                        onNavigateToAppInfo = { pkg, name ->
-                            backStack.add(ThorRoute.AppInfoDetails(pkg, name))
-                        },
-                        onAppAction = { action ->
-                            if (action is AppClickAction.ManagePermissions) {
-                                backStack.add(
-                                    ThorRoute.PermissionManager(
-                                        action.appInfo.packageName,
-                                        action.appInfo.appName ?: ""
-                                    )
-                                )
-                            } else if (action is AppClickAction.OpenDetails) {
-                                backStack.add(
-                                    ThorRoute.AppInfoDetails(
-                                        action.appInfo.packageName,
-                                        action.appInfo.appName ?: ""
-                                    )
-                                )
-                            } else {
+                entry<ThorRoute.Apps>(
+                    metadata = ListDetailSceneStrategy.listPane(detailPlaceholder = { AppDetailPlaceholder() })
+                ) {
+                    val activeDetailRoute = appsBackStack.lastOrNull() as? ThorRoute.AppInfoDetails
+                    if (isLandscapePhone && activeDetailRoute != null) {
+                        AppInfoDetailsScreen(
+                            packageName = activeDetailRoute.packageName,
+                            appName = activeDetailRoute.appName,
+                            sharedTransitionScope = sharedScope,
+                            onBack = { appsBackStack.removeLastOrNull() },
+                            onNavigateToPermissionManager = { pkg, name ->
+                                appsBackStack.add(ThorRoute.PermissionManager(pkg, name))
+                            },
+                            onAppAction = { action ->
                                 checkAndProcessAction(action, { pendingSingleAction = it }) {
                                     mainViewModel.onAppAction(it)
                                 }
-                            }
-                        },
-                        onMultiAppAction = { pendingMultiAction = it }
-                    )
+                            },
+                            showOnlyHeaderAndActions = true
+                        )
+                    } else {
+                        AppListScreen(
+                            viewModel = appListViewModel,
+                            sharedTransitionScope = sharedScope,
+                            onNavigateToAppInfo = { pkg, name ->
+                                appsBackStack.add(ThorRoute.AppInfoDetails(pkg, name))
+                            },
+                            onAppAction = { action ->
+                                if (action is AppClickAction.ManagePermissions) {
+                                    appsBackStack.add(
+                                        ThorRoute.PermissionManager(
+                                            action.appInfo.packageName,
+                                            action.appInfo.appName ?: ""
+                                        )
+                                    )
+                                } else if (action is AppClickAction.OpenDetails) {
+                                    appsBackStack.add(
+                                        ThorRoute.AppInfoDetails(
+                                            action.appInfo.packageName,
+                                            action.appInfo.appName ?: ""
+                                        )
+                                    )
+                                } else {
+                                    checkAndProcessAction(action, { pendingSingleAction = it }) {
+                                        mainViewModel.onAppAction(it)
+                                    }
+                                }
+                            },
+                            onMultiAppAction = { pendingMultiAction = it }
+                        )
+                    }
                 }
 
-                entry<ThorRoute.Freezer> {
-                    FreezerScreen(
-                        viewModel = freezerViewModel,
-                        sharedTransitionScope = sharedScope,
-                        onAppAction = { action ->
-                            if (action is AppClickAction.ManagePermissions) {
-                                backStack.add(
-                                    ThorRoute.PermissionManager(
-                                        action.appInfo.packageName,
-                                        action.appInfo.appName ?: ""
-                                    )
-                                )
-                            } else if (action is AppClickAction.OpenDetails) {
-                                backStack.add(
-                                    ThorRoute.AppInfoDetails(
-                                        action.appInfo.packageName,
-                                        action.appInfo.appName ?: ""
-                                    )
-                                )
-                            } else {
+                entry<ThorRoute.Freezer>(
+                    metadata = ListDetailSceneStrategy.listPane(detailPlaceholder = { AppDetailPlaceholder() })
+                ) {
+                    val activeDetailRoute = freezerBackStack.lastOrNull() as? ThorRoute.AppInfoDetails
+                    if (isLandscapePhone && activeDetailRoute != null) {
+                        AppInfoDetailsScreen(
+                            packageName = activeDetailRoute.packageName,
+                            appName = activeDetailRoute.appName,
+                            sharedTransitionScope = sharedScope,
+                            onBack = { freezerBackStack.removeLastOrNull() },
+                            onNavigateToPermissionManager = { pkg, name ->
+                                freezerBackStack.add(ThorRoute.PermissionManager(pkg, name))
+                            },
+                            onAppAction = { action ->
                                 checkAndProcessAction(action, { pendingSingleAction = it }) {
                                     mainViewModel.onAppAction(it)
                                 }
-                            }
-                        },
-                        onMultiAppAction = { pendingMultiAction = it }
-                    )
+                            },
+                            showOnlyHeaderAndActions = true
+                        )
+                    } else {
+                        FreezerScreen(
+                            viewModel = freezerViewModel,
+                            sharedTransitionScope = sharedScope,
+                            onAppAction = { action ->
+                                if (action is AppClickAction.ManagePermissions) {
+                                    freezerBackStack.add(
+                                        ThorRoute.PermissionManager(
+                                            action.appInfo.packageName,
+                                            action.appInfo.appName ?: ""
+                                        )
+                                    )
+                                } else if (action is AppClickAction.OpenDetails) {
+                                    freezerBackStack.add(
+                                        ThorRoute.AppInfoDetails(
+                                            action.appInfo.packageName,
+                                            action.appInfo.appName ?: ""
+                                        )
+                                    )
+                                } else {
+                                    checkAndProcessAction(action, { pendingSingleAction = it }) {
+                                        mainViewModel.onAppAction(it)
+                                    }
+                                }
+                            },
+                            onMultiAppAction = { pendingMultiAction = it }
+                        )
+                    }
                 }
 
                 entry<ThorRoute.Settings> {
                     SettingsScreen()
                 }
 
-                entry<ThorRoute.PermissionManager> { route ->
+                entry<ThorRoute.PermissionManager>(
+                    metadata = ListDetailSceneStrategy.detailPane()
+                ) { route ->
                     PermissionManagerScreen(
                         packageName = route.packageName,
                         appName = route.appName,
                         sharedTransitionScope = sharedScope,
-                        onBack = { backStack.removeLastOrNull() }
+                        onBack = { currentBackStack.removeLastOrNull() }
                     )
                 }
 
-                entry<ThorRoute.AppInfoDetails> { route ->
+                entry<ThorRoute.AppInfoDetails>(
+                    metadata = ListDetailSceneStrategy.detailPane()
+                ) { route ->
                     AppInfoDetailsScreen(
                         packageName = route.packageName,
                         appName = route.appName,
                         sharedTransitionScope = sharedScope,
-                        onBack = { backStack.removeLastOrNull() },
+                        onBack = { currentBackStack.removeLastOrNull() },
                         onNavigateToPermissionManager = { pkg, name ->
-                            backStack.add(ThorRoute.PermissionManager(pkg, name))
+                            currentBackStack.add(ThorRoute.PermissionManager(pkg, name))
                         },
                         onAppAction = { action ->
                             checkAndProcessAction(action, { pendingSingleAction = it }) {
                                 mainViewModel.onAppAction(it)
                             }
-                        }
+                        },
+                        showOnlyTabs = isLandscapePhone
                     )
+                }
+            }
+
+            // Decorate entries for each back stack
+            val homeDecorators = listOf(
+                rememberSaveableStateHolderNavEntryDecorator<NavKey>(),
+                rememberViewModelStoreNavEntryDecorator()
+            )
+            val homeEntries = rememberDecoratedNavEntries(
+                backStack = homeBackStack,
+                entryDecorators = homeDecorators,
+                entryProvider = entryProvider
+            )
+
+            val appsDecorators = listOf(
+                rememberSaveableStateHolderNavEntryDecorator<NavKey>(),
+                rememberViewModelStoreNavEntryDecorator()
+            )
+            val appsEntries = rememberDecoratedNavEntries(
+                backStack = appsBackStack,
+                entryDecorators = appsDecorators,
+                entryProvider = entryProvider
+            )
+
+            val freezerDecorators = listOf(
+                rememberSaveableStateHolderNavEntryDecorator<NavKey>(),
+                rememberViewModelStoreNavEntryDecorator()
+            )
+            val freezerEntries = rememberDecoratedNavEntries(
+                backStack = freezerBackStack,
+                entryDecorators = freezerDecorators,
+                entryProvider = entryProvider
+            )
+
+            val settingsDecorators = listOf(
+                rememberSaveableStateHolderNavEntryDecorator<NavKey>(),
+                rememberViewModelStoreNavEntryDecorator()
+            )
+            val settingsEntries = rememberDecoratedNavEntries(
+                backStack = settingsBackStack,
+                entryDecorators = settingsDecorators,
+                entryProvider = entryProvider
+            )
+
+            val entries = remember(activeTab, homeEntries, appsEntries, freezerEntries, settingsEntries) {
+                when (activeTab) {
+                    ThorRoute.Home -> homeEntries
+                    ThorRoute.Apps -> appsEntries
+                    ThorRoute.Freezer -> freezerEntries
+                    ThorRoute.Settings -> settingsEntries
+                    else -> homeEntries
                 }
             }
 
@@ -330,13 +511,9 @@ fun MainScreen(
                     .fillMaxSize()
             ) {
                 NavDisplay(
-                    backStack = backStack,
-                    onBack = { backStack.removeLastOrNull() },
-                    entryDecorators = listOf(
-                        rememberSaveableStateHolderNavEntryDecorator(),
-                        rememberViewModelStoreNavEntryDecorator()
-                    ),
-                    entryProvider = entryProvider,
+                    entries = entries,
+                    onBack = { currentBackStack.removeLastOrNull() },
+                    sceneStrategies = listOf(listDetailStrategy),
                     transitionSpec = {
                         (fadeIn(animationSpec = effectsSpec) + slideInHorizontally(
                             initialOffsetX = { it },
@@ -449,6 +626,7 @@ fun MainScreen(
             }
         }
     }
+    }
 }
 
 private fun checkAndProcessAction(
@@ -461,5 +639,30 @@ private fun checkAndProcessAction(
         AppClickAction.ReinstallAll -> onRequireConfirmation(action)
 
         else -> onExecute(action)
+    }
+}
+
+@Composable
+private fun AppDetailPlaceholder() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.thor_mono),
+                contentDescription = null,
+                modifier = Modifier.size(64.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = stringResource(R.string.select_app_details),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
