@@ -30,86 +30,76 @@ class SystemRepositoryImpl(
 
     // Dynamic Resolution Strategy: Respect user preference if available, else auto-detect.
     // Must be suspend because checking root and reading preferences are suspend operations.
-    private suspend fun getActiveGateway(): SystemGateway {
+    private suspend fun getActiveGateway(): Result<SystemGateway> {
         val prefs = preferenceRepository.userPreferences.first()
+        val isRootAvail = rootGateway.isRootAvailable()
+        val isShizukuAvail = shizukuGateway.isShizukuAvailable()
+        val isDhizukuAvail = dhizukuGateway.isDhizukuAvailable()
 
         // 1. Try User Preference
         prefs.preferredPrivilegeMode?.let { mode ->
             when (mode) {
-                PrivilegeMode.ROOT -> if (rootGateway.isRootAvailable()) return rootGateway
-                PrivilegeMode.SHIZUKU -> if (shizukuGateway.isShizukuAvailable()) return shizukuGateway
-                PrivilegeMode.DHIZUKU -> if (dhizukuGateway.isDhizukuAvailable()) return dhizukuGateway
+                PrivilegeMode.ROOT -> if (isRootAvail) return Result.success(rootGateway)
+                PrivilegeMode.SHIZUKU -> if (isShizukuAvail) return Result.success(shizukuGateway)
+                PrivilegeMode.DHIZUKU -> if (isDhizukuAvail) return Result.success(dhizukuGateway)
             }
         }
 
         // 2. Fallback to Auto-Detection
         return when {
-            rootGateway.isRootAvailable() -> rootGateway
-            shizukuGateway.isShizukuAvailable() -> shizukuGateway
-            dhizukuGateway.isDhizukuAvailable() -> dhizukuGateway
-            else -> throw IllegalStateException("No privileged gateway available (Root, Shizuku or Dhizuku required)")
+            isRootAvail -> Result.success(rootGateway)
+            isShizukuAvail -> Result.success(shizukuGateway)
+            isDhizukuAvail -> Result.success(dhizukuGateway)
+            else -> Result.failure(IllegalStateException("No privileged gateway available (Root, Shizuku or Dhizuku required)"))
         }
+    }
+
+    private suspend inline fun <T> runGatewayAction(
+        crossinline action: suspend (SystemGateway) -> Result<T>
+    ): Result<T> {
+        return getActiveGateway().fold(
+            onSuccess = { gateway ->
+                try {
+                    action(gateway)
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
+            },
+            onFailure = { Result.failure(it) }
+        )
     }
 
     override suspend fun forceStopApp(packageName: String): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            getActiveGateway().forceStopApp(packageName)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        runGatewayAction { it.forceStopApp(packageName) }
     }
 
     override suspend fun clearCache(packageName: String): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            getActiveGateway().clearCache(packageName)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        runGatewayAction { it.clearCache(packageName) }
     }
 
     override suspend fun clearAppData(packageName: String): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            getActiveGateway().clearAppData(packageName)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        runGatewayAction { it.clearAppData(packageName) }
     }
 
     override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> =
         withContext(Dispatchers.IO) {
-            try {
-                getActiveGateway().setAppDisabled(packageName, isDisabled)
-            } catch (e: Exception) {
-                Result.failure(e)
-            }
+            runGatewayAction { it.setAppDisabled(packageName, isDisabled) }
         }
 
     override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> =
         withContext(Dispatchers.IO) {
-            try {
-                getActiveGateway().setAppSuspended(packageName, isSuspended)
-            } catch (e: Exception) {
-                Result.failure(e)
-            }
+            runGatewayAction { it.setAppSuspended(packageName, isSuspended) }
         }
 
     override suspend fun setAppRestricted(
         packageName: String,
         isRestricted: Boolean
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            getActiveGateway().setAppRestricted(packageName, isRestricted)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        runGatewayAction { it.setAppRestricted(packageName, isRestricted) }
     }
 
     override suspend fun uninstallApp(packageName: String): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            getActiveGateway().uninstallApp(packageName)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        runGatewayAction { it.uninstallApp(packageName) }
     }
 
     override suspend fun rebootDevice(reason: String): Result<Unit> = withContext(Dispatchers.IO) {
@@ -121,22 +111,15 @@ class SystemRepositoryImpl(
     }
 
     override suspend fun aggressiveCleanup(packageName: String): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            val gateway = getActiveGateway()
+        runGatewayAction { gateway ->
             gateway.forceStopApp(packageName)
             gateway.clearCache(packageName)
             Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
         }
     }
 
     override suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            getActiveGateway().reinstallAppWithGoogle(packageName)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        runGatewayAction { it.reinstallAppWithGoogle(packageName) }
     }
 
     override suspend fun copyFileWithRoot(
@@ -173,21 +156,13 @@ class SystemRepositoryImpl(
         packageName: String,
         permissionName: String
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            getActiveGateway().grantPermission(packageName, permissionName)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        runGatewayAction { it.grantPermission(packageName, permissionName) }
     }
 
     override suspend fun revokePermission(
         packageName: String,
         permissionName: String
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            getActiveGateway().revokePermission(packageName, permissionName)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        runGatewayAction { it.revokePermission(packageName, permissionName) }
     }
 }
