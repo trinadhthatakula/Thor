@@ -235,8 +235,8 @@ fun MainScreen(
                         }
                         if (activeDestination == dest) {
                             val stack = backStacks[route]
-                            while ((stack?.size ?: 0) > 1) {
-                                stack?.removeLastOrNull()
+                            if (stack != null && stack.size > 1) {
+                                stack.subList(1, stack.size).clear()
                             }
                         } else {
                             activeDestination = dest
@@ -268,8 +268,8 @@ fun MainScreen(
                                 }
                                 if (activeDestination == dest) {
                                     val stack = backStacks[route]
-                                    while ((stack?.size ?: 0) > 1) {
-                                        stack?.removeLastOrNull()
+                                    if (stack != null && stack.size > 1) {
+                                        stack.subList(1, stack.size).clear()
                                     }
                                 } else {
                                     activeDestination = dest
