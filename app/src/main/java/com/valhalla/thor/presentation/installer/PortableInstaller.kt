@@ -442,11 +442,6 @@ fun PortableInstaller(
                                                 if (selected) MaterialTheme.colorScheme.primary
                                                 else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
                                             )
-                                            .border(
-                                                width = 1.dp,
-                                                color = if (selected) Color.Transparent else Color.Transparent,
-                                                shape = RoundedCornerShape(12.dp)
-                                            )
                                             .clickable { viewModel.setInstallMode(mode) }
                                             .padding(horizontal = 12.dp, vertical = 8.dp)
                                     ) {
