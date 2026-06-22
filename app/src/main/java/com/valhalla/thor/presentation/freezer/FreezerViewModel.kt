@@ -42,7 +42,8 @@ data class FreezerUiState(
     val autoFreezeEnabled: Boolean = false,
     val isDhizuku: Boolean = false,
     val hasShownDisabledAppsPrompt: Boolean = false,
-    val appListType: AppListType = AppListType.USER
+    val appListType: AppListType = AppListType.USER,
+    val isGrid: Boolean = true
 )
 
 @KoinViewModel
@@ -346,7 +347,8 @@ class FreezerViewModel(
                 _uiState.update {
                     it.copy(
                         autoFreezeEnabled = prefs.autoFreezeEnabled,
-                        hasShownDisabledAppsPrompt = prefs.hasShownDisabledAppsPrompt
+                        hasShownDisabledAppsPrompt = prefs.hasShownDisabledAppsPrompt,
+                        isGrid = prefs.freezerIsGrid
                     )
                 }
             }
@@ -362,6 +364,12 @@ class FreezerViewModel(
     fun markDisabledAppsPromptShown() {
         viewModelScope.launch(Dispatchers.IO) {
             preferenceRepository.setHasShownDisabledAppsPrompt(true)
+        }
+    }
+
+    fun setGridMode(isGrid: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            preferenceRepository.setFreezerIsGrid(isGrid)
         }
     }
 

@@ -46,4 +46,8 @@ interface PreferenceRepository {
     // --- App Redirection & Animations ---
     suspend fun setDetailedViewEnabled(enabled: Boolean)
     suspend fun setAnimationIntensity(intensity: AnimationIntensity)
+
+    // --- Grid/List View ---
+    suspend fun setAppListIsGrid(isGrid: Boolean)
+    suspend fun setFreezerIsGrid(isGrid: Boolean)
 }

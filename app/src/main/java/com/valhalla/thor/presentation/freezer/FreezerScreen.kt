@@ -87,7 +87,6 @@ fun FreezerScreen(
         selectedPackageName?.let { pkg -> state.freezerApps.find { it.packageName == pkg } }
     var showManageSheet by rememberSaveable { mutableStateOf(false) }
     var showSettingsSheet by rememberSaveable { mutableStateOf(false) }
-    var isGrid by rememberSaveable { mutableStateOf(true) }
 
     var showImportDialog by rememberSaveable { mutableStateOf(false) }
     var hasCheckedAutoPrompt by rememberSaveable { mutableStateOf(false) }
@@ -242,7 +241,7 @@ fun FreezerScreen(
                             }
                         }
                     }
-                } else if (isGrid) {
+                } else if (state.isGrid) {
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = 100.dp),
                         contentPadding = PaddingValues(bottom = 100.dp, top = 8.dp),
@@ -425,12 +424,12 @@ fun FreezerScreen(
 
     if (showSettingsSheet) {
         FreezerSettingsSheet(
-            isGrid = isGrid,
+            isGrid = state.isGrid,
             autoFreezeEnabled = state.autoFreezeEnabled,
             hasPrivilege = hasPrivilege,
             showImportDisabledApps = disabledAppsNotInFreezer.isNotEmpty(),
             appListType = state.appListType,
-            onToggleView = { isGrid = !isGrid },
+            onToggleView = { viewModel.setGridMode(!state.isGrid) },
             onToggleAutoFreeze = viewModel::setAutoFreezeEnabled,
             onDismiss = { showSettingsSheet = false },
             onUnfreezeAll = viewModel::unfreezeAll,

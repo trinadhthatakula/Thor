@@ -60,6 +60,10 @@ class PreferenceRepositoryImpl(
         // App Redirection & Animations
         val USE_DETAILED_VIEW = booleanPreferencesKey("use_detailed_view")
         val ANIMATION_INTENSITY = stringPreferencesKey("animation_intensity")
+
+        // Grid/List View
+        val APP_LIST_IS_GRID = booleanPreferencesKey("app_list_is_grid")
+        val FREEZER_IS_GRID = booleanPreferencesKey("freezer_is_grid")
     }
 
     override val userPreferences: Flow<UserPreferences> = context.dataStore.data
@@ -89,6 +93,8 @@ class PreferenceRepositoryImpl(
                 ?: AnimationIntensity.MEDIUM
 
             val useDetailedView = prefs[Keys.USE_DETAILED_VIEW] ?: true
+            val appListIsGrid = prefs[Keys.APP_LIST_IS_GRID] ?: true
+            val freezerIsGrid = prefs[Keys.FREEZER_IS_GRID] ?: true
 
             UserPreferences(
                 appSortBy = sortBy,
@@ -106,7 +112,9 @@ class PreferenceRepositoryImpl(
                 hasShownDisabledAppsPrompt = prefs[Keys.HAS_SHOWN_DISABLED_APPS_PROMPT] ?: false,
                 hasShownSupportDeveloperPrompt = prefs[Keys.HAS_SHOWN_SUPPORT_DEVELOPER_PROMPT] ?: false,
                 useDetailedView = useDetailedView,
-                animationIntensity = animationIntensity
+                animationIntensity = animationIntensity,
+                appListIsGrid = appListIsGrid,
+                freezerIsGrid = freezerIsGrid
             )
         }
 
@@ -194,6 +202,18 @@ class PreferenceRepositoryImpl(
     override suspend fun setAnimationIntensity(intensity: AnimationIntensity) {
         context.dataStore.edit {
             it[Keys.ANIMATION_INTENSITY] = intensity.name
+        }
+    }
+
+    override suspend fun setAppListIsGrid(isGrid: Boolean) {
+        context.dataStore.edit {
+            it[Keys.APP_LIST_IS_GRID] = isGrid
+        }
+    }
+
+    override suspend fun setFreezerIsGrid(isGrid: Boolean) {
+        context.dataStore.edit {
+            it[Keys.FREEZER_IS_GRID] = isGrid
         }
     }
 }

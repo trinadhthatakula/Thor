@@ -57,7 +57,8 @@ data class AppListUiState(
     // Action Feedback
     val actionMessage: UiText? = null,
     val freezerPrompt: FreezerPrompt? = null,
-    val useDetailedView: Boolean = true
+    val useDetailedView: Boolean = true,
+    val isGrid: Boolean = true
 )
 
 @KoinViewModel
@@ -80,7 +81,8 @@ class AppListViewModel(
             sortOrder = prefs.appSortOrder,
             filterType = prefs.appFilterType,
             selectedFilter = prefs.appSelectedFilter,
-            useDetailedView = prefs.useDetailedView
+            useDetailedView = prefs.useDetailedView,
+            isGrid = prefs.appListIsGrid
         )
         processList(mergedState)
     }
@@ -337,6 +339,12 @@ class AppListViewModel(
 
     fun updateSearchQuery(query: String) {
         _rawState.update { it.copy(searchQuery = query) }
+    }
+
+    fun toggleGridMode() {
+        viewModelScope.launch {
+            preferenceRepository.setAppListIsGrid(!uiState.value.isGrid)
+        }
     }
 
     private fun processList(state: AppListUiState): AppListUiState {

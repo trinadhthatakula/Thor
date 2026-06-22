@@ -100,7 +100,7 @@ fun AppList(
     sortOrder: SortOrder = SortOrder.ASCENDING,
     searchQuery: String = "",
     isLoading: Boolean = false,
-    startAsGrid: Boolean = true,
+    isGrid: Boolean = true,
     isRoot: Boolean = false,
     isShizuku: Boolean = false,
     isDhizuku: Boolean = false,
@@ -113,11 +113,11 @@ fun AppList(
     onListTypeChanged: (AppListType) -> Unit = {},
     onAppInfoSelected: (AppInfo) -> Unit,
     onMultiAppAction: (MultiAppAction) -> Unit = {},
+    onToggleView: () -> Unit = {},
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
     // 1. Local State
-    var isGrid by rememberSaveable { mutableStateOf(startAsGrid) }
     var showFilterSheet by rememberSaveable { mutableStateOf(false) }
     var multiSelection by rememberSaveable { mutableStateOf(emptyList<AppInfo>()) }
 
@@ -264,7 +264,7 @@ fun AppList(
             onFilterTypeChanged = onFilterTypeChanged,
             onSortByChanged = onSortByChanged,
             onSortOrderChanged = onSortOrderSelected,
-            onToggleView = { isGrid = !isGrid },
+            onToggleView = onToggleView,
             onListTypeChanged = onListTypeChanged
         )
     }
