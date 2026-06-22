@@ -80,6 +80,7 @@ import com.valhalla.thor.domain.model.PermissionDetail
 import com.valhalla.thor.presentation.theme.bodyFontFamily
 import com.valhalla.thor.presentation.theme.firaMonoFontFamily
 import com.valhalla.thor.presentation.utils.AppIconModel
+import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
@@ -397,13 +398,7 @@ fun AppInfoDetailsScreen(
                     ) {
                         if (isSystem && !isUadFailed) {
                             appInfo.bloatRecommendation?.let { rec ->
-                                val (color, textColor) = when (rec.lowercase()) {
-                                    "recommended" -> Color(0xFFC8E6C9) to Color(0xFF1B5E20)
-                                    "advanced" -> Color(0xFFFFF9C4) to Color(0xFFF57F17)
-                                    "expert" -> Color(0xFFFFE0B2) to Color(0xFFE65100)
-                                    "unsafe" -> Color(0xFFFFCDD2) to Color(0xFFB71C1C)
-                                    else -> MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant
-                                }
+                                val (color, textColor) = getBloatRecommendationColors(rec)
                                 StatusChip(
                                     text = rec,
                                     color = color,
@@ -501,13 +496,7 @@ fun AppInfoDetailsScreen(
                     ) {
                         if (isSystem && !isUadFailed) {
                             appInfo.bloatRecommendation?.let { rec ->
-                                val (color, textColor) = when (rec.lowercase()) {
-                                    "recommended" -> Color(0xFFC8E6C9) to Color(0xFF1B5E20)
-                                    "advanced" -> Color(0xFFFFF9C4) to Color(0xFFF57F17)
-                                    "expert" -> Color(0xFFFFE0B2) to Color(0xFFE65100)
-                                    "unsafe" -> Color(0xFFFFCDD2) to Color(0xFFB71C1C)
-                                    else -> MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant
-                                }
+                                val (color, textColor) = getBloatRecommendationColors(rec)
                                 StatusChip(
                                     text = rec,
                                     color = color,
@@ -683,13 +672,7 @@ private fun AppDetailsHeader(
                 }
 
                 appInfo.bloatRecommendation?.let { recommendation ->
-                    val (chipColor, chipTextColor) = when (recommendation.lowercase()) {
-                        "recommended" -> Color(0xFFC8E6C9) to Color(0xFF1B5E20)
-                        "advanced" -> Color(0xFFFFF9C4) to Color(0xFFF57F17)
-                        "expert" -> Color(0xFFFFE0B2) to Color(0xFFE65100)
-                        "unsafe" -> Color(0xFFFFCDD2) to Color(0xFFB71C1C)
-                        else -> MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant
-                    }
+                    val (chipColor, chipTextColor) = getBloatRecommendationColors(recommendation)
                     StatusChip(
                         text = recommendation,
                         color = chipColor,
