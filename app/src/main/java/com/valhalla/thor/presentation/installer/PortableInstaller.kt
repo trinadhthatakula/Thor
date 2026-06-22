@@ -270,7 +270,7 @@ fun PortableInstaller(
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
-                                    text = "INSTALLED",
+                                    text = stringResource(R.string.installed_label),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -288,7 +288,7 @@ fun PortableInstaller(
                             )
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
-                                    text = "NEW VERSION",
+                                    text = stringResource(R.string.new_version_label),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -311,7 +311,7 @@ fun PortableInstaller(
                             horizontalArrangement = Arrangement.Center
                         ) {
                             Text(
-                                text = "Version: ",
+                                text = stringResource(R.string.version_prefix),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -679,14 +679,14 @@ fun PortableInstaller(
                             modifier = Modifier
                                 .size(80.dp)
                                 .clip(RoundedCornerShape(40.dp))
-                                .background(Color(0xFF2E7D32).copy(alpha = 0.15f))
-                                .border(2.dp, Color(0xFF2E7D32), RoundedCornerShape(40.dp))
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+                                .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(40.dp))
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.check_circle),
                                 contentDescription = null,
                                 modifier = Modifier.size(40.dp),
-                                tint = Color(0xFF2E7D32)
+                                tint = MaterialTheme.colorScheme.primary
                             )
                         }
 
@@ -773,7 +773,7 @@ fun PortableInstaller(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
-                                text = stringResource(R.string.error_format, "").replace(":", "").trim(),
+                                text = stringResource(R.string.error_title),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.error
@@ -798,7 +798,10 @@ fun PortableInstaller(
                         }
 
                         Button(
-                            onClick = onDismiss,
+                            onClick = {
+                                viewModel.resetState()
+                                onDismiss()
+                            },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.error,
                                 contentColor = MaterialTheme.colorScheme.onError

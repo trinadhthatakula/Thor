@@ -53,6 +53,10 @@
     <string name="no">لا</string>
     <string name="done">تم</string>
     <string name="close">إغلاق</string>
+    <string name="installed_label">مثبت</string>
+    <string name="new_version_label">نسخة جديدة</string>
+    <string name="version_prefix">الإصدار: </string>
+    <string name="error_title">خطأ</string>
     <string name="refresh">تحديث</string>
     <string name="dismiss">تجاهل</string>
     <string name="search_apps">بحث عن تطبيقات&#8230;</string>

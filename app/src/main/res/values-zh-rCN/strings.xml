@@ -53,6 +53,10 @@
     <string name="no">否</string>
     <string name="done">完成</string>
     <string name="close">关闭</string>
+    <string name="installed_label">已安装</string>
+    <string name="new_version_label">新版本</string>
+    <string name="version_prefix">版本: </string>
+    <string name="error_title">错误</string>
     <string name="refresh">刷新</string>
     <string name="dismiss">关闭</string>
     <string name="search_apps">搜索应用&#8230;</string>

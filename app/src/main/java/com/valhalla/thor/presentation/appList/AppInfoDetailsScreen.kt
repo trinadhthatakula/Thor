@@ -461,7 +461,7 @@ fun AppInfoDetailsScreen(
                     TextButton(onClick = {
                         showUninstallConfirmation = false
                     }) {
-                        Text(if (isBlocked) "Close" else if (isSystem) stringResource(R.string.no) else stringResource(R.string.cancel))
+                        Text(if (isBlocked) stringResource(R.string.close) else if (isSystem) stringResource(R.string.no) else stringResource(R.string.cancel))
                     }
                 }
             )
@@ -546,7 +546,7 @@ fun AppInfoDetailsScreen(
                     TextButton(onClick = {
                         showFreezeConfirmation = false
                     }) {
-                        Text(if (isBlocked) "Close" else stringResource(R.string.no))
+                        Text(if (isBlocked) stringResource(R.string.close) else stringResource(R.string.no))
                     }
                 }
             )

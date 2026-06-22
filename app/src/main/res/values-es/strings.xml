@@ -53,6 +53,10 @@
     <string name="no">No</string>
     <string name="done">Hecho</string>
     <string name="close">Cerrar</string>
+    <string name="installed_label">INSTALADO</string>
+    <string name="new_version_label">NUEVA VERSIÓN</string>
+    <string name="version_prefix">Versión: </string>
+    <string name="error_title">Error</string>
     <string name="refresh">Actualizar</string>
     <string name="dismiss">Descartar</string>
     <string name="search_apps">Buscar aplicaciones&#8230;</string>
