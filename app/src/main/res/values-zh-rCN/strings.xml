@@ -53,6 +53,10 @@
     <string name="no">否</string>
     <string name="done">完成</string>
     <string name="close">关闭</string>
+    <string name="installed_label">已安装</string>
+    <string name="new_version_label">新版本</string>
+    <string name="version_prefix">版本: </string>
+    <string name="error_title">错误</string>
     <string name="refresh">刷新</string>
     <string name="dismiss">关闭</string>
     <string name="search_apps">搜索应用&#8230;</string>
@@ -102,6 +106,14 @@
     <string name="uninstall_blocked">已阻止卸载</string>
     <string name="uninstall_expert_warning">警告：专家级卸载</string>
     <string name="uad_load_failed_desc">UAD 安全元数据加载失败。已阻止卸载系统应用以防止可能出现的无限重启或设备故障。</string>
+    <string name="freeze_system_app_title">冻结系统应用？</string>
+    <string name="freeze_system_app_desc">如果停用了关键服务，冻结系统应用可能会导致系统不稳定或无限重启。继续吗？</string>
+    <string name="freeze_blocked">已阻止冻结</string>
+    <string name="freeze_expert_warning">警告：专家级冻结</string>
+    <string name="uad_load_failed_freeze_desc">UAD 安全元数据加载失败。已阻止冻结系统应用以防止可能出现的无限重启或设备故障。</string>
+    <string name="freeze_unsafe_desc">此系统应用被归类为“不安全”。冻结它有极高的风险导致设备无限重启，因此已阻止冻结。</string>
+    <string name="freeze_expert_desc">此系统应用被归类为“专家级”。冻结它会破坏重要功能。确定要继续吗？</string>
+    <string name="freeze_anyway">仍然冻结</string>
     <string name="risk_warning_title">风险警告</string>
     <string name="risk_warning_desc">这会强制将安装程序记录更改为“Google Play 商店”。\n\n如果签名与官方商店版本不匹配，更新可能会失败。</string>
     <string name="reinstall_play_store_title">使用 Play 商店重新安装？</string>

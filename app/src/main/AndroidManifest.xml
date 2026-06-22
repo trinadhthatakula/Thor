@@ -77,8 +77,35 @@
                 <data android:mimeType="application/zip" />
                 <data android:mimeType="application/x-zip-compressed" />
                 <data android:mimeType="application/x-apks" />
+                <data android:mimeType="application/vnd.apks" />
                 <data android:mimeType="application/x-xapk" />
+                <data android:mimeType="application/vnd.xapk" />
                 <data android:mimeType="application/x-apkm" />
+                <data android:mimeType="application/apkm" />
+                <data android:mimeType="application/vnd.apkm" />
+                <data android:mimeType="application/vnd.apkm-archive" />
+            </intent-filter>
+
+            <!-- Match by extension for content/file URIs with a wildcard MIME type (common in modern file managers) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:mimeType="*/*" />
+
+                <data android:pathPattern=".*\\.apk" />
+                <data android:pathPattern=".*\\.APK" />
+                <data android:pathPattern=".*\\.xapk" />
+                <data android:pathPattern=".*\\.XAPK" />
+                <data android:pathPattern=".*\\.apks" />
+                <data android:pathPattern=".*\\.APKS" />
+                <data android:pathPattern=".*\\.apkm" />
+                <data android:pathPattern=".*\\.APKM" />
             </intent-filter>
 
             <!-- file:// URIs: match by extension, no MIME type required -->
@@ -88,7 +115,6 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data android:scheme="content" />
                 <data android:scheme="file" />
                 <data android:host="*" />
 
@@ -100,7 +126,6 @@
                 <data android:pathPattern=".*\\.APKS" />
                 <data android:pathPattern=".*\\.apkm" />
                 <data android:pathPattern=".*\\.APKM" />
-
             </intent-filter>
         </activity>
 

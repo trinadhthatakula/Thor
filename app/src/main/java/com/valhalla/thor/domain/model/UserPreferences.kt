@@ -37,7 +37,11 @@ data class UserPreferences(
     val useDetailedView: Boolean = true,
 
     // Animation Intensity
-    val animationIntensity: AnimationIntensity = AnimationIntensity.MEDIUM
+    val animationIntensity: AnimationIntensity = AnimationIntensity.MEDIUM,
+
+    // Grid/List View modes
+    val appListIsGrid: Boolean = true,
+    val freezerIsGrid: Boolean = true
 )
 
 

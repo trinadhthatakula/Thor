@@ -53,6 +53,10 @@
     <string name="no">لا</string>
     <string name="done">تم</string>
     <string name="close">إغلاق</string>
+    <string name="installed_label">مثبت</string>
+    <string name="new_version_label">نسخة جديدة</string>
+    <string name="version_prefix">الإصدار: </string>
+    <string name="error_title">خطأ</string>
     <string name="refresh">تحديث</string>
     <string name="dismiss">تجاهل</string>
     <string name="search_apps">بحث عن تطبيقات&#8230;</string>
@@ -102,6 +106,14 @@
     <string name="uninstall_blocked">إلغاء التثبيت محظور</string>
     <string name="uninstall_expert_warning">تحذير: إلغاء تثبيت خبير</string>
     <string name="uad_load_failed_desc">فشل تحميل بيانات الأمان UAD. تم حظر إلغاء تثبيت تطبيقات النظام لمنع حدوث مشاكل في التشغيل أو الجهاز.</string>
+    <string name="freeze_system_app_title">تجميد تطبيق النظام؟</string>
+    <string name="freeze_system_app_desc">قد يؤدي تجميد تطبيق النظام إلى عدم استقرار النظام أو الدخول في حلقة إعادة تشغيل إذا تم تعطيل خدمات مهمة. متابعة؟</string>
+    <string name="freeze_blocked">التجميد محظور</string>
+    <string name="freeze_expert_warning">تحذير: تجميد خبير</string>
+    <string name="uad_load_failed_freeze_desc">فشل تحميل بيانات الأمان UAD. تم حظر تجميد تطبيقات النظام لمنع حدوث مشاكل في التشغيل أو الجهاز.</string>
+    <string name="freeze_unsafe_desc">تم تصنيف تطبيق النظام هذا على أنه غير آمن (UNSAFE). تجميده يشكل خطراً كبيراً جداً للدخول في حلقة إعادة تشغيل للجهاز، لذا تم حظر التجميد.</string>
+    <string name="freeze_expert_desc">تم تصنيف تطبيق النظام هذا على أنه خبير (EXPERT). تجميده يعطل وظائف مهمة. هل أنت متأكد أنك تريد المتابعة؟</string>
+    <string name="freeze_anyway">التجميد على أي حال</string>
     <string name="risk_warning_title">تحذير من المخاطر</string>
     <string name="risk_warning_desc">هذا يجبر سجل المثبت على \'Google Play Store\'.\n\nقد تفشل التحديثات إذا لم يتطابق التوقيع مع نسخة المتجر الرسمية.</string>
     <string name="reinstall_play_store_title">إعادة التثبيت باستخدام متجر Play؟</string>

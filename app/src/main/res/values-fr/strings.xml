@@ -53,6 +53,10 @@
     <string name="no">Non</string>
     <string name="done">Terminé</string>
     <string name="close">Fermer</string>
+    <string name="installed_label">INSTALLÉ</string>
+    <string name="new_version_label">NOUVELLE VERSION</string>
+    <string name="version_prefix">Version : </string>
+    <string name="error_title">Erreur</string>
     <string name="refresh">Actualiser</string>
     <string name="dismiss">Ignorer</string>
     <string name="search_apps">Rechercher des applis&#8230;</string>
@@ -102,6 +106,14 @@
     <string name="uninstall_blocked">Désinstallation bloquée</string>
     <string name="uninstall_expert_warning">Avertissement : Désinstallation experte</string>
     <string name="uad_load_failed_desc">Échec du chargement des métadonnées de sécurité UAD. La désinstallation d\'applications système est bloquée pour éviter les boucles de démarrage ou les dysfonctionnements du système.</string>
+    <string name="freeze_system_app_title">Geler l\'appli système ?</string>
+    <string name="freeze_system_app_desc">Le gel d\'une application système peut entraîner une instabilité du système ou des boucles de démarrage si des services critiques sont désactivés. Continuer ?</string>
+    <string name="freeze_blocked">Gel bloqué</string>
+    <string name="freeze_expert_warning">Avertissement : Gel expert</string>
+    <string name="uad_load_failed_freeze_desc">Échec du chargement des métadonnées de sécurité UAD. Le gel d\'applications système est bloqué pour éviter les boucles de démarrage ou les dysfonctionnements du système.</string>
+    <string name="freeze_unsafe_desc">Cette application système est classée comme DANGEREUSE (UNSAFE). La geler présente un risque extrêmement élevé de boucle de démarrage, le gel est donc bloqué.</string>
+    <string name="freeze_expert_desc">Cette application système est classée comme EXPERT. La geler désactive des fonctions importantes. Êtes-vous sûr de vouloir continuer ?</string>
+    <string name="freeze_anyway">Geler quand même</string>
     <string name="risk_warning_title">Avertissement de risque</string>
     <string name="risk_warning_desc">Ceci force l\'enregistrement de l\'installateur sur \'Google Play Store\'.\n\nLes mises à jour peuvent échouer si la signature ne correspond pas à la version officielle du store.</string>
     <string name="reinstall_play_store_title">Réinstaller avec Play Store ?</string>

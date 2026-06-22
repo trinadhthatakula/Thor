@@ -14,6 +14,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,6 +43,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
+import androidx.window.core.layout.WindowSizeClass
+import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.PrivilegeMode
@@ -52,6 +58,7 @@ import com.valhalla.thor.presentation.installer.InstallerViewModel
 import com.valhalla.thor.presentation.installer.PortableInstaller
 import org.koin.androidx.compose.koinViewModel
 
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun HomeScreen(
     onNavigateToApps: () -> Unit,
@@ -78,14 +85,24 @@ fun HomeScreen(
         }
     }
 
+    val adaptiveInfo = currentWindowAdaptiveInfoV2()
+    val isWideScreen = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
+
+    val navigationBarsPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val bottomPadding = if (isWideScreen) {
+        16.dp + navigationBarsPadding
+    } else {
+        80.dp + navigationBarsPadding
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
-            .padding(bottom = 100.dp) // Nav bar space
+            .padding(bottom = bottomPadding)
     ) {
-        // 1. Header
+        // 1. Header (full width always)
         DashboardHeader(
             isRoot = state.isRootAvailable,
             isShizuku = state.isShizukuAvailable,
@@ -99,108 +116,215 @@ fun HomeScreen(
 
         Spacer(Modifier.height(8.dp))
 
-        // 2. Summary Cards
-        SummaryStatRow(
-            activeCount = state.activeAppCount,
-            frozenCount = state.frozenAppCount,
-            suspendedCount = state.suspendedAppCount,
-            onActiveClick = onNavigateToApps,
-            onFrozenClick = onNavigateToFreezer,
-            onSuspendedClick = onNavigateToFreezer // For now just go to freezer
-        )
-
-        Spacer(Modifier.height(12.dp))
-
-        // --- ACTIONS ---
-
-        // B. Reinstall All (Warning style card)
-        AnimatedVisibility(state.activePrivilegeMode != null && state.unknownInstallerCount > 0 && state.showReinstallCard) {
-            Column {
-                ActionCard(
-                    title = stringResource(R.string.reinstall_all),
-                    subtitle = stringResource(
-                        R.string.reinstall_all_subtitle,
-                        state.unknownInstallerCount,
-                        state.selectedType.name.lowercase()
-                    ),
-                    icon = R.drawable.apk_install,
-                    isWarning = true,
-                    onClick = onReinstallAll,
-                    onClose = { viewModel.dismissReinstallCard() }
-                )
-                Spacer(Modifier.height(12.dp))
-            }
-
-        }
-
-        // C. Portable Installer (Primary style card)
-        ActionCard(
-            title = stringResource(R.string.install_from_file),
-            subtitle = stringResource(R.string.install_from_file_subtitle),
-            icon = R.drawable.apk_install,
-            isPrimary = true,
-            onClick = {
-                filePickerLauncher.launch(arrayOf("*/*"))
-            }
-        )
-
-        AnimatedVisibility(state.activePrivilegeMode == PrivilegeMode.ROOT) {
-            Column {
-                Spacer(Modifier.height(12.dp))
-                ActionCard(
-                    title = stringResource(R.string.clear_all_cache),
-                    subtitle = stringResource(R.string.clear_all_cache_subtitle),
-                    icon = R.drawable.clear_all,
-                    onClick = { showCacheDialog = true }
-                )
-            }
-        }
-
-        Spacer(Modifier.height(24.dp))
-
-        // 3. Distribution Chart
-        AnimatedVisibility(state.distributionData.isNotEmpty() && !state.isLoading) {
-            Column(
+        if (isWideScreen) {
+            Row(
                 modifier = Modifier
-                    .padding(horizontal = 24.dp)
-                    .clip(RoundedCornerShape(48.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                    .padding(24.dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(24.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Bottom
-                ) {
-                    Text(
-                        text = stringResource(R.string.app_distribution),
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
+                // Left Column: Stats & Actions
+                Column(modifier = Modifier.weight(1.2f)) {
+                    SummaryStatRow(
+                        activeCount = state.activeAppCount,
+                        frozenCount = state.frozenAppCount,
+                        suspendedCount = state.suspendedAppCount,
+                        onActiveClick = onNavigateToApps,
+                        onFrozenClick = onNavigateToFreezer,
+                        onSuspendedClick = onNavigateToFreezer,
+                        modifier = Modifier.padding(horizontal = 0.dp)
                     )
-                    Text(
-                        text = stringResource(
-                            R.string.total_apps,
-                            state.activeAppCount + state.frozenAppCount
+
+                    Spacer(Modifier.height(16.dp))
+
+                    AnimatedVisibility(state.activePrivilegeMode != null && state.unknownInstallerCount > 0 && state.showReinstallCard) {
+                        Column {
+                            ActionCard(
+                                title = stringResource(R.string.reinstall_all),
+                                subtitle = stringResource(
+                                    R.string.reinstall_all_subtitle,
+                                    state.unknownInstallerCount,
+                                    state.selectedType.name.lowercase()
+                                ),
+                                icon = R.drawable.apk_install,
+                                isWarning = true,
+                                onClick = onReinstallAll,
+                                onClose = { viewModel.dismissReinstallCard() }
+                            )
+                            Spacer(Modifier.height(12.dp))
+                        }
+                    }
+
+                    ActionCard(
+                        title = stringResource(R.string.install_from_file),
+                        subtitle = stringResource(R.string.install_from_file_subtitle),
+                        icon = R.drawable.apk_install,
+                        isPrimary = true,
+                        onClick = {
+                            filePickerLauncher.launch(arrayOf("*/*"))
+                        }
+                    )
+
+                    AnimatedVisibility(state.activePrivilegeMode == PrivilegeMode.ROOT) {
+                        Column {
+                            Spacer(Modifier.height(12.dp))
+                            ActionCard(
+                                title = stringResource(R.string.clear_all_cache),
+                                subtitle = stringResource(R.string.clear_all_cache_subtitle),
+                                icon = R.drawable.clear_all,
+                                onClick = { showCacheDialog = true }
+                            )
+                        }
+                    }
+                }
+
+                // Right Column: Distribution & Support
+                Column(modifier = Modifier.weight(1f)) {
+                    AnimatedVisibility(state.distributionData.isNotEmpty() && !state.isLoading) {
+                        Column(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(48.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                                .padding(24.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.Bottom
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.app_distribution),
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    text = stringResource(
+                                        R.string.total_apps,
+                                        state.activeAppCount + state.frozenAppCount
+                                    ),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1
+                                )
+                            }
+                            Spacer(Modifier.height(24.dp))
+                            AppDistributionChart(
+                                data = state.distributionData,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+                    SupportCommunitySection(onSupportClick = { showSupportSheet = true })
+                }
+            }
+        } else {
+            // 2. Summary Cards
+            SummaryStatRow(
+                activeCount = state.activeAppCount,
+                frozenCount = state.frozenAppCount,
+                suspendedCount = state.suspendedAppCount,
+                onActiveClick = onNavigateToApps,
+                onFrozenClick = onNavigateToFreezer,
+                onSuspendedClick = onNavigateToFreezer
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            // --- ACTIONS ---
+            AnimatedVisibility(state.activePrivilegeMode != null && state.unknownInstallerCount > 0 && state.showReinstallCard) {
+                Column {
+                    ActionCard(
+                        title = stringResource(R.string.reinstall_all),
+                        subtitle = stringResource(
+                            R.string.reinstall_all_subtitle,
+                            state.unknownInstallerCount,
+                            state.selectedType.name.lowercase()
                         ),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1
+                        icon = R.drawable.apk_install,
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                        isWarning = true,
+                        onClick = onReinstallAll,
+                        onClose = { viewModel.dismissReinstallCard() }
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
+            }
+
+            ActionCard(
+                title = stringResource(R.string.install_from_file),
+                subtitle = stringResource(R.string.install_from_file_subtitle),
+                icon = R.drawable.apk_install,
+                modifier = Modifier.padding(horizontal = 24.dp),
+                isPrimary = true,
+                onClick = {
+                    filePickerLauncher.launch(arrayOf("*/*"))
+                }
+            )
+
+            AnimatedVisibility(state.activePrivilegeMode == PrivilegeMode.ROOT) {
+                Column {
+                    Spacer(Modifier.height(12.dp))
+                    ActionCard(
+                        title = stringResource(R.string.clear_all_cache),
+                        subtitle = stringResource(R.string.clear_all_cache_subtitle),
+                        icon = R.drawable.clear_all,
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                        onClick = { showCacheDialog = true }
                     )
                 }
-                Spacer(Modifier.height(24.dp))
-                AppDistributionChart(
-                    data = state.distributionData,
-                    modifier = Modifier.fillMaxWidth()
-                )
             }
-        }
 
-        // 4. Social Links
-        Spacer(Modifier.height(8.dp))
-        SupportCommunitySection(onSupportClick = { showSupportSheet = true })
+            Spacer(Modifier.height(24.dp))
+
+            // 3. Distribution Chart
+            AnimatedVisibility(state.distributionData.isNotEmpty() && !state.isLoading) {
+                Column(
+                    modifier = Modifier
+                        .padding(horizontal = 24.dp)
+                        .clip(RoundedCornerShape(48.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                        .padding(24.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        Text(
+                            text = stringResource(R.string.app_distribution),
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.total_apps,
+                                state.activeAppCount + state.frozenAppCount
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
+                    }
+                    Spacer(Modifier.height(24.dp))
+                    AppDistributionChart(
+                        data = state.distributionData,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
+            // 4. Social Links
+            Spacer(Modifier.height(8.dp))
+            SupportCommunitySection(onSupportClick = { showSupportSheet = true })
+        }
         Spacer(Modifier.height(32.dp))
     }
 
@@ -289,6 +413,7 @@ private fun ActionCard(
     title: String,
     subtitle: String,
     icon: Int,
+    modifier: Modifier = Modifier,
     isPrimary: Boolean = false,
     isWarning: Boolean = false,
     onClick: () -> Unit,
@@ -307,9 +432,8 @@ private fun ActionCard(
     }
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp)
             .clip(RoundedCornerShape(32.dp))
             .background(containerColor)
             .then(

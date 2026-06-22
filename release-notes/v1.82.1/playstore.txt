@@ -1,0 +1,6 @@
+- Overhauled Portable Installer UI with detailed states for progress, confirmation, success, and errors.
+- Safety gating for system app freezing: blocks unsafe packages and warns on expert ones.
+- Added adaptive layout (Navigation Rail, landscape mode) and multi-backstack navigation polish.
+- Remembers Grid/List layout preference for App List and Freezer screens.
+- Registered split APK file associations (.apkm, .apks, .xapk).
+- General bug fixes and stability improvements.

@@ -48,6 +48,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.presentation.utils.AppIconModel
+import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,6 +72,7 @@ fun AppInfoDialog(
     var showUninstallConfirmation by remember { mutableStateOf(false) }
     var showReinstallWarning by remember { mutableStateOf(false) }
     var showClearDataConfirmation by remember { mutableStateOf(false) }
+    var showFreezeConfirmation by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -104,6 +106,14 @@ fun AppInfoDialog(
                     when (action) {
                         is AppClickAction.Uninstall -> {
                             if (appInfo.isSystem) showUninstallConfirmation = true
+                            else {
+                                onAppAction(action)
+                                onDismiss()
+                            }
+                        }
+
+                        is AppClickAction.Freeze -> {
+                            if (appInfo.isSystem) showFreezeConfirmation = true
                             else {
                                 onAppAction(action)
                                 onDismiss()
@@ -176,13 +186,7 @@ fun AppInfoDialog(
                 ) {
                     if (!isUadFailed) {
                         appInfo.bloatRecommendation?.let { rec ->
-                            val (color, textColor) = when (rec.lowercase()) {
-                                "recommended" -> Color(0xFFC8E6C9) to Color(0xFF1B5E20)
-                                "advanced" -> Color(0xFFFFF9C4) to Color(0xFFF57F17)
-                                "expert" -> Color(0xFFFFE0B2) to Color(0xFFE65100)
-                                "unsafe" -> Color(0xFFFFCDD2) to Color(0xFFB71C1C)
-                                else -> MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant
-                            }
+                            val (color, textColor) = getBloatRecommendationColors(rec)
                             StatusChip(
                                 text = rec,
                                 color = color,
@@ -233,7 +237,89 @@ fun AppInfoDialog(
                 TextButton(onClick = {
                     showUninstallConfirmation = false
                 }) {
-                    Text(if (isBlocked) "Close" else stringResource(R.string.no))
+                    Text(if (isBlocked) stringResource(R.string.close) else stringResource(R.string.no))
+                }
+            }
+        )
+    }
+
+    if (showFreezeConfirmation) {
+        val recommendation = appInfo.bloatRecommendation?.lowercase()
+        val isUadFailed = appInfo.isSystem && appInfo.isUadLoadFailed
+        val isUnsafe = recommendation == "unsafe"
+        val isExpert = recommendation == "expert" && !isUadFailed
+        val isBlocked = isUnsafe || isUadFailed
+        AlertDialog(
+            onDismissRequest = { showFreezeConfirmation = false },
+            title = {
+                Text(
+                    text = when {
+                        isBlocked -> stringResource(R.string.freeze_blocked)
+                        isExpert -> stringResource(R.string.freeze_expert_warning)
+                        else -> stringResource(R.string.freeze_system_app_title)
+                    },
+                    color = if (isBlocked || isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    if (!isUadFailed) {
+                        appInfo.bloatRecommendation?.let { rec ->
+                            val (color, textColor) = getBloatRecommendationColors(rec)
+                            StatusChip(
+                                text = rec,
+                                color = color,
+                                textColor = textColor
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
+                    }
+
+                    if (isUadFailed) {
+                        Text(
+                            text = stringResource(R.string.uad_load_failed_freeze_desc),
+                            textAlign = TextAlign.Center
+                        )
+                    } else if (isUnsafe) {
+                        Text(
+                            text = stringResource(R.string.freeze_unsafe_desc),
+                            textAlign = TextAlign.Center
+                        )
+                    } else if (isExpert) {
+                        Text(
+                            text = stringResource(R.string.freeze_expert_desc),
+                            textAlign = TextAlign.Center
+                        )
+                    } else {
+                        Text(
+                            text = stringResource(R.string.freeze_system_app_desc),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                if (!isBlocked) {
+                    TextButton(onClick = {
+                        onAppAction(AppClickAction.Freeze(appInfo))
+                        showFreezeConfirmation = false
+                        onDismiss()
+                    }) {
+                        Text(
+                            text = if (isExpert) stringResource(R.string.freeze_anyway) else stringResource(R.string.yes),
+                            color = if (isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showFreezeConfirmation = false
+                }) {
+                    Text(if (isBlocked) stringResource(R.string.close) else stringResource(R.string.no))
                 }
             }
         )

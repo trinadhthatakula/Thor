@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -55,6 +56,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
+import android.content.res.Configuration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -63,6 +66,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
+import androidx.window.core.layout.WindowSizeClass
+import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import coil3.compose.AsyncImage
 import com.valhalla.thor.BuildConfig
@@ -74,12 +80,13 @@ import com.valhalla.thor.domain.model.PermissionDetail
 import com.valhalla.thor.presentation.theme.bodyFontFamily
 import com.valhalla.thor.presentation.theme.firaMonoFontFamily
 import com.valhalla.thor.presentation.utils.AppIconModel
+import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun AppInfoDetailsScreen(
     packageName: String,
@@ -88,7 +95,9 @@ fun AppInfoDetailsScreen(
     onBack: () -> Unit,
     onNavigateToPermissionManager: (packageName: String, appName: String) -> Unit,
     onAppAction: (AppClickAction) -> Unit = {},
-    viewModel: AppInfoDetailsViewModel = org.koin.androidx.compose.koinViewModel()
+    viewModel: AppInfoDetailsViewModel = org.koin.androidx.compose.koinViewModel(),
+    showOnlyHeaderAndActions: Boolean = false,
+    showOnlyTabs: Boolean = false
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
@@ -106,30 +115,43 @@ fun AppInfoDetailsScreen(
 
     var showClearDataConfirmation by remember { mutableStateOf(false) }
     var showUninstallConfirmation by remember { mutableStateOf(false) }
+    var showFreezeConfirmation by remember { mutableStateOf(false) }
+
+    val adaptiveInfo = currentWindowAdaptiveInfoV2()
+    val isWideScreen = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
+    val configuration = LocalConfiguration.current
+    val isLandscapePhone = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
+            configuration.smallestScreenWidthDp < 600
+    val showTopBar = !showOnlyTabs
 
     Scaffold(
         topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.background)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        painter = painterResource(R.drawable.round_close),
-                        contentDescription = stringResource(R.string.cd_close),
-                        tint = MaterialTheme.colorScheme.onSurface
+            if (showTopBar) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.background)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val showCloseButton = !isWideScreen || (showOnlyHeaderAndActions && isLandscapePhone)
+                    if (showCloseButton) {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                painter = painterResource(R.drawable.round_close),
+                                contentDescription = stringResource(R.string.cd_close),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                    }
+                    Text(
+                        text = stringResource(R.string.app_details_title),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
-                Spacer(modifier = Modifier.width(16.dp))
-                Text(
-                    text = stringResource(R.string.app_details_title),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Black,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
             }
         },
         contentWindowInsets = WindowInsets(0, 0, 0, 0)
@@ -187,107 +209,126 @@ fun AppInfoDetailsScreen(
                     val pagerState = rememberPagerState(pageCount = { tabTitles.size })
 
                     val animatedVisibilityScope = LocalNavAnimatedContentScope.current
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        // 1. Header (Icon + Name + Chips)
-                        AppDetailsHeader(
-                            appInfo = appInfo,
-                            sharedTransitionScope = sharedTransitionScope,
-                            animatedVisibilityScope = animatedVisibilityScope
-                        )
+                    val leftPaneScrollState = rememberScrollState()
 
-                        // 2. Action buttons
-                        AppDetailsActionRow(
-                            appInfo = appInfo,
-                            isRoot = state.isRoot,
-                            isShizuku = state.isShizuku,
-                            isDhizuku = state.isDhizuku,
-                            isInFreezer = state.isInFreezer,
-                            onLaunch = {
-                                val intent =
-                                    context.packageManager.getLaunchIntentForPackage(packageName)
-                                if (intent != null) context.startActivity(intent)
-                                else Toast.makeText(
-                                    context,
-                                    context.getString(R.string.cannot_launch_app),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            },
-                            onSystemSettings = {
-                                val intent =
-                                    android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                                        .apply {
-                                            data = android.net.Uri.parse("package:$packageName")
-                                        }
-                                context.startActivity(intent)
-                            },
-                            onFreezeToggle = {
-                                viewModel.toggleFreezerState(packageName, appInfo.appName, it)
-                            },
-                            onSuspendToggle = {
-                                viewModel.toggleSuspendState(packageName, it)
-                            },
-                            onForceStop = {
-                                viewModel.forceStopApp(packageName)
-                            },
-                            onManagePermissions = {
-                                onNavigateToPermissionManager(packageName, appInfo.appName ?: "")
-                            },
-                            onToggleFreezerMembership = {
-                                viewModel.addOrRemoveFromFreezer(packageName)
-                            },
-                            onClearCache = {
-                                viewModel.clearCache(packageName)
-                            },
-                            onClearData = {
-                                showClearDataConfirmation = true
-                            },
-                            onUninstall = {
-                                showUninstallConfirmation = true
-                            },
-                            onShare = {
-                                onAppAction(AppClickAction.Share(appInfo))
-                            }
-                        )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .then(
+                                if (showOnlyHeaderAndActions) Modifier.verticalScroll(leftPaneScrollState)
+                                else Modifier
+                            )
+                    ) {
+                        if (!showOnlyTabs) {
+                            // 1. Header (Icon + Name + Chips)
+                            AppDetailsHeader(
+                                appInfo = appInfo,
+                                sharedTransitionScope = sharedTransitionScope,
+                                animatedVisibilityScope = animatedVisibilityScope
+                            )
 
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // 3. SecondaryScrollableTabRow
-                        SecondaryScrollableTabRow(
-                            selectedTabIndex = pagerState.currentPage,
-                            containerColor = MaterialTheme.colorScheme.background,
-                            contentColor = MaterialTheme.colorScheme.onSurface,
-                            edgePadding = 16.dp
-                        ) {
-                            tabTitles.forEachIndexed { index, title ->
-                                Tab(
-                                    selected = pagerState.currentPage == index,
-                                    onClick = {
-                                        coroutineScope.launch {
-                                            pagerState.animateScrollToPage(index)
-                                        }
-                                    },
-                                    text = {
-                                        Text(
-                                            text = title,
-                                            fontWeight = if (pagerState.currentPage == index) FontWeight.Bold else FontWeight.Medium,
-                                            style = MaterialTheme.typography.titleSmall
-                                        )
+                            // 2. Action buttons
+                            AppDetailsActionRow(
+                                appInfo = appInfo,
+                                isRoot = state.isRoot,
+                                isShizuku = state.isShizuku,
+                                isDhizuku = state.isDhizuku,
+                                isInFreezer = state.isInFreezer,
+                                onLaunch = {
+                                    val intent =
+                                        context.packageManager.getLaunchIntentForPackage(packageName)
+                                    if (intent != null) context.startActivity(intent)
+                                    else Toast.makeText(
+                                        context,
+                                        context.getString(R.string.cannot_launch_app),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                },
+                                onSystemSettings = {
+                                    val intent =
+                                        android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                            .apply {
+                                                data = android.net.Uri.parse("package:$packageName")
+                                            }
+                                    context.startActivity(intent)
+                                },
+                                onFreezeToggle = { freeze ->
+                                    if (freeze && appInfo.isSystem) {
+                                        showFreezeConfirmation = true
+                                    } else {
+                                        viewModel.toggleFreezerState(packageName, appInfo.appName, freeze)
                                     }
-                                )
-                            }
+                                },
+                                onSuspendToggle = {
+                                    viewModel.toggleSuspendState(packageName, it)
+                                },
+                                onForceStop = {
+                                    viewModel.forceStopApp(packageName)
+                                },
+                                onManagePermissions = {
+                                    onNavigateToPermissionManager(packageName, appInfo.appName ?: "")
+                                },
+                                onToggleFreezerMembership = {
+                                    viewModel.addOrRemoveFromFreezer(packageName)
+                                },
+                                onClearCache = {
+                                    viewModel.clearCache(packageName)
+                                },
+                                onClearData = {
+                                    showClearDataConfirmation = true
+                                },
+                                onUninstall = {
+                                    showUninstallConfirmation = true
+                                },
+                                onShare = {
+                                    onAppAction(AppClickAction.Share(appInfo))
+                                }
+                            )
                         }
 
-                        HorizontalPager(
-                            state = pagerState,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f)
-                        ) { page ->
-                            when (page) {
-                                0 -> GeneralTabScreen(details = details)
-                                1 -> PermissionsTabScreen(permissions = details.permissions)
-                                2 -> ComponentsTabScreen(details = details)
-                                3 -> LibsAndFeaturesTabScreen(details = details)
+                        if (!showOnlyHeaderAndActions) {
+                            if (!showOnlyTabs) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+
+                            // 3. SecondaryScrollableTabRow
+                            SecondaryScrollableTabRow(
+                                selectedTabIndex = pagerState.currentPage,
+                                containerColor = MaterialTheme.colorScheme.background,
+                                contentColor = MaterialTheme.colorScheme.onSurface,
+                                edgePadding = 16.dp
+                            ) {
+                                tabTitles.forEachIndexed { index, title ->
+                                    Tab(
+                                        selected = pagerState.currentPage == index,
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                pagerState.animateScrollToPage(index)
+                                            }
+                                        },
+                                        text = {
+                                            Text(
+                                                text = title,
+                                                fontWeight = if (pagerState.currentPage == index) FontWeight.Bold else FontWeight.Medium,
+                                                style = MaterialTheme.typography.titleSmall
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+
+                            HorizontalPager(
+                                state = pagerState,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                            ) { page ->
+                                when (page) {
+                                    0 -> GeneralTabScreen(details = details)
+                                    1 -> PermissionsTabScreen(permissions = details.permissions)
+                                    2 -> ComponentsTabScreen(details = details)
+                                    3 -> LibsAndFeaturesTabScreen(details = details)
+                                }
                             }
                         }
                     }
@@ -357,13 +398,7 @@ fun AppInfoDetailsScreen(
                     ) {
                         if (isSystem && !isUadFailed) {
                             appInfo.bloatRecommendation?.let { rec ->
-                                val (color, textColor) = when (rec.lowercase()) {
-                                    "recommended" -> Color(0xFFC8E6C9) to Color(0xFF1B5E20)
-                                    "advanced" -> Color(0xFFFFF9C4) to Color(0xFFF57F17)
-                                    "expert" -> Color(0xFFFFE0B2) to Color(0xFFE65100)
-                                    "unsafe" -> Color(0xFFFFCDD2) to Color(0xFFB71C1C)
-                                    else -> MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant
-                                }
+                                val (color, textColor) = getBloatRecommendationColors(rec)
                                 StatusChip(
                                     text = rec,
                                     color = color,
@@ -426,7 +461,92 @@ fun AppInfoDetailsScreen(
                     TextButton(onClick = {
                         showUninstallConfirmation = false
                     }) {
-                        Text(if (isBlocked) "Close" else if (isSystem) stringResource(R.string.no) else stringResource(R.string.cancel))
+                        Text(if (isBlocked) stringResource(R.string.close) else if (isSystem) stringResource(R.string.no) else stringResource(R.string.cancel))
+                    }
+                }
+            )
+        }
+    }
+
+    if (showFreezeConfirmation) {
+        val appInfo = state.detailedInfo?.appInfo
+        if (appInfo != null) {
+            val recommendation = appInfo.bloatRecommendation?.lowercase()
+            val isSystem = appInfo.isSystem
+            val isUadFailed = isSystem && appInfo.isUadLoadFailed
+            val isUnsafe = isSystem && recommendation == "unsafe"
+            val isExpert = isSystem && recommendation == "expert" && !isUadFailed
+            val isBlocked = isUnsafe || isUadFailed
+            AlertDialog(
+                onDismissRequest = { showFreezeConfirmation = false },
+                title = {
+                    Text(
+                        text = when {
+                            isBlocked -> stringResource(R.string.freeze_blocked)
+                            isExpert -> stringResource(R.string.freeze_expert_warning)
+                            else -> stringResource(R.string.freeze_system_app_title)
+                        },
+                        color = if (isBlocked || isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                    )
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        if (isSystem && !isUadFailed) {
+                            appInfo.bloatRecommendation?.let { rec ->
+                                val (color, textColor) = getBloatRecommendationColors(rec)
+                                StatusChip(
+                                    text = rec,
+                                    color = color,
+                                    textColor = textColor
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                            }
+                        }
+
+                        if (isUadFailed) {
+                            Text(
+                                text = stringResource(R.string.uad_load_failed_freeze_desc),
+                                textAlign = TextAlign.Center
+                            )
+                        } else if (isUnsafe) {
+                            Text(
+                                text = stringResource(R.string.freeze_unsafe_desc),
+                                textAlign = TextAlign.Center
+                            )
+                        } else if (isExpert) {
+                            Text(
+                                text = stringResource(R.string.freeze_expert_desc),
+                                textAlign = TextAlign.Center
+                            )
+                        } else {
+                            Text(
+                                text = stringResource(R.string.freeze_system_app_desc),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    if (!isBlocked) {
+                        TextButton(onClick = {
+                            viewModel.toggleFreezerState(packageName, appInfo.appName, true)
+                            showFreezeConfirmation = false
+                        }) {
+                            Text(
+                                text = if (isExpert) stringResource(R.string.freeze_anyway) else stringResource(R.string.yes),
+                                color = if (isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        showFreezeConfirmation = false
+                    }) {
+                        Text(if (isBlocked) stringResource(R.string.close) else stringResource(R.string.no))
                     }
                 }
             )
@@ -552,13 +672,7 @@ private fun AppDetailsHeader(
                 }
 
                 appInfo.bloatRecommendation?.let { recommendation ->
-                    val (chipColor, chipTextColor) = when (recommendation.lowercase()) {
-                        "recommended" -> Color(0xFFC8E6C9) to Color(0xFF1B5E20)
-                        "advanced" -> Color(0xFFFFF9C4) to Color(0xFFF57F17)
-                        "expert" -> Color(0xFFFFE0B2) to Color(0xFFE65100)
-                        "unsafe" -> Color(0xFFFFCDD2) to Color(0xFFB71C1C)
-                        else -> MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant
-                    }
+                    val (chipColor, chipTextColor) = getBloatRecommendationColors(recommendation)
                     StatusChip(
                         text = recommendation,
                         color = chipColor,

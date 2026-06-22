@@ -26,10 +26,8 @@ jobs:
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.0'
-
-      - name: Install Fastlane
-        run: gem install fastlane
+          ruby-version: '3.3'
+          bundler-cache: true
 
       # --- 1. SECRETS INJECTION ---
       - name: Decode Keystore
@@ -56,7 +54,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEYSTORE_FILE_PATH: ${{ github.workspace }}/app/release.jks
-        run: fastlane android distribute_dev
+        run: bundle exec fastlane android distribute_dev
 
       # --- 3. PREPARE RELEASE NOTES ---
       - name: Prepare Release Notes

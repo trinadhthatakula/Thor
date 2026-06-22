@@ -1,23 +1,19 @@
 package com.valhalla.thor.presentation.main
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
-import com.valhalla.thor.presentation.theme.animateExpressiveResize
-import androidx.compose.animation.expandHorizontally
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -36,35 +32,38 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.valhalla.thor.presentation.home.AppDestinations
+import com.valhalla.thor.presentation.theme.animateExpressiveResize
 import com.valhalla.thor.presentation.theme.expressivePress
 
 @Composable
-fun ThorNavigationBar(
+fun ThorNavigationRail(
     destinations: List<AppDestinations>,
     selectedDestination: AppDestinations,
     onDestinationSelected: (AppDestinations) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showLabel: Boolean = true
 ) {
     Surface(
         modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)),
+            .fillMaxHeight()
+            .animateContentSize()
+            .clip(RoundedCornerShape(topEnd = 32.dp, bottomEnd = 32.dp)),
         color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
-        Row(
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 12.dp)
-                .height(64.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxHeight()
+                .safeDrawingPadding()
+                .padding(vertical = 24.dp, horizontal = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             destinations.forEach { destination ->
-                ThorNavigationBarItem(
+                ThorNavigationRailItem(
                     destination = destination,
                     selected = destination == selectedDestination,
-                    onClick = { onDestinationSelected(destination) }
+                    onClick = { onDestinationSelected(destination) },
+                    showLabel = showLabel
                 )
             }
         }
@@ -72,7 +71,7 @@ fun ThorNavigationBar(
 }
 
 @Composable
-internal fun ThorNavigationBarItem(
+private fun ThorNavigationRailItem(
     destination: AppDestinations,
     selected: Boolean,
     onClick: () -> Unit,
@@ -84,7 +83,6 @@ internal fun ThorNavigationBarItem(
     val containerColorSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Color>()
     val contentColorSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Color>()
     val alphaEffectsSpec = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
-    val spatialSpec = MaterialTheme.motionScheme.fastSpatialSpec<androidx.compose.ui.unit.IntSize>()
 
     val containerColor by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
@@ -106,7 +104,7 @@ internal fun ThorNavigationBarItem(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(32.dp))
+            .clip(RoundedCornerShape(20.dp))
             .background(containerColor)
             .expressivePress(interactionSource)
             .clickable(
@@ -115,13 +113,13 @@ internal fun ThorNavigationBarItem(
                 onClick = onClick
             )
             .animateExpressiveResize()
-            .padding(horizontal = if (selected) 20.dp else 16.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center
     ) {
-        Row(
+        Column(
             modifier = Modifier.graphicsLayer { alpha = contentAlpha },
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
             Icon(
                 painter = painterResource(if (selected) destination.selectedIcon else destination.icon),
@@ -129,23 +127,13 @@ internal fun ThorNavigationBarItem(
                 tint = contentColor
             )
 
-            AnimatedVisibility(
-                visible = selected && showLabel,
-                enter = fadeIn(animationSpec = alphaEffectsSpec) +
-                        expandHorizontally(
-                            animationSpec = spatialSpec
-                        ),
-                exit = fadeOut(animationSpec = alphaEffectsSpec) +
-                        shrinkHorizontally(
-                            animationSpec = spatialSpec
-                        )
-            ) {
+            if (showLabel) {
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = stringResource(destination.label),
                     color = contentColor,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(start = 8.dp),
+                    style = if (selected) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelSmall,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                     maxLines = 1
                 )
             }

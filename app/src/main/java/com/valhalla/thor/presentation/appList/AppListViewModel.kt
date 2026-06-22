@@ -57,7 +57,8 @@ data class AppListUiState(
     // Action Feedback
     val actionMessage: UiText? = null,
     val freezerPrompt: FreezerPrompt? = null,
-    val useDetailedView: Boolean = true
+    val useDetailedView: Boolean = true,
+    val isGrid: Boolean = true
 )
 
 @KoinViewModel
@@ -80,7 +81,8 @@ class AppListViewModel(
             sortOrder = prefs.appSortOrder,
             filterType = prefs.appFilterType,
             selectedFilter = prefs.appSelectedFilter,
-            useDetailedView = prefs.useDetailedView
+            useDetailedView = prefs.useDetailedView,
+            isGrid = prefs.appListIsGrid
         )
         processList(mergedState)
     }
@@ -206,20 +208,46 @@ class AppListViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             when (action) {
                 is MultiAppAction.Freeze -> {
-                    val packageNames = action.appList.map { it.packageName }.toSet()
-                    action.appList.forEach { manageAppUseCase.setAppDisabled(it.packageName, true) }
+                    val eligibleApps = action.appList.filter { appInfo ->
+                        val isSystem = appInfo.isSystem
+                        val isUadFailed = isSystem && appInfo.isUadLoadFailed
+                        val isUnsafe = isSystem && appInfo.bloatRecommendation?.lowercase() == "unsafe"
+                        !(isUadFailed || isUnsafe)
+                    }
+                    val skippedCount = action.appList.size - eligibleApps.size
+                    val succeededPackages = mutableSetOf<String>()
+                    var failures = skippedCount
+
+                    eligibleApps.forEach { app ->
+                        val res = manageAppUseCase.setAppDisabled(app.packageName, true)
+                        if (res.isSuccess) {
+                            succeededPackages.add(app.packageName)
+                        } else {
+                            failures++
+                        }
+                    }
+
                     _rawState.update { state ->
                         state.copy(
                             allUserApps = state.allUserApps.map {
-                                if (it.packageName in packageNames) it.copy(enabled = false) else it
+                                if (it.packageName in succeededPackages) it.copy(enabled = false) else it
                             },
                             allSystemApps = state.allSystemApps.map {
-                                if (it.packageName in packageNames) it.copy(enabled = false) else it
+                                if (it.packageName in succeededPackages) it.copy(enabled = false) else it
                             },
-                            actionMessage = UiText.StringResource(
-                                R.string.tile_freeze_success,
-                                action.appList.size
-                            )
+                            actionMessage = if (failures == 0) {
+                                UiText.StringResource(
+                                    R.string.tile_freeze_success,
+                                    action.appList.size
+                                )
+                            } else {
+                                UiText.StringResource(
+                                    R.string.tile_freeze_partial_failure,
+                                    succeededPackages.size,
+                                    action.appList.size,
+                                    failures
+                                )
+                            }
                         )
                     }
                 }
@@ -311,6 +339,12 @@ class AppListViewModel(
 
     fun updateSearchQuery(query: String) {
         _rawState.update { it.copy(searchQuery = query) }
+    }
+
+    fun toggleGridMode() {
+        viewModelScope.launch {
+            preferenceRepository.toggleAppListIsGrid()
+        }
     }
 
     private fun processList(state: AppListUiState): AppListUiState {
