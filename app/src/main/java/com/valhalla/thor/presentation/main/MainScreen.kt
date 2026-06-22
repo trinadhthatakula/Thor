@@ -162,7 +162,10 @@ fun MainScreen(
     // 1. Pop from the active stack if there are sub-screens (size > 1)
     val canGoBackInActiveTab = (backStacks[activeTab]?.size ?: 0) > 1
     BackHandler(enabled = canGoBackInActiveTab) {
-        backStacks[activeTab]?.removeLastOrNull()
+        val stack = backStacks[activeTab]
+        if (stack != null && stack.size > 1) {
+            stack.removeLastOrNull()
+        }
     }
 
     // 2. Switch to Home tab if at the root of a non-Home tab
@@ -311,7 +314,11 @@ fun MainScreen(
                             packageName = activeDetailRoute.packageName,
                             appName = activeDetailRoute.appName,
                             sharedTransitionScope = sharedScope,
-                            onBack = { appsBackStack.removeLastOrNull() },
+                            onBack = {
+                                if (appsBackStack.size > 1) {
+                                    appsBackStack.removeLastOrNull()
+                                }
+                            },
                             onNavigateToPermissionManager = { pkg, name ->
                                 appsBackStack.add(ThorRoute.PermissionManager(pkg, name))
                             },
@@ -364,7 +371,11 @@ fun MainScreen(
                             packageName = activeDetailRoute.packageName,
                             appName = activeDetailRoute.appName,
                             sharedTransitionScope = sharedScope,
-                            onBack = { freezerBackStack.removeLastOrNull() },
+                            onBack = {
+                                if (freezerBackStack.size > 1) {
+                                    freezerBackStack.removeLastOrNull()
+                                }
+                            },
                             onNavigateToPermissionManager = { pkg, name ->
                                 freezerBackStack.add(ThorRoute.PermissionManager(pkg, name))
                             },
@@ -416,7 +427,11 @@ fun MainScreen(
                         packageName = route.packageName,
                         appName = route.appName,
                         sharedTransitionScope = sharedScope,
-                        onBack = { currentBackStack.removeLastOrNull() }
+                        onBack = {
+                            if (currentBackStack.size > 1) {
+                                currentBackStack.removeLastOrNull()
+                            }
+                        }
                     )
                 }
 
@@ -427,7 +442,11 @@ fun MainScreen(
                         packageName = route.packageName,
                         appName = route.appName,
                         sharedTransitionScope = sharedScope,
-                        onBack = { currentBackStack.removeLastOrNull() },
+                        onBack = {
+                            if (currentBackStack.size > 1) {
+                                currentBackStack.removeLastOrNull()
+                            }
+                        },
                         onNavigateToPermissionManager = { pkg, name ->
                             currentBackStack.add(ThorRoute.PermissionManager(pkg, name))
                         },
@@ -499,7 +518,11 @@ fun MainScreen(
             ) {
                 NavDisplay(
                     entries = entries,
-                    onBack = { currentBackStack.removeLastOrNull() },
+                    onBack = {
+                        if (currentBackStack.size > 1) {
+                            currentBackStack.removeLastOrNull()
+                        }
+                    },
                     sceneStrategies = listOf(listDetailStrategy),
                     transitionSpec = {
                         (fadeIn(animationSpec = effectsSpec) + slideInHorizontally(
