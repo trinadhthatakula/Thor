@@ -137,6 +137,23 @@ fun MainScreen(
 
     val selectedDestination = activeDestination
 
+    val handleDestinationSelected = { dest: AppDestinations ->
+        val route = when (dest) {
+            AppDestinations.HOME -> ThorRoute.Home
+            AppDestinations.APPS -> ThorRoute.Apps
+            AppDestinations.FREEZER -> ThorRoute.Freezer
+            AppDestinations.SETTINGS -> ThorRoute.Settings
+        }
+        if (activeDestination == dest) {
+            val stack = backStacks[route]
+            if (stack != null && stack.size > 1) {
+                stack.subList(1, stack.size).clear()
+            }
+        } else {
+            activeDestination = dest
+        }
+    }
+
     val showBottomBar = currentBackStack.lastOrNull()?.let {
         it == ThorRoute.Home || it == ThorRoute.Apps || it == ThorRoute.Freezer || it == ThorRoute.Settings
     } ?: true
@@ -226,22 +243,7 @@ fun MainScreen(
                 ThorNavigationRail(
                     destinations = AppDestinations.entries,
                     selectedDestination = selectedDestination,
-                    onDestinationSelected = { dest ->
-                        val route = when (dest) {
-                            AppDestinations.HOME -> ThorRoute.Home
-                            AppDestinations.APPS -> ThorRoute.Apps
-                            AppDestinations.FREEZER -> ThorRoute.Freezer
-                            AppDestinations.SETTINGS -> ThorRoute.Settings
-                        }
-                        if (activeDestination == dest) {
-                            val stack = backStacks[route]
-                            if (stack != null && stack.size > 1) {
-                                stack.subList(1, stack.size).clear()
-                            }
-                        } else {
-                            activeDestination = dest
-                        }
-                    },
+                    onDestinationSelected = handleDestinationSelected,
                     showLabel = showNavRailLabel
                 )
             }
@@ -259,22 +261,7 @@ fun MainScreen(
                         ThorNavigationBar(
                             destinations = AppDestinations.entries,
                             selectedDestination = selectedDestination,
-                            onDestinationSelected = { dest ->
-                                val route = when (dest) {
-                                    AppDestinations.HOME -> ThorRoute.Home
-                                    AppDestinations.APPS -> ThorRoute.Apps
-                                    AppDestinations.FREEZER -> ThorRoute.Freezer
-                                    AppDestinations.SETTINGS -> ThorRoute.Settings
-                                }
-                                if (activeDestination == dest) {
-                                    val stack = backStacks[route]
-                                    if (stack != null && stack.size > 1) {
-                                        stack.subList(1, stack.size).clear()
-                                    }
-                                } else {
-                                    activeDestination = dest
-                                }
-                            }
+                            onDestinationSelected = handleDestinationSelected
                         )
                     }
                 }

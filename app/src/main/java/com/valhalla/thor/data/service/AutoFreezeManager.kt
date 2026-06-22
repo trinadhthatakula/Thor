@@ -79,7 +79,7 @@ class AutoFreezeManager(
                     val pm = ctx.packageManager
                     val semaphore = Semaphore(5)
 
-                    pkgs.forEach { pkg ->
+                    val jobs = pkgs.map { pkg ->
                         scope.launch {
                             semaphore.withPermit {
                                 try {
@@ -114,7 +114,8 @@ class AutoFreezeManager(
                             }
                         }
                     }
-                    Logger.d("AutoFreezeManager", "Scheduled auto-freeze for ${pkgs.size} apps.")
+                    jobs.forEach { it.join() }
+                    Logger.d("AutoFreezeManager", "Auto-freeze process complete for ${pkgs.size} apps.")
                 } catch (e: Exception) {
                     Logger.e("AutoFreezeManager", "Error in auto-freeze process", e)
                 } finally {
