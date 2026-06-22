@@ -429,7 +429,7 @@ fun FreezerScreen(
             hasPrivilege = hasPrivilege,
             showImportDisabledApps = disabledAppsNotInFreezer.isNotEmpty(),
             appListType = state.appListType,
-            onToggleView = { viewModel.setGridMode(!state.isGrid) },
+            onToggleView = viewModel::toggleGridMode,
             onToggleAutoFreeze = viewModel::setAutoFreezeEnabled,
             onDismiss = { showSettingsSheet = false },
             onUnfreezeAll = viewModel::unfreezeAll,

@@ -367,9 +367,9 @@ class FreezerViewModel(
         }
     }
 
-    fun setGridMode(isGrid: Boolean) {
+    fun toggleGridMode() {
         viewModelScope.launch(Dispatchers.IO) {
-            preferenceRepository.setFreezerIsGrid(isGrid)
+            preferenceRepository.toggleFreezerIsGrid()
         }
     }
 

@@ -343,7 +343,7 @@ class AppListViewModel(
 
     fun toggleGridMode() {
         viewModelScope.launch {
-            preferenceRepository.setAppListIsGrid(!uiState.value.isGrid)
+            preferenceRepository.toggleAppListIsGrid()
         }
     }
 

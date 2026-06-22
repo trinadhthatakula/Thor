@@ -216,4 +216,18 @@ class PreferenceRepositoryImpl(
             it[Keys.FREEZER_IS_GRID] = isGrid
         }
     }
+
+    override suspend fun toggleAppListIsGrid() {
+        context.dataStore.edit { prefs ->
+            val current = prefs[Keys.APP_LIST_IS_GRID] ?: true
+            prefs[Keys.APP_LIST_IS_GRID] = !current
+        }
+    }
+
+    override suspend fun toggleFreezerIsGrid() {
+        context.dataStore.edit { prefs ->
+            val current = prefs[Keys.FREEZER_IS_GRID] ?: true
+            prefs[Keys.FREEZER_IS_GRID] = !current
+        }
+    }
 }

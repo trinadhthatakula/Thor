@@ -50,4 +50,6 @@ interface PreferenceRepository {
     // --- Grid/List View ---
     suspend fun setAppListIsGrid(isGrid: Boolean)
     suspend fun setFreezerIsGrid(isGrid: Boolean)
+    suspend fun toggleAppListIsGrid()
+    suspend fun toggleFreezerIsGrid()
 }
