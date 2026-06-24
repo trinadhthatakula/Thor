@@ -1,0 +1,1 @@
+- Fixed an issue where system apps frozen (disabled) by older versions of the app could not be unfrozen. System apps that are only disabled are now properly enabled first before unfreezing.
