@@ -65,7 +65,7 @@ class DhizukuReflector(
         }
     }
 
-    private fun getApplicationInfoOrNull(packageName: String): ApplicationInfo? {
+    fun getApplicationInfoOrNull(packageName: String): ApplicationInfo? {
         return try {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
                 context.packageManager.getApplicationInfo(

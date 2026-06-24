@@ -96,10 +96,13 @@ class RootSystemGateway(
             if (isDisabled) {
                 runCommand("pm uninstall --user $currentUser $escapedPackage")
             } else {
-                val currentInstalled = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0
-                val currentEnabled = appInfo.enabled && currentInstalled
-                if (currentInstalled && !currentEnabled) {
-                    runCommand("pm enable $escapedPackage")
+                @Suppress("SENSELESS_COMPARISON")
+                if (appInfo != null) {
+                    val currentInstalled = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0
+                    val currentEnabled = appInfo.enabled && currentInstalled
+                    if (currentInstalled && !currentEnabled) {
+                        runCommand("pm enable $escapedPackage")
+                    }
                 }
                 runCommand("pm install-existing --user $currentUser $escapedPackage")
             }
