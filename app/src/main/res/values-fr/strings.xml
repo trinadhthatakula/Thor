@@ -191,6 +191,21 @@
     <string name="unfreeze_all_confirmation_title">Dégeler toutes les applications ?</string>
     <string name="unfreeze_all_confirmation_desc">Cela va dégeler (activer) toutes les applications actuellement dans le congélateur. Voulez-vous vraiment continuer ?</string>
 
+    <!-- Extensions -->
+    <string name="extensions">Extensions</string>
+    <string name="manage_extensions">Gérer les extensions</string>
+    <string name="manage_extensions_desc">Afficher et configurer les plug-ins APK installés</string>
+    <string name="extension_manager">Gestionnaire d\'extensions</string>
+    <string name="extension_security_verified">Vérifié</string>
+    <string name="extension_security_debug">Mode débogage (Non vérifié)</string>
+    <string name="extension_security_untrusted">Non approuvé (Bloqué)</string>
+    <string name="get_extensions">Obtenir des extensions</string>
+    <string name="no_extensions_installed">Aucune extension installée</string>
+    <string name="no_extensions_desc">Installez les APK d\'extension Thor commençant par \"com.valhalla.thor.ext.\" signés avec la même clé pour charger des règles modulaires.</string>
+    <string name="extension_by_author">par %1$s</string>
+    <string name="extension_version_prefix">v%1$s</string>
+
+
     <!-- UiText Messages -->
     <string name="action_completed_format">%1$s effectué : %2$s</string>
     <string name="frozen_success">%1$s gelé</string>

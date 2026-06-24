@@ -191,6 +191,21 @@
     <string name="unfreeze_all_confirmation_title">إلغاء تجميد جميع التطبيقات؟</string>
     <string name="unfreeze_all_confirmation_desc">سيؤدي هذا إلى إلغاء تجميد (تمكين) جميع التطبيقات الموجودة حالياً في قائمة المجمد. هل أنت متأكد أنك تريد المتابعة؟</string>
 
+    <!-- Extensions -->
+    <string name="extensions">الإضافات</string>
+    <string name="manage_extensions">إدارة الإضافات</string>
+    <string name="manage_extensions_desc">عرض وتكوين إضافات APK المثبتة</string>
+    <string name="extension_manager">مدير الإضافات</string>
+    <string name="extension_security_verified">موثق</string>
+    <string name="extension_security_debug">وضع التطوير (غير موثق)</string>
+    <string name="extension_security_untrusted">غير موثوق (محظور)</string>
+    <string name="get_extensions">الحصول على إضافات</string>
+    <string name="no_extensions_installed">لا توجد إضافات مثبتة</string>
+    <string name="no_extensions_desc">قم بتثبيت حزم إضافات Thor التي تبدأ بـ \"com.valhalla.thor.ext.\" والموقعة بنفس المفتاح لتحميل القواعد البرمجية المجزأة.</string>
+    <string name="extension_by_author">بواسطة %1$s</string>
+    <string name="extension_version_prefix">إصدار %1$s</string>
+
+
     <!-- UiText Messages -->
     <string name="action_completed_format">تم إكمال %1$s: %2$s</string>
     <string name="frozen_success">تم تجميد %1$s</string>

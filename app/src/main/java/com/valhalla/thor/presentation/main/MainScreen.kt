@@ -72,6 +72,7 @@ import com.valhalla.thor.presentation.home.HomeViewModel
 import com.valhalla.thor.presentation.navigation.ThorRoute
 import com.valhalla.thor.presentation.permission.PermissionManagerScreen
 import com.valhalla.thor.presentation.settings.SettingsScreen
+import com.valhalla.thor.presentation.extension.ExtensionManagerScreen
 import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
 import com.valhalla.thor.presentation.widgets.AffirmationDialog
@@ -417,7 +418,23 @@ fun MainScreen(
                 }
 
                 entry<ThorRoute.Settings> {
-                    SettingsScreen()
+                    SettingsScreen(
+                        onNavigateToExtensionManager = {
+                            settingsBackStack.add(ThorRoute.ExtensionManager)
+                        }
+                    )
+                }
+
+                entry<ThorRoute.ExtensionManager>(
+                    metadata = ListDetailSceneStrategy.detailPane()
+                ) {
+                    ExtensionManagerScreen(
+                        onBack = {
+                            if (settingsBackStack.size > 1) {
+                                settingsBackStack.removeLastOrNull()
+                            }
+                        }
+                    )
                 }
 
                 entry<ThorRoute.PermissionManager>(

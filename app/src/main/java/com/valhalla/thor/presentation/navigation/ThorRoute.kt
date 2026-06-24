@@ -23,4 +23,7 @@ sealed interface ThorRoute : NavKey {
 
     @Serializable
     data class AppInfoDetails(val packageName: String, val appName: String) : ThorRoute
+
+    @Serializable
+    data object ExtensionManager : ThorRoute
 }

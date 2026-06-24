@@ -47,10 +47,7 @@ class ExtensionManager(private val context: Context) {
         return loadExtensions().filterIsInstance<DebloatExtension>()
     }
 
-    private fun verifySignature(packageName: String): Boolean {
-        // Allow all packages in debug/testing builds to simplify development
-        if (com.valhalla.thor.BuildConfig.DEBUG) return true
-
+    fun isSignatureVerified(packageName: String): Boolean {
         return try {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
                 val coreInfo = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
@@ -75,4 +72,21 @@ class ExtensionManager(private val context: Context) {
             false
         }
     }
+
+    private fun verifySignature(packageName: String): Boolean {
+        // Allow all packages in debug/testing builds to simplify development
+        if (com.valhalla.thor.BuildConfig.DEBUG) return true
+
+        return isSignatureVerified(packageName)
+    }
+
+    fun getExtensionPackageName(extension: ThorExtension): String? {
+        val className = extension.javaClass.name
+        val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+        return installedApps.firstOrNull { app ->
+            app.packageName.startsWith(EXTENSION_PACKAGE_PREFIX) &&
+                    className.startsWith(app.packageName)
+        }?.packageName
+    }
 }
+

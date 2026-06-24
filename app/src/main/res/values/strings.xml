@@ -201,6 +201,21 @@
     <string name="added_to_freezer_count_success">Added %1$d apps to Freezer</string>
     <string name="add_to_freezer">Add to Freezer</string>
 
+    <!-- Extensions -->
+    <string name="extensions">Extensions</string>
+    <string name="manage_extensions">Manage Extensions</string>
+    <string name="manage_extensions_desc">View and configure installed APK plugins</string>
+    <string name="extension_manager">Extension Manager</string>
+    <string name="extension_security_verified">Verified</string>
+    <string name="extension_security_debug">Debug Mode (Unverified)</string>
+    <string name="extension_security_untrusted">Untrusted (Blocked)</string>
+    <string name="get_extensions">Get Extensions</string>
+    <string name="no_extensions_installed">No extensions installed</string>
+    <string name="no_extensions_desc">Install Thor extension APKs starting with \"com.valhalla.thor.ext.\" signed with the same key to load modular rules.</string>
+    <string name="extension_by_author">by %1$s</string>
+    <string name="extension_version_prefix">v%1$s</string>
+
+
     <!-- UiText Messages -->
     <string name="action_completed_format">%1$s completed: %2$s</string>
     <string name="frozen_success">Frozen %1$s</string>

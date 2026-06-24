@@ -61,6 +61,7 @@ import org.koin.androidx.compose.koinViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
+    onNavigateToExtensionManager: () -> Unit,
     viewModel: SettingsViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -354,6 +355,26 @@ fun SettingsScreen(
                 ),
                 enabled = hasPrivilege,
                 onClick = { showUnfreezeConfirmation = true }
+            )
+        }
+
+        Spacer(Modifier.height(32.dp))
+
+        // ── EXTENSIONS ──────────────────────────────────────────────────────
+        SettingsSectionLabel(stringResource(R.string.extensions))
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(32.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .padding(8.dp)
+        ) {
+            SettingsClickRow(
+                icon = R.drawable.round_extension,
+                title = stringResource(R.string.manage_extensions),
+                subtitle = stringResource(R.string.manage_extensions_desc),
+                onClick = onNavigateToExtensionManager
             )
         }
 

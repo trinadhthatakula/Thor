@@ -191,6 +191,21 @@
     <string name="unfreeze_all_confirmation_title">解冻所有应用？</string>
     <string name="unfreeze_all_confirmation_desc">这将解冻（启用）目前在冻结列表中的所有应用。确定要继续吗？</string>
 
+    <!-- Extensions -->
+    <string name="extensions">扩展</string>
+    <string name="manage_extensions">管理扩展</string>
+    <string name="manage_extensions_desc">查看和配置已安装的 APK 插件</string>
+    <string name="extension_manager">扩展管理器</string>
+    <string name="extension_security_verified">已验证</string>
+    <string name="extension_security_debug">调试模式 (未验证)</string>
+    <string name="extension_security_untrusted">不受信任 (已屏蔽)</string>
+    <string name="get_extensions">获取扩展</string>
+    <string name="no_extensions_installed">未安装任何扩展</string>
+    <string name="no_extensions_desc">安装包名以 \"com.valhalla.thor.ext.\" 开头并使用相同密钥签名的 Thor 扩展 APK 以加载模块化规则。</string>
+    <string name="extension_by_author">作者：%1$s</string>
+    <string name="extension_version_prefix">v%1$s</string>
+
+
     <!-- UiText Messages -->
     <string name="action_completed_format">%1$s 已完成：%2$s</string>
     <string name="frozen_success">已冻结 %1$s</string>
