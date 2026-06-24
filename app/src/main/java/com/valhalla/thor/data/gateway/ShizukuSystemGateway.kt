@@ -48,6 +48,9 @@ class ShizukuSystemGateway(
             if (isDisabled) {
                 runAction { reflector.uninstallApp(packageName) }
             } else {
+                if (reflector.isAppDisabled(packageName) && !reflector.isAppUninstalled(packageName)) {
+                    reflector.setAppEnabled(packageName, true)
+                }
                 runAction { reflector.reinstallExistingApp(packageName) }
             }
         } else {

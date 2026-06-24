@@ -45,6 +45,9 @@ class DhizukuSystemGateway(
                 if (reflector.uninstallApp(packageName)) Result.success(Unit)
                 else Result.failure(Exception("Dhizuku: Failed to uninstall system app $packageName"))
             } else {
+                if (reflector.isAppDisabled(packageName) && reflector.isAppInstalled(packageName)) {
+                    reflector.setAppEnabled(packageName, true)
+                }
                 if (reflector.reinstallExistingApp(packageName)) Result.success(Unit)
                 else Result.failure(Exception("Dhizuku: Failed to reinstall system app $packageName"))
             }
