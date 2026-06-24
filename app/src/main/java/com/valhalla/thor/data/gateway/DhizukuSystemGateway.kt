@@ -45,6 +45,12 @@ class DhizukuSystemGateway(
                 if (reflector.uninstallApp(packageName)) Result.success(Unit)
                 else Result.failure(Exception("Dhizuku: Failed to uninstall system app $packageName"))
             } else {
+                val appInfo = reflector.getApplicationInfoOrNull(packageName)
+                val isInstalled = appInfo?.let { (it.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0 } ?: false
+                val isAppDisabled = appInfo?.enabled == false
+                if (isAppDisabled && isInstalled) {
+                    reflector.setAppEnabled(packageName, true)
+                }
                 if (reflector.reinstallExistingApp(packageName)) Result.success(Unit)
                 else Result.failure(Exception("Dhizuku: Failed to reinstall system app $packageName"))
             }

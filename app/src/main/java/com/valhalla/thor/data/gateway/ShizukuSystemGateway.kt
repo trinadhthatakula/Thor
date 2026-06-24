@@ -48,6 +48,12 @@ class ShizukuSystemGateway(
             if (isDisabled) {
                 runAction { reflector.uninstallApp(packageName) }
             } else {
+                val appInfo = reflector.getApplicationInfoOrNull(packageName)
+                val isInstalled = appInfo?.let { (it.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0 } ?: false
+                val isAppDisabled = appInfo?.enabled == false
+                if (isAppDisabled && isInstalled) {
+                    reflector.setAppEnabled(packageName, true)
+                }
                 runAction { reflector.reinstallExistingApp(packageName) }
             }
         } else {

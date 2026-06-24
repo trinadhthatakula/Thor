@@ -65,9 +65,9 @@ class DhizukuReflector(
         }
     }
 
-    fun isSystemApp(packageName: String): Boolean {
+    fun getApplicationInfoOrNull(packageName: String): ApplicationInfo? {
         return try {
-            val appInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
                 context.packageManager.getApplicationInfo(
                     packageName,
                     PackageManager.ApplicationInfoFlags.of(PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong())
@@ -78,10 +78,24 @@ class DhizukuReflector(
                     PackageManager.MATCH_UNINSTALLED_PACKAGES
                 )
             }
-            (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
         } catch (_: Exception) {
-            false
+            null
         }
+    }
+
+    fun isAppDisabled(packageName: String): Boolean {
+        val appInfo = getApplicationInfoOrNull(packageName) ?: return false
+        return !appInfo.enabled
+    }
+
+    fun isAppInstalled(packageName: String): Boolean {
+        val appInfo = getApplicationInfoOrNull(packageName) ?: return false
+        return (appInfo.flags and ApplicationInfo.FLAG_INSTALLED) != 0
+    }
+
+    fun isSystemApp(packageName: String): Boolean {
+        val appInfo = getApplicationInfoOrNull(packageName) ?: return false
+        return (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
     }
 
     fun setAppSuspended(packageName: String, suspended: Boolean): Boolean {
