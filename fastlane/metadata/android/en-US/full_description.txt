@@ -1,85 +1,48 @@
-<p><b>Thor App Manager</b> is a modern, open-source Android app manager and installer, built for power users and enthusiasts who demand full control, privacy, and speed — without the bloat.</p>
+Thor App Manager is a lightweight, open-source Android app manager and installer designed for power users who want complete control over their devices. Built 100% in Kotlin using Jetpack Compose and Material 3, Thor delivers advanced package management without trackers, ads, or internet permissions.
 
-<p>Thor is built 100% in Kotlin with Material 3 design and Jetpack Compose. It delivers a complete, privileged app management suite at around 2 MB Play Store download size — with zero ads, zero trackers, and zero internet required.</p>
+⚡ MULTIPLE PRIVILEGE MODES
+Thor works seamlessly across different privilege engines with an automatic fallback system. Manually choose your active backend:
+• Root (su)
+• Shizuku
+• Dhizuku (Device Owner)
 
-<p><b>Privilege Modes — Root, Shizuku &amp; Dhizuku:</b></p>
-<ul>
-  <li>Works with Root (su), Shizuku, or Dhizuku Device Owner</li>
-  <li>Manually select your preferred privilege engine (Root / Shizuku / Dhizuku)</li>
-  <li>Automatic fallback chain if the preferred mode is unavailable</li>
-</ul>
+📦 ADVANCED APP INSTALLER
+Easily install, reinstall, or repair installer records.
+• Redesigned app installer for root, Shizuku, or standard package manager.
+• Full support for split APK formats: .apkm, .apks, and .xapk files.
+• Fix Store: Reassign the installer record to Google Play Store in any privilege mode.
 
-<p><b>App Management:</b></p>
-<ul>
-  <li>Install, uninstall, freeze (disable/enable), and reinstall apps</li>
-  <li>Suspend and unsuspend apps with a custom Thor-branded system dialog</li>
-  <li>Restrict app background activity</li>
-  <li>Force-stop apps and clear app data or cache</li>
-  <li>Uninstall and freeze/unfreeze system apps</li>
-  <li>Fix Store — reassign installer record to Google Play in any privilege mode</li>
-  <li>Share APK files directly</li>
-  <li>Launch app activities</li>
-</ul>
+🚫 UNIVERSAL SYSTEM APP DEBLOATING
+Safely debloat your device with integrated Universal Android Debloater (UAD) guidelines.
+• Dynamic safety recommendation chips: Recommended, Advanced, Expert, Unsafe.
+• Safety Gating: Automatically blocks freezing of "Unsafe" system packages to prevent bootloops and warns on "Expert" apps.
+• Clean Uninstalls: Uninstalls system apps for the current user (pm uninstall --user) and restores them (pm install-existing) with ease.
+• Local icon caching and danger badges for uninstalled system packages.
 
-<p><b>Batch Operations:</b></p>
-<ul>
-  <li>Batch freeze / unfreeze, reinstall, uninstall, kill, suspend, and clear data</li>
-  <li>Real-time terminal logger dialog during batch actions</li>
-</ul>
+🛠️ BATCH OPERATIONS & POWER TOOLS
+Perform actions on multiple apps simultaneously with a real-time terminal logger dialog.
+• Batch freeze, unfreeze, reinstall, uninstall, suspend, and clear cache or data.
+• Force stop, restrict background activity, or clear app cache/data in any mode.
+• Suspend & unsuspend apps with a custom Thor-branded system dialog.
 
-<p><b>App List &amp; Insights:</b></p>
-<ul>
-  <li>High-performance app list with Room DB metadata caching</li>
-  <li>Live search by app name or package name</li>
-  <li>Sort and filter apps, including by installation source</li>
-  <li>Split APK indicator for multi-APK apps</li>
-  <li>App state badge: frozen, suspended, and hidden states</li>
-  <li>Installer source, version code, target SDK, and debuggable flag</li>
-</ul>
+📱 ADAPTIVE UI & LAYOUT PERSISTENCE
+Enjoy a beautiful Material 3 interface that adapts to your device.
+• Multi-pane layouts and vertical navigation rail optimized for tablets and foldables.
+• Persistent layout preferences: Grid and list view settings are preserved across restarts.
+• True AMOLED black mode, Light/Dark themes, and Material You dynamic color support.
+• Fingerprint / biometric lock to protect app access.
+• Built-in language switcher supporting English, Spanish, French, Arabic, and Chinese.
 
-<p><b>Customization &amp; Accessibility:</b></p>
-<ul>
-  <li>Dark, Light, and System themes + true AMOLED black mode</li>
-  <li>Material You dynamic color support (Android 12+)</li>
-  <li>Asgardian static color scheme (default)</li>
-  <li>Biometric / fingerprint lock for app access</li>
-  <li>Multi-language support: English, Spanish, French, Arabic, Chinese</li>
-  <li>In-app language switcher — no system settings required</li>
-</ul>
+🔒 PRIVACY-FIRST & LIGHTWEIGHT
+• 100% Offline: Zero internet permissions required.
+• Complete privacy: No analytics, no crash reporters, and no trackers.
+• Open Source: Licensed under GNU GPL v3.0 (libre software).
+• Ultra-lightweight: ~2 MB download size, less than 4 MB installed.
 
-<p><b>Privacy &amp; Performance:</b></p>
-<ul>
-  <li>100% offline — no internet permission</li>
-  <li>No analytics, no crash reporters, no trackers</li>
-  <li>Fully reproducible, copylefted libre software (GPLv3.0)</li>
-  <li>~2 MB Play Store download; &lt;4 MB installed APK</li>
-</ul>
+TECHNICAL HIGHLIGHTS (AI Agent Optimized)
+• Target Platform: Android (Root, Shizuku, Dhizuku)
+• Architecture & Stack: Kotlin, Clean Architecture, MVVM, Room DB (caching metadata), Jetpack Compose
+• Hidden API bypass: Custom in-house bypass module (no external library dependency)
+• Shell Execution: Custom fork of libsu (suCore) fully converted to Kotlin
 
-<p><b>Upcoming Features:</b></p>
-<ul>
-  <li>App data backup and restoration</li>
-  <li>Advanced packages.xml editing</li>
-  <li>Batch APK install</li>
-  <li>And more</li>
-</ul>
-
-<p><b>Technical Highlights:</b></p>
-<ul>
-  <li>100% Kotlin codebase with Clean Architecture + MVVM</li>
-  <li>Custom in-house hidden API bypass module (no third-party dependency)</li>
-  <li>Uses a modularized, fully Kotlin-converted fork of <a href="https://github.com/topjohnwu/libsu">libsu</a> as <i>suCore</i> for root operations</li>
-</ul>
-
-<p><b>Credits:</b></p>
-<ul>
-  <li>Portions of this app use code from <a href="https://github.com/topjohnwu/libsu">libsu</a> by topjohnwu, adapted as the <a href="https://github.com/trinadhthatakula/Thor/tree/master/suCore">suCore</a> module.</li>
-  <li>libsu was fully converted from Java to Kotlin and modularized for Thor.</li>
-</ul>
-
-<p><b>License:</b></p>
-<ul>
-  <li>Thor App Manager is licensed under the GNU General Public License v3.0 (GPL-3.0).</li>
-  <li>libsu is licensed under the Apache License 2.0. All modifications comply with Apache-2.0 requirements.</li>
-</ul>
-
-<p>No analytics, no trackers, no nonsense. Thor is free and open source — forever.</p>
+No bloat. No trackers. No nonsense. Take control of your apps with Thor.

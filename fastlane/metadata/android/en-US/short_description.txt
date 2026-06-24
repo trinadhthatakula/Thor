@@ -1,1 +1,1 @@
-Freeze, manage & install apps — Root, Shizuku & Dhizuku support
+Freeze, debloat, & install apps via Shizuku, Root & Dhizuku. 100% offline & FOSS
