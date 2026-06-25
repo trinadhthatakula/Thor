@@ -80,7 +80,7 @@ fun HomeScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let {
-            installerViewModel.installFile(it)
+            installerViewModel.parsePackage(it)
             showInstallerSheet = true
         }
     }

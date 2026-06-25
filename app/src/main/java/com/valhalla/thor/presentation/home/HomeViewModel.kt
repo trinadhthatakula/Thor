@@ -151,10 +151,10 @@ class HomeViewModel(
         val labelCounts = filteredApps
             .groupBy {
                 when (val pkg = it.installerPackageName) {
-                    "com.android.vending" -> "Play Store"
-                    "org.fdroid.fdroid" -> "F-Droid"
-                    "com.google.android.packageinstaller" -> "Sideloaded"
-                    null, "Unknown" -> "Others"
+                    "com.android.vending" -> "PLAY STORE"
+                    "org.fdroid.fdroid" -> "F-DROID"
+                    "com.google.android.packageinstaller" -> "SIDELOADED"
+                    null, "Unknown" -> "OTHERS"
                     else -> pkg.substringAfterLast(".").uppercase()
                 }
             }
@@ -175,8 +175,8 @@ class HomeViewModel(
             top3Entries.forEach { result[it.key] = it.value }
 
             val othersCount = restEntries.sumOf { it.value }
-            // Add 'othersCount' to 'Others' label (merge if 'Others' was already in top 3)
-            result["Others"] = result.getOrDefault("Others", 0) + othersCount
+            // Add 'othersCount' to 'OTHERS' label (merge if 'OTHERS' was already in top 3)
+            result["OTHERS"] = result.getOrDefault("OTHERS", 0) + othersCount
             result
         }
 

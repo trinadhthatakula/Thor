@@ -293,12 +293,24 @@ private fun AppQuickFilters(
         chips.forEach { item ->
             val label = when {
                 filterType == FilterType.Source -> {
-                    if (item == "All") "All"
-                    else installerNameMap[item] ?: item
-                    ?: if (appListType != AppListType.SYSTEM) "Others" else stringResource(R.string.system_apps)
+                    when (item) {
+                        "All" -> stringResource(R.string.filter_all)
+                        "PLAY STORE" -> stringResource(R.string.play_store)
+                        "F-DROID" -> stringResource(R.string.f_droid)
+                        "SIDELOADED" -> stringResource(R.string.sideloaded)
+                        "OTHERS" -> stringResource(R.string.others)
+                        else -> installerNameMap[item] ?: item
+                        ?: if (appListType != AppListType.SYSTEM) stringResource(R.string.others) else stringResource(R.string.system_apps)
+                    }
                 }
 
-                else -> item ?: ""
+                else -> when (item) {
+                    "All" -> stringResource(R.string.filter_all)
+                    "Active" -> stringResource(R.string.active)
+                    "Frozen" -> stringResource(R.string.frozen)
+                    "Suspended" -> stringResource(R.string.suspended)
+                    else -> item ?: ""
+                }
             }
 
             FilterChip(

@@ -8,6 +8,7 @@ import android.os.Build
 import com.valhalla.thor.data.ACTION_INSTALL_STATUS
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
+import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -54,7 +55,7 @@ class InstallReceiver : BroadcastReceiver(), KoinComponent {
                     else -> {
                         val msg = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
                             ?: "Unknown Error"
-                        eventBus.emit(InstallState.Error("Install Failed ($status): $msg"))
+                        eventBus.emit(InstallState.Error(UiText.DynamicString("Install Failed ($status): $msg")))
                     }
                 }
             } finally {

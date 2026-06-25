@@ -19,6 +19,8 @@ import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
+import com.valhalla.thor.util.UiText
+import com.valhalla.thor.R
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -212,7 +214,7 @@ class InstallerRepositoryImpl(
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                eventBus.emit(InstallState.Error(e.message ?: "Unknown error during installation"))
+                eventBus.emit(InstallState.Error(UiText.DynamicString(e.message ?: "Unknown error during installation")))
             }
         }
 
@@ -290,7 +292,7 @@ class InstallerRepositoryImpl(
                 eventBus.emit(InstallState.Success)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                eventBus.emit(InstallState.Error("Could not open external installer: ${e.message}"))
+                eventBus.emit(InstallState.Error(UiText.DynamicString("Could not open external installer: ${e.message}")))
             }
         }
     }
@@ -329,7 +331,7 @@ class InstallerRepositoryImpl(
                 }
 
                 if (extracted.isEmpty()) {
-                    eventBus.emit(InstallState.Error("No APK files found in bundle"))
+                    eventBus.emit(InstallState.Error(UiText.StringResource(R.string.log_no_apps_to_fix)))
                     return
                 }
 
@@ -339,7 +341,7 @@ class InstallerRepositoryImpl(
                 context.contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(tempApk).use { output -> input.copyTo(output) }
                 } ?: run {
-                    eventBus.emit(InstallState.Error("Failed to read input file"))
+                    eventBus.emit(InstallState.Error(UiText.DynamicString("Failed to read input file")))
                     return
                 }
 
@@ -359,12 +361,12 @@ class InstallerRepositoryImpl(
                 eventBus.emit(InstallState.Success)
             } else {
                 eventBus.emit(
-                    InstallState.Error(result.exceptionOrNull()?.message ?: "Root install failed")
+                    InstallState.Error(UiText.DynamicString(result.exceptionOrNull()?.message ?: "Root install failed"))
                 )
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            eventBus.emit(InstallState.Error("Root install error: ${e.message}"))
+            eventBus.emit(InstallState.Error(UiText.DynamicString("Root install error: ${e.message}")))
         } finally {
             tempApk.delete()
             tempDir.deleteRecursively()
@@ -419,7 +421,7 @@ class InstallerRepositoryImpl(
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             if (emitErrors) {
-                eventBus.emit(InstallState.Error("Failed to create session: ${e.message}"))
+                eventBus.emit(InstallState.Error(UiText.DynamicString("Failed to create session: ${e.message}")))
                 return
             } else throw e
         }
@@ -429,7 +431,7 @@ class InstallerRepositoryImpl(
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             if (emitErrors) {
-                eventBus.emit(InstallState.Error("Failed to open session: ${e.message}"))
+                eventBus.emit(InstallState.Error(UiText.DynamicString("Failed to open session: ${e.message}")))
                 return
             } else throw e
         }
@@ -552,7 +554,7 @@ class InstallerRepositoryImpl(
                     session.abandon()
                     Logger.e("thor", "Could not open file stream.")
                     if (emitErrors) {
-                        eventBus.emit(InstallState.Error("Could not open file stream."))
+                        eventBus.emit(InstallState.Error(UiText.DynamicString("Could not open file stream.")))
                         return
                     } else throw Exception("Could not open file stream.")
                 }
@@ -600,7 +602,7 @@ class InstallerRepositoryImpl(
             }
             Logger.e("thorInstaller", "Install failed", e)
             if (emitErrors) {
-                eventBus.emit(InstallState.Error(e.message ?: "Unknown installation error"))
+                eventBus.emit(InstallState.Error(UiText.DynamicString(e.message ?: "Unknown installation error")))
             } else throw e
         }
     }

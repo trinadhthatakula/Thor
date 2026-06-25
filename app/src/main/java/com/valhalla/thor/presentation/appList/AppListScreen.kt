@@ -30,10 +30,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.foundation.basicMarquee
 import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.text.font.FontWeight
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.MultiAppAction
@@ -97,7 +99,8 @@ fun AppListScreen(
                 // LEFT: Brand/Title Block
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
                     Icon(
                         painter = painterResource(icon),
@@ -108,9 +111,11 @@ fun AppListScreen(
                     Text(
                         text = title,
                         style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
+                        fontWeight = FontWeight.Black,
                         color = MaterialTheme.colorScheme.primary,
-                        letterSpacing = (-1).sp
+                        letterSpacing = (-1).sp,
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f).basicMarquee()
                     )
                 }
 

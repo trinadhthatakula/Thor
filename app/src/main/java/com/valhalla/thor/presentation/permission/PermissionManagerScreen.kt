@@ -506,7 +506,7 @@ private fun PermissionRow(
                 )
                 if (permission.isRuntime) {
                     StatusBadge(
-                        text = "Sensitive",
+                        text = stringResource(R.string.sensitive),
                         color = MaterialTheme.colorScheme.errorContainer
                     )
                 }

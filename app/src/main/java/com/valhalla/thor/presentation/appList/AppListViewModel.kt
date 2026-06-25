@@ -389,7 +389,14 @@ class AppListViewModel(
 
         // Fast lookup map for app names to avoid O(N^2) associative logic
         val nameMap = rawList.associateBy({ it.packageName }, { it.appName })
-        val installerNames = installers.associateWith { pkg -> nameMap[pkg] ?: pkg }
+        val installerNames = installers.associateWith { pkg ->
+            when (pkg) {
+                "com.android.vending" -> "PLAY STORE"
+                "org.fdroid.fdroid" -> "F-DROID"
+                "com.google.android.packageinstaller" -> "SIDELOADED"
+                else -> nameMap[pkg] ?: pkg
+            }
+        }
 
         installers.add(0, "All")
 
