@@ -72,6 +72,9 @@
     <string name="others">أخرى</string>
     <string name="clear_all_cache">مسح جميع الذاكرة المؤقتة</string>
     <string name="clear_cache_prompt">أي التطبيقات ترغب في مسحها؟</string>
+    <string name="clear_all_cache_subtitle">مسح الملفات المؤقتة لجميع التطبيقات لاستعادة مساحة التخزين</string>
+    <string name="clear_system_cache_title">مسح ذاكرة النظام المؤقتة؟</string>
+    <string name="clear_system_cache_desc">قد يؤدي مسح ذاكرة تطبيقات النظام المؤقتة إلى عدم استقرار مؤقت. هل أنت متأكد أنك تريد المتابعة؟</string>
     <string name="user_apps">تطبيقات المستخدم</string>
     <string name="system_apps">تطبيقات النظام</string>
     <string name="active">نشط</string>
@@ -157,6 +160,7 @@
     <string name="cd_search">بحث</string>
     <string name="cd_clear">مسح</string>
     <string name="cd_settings">الإعدادات</string>
+    <string name="select_app_details">اختر تطبيقاً ��عرض التفاصيل</string>
 
     <!-- Permission Manager -->
     <string name="action_permissions">الأذونات</string>
@@ -190,6 +194,12 @@
     <string name="privilege_required_warning">الصلاحية مطلوبة (Root أو Shizuku أو Dhizuku)</string>
     <string name="unfreeze_all_confirmation_title">إلغاء تجميد جميع التطبيقات؟</string>
     <string name="unfreeze_all_confirmation_desc">سيؤدي هذا إلى إلغاء تجميد (تمكين) جميع التطبيقات الموجودة حالياً في قائمة المجمد. هل أنت متأكد أنك تريد المتابعة؟</string>
+    <string name="import_disabled_apps_title">استيراد التطبيقات المعطلة</string>
+    <string name="import_disabled_apps_desc">هناك %1$d تطبيق معطل غير موجود في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</string>
+    <string name="import_disabled_apps_button">استيراد التطبيقات المعطلة</string>
+    <string name="no_disabled_apps_found">لم يتم العثور على تطبيقات معطلة أخرى.</string>
+    <string name="added_to_freezer_count_success">تمت إضافة %1$d تطبيقات إلى المجمد</string>
+    <string name="add_to_freezer">إضافة للمجمد</string>
 
     <!-- Extensions -->
     <string name="extensions">الإضافات</string>
@@ -211,7 +221,6 @@
     <string name="frozen_success">تم تجميد %1$s</string>
     <string name="unfrozen_success">تم إلغاء تجميد %1$s</string>
     <string name="added_to_freezer_success">تمت الإضافة إلى المجمد</string>
-    <string name="add_to_freezer">إضافة للمجمد</string>
     <string name="unfrozen_count_success">تم إلغاء تجميد %1$d تطبيقات</string>
     <string name="tile_unfreeze_partial_failure">تم إلغاء تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
     <string name="error_format">خطأ: %1$s</string>
@@ -325,6 +334,59 @@
     <string name="protection_signature_system">توقيع/نظام</string>
     <string name="expanded">موسع</string>
     <string name="collapsed">مطوي</string>
+
+    <!-- Terminal Logs -->
+    <string name="log_initializing">جارٍ التهيئة…</string>
+    <string name="log_op_complete">\nاكتملت العملية.</string>
+    <string name="log_preparing_cache">جارٍ تجهيز تنظيف الذاكرة المؤقتة…</string>
+    <string name="log_no_eligible_apps">لم يتم العثور على تطبيقات مؤهلة.</string>
+    <string name="log_sharing_app">جارٍ مشاركة %1$s</string>
+    <string name="log_preparing_files">جارٍ تجهيز الملفات…</string>
+    <string name="log_files_ready">✔ الملفات جاهزة</string>
+    <string name="log_error">✘ خطأ: %1$s</string>
+    <string name="log_reinstalling_app">جارٍ إعادة تثبيت %1$s</string>
+    <string name="log_applying_play_store_sig">جارٍ تطبيق توقيع متجر Google Play…</string>
+    <string name="log_reinstall_success">✔ تمت إعادة التثبيت بنجاح</string>
+    <string name="log_failed_with_msg">✘ فشل: %1$s</string>
+    <string name="log_uninstalling_system_app">جارٍ إلغاء تثبيت تطبيق النظام</string>
+    <string name="log_target_app">الهدف: %1$s</string>
+    <string name="log_uninstall_success">✔ تم إلغاء التثبيت بنجاح</string>
+    <string name="log_priv_uninstall_failed">✘ فشل إلغاء التثبيت المميز</string>
+    <string name="log_attempting_system_uninstall">جارٍ محاولة إلغاء تثبيت النظام…</string>
+    <string name="log_scanning_apps">جارٍ فحص التطبيقات…</string>
+    <string name="log_no_apps_to_fix">لم يتم العثور على تطبيقات تحتاج إلى إصلاح.</string>
+    <string name="log_found_apps_to_fix">تم العثور على %1$d تطبيقات للإصلاح.</string>
+    <string name="log_reinstalling_batch">جارٍ إعادة تثبيت التطبيقات</string>
+    <string name="log_freezing_batch">جارٍ تجميد التطبيقات</string>
+    <string name="log_unfreezing_batch">جارٍ إلغاء تجميد التطبيقات</string>
+    <string name="log_killing_batch">جارٍ إنهاء التطبيقات</string>
+    <string name="log_clearing_cache_batch">جارٍ مسح الذاكرة المؤقتة</string>
+    <string name="log_uninstalling_batch">جارٍ إلغاء تثبيت التطبيقات</string>
+    <string name="log_suspending_batch">جارٍ تعليق التطبيقات</string>
+    <string name="log_unsuspending_batch">جارٍ إلغاء تعليق التطبيقات</string>
+    <string name="log_clearing_data_batch">جارٍ مسح البيانات</string>
+    <string name="log_sharing_batch">جارٍ مشاركة التطبيقات</string>
+    <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
+    <string name="log_batch_preparing">[%1$d/%2$d] جارٍ تجهيز %3$s…</string>
+    <string name="log_ready"> -> جاهز</string>
+    <string name="log_success"> -> نجاح</string>
+    <string name="log_failed"> -> فشل: %1$s</string>
+
+    <!-- Warnings & UI components -->
+    <string name="warning_unsafe_uninstall">تم تصنيف تطبيق النظام هذا على أنه غير آمن (UNSAFE). إزالته تشكل خطراً كبيراً جداً للدخول في حلقة إعادة تشغيل للجهاز، لذا تم حظر إلغاء التثبيت.</string>
+    <string name="warning_expert_uninstall">تم تصنيف تطبيق النظام هذا على أنه خبير (EXPERT). إزالته يعطل وظائف مهمة. هل أنت متأكد أنك تريد المتابعة؟</string>
+    <string name="uninstall_anyway">إلغاء التثبيت على أي حال</string>
+    <string name="debloat_recommendation">توصية بإزالة البرامج الزائدة</string>
+    <string name="class_name_label">اسم الفئة</string>
+    <string name="value_label">القيمة</string>
+    <string name="no_apps_in_freezer">لا توجد تطبيقات في المجمد</string>
+    <string name="no_matching_apps_freezer">لا توجد تطبيقات مطابقة</string>
+    <string name="add_to_freezer_hint">اضغط + لإضافة تطبيقات</string>
+    <string name="filter_all">الكل</string>
+    <string name="error_debuggable_app">التطبيق قابل للتصحيح (من المحتمل عدم تطابق التوقيع)</string>
+    <string name="error_unsafe_skipped">تم التخطي: تطبيق النظام غير آمن / فشل فحص الأمان</string>
+    <string name="error_parse_package">فشل في تحليل الحزمة.</string>
+    <string name="error_downgrade_privilege">خفض الإصدار مدعوم فقط مع الوصول المميز (Root أو Shizuku أو Dhizuku).</string>
 
     <!-- Support Developer -->
     <string name="support_developer">دعم المطور</string>

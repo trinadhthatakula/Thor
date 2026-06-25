@@ -331,6 +331,59 @@
     <string name="expanded">Expanded</string>
     <string name="collapsed">Collapsed</string>
 
+    <!-- Terminal Logs -->
+    <string name="log_initializing">Initializing…</string>
+    <string name="log_op_complete">\nOperation Complete.</string>
+    <string name="log_preparing_cache">Preparing Cache Cleanup…</string>
+    <string name="log_no_eligible_apps">No eligible apps found.</string>
+    <string name="log_sharing_app">Sharing %1$s</string>
+    <string name="log_preparing_files">Preparing files…</string>
+    <string name="log_files_ready">✔ Files Ready</string>
+    <string name="log_error">✘ Error: %1$s</string>
+    <string name="log_reinstalling_app">Reinstalling %1$s</string>
+    <string name="log_applying_play_store_sig">Applying Google Play Store signature…</string>
+    <string name="log_reinstall_success">✔ Reinstall successful</string>
+    <string name="log_failed_with_msg">✘ Failed: %1$s</string>
+    <string name="log_uninstalling_system_app">Uninstalling System App</string>
+    <string name="log_target_app">Target: %1$s</string>
+    <string name="log_uninstall_success">✔ Uninstall successful</string>
+    <string name="log_priv_uninstall_failed">✘ Privileged uninstall failed</string>
+    <string name="log_attempting_system_uninstall">Attempting system uninstall…</string>
+    <string name="log_scanning_apps">Scanning Apps…</string>
+    <string name="log_no_apps_to_fix">No apps found that require fixing.</string>
+    <string name="log_found_apps_to_fix">Found %1$d apps to fix.</string>
+    <string name="log_reinstalling_batch">Reinstalling Apps</string>
+    <string name="log_freezing_batch">Freezing Apps</string>
+    <string name="log_unfreezing_batch">Unfreezing Apps</string>
+    <string name="log_killing_batch">Killing Apps</string>
+    <string name="log_clearing_cache_batch">Clearing Caches</string>
+    <string name="log_uninstalling_batch">Uninstalling Apps</string>
+    <string name="log_suspending_batch">Suspending Apps</string>
+    <string name="log_unsuspending_batch">Unsuspending Apps</string>
+    <string name="log_clearing_data_batch">Clearing Data</string>
+    <string name="log_sharing_batch">Sharing Apps</string>
+    <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
+    <string name="log_batch_preparing">[%1$d/%2$d] Preparing %3$s…</string>
+    <string name="log_ready"> -> Ready</string>
+    <string name="log_success"> -> Success</string>
+    <string name="log_failed"> -> Failed: %1$s</string>
+
+    <!-- Warnings & UI components -->
+    <string name="warning_unsafe_uninstall">This system app is classified as UNSAFE. Removing it has an extremely high risk of bootlooping your device, so uninstallation is blocked.</string>
+    <string name="warning_expert_uninstall">This system app is classified as EXPERT. Removing it breaks important functionality. Are you sure you want to proceed?</string>
+    <string name="uninstall_anyway">Uninstall Anyway</string>
+    <string name="debloat_recommendation">Debloat Recommendation</string>
+    <string name="class_name_label">class name</string>
+    <string name="value_label">value</string>
+    <string name="no_apps_in_freezer">No apps in Freezer</string>
+    <string name="no_matching_apps_freezer">No matching apps</string>
+    <string name="add_to_freezer_hint">Tap + to add apps</string>
+    <string name="filter_all">All</string>
+    <string name="error_debuggable_app">App is Debuggable (Signature mismatch likely)</string>
+    <string name="error_unsafe_skipped">Skipped: System app is UNSAFE / safety check failed</string>
+    <string name="error_parse_package">Failed to parse package.</string>
+    <string name="error_downgrade_privilege">Downgrade is only supported with privileged access (Root, Shizuku, or Dhizuku).</string>
+
     <!-- Support Developer -->
     <string name="support_developer">Support Developer</string>
     <string name="support_developer_desc">Support ongoing development of Thor</string>

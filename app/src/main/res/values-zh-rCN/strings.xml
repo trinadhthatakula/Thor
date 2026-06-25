@@ -72,6 +72,9 @@
     <string name="others">其他</string>
     <string name="clear_all_cache">清除所有缓存</string>
     <string name="clear_cache_prompt">您想清除哪些应用？</string>
+    <string name="clear_all_cache_subtitle">清除所有应用的缓存文件以回收存储空间</string>
+    <string name="clear_system_cache_title">清除系统缓存？</string>
+    <string name="clear_system_cache_desc">清除系统应用的缓存可能会导致暂时不稳定。确定要继续吗？</string>
     <string name="user_apps">用户应用</string>
     <string name="system_apps">系统应用</string>
     <string name="privilege_check">权限检查</string>
@@ -157,6 +160,7 @@
     <string name="cd_search">搜索</string>
     <string name="cd_clear">清除</string>
     <string name="cd_settings">设置</string>
+    <string name="select_app_details">选择一个应用以查看详情</string>
 
     <!-- Permission Manager -->
     <string name="action_permissions">权限管理</string>
@@ -190,6 +194,11 @@
     <string name="privilege_required_warning">需要权限 (Root、Shizuku 或 Dhizuku)</string>
     <string name="unfreeze_all_confirmation_title">解冻所有应用？</string>
     <string name="unfreeze_all_confirmation_desc">这将解冻（启用）目前在冻结列表中的所有应用。确定要继续吗？</string>
+    <string name="import_disabled_apps_title">导入已禁用的应用</string>
+    <string name="import_disabled_apps_desc">有 %1$d 个已禁用的应用不在您的冻结列表中。要将它们添加到冻结列表吗？</string>
+    <string name="import_disabled_apps_button">导入已禁用的应用</string>
+    <string name="no_disabled_apps_found">未发现其他已禁用的应用。</string>
+    <string name="added_to_freezer_count_success">已将 %1$d 个应用添加到冻结列表</string>
 
     <!-- Extensions -->
     <string name="extensions">扩展</string>
@@ -320,6 +329,59 @@
     <string name="protection_signature_system">签名/系统</string>
     <string name="expanded">已展开</string>
     <string name="collapsed">已折叠</string>
+
+    <!-- Terminal Logs -->
+    <string name="log_initializing">正在初始化…</string>
+    <string name="log_op_complete">\n操作完成。</string>
+    <string name="log_preparing_cache">正在准备缓存清理…</string>
+    <string name="log_no_eligible_apps">未找到符合条件的应用。</string>
+    <string name="log_sharing_app">正在分享 %1$s</string>
+    <string name="log_preparing_files">正在准备文件…</string>
+    <string name="log_files_ready">✔ 文件就绪</string>
+    <string name="log_error">✘ 错误: %1$s</string>
+    <string name="log_reinstalling_app">正在重新安装 %1$s</string>
+    <string name="log_applying_play_store_sig">正在应用 Google Play 商店签名…</string>
+    <string name="log_reinstall_success">✔ 重新安装成功</string>
+    <string name="log_failed_with_msg">✘ 失败: %1$s</string>
+    <string name="log_uninstalling_system_app">正在卸载系统应用</string>
+    <string name="log_target_app">目标: %1$s</string>
+    <string name="log_uninstall_success">✔ 卸载成功</string>
+    <string name="log_priv_uninstall_failed">✘ 特权卸载失败</string>
+    <string name="log_attempting_system_uninstall">正在尝试系统卸载…</string>
+    <string name="log_scanning_apps">正在扫描应用…</string>
+    <string name="log_no_apps_to_fix">未发现需要修复的应用。</string>
+    <string name="log_found_apps_to_fix">发现 %1$d 个需要修复的应用。</string>
+    <string name="log_reinstalling_batch">正在批量重新安装应用</string>
+    <string name="log_freezing_batch">正在批量冻结应用</string>
+    <string name="log_unfreezing_batch">正在批量解冻应用</string>
+    <string name="log_killing_batch">正在批量结束应用</string>
+    <string name="log_clearing_cache_batch">正在批量清除缓存</string>
+    <string name="log_uninstalling_batch">正在批量卸载应用</string>
+    <string name="log_suspending_batch">正在批量暂停应用</string>
+    <string name="log_unsuspending_batch">正在批量取消暂停应用</string>
+    <string name="log_clearing_data_batch">正在批量清除数据</string>
+    <string name="log_sharing_batch">正在批量分享应用</string>
+    <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
+    <string name="log_batch_preparing">[%1$d/%2$d] 正在准备 %3$s…</string>
+    <string name="log_ready"> -> 就绪</string>
+    <string name="log_success"> -> 成功</string>
+    <string name="log_failed"> -> 失败: %1$s</string>
+
+    <!-- Warnings & UI components -->
+    <string name="warning_unsafe_uninstall">此系统应用被归类为“不安全”。移除它有极高的风险导致设备无限重启，因此已阻止卸载。</string>
+    <string name="warning_expert_uninstall">此系统应用被归类为“专家级”。移除它会破坏重要功能。确定要继续吗？</string>
+    <string name="uninstall_anyway">仍然卸载</string>
+    <string name="debloat_recommendation">精简建议</string>
+    <string name="class_name_label">类名</string>
+    <string name="value_label">值</string>
+    <string name="no_apps_in_freezer">应用冻结中无应用</string>
+    <string name="no_matching_apps_freezer">无匹配应用</string>
+    <string name="add_to_freezer_hint">点击 + 添加应用</string>
+    <string name="filter_all">全部</string>
+    <string name="error_debuggable_app">应用可调试（签名可能不匹配）</string>
+    <string name="error_unsafe_skipped">已跳过：系统应用不安全 / 安全检查失败</string>
+    <string name="error_parse_package">解析包失败。</string>
+    <string name="error_downgrade_privilege">降级仅支持特权访问（Root、Shizuku 或 Dhizuku）。</string>
 
     <!-- Support Developer -->
     <string name="support_developer">支持开发者</string>
