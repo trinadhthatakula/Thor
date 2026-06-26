@@ -15,6 +15,8 @@ import com.valhalla.thor.data.gateway.RootSystemGateway
 import com.valhalla.thor.data.receivers.InstallReceiver
 import com.valhalla.thor.data.source.local.shizuku.ShizukuPackageInstallerUtils
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
+import com.valhalla.thor.data.source.local.shizuku.Shizuku as ShizukuHelper
+import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.repository.InstallMode
@@ -110,32 +112,45 @@ class InstallerRepositoryImpl(
                     }
 
                     InstallMode.SHIZUKU -> {
-                        val privilegedInstaller = try {
-                            getShizukuPackageInstaller()
+                        // 1. Try Shell command first
+                        val shellSuccess = try {
+                            installWithShizuku(uri, canDowngrade)
                         } catch (e: Throwable) {
                             if (e is CancellationException) throw e
-                            Logger.e(
-                                "InstallerRepo",
-                                "Failed to get Shizuku installer, will use normal installer: ${e.message}"
-                            )
-                            null
+                            Logger.e("InstallerRepo", "Shizuku shell install failed with exception, trying reflection", e)
+                            false
                         }
 
-                        if (privilegedInstaller != null) {
-                            try {
-                                // Try privileged path but suppress error emission so we can fall back silently
-                                performPackageInstallerInstall(
-                                    uri,
-                                    privilegedInstaller,
-                                    canDowngrade,
-                                    emitErrors = false
-                                )
+                        if (!shellSuccess) {
+                            Logger.d("InstallerRepo", "Shizuku shell install failed. Trying reflection fallback...")
+                            // 2. Try Reflection
+                            val privilegedInstaller = try {
+                                getShizukuPackageInstaller()
                             } catch (e: Throwable) {
                                 if (e is CancellationException) throw e
-                                Logger.e(
-                                    "InstallerRepo",
-                                    "Shizuku privileged install failed, falling back to normal: ${e.message}"
-                                )
+                                Logger.e("InstallerRepo", "Failed to get Shizuku privileged installer: ${e.message}")
+                                null
+                            }
+
+                            var reflectionSuccess = false
+                            if (privilegedInstaller != null) {
+                                try {
+                                    performPackageInstallerInstall(
+                                        uri,
+                                        privilegedInstaller,
+                                        canDowngrade,
+                                        emitErrors = false
+                                    )
+                                    reflectionSuccess = true
+                                } catch (e: Throwable) {
+                                    if (e is CancellationException) throw e
+                                    Logger.e("InstallerRepo", "Shizuku reflection install failed: ${e.message}")
+                                }
+                            }
+
+                            if (!reflectionSuccess) {
+                                Logger.d("InstallerRepo", "Shizuku reflection install failed. Falling back to normal installer...")
+                                // 3. Fallback to Normal
                                 performPackageInstallerInstall(
                                     uri,
                                     defaultInstaller,
@@ -143,44 +158,49 @@ class InstallerRepositoryImpl(
                                     emitErrors = true
                                 )
                             }
-                        } else {
-                            // No privileged installer available, use normal installer and allow errors
-                            performPackageInstallerInstall(
-                                uri,
-                                defaultInstaller,
-                                canDowngrade,
-                                emitErrors = true
-                            )
                         }
                     }
 
                     InstallMode.DHIZUKU -> {
-                        val privilegedInstaller = try {
-                            getDhizukuPackageInstaller()
+                        // 1. Try Shell command first
+                        val shellSuccess = try {
+                            installWithDhizuku(uri, canDowngrade)
                         } catch (e: Throwable) {
                             if (e is CancellationException) throw e
-                            Logger.e(
-                                "InstallerRepo",
-                                "Failed to get Dhizuku installer, will use normal installer: ${e.message}"
-                            )
-                            null
+                            Logger.e("InstallerRepo", "Dhizuku shell install failed with exception, trying reflection", e)
+                            false
                         }
 
-                        if (privilegedInstaller != null) {
-                            try {
-                                // Try privileged path but suppress error emission so we can fall back silently
-                                performPackageInstallerInstall(
-                                    uri,
-                                    privilegedInstaller,
-                                    canDowngrade,
-                                    emitErrors = false
-                                )
+                        if (!shellSuccess) {
+                            Logger.d("InstallerRepo", "Dhizuku shell install failed. Trying reflection fallback...")
+                            // 2. Try Reflection
+                            val privilegedInstaller = try {
+                                getDhizukuPackageInstaller()
                             } catch (e: Throwable) {
                                 if (e is CancellationException) throw e
-                                Logger.e(
-                                    "InstallerRepo",
-                                    "Dhizuku privileged install failed, falling back to normal: ${e.message}"
-                                )
+                                Logger.e("InstallerRepo", "Failed to get Dhizuku privileged installer: ${e.message}")
+                                null
+                            }
+
+                            var reflectionSuccess = false
+                            if (privilegedInstaller != null) {
+                                try {
+                                    performPackageInstallerInstall(
+                                        uri,
+                                        privilegedInstaller,
+                                        canDowngrade,
+                                        emitErrors = false
+                                    )
+                                    reflectionSuccess = true
+                                } catch (e: Throwable) {
+                                    if (e is CancellationException) throw e
+                                    Logger.e("InstallerRepo", "Dhizuku reflection install failed: ${e.message}")
+                                }
+                            }
+
+                            if (!reflectionSuccess) {
+                                Logger.d("InstallerRepo", "Dhizuku reflection install failed. Falling back to normal installer...")
+                                // 3. Fallback to Normal
                                 performPackageInstallerInstall(
                                     uri,
                                     defaultInstaller,
@@ -188,14 +208,6 @@ class InstallerRepositoryImpl(
                                     emitErrors = true
                                 )
                             }
-                        } else {
-                            // No privileged installer available, use normal installer and allow errors
-                            performPackageInstallerInstall(
-                                uri,
-                                defaultInstaller,
-                                canDowngrade,
-                                emitErrors = true
-                            )
                         }
                     }
 
@@ -297,19 +309,11 @@ class InstallerRepositoryImpl(
         }
     }
 
-    private suspend fun installWithRoot(uri: Uri, canDowngrade: Boolean) {
-        eventBus.emit(InstallState.Installing(0f))
-
-        val tempDir = File(context.cacheDir, "install_root_${System.currentTimeMillis()}")
-        val tempApk = File(context.cacheDir, "install_temp_${System.currentTimeMillis()}.apk")
-
-        try {
-            val apkPaths: List<String>
-
-            val xapkApkFiles = resolveXapkApkFiles(uri)
+    private fun copyUriToTempFiles(uri: Uri, tempDir: File): List<File>? {
+        val xapkApkFiles = resolveXapkApkFiles(uri)
+        return try {
+            tempDir.mkdirs()
             if (xapkApkFiles != null) {
-                // XAPK/APKS: extract APKs listed in manifest (or all .apk files as fallback)
-                tempDir.mkdirs()
                 val extracted = mutableListOf<File>()
                 val wanted = xapkApkFiles.map { it.substringAfterLast('/') }.toSet()
 
@@ -329,27 +333,36 @@ class InstallerRepositoryImpl(
                         }
                     }
                 }
-
-                if (extracted.isEmpty()) {
-                    eventBus.emit(InstallState.Error(UiText.StringResource(R.string.log_no_apps_to_fix)))
-                    return
-                }
-
-                apkPaths = extracted.map { it.absolutePath }
+                if (extracted.isEmpty()) null else extracted
             } else {
-                // Single APK
+                val tempApk = File(tempDir, "base.apk")
                 context.contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(tempApk).use { output -> input.copyTo(output) }
-                } ?: run {
-                    eventBus.emit(InstallState.Error(UiText.DynamicString("Failed to read input file")))
-                    return
-                }
-
-                apkPaths = listOf(tempApk.absolutePath)
+                } ?: return null
+                listOf(tempApk)
             }
+        } catch (e: Exception) {
+            Logger.e("InstallerRepo", "Failed to copy URI to temp files", e)
+            null
+        }
+    }
 
-            eventBus.emit(InstallState.Installing(0.5f))
+    private suspend fun installWithRoot(uri: Uri, canDowngrade: Boolean) {
+        eventBus.emit(InstallState.Installing(0f))
 
+        val tempDir = File(context.cacheDir, "install_root_${System.currentTimeMillis()}")
+        val tempFiles = copyUriToTempFiles(uri, tempDir)
+
+        if (tempFiles == null || tempFiles.isEmpty()) {
+            eventBus.emit(InstallState.Error(UiText.DynamicString("Failed to extract or copy installation files")))
+            tempDir.deleteRecursively()
+            return
+        }
+
+        eventBus.emit(InstallState.Installing(0.5f))
+
+        try {
+            val apkPaths = tempFiles.map { it.absolutePath }
             val result = if (apkPaths.size == 1) {
                 rootGateway.installApp(apkPaths[0], canDowngrade)
             } else {
@@ -368,7 +381,98 @@ class InstallerRepositoryImpl(
             if (e is CancellationException) throw e
             eventBus.emit(InstallState.Error(UiText.DynamicString("Root install error: ${e.message}")))
         } finally {
-            tempApk.delete()
+            tempDir.deleteRecursively()
+        }
+    }
+
+    private suspend fun installWithShizuku(uri: Uri, canDowngrade: Boolean): Boolean {
+        eventBus.emit(InstallState.Installing(0f))
+
+        val baseDir = context.externalCacheDir ?: context.cacheDir
+        val tempDir = File(baseDir, "install_shizuku_${System.currentTimeMillis()}")
+        val tempFiles = copyUriToTempFiles(uri, tempDir)
+
+        if (tempFiles == null || tempFiles.isEmpty()) {
+            tempDir.deleteRecursively()
+            return false
+        }
+
+        eventBus.emit(InstallState.Installing(0.5f))
+
+        return try {
+            val apkPaths = tempFiles.map { it.absolutePath }
+            val result = if (apkPaths.size == 1) {
+                val command = "pm install -r -g${if (canDowngrade) " -d" else ""} ${
+                    com.valhalla.superuser.ShellUtils.escapedString(apkPaths[0])
+                }"
+                ShizukuHelper.execute(command)
+            } else {
+                val escapedPaths = apkPaths.joinToString(" ") {
+                    com.valhalla.superuser.ShellUtils.escapedString(it)
+                }
+                val command = "pm install-multiple -r -g${if (canDowngrade) " -d" else ""} $escapedPaths"
+                ShizukuHelper.execute(command)
+            }
+
+            if (result.first == 0) {
+                eventBus.emit(InstallState.Installing(1.0f))
+                eventBus.emit(InstallState.Success)
+                true
+            } else {
+                Logger.e("InstallerRepo", "Shizuku shell install failed: ${result.second}")
+                false
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Logger.e("InstallerRepo", "Shizuku shell install failed with exception: ${e.message}", e)
+            false
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    private suspend fun installWithDhizuku(uri: Uri, canDowngrade: Boolean): Boolean {
+        eventBus.emit(InstallState.Installing(0f))
+
+        val baseDir = context.externalCacheDir ?: context.cacheDir
+        val tempDir = File(baseDir, "install_dhizuku_${System.currentTimeMillis()}")
+        val tempFiles = copyUriToTempFiles(uri, tempDir)
+
+        if (tempFiles == null || tempFiles.isEmpty()) {
+            tempDir.deleteRecursively()
+            return false
+        }
+
+        eventBus.emit(InstallState.Installing(0.5f))
+
+        return try {
+            val apkPaths = tempFiles.map { it.absolutePath }
+            val result = if (apkPaths.size == 1) {
+                val command = "pm install -r -g${if (canDowngrade) " -d" else ""} ${
+                    com.valhalla.superuser.ShellUtils.escapedString(apkPaths[0])
+                }"
+                DhizukuHelper.execute(command)
+            } else {
+                val escapedPaths = apkPaths.joinToString(" ") {
+                    com.valhalla.superuser.ShellUtils.escapedString(it)
+                }
+                val command = "pm install-multiple -r -g${if (canDowngrade) " -d" else ""} $escapedPaths"
+                DhizukuHelper.execute(command)
+            }
+
+            if (result.first == 0) {
+                eventBus.emit(InstallState.Installing(1.0f))
+                eventBus.emit(InstallState.Success)
+                true
+            } else {
+                Logger.e("InstallerRepo", "Dhizuku shell install failed: ${result.second}")
+                false
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Logger.e("InstallerRepo", "Dhizuku shell install failed with exception: ${e.message}", e)
+            false
+        } finally {
             tempDir.deleteRecursively()
         }
     }
