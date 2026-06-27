@@ -39,6 +39,9 @@ class AppModule {
     @Single
     fun freezerDao(appDatabase: AppDatabase): FreezerDao = appDatabase.freezerDao()
 
+    @Single
+    fun extensionDataDao(appDatabase: AppDatabase) = appDatabase.extensionDataDao()
+
     // RealShellRepository lives in :suCore (com.valhalla.superuser.ktx), outside the scan scope
     @Single
     fun shellRepository(): ShellRepository = RealShellRepository()

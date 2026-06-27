@@ -72,8 +72,10 @@ fun ExtensionManagerScreen(
     val settingsViewModel: SettingsViewModel = koinViewModel()
     val prefs by settingsViewModel.preferences.collectAsStateWithLifecycle()
     val shellRepository: ShellRepository = koinInject()
+    val extensionDataDao: com.valhalla.thor.data.source.local.room.ExtensionDataDao = koinInject()
 
     var activeExtension by remember { mutableStateOf<AutomationExtension?>(null) }
+    var activeExtensionPackageName by remember { mutableStateOf("") }
 
     LaunchedEffect(activeExtension) {
         onExtensionActiveChanged(activeExtension != null)
@@ -88,8 +90,12 @@ fun ExtensionManagerScreen(
 
     if (activeExtension != null) {
         val shellExecutor = remember { com.valhalla.thor.data.manager.ThorShellExecutor(shellRepository) }
+        val dataStore = remember(activeExtensionPackageName) {
+            com.valhalla.thor.data.manager.RoomExtensionDataStore(activeExtensionPackageName, extensionDataDao)
+        }
         activeExtension!!.ConfigurationScreen(
             shellExecutor = shellExecutor,
+            dataStore = dataStore,
             onBack = { activeExtension = null }
         )
     } else {
@@ -149,6 +155,7 @@ fun ExtensionManagerScreen(
                                 prefs = prefs,
                                 onConfigure = { ext ->
                                     if (ext is AutomationExtension) {
+                                        activeExtensionPackageName = item.packageName
                                         activeExtension = ext
                                     }
                                 }

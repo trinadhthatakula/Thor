@@ -18,6 +18,7 @@ class ExtensionTriggerReceiver : BroadcastReceiver(), KoinComponent {
 
     private val extensionManager: ExtensionManager by inject()
     private val shellRepository: ShellRepository by inject()
+    private val extensionDataDao: com.valhalla.thor.data.source.local.room.ExtensionDataDao by inject()
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != "com.valhalla.thor.action.TRIGGER_EXTENSION") return
@@ -38,7 +39,9 @@ class ExtensionTriggerReceiver : BroadcastReceiver(), KoinComponent {
                     if (targetExtension is AutomationExtension) {
                         Logger.d("ExtensionTriggerReceiver", "Executing onTrigger for: $extensionClass")
                         val shellExecutor = ThorShellExecutor(shellRepository)
-                        targetExtension.onTrigger(context, triggerId, shellExecutor)
+                        val pkgName = extensionManager.getExtensionPackageName(targetExtension) ?: extensionClass.substringBeforeLast(".")
+                        val dataStore = com.valhalla.thor.data.manager.RoomExtensionDataStore(pkgName, extensionDataDao)
+                        targetExtension.onTrigger(context, triggerId, shellExecutor, dataStore)
 
                         kotlinx.coroutines.withContext(Dispatchers.Main) {
                             android.widget.Toast.makeText(
