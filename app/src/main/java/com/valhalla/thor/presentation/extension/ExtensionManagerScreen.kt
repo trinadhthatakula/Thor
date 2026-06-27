@@ -83,6 +83,7 @@ fun ExtensionManagerScreen(
 
     BackHandler(enabled = activeExtension != null) {
         val handled = activeExtension?.onBackPressed() ?: false
+        android.util.Log.d("ExtensionManagerScreen", "Back press intercepted. handled by extension: $handled")
         if (!handled) {
             activeExtension = null
         }

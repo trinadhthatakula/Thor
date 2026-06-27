@@ -9,18 +9,26 @@ class RoomExtensionDataStore(
     private val extensionDataDao: ExtensionDataDao
 ) : ExtensionDataStore {
     override fun saveString(key: String, value: String) {
-        extensionDataDao.insert(ExtensionDataEntity(packageName, key, value))
+        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+            extensionDataDao.insert(ExtensionDataEntity(packageName, key, value))
+        }
     }
 
     override fun getString(key: String): String? {
-        return extensionDataDao.getValue(packageName, key)
+        return kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+            extensionDataDao.getValue(packageName, key)
+        }
     }
 
     override fun deleteString(key: String) {
-        extensionDataDao.delete(packageName, key)
+        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+            extensionDataDao.delete(packageName, key)
+        }
     }
 
     override fun getAllKeys(): List<String> {
-        return extensionDataDao.getAllKeys(packageName)
+        return kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+            extensionDataDao.getAllKeys(packageName)
+        }
     }
 }
