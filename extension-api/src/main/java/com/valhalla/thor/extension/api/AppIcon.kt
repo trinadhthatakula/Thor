@@ -2,6 +2,7 @@ package com.valhalla.thor.extension.api
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ColorFilter
 import coil3.compose.AsyncImage
 
 /**
@@ -16,11 +17,13 @@ data class AppIconModel(val packageName: String)
 fun AppIcon(
     packageName: String,
     modifier: Modifier = Modifier,
-    contentDescription: String? = null
+    contentDescription: String? = null,
+    colorFilter: ColorFilter? = null
 ) {
     AsyncImage(
         model = AppIconModel(packageName),
         contentDescription = contentDescription,
-        modifier = modifier
+        modifier = modifier,
+        colorFilter = colorFilter
     )
 }
