@@ -26,12 +26,13 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.isSystemInDarkTheme
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.presentation.settings.SettingsViewModel
@@ -60,6 +61,7 @@ import androidx.activity.compose.BackHandler
 @Composable
 fun ExtensionManagerScreen(
     onBack: () -> Unit,
+    onExtensionActiveChanged: (Boolean) -> Unit = {},
     viewModel: ExtensionManagerViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -70,8 +72,15 @@ fun ExtensionManagerScreen(
 
     var activeExtension by remember { mutableStateOf<AutomationExtension?>(null) }
 
+    LaunchedEffect(activeExtension) {
+        onExtensionActiveChanged(activeExtension != null)
+    }
+
     BackHandler(enabled = activeExtension != null) {
-        activeExtension = null
+        val handled = activeExtension?.onBackPressed() ?: false
+        if (!handled) {
+            activeExtension = null
+        }
     }
 
     if (activeExtension != null) {

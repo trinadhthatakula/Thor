@@ -8,4 +8,6 @@ interface AutomationExtension : ThorExtension {
 
     @Composable
     fun ConfigurationScreen(shellExecutor: ShellExecutor, onBack: () -> Unit)
+
+    fun onBackPressed(): Boolean = false
 }

@@ -99,6 +99,7 @@ fun MainScreen(
     var pendingMultiAction by remember { mutableStateOf<MultiAppAction?>(null) }
     var pendingSingleAction by remember { mutableStateOf<AppClickAction?>(null) }
     var showExitConfirmation by remember { mutableStateOf(false) }
+    var isExtensionActive by remember { mutableStateOf(false) }
 
     // --- Navigation 3 Setup (Multiple Backstacks) ---
     var activeDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
@@ -161,7 +162,7 @@ fun MainScreen(
 
     // System Back Press Handler: 
     // 1. Pop from the active stack if there are sub-screens (size > 1)
-    val canGoBackInActiveTab = (backStacks[activeTab]?.size ?: 0) > 1
+    val canGoBackInActiveTab = (backStacks[activeTab]?.size ?: 0) > 1 && !isExtensionActive
     BackHandler(enabled = canGoBackInActiveTab) {
         val stack = backStacks[activeTab]
         if (stack != null && stack.size > 1) {
@@ -433,6 +434,9 @@ fun MainScreen(
                             if (settingsBackStack.size > 1) {
                                 settingsBackStack.removeLastOrNull()
                             }
+                        },
+                        onExtensionActiveChanged = { isActive ->
+                            isExtensionActive = isActive
                         }
                     )
                 }
