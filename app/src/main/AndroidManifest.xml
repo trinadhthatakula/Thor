@@ -23,6 +23,11 @@
     <uses-permission android:name="com.rosan.dhizuku.permission.API" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <permission
+        android:name="com.valhalla.thor.permission.TRIGGER_EXTENSION"
+        android:protectionLevel="signature" />
+
+
 
     <application
         android:name=".ThorApplication"
@@ -174,6 +179,30 @@
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
         </service>
+
+        <activity
+            android:name=".presentation.extension.ShortcutTriggerActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="thor"
+                    android:host="extension"
+                    android:path="/trigger" />
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name=".data.receivers.ExtensionTriggerReceiver"
+            android:permission="com.valhalla.thor.permission.TRIGGER_EXTENSION"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.valhalla.thor.action.TRIGGER_EXTENSION" />
+            </intent-filter>
+        </receiver>
 
     </application>
 
