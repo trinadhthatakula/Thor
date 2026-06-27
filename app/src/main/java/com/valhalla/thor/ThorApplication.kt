@@ -14,6 +14,7 @@ import com.valhalla.thor.presentation.utils.AppIconFetcher
 import com.valhalla.thor.presentation.utils.AppIconKeyer
 import com.valhalla.thor.util.LocaleManager
 import com.valhalla.thor.util.Logger
+import com.valhalla.thor.util.koinLogLevel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.first
@@ -44,6 +45,7 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
+        com.valhalla.thor.extension.api.Logger.isDebug = BuildConfig.DEBUG
 
         startKoin<ThorApplication> {
             androidContext(this@ThorApplication)
