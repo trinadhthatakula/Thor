@@ -55,6 +55,7 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.activity.compose.BackHandler
 
 @Composable
 fun ExtensionManagerScreen(
@@ -69,6 +70,10 @@ fun ExtensionManagerScreen(
 
     var activeExtension by remember { mutableStateOf<AutomationExtension?>(null) }
 
+    BackHandler(enabled = activeExtension != null) {
+        activeExtension = null
+    }
+
     if (activeExtension != null) {
         val shellExecutor = remember { com.valhalla.thor.data.manager.ThorShellExecutor(shellRepository) }
         activeExtension!!.ConfigurationScreen(
@@ -76,11 +81,7 @@ fun ExtensionManagerScreen(
             onBack = { activeExtension = null }
         )
     } else {
-        Scaffold(
-            topBar = {
-                ExtensionTopAppBar(onBack = onBack)
-            }
-        ) { innerPadding ->
+        Scaffold { innerPadding ->
             Column(
                 modifier = Modifier
                     .fillMaxSize()
