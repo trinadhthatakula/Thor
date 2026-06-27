@@ -30,9 +30,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.presentation.settings.SettingsViewModel
+import org.koin.compose.koinInject
+import com.valhalla.thor.extension.api.AutomationExtension
+import com.valhalla.superuser.ktx.ShellRepository
+import com.valhalla.thor.presentation.theme.firaMonoFontFamily
+import org.koin.androidx.compose.koinViewModel
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -46,8 +53,6 @@ import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
-import com.valhalla.thor.presentation.theme.firaMonoFontFamily
-import org.koin.androidx.compose.koinViewModel
 
 @Composable
 fun ExtensionManagerScreen(
@@ -58,65 +63,115 @@ fun ExtensionManagerScreen(
     val context = LocalContext.current
     val settingsViewModel: SettingsViewModel = koinViewModel()
     val prefs by settingsViewModel.preferences.collectAsStateWithLifecycle()
+    val shellRepository: ShellRepository = koinInject()
 
-    Scaffold(
-        topBar = {
-            ExtensionTopAppBar(onBack = onBack)
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .background(MaterialTheme.colorScheme.background)
-        ) {
-            if (state.isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.material3.CircularProgressIndicator()
-                }
-            } else if (state.extensions.isEmpty()) {
-                EmptyExtensionState(
-                    onGetExtensions = {
-                        context.startActivity(
-                            Intent(
-                                Intent.ACTION_VIEW,
-                                "https://github.com/trinadhthatakula/Thor".toUri()
-                            )
-                        )
-                    }
-                )
-            } else {
-                LazyColumn(
+    var activeExtension by remember { mutableStateOf<AutomationExtension?>(null) }
+
+    if (activeExtension != null) {
+        Scaffold(
+            topBar = {
+                Row(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceContainer)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    item {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = stringResource(R.string.extensions),
-                            style = MaterialTheme.typography.headlineLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                    IconButton(onClick = { activeExtension = null }) {
+                        Icon(
+                            painter = painterResource(R.drawable.round_close),
+                            contentDescription = stringResource(R.string.cd_close),
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
-                        Text(
-                            text = stringResource(R.string.manage_extensions_desc),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
                     }
-
-                    items(state.extensions, key = { it.packageName }) { item ->
-                        ExtensionCard(item = item, prefs = prefs)
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = activeExtension!!.name,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .background(MaterialTheme.colorScheme.background)
+            ) {
+                val shellExecutor = remember { com.valhalla.thor.data.manager.ThorShellExecutor(shellRepository) }
+                activeExtension!!.ConfigurationScreen(shellExecutor = shellExecutor)
+            }
+        }
+    } else {
+        Scaffold(
+            topBar = {
+                ExtensionTopAppBar(onBack = onBack)
+            }
+        ) { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .background(MaterialTheme.colorScheme.background)
+            ) {
+                if (state.isLoading) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        androidx.compose.material3.CircularProgressIndicator()
                     }
+                } else if (state.extensions.isEmpty()) {
+                    EmptyExtensionState(
+                        onGetExtensions = {
+                            context.startActivity(
+                                Intent(
+                                    Intent.ACTION_VIEW,
+                                    "https://github.com/trinadhthatakula/Thor".toUri()
+                                )
+                            )
+                        }
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        item {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = stringResource(R.string.extensions),
+                                style = MaterialTheme.typography.headlineLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = stringResource(R.string.manage_extensions_desc),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
 
-                    item {
-                        Spacer(modifier = Modifier.height(32.dp))
+                        items(state.extensions, key = { it.packageName }) { item ->
+                            ExtensionCard(
+                                item = item,
+                                prefs = prefs,
+                                onConfigure = { ext ->
+                                    if (ext is AutomationExtension) {
+                                        activeExtension = ext
+                                    }
+                                }
+                            )
+                        }
+
+                        item {
+                            Spacer(modifier = Modifier.height(32.dp))
+                        }
                     }
                 }
             }
@@ -219,19 +274,11 @@ private fun EmptyExtensionState(
 @Composable
 private fun ExtensionCard(
     item: ExtensionUiItem,
-    prefs: UserPreferences
+    prefs: UserPreferences,
+    onConfigure: (Any) -> Unit
 ) {
     val ext = item.extension
-    val context = LocalContext.current
-    val systemDark = isSystemInDarkTheme()
-
-    val launchIntent = remember(item.packageName) {
-        val intent = Intent("com.valhalla.thor.intent.action.LAUNCH_EXTENSION").apply {
-            setPackage(item.packageName)
-        }
-        val activities = context.packageManager.queryIntentActivities(intent, 0)
-        if (activities.isNotEmpty()) intent else null
-    }
+    val isConfigurable = ext is com.valhalla.thor.extension.api.AutomationExtension
 
     Column(
         modifier = Modifier
@@ -299,26 +346,14 @@ private fun ExtensionCard(
             modifier = Modifier.fillMaxWidth()
         )
 
-        if (launchIntent != null) {
+        if (isConfigurable) {
             Spacer(modifier = Modifier.height(16.dp))
             Button(
-                onClick = {
-                    val isDark = when (prefs.themeMode) {
-                        ThemeMode.LIGHT -> false
-                        ThemeMode.DARK -> true
-                        ThemeMode.SYSTEM -> systemDark
-                    }
-                    val intent = Intent(launchIntent).apply {
-                        putExtra("theme_mode", if (isDark) "dark" else "light")
-                        putExtra("amoled_mode", prefs.useAmoled)
-                        putExtra("dynamic_colors", prefs.useDynamicColor)
-                    }
-                    context.startActivity(intent)
-                },
+                onClick = { onConfigure(ext) },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text("Run Extension")
+                Text("Configure Extension")
             }
         }
 
