@@ -39,6 +39,14 @@ class ExtensionTriggerReceiver : BroadcastReceiver(), KoinComponent {
                         Logger.d("ExtensionTriggerReceiver", "Executing onTrigger for: $extensionClass")
                         val shellExecutor = ThorShellExecutor(shellRepository)
                         targetExtension.onTrigger(context, triggerId, shellExecutor)
+
+                        kotlinx.coroutines.withContext(Dispatchers.Main) {
+                            android.widget.Toast.makeText(
+                                context,
+                                "Trigger executed: ${triggerId.substringAfter(":")}",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        }
                     } else {
                         Logger.e("ExtensionTriggerReceiver", "Extension $extensionClass is not an AutomationExtension")
                     }
