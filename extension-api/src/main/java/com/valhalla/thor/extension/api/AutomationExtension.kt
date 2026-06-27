@@ -7,5 +7,5 @@ interface AutomationExtension : ThorExtension {
     fun onTrigger(context: Context, eventType: String, shellExecutor: ShellExecutor)
 
     @Composable
-    fun ConfigurationScreen(shellExecutor: ShellExecutor)
+    fun ConfigurationScreen(shellExecutor: ShellExecutor, onBack: () -> Unit)
 }

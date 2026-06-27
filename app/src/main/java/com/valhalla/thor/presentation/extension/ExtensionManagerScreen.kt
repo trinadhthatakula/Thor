@@ -53,6 +53,8 @@ import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
 
 @Composable
 fun ExtensionManagerScreen(
@@ -68,42 +70,11 @@ fun ExtensionManagerScreen(
     var activeExtension by remember { mutableStateOf<AutomationExtension?>(null) }
 
     if (activeExtension != null) {
-        Scaffold(
-            topBar = {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceContainer)
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = { activeExtension = null }) {
-                        Icon(
-                            painter = painterResource(R.drawable.round_close),
-                            contentDescription = stringResource(R.string.cd_close),
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text(
-                        text = activeExtension!!.name,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Black,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
-        ) { innerPadding ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .background(MaterialTheme.colorScheme.background)
-            ) {
-                val shellExecutor = remember { com.valhalla.thor.data.manager.ThorShellExecutor(shellRepository) }
-                activeExtension!!.ConfigurationScreen(shellExecutor = shellExecutor)
-            }
-        }
+        val shellExecutor = remember { com.valhalla.thor.data.manager.ThorShellExecutor(shellRepository) }
+        activeExtension!!.ConfigurationScreen(
+            shellExecutor = shellExecutor,
+            onBack = { activeExtension = null }
+        )
     } else {
         Scaffold(
             topBar = {
@@ -323,18 +294,36 @@ private fun ExtensionCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Box(
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(
-                    text = stringResource(R.string.extension_version_prefix, ext.version),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.extension_version_prefix, ext.version),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                if (isConfigurable) {
+                    IconButton(
+                        onClick = { onConfigure(ext) },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "Run",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
             }
 
         }
@@ -345,17 +334,6 @@ private fun ExtensionCard(
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.fillMaxWidth()
         )
-
-        if (isConfigurable) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(
-                onClick = { onConfigure(ext) },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("Configure Extension")
-            }
-        }
 
         Spacer(modifier = Modifier.height(16.dp))
         Row(
