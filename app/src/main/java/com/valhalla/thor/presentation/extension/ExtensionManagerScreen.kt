@@ -57,6 +57,7 @@ import com.valhalla.thor.R
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.IconButtonDefaults
 
@@ -92,7 +93,9 @@ fun ExtensionManagerScreen(
             onBack = { activeExtension = null }
         )
     } else {
-        Scaffold { innerPadding ->
+        Scaffold(
+            contentWindowInsets = WindowInsets(0,0,0,0)
+        ) { innerPadding ->
             Column(
                 modifier = Modifier
                     .fillMaxSize()
