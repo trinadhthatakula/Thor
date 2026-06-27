@@ -57,6 +57,8 @@ import com.valhalla.thor.R
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.IconButtonDefaults
 
 @Composable
 fun ExtensionManagerScreen(
@@ -325,12 +327,12 @@ private fun ExtensionCard(
                 if (isConfigurable) {
                     IconButton(
                         onClick = { onConfigure(ext) },
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(36.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors()
                     ) {
                         Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "Run",
-                            tint = MaterialTheme.colorScheme.primary
+                            imageVector = Icons.Rounded.PlayArrow,
+                            contentDescription = "Run"
                         )
                     }
                 }
