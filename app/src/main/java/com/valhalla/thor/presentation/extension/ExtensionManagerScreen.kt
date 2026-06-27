@@ -28,6 +28,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.remember
+import com.valhalla.thor.domain.model.ThemeMode
+import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.presentation.settings.SettingsViewModel
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -51,6 +56,8 @@ fun ExtensionManagerScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val settingsViewModel: SettingsViewModel = koinViewModel()
+    val prefs by settingsViewModel.preferences.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -105,7 +112,7 @@ fun ExtensionManagerScreen(
                     }
 
                     items(state.extensions, key = { it.packageName }) { item ->
-                        ExtensionCard(item = item)
+                        ExtensionCard(item = item, prefs = prefs)
                     }
 
                     item {
@@ -211,9 +218,21 @@ private fun EmptyExtensionState(
 
 @Composable
 private fun ExtensionCard(
-    item: ExtensionUiItem
+    item: ExtensionUiItem,
+    prefs: UserPreferences
 ) {
     val ext = item.extension
+    val context = LocalContext.current
+    val systemDark = isSystemInDarkTheme()
+
+    val launchIntent = remember(item.packageName) {
+        val intent = Intent("com.valhalla.thor.intent.action.LAUNCH_EXTENSION").apply {
+            setPackage(item.packageName)
+        }
+        val activities = context.packageManager.queryIntentActivities(intent, 0)
+        if (activities.isNotEmpty()) intent else null
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -279,6 +298,30 @@ private fun ExtensionCard(
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.fillMaxWidth()
         )
+
+        if (launchIntent != null) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = {
+                    val isDark = when (prefs.themeMode) {
+                        ThemeMode.LIGHT -> false
+                        ThemeMode.DARK -> true
+                        ThemeMode.SYSTEM -> systemDark
+                    }
+                    val intent = Intent(launchIntent).apply {
+                        putExtra("theme_mode", if (isDark) "dark" else "light")
+                        putExtra("amoled_mode", prefs.useAmoled)
+                        putExtra("dynamic_colors", prefs.useDynamicColor)
+                    }
+                    context.startActivity(intent)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Run Extension")
+            }
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
