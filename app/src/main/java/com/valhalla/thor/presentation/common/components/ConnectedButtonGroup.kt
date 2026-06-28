@@ -13,7 +13,9 @@ import androidx.compose.material3.ToggleButtonShapes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
 
 /**
  * A single-select Connected Button Group built on top of [ButtonGroup] + [ToggleButton].
@@ -64,7 +66,24 @@ fun ConnectedButtonGroup(
 
     androidx.compose.material3.ButtonGroup(
         overflowIndicator = {},
-        modifier = modifier,
+        modifier = modifier.layout { measurable, constraints ->
+            // Material 3 ButtonGroupMeasurePolicy crashes during transitions (e.g. exit/enter animation in AnimatedContent)
+            // if constraints.maxWidth is smaller than the minimum calculated width of the buttons inside it.
+            // We coerce the constraints' maxWidth to be at least a safe minimum width (e.g., 360.dp in pixels)
+            // to prevent the internal IllegalArgumentException (maxWidth must be >= than minWidth).
+            // Once measured, we report a coerced width to the parent so it fits the layout/animation bounds.
+            val minSafeWidth = 360.dp.roundToPx()
+            val coercedConstraints = constraints.copy(
+                maxWidth = constraints.maxWidth.coerceAtLeast(constraints.minWidth).coerceAtLeast(minSafeWidth)
+            )
+            val placeable = measurable.measure(coercedConstraints)
+            layout(
+                width = placeable.width.coerceIn(constraints.minWidth, constraints.maxWidth),
+                height = placeable.height.coerceIn(constraints.minHeight, constraints.maxHeight)
+            ) {
+                placeable.placeRelative(0, 0)
+            }
+        },
         horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
     ) {
         items.forEachIndexed { index, item ->
