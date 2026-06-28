@@ -50,6 +50,8 @@ dependencies {
 | Versioning | Independent SemVer, start `1.0.0` |
 | Release flow | Local publish first; add CI later |
 | Tooling | Vanniktech `com.vanniktech.maven.publish` plugin (native Central Portal support) |
+| Local location | `/Users/trinadhthatakula/StudioProjects/thor-extension-api` (sibling of Thor) |
+| Remote/push | Assistant scaffolds + `git init` locally; maintainer creates the GitHub repo and pushes |
 
 ## Background: how extensions load (why dependency scoping matters)
 
