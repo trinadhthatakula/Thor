@@ -29,9 +29,26 @@ buildCache {
     }
 }
 
+// Local cross-repo development: set `thorExtensionApiDir` (in ~/.gradle/gradle.properties or
+// local.properties) to a local thor-extension-api checkout to build against its source without
+// publishing. Leave it unset to use the pinned published version.
+//
+// The included build's Gradle project is named `:extension-api`, but it publishes the artifact
+// `thor-extension-api`. Gradle's automatic substitution matches on the project name, so it would
+// look for `:extension-api` and miss the `:thor-extension-api` dependency. We therefore map it
+// explicitly via dependencySubstitution.
+val thorExtensionApiDir = providers.gradleProperty("thorExtensionApiDir").orNull
+if (thorExtensionApiDir != null) {
+    includeBuild(thorExtensionApiDir) {
+        dependencySubstitution {
+            substitute(module("io.github.trinadhthatakula:thor-extension-api"))
+                .using(project(":extension-api"))
+        }
+    }
+}
+
 rootProject.name = "Thor"
 include(":app")
 include(":suCore")
 include(":bypass")
 include(":vm-runtime")
-include(":extension-api")
