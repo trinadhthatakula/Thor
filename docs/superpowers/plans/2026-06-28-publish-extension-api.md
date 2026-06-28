@@ -319,17 +319,19 @@ mavenPublishing {
 
 - [ ] **Step 3: Publish to the local Maven repo**
 
+> NOTE (corrected during execution): Vanniktech 0.34.0's `signAllPublications()` requires a GPG key for any non-SNAPSHOT version, including `publishToMavenLocal`. To verify locally **without** a key, publish a SNAPSHOT — SNAPSHOT versions are exempt from signing. Do NOT add a custom signing override (an earlier attempt did and shipped a case-sensitive task-name predicate that would have skipped signing on real releases). `gradle.properties` stays `VERSION_NAME=1.0.0`; the SNAPSHOT is only a CLI override for this check.
+
 Run:
 ```bash
-./gradlew :extension-api:publishToMavenLocal --no-configuration-cache
+./gradlew :extension-api:publishToMavenLocal -PVERSION_NAME=1.0.0-SNAPSHOT --no-configuration-cache
 ```
-Expected: BUILD SUCCESSFUL.
+Expected: BUILD SUCCESSFUL; `signMavenPublication` SKIPPED.
 
 - [ ] **Step 4: Inspect the generated POM for correct coordinates and dependency scopes**
 
 Run:
 ```bash
-cat ~/.m2/repository/io/github/trinadhthatakula/thor-extension-api/1.0.0/thor-extension-api-1.0.0.pom
+cat ~/.m2/repository/io/github/trinadhthatakula/thor-extension-api/1.0.0-SNAPSHOT/*.pom
 ```
 Expected, verify by eye:
 - `<groupId>io.github.trinadhthatakula</groupId>`, `<artifactId>thor-extension-api</artifactId>`, `<version>1.0.0</version>`
@@ -530,11 +532,20 @@ Then add, immediately after the `buildCache { ... }` block (top level, outside a
 ```kotlin
 // Local cross-repo development: set `thorExtensionApiDir` (in ~/.gradle/gradle.properties or
 // local.properties) to a local thor-extension-api checkout to build against its source without
-// publishing. Gradle substitutes the published io.github.trinadhthatakula:thor-extension-api
-// dependency with the local build automatically. Leave it unset to use the pinned published version.
+// publishing. Leave it unset to use the pinned published version.
+//
+// The included build's Gradle project is named `:extension-api`, but it publishes the artifact
+// `thor-extension-api`. Gradle's automatic substitution matches on the project name, so it would
+// look for `:extension-api` and miss the `:thor-extension-api` dependency. We therefore map it
+// explicitly via dependencySubstitution.
 val thorExtensionApiDir = providers.gradleProperty("thorExtensionApiDir").orNull
 if (thorExtensionApiDir != null) {
-    includeBuild(thorExtensionApiDir)
+    includeBuild(thorExtensionApiDir) {
+        dependencySubstitution {
+            substitute(module("io.github.trinadhthatakula:thor-extension-api"))
+                .using(project(":extension-api"))
+        }
+    }
 }
 ```
 
@@ -555,7 +566,7 @@ Run:
 ```bash
 ./gradlew :app:assembleFossDebug --no-configuration-cache
 ```
-Expected: BUILD SUCCESSFUL. Gradle reports it is building `:extension-api` from the included build `thor-extension-api`. This proves the host still compiles against the externalized API.
+Expected: BUILD SUCCESSFUL. Gradle reports it is building `:extension-api` from the included build `thor-extension-api` (via the explicit substitution). This proves the host still compiles against the externalized API.
 
 > If `local.properties` is not honored for settings-level properties on this Gradle version, set the property in `~/.gradle/gradle.properties` instead, or run with `-PthorExtensionApiDir=/Users/trinadhthatakula/StudioProjects/thor-extension-api`.
 
