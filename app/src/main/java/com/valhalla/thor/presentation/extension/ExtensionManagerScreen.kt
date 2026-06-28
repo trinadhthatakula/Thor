@@ -38,7 +38,7 @@ import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.presentation.settings.SettingsViewModel
 import org.koin.compose.koinInject
 import com.valhalla.thor.extension.api.AutomationExtension
-import com.valhalla.superuser.ktx.ShellRepository
+import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.presentation.theme.firaMonoFontFamily
 import org.koin.androidx.compose.koinViewModel
 import androidx.compose.ui.draw.clip
@@ -71,7 +71,7 @@ fun ExtensionManagerScreen(
     val context = LocalContext.current
     val settingsViewModel: SettingsViewModel = koinViewModel()
     val prefs by settingsViewModel.preferences.collectAsStateWithLifecycle()
-    val shellRepository: ShellRepository = koinInject()
+    val systemRepository: SystemRepository = koinInject()
     val extensionDataDao: com.valhalla.thor.data.source.local.room.ExtensionDataDao = koinInject()
 
     var activeExtension by remember { mutableStateOf<AutomationExtension?>(null) }
@@ -90,7 +90,7 @@ fun ExtensionManagerScreen(
     }
 
     if (activeExtension != null) {
-        val shellExecutor = remember { com.valhalla.thor.data.manager.ThorShellExecutor(shellRepository) }
+        val shellExecutor = remember { com.valhalla.thor.data.manager.ThorShellExecutor(systemRepository) }
         val dataStore = remember(activeExtensionPackageName) {
             com.valhalla.thor.data.manager.RoomExtensionDataStore(activeExtensionPackageName, extensionDataDao)
         }

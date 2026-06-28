@@ -1,20 +1,22 @@
 package com.valhalla.thor.data.manager
 
-import com.valhalla.superuser.ktx.ShellRepository
+import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.extension.api.ShellExecutor
 import kotlinx.coroutines.runBlocking
 
+/**
+ * The [ShellExecutor] handed to extensions. Routes raw commands through the
+ * active privilege gateway (Root / Shizuku / Dhizuku) via [SystemRepository],
+ * so extensions run with the same privilege as in-app actions — not the
+ * root-only shell, which fails on Shizuku/Dhizuku devices.
+ */
 class ThorShellExecutor(
-    private val shellRepository: ShellRepository
+    private val systemRepository: SystemRepository
 ) : ShellExecutor {
     override fun execute(command: String): Pair<Int, String?> {
         return try {
-            val result = runBlocking { shellRepository.runCommand(command) }
-            if (result.isSuccess) {
-                0 to result.getOrNull()?.joinToString("\n")
-            } else {
-                1 to result.exceptionOrNull()?.message
-            }
+            runBlocking { systemRepository.executeShellCommand(command) }
+                .getOrElse { -1 to it.message }
         } catch (e: Exception) {
             -1 to e.message
         }

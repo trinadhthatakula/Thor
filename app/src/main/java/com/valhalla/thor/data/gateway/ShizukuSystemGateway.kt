@@ -30,6 +30,11 @@ class ShizukuSystemGateway(
 
     override fun isDhizukuAvailable(): Boolean = false
 
+    override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> {
+        // Runs through Shizuku's privileged process (shell uid), same path as in-app actions.
+        return runCatching { ShizukuHelper.execute(command) }
+    }
+
     override suspend fun forceStopApp(packageName: String): Result<Unit> {
         return runAction { reflector.forceStop(packageName) }
     }

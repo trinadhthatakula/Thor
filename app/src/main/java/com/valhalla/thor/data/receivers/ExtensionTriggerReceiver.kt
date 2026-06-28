@@ -3,7 +3,7 @@ package com.valhalla.thor.data.receivers
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import com.valhalla.superuser.ktx.ShellRepository
+import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.data.manager.ExtensionManager
 import com.valhalla.thor.data.manager.ThorShellExecutor
 import com.valhalla.thor.extension.api.AutomationExtension
@@ -17,7 +17,7 @@ import org.koin.core.component.inject
 class ExtensionTriggerReceiver : BroadcastReceiver(), KoinComponent {
 
     private val extensionManager: ExtensionManager by inject()
-    private val shellRepository: ShellRepository by inject()
+    private val systemRepository: SystemRepository by inject()
     private val extensionDataDao: com.valhalla.thor.data.source.local.room.ExtensionDataDao by inject()
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -38,7 +38,7 @@ class ExtensionTriggerReceiver : BroadcastReceiver(), KoinComponent {
                 if (targetExtension != null) {
                     if (targetExtension is AutomationExtension) {
                         Logger.d("ExtensionTriggerReceiver", "Executing onTrigger for: $extensionClass")
-                        val shellExecutor = ThorShellExecutor(shellRepository)
+                        val shellExecutor = ThorShellExecutor(systemRepository)
                         val pkgName = extensionManager.getExtensionPackageName(targetExtension) ?: extensionClass.substringBeforeLast(".")
                         val dataStore = com.valhalla.thor.data.manager.RoomExtensionDataStore(pkgName, extensionDataDao)
                         targetExtension.onTrigger(context, triggerId, shellExecutor, dataStore)

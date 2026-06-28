@@ -25,4 +25,7 @@ interface SystemRepository {
     suspend fun getAppPaths(packageName: String): Result<List<String>>
     suspend fun grantPermission(packageName: String, permissionName: String): Result<Unit>
     suspend fun revokePermission(packageName: String, permissionName: String): Result<Unit>
+
+    // Raw shell execution via the active privilege gateway (used by extensions).
+    suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>>
 }

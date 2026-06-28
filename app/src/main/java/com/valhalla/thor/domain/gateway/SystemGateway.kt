@@ -29,4 +29,12 @@ interface SystemGateway {
 
     // Metrics
     suspend fun getAppCacheSize(packageName: String): Long
+
+    /**
+     * Runs a raw shell command through this privilege mechanism and returns the
+     * (exitCode, output) pair. Used by the extension ShellExecutor so extensions
+     * execute with the same Root/Shizuku/Dhizuku privilege as in-app actions.
+     * Returns failure only when the command could not be executed at all.
+     */
+    suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>>
 }

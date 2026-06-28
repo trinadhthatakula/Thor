@@ -339,6 +339,19 @@ class RootSystemGateway(
     }
 
     /**
+     * Raw shell execution for extensions, via the root shell.
+     */
+    override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> {
+        val result = shellRepository.runCommand(command)
+        return if (result.isSuccess) {
+            Result.success(0 to result.getOrNull()?.joinToString("\n"))
+        } else {
+            // The command ran but exited non-zero (or the shell rejected it).
+            Result.success(1 to result.exceptionOrNull()?.message)
+        }
+    }
+
+    /**
      * Helper to bridge ShellRepository's Result<List<String>> to Result<Unit>
      */
     private suspend fun runCommand(cmd: String): Result<Unit> {
