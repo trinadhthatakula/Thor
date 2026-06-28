@@ -25,8 +25,10 @@ import androidx.compose.ui.unit.sp
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.PrivilegeMode
-import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
-import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import com.valhalla.asgard.components.ConnectedButtonGroup
+import com.valhalla.asgard.components.ConnectedButtonGroupItem
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,7 +91,7 @@ fun DashboardHeader(
             ConnectedButtonGroup(
                 items = AppListType.entries.map { type ->
                     ConnectedButtonGroupItem.Icon(
-                        iconRes = if (type == AppListType.USER) R.drawable.apps else R.drawable.android,
+                        icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
                         contentDescription = stringResource(
                             if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
                         )

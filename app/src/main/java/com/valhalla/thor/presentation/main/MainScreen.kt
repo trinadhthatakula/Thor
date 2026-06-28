@@ -43,6 +43,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import android.content.res.Configuration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
 import androidx.core.net.toUri
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
@@ -70,6 +72,9 @@ import com.valhalla.thor.presentation.home.AppDestinations
 import com.valhalla.thor.presentation.home.HomeScreen
 import com.valhalla.thor.presentation.home.HomeViewModel
 import com.valhalla.thor.presentation.navigation.ThorRoute
+import com.valhalla.asgard.navigation.AsgardNavItem
+import com.valhalla.asgard.navigation.AsgardNavigationBar
+import com.valhalla.asgard.navigation.AsgardNavigationRail
 import com.valhalla.thor.presentation.permission.PermissionManagerScreen
 import com.valhalla.thor.presentation.settings.SettingsScreen
 import com.valhalla.thor.presentation.extension.ExtensionManagerScreen
@@ -138,6 +143,17 @@ fun MainScreen(
             configuration.smallestScreenWidthDp < 600
 
     val selectedDestination = activeDestination
+
+    // Map Thor's AppDestinations (drawable + string resources) onto Asgard's resource-agnostic nav items.
+    val navItems = AppDestinations.entries.map { d ->
+        AsgardNavItem(
+            icon = ImageVector.vectorResource(d.icon),
+            selectedIcon = ImageVector.vectorResource(d.selectedIcon),
+            label = stringResource(d.label),
+            contentDescription = stringResource(d.contentDescription),
+        )
+    }
+    val selectedNavIndex = AppDestinations.entries.indexOf(selectedDestination)
 
     val handleDestinationSelected = { dest: AppDestinations ->
         val route = when (dest) {
@@ -245,10 +261,10 @@ fun MainScreen(
                 enter = slideInHorizontally(initialOffsetX = { -it }),
                 exit = slideOutHorizontally(targetOffsetX = { -it })
             ) {
-                ThorNavigationRail(
-                    destinations = AppDestinations.entries,
-                    selectedDestination = selectedDestination,
-                    onDestinationSelected = handleDestinationSelected,
+                AsgardNavigationRail(
+                    items = navItems,
+                    selectedIndex = selectedNavIndex,
+                    onSelect = { handleDestinationSelected(AppDestinations.entries[it]) },
                     showLabel = showNavRailLabel
                 )
             }
@@ -263,10 +279,10 @@ fun MainScreen(
                         enter = slideInVertically(initialOffsetY = { it }),
                         exit = slideOutVertically(targetOffsetY = { it })
                     ) {
-                        ThorNavigationBar(
-                            destinations = AppDestinations.entries,
-                            selectedDestination = selectedDestination,
-                            onDestinationSelected = handleDestinationSelected
+                        AsgardNavigationBar(
+                            items = navItems,
+                            selectedIndex = selectedNavIndex,
+                            onSelect = { handleDestinationSelected(AppDestinations.entries[it]) }
                         )
                     }
                 }

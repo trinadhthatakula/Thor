@@ -47,6 +47,15 @@ if (thorExtensionApiDir != null) {
     }
 }
 
+// Local cross-repo development against the Asgard UI library. Set `asgardDir` to a local Asgard
+// checkout to build against its source without publishing; unset to use the pinned published
+// version. The included build's project IS named `asgard` (== its artifactId), so Gradle's
+// automatic dependency substitution resolves `com.trinadhthatakula:asgard` to it with no explicit mapping.
+val asgardDir = providers.gradleProperty("asgardDir").orNull
+if (asgardDir != null) {
+    includeBuild(asgardDir)
+}
+
 rootProject.name = "Thor"
 include(":app")
 include(":suCore")

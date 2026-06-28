@@ -54,8 +54,8 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
-import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
-import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
+import com.valhalla.asgard.components.ConnectedButtonGroup
+import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
