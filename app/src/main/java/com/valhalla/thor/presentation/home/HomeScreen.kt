@@ -111,7 +111,10 @@ fun HomeScreen(
             selectedType = state.selectedType,
             onTypeChanged = { viewModel.onTypeChanged(it) },
             onPrivilegeChanged = { viewModel.onPrivilegeModeChanged(it) },
-            onRestrictedStatusClick = { showPrivilegeDialog = true }
+            onRestrictedStatusClick = { showPrivilegeDialog = true },
+            extensionsUnlocked = state.extensionsUnlocked,
+            onUnlockExtensions = { viewModel.unlockExtensions() },
+            onShowSupport = { showSupportSheet = true }
         )
 
         Spacer(Modifier.height(8.dp))

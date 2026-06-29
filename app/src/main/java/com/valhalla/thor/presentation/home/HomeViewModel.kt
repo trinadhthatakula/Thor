@@ -34,7 +34,8 @@ data class HomeUiState(
     val activePrivilegeMode: PrivilegeMode? = null,
 
     // Preferences
-    val showReinstallCard: Boolean = true // <--- Controlled by DataStore
+    val showReinstallCard: Boolean = true, // <--- Controlled by DataStore
+    val extensionsUnlocked: Boolean = false
 )
 
 @KoinViewModel
@@ -61,7 +62,8 @@ class HomeViewModel(
         }
         internal.copy(
             showReinstallCard = prefs.showReinstallAllCard,
-            activePrivilegeMode = activeMode
+            activePrivilegeMode = activeMode,
+            extensionsUnlocked = prefs.extensionsUnlocked
         )
     }.stateIn(
         viewModelScope,
@@ -124,6 +126,13 @@ class HomeViewModel(
     fun dismissReinstallCard() {
         viewModelScope.launch {
             preferenceRepository.setReinstallAllCardVisibility(false)
+        }
+    }
+
+    /** Easter egg: unlock the (still-unstable) Extensions feature in Settings. */
+    fun unlockExtensions() {
+        viewModelScope.launch {
+            preferenceRepository.setExtensionsUnlocked(true)
         }
     }
 

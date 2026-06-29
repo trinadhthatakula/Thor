@@ -52,4 +52,7 @@ interface PreferenceRepository {
     suspend fun setFreezerIsGrid(isGrid: Boolean)
     suspend fun toggleAppListIsGrid()
     suspend fun toggleFreezerIsGrid()
+
+    // --- Extensions ---
+    suspend fun setExtensionsUnlocked(unlocked: Boolean)
 }

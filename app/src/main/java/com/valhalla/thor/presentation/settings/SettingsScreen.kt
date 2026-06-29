@@ -358,24 +358,27 @@ fun SettingsScreen(
             )
         }
 
-        Spacer(Modifier.height(32.dp))
-
         // ── EXTENSIONS ──────────────────────────────────────────────────────
-        SettingsSectionLabel(stringResource(R.string.extensions))
+        // Hidden until unlocked via the home-screen easter egg — the feature is not yet stable.
+        if (prefs.extensionsUnlocked) {
+            Spacer(Modifier.height(32.dp))
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(32.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                .padding(8.dp)
-        ) {
-            SettingsClickRow(
-                icon = R.drawable.round_extension,
-                title = stringResource(R.string.manage_extensions),
-                subtitle = stringResource(R.string.manage_extensions_desc),
-                onClick = onNavigateToExtensionManager
-            )
+            SettingsSectionLabel(stringResource(R.string.extensions))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(32.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                    .padding(8.dp)
+            ) {
+                SettingsClickRow(
+                    icon = R.drawable.round_extension,
+                    title = stringResource(R.string.manage_extensions),
+                    subtitle = stringResource(R.string.manage_extensions_desc),
+                    onClick = onNavigateToExtensionManager
+                )
+            }
         }
 
         Spacer(Modifier.height(32.dp))

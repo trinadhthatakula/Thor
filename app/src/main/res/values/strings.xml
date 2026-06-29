@@ -205,6 +205,9 @@
     <string name="extensions">Extensions</string>
     <string name="manage_extensions">Manage Extensions</string>
     <string name="manage_extensions_desc">View and configure installed APK plugins</string>
+    <string name="extensions_unlocked">Extensions unlocked 🔓</string>
+    <string name="support_tab_play_store">Play Store</string>
+    <string name="support_tab_direct">Direct</string>
     <string name="extension_manager">Extension Manager</string>
     <string name="extension_security_verified">Verified</string>
     <string name="extension_security_debug">Debug Mode (Unverified)</string>
