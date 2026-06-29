@@ -41,7 +41,7 @@ val thorExtensionApiDir = providers.gradleProperty("thorExtensionApiDir").orNull
 if (thorExtensionApiDir != null) {
     includeBuild(thorExtensionApiDir) {
         dependencySubstitution {
-            substitute(module("io.github.trinadhthatakula:thor-extension-api"))
+            substitute(module("com.trinadhthatakula:thor-extension-api"))
                 .using(project(":extension-api"))
         }
     }
