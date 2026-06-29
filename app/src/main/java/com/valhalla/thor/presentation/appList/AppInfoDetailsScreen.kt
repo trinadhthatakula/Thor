@@ -376,6 +376,8 @@ fun AppInfoDetailsScreen(
                                 context.startActivity(intent)
                             }
                             showUninstallConfirmation = false
+                            // Close the details screen once uninstall is triggered
+                            onBack()
                         }) {
                             Text(
                                 text = if (isExpert) stringResource(R.string.uninstall_anyway) else if (isSystem) stringResource(R.string.yes) else stringResource(R.string.action_uninstall),
