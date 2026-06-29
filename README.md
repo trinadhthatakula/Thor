@@ -40,7 +40,11 @@
 - High-performance app list loading with Room DB metadata caching
 - Fingerprint Lock
 - Themes (dark, light, system) + AMOLED + Asgardian static theme
-- App Installer (install with root, shizuku or normal)
+- **Redesigned App Installer** — install packages with root, shizuku, or normal, featuring detailed UI states and associations for split formats (`.apkm`, `.apks`, and `.xapk`)
+- **Universal Android Debloater (UAD) Integration** — safety recommendation chips (Recommended, Advanced, Expert, Unsafe) dynamically shown for system packages
+- **Safe System App Debloating & Freezing** — uninstalls system apps for the current user (`pm uninstall --user`) and restores them (`pm install-existing`) to support modern Android versions safely
+- **Adaptive UI Layouts** — vertical navigation rail for tablets/foldables, optimized viewport layouts, and split landscape detail screens
+- **Safety Gating** — blocks freezing of system apps marked as **Unsafe** by UAD to prevent bootloops, and warns on **Expert** packages
 - Root Support
 - Shizuku Support
 - Dhizuku Support
@@ -60,9 +64,11 @@
 - Batch Reinstall/Uninstall/Freeze/Unfreeze/Kill/Suspend/Clear Data
 - Split App Indicator
 - AppState Indicator (frozen / suspended / hidden)
+- Local icon caching and danger badges for user-uninstalled system apps
 - Uninstall System Apps
 - Freeze/UnFreeze System apps
 - Sorting & filters
+- Layout preference persistence (grid/list mode preserved across restarts)
 - Clear Data/Cache (available in all privilege modes)
 
 ## Upcoming Features
@@ -70,6 +76,10 @@
 - BackUp App Data
 - Editing Packages.xml
 - Batch Install
+- Launcher-shortcut / deep-link triggering for automation extensions, via an authenticated handoff
+  (explicit-component intent or nonce-signed token). The earlier public `thor://extension/trigger`
+  deep link was removed because, being exported, any app could drive triggers through Thor's
+  signature-level permission.
 - Many more
 
 ## 💖 Support Development

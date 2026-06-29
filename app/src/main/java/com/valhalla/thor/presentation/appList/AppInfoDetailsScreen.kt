@@ -1,10 +1,12 @@
 package com.valhalla.thor.presentation.appList
 
 import android.content.Context
+import android.icu.text.DateFormat
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -13,7 +15,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,29 +23,28 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -53,23 +53,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
-import android.content.res.Configuration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.animation.AnimatedVisibilityScope
-import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
-import androidx.window.core.layout.WindowSizeClass
-import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
-import androidx.navigation3.ui.LocalNavAnimatedContentScope
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
@@ -81,25 +73,27 @@ import com.valhalla.thor.presentation.theme.bodyFontFamily
 import com.valhalla.thor.presentation.theme.firaMonoFontFamily
 import com.valhalla.thor.presentation.utils.AppIconModel
 import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
+import com.valhalla.thor.presentation.widgets.AnimateLottieRaw
 import kotlinx.coroutines.launch
-import java.text.DateFormat
+import org.koin.androidx.compose.koinViewModel
+import androidx.compose.ui.platform.ClipEntry
 import java.util.Date
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalMaterial3AdaptiveApi::class)
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun AppInfoDetailsScreen(
     packageName: String,
-    appName: String,
+    appName: String?,
+    viewModel: AppInfoDetailsViewModel = koinViewModel(),
     sharedTransitionScope: SharedTransitionScope? = null,
     onBack: () -> Unit,
     onNavigateToPermissionManager: (packageName: String, appName: String) -> Unit,
-    onAppAction: (AppClickAction) -> Unit = {},
-    viewModel: AppInfoDetailsViewModel = org.koin.androidx.compose.koinViewModel(),
+    onAppAction: (AppClickAction) -> Unit,
     showOnlyHeaderAndActions: Boolean = false,
     showOnlyTabs: Boolean = false
 ) {
-    val state by viewModel.uiState.collectAsState()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     LaunchedEffect(packageName) {
@@ -117,218 +111,169 @@ fun AppInfoDetailsScreen(
     var showUninstallConfirmation by remember { mutableStateOf(false) }
     var showFreezeConfirmation by remember { mutableStateOf(false) }
 
-    val adaptiveInfo = currentWindowAdaptiveInfoV2()
-    val isWideScreen = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
-    val configuration = LocalConfiguration.current
-    val isLandscapePhone = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
-            configuration.smallestScreenWidthDp < 600
-    val showTopBar = !showOnlyTabs
-
     Scaffold(
         topBar = {
-            if (showTopBar) {
+            if (!showOnlyHeaderAndActions && !showOnlyTabs) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.background)
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val showCloseButton = !isWideScreen || (showOnlyHeaderAndActions && isLandscapePhone)
-                    if (showCloseButton) {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                painter = painterResource(R.drawable.round_close),
-                                contentDescription = stringResource(R.string.cd_close),
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(16.dp))
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            painter = painterResource(R.drawable.arrow_downward),
+                            contentDescription = stringResource(R.string.cd_close)
+                        )
                     }
                     Text(
                         text = stringResource(R.string.app_details_title),
                         style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Black,
-                        color = MaterialTheme.colorScheme.onSurface
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(start = 8.dp)
                     )
                 }
             }
-        },
-        contentWindowInsets = WindowInsets(0, 0, 0, 0)
+        }
     ) { innerPadding ->
         Box(
             modifier = Modifier
-                .fillMaxSize()
                 .padding(innerPadding)
-                .background(MaterialTheme.colorScheme.background)
+                .fillMaxSize()
         ) {
-            if (state.isLoading && state.detailedInfo == null) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            when {
+                state.isLoading && state.detailedInfo == null -> {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
-            } else if (state.errorMessage != null && state.detailedInfo == null) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.danger),
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = state.errorMessage?.asString(context)
-                            ?: stringResource(R.string.unknown_error_occurred),
-                        style = MaterialTheme.typography.bodyLarge,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Spacer(modifier = Modifier.height(24.dp))
-                    TextButton(onClick = { viewModel.loadAppDetails(packageName) }) {
-                        Text(stringResource(R.string.retry_label))
-                    }
-                }
-            } else {
-                state.detailedInfo?.let { details ->
-                    val appInfo = details.appInfo
-                    val coroutineScope = rememberCoroutineScope()
-                    val tabTitles = listOf(
-                        stringResource(R.string.tab_overview_title),
-                        stringResource(R.string.permissions_title),
-                        stringResource(R.string.tab_components),
-                        stringResource(R.string.tab_libs_features)
-                    )
-                    val pagerState = rememberPagerState(pageCount = { tabTitles.size })
 
-                    val animatedVisibilityScope = LocalNavAnimatedContentScope.current
-                    val leftPaneScrollState = rememberScrollState()
-
+                state.errorMessage != null -> {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .then(
-                                if (showOnlyHeaderAndActions) Modifier.verticalScroll(leftPaneScrollState)
-                                else Modifier
-                            )
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
                     ) {
+                        // Using a generic error icon since R.raw.error_state might not exist
+                        Icon(
+                            painter = painterResource(R.drawable.danger),
+                            contentDescription = null,
+                            modifier = Modifier.size(120.dp),
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = state.errorMessage?.asString(context) ?: stringResource(R.string.unknown_error_occurred),
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Button(onClick = { viewModel.loadAppDetails(packageName) }) {
+                            Text(stringResource(R.string.retry_label))
+                        }
+                    }
+                }
+
+                state.detailedInfo != null -> {
+                    val details = state.detailedInfo!!
+                    Column(modifier = Modifier.fillMaxSize()) {
                         if (!showOnlyTabs) {
-                            // 1. Header (Icon + Name + Chips)
                             AppDetailsHeader(
-                                appInfo = appInfo,
+                                appInfo = details.appInfo,
                                 sharedTransitionScope = sharedTransitionScope,
-                                animatedVisibilityScope = animatedVisibilityScope
+                                animatedVisibilityScope = null
                             )
 
-                            // 2. Action buttons
                             AppDetailsActionRow(
-                                appInfo = appInfo,
+                                appInfo = details.appInfo,
                                 isRoot = state.isRoot,
                                 isShizuku = state.isShizuku,
                                 isDhizuku = state.isDhizuku,
                                 isInFreezer = state.isInFreezer,
                                 onLaunch = {
-                                    val intent =
-                                        context.packageManager.getLaunchIntentForPackage(packageName)
-                                    if (intent != null) context.startActivity(intent)
-                                    else Toast.makeText(
-                                        context,
-                                        context.getString(R.string.cannot_launch_app),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
+                                    onAppAction(AppClickAction.Launch(details.appInfo))
                                 },
                                 onSystemSettings = {
-                                    val intent =
-                                        android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                                            .apply {
-                                                data = android.net.Uri.parse("package:$packageName")
-                                            }
-                                    context.startActivity(intent)
+                                    onAppAction(AppClickAction.AppInfoSettings(details.appInfo))
                                 },
-                                onFreezeToggle = { freeze ->
-                                    if (freeze && appInfo.isSystem) {
+                                onFreezeToggle = { shouldFreeze ->
+                                    // Honor the requested target: unfreeze immediately,
+                                    // only show the warning dialog when freezing.
+                                    if (shouldFreeze) {
                                         showFreezeConfirmation = true
                                     } else {
-                                        viewModel.toggleFreezerState(packageName, appInfo.appName, freeze)
+                                        viewModel.toggleFreezerState(
+                                            packageName,
+                                            details.appInfo.appName,
+                                            false
+                                        )
                                     }
                                 },
-                                onSuspendToggle = {
-                                    viewModel.toggleSuspendState(packageName, it)
+                                onSuspendToggle = { shouldSuspend ->
+                                    if (shouldSuspend) onAppAction(AppClickAction.Suspend(details.appInfo))
+                                    else onAppAction(AppClickAction.UnSuspend(details.appInfo))
                                 },
                                 onForceStop = {
-                                    viewModel.forceStopApp(packageName)
+                                    onAppAction(AppClickAction.Kill(details.appInfo))
                                 },
                                 onManagePermissions = {
-                                    onNavigateToPermissionManager(packageName, appInfo.appName ?: "")
+                                    onNavigateToPermissionManager(packageName, details.appInfo.appName ?: "")
                                 },
                                 onToggleFreezerMembership = {
                                     viewModel.addOrRemoveFromFreezer(packageName)
                                 },
                                 onClearCache = {
-                                    viewModel.clearCache(packageName)
+                                    onAppAction(AppClickAction.ClearCache(details.appInfo))
                                 },
-                                onClearData = {
-                                    showClearDataConfirmation = true
-                                },
-                                onUninstall = {
-                                    showUninstallConfirmation = true
-                                },
+                                onClearData = { showClearDataConfirmation = true },
+                                onUninstall = { showUninstallConfirmation = true },
                                 onShare = {
-                                    onAppAction(AppClickAction.Share(appInfo))
+                                    onAppAction(AppClickAction.Share(details.appInfo))
                                 }
                             )
                         }
 
                         if (!showOnlyHeaderAndActions) {
-                            if (!showOnlyTabs) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                            }
+                            var selectedTab by remember { mutableIntStateOf(0) }
+                            val tabs = listOf(
+                                stringResource(R.string.tab_overview_title),
+                                stringResource(R.string.tab_components),
+                                stringResource(R.string.tab_libs_features),
+                                stringResource(R.string.action_permissions)
+                            )
 
-                            // 3. SecondaryScrollableTabRow
-                            SecondaryScrollableTabRow(
-                                selectedTabIndex = pagerState.currentPage,
-                                containerColor = MaterialTheme.colorScheme.background,
-                                contentColor = MaterialTheme.colorScheme.onSurface,
-                                edgePadding = 16.dp
+                            TabRow(
+                                selectedTabIndex = selectedTab,
+                                containerColor = Color.Transparent,
+                                contentColor = MaterialTheme.colorScheme.primary,
+                                indicator = { tabPositions ->
+                                    TabRowDefaults.SecondaryIndicator(
+                                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                },
+                                divider = {}
                             ) {
-                                tabTitles.forEachIndexed { index, title ->
+                                tabs.forEachIndexed { index, title ->
                                     Tab(
-                                        selected = pagerState.currentPage == index,
-                                        onClick = {
-                                            coroutineScope.launch {
-                                                pagerState.animateScrollToPage(index)
-                                            }
-                                        },
+                                        selected = selectedTab == index,
+                                        onClick = { selectedTab = index },
                                         text = {
                                             Text(
                                                 text = title,
-                                                fontWeight = if (pagerState.currentPage == index) FontWeight.Bold else FontWeight.Medium,
-                                                style = MaterialTheme.typography.titleSmall
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Medium
                                             )
                                         }
                                     )
                                 }
                             }
 
-                            HorizontalPager(
-                                state = pagerState,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f)
-                            ) { page ->
-                                when (page) {
-                                    0 -> GeneralTabScreen(details = details)
-                                    1 -> PermissionsTabScreen(permissions = details.permissions)
-                                    2 -> ComponentsTabScreen(details = details)
-                                    3 -> LibsAndFeaturesTabScreen(details = details)
-                                }
+                            when (selectedTab) {
+                                0 -> GeneralTabScreen(details)
+                                1 -> ComponentsTabScreen(details)
+                                2 -> LibsAndFeaturesTabScreen(details)
+                                3 -> PermissionsTabScreen(details.permissions)
                             }
                         }
                     }
@@ -337,17 +282,11 @@ fun AppInfoDetailsScreen(
         }
     }
 
-    // --- ALERTS ---
+    // --- DIALOGS ---
+
     if (showClearDataConfirmation) {
         AlertDialog(
             onDismissRequest = { showClearDataConfirmation = false },
-            icon = {
-                Icon(
-                    painter = painterResource(R.drawable.danger),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
-                )
-            },
             title = { Text(stringResource(R.string.clear_app_data_title)) },
             text = { Text(stringResource(R.string.dialog_clear_data_desc)) },
             confirmButton = {
@@ -415,12 +354,12 @@ fun AppInfoDetailsScreen(
                             )
                         } else if (isUnsafe) {
                             Text(
-                                text = "This system app is classified as UNSAFE. Removing it has an extremely high risk of bootlooping your device, so uninstallation is blocked.",
+                                text = stringResource(R.string.warning_unsafe_uninstall),
                                 textAlign = TextAlign.Center
                             )
                         } else if (isExpert) {
                             Text(
-                                text = "This system app is classified as EXPERT. Removing it breaks important functionality. Are you sure you want to proceed?",
+                                text = stringResource(R.string.warning_expert_uninstall),
                                 textAlign = TextAlign.Center
                             )
                         } else if (isSystem) {
@@ -430,7 +369,10 @@ fun AppInfoDetailsScreen(
                             )
                         } else {
                             Text(
-                                text = stringResource(R.string.uninstall_app_desc, appName),
+                                text = stringResource(
+                                    R.string.uninstall_app_desc,
+                                    appInfo.appName ?: packageName
+                                ),
                                 textAlign = TextAlign.Center
                             )
                         }
@@ -449,9 +391,11 @@ fun AppInfoDetailsScreen(
                                 context.startActivity(intent)
                             }
                             showUninstallConfirmation = false
+                            // Close the details screen once uninstall is triggered
+                            onBack()
                         }) {
                             Text(
-                                text = if (isExpert) "Uninstall Anyway" else if (isSystem) stringResource(R.string.yes) else stringResource(R.string.action_uninstall),
+                                text = if (isExpert) stringResource(R.string.uninstall_anyway) else if (isSystem) stringResource(R.string.yes) else stringResource(R.string.action_uninstall),
                                 color = if (isExpert || !isSystem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                             )
                         }
@@ -560,7 +504,6 @@ private fun AppDetailsHeader(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
-    val context = LocalContext.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -631,7 +574,6 @@ private fun AppDetailsHeader(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Chips row
             Row(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.horizontalScroll(rememberScrollState())
@@ -738,7 +680,6 @@ private fun AppDetailsActionRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 1. Launch / Open
         ActionItem(
             icon = R.drawable.open_in_new,
             label = stringResource(R.string.action_open),
@@ -746,14 +687,12 @@ private fun AppDetailsActionRow(
             onClick = onLaunch
         )
 
-        // 1b. System Settings
         ActionItem(
             icon = R.drawable.settings,
             label = stringResource(R.string.settings),
             onClick = onSystemSettings
         )
 
-        // 2. Freeze / Unfreeze
         if (hasPrivilege) {
             val freezeLabel =
                 if (isFrozen) stringResource(R.string.action_unfreeze) else stringResource(R.string.action_freeze)
@@ -764,7 +703,6 @@ private fun AppDetailsActionRow(
                 onClick = { onFreezeToggle(!isFrozen) }
             )
 
-            // 3. Suspend / Unsuspend
             val suspendLabel =
                 if (isSuspended) stringResource(R.string.action_unsuspend) else stringResource(R.string.action_suspend)
             val suspendIcon = if (isSuspended) R.drawable.bolt else R.drawable.warning
@@ -774,7 +712,6 @@ private fun AppDetailsActionRow(
                 onClick = { onSuspendToggle(!isSuspended) }
             )
 
-            // 4. Force Stop
             if (appInfo.enabled) {
                 ActionItem(
                     icon = R.drawable.force_close,
@@ -784,14 +721,12 @@ private fun AppDetailsActionRow(
             }
         }
 
-        // 5. Manage Permissions
         ActionItem(
             icon = R.drawable.shield,
             label = stringResource(R.string.action_permissions),
             onClick = onManagePermissions
         )
 
-        // 6. Toggle Freezer
         val freezerLabel =
             if (isInFreezer) stringResource(R.string.action_in_freezer) else stringResource(R.string.action_add_freezer)
         ActionItem(
@@ -801,7 +736,6 @@ private fun AppDetailsActionRow(
             onClick = onToggleFreezerMembership
         )
 
-        // 7. Clear Cache / Data
         if (hasPrivilege) {
             ActionItem(
                 icon = R.drawable.clear_all,
@@ -815,14 +749,12 @@ private fun AppDetailsActionRow(
             )
         }
 
-        // 8. Share
         ActionItem(
             icon = R.drawable.share,
             label = stringResource(R.string.action_share),
             onClick = onShare
         )
 
-        // 9. Uninstall
         if (appInfo.packageName != BuildConfig.APPLICATION_ID) {
             ActionItem(
                 icon = R.drawable.delete_forever,
@@ -887,7 +819,7 @@ private fun GeneralTabScreen(details: DetailedAppInfo) {
         appInfo.bloatRecommendation?.let { recommendation ->
             item {
                 InfoCard(
-                    title = "Debloat Recommendation",
+                    title = stringResource(R.string.debloat_recommendation),
                     value = recommendation
                 )
             }
@@ -1031,17 +963,24 @@ private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontFamily = firaMonoFontFamily
                             )
-                            perm.description?.let { desc ->
-                                if (desc.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = desc,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                                            alpha = 0.8f
-                                        )
-                                    )
-                                }
+                            if (perm.protectionLevel.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = stringResource(
+                                        R.string.permission_protection_level,
+                                        perm.protectionLevel
+                                    ),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            perm.description?.takeIf { it.isNotBlank() }?.let { desc ->
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = desc,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
 
@@ -1054,29 +993,6 @@ private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
                                 ),
                                 color = if (perm.isGranted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer,
                                 textColor = if (perm.isGranted) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
-                            )
-                            val localizedProtection = when {
-                                perm.protectionLevel == "Normal" -> stringResource(R.string.protection_normal)
-                                perm.protectionLevel == "Dangerous" -> stringResource(R.string.protection_dangerous)
-                                perm.protectionLevel == "Signature" -> stringResource(R.string.protection_signature)
-                                perm.protectionLevel == "Signature/System" -> stringResource(R.string.protection_signature_system)
-                                perm.protectionLevel.startsWith("Unknown") -> {
-                                    perm.protectionLevel.replace("Unknown", stringResource(R.string.unknown))
-                                }
-                                else -> perm.protectionLevel
-                            }
-                            StatusChip(
-                                text = localizedProtection,
-                                color = when (perm.protectionLevel) {
-                                    "Dangerous" -> MaterialTheme.colorScheme.errorContainer.copy(
-                                        alpha = 0.5f
-                                    )
-
-                                    "Signature" -> MaterialTheme.colorScheme.tertiaryContainer
-                                    "Normal" -> MaterialTheme.colorScheme.secondaryContainer
-                                    else -> MaterialTheme.colorScheme.surfaceContainerHighest
-                                },
-                                textColor = MaterialTheme.colorScheme.onSurface
                             )
                         }
                     }
@@ -1130,34 +1046,26 @@ private fun ComponentsTabScreen(details: DetailedAppInfo) {
         ) {
             item {
                 CollapsibleSection(
-                    title = stringResource(
-                        R.string.section_activities_title,
-                        filteredActivities.size
-                    ), items = filteredActivities
+                    title = stringResource(R.string.section_activities_title, filteredActivities.size),
+                    items = filteredActivities
                 )
             }
             item {
                 CollapsibleSection(
-                    title = stringResource(
-                        R.string.section_services_title,
-                        filteredServices.size
-                    ), items = filteredServices
+                    title = stringResource(R.string.section_services_title, filteredServices.size),
+                    items = filteredServices
                 )
             }
             item {
                 CollapsibleSection(
-                    title = stringResource(
-                        R.string.section_receivers_title,
-                        filteredReceivers.size
-                    ), items = filteredReceivers
+                    title = stringResource(R.string.section_receivers_title, filteredReceivers.size),
+                    items = filteredReceivers
                 )
             }
             item {
                 CollapsibleSection(
-                    title = stringResource(
-                        R.string.section_providers_title,
-                        filteredProviders.size
-                    ), items = filteredProviders
+                    title = stringResource(R.string.section_providers_title, filteredProviders.size),
+                    items = filteredProviders
                 )
             }
         }
@@ -1192,9 +1100,7 @@ private fun CollapsibleSection(title: String, items: List<String>) {
                 painter = painterResource(
                     if (expanded) R.drawable.arrow_upward else R.drawable.arrow_downward
                 ),
-                contentDescription = if (expanded) stringResource(R.string.cd_collapse) else stringResource(
-                    R.string.cd_expand
-                ),
+                contentDescription = if (expanded) stringResource(R.string.cd_collapse) else stringResource(R.string.cd_expand),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -1211,6 +1117,7 @@ private fun CollapsibleSection(title: String, items: List<String>) {
                 } else {
                     val clipboard = LocalClipboard.current
                     val context = LocalContext.current
+                    val classNameLabel = stringResource(R.string.class_name_label)
                     items.forEach { className ->
                         Row(
                             modifier = Modifier
@@ -1220,10 +1127,7 @@ private fun CollapsibleSection(title: String, items: List<String>) {
                                     coroutineScope.launch {
                                         clipboard.setClipEntry(
                                             ClipEntry(
-                                                android.content.ClipData.newPlainText(
-                                                    "class name",
-                                                    className
-                                                )
+                                                android.content.ClipData.newPlainText(classNameLabel, className)
                                             )
                                         )
                                     }
@@ -1336,6 +1240,7 @@ private fun InfoCard(title: String, value: String) {
     val clipboard = LocalClipboard.current
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
+    val valueLabel = stringResource(R.string.value_label)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1345,10 +1250,7 @@ private fun InfoCard(title: String, value: String) {
                 coroutineScope.launch {
                     clipboard.setClipEntry(
                         ClipEntry(
-                            android.content.ClipData.newPlainText(
-                                "value",
-                                value
-                            )
+                            android.content.ClipData.newPlainText(valueLabel, value)
                         )
                     )
                 }

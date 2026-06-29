@@ -41,3 +41,5 @@ sealed class UiText {
         }
     }
 }
+
+class UiTextException(val uiText: UiText) : Exception()

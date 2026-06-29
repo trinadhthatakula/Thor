@@ -2,6 +2,8 @@ package com.valhalla.thor.presentation.freezer
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,23 +15,22 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AddCircle
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingToolbarDefaults
+import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -49,19 +50,16 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.animation.SharedTransitionScope
-import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.MultiAppAction
-import androidx.compose.material3.HorizontalFloatingToolbar
-import androidx.compose.material3.FloatingToolbarDefaults
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
-import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
-import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import com.valhalla.asgard.components.ConnectedButtonGroup
+import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import com.valhalla.thor.presentation.widgets.AppInfoDialog
 import com.valhalla.thor.presentation.widgets.AppItemGrid
 import com.valhalla.thor.presentation.widgets.AppItemList
@@ -92,10 +90,10 @@ fun FreezerScreen(
     var hasCheckedAutoPrompt by rememberSaveable { mutableStateOf(false) }
 
     val disabledAppsNotInFreezer = remember(state.allInstalledApps, state.freezerPackageNames) {
-        state.allInstalledApps.filter { 
-            !it.enabled && 
-            it.packageName !in state.freezerPackageNames &&
-            !it.isSystem
+        state.allInstalledApps.filter {
+            !it.enabled &&
+                    it.packageName !in state.freezerPackageNames &&
+                    !it.isSystem
         }
     }
 
@@ -107,7 +105,8 @@ fun FreezerScreen(
     }
 
     val displayedApps = remember(state.freezerApps, state.searchQuery, state.appListType) {
-        val filteredByType = state.freezerApps.filter { it.isSystem == (state.appListType == AppListType.SYSTEM) }
+        val filteredByType =
+            state.freezerApps.filter { it.isSystem == (state.appListType == AppListType.SYSTEM) }
         if (state.searchQuery.isBlank()) filteredByType
         else filteredByType.filter {
             it.appName?.contains(state.searchQuery, ignoreCase = true) == true ||
@@ -131,9 +130,11 @@ fun FreezerScreen(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { innerPadding ->
-        Box(modifier = modifier
-            .fillMaxSize()
-            .padding(innerPadding)) {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
             Column(modifier = Modifier.fillMaxSize()) {
 
                 // --- Header ---
@@ -151,7 +152,10 @@ fun FreezerScreen(
                             }
                         )
                         Text(
-                            text = stringResource(R.string.selected_count, state.multiSelection.size),
+                            text = stringResource(
+                                R.string.selected_count,
+                                state.multiSelection.size
+                            ),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier
@@ -159,7 +163,10 @@ fun FreezerScreen(
                                 .padding(start = 8.dp)
                         )
                         FilledTonalIconButton(onClick = { viewModel.clearSelection() }) {
-                            Icon(painterResource(R.drawable.round_close), stringResource(R.string.cd_close))
+                            Icon(
+                                painterResource(R.drawable.round_close),
+                                stringResource(R.string.cd_close)
+                            )
                         }
                     }
                 } else {
@@ -173,7 +180,8 @@ fun FreezerScreen(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f)
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.frozen),
@@ -186,13 +194,15 @@ fun FreezerScreen(
                                 style = MaterialTheme.typography.headlineMedium,
                                 fontWeight = FontWeight.Black,
                                 color = MaterialTheme.colorScheme.primary,
-                                letterSpacing = (-1).sp
+                                letterSpacing = (-1).sp,
+                                maxLines = 1,
+                                modifier = Modifier.weight(1f).basicMarquee()
                             )
                         }
                         ConnectedButtonGroup(
                             items = AppListType.entries.map { type ->
                                 ConnectedButtonGroupItem.Icon(
-                                    iconRes = if (type == AppListType.USER) R.drawable.apps else R.drawable.android,
+                                    icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
                                     contentDescription = stringResource(
                                         if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
                                     )
@@ -227,14 +237,14 @@ fun FreezerScreen(
                             )
                             Spacer(Modifier.size(12.dp))
                             Text(
-                                if (state.freezerApps.isEmpty()) "No apps in Freezer"
-                                else "No matching apps",
+                                if (state.freezerApps.isEmpty()) stringResource(R.string.no_apps_in_freezer)
+                                else stringResource(R.string.no_matching_apps_freezer),
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             if (state.freezerApps.isEmpty()) {
                                 Text(
-                                    "Tap + to add apps",
+                                    stringResource(R.string.add_to_freezer_hint),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                 )
@@ -438,7 +448,11 @@ fun FreezerScreen(
                 if (disabledAppsNotInFreezer.isNotEmpty()) {
                     showImportDialog = true
                 } else {
-                    Toast.makeText(context, context.getString(R.string.no_disabled_apps_found), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.no_disabled_apps_found),
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
             },
             onListTypeChanged = viewModel::updateListType
@@ -459,7 +473,14 @@ fun FreezerScreen(
                 )
             },
             title = { Text(stringResource(R.string.import_disabled_apps_title)) },
-            text = { Text(stringResource(R.string.import_disabled_apps_desc, disabledAppsNotInFreezer.size)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.import_disabled_apps_desc,
+                        disabledAppsNotInFreezer.size
+                    )
+                )
+            },
             confirmButton = {
                 TextButton(
                     onClick = {

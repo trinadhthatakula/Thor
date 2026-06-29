@@ -23,6 +23,11 @@
     <uses-permission android:name="com.rosan.dhizuku.permission.API" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <permission
+        android:name="com.valhalla.thor.permission.TRIGGER_EXTENSION"
+        android:protectionLevel="signature" />
+
+
 
     <application
         android:name=".ThorApplication"
@@ -174,6 +179,27 @@
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
         </service>
+
+        <!--
+          Internal-only entry point for extension triggers. Deliberately NOT exported and with no
+          public deep-link (VIEW/BROWSABLE) filter: an exported thor://extension/trigger link let any
+          app/web page rebroadcast through the signature-level TRIGGER_EXTENSION permission (confused
+          deputy). Launcher-shortcut triggering will return later via an authenticated handoff
+          (explicit-component intent or nonce token) — see README "Work in Progress".
+        -->
+        <activity
+            android:name=".presentation.extension.ShortcutTriggerActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.NoDisplay" />
+
+        <receiver
+            android:name=".data.receivers.ExtensionTriggerReceiver"
+            android:permission="com.valhalla.thor.permission.TRIGGER_EXTENSION"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.valhalla.thor.action.TRIGGER_EXTENSION" />
+            </intent-filter>
+        </receiver>
 
     </application>
 

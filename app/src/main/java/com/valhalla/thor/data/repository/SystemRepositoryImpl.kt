@@ -165,4 +165,9 @@ class SystemRepositoryImpl(
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runGatewayAction { it.revokePermission(packageName, permissionName) }
     }
+
+    override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> =
+        withContext(Dispatchers.IO) {
+            runGatewayAction { it.executeShellCommand(command) }
+        }
 }

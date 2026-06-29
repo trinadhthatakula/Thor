@@ -23,6 +23,11 @@ class DhizukuSystemGateway(
         return DhizukuHelper.isDhizukuAvailable()
     }
 
+    override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> {
+        // Runs through Dhizuku's device-owner process (DhizukuAPI.newProcess).
+        return runCatching { DhizukuHelper.execute(command) }
+    }
+
     override suspend fun forceStopApp(packageName: String): Result<Unit> {
         return if (reflector.forceStop(packageName)) Result.success(Unit)
         else Result.failure(Exception("Dhizuku: Force stop failed. Shell command and reflection both denied."))

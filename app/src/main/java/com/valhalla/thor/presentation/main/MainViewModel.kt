@@ -17,6 +17,7 @@ import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.presentation.home.AppDestinations
 import com.valhalla.thor.util.UiText
+import com.valhalla.thor.util.UiTextException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,8 +46,8 @@ sealed interface MainSideEffect {
  */
 data class LoggerState(
     val isVisible: Boolean = false,
-    val title: String = "",
-    val logs: List<String> = emptyList(),
+    val title: UiText = UiText.DynamicString(""),
+    val logs: List<UiText> = emptyList(),
     val isComplete: Boolean = false
 )
 
@@ -145,19 +146,19 @@ class MainViewModel(
         _uiState.update { it.copy(selectedDestination = destination) }
     }
 
-    private fun startLogger(title: String) {
+    private fun startLogger(title: UiText) {
         _uiState.update {
             it.copy(
                 loggerState = LoggerState(
                     isVisible = true,
                     title = title,
-                    logs = listOf("Initializing...")
+                    logs = listOf(UiText.StringResource(R.string.log_initializing))
                 )
             )
         }
     }
 
-    private fun addLog(message: String) {
+    private fun addLog(message: UiText) {
         _uiState.update { state ->
             val newLogs = state.loggerState.logs + message
             state.copy(loggerState = state.loggerState.copy(logs = newLogs))
@@ -165,7 +166,7 @@ class MainViewModel(
     }
 
     private fun finishLogger() {
-        addLog("\nOperation Complete.")
+        addLog(UiText.StringResource(R.string.log_op_complete))
         _uiState.update { state ->
             state.copy(loggerState = state.loggerState.copy(isComplete = true))
         }
@@ -173,7 +174,7 @@ class MainViewModel(
 
     fun clearAllCache(type: AppListType) {
         viewModelScope.launch {
-            startLogger("Preparing Cache Cleanup...")
+            startLogger(UiText.StringResource(R.string.log_preparing_cache))
 
             // 1. Fetch current list
             val (userApps, systemApps) = getInstalledAppsUseCase().first()
@@ -186,7 +187,7 @@ class MainViewModel(
             }
 
             if (safeList.isEmpty()) {
-                addLog("No eligible apps found.")
+                addLog(UiText.StringResource(R.string.log_no_eligible_apps))
                 finishLogger()
                 return@launch
             }
@@ -204,8 +205,6 @@ class MainViewModel(
                 // 1. SMART LAUNCH
                 is AppClickAction.Launch -> {
                     if (!action.appInfo.enabled) {
-                        // Quick toast for feedback, or could use logger if preferred.
-                        // Using Toast here for speed.
                         _uiState.update {
                             it.copy(
                                 actionMessage = UiText.StringResource(
@@ -241,35 +240,35 @@ class MainViewModel(
 
                 // 3. SHARE (Heavy I/O -> Use Logger)
                 is AppClickAction.Share -> {
-                    startLogger("Sharing ${action.appInfo.appName}")
-                    addLog("Preparing files...")
+                    startLogger(UiText.StringResource(R.string.log_sharing_app, action.appInfo.appName ?: ""))
+                    addLog(UiText.StringResource(R.string.log_preparing_files))
 
                     val result = shareAppUseCase(action.appInfo)
 
                     if (result.isSuccess) {
-                        addLog("✔ Files Ready")
-                        // Dismiss logger immediately so user sees the Share Sheet
+                        addLog(UiText.StringResource(R.string.log_files_ready))
                         dismissLogger()
                         _effect.send(MainSideEffect.ShareApp(result.getOrThrow()))
                     } else {
-                        addLog("✘ Error: ${result.exceptionOrNull()?.message}")
-                        finishLogger() // Keep open to show error
+                        addLog(UiText.StringResource(R.string.log_error, result.exceptionOrNull()?.message ?: ""))
+                        finishLogger()
                     }
                 }
 
                 // 4. REINSTALL (Complex -> Use Logger)
                 is AppClickAction.Reinstall -> {
-                    startLogger("Reinstalling ${action.appInfo.appName}")
-                    addLog("Applying Google Play Store signature...")
+                    startLogger(UiText.StringResource(R.string.log_reinstalling_app, action.appInfo.appName ?: ""))
+                    addLog(UiText.StringResource(R.string.log_applying_play_store_sig))
 
                     withContext(Dispatchers.IO) {
                         val result =
                             manageAppUseCase.reinstallAppWithGoogle(action.appInfo.packageName)
                         if (result.isSuccess) {
-                            addLog("✔ Reinstall successful")
+                            addLog(UiText.StringResource(R.string.log_reinstall_success))
                             triggerSupportPromptIfNeeded()
+                        } else {
+                            addLog(UiText.StringResource(R.string.log_failed_with_msg, result.exceptionOrNull()?.message ?: ""))
                         }
-                        else addLog("✘ Failed: ${result.exceptionOrNull()?.message}")
                     }
                     finishLogger()
                 }
@@ -277,18 +276,17 @@ class MainViewModel(
                 // 5. UNINSTALL (System = Risky -> Logger / User = Fast -> Toast)
                 is AppClickAction.Uninstall -> {
                     if (action.appInfo.isSystem) {
-                        startLogger("Uninstalling System App")
-                        addLog("Target: ${action.appInfo.appName}")
+                        startLogger(UiText.StringResource(R.string.log_uninstalling_system_app))
+                        addLog(UiText.StringResource(R.string.log_target_app, action.appInfo.appName ?: ""))
                         withContext(Dispatchers.IO) {
                             val result = manageAppUseCase.uninstallApp(action.appInfo.packageName)
                             if (result.isSuccess) {
-                                addLog("✔ Uninstall successful")
+                                addLog(UiText.StringResource(R.string.log_uninstall_success))
                                 freezerRepository.add(action.appInfo.packageName)
                                 triggerSupportPromptIfNeeded()
-                            }
-                            else {
-                                addLog("✘ Privileged uninstall failed")
-                                addLog("Attempting system uninstall...")
+                            } else {
+                                addLog(UiText.StringResource(R.string.log_priv_uninstall_failed))
+                                addLog(UiText.StringResource(R.string.log_attempting_system_uninstall))
                                 _effect.send(MainSideEffect.NormalUninstall(action.appInfo.packageName))
                             }
                         }
@@ -315,8 +313,7 @@ class MainViewModel(
 
                 // 6. REINSTALL ALL (Batch Logic Triggered via Single Action Enum)
                 AppClickAction.ReinstallAll -> {
-                    startLogger("Scanning Apps...")
-                    // Fetch user apps flows, take first emission
+                    startLogger(UiText.StringResource(R.string.log_scanning_apps))
                     val (userApps, _) = getInstalledAppsUseCase().first()
 
                     val targets = userApps.filter {
@@ -325,59 +322,25 @@ class MainViewModel(
                     }
 
                     if (targets.isEmpty()) {
-                        addLog("No apps found that require fixing.")
+                        addLog(UiText.StringResource(R.string.log_no_apps_to_fix))
                         finishLogger()
                     } else {
-                        addLog("Found ${targets.size} apps to fix.")
-                        dismissLogger() // Dismiss scan logger, start batch logger
+                        addLog(UiText.StringResource(R.string.log_found_apps_to_fix, targets.size))
+                        dismissLogger()
                         onMultiAppAction(MultiAppAction.ReInstall(targets))
                     }
                 }
 
-                // 7. QUICK ACTIONS (Kill, Freeze, Unfreeze, Cache) -> Toast
+                // 7. QUICK ACTIONS
                 is AppClickAction.Kill -> quickAction(action) { manageAppUseCase.forceStop(it.packageName) }
-                is AppClickAction.Freeze -> quickAction(action) {
-                    manageAppUseCase.setAppDisabled(
-                        it.packageName,
-                        true
-                    )
-                }
-
-                is AppClickAction.UnFreeze -> quickAction(action) {
-                    manageAppUseCase.setAppDisabled(
-                        it.packageName,
-                        false
-                    )
-                }
-
+                is AppClickAction.Freeze -> quickAction(action) { manageAppUseCase.setAppDisabled(it.packageName, true) }
+                is AppClickAction.UnFreeze -> quickAction(action) { manageAppUseCase.setAppDisabled(it.packageName, false) }
                 is AppClickAction.ClearCache -> quickAction(action) { manageAppUseCase.clearCache(it.packageName) }
-                is AppClickAction.ClearData -> quickAction(action) {
-                    manageAppUseCase.clearAppData(
-                        it.packageName
-                    )
-                }
-
-                is AppClickAction.Suspend -> quickAction(action) {
-                    manageAppUseCase.setAppSuspended(
-                        it.packageName,
-                        true
-                    )
-                }
-
-                is AppClickAction.UnSuspend -> quickAction(action) {
-                    manageAppUseCase.setAppSuspended(
-                        it.packageName,
-                        false
-                    )
-                }
-
-                is AppClickAction.ManagePermissions -> {
-                    // Handled directly in Compose UI layer via Navigation 3
-                }
-
-                is AppClickAction.OpenDetails -> {
-                    // Handled directly in Compose UI layer via Navigation 3
-                }
+                is AppClickAction.ClearData -> quickAction(action) { manageAppUseCase.clearAppData(it.packageName) }
+                is AppClickAction.Suspend -> quickAction(action) { manageAppUseCase.setAppSuspended(it.packageName, true) }
+                is AppClickAction.UnSuspend -> quickAction(action) { manageAppUseCase.setAppSuspended(it.packageName, false) }
+                is AppClickAction.ManagePermissions -> {}
+                is AppClickAction.OpenDetails -> {}
             }
         }
     }
@@ -388,7 +351,7 @@ class MainViewModel(
         viewModelScope.launch {
             when (action) {
                 is MultiAppAction.ReInstall -> performLoggedMultiAction(
-                    "Reinstalling Apps",
+                    UiText.StringResource(R.string.log_reinstalling_batch),
                     action.appList
                 ) { appInfo ->
                     val result = manageAppUseCase.reinstallAppWithGoogle(appInfo.packageName)
@@ -396,66 +359,64 @@ class MainViewModel(
                         result
                     } else {
                         try {
-                            packageManager.getPackageInfo(
-                                appInfo.packageName,
-                                0
-                            ).applicationInfo?.let { appInfo ->
-                                val isDebuggable =
-                                    (appInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+                            packageManager.getPackageInfo(appInfo.packageName, 0).applicationInfo?.let { info ->
+                                val isDebuggable = (info.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
                                 if (isDebuggable) {
-                                    Result.failure(Exception("App is Debuggable (Signature mismatch likely)"))
+                                    Result.failure(UiTextException(UiText.StringResource(R.string.error_debuggable_app)))
                                 } else {
-                                    result // Return original error
+                                    result
                                 }
                             } ?: result
-
                         } catch (_: Exception) {
-                            result // Return original error if package check fails
+                            result
                         }
                     }
                 }
 
                 is MultiAppAction.Freeze -> performLoggedMultiAction(
-                    "Freezing Apps",
+                    UiText.StringResource(R.string.log_freezing_batch),
                     action.appList
                 ) { appInfo ->
                     val isSystem = appInfo.isSystem
                     val isUadFailed = isSystem && appInfo.isUadLoadFailed
                     val isUnsafe = isSystem && appInfo.bloatRecommendation?.lowercase() == "unsafe"
                     if (isUadFailed || isUnsafe) {
-                        Result.failure(Exception("Skipped: System app is UNSAFE / safety check failed"))
+                        Result.failure(UiTextException(UiText.StringResource(R.string.error_unsafe_skipped)))
                     } else {
                         manageAppUseCase.setAppDisabled(appInfo.packageName, disabled = true)
                     }
                 }
 
                 is MultiAppAction.UnFreeze -> performLoggedMultiAction(
-                    "Unfreezing Apps",
+                    UiText.StringResource(R.string.log_unfreezing_batch),
                     action.appList
                 ) {
                     manageAppUseCase.setAppDisabled(it.packageName, disabled = false)
                 }
 
-                is MultiAppAction.Kill -> performLoggedMultiAction("Killing Apps", action.appList) {
+                is MultiAppAction.Kill -> performLoggedMultiAction(
+                    UiText.StringResource(R.string.log_killing_batch),
+                    action.appList
+                ) {
                     manageAppUseCase.forceStop(it.packageName)
                 }
 
                 is MultiAppAction.ClearCache -> performLoggedMultiAction(
-                    "Clearing Caches",
+                    UiText.StringResource(R.string.log_clearing_cache_batch),
                     action.appList
                 ) {
                     manageAppUseCase.clearCache(it.packageName)
                 }
 
                 is MultiAppAction.Uninstall -> performLoggedMultiAction(
-                    "Uninstalling Apps",
+                    UiText.StringResource(R.string.log_uninstalling_batch),
                     action.appList
                 ) { appInfo ->
                     val isSystem = appInfo.isSystem
                     val isUadFailed = isSystem && appInfo.isUadLoadFailed
                     val isUnsafe = isSystem && appInfo.bloatRecommendation?.lowercase() == "unsafe"
                     if (isUadFailed || isUnsafe) {
-                        Result.failure(Exception("Skipped: System app is UNSAFE / safety check failed"))
+                        Result.failure(UiTextException(UiText.StringResource(R.string.error_unsafe_skipped)))
                     } else {
                         val result = manageAppUseCase.uninstallApp(appInfo.packageName)
                         if (result.isSuccess && appInfo.isSystem) {
@@ -466,21 +427,21 @@ class MainViewModel(
                 }
 
                 is MultiAppAction.Suspend -> performLoggedMultiAction(
-                    "Suspending Apps",
+                    UiText.StringResource(R.string.log_suspending_batch),
                     action.appList
                 ) {
                     manageAppUseCase.setAppSuspended(it.packageName, true)
                 }
 
                 is MultiAppAction.UnSuspend -> performLoggedMultiAction(
-                    "Unsuspending Apps",
+                    UiText.StringResource(R.string.log_unsuspending_batch),
                     action.appList
                 ) {
                     manageAppUseCase.setAppSuspended(it.packageName, false)
                 }
 
                 is MultiAppAction.ClearData -> performLoggedMultiAction(
-                    "Clearing Data",
+                    UiText.StringResource(R.string.log_clearing_data_batch),
                     action.appList
                 ) {
                     manageAppUseCase.clearAppData(it.packageName)
@@ -488,18 +449,24 @@ class MainViewModel(
 
                 is MultiAppAction.Share -> {
                     viewModelScope.launch {
-                        startLogger("Sharing Apps")
+                        startLogger(UiText.StringResource(R.string.log_sharing_batch))
                         val uris = mutableListOf<android.net.Uri>()
 
                         withContext(Dispatchers.IO) {
                             action.appList.forEachIndexed { index, app ->
-                                addLog("[${index + 1}/${action.appList.size}] Preparing ${app.appName}...")
+                                addLog(UiText.StringResource(R.string.log_batch_preparing, index + 1, action.appList.size, app.appName ?: ""))
                                 val result = shareAppUseCase(app)
                                 if (result.isSuccess) {
                                     uris.add(result.getOrThrow())
-                                    addLog(" -> Ready")
+                                    addLog(UiText.StringResource(R.string.log_ready))
                                 } else {
-                                    addLog(" -> Failed: ${result.exceptionOrNull()?.message}")
+                                    val exception = result.exceptionOrNull()
+                                    val errorLog = if (exception is UiTextException) {
+                                        UiText.StringResource(R.string.log_failed, exception.uiText)
+                                    } else {
+                                        UiText.StringResource(R.string.log_failed, exception?.message ?: "")
+                                    }
+                                    addLog(errorLog)
                                 }
                             }
                         }
@@ -516,13 +483,8 @@ class MainViewModel(
         }
     }
 
-    // --- Helper Implementations ---
-
-    /**
-     * Executes a batch operation and updates the Logger Dialog.
-     */
     private suspend fun performLoggedMultiAction(
-        title: String,
+        title: UiText,
         apps: List<AppInfo>,
         block: suspend (AppInfo) -> Result<Unit>
     ) {
@@ -531,13 +493,19 @@ class MainViewModel(
 
         withContext(Dispatchers.IO) {
             apps.forEachIndexed { index, app ->
-                addLog("[${index + 1}/${apps.size}] ${app.appName}...")
+                addLog(UiText.StringResource(R.string.log_batch_step, index + 1, apps.size, app.appName ?: ""))
                 val result = block(app)
                 if (result.isSuccess) {
-                    addLog(" -> Success")
+                    addLog(UiText.StringResource(R.string.log_success))
                     hasAtLeastOneSuccess = true
                 } else {
-                    addLog(" -> Failed: ${result.exceptionOrNull()?.message}")
+                    val exception = result.exceptionOrNull()
+                    val errorLog = if (exception is UiTextException) {
+                        UiText.StringResource(R.string.log_failed, exception.uiText)
+                    } else {
+                        UiText.StringResource(R.string.log_failed, exception?.message ?: "")
+                    }
+                    addLog(errorLog)
                 }
             }
         }
@@ -548,9 +516,6 @@ class MainViewModel(
         }
     }
 
-    /**
-     * Executes a quick single action and shows a Toast on completion.
-     */
     private suspend fun quickAction(
         action: AppClickAction,
         block: suspend (AppInfo) -> Result<Unit>
@@ -570,11 +535,12 @@ class MainViewModel(
                     triggerSupportPromptIfNeeded()
                 }
                 .onFailure { e ->
+                    val errorText = if (e is UiTextException) e.uiText else UiText.DynamicString(e.message ?: "")
                     _uiState.update {
                         it.copy(
                             actionMessage = UiText.StringResource(
                                 R.string.error_format,
-                                e.message ?: ""
+                                errorText
                             )
                         )
                     }
@@ -589,31 +555,14 @@ class MainViewModel(
             is AppClickAction.Kill -> UiText.StringResource(R.string.killed_success, appName)
             is AppClickAction.Freeze -> UiText.StringResource(R.string.frozen_success, appName)
             is AppClickAction.UnFreeze -> UiText.StringResource(R.string.unfrozen_success, appName)
-            is AppClickAction.ClearCache -> UiText.StringResource(
-                R.string.cache_cleared_success,
-                appName
-            )
-
-            is AppClickAction.ClearData -> UiText.StringResource(
-                R.string.data_cleared_success,
-                appName
-            )
-
+            is AppClickAction.ClearCache -> UiText.StringResource(R.string.cache_cleared_success, appName)
+            is AppClickAction.ClearData -> UiText.StringResource(R.string.data_cleared_success, appName)
             is AppClickAction.Suspend -> UiText.StringResource(R.string.suspended_success, appName)
-            is AppClickAction.UnSuspend -> UiText.StringResource(
-                R.string.unsuspended_success,
-                appName
-            )
-
-            else -> UiText.StringResource(
-                R.string.action_completed_format,
-                action.javaClass.simpleName,
-                appName
-            )
+            is AppClickAction.UnSuspend -> UiText.StringResource(R.string.unsuspended_success, appName)
+            else -> UiText.StringResource(R.string.action_completed_format, action.javaClass.simpleName, appName)
         }
     }
 
-    // Helper to extract AppInfo from the sealed interface safely
     private fun AppClickAction.appInfo(): AppInfo? = when (this) {
         is AppClickAction.Kill -> appInfo
         is AppClickAction.Freeze -> appInfo

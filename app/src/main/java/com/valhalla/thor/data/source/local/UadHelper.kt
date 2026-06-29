@@ -1,6 +1,7 @@
 package com.valhalla.thor.data.source.local
 
 import android.content.Context
+import com.valhalla.thor.data.manager.ExtensionManager
 import org.json.JSONObject
 import org.koin.core.annotation.Single
 
@@ -11,13 +12,47 @@ data class UadEntry(
 )
 
 @Single
-class UadHelper(private val context: Context) {
+class UadHelper(
+    private val context: Context,
+    private val extensionManager: ExtensionManager
+) {
 
     var didLoadFail = false
         private set
 
-    val uadMap: Map<String, UadEntry> by lazy {
-        loadUadList()
+    private var cachedMap: Map<String, UadEntry>? = null
+
+    val uadMap: Map<String, UadEntry>
+        get() {
+            var map = cachedMap
+            if (map == null) {
+                map = buildUadMap()
+                cachedMap = map
+            }
+            return map
+        }
+
+    fun invalidateCache() {
+        cachedMap = null
+    }
+
+    private fun buildUadMap(): Map<String, UadEntry> {
+        val map = loadUadList().toMutableMap()
+        // Isolate per-extension failures so one bad provider doesn't drop the rest.
+        extensionManager.getDebloatExtensions().forEach { extension ->
+            try {
+                extension.getDebloatItems().forEach { item ->
+                    map[item.packageName] = UadEntry(
+                        list = extension.name,
+                        description = item.description,
+                        removal = item.recommendation
+                    )
+                }
+            } catch (e: Exception) {
+                com.valhalla.thor.util.Logger.e("UadHelper", "Failed to load debloat items from extension ${extension.name}", e)
+            }
+        }
+        return map
     }
 
     private fun loadUadList(): Map<String, UadEntry> {
@@ -34,7 +69,7 @@ class UadHelper(private val context: Context) {
             }
             didLoadFail = false
         } catch (e: Exception) {
-            e.printStackTrace()
+            com.valhalla.thor.util.Logger.e("UadHelper", "Failed to load uad_lists.json", e)
             didLoadFail = true
         }
         return map

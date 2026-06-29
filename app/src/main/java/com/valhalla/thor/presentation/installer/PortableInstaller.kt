@@ -113,7 +113,7 @@ fun PortableInstaller(
         val intent = activity?.intent
         if (state is InstallState.Idle && intent?.action == Intent.ACTION_VIEW) {
             intent.data?.let { uri ->
-                viewModel.installFile(uri)
+                viewModel.parsePackage(uri)
             }
         }
     }
@@ -485,7 +485,7 @@ fun PortableInstaller(
                         }
 
                         Button(
-                            onClick = { viewModel.confirmInstall() },
+                            onClick = { viewModel.startInstallation() },
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(s.getActionButtonText().asString())
@@ -788,7 +788,7 @@ fun PortableInstaller(
                                     .padding(12.dp)
                             ) {
                                 Text(
-                                    text = s.message,
+                                    text = s.message.asString(),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onErrorContainer,
                                     textAlign = TextAlign.Center,

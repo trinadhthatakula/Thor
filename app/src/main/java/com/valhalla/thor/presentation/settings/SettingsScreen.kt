@@ -54,13 +54,14 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
-import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
-import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
+import com.valhalla.asgard.components.ConnectedButtonGroup
+import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
+    onNavigateToExtensionManager: () -> Unit,
     viewModel: SettingsViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -355,6 +356,29 @@ fun SettingsScreen(
                 enabled = hasPrivilege,
                 onClick = { showUnfreezeConfirmation = true }
             )
+        }
+
+        // ── EXTENSIONS ──────────────────────────────────────────────────────
+        // Hidden until unlocked via the home-screen easter egg — the feature is not yet stable.
+        if (prefs.extensionsUnlocked) {
+            Spacer(Modifier.height(32.dp))
+
+            SettingsSectionLabel(stringResource(R.string.extensions))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(32.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                    .padding(8.dp)
+            ) {
+                SettingsClickRow(
+                    icon = R.drawable.round_extension,
+                    title = stringResource(R.string.manage_extensions),
+                    subtitle = stringResource(R.string.manage_extensions_desc),
+                    onClick = onNavigateToExtensionManager
+                )
+            }
         }
 
         Spacer(Modifier.height(32.dp))

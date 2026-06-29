@@ -30,12 +30,13 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.valhalla.thor.R
 import com.valhalla.thor.presentation.theme.firaMonoFontFamily
+import com.valhalla.thor.util.UiText
 
 @Composable
 fun TermLoggerDialog(
     modifier: Modifier = Modifier,
-    title: String,
-    logs: List<String>,
+    title: UiText,
+    logs: List<UiText>,
     isOperationComplete: Boolean,
     onDismiss: () -> Unit
 ) {
@@ -86,7 +87,7 @@ fun TermLoggerDialog(
                     }
 
                     Text(
-                        text = if (isOperationComplete) stringResource(R.string.done) else title,
+                        text = if (isOperationComplete) stringResource(R.string.done) else title.asString(),
                         color = MaterialTheme.colorScheme.onBackground,
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier
@@ -123,7 +124,7 @@ fun TermLoggerDialog(
                 ) {
                     items(logs) { logTxt ->
                         Text(
-                            text = "> $logTxt",
+                            text = "> ${logTxt.asString()}",
                             softWrap = false,
                             modifier = Modifier.fillMaxWidth(),
                             style = MaterialTheme.typography.bodySmall.copy(

@@ -83,9 +83,11 @@ import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.asGeneralName
 import com.valhalla.thor.domain.model.filterTypes
-import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
-import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
-import com.valhalla.thor.presentation.theme.expressivePress
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import com.valhalla.asgard.components.ConnectedButtonGroup
+import com.valhalla.asgard.components.ConnectedButtonGroupItem
+import com.valhalla.asgard.expressivePress
 import com.valhalla.thor.presentation.utils.AppIconModel
 
 @Composable
@@ -293,12 +295,24 @@ private fun AppQuickFilters(
         chips.forEach { item ->
             val label = when {
                 filterType == FilterType.Source -> {
-                    if (item == "All") "All"
-                    else installerNameMap[item] ?: item
-                    ?: if (appListType != AppListType.SYSTEM) "Others" else stringResource(R.string.system_apps)
+                    when (item) {
+                        "All" -> stringResource(R.string.filter_all)
+                        "PLAY STORE" -> stringResource(R.string.play_store)
+                        "F-DROID" -> stringResource(R.string.f_droid)
+                        "SIDELOADED" -> stringResource(R.string.sideloaded)
+                        "OTHERS" -> stringResource(R.string.others)
+                        else -> installerNameMap[item] ?: item
+                        ?: if (appListType != AppListType.SYSTEM) stringResource(R.string.others) else stringResource(R.string.system_apps)
+                    }
                 }
 
-                else -> item ?: ""
+                else -> when (item) {
+                    "All" -> stringResource(R.string.filter_all)
+                    "Active" -> stringResource(R.string.active)
+                    "Frozen" -> stringResource(R.string.frozen)
+                    "Suspended" -> stringResource(R.string.suspended)
+                    else -> item ?: ""
+                }
             }
 
             FilterChip(
@@ -853,7 +867,7 @@ private fun AppFilterSheet(
                 ConnectedButtonGroup(
                     items = AppListType.entries.map { type ->
                         ConnectedButtonGroupItem.Icon(
-                            iconRes = if (type == AppListType.USER) R.drawable.apps else R.drawable.android,
+                            icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
                             contentDescription = stringResource(
                                 if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
                             )
@@ -880,11 +894,11 @@ private fun AppFilterSheet(
                 ConnectedButtonGroup(
                     items = listOf(
                         ConnectedButtonGroupItem.Icon(
-                            R.drawable.grid_view,
+                            ImageVector.vectorResource(R.drawable.grid_view),
                             stringResource(R.string.grid)
                         ),
                         ConnectedButtonGroupItem.Icon(
-                            R.drawable.view_stream,
+                            ImageVector.vectorResource(R.drawable.view_stream),
                             stringResource(R.string.list)
                         )
                     ),

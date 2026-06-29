@@ -2,11 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 4,
-    "identityHash": "545ce992bc7f412a41fa428df32ffe04",
+    "identityHash": "a76097e66c88868b5402dd4354bc75db",
     "entities": [
       {
         "tableName": "apps",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`packageName` TEXT NOT NULL, `appName` TEXT, `versionName` TEXT, `versionCode` INTEGER NOT NULL, `minSdk` INTEGER NOT NULL, `targetSdk` INTEGER NOT NULL, `isSystem` INTEGER NOT NULL, `installerPackageName` TEXT, `publicSourceDir` TEXT, `splitPublicSourceDirs` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `dataDir` TEXT, `nativeLibraryDir` TEXT, `deviceProtectedDataDir` TEXT, `sharedLibraryFiles` TEXT, `obbFilePath` TEXT, `sourceDir` TEXT, `sharedDataDir` TEXT NOT NULL, `lastUpdateTime` INTEGER NOT NULL, `firstInstallTime` INTEGER NOT NULL, `isDebuggable` INTEGER NOT NULL, `isSuspended` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`packageName`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`packageName` TEXT NOT NULL, `appName` TEXT, `versionName` TEXT, `versionCode` INTEGER NOT NULL, `minSdk` INTEGER NOT NULL, `targetSdk` INTEGER NOT NULL, `isSystem` INTEGER NOT NULL, `installerPackageName` TEXT, `publicSourceDir` TEXT, `splitPublicSourceDirs` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `dataDir` TEXT, `nativeLibraryDir` TEXT, `deviceProtectedDataDir` TEXT, `sharedLibraryFiles` TEXT, `obbFilePath` TEXT, `sourceDir` TEXT, `sharedDataDir` TEXT NOT NULL, `lastUpdateTime` INTEGER NOT NULL, `firstInstallTime` INTEGER NOT NULL, `isDebuggable` INTEGER NOT NULL, `isSuspended` INTEGER NOT NULL, PRIMARY KEY(`packageName`))",
         "fields": [
           {
             "fieldPath": "packageName",
@@ -128,8 +128,7 @@
             "fieldPath": "isSuspended",
             "columnName": "isSuspended",
             "affinity": "INTEGER",
-            "notNull": true,
-            "defaultValue": "0"
+            "notNull": true
           }
         ],
         "primaryKey": {
@@ -156,11 +155,42 @@
             "packageName"
           ]
         }
+      },
+      {
+        "tableName": "extension_data",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`extensionPackageName` TEXT NOT NULL, `key` TEXT NOT NULL, `value` TEXT NOT NULL, PRIMARY KEY(`extensionPackageName`, `key`))",
+        "fields": [
+          {
+            "fieldPath": "extensionPackageName",
+            "columnName": "extensionPackageName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "value",
+            "columnName": "value",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "extensionPackageName",
+            "key"
+          ]
+        }
       }
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '545ce992bc7f412a41fa428df32ffe04')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a76097e66c88868b5402dd4354bc75db')"
     ]
   }
 }

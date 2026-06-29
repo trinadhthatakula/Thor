@@ -204,6 +204,8 @@ androidComponents {
 dependencies {
     implementation(project(":suCore"))
     implementation(project(":bypass"))
+    implementation(libs.thor.extension.api)
+    implementation(libs.asgard)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.splashscreen)
     implementation(libs.androidx.core.ktx)

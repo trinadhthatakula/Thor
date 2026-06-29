@@ -18,11 +18,8 @@ import coil3.key.Keyer
 import coil3.request.Options
 import java.io.File
 import java.io.FileOutputStream
+import com.valhalla.thor.extension.api.AppIconModel
 
-/**
- * A lightweight data class to trigger our custom fetcher.
- */
-data class AppIconModel(val packageName: String)
 
 /**
  * The worker that loads the icon on the IO thread.
@@ -133,3 +130,5 @@ class AppIconKeyer : Keyer<AppIconModel> {
         return "app_icon:${data.packageName}"
     }
 }
+
+typealias AppIconModel = com.valhalla.thor.extension.api.AppIconModel

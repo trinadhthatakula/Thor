@@ -31,8 +31,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppListType
-import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
-import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import com.valhalla.asgard.components.ConnectedButtonGroup
+import com.valhalla.asgard.components.ConnectedButtonGroupItem
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -111,7 +113,7 @@ fun FreezerSettingsSheet(
                 ConnectedButtonGroup(
                     items = AppListType.entries.map { type ->
                         ConnectedButtonGroupItem.Icon(
-                            iconRes = if (type == AppListType.USER) R.drawable.apps else R.drawable.android,
+                            icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
                             contentDescription = stringResource(
                                 if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
                             )
@@ -137,11 +139,11 @@ fun FreezerSettingsSheet(
                 ConnectedButtonGroup(
                     items = listOf(
                         ConnectedButtonGroupItem.Icon(
-                            R.drawable.grid_view,
+                            ImageVector.vectorResource(R.drawable.grid_view),
                             stringResource(R.string.grid)
                         ),
                         ConnectedButtonGroupItem.Icon(
-                            R.drawable.view_stream,
+                            ImageVector.vectorResource(R.drawable.view_stream),
                             stringResource(R.string.list)
                         )
                     ),

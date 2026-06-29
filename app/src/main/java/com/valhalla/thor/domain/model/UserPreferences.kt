@@ -41,7 +41,10 @@ data class UserPreferences(
 
     // Grid/List View modes
     val appListIsGrid: Boolean = true,
-    val freezerIsGrid: Boolean = true
+    val freezerIsGrid: Boolean = true,
+
+    // Extensions (hidden until unlocked via the home-screen easter egg — feature not yet stable)
+    val extensionsUnlocked: Boolean = false
 )
 
 

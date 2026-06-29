@@ -339,6 +339,19 @@ class RootSystemGateway(
     }
 
     /**
+     * Raw shell execution for extensions, via the root shell.
+     */
+    override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> {
+        // Result.failure means the shell could not execute at all (lost root/session).
+        // Surface that as a real failure so callers (e.g. ThorShellExecutor) map it to -1,
+        // rather than masquerading as a normal command that exited with code 1.
+        return shellRepository.runCommand(command).fold(
+            onSuccess = { output -> Result.success(0 to output.joinToString("\n")) },
+            onFailure = { error -> Result.failure(error) }
+        )
+    }
+
+    /**
      * Helper to bridge ShellRepository's Result<List<String>> to Result<Unit>
      */
     private suspend fun runCommand(cmd: String): Result<Unit> {

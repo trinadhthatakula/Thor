@@ -30,17 +30,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.foundation.basicMarquee
 import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.text.font.FontWeight
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
-import com.valhalla.thor.presentation.common.components.ConnectedButtonGroup
-import com.valhalla.thor.presentation.common.components.ConnectedButtonGroupItem
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import com.valhalla.asgard.components.ConnectedButtonGroup
+import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import com.valhalla.thor.presentation.widgets.AppList
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
 import com.valhalla.thor.presentation.widgets.AppInfoDialog
@@ -97,7 +101,8 @@ fun AppListScreen(
                 // LEFT: Brand/Title Block
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
                     Icon(
                         painter = painterResource(icon),
@@ -108,9 +113,11 @@ fun AppListScreen(
                     Text(
                         text = title,
                         style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
+                        fontWeight = FontWeight.Black,
                         color = MaterialTheme.colorScheme.primary,
-                        letterSpacing = (-1).sp
+                        letterSpacing = (-1).sp,
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f).basicMarquee()
                     )
                 }
 
@@ -118,7 +125,7 @@ fun AppListScreen(
                 ConnectedButtonGroup(
                     items = AppListType.entries.map { type ->
                         ConnectedButtonGroupItem.Icon(
-                            iconRes = if (type == AppListType.USER) R.drawable.apps else R.drawable.android,
+                            icon = ImageVector.vectorResource(if (type == AppListType.USER) R.drawable.apps else R.drawable.android),
                             contentDescription = stringResource(
                                 if (type == AppListType.USER) R.string.chip_user else R.string.chip_system
                             )

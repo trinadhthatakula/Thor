@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -43,6 +44,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import android.content.res.Configuration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
 import androidx.core.net.toUri
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
@@ -70,8 +73,12 @@ import com.valhalla.thor.presentation.home.AppDestinations
 import com.valhalla.thor.presentation.home.HomeScreen
 import com.valhalla.thor.presentation.home.HomeViewModel
 import com.valhalla.thor.presentation.navigation.ThorRoute
+import com.valhalla.asgard.navigation.AsgardNavItem
+import com.valhalla.asgard.navigation.AsgardNavigationBar
+import com.valhalla.asgard.navigation.AsgardNavigationRail
 import com.valhalla.thor.presentation.permission.PermissionManagerScreen
 import com.valhalla.thor.presentation.settings.SettingsScreen
+import com.valhalla.thor.presentation.extension.ExtensionManagerScreen
 import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
 import com.valhalla.thor.presentation.widgets.AffirmationDialog
@@ -98,6 +105,7 @@ fun MainScreen(
     var pendingMultiAction by remember { mutableStateOf<MultiAppAction?>(null) }
     var pendingSingleAction by remember { mutableStateOf<AppClickAction?>(null) }
     var showExitConfirmation by remember { mutableStateOf(false) }
+    var isExtensionActive by remember { mutableStateOf(false) }
 
     // --- Navigation 3 Setup (Multiple Backstacks) ---
     var activeDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
@@ -137,6 +145,17 @@ fun MainScreen(
 
     val selectedDestination = activeDestination
 
+    // Map Thor's AppDestinations (drawable + string resources) onto Asgard's resource-agnostic nav items.
+    val navItems = AppDestinations.entries.map { d ->
+        AsgardNavItem(
+            icon = ImageVector.vectorResource(d.icon),
+            selectedIcon = ImageVector.vectorResource(d.selectedIcon),
+            label = stringResource(d.label),
+            contentDescription = stringResource(d.contentDescription),
+        )
+    }
+    val selectedNavIndex = AppDestinations.entries.indexOf(selectedDestination)
+
     val handleDestinationSelected = { dest: AppDestinations ->
         val route = when (dest) {
             AppDestinations.HOME -> ThorRoute.Home
@@ -160,7 +179,7 @@ fun MainScreen(
 
     // System Back Press Handler: 
     // 1. Pop from the active stack if there are sub-screens (size > 1)
-    val canGoBackInActiveTab = (backStacks[activeTab]?.size ?: 0) > 1
+    val canGoBackInActiveTab = (backStacks[activeTab]?.size ?: 0) > 1 && !isExtensionActive
     BackHandler(enabled = canGoBackInActiveTab) {
         val stack = backStacks[activeTab]
         if (stack != null && stack.size > 1) {
@@ -236,17 +255,21 @@ fun MainScreen(
         }
     }
 
-    Row(modifier = Modifier.fillMaxSize()) {
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
         if (isWideScreen) {
             AnimatedVisibility(
                 visible = showBottomBar,
                 enter = slideInHorizontally(initialOffsetX = { -it }),
                 exit = slideOutHorizontally(targetOffsetX = { -it })
             ) {
-                ThorNavigationRail(
-                    destinations = AppDestinations.entries,
-                    selectedDestination = selectedDestination,
-                    onDestinationSelected = handleDestinationSelected,
+                AsgardNavigationRail(
+                    items = navItems,
+                    selectedIndex = selectedNavIndex,
+                    onSelect = { handleDestinationSelected(AppDestinations.entries[it]) },
                     showLabel = showNavRailLabel
                 )
             }
@@ -261,10 +284,10 @@ fun MainScreen(
                         enter = slideInVertically(initialOffsetY = { it }),
                         exit = slideOutVertically(targetOffsetY = { it })
                     ) {
-                        ThorNavigationBar(
-                            destinations = AppDestinations.entries,
-                            selectedDestination = selectedDestination,
-                            onDestinationSelected = handleDestinationSelected
+                        AsgardNavigationBar(
+                            items = navItems,
+                            selectedIndex = selectedNavIndex,
+                            onSelect = { handleDestinationSelected(AppDestinations.entries[it]) }
                         )
                     }
                 }
@@ -417,7 +440,26 @@ fun MainScreen(
                 }
 
                 entry<ThorRoute.Settings> {
-                    SettingsScreen()
+                    SettingsScreen(
+                        onNavigateToExtensionManager = {
+                            settingsBackStack.add(ThorRoute.ExtensionManager)
+                        }
+                    )
+                }
+
+                entry<ThorRoute.ExtensionManager>(
+                    metadata = ListDetailSceneStrategy.detailPane()
+                ) {
+                    ExtensionManagerScreen(
+                        onBack = {
+                            if (settingsBackStack.size > 1) {
+                                settingsBackStack.removeLastOrNull()
+                            }
+                        },
+                        onExtensionActiveChanged = { isActive ->
+                            isExtensionActive = isActive
+                        }
+                    )
                 }
 
                 entry<ThorRoute.PermissionManager>(

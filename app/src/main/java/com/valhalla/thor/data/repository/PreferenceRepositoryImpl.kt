@@ -64,6 +64,9 @@ class PreferenceRepositoryImpl(
         // Grid/List View
         val APP_LIST_IS_GRID = booleanPreferencesKey("app_list_is_grid")
         val FREEZER_IS_GRID = booleanPreferencesKey("freezer_is_grid")
+
+        // Extensions
+        val EXTENSIONS_UNLOCKED = booleanPreferencesKey("extensions_unlocked")
     }
 
     override val userPreferences: Flow<UserPreferences> = context.dataStore.data
@@ -114,7 +117,8 @@ class PreferenceRepositoryImpl(
                 useDetailedView = useDetailedView,
                 animationIntensity = animationIntensity,
                 appListIsGrid = appListIsGrid,
-                freezerIsGrid = freezerIsGrid
+                freezerIsGrid = freezerIsGrid,
+                extensionsUnlocked = prefs[Keys.EXTENSIONS_UNLOCKED] ?: false
             )
         }
 
@@ -229,5 +233,11 @@ class PreferenceRepositoryImpl(
             val current = prefs[Keys.FREEZER_IS_GRID] ?: true
             prefs[Keys.FREEZER_IS_GRID] = !current
         }
+    }
+
+    // --- Extensions ---
+
+    override suspend fun setExtensionsUnlocked(unlocked: Boolean) {
+        context.dataStore.edit { it[Keys.EXTENSIONS_UNLOCKED] = unlocked }
     }
 }

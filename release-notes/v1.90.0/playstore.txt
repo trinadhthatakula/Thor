@@ -1,0 +1,9 @@
+What's new in Thor v1.90.0
+
+• Refreshed, more expressive interface — new navigation, buttons, and smoother motion throughout.
+• Smarter installer: faster, more reliable installs via Shizuku and Dhizuku.
+• Richer app details and broader language support.
+• More ways to support development, including direct options.
+• Stability and performance improvements, plus various bug fixes.
+
+Thanks for using Thor!

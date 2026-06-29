@@ -72,6 +72,9 @@
     <string name="others">Otros</string>
     <string name="clear_all_cache">Limpiar todos los cachés</string>
     <string name="clear_cache_prompt">¿Qué aplicaciones te gustaría limpiar?</string>
+    <string name="clear_all_cache_subtitle">Limpiar archivos en caché de todas las aplicaciones para recuperar espacio de almacenamiento</string>
+    <string name="clear_system_cache_title">¿Limpiar caché del sistema?</string>
+    <string name="clear_system_cache_desc">Limpiar el caché de las aplicaciones del sistema podría causar inestabilidad temporal. ¿Estás seguro de que quieres proceder?</string>
     <string name="user_apps">Aplicaciones de usuario</string>
     <string name="system_apps">Aplicaciones del sistema</string>
     <string name="active">Activo</string>
@@ -157,6 +160,7 @@
     <string name="cd_search">Buscar</string>
     <string name="cd_clear">Limpiar</string>
     <string name="cd_settings">Ajustes</string>
+    <string name="select_app_details">Selecciona una aplicación para ver detalles</string>
 
     <!-- Permission Manager -->
     <string name="action_permissions">Permisos</string>
@@ -190,13 +194,33 @@
     <string name="privilege_required_warning">Se requiere privilegio (Root, Shizuku o Dhizuku)</string>
     <string name="unfreeze_all_confirmation_title">¿Descongelar todas las aplicaciones?</string>
     <string name="unfreeze_all_confirmation_desc">Esto descongelará (habilitará) todas las aplicaciones actualmente en la lista del Congelador. ¿Estás seguro de que quieres continuar?</string>
+    <string name="import_disabled_apps_title">Importar aplicaciones desactivadas</string>
+    <string name="import_disabled_apps_desc">Hay %1$d aplicaciones desactivadas que no están en tu Congelador. ¿Te gustaría añadirlas al Congelador?</string>
+    <string name="import_disabled_apps_button">Importar aplicaciones desactivadas</string>
+    <string name="no_disabled_apps_found">No se encontraron otras aplicaciones desactivadas.</string>
+    <string name="added_to_freezer_count_success">Se añadieron %1$d aplicaciones al Congelador</string>
+    <string name="add_to_freezer">Añadir al congelador</string>
+
+    <!-- Extensions -->
+    <string name="extensions">Extensiones</string>
+    <string name="manage_extensions">Administrar extensiones</string>
+    <string name="manage_extensions_desc">Ver y configurar complementos APK instalados</string>
+    <string name="extension_manager">Administrador de extensiones</string>
+    <string name="extension_security_verified">Verificado</string>
+    <string name="extension_security_debug">Modo de depuración (No verificado)</string>
+    <string name="extension_security_untrusted">No confiable (Bloqueado)</string>
+    <string name="get_extensions">Obtener extensiones</string>
+    <string name="no_extensions_installed">No hay extensiones instaladas</string>
+    <string name="no_extensions_desc">Instale APKs de extensión de Thor que comiencen con \"com.valhalla.thor.ext.\" firmados con la misma clave para cargar reglas modulares.</string>
+    <string name="extension_by_author">por %1$s</string>
+    <string name="extension_version_prefix">v%1$s</string>
+
 
     <!-- UiText Messages -->
     <string name="action_completed_format">%1$s completado: %2$s</string>
     <string name="frozen_success">Se congeló %1$s</string>
     <string name="unfrozen_success">Se descongeló %1$s</string>
     <string name="added_to_freezer_success">Añadido al congelador</string>
-    <string name="add_to_freezer">Añadir al congelador</string>
     <string name="unfrozen_count_success">Se descongelaron %1$d aplicaciones</string>
     <string name="tile_unfreeze_partial_failure">Se descongelaron %1$d/%2$d aplicaciones (%3$d fallaron)</string>
     <string name="error_format">Error: %1$s</string>
@@ -306,6 +330,59 @@
     <string name="protection_signature_system">Firma/Sistema</string>
     <string name="expanded">Expandido</string>
     <string name="collapsed">Contraído</string>
+
+    <!-- Terminal Logs -->
+    <string name="log_initializing">Inicializando…</string>
+    <string name="log_op_complete">\nOperación completada.</string>
+    <string name="log_preparing_cache">Preparando limpieza de caché…</string>
+    <string name="log_no_eligible_apps">No se encontraron aplicaciones elegibles.</string>
+    <string name="log_sharing_app">Compartiendo %1$s</string>
+    <string name="log_preparing_files">Preparando archivos…</string>
+    <string name="log_files_ready">✔ Archivos listos</string>
+    <string name="log_error">✘ Error: %1$s</string>
+    <string name="log_reinstalling_app">Reinstalando %1$s</string>
+    <string name="log_applying_play_store_sig">Aplicando firma de Google Play Store…</string>
+    <string name="log_reinstall_success">✔ Reinstalación exitosa</string>
+    <string name="log_failed_with_msg">✘ Falló: %1$s</string>
+    <string name="log_uninstalling_system_app">Desinstalando aplicación del sistema</string>
+    <string name="log_target_app">Destino: %1$s</string>
+    <string name="log_uninstall_success">✔ Desinstalación exitosa</string>
+    <string name="log_priv_uninstall_failed">✘ Falló la desinstalación privilegiada</string>
+    <string name="log_attempting_system_uninstall">Intentando desinstalación del sistema…</string>
+    <string name="log_scanning_apps">Escaneando aplicaciones…</string>
+    <string name="log_no_apps_to_fix">No se encontraron aplicaciones que requieran reparación.</string>
+    <string name="log_found_apps_to_fix">Se encontraron %1$d aplicaciones para reparar.</string>
+    <string name="log_reinstalling_batch">Reinstalando aplicaciones</string>
+    <string name="log_freezing_batch">Congelando aplicaciones</string>
+    <string name="log_unfreezing_batch">Descongelando aplicaciones</string>
+    <string name="log_killing_batch">Deteniendo aplicaciones</string>
+    <string name="log_clearing_cache_batch">Limpiando cachés</string>
+    <string name="log_uninstalling_batch">Desinstalando aplicaciones</string>
+    <string name="log_suspending_batch">Suspendiendo aplicaciones</string>
+    <string name="log_unsuspending_batch">Reanudando aplicaciones</string>
+    <string name="log_clearing_data_batch">Limpiando datos</string>
+    <string name="log_sharing_batch">Compartiendo aplicaciones</string>
+    <string name="log_batch_step">[%1$d/%2$d] %3$s…</string>
+    <string name="log_batch_preparing">[%1$d/%2$d] Preparando %3$s…</string>
+    <string name="log_ready"> -> Listo</string>
+    <string name="log_success"> -> Éxito</string>
+    <string name="log_failed"> -> Falló: %1$s</string>
+
+    <!-- Warnings & UI components -->
+    <string name="warning_unsafe_uninstall">Esta aplicación del sistema está clasificada como INSEGURA. Eliminarla tiene un riesgo extremadamente alto de provocar un bucle de reinicio en tu dispositivo, por lo que la desinstalación está bloqueada.</string>
+    <string name="warning_expert_uninstall">Esta aplicación del sistema está clasificada como EXPERTA. Eliminarla interrumpe funciones importantes. ¿Estás seguro de que deseas continuar?</string>
+    <string name="uninstall_anyway">Desinstalar de todos modos</string>
+    <string name="debloat_recommendation">Recomendación de eliminación de bloatware</string>
+    <string name="class_name_label">nombre de clase</string>
+    <string name="value_label">valor</string>
+    <string name="no_apps_in_freezer">No hay aplicaciones en el Congelador</string>
+    <string name="no_matching_apps_freezer">No hay aplicaciones coincidentes</string>
+    <string name="add_to_freezer_hint">Toca + para añadir aplicaciones</string>
+    <string name="filter_all">Todas</string>
+    <string name="error_debuggable_app">La aplicación es depurable (probablemente discrepancia de firma)</string>
+    <string name="error_unsafe_skipped">Omitido: La aplicación del sistema es INSEGURA / falló la verificación de seguridad</string>
+    <string name="error_parse_package">Error al analizar el paquete.</string>
+    <string name="error_downgrade_privilege">La degradación solo es compatible con acceso privilegiado (Root, Shizuku o Dhizuku).</string>
 
     <!-- Support Developer -->
     <string name="support_developer">Apoyar al desarrollador</string>

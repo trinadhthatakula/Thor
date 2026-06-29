@@ -8,10 +8,11 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [AppEntity::class, FreezerEntity::class],
-    version = 3,
+    entities = [AppEntity::class, FreezerEntity::class, ExtensionDataEntity::class],
+    version = 4,
     autoMigrations = [
-        AutoMigration(from = 2, to = 3)
+        AutoMigration(from = 2, to = 3),
+        AutoMigration(from = 3, to = 4)
     ],
     exportSchema = true
 )
@@ -19,6 +20,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 abstract class AppDatabase : RoomDatabase() {
     abstract fun appDao(): AppDao
     abstract fun freezerDao(): FreezerDao
+    abstract fun extensionDataDao(): ExtensionDataDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {

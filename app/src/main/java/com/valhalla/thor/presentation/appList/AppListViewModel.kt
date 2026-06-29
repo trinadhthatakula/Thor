@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.content.Context
 import org.koin.core.annotation.KoinViewModel
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -63,6 +64,7 @@ data class AppListUiState(
 
 @KoinViewModel
 class AppListViewModel(
+    private val context: Context,
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val getAppDetailsUseCase: GetAppDetailsUseCase,
     private val systemRepository: SystemRepository,
@@ -389,7 +391,17 @@ class AppListViewModel(
 
         // Fast lookup map for app names to avoid O(N^2) associative logic
         val nameMap = rawList.associateBy({ it.packageName }, { it.appName })
-        val installerNames = installers.associateWith { pkg -> nameMap[pkg] ?: pkg }
+        val installerNames = installers.associateWith { pkg ->
+            when (pkg) {
+                "com.android.vending" -> context.getString(R.string.installer_play_store)
+                "org.fdroid.fdroid" -> context.getString(R.string.installer_fdroid)
+                // Sideloaded via the system package-installer UI: Google ships
+                // com.google.android.packageinstaller, AOSP uses com.android.packageinstaller.
+                "com.google.android.packageinstaller",
+                "com.android.packageinstaller" -> context.getString(R.string.installer_sideloaded)
+                else -> nameMap[pkg] ?: pkg
+            }
+        }
 
         installers.add(0, "All")
 

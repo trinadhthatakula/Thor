@@ -157,6 +157,7 @@ class AppRepositoryImpl(
         // Receiver for Package-specific changes (requires "package" data scheme)
         val packageReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
+                uadHelper.invalidateCache()
                 triggerChannel.trySend(Unit)
             }
         }
