@@ -2,7 +2,6 @@ package com.valhalla.thor.data.manager
 
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.extension.api.ShellExecutor
-import kotlinx.coroutines.runBlocking
 
 /**
  * The [ShellExecutor] handed to extensions. Routes raw commands through the
@@ -13,9 +12,9 @@ import kotlinx.coroutines.runBlocking
 class ThorShellExecutor(
     private val systemRepository: SystemRepository
 ) : ShellExecutor {
-    override fun execute(command: String): Pair<Int, String?> {
+    override suspend fun execute(command: String): Pair<Int, String?> {
         return try {
-            runBlocking { systemRepository.executeShellCommand(command) }
+            systemRepository.executeShellCommand(command)
                 .getOrElse { -1 to it.message }
         } catch (e: Exception) {
             -1 to e.message
