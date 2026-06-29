@@ -101,7 +101,8 @@ fun ExtensionManagerScreen(
         )
     } else {
         Scaffold(
-            contentWindowInsets = WindowInsets(0,0,0,0)
+            topBar = { ExtensionTopAppBar(onBack = onBack) },
+            contentWindowInsets = WindowInsets(0, 0, 0, 0)
         ) { innerPadding ->
             Column(
                 modifier = Modifier

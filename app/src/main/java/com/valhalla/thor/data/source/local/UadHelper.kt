@@ -38,8 +38,9 @@ class UadHelper(
 
     private fun buildUadMap(): Map<String, UadEntry> {
         val map = loadUadList().toMutableMap()
-        try {
-            extensionManager.getDebloatExtensions().forEach { extension ->
+        // Isolate per-extension failures so one bad provider doesn't drop the rest.
+        extensionManager.getDebloatExtensions().forEach { extension ->
+            try {
                 extension.getDebloatItems().forEach { item ->
                     map[item.packageName] = UadEntry(
                         list = extension.name,
@@ -47,9 +48,9 @@ class UadHelper(
                         removal = item.recommendation
                     )
                 }
+            } catch (e: Exception) {
+                com.valhalla.thor.util.Logger.e("UadHelper", "Failed to load debloat items from extension ${extension.name}", e)
             }
-        } catch (e: Exception) {
-            com.valhalla.thor.util.Logger.e("UadHelper", "Failed to load debloat items from extensions", e)
         }
         return map
     }

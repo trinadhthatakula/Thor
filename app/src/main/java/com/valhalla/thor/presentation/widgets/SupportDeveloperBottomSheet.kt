@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -109,10 +110,17 @@ fun SupportDeveloperTabbedBottomSheet(
         var selectedTab by remember {
             mutableIntStateOf(initialTab.coerceIn(0, (tabs.size - 1).coerceAtLeast(0)))
         }
+        val scrollState = rememberScrollState()
+
+        // Reset to the top when switching tabs so a shorter tab doesn't open scrolled past its actions.
+        LaunchedEffect(selectedTab) {
+            scrollState.scrollTo(0)
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(bottom = 48.dp)
                 .padding(horizontal = 24.dp)
         ) {

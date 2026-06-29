@@ -196,7 +196,19 @@ fun AppInfoDetailsScreen(
                                 onSystemSettings = {
                                     onAppAction(AppClickAction.AppInfoSettings(details.appInfo))
                                 },
-                                onFreezeToggle = { showFreezeConfirmation = true },
+                                onFreezeToggle = { shouldFreeze ->
+                                    // Honor the requested target: unfreeze immediately,
+                                    // only show the warning dialog when freezing.
+                                    if (shouldFreeze) {
+                                        showFreezeConfirmation = true
+                                    } else {
+                                        viewModel.toggleFreezerState(
+                                            packageName,
+                                            details.appInfo.appName,
+                                            false
+                                        )
+                                    }
+                                },
                                 onSuspendToggle = { shouldSuspend ->
                                     if (shouldSuspend) onAppAction(AppClickAction.Suspend(details.appInfo))
                                     else onAppAction(AppClickAction.UnSuspend(details.appInfo))
@@ -357,7 +369,10 @@ fun AppInfoDetailsScreen(
                             )
                         } else {
                             Text(
-                                text = stringResource(R.string.uninstall_app_desc, appName ?: ""),
+                                text = stringResource(
+                                    R.string.uninstall_app_desc,
+                                    appInfo.appName ?: packageName
+                                ),
                                 textAlign = TextAlign.Center
                             )
                         }

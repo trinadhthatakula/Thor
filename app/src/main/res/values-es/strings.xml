@@ -372,7 +372,7 @@
     <string name="warning_unsafe_uninstall">Esta aplicación del sistema está clasificada como INSEGURA. Eliminarla tiene un riesgo extremadamente alto de provocar un bucle de reinicio en tu dispositivo, por lo que la desinstalación está bloqueada.</string>
     <string name="warning_expert_uninstall">Esta aplicación del sistema está clasificada como EXPERTA. Eliminarla interrumpe funciones importantes. ¿Estás seguro de que deseas continuar?</string>
     <string name="uninstall_anyway">Desinstalar de todos modos</string>
-    <string name="debloat_recommendation">Recomendación de desbloqueo</string>
+    <string name="debloat_recommendation">Recomendación de eliminación de bloatware</string>
     <string name="class_name_label">nombre de clase</string>
     <string name="value_label">valor</string>
     <string name="no_apps_in_freezer">No hay aplicaciones en el Congelador</string>

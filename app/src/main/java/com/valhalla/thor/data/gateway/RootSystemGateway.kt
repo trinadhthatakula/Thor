@@ -342,13 +342,13 @@ class RootSystemGateway(
      * Raw shell execution for extensions, via the root shell.
      */
     override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> {
-        val result = shellRepository.runCommand(command)
-        return if (result.isSuccess) {
-            Result.success(0 to result.getOrNull()?.joinToString("\n"))
-        } else {
-            // The command ran but exited non-zero (or the shell rejected it).
-            Result.success(1 to result.exceptionOrNull()?.message)
-        }
+        // Result.failure means the shell could not execute at all (lost root/session).
+        // Surface that as a real failure so callers (e.g. ThorShellExecutor) map it to -1,
+        // rather than masquerading as a normal command that exited with code 1.
+        return shellRepository.runCommand(command).fold(
+            onSuccess = { output -> Result.success(0 to output.joinToString("\n")) },
+            onFailure = { error -> Result.failure(error) }
+        )
     }
 
     /**

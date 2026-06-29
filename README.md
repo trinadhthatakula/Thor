@@ -76,6 +76,10 @@
 - BackUp App Data
 - Editing Packages.xml
 - Batch Install
+- Launcher-shortcut / deep-link triggering for automation extensions, via an authenticated handoff
+  (explicit-component intent or nonce-signed token). The earlier public `thor://extension/trigger`
+  deep link was removed because, being exported, any app could drive triggers through Thor's
+  signature-level permission.
 - Many more
 
 ## 💖 Support Development

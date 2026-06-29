@@ -82,11 +82,16 @@ class ExtensionManager(private val context: Context) {
 
     fun getExtensionPackageName(extension: ThorExtension): String? {
         val className = extension.javaClass.name
-        val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-        return installedApps.firstOrNull { app ->
-            app.packageName.startsWith(EXTENSION_PACKAGE_PREFIX) &&
-                    className.startsWith(app.packageName)
-        }?.packageName
+        // Match on the declared `thor.extension.class` metadata rather than assuming the
+        // implementation class lives under the app's packageName. The code package and the
+        // applicationId can differ, and a class-name prefix match would namespace the
+        // extension's datastore against the wrong package.
+        return pm.getInstalledApplications(PackageManager.GET_META_DATA)
+            .firstOrNull { app ->
+                app.packageName.startsWith(EXTENSION_PACKAGE_PREFIX) &&
+                        app.metaData?.getString("thor.extension.class") == className
+            }
+            ?.packageName
     }
 }
 

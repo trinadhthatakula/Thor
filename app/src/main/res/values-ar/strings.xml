@@ -160,7 +160,7 @@
     <string name="cd_search">بحث</string>
     <string name="cd_clear">مسح</string>
     <string name="cd_settings">الإعدادات</string>
-    <string name="select_app_details">اختر تطبيقاً ��عرض التفاصيل</string>
+    <string name="select_app_details">اختر تطبيقاً لعرض التفاصيل</string>
 
     <!-- Permission Manager -->
     <string name="action_permissions">الأذونات</string>

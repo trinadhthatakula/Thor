@@ -180,20 +180,17 @@
             </intent-filter>
         </service>
 
+        <!--
+          Internal-only entry point for extension triggers. Deliberately NOT exported and with no
+          public deep-link (VIEW/BROWSABLE) filter: an exported thor://extension/trigger link let any
+          app/web page rebroadcast through the signature-level TRIGGER_EXTENSION permission (confused
+          deputy). Launcher-shortcut triggering will return later via an authenticated handoff
+          (explicit-component intent or nonce token) — see README "Work in Progress".
+        -->
         <activity
             android:name=".presentation.extension.ShortcutTriggerActivity"
-            android:exported="true"
-            android:theme="@android:style/Theme.NoDisplay">
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="thor"
-                    android:host="extension"
-                    android:path="/trigger" />
-            </intent-filter>
-        </activity>
+            android:exported="false"
+            android:theme="@android:style/Theme.NoDisplay" />
 
         <receiver
             android:name=".data.receivers.ExtensionTriggerReceiver"

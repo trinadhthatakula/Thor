@@ -395,7 +395,10 @@ class AppListViewModel(
             when (pkg) {
                 "com.android.vending" -> context.getString(R.string.installer_play_store)
                 "org.fdroid.fdroid" -> context.getString(R.string.installer_fdroid)
-                "com.google.android.packageinstaller" -> context.getString(R.string.installer_sideloaded)
+                // Sideloaded via the system package-installer UI: Google ships
+                // com.google.android.packageinstaller, AOSP uses com.android.packageinstaller.
+                "com.google.android.packageinstaller",
+                "com.android.packageinstaller" -> context.getString(R.string.installer_sideloaded)
                 else -> nameMap[pkg] ?: pkg
             }
         }

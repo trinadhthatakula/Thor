@@ -2,6 +2,7 @@ package com.valhalla.thor.presentation.installer
 
 import android.content.pm.PackageManager
 import android.net.Uri
+import androidx.core.content.pm.PackageInfoCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.InstallState
@@ -63,7 +64,9 @@ class InstallerViewModel(
 
                     isUpdateOperation = existing != null
                     isDowngrade = if (existing != null) {
-                        meta.versionCode < existing.versionCode
+                        // meta.versionCode is a Long; compare against the full long version
+                        // code so large version codes aren't truncated by the deprecated Int field.
+                        meta.versionCode < PackageInfoCompat.getLongVersionCode(existing)
                     } else false
 
                     eventBus.emit(

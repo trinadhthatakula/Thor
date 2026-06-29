@@ -1,5 +1,12 @@
 # Publish `thor-extension-api` to Maven Central — Implementation Plan
 
+> **⚠️ Historical record — superseded.** This plan documents the original `1.0.0` publish under
+> the `io.github.trinadhthatakula` namespace, consumed via `compileOnly`. The shipped state has since
+> moved on: the artifact is now `com.trinadhthatakula:thor-extension-api:2.0.0` (the `2.0.0` bump
+> made `ShellExecutor`/`ExtensionDataStore` suspending to fix an ANR), and the Thor app consumes it
+> via `implementation` (see `gradle/libs.versions.toml` and `app/build.gradle.kts`). Treat the
+> versions, GAV, and dependency scope below as point-in-time, not current.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Extract Thor's `:extension-api` module into a standalone GitHub repo and publish it to Maven Central as `io.github.trinadhthatakula:thor-extension-api:1.0.0`, then rewire the Thor app to consume the published artifact.

@@ -29,9 +29,11 @@ buildCache {
     }
 }
 
-// Local cross-repo development: set `thorExtensionApiDir` (in ~/.gradle/gradle.properties or
-// local.properties) to a local thor-extension-api checkout to build against its source without
-// publishing. Leave it unset to use the pinned published version.
+// Local cross-repo development: set `thorExtensionApiDir` in a Gradle properties file
+// (for example ~/.gradle/gradle.properties) or pass it with -PthorExtensionApiDir=... to point at a
+// local thor-extension-api checkout and build against its source without publishing.
+// Note: this is read via providers.gradleProperty(...), so local.properties is NOT consulted.
+// Leave it unset to use the pinned published version.
 //
 // The included build's Gradle project is named `:extension-api`, but it publishes the artifact
 // `thor-extension-api`. Gradle's automatic substitution matches on the project name, so it would
