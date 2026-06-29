@@ -6,6 +6,7 @@ import android.content.Intent
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.data.manager.ExtensionManager
 import com.valhalla.thor.data.manager.ThorShellExecutor
+import com.valhalla.thor.R
 import com.valhalla.thor.extension.api.AutomationExtension
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CoroutineScope
@@ -46,7 +47,7 @@ class ExtensionTriggerReceiver : BroadcastReceiver(), KoinComponent {
                         kotlinx.coroutines.withContext(Dispatchers.Main) {
                             android.widget.Toast.makeText(
                                 context,
-                                "Trigger executed: ${triggerId.substringAfter(":")}",
+                                context.getString(R.string.log_trigger_executed, triggerId.substringAfter(":")),
                                 android.widget.Toast.LENGTH_SHORT
                             ).show()
                         }

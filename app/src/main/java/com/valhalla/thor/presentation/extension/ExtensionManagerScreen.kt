@@ -343,7 +343,7 @@ private fun ExtensionCard(
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.PlayArrow,
-                            contentDescription = "Run"
+                            contentDescription = stringResource(R.string.run_extension)
                         )
                     }
                 }

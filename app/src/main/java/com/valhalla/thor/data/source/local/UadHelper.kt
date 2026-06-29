@@ -49,7 +49,7 @@ class UadHelper(
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            com.valhalla.thor.util.Logger.e("UadHelper", "Failed to load debloat items from extensions", e)
         }
         return map
     }
@@ -68,7 +68,7 @@ class UadHelper(
             }
             didLoadFail = false
         } catch (e: Exception) {
-            e.printStackTrace()
+            com.valhalla.thor.util.Logger.e("UadHelper", "Failed to load uad_lists.json", e)
             didLoadFail = true
         }
         return map

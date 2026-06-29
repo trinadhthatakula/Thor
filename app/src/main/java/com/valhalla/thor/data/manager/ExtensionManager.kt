@@ -34,7 +34,7 @@ class ExtensionManager(private val context: Context) {
                 val extension = clazz.getDeclaredConstructor().newInstance() as ThorExtension
                 extension
             } catch (e: Exception) {
-                e.printStackTrace()
+                com.valhalla.thor.util.Logger.e("ExtensionManager", "Failed to load extension $className", e)
                 null
             }
         }

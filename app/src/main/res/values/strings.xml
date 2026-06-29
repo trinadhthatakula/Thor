@@ -208,6 +208,12 @@
     <string name="extensions_unlocked">Extensions unlocked 🔓</string>
     <string name="support_tab_play_store">Play Store</string>
     <string name="support_tab_direct">Direct</string>
+    <string name="log_trigger_executed">Trigger executed: %1$s</string>
+    <string name="run_extension">Run</string>
+    <string name="installer_play_store">PLAY STORE</string>
+    <string name="installer_fdroid">F-DROID</string>
+    <string name="installer_sideloaded">SIDELOADED</string>
+    <string name="permission_protection_level">Protection: %1$s</string>
     <string name="extension_manager">Extension Manager</string>
     <string name="extension_security_verified">Verified</string>
     <string name="extension_security_debug">Debug Mode (Unverified)</string>

@@ -948,6 +948,25 @@ private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontFamily = firaMonoFontFamily
                             )
+                            if (perm.protectionLevel.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = stringResource(
+                                        R.string.permission_protection_level,
+                                        perm.protectionLevel
+                                    ),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            perm.description?.takeIf { it.isNotBlank() }?.let { desc ->
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = desc,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.width(8.dp))

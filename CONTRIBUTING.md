@@ -12,16 +12,16 @@ We want Thor to be accessible to everyone worldwide. You can help by translating
 
 ### 1. In-App Strings Translation
 In-app strings are stored in standard Android resources:
-* **Base Strings**: [app/src/main/res/values/strings.xml](file:///Users/trinadhthatakula/StudioProjects/Thor/app/src/main/res/values/strings.xml)
-* **Localized Strings**: Located under `app/src/main/res/values-<locale-code>/strings.xml` (e.g., [values-es/strings.xml](file:///Users/trinadhthatakula/StudioProjects/Thor/app/src/main/res/values-es/strings.xml) for Spanish).
+* **Base Strings**: [app/src/main/res/values/strings.xml](app/src/main/res/values/strings.xml)
+* **Localized Strings**: Located under `app/src/main/res/values-<locale-code>/strings.xml` (e.g., [values-es/strings.xml](app/src/main/res/values-es/strings.xml) for Spanish).
 
 **How to contribute:**
 1. Identify your target language code (e.g., `hi` for Hindi, `de` for German).
 2. Create the directory `app/src/main/res/values-<locale-code>/` if it doesn't exist.
-3. Copy the base [strings.xml](file:///Users/trinadhthatakula/StudioProjects/Thor/app/src/main/res/values/strings.xml) to your new folder and translate the text inside the `<string>` tags.
+3. Copy the base [strings.xml](app/src/main/res/values/strings.xml) to your new folder and translate the text inside the `<string>` tags.
 
 ### 2. Store Listing Metadata (Fastlane) Translation
-We use Fastlane to deploy the app to the Google Play Store and other stores. Store listings are localized under the [fastlane/metadata/android/](file:///Users/trinadhthatakula/StudioProjects/Thor/fastlane/metadata/android) directory.
+We use Fastlane to deploy the app to the Google Play Store and other stores. Store listings are localized under the [fastlane/metadata/android/](fastlane/metadata/android) directory.
 
 **Directory Structure:**
 ```text
@@ -40,7 +40,7 @@ fastlane/metadata/android/
    * **`title.txt`**: Usually kept as `Thor - App Manager`.
    * **`short_description.txt`**: A catchy summary (max 80 characters).
    * **`full_description.txt`**: A detailed plain text description (max 4000 characters). 
-     * *Note: Google Play Console does not support markdown in descriptions, and plain text with emoji bullet points is preferred over HTML tags. Check [en-US/full_description.txt](file:///Users/trinadhthatakula/StudioProjects/Thor/fastlane/metadata/android/en-US/full_description.txt) for the master reference.*
+     * *Note: Google Play Console does not support markdown in descriptions, and plain text with emoji bullet points is preferred over HTML tags. Check [en-US/full_description.txt](fastlane/metadata/android/en-US/full_description.txt) for the master reference.*
 
 ---
 
@@ -65,7 +65,7 @@ Thor is built using modern Android development practices. Please read the archit
 * **Clean Project**: `./gradlew clean`
 
 ### Versioning
-* Version code is configured using the single `versionCode` property in [gradle.properties](file:///Users/trinadhthatakula/StudioProjects/Thor/gradle.properties).
+* Version code is configured using the single `versionCode` property in [gradle.properties](gradle.properties).
 * Do **not** edit `versionName` directly; it is automatically calculated from the version code (e.g. `1822` becomes `1.82.2`).
 
 ### Java Shadowing Requirement
