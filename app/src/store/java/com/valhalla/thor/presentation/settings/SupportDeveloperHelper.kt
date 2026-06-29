@@ -16,7 +16,8 @@ import androidx.core.net.toUri
 import com.valhalla.thor.R
 import com.valhalla.thor.presentation.widgets.AffirmationDialog
 import com.valhalla.thor.presentation.widgets.SupportAction
-import com.valhalla.thor.presentation.widgets.SupportDeveloperBottomSheet
+import com.valhalla.thor.presentation.widgets.SupportDeveloperTabbedBottomSheet
+import com.valhalla.thor.presentation.widgets.SupportTab
 import org.koin.compose.koinInject
 
 private fun Context.findActivity(): Activity? = when (this) {
@@ -39,56 +40,36 @@ fun SupportDeveloperHelper(
 
     var pendingChangeProductId by remember { mutableStateOf<String?>(null) }
 
-    val actions = remember(products, isBillingAvailable, activeSubscription) {
-        if (!isBillingAvailable || products.isEmpty()) {
-            listOf(
-                SupportAction(
-                    iconRes = R.drawable.brand_patreon,
-                    title = context.getString(R.string.become_patreon_title),
-                    description = context.getString(R.string.become_patreon_desc),
-                    onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, "https://www.patreon.com/trinadh".toUri())
-                        runCatching { context.startActivity(intent) }
-                        onDismiss()
-                    }
-                ),
-                SupportAction(
-                    iconRes = R.drawable.shield_with_heart,
-                    title = context.getString(R.string.donate_paypal_title),
-                    description = context.getString(R.string.donate_paypal_desc),
-                    onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, "https://www.paypal.me/trinadhthatakula".toUri())
-                        runCatching { context.startActivity(intent) }
-                        onDismiss()
-                    }
-                ),
-                SupportAction(
-                    iconRes = R.drawable.open_in_new,
-                    title = context.getString(R.string.rate_play_store_title),
-                    description = context.getString(R.string.rate_play_store_desc),
-                    onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, "market://details?id=com.valhalla.thor".toUri()).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY or Intent.FLAG_ACTIVITY_NEW_DOCUMENT or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
-                        }
-                        runCatching { context.startActivity(intent) }.onFailure {
-                            val webIntent = Intent(Intent.ACTION_VIEW, "https://play.google.com/store/apps/details?id=com.valhalla.thor".toUri())
-                            runCatching { context.startActivity(webIntent) }
-                        }
-                        onDismiss()
-                    }
-                ),
-                SupportAction(
-                    iconRes = R.drawable.apps,
-                    title = context.getString(R.string.explore_other_apps_title),
-                    description = context.getString(R.string.explore_other_apps_desc),
-                    onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, "https://play.google.com/store/apps/developer?id=Spectra+Apps".toUri())
-                        runCatching { context.startActivity(intent) }
-                        onDismiss()
-                    }
-                )
+    // "Direct" tab — Patreon + PayPal. Always available, including in the store build.
+    val directActions = remember {
+        listOf(
+            SupportAction(
+                iconRes = R.drawable.brand_patreon,
+                title = context.getString(R.string.become_patreon_title),
+                description = context.getString(R.string.become_patreon_desc),
+                onClick = {
+                    val intent = Intent(Intent.ACTION_VIEW, "https://www.patreon.com/trinadh".toUri())
+                    runCatching { context.startActivity(intent) }
+                    onDismiss()
+                }
+            ),
+            SupportAction(
+                iconRes = R.drawable.shield_with_heart,
+                title = context.getString(R.string.donate_paypal_title),
+                description = context.getString(R.string.donate_paypal_desc),
+                onClick = {
+                    val intent = Intent(Intent.ACTION_VIEW, "https://www.paypal.me/trinadhthatakula".toUri())
+                    runCatching { context.startActivity(intent) }
+                    onDismiss()
+                }
             )
-        } else {
+        )
+    }
+
+    // "Play Store" tab — subscription tiers when billing is available, otherwise rate/explore so
+    // the tab is never empty.
+    val playStoreActions = remember(products, isBillingAvailable, activeSubscription) {
+        if (isBillingAvailable && products.isNotEmpty()) {
             val sortedProducts = products.sortedBy { product ->
                 when (product.id) {
                     "support_tier_5" -> 5
@@ -129,7 +110,42 @@ fun SupportDeveloperHelper(
                     }
                 )
             }
+        } else {
+            listOf(
+                SupportAction(
+                    iconRes = R.drawable.open_in_new,
+                    title = context.getString(R.string.rate_play_store_title),
+                    description = context.getString(R.string.rate_play_store_desc),
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_VIEW, "market://details?id=com.valhalla.thor".toUri()).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY or Intent.FLAG_ACTIVITY_NEW_DOCUMENT or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+                        }
+                        runCatching { context.startActivity(intent) }.onFailure {
+                            val webIntent = Intent(Intent.ACTION_VIEW, "https://play.google.com/store/apps/details?id=com.valhalla.thor".toUri())
+                            runCatching { context.startActivity(webIntent) }
+                        }
+                        onDismiss()
+                    }
+                ),
+                SupportAction(
+                    iconRes = R.drawable.apps,
+                    title = context.getString(R.string.explore_other_apps_title),
+                    description = context.getString(R.string.explore_other_apps_desc),
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_VIEW, "https://play.google.com/store/apps/developer?id=Spectra+Apps".toUri())
+                        runCatching { context.startActivity(intent) }
+                        onDismiss()
+                    }
+                )
+            )
         }
+    }
+
+    val tabs = remember(playStoreActions, directActions) {
+        listOf(
+            SupportTab(context.getString(R.string.support_tab_play_store), playStoreActions),
+            SupportTab(context.getString(R.string.support_tab_direct), directActions)
+        )
     }
 
     if (pendingChangeProductId != null) {
@@ -156,8 +172,8 @@ fun SupportDeveloperHelper(
         )
     }
 
-    SupportDeveloperBottomSheet(
-        actions = actions,
+    SupportDeveloperTabbedBottomSheet(
+        tabs = tabs,
         onDismiss = onDismiss
     )
 }
