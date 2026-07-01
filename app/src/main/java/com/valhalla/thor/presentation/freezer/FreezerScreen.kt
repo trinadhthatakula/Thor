@@ -107,12 +107,16 @@ fun FreezerScreen(
     val displayedApps = remember(state.freezerApps, state.searchQuery, state.appListType) {
         val filteredByType =
             state.freezerApps.filter { it.isSystem == (state.appListType == AppListType.SYSTEM) }
-        if (state.searchQuery.isBlank()) filteredByType
+        val filtered = if (state.searchQuery.isBlank()) filteredByType
         else filteredByType.filter {
             it.appName?.contains(state.searchQuery, ignoreCase = true) == true ||
                     it.packageName.contains(state.searchQuery, ignoreCase = true)
         }
+        filtered.sortedBy { it.appName }
     }
+
+    val hasEnabled = remember(state.freezerApps) { state.freezerApps.any { it.enabled } }
+    val hasDisabled = remember(state.freezerApps) { state.freezerApps.any { !it.enabled } }
 
 
     LaunchedEffect(state.actionMessage) {
@@ -258,7 +262,7 @@ fun FreezerScreen(
                         modifier = Modifier.weight(1f)
                     ) {
                         items(
-                            displayedApps.sortedBy { it.appName },
+                            displayedApps,
                             key = { it.packageName }) { app ->
                             AppItemGrid(
                                 app = app,
@@ -281,7 +285,7 @@ fun FreezerScreen(
                         modifier = Modifier.weight(1f)
                     ) {
                         items(
-                            displayedApps.sortedBy { it.appName },
+                            displayedApps,
                             key = { it.packageName }) { app ->
                             AppItemList(
                                 app = app,
@@ -316,8 +320,9 @@ fun FreezerScreen(
 
             // Floating multi-select toolbar
             if (state.multiSelection.isNotEmpty()) {
-                val selectedApps =
+                val selectedApps = remember(state.freezerApps, state.multiSelection) {
                     state.freezerApps.filter { it.packageName in state.multiSelection }
+                }
                 FreezerSelectToolBox(
                     selected = selectedApps,
                     isRoot = state.isRoot,
@@ -355,7 +360,7 @@ fun FreezerScreen(
                         )
                         IconButton(
                             onClick = { viewModel.freezeAll() },
-                            enabled = state.freezerApps.any { it.enabled } && hasPrivilege,
+                            enabled = hasEnabled && hasPrivilege,
                             colors = iconButtonColors
                         ) {
                             Icon(
@@ -374,7 +379,7 @@ fun FreezerScreen(
                         }
                         IconButton(
                             onClick = { viewModel.unfreezeAll() },
-                            enabled = state.freezerApps.any { !it.enabled } && hasPrivilege,
+                            enabled = hasDisabled && hasPrivilege,
                             colors = iconButtonColors
                         ) {
                             Icon(

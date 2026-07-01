@@ -22,16 +22,22 @@ internal class BiometricPromptHandler(private val context: Context) {
         onAuthenticated: () -> Unit,
         onError: (String) -> Unit
     ) {
+        // Cancel any in-flight prompt before starting a new one so the previous
+        // CancellationSignal (and its captured callbacks) isn't orphaned.
+        cancellationSignal?.cancel()
+
         val executor = ContextCompat.getMainExecutor(context)
 
         val callback = object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) {
                 super.onAuthenticationSucceeded(result)
+                cancellationSignal = null
                 onAuthenticated()
             }
 
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
                 super.onAuthenticationError(errorCode, errString)
+                cancellationSignal = null
                 // Error code 5 is developer-initiated cancellation, ignore it.
                 if (errorCode != 5) {
                     onError(errString?.toString() ?: "Authentication error")
