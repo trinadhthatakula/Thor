@@ -1,0 +1,9 @@
+What's new in Thor v1.90.1
+
+• Fixed some apps being wrongly blocked as a "downgrade" during install.
+• Fixed .xapk files failing to install.
+• Fixed the Settings screen crash on large font / display sizes.
+• Smoother scrolling and less jank — lighter app icons and more work moved off the main thread.
+• Squashed several memory leaks and hardened stability under the hood.
+
+Thanks for using Thor!
