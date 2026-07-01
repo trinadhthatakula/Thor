@@ -81,10 +81,18 @@ class InstallerRepositoryImpl(
             // is a single APK — stream it whole via the monolithic path (null).
             if (isMonolithicApk(entryNames)) return null
 
-            // Prefer the manifest.json split_apks list for a genuine XAPK.
+            // Prefer the manifest.json split_apks list for a genuine XAPK — but only when
+            // every declared split actually exists in the archive. A stale/partial manifest
+            // (splits renamed, removed, or never packaged) must not shadow the entry-scan
+            // recovery path below, or extraction would yield nothing and the install fails.
             val manifest = manifestBytes?.let { parseXapkManifest(String(it)) }
             val manifestFiles = manifest?.splitApkFiles()?.takeIf { it.isNotEmpty() }
-            if (manifestFiles != null) return manifestFiles
+            if (manifestFiles != null) {
+                val availableNames = entryNames.mapTo(HashSet()) { it.substringAfterLast('/') }
+                if (manifestFiles.all { it.substringAfterLast('/') in availableNames }) {
+                    return manifestFiles
+                }
+            }
 
             // No usable manifest: order the .apk entries base-first, splits last so
             // install-multiple gets a valid base (GH#159). selectBaseApkCandidates is

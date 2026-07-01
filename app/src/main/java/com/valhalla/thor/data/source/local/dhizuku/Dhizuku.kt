@@ -266,12 +266,18 @@ object DhizukuHelper {
                     "Dhizuku",
                     "Command timed out after ${EXECUTE_TIMEOUT_MS}ms, destroying process: $command"
                 )
-                // Kill first so the reader threads unblock, then join with a bound.
-                runCatching { process.destroyForcibly() }
+                // Close the FDs first: this unblocks the reader threads immediately, even if
+                // destroyForcibly() (a binder call) later hangs. Killing before closing would
+                // block the whole timeout path on a stuck destroy while the readers stay stuck.
+                runCatching { process.inputStream.close() }
+                runCatching { process.errorStream.close() }
+                runCatching { process.outputStream.close() }
                 outThread.interrupt()
                 errThread.interrupt()
                 outThread.join(READER_JOIN_TIMEOUT_MS)
                 errThread.join(READER_JOIN_TIMEOUT_MS)
+                // Readers are already free; now request the (possibly slow) forcible kill.
+                runCatching { process.destroyForcibly() }
                 -1 to "Command timed out after ${EXECUTE_TIMEOUT_MS}ms".let { msg ->
                     output.get().ifBlank { error.get() }.ifBlank { msg }
                 }

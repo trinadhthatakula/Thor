@@ -21,6 +21,8 @@ import coil3.size.pxOrElse
 import java.io.File
 import java.io.FileOutputStream
 import com.valhalla.thor.extension.api.AppIconModel
+import com.valhalla.thor.util.Logger
+import kotlinx.coroutines.CancellationException
 
 
 /**
@@ -99,8 +101,12 @@ class AppIconFetcher(
                 FileOutputStream(iconFile).use { out ->
                     fullBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                e.printStackTrace()
+                // Persisting the disk cache is best-effort; a decode/IO failure here must
+                // not fail the fetch (the in-memory bitmap below still serves the request).
+                Logger.e("AppIconLoader", "Failed to persist icon for ${model.packageName}", e)
             }
 
             // Return a bitmap sized to the Coil target (coerced to the intrinsic size) rather
@@ -116,6 +122,8 @@ class AppIconFetcher(
                 isSampled = sampled,
                 dataSource = DataSource.DISK
             )
+        } catch (e: CancellationException) {
+            throw e // Never swallow coroutine cancellation — let the cancelled fetch unwind.
         } catch (e: Exception) {
             null // Let Coil handle the error/fallback
         }

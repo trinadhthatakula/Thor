@@ -10,6 +10,7 @@ import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -47,15 +48,20 @@ class AppInfoDetailsViewModel(
             )
         }
         viewModelScope.launch {
-            // Availability probes include non-suspend binder IPC (Shizuku / Dhizuku);
-            // compute them and the freezer lookup in a single IO context to keep them
-            // off the Main thread and avoid an extra dispatch switch.
+            // Availability probes include non-suspend binder IPC (Shizuku / Dhizuku) and a
+            // potentially slow root check; run them off the Main thread. Each probe is an
+            // independent round-trip, so launch them concurrently and let their latency
+            // overlap (alongside the freezer lookup) instead of stacking sequentially.
             val (probes, inFreezer) = withContext(Dispatchers.IO) {
+                val rootProbe = async { systemRepository.isRootAvailable() }
+                val shizukuProbe = async { systemRepository.isShizukuAvailable() }
+                val dhizukuProbe = async { systemRepository.isDhizukuAvailable() }
+                val freezer = freezerRepository.contains(packageName)
                 Triple(
-                    systemRepository.isRootAvailable(),
-                    systemRepository.isShizukuAvailable(),
-                    systemRepository.isDhizukuAvailable()
-                ) to freezerRepository.contains(packageName)
+                    rootProbe.await(),
+                    shizukuProbe.await(),
+                    dhizukuProbe.await()
+                ) to freezer
             }
             val (hasRoot, hasShizuku, hasDhizuku) = probes
 

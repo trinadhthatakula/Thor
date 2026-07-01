@@ -28,16 +28,21 @@ internal class BiometricPromptHandler(private val context: Context) {
 
         val executor = ContextCompat.getMainExecutor(context)
 
+        // Capture this prompt's own signal so a stale callback from a superseded prompt
+        // can't null out a newer in-flight prompt's signal (which would orphan it — cancel()
+        // and the next authenticate() could no longer cancel it).
+        val signal = CancellationSignal()
+
         val callback = object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) {
                 super.onAuthenticationSucceeded(result)
-                cancellationSignal = null
+                if (cancellationSignal === signal) cancellationSignal = null
                 onAuthenticated()
             }
 
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
                 super.onAuthenticationError(errorCode, errString)
-                cancellationSignal = null
+                if (cancellationSignal === signal) cancellationSignal = null
                 // Error code 5 is developer-initiated cancellation, ignore it.
                 if (errorCode != 5) {
                     onError(errString?.toString() ?: "Authentication error")
@@ -64,8 +69,8 @@ internal class BiometricPromptHandler(private val context: Context) {
             }
         }
 
-        cancellationSignal = CancellationSignal()
-        builder.build().authenticate(cancellationSignal!!, executor, callback)
+        cancellationSignal = signal
+        builder.build().authenticate(signal, executor, callback)
     }
 
     fun cancel() {

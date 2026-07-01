@@ -466,12 +466,18 @@ object Shizuku {
                             "Shizuku",
                             "Command timed out after ${EXECUTE_TIMEOUT_MS}ms, destroying process: $command"
                         )
-                        // Kill first so the reader threads unblock, then join with a bound.
-                        runCatching { destroy() }
+                        // Close the FDs first: this unblocks the reader threads immediately,
+                        // even if destroy() (a binder call) later hangs. Killing before closing
+                        // would block the timeout path on a stuck destroy while readers stay stuck.
+                        runCatching { inputStream.close() }
+                        runCatching { errorStream.close() }
+                        runCatching { outputStream.close() }
                         outThread.interrupt()
                         errThread.interrupt()
                         outThread.join(READER_JOIN_TIMEOUT_MS)
                         errThread.join(READER_JOIN_TIMEOUT_MS)
+                        // Readers are already free; now request the (possibly slow) kill.
+                        runCatching { destroy() }
                         -1 to "Command timed out after ${EXECUTE_TIMEOUT_MS}ms".let { msg ->
                             output.get().ifBlank { error.get() }.ifBlank { msg }
                         }

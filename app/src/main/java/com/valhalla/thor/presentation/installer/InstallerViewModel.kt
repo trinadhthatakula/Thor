@@ -59,9 +59,9 @@ class InstallerViewModel(
                 onSuccess = { meta ->
                     currentPackageName = meta.packageName
 
-                    // A#8: getPackageInfo() and the privilege checks in
-                    // checkPrivilegeAndModes() (isShizukuAvailable()/isDhizukuAvailable()
-                    // are synchronous binder IPC) must not run on the main thread.
+                    // getPackageInfo() and the privilege checks in checkPrivilegeAndModes()
+                    // (isShizukuAvailable()/isDhizukuAvailable() are synchronous binder IPC)
+                    // must not run on the main thread.
                     val existing = withContext(Dispatchers.IO) {
                         // Privilege detection is best-effort: an unexpected repository/
                         // binder IPC exception must not crash package parsing. On failure
