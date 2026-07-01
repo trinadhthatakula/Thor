@@ -13,10 +13,12 @@ import com.valhalla.thor.domain.repository.InstallerRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.R
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
 
 @KoinViewModel
@@ -56,11 +58,16 @@ class InstallerViewModel(
             result.fold(
                 onSuccess = { meta ->
                     currentPackageName = meta.packageName
-                    checkPrivilegeAndModes(meta.packageName)
-                    
-                    val existing = runCatching {
-                        packageManager.getPackageInfo(meta.packageName, 0)
-                    }.getOrNull()
+
+                    // A#8: getPackageInfo() and the privilege checks in
+                    // checkPrivilegeAndModes() (isShizukuAvailable()/isDhizukuAvailable()
+                    // are synchronous binder IPC) must not run on the main thread.
+                    val existing = withContext(Dispatchers.IO) {
+                        checkPrivilegeAndModes(meta.packageName)
+                        runCatching {
+                            packageManager.getPackageInfo(meta.packageName, 0)
+                        }.getOrNull()
+                    }
 
                     isUpdateOperation = existing != null
                     isDowngrade = if (existing != null) {
