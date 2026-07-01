@@ -810,6 +810,8 @@ private fun ActionItem(
 private fun GeneralTabScreen(details: DetailedAppInfo) {
     val appInfo = details.appInfo
     val context = LocalContext.current
+    val installTime = remember(appInfo.firstInstallTime, context) { formatTime(appInfo.firstInstallTime, context) }
+    val lastUpdateTime = remember(appInfo.lastUpdateTime, context) { formatTime(appInfo.lastUpdateTime, context) }
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -850,13 +852,13 @@ private fun GeneralTabScreen(details: DetailedAppInfo) {
         item {
             InfoCard(
                 title = stringResource(R.string.info_install_time),
-                value = formatTime(appInfo.firstInstallTime, context)
+                value = installTime
             )
         }
         item {
             InfoCard(
                 title = stringResource(R.string.info_last_update_time),
-                value = formatTime(appInfo.lastUpdateTime, context)
+                value = lastUpdateTime
             )
         }
         item {
@@ -895,9 +897,11 @@ private fun GeneralTabScreen(details: DetailedAppInfo) {
 @Composable
 private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
     var searchQuery by remember { mutableStateOf("") }
-    val filteredPermissions = permissions.filter {
-        it.name.contains(searchQuery, ignoreCase = true) ||
-                (it.label?.contains(searchQuery, ignoreCase = true) ?: false)
+    val filteredPermissions = remember(searchQuery, permissions) {
+        permissions.filter {
+            it.name.contains(searchQuery, ignoreCase = true) ||
+                    (it.label?.contains(searchQuery, ignoreCase = true) ?: false)
+        }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -1005,10 +1009,6 @@ private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
 @Composable
 private fun ComponentsTabScreen(details: DetailedAppInfo) {
     var searchQuery by remember { mutableStateOf("") }
-    val filter = { items: List<String> ->
-        if (searchQuery.isEmpty()) items
-        else items.filter { it.contains(searchQuery, ignoreCase = true) }
-    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         OutlinedTextField(
@@ -1033,10 +1033,19 @@ private fun ComponentsTabScreen(details: DetailedAppInfo) {
             )
         )
 
-        val filteredActivities = filter(details.activities)
-        val filteredServices = filter(details.services)
-        val filteredReceivers = filter(details.receivers)
-        val filteredProviders = filter(details.providers)
+        val (filteredActivities, filteredServices, filteredReceivers, filteredProviders) =
+            remember(searchQuery, details) {
+                val filter = { items: List<String> ->
+                    if (searchQuery.isEmpty()) items
+                    else items.filter { it.contains(searchQuery, ignoreCase = true) }
+                }
+                ComponentLists(
+                    activities = filter(details.activities),
+                    services = filter(details.services),
+                    receivers = filter(details.receivers),
+                    providers = filter(details.providers)
+                )
+            }
 
         LazyColumn(
             modifier = Modifier
@@ -1277,6 +1286,13 @@ private fun InfoCard(title: String, value: String) {
         )
     }
 }
+
+private data class ComponentLists(
+    val activities: List<String>,
+    val services: List<String>,
+    val receivers: List<String>,
+    val providers: List<String>
+)
 
 private fun formatTime(timestamp: Long, context: Context): String {
     if (timestamp == 0L) return context.getString(R.string.not_available)
