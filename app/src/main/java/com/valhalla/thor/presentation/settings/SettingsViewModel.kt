@@ -53,12 +53,17 @@ class SettingsViewModel(
         preferenceRepository.userPreferences,
         _actionMessage,
         flow {
+            // Availability probes hit binder IPC (Shizuku.pingBinder / DhizukuAPI).
+            // Run them off the Main thread to avoid janking the first subscription /
+            // every WhileSubscribed restart.
             emit(
-                Triple(
-                    systemRepository.isRootAvailable(),
-                    systemRepository.isShizukuAvailable(),
-                    systemRepository.isDhizukuAvailable()
-                )
+                withContext(Dispatchers.IO) {
+                    Triple(
+                        systemRepository.isRootAvailable(),
+                        systemRepository.isShizukuAvailable(),
+                        systemRepository.isDhizukuAvailable()
+                    )
+                }
             )
         }
     ) { prefs, message, status ->
