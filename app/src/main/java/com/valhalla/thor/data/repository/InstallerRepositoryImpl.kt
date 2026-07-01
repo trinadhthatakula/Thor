@@ -87,10 +87,9 @@ class InstallerRepositoryImpl(
             if (manifestFiles != null) return manifestFiles
 
             // No usable manifest: order the .apk entries base-first, splits last so
-            // install-multiple gets a valid base (GH#159).
-            val apks = entryNames.filter { it.endsWith(".apk", ignoreCase = true) }
-            if (apks.isEmpty()) return null
-            selectBaseApkCandidates(entryNames, manifest?.packageName).ifEmpty { apks }
+            // install-multiple gets a valid base (GH#159). selectBaseApkCandidates is
+            // empty only when there are no .apk entries at all → treat as monolithic.
+            selectBaseApkCandidates(entryNames, manifest?.packageName).ifEmpty { null }
         } catch (_: Exception) {
             null
         }

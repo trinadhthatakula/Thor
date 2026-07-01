@@ -69,17 +69,24 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
 
             // Phase 2: Monolithic-APK gate (GH#207). A file that carries its own
             // top-level AndroidManifest.xml is a single installable APK — parse the
-            // whole file and never scan inner .apk assets.
+            // whole file and NEVER scan inner .apk assets. If the authoritative
+            // whole-file parse fails, we return failure here rather than falling
+            // through to the base-candidate scan: falling through could extract a
+            // nested assets/*.apk (App Manager style) and return the WRONG package
+            // identity, re-triggering the GH#207 false-downgrade bug on the rare
+            // failed-parse path. (The parse itself needs framework
+            // getPackageArchiveInfo, so this exact branch is covered by compile +
+            // manual path; the "monolithic is never routed to candidate selection"
+            // invariant is unit-tested at the helper level in BundleAnalysisTest.)
             if (isMonolithicApk(entryNames)) {
                 contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(tempFile).use { output -> input.copyTo(output) }
                 }
                 val archiveInfo = parseArchive(tempFile)
-                if (archiveInfo != null) {
-                    return@withContext Result.success(metadataFrom(archiveInfo, tempFile, iconBytes))
-                }
-                // Fall through to bundle/base handling only if the whole-file parse
-                // unexpectedly failed.
+                    ?: return@withContext Result.failure(
+                        Exception("Failed to parse APK manifest. The file might be corrupted or encrypted.")
+                    )
+                return@withContext Result.success(metadataFrom(archiveInfo, tempFile, iconBytes))
             }
 
             // Phase 3: XAPK manifest path — build metadata from the authoritative

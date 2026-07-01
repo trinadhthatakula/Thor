@@ -42,6 +42,25 @@ class BundleAnalysisTest {
     }
 
     @Test
+    fun monolithicClassification_gatesOutBaseCandidateSelection() {
+        // Invariant behind the I-1 fix: a monolithic APK (top-level
+        // AndroidManifest.xml) must NEVER be routed to inner-.apk base-candidate
+        // selection, even though selectBaseApkCandidates() would otherwise happily
+        // surface its nested assets/child.apk. The analyzer guards this with
+        // isMonolithicApk(); here we assert the two signals disagree exactly so a
+        // caller that gates on isMonolithicApk() cannot leak into candidate scan.
+        val entries = listOf(
+            "AndroidManifest.xml",
+            "classes.dex",
+            "assets/child.apk"
+        )
+        assertTrue(isMonolithicApk(entries))
+        // If a buggy caller ignored the gate, this is the wrong (nested) identity
+        // it would extract — documenting exactly what the gate prevents.
+        assertEquals("assets/child.apk", selectBaseApkCandidates(entries, null).first())
+    }
+
+    @Test
     fun xapkBundle_withoutTopLevelManifest_isNotMonolithic() {
         val entries = listOf(
             "manifest.json",
@@ -131,6 +150,9 @@ class BundleAnalysisTest {
         assertNotNull(manifest)
         assertEquals("com.example.app", manifest!!.packageName)
         assertEquals("1.2.3", manifest.versionName)
+        // Lock the GH#159 string-from-number contract: a numeric version_code is
+        // coerced into the String field rather than throwing.
+        assertEquals("12345", manifest.versionCode)
         assertEquals("base.apk", manifest.baseApkFile())
     }
 
