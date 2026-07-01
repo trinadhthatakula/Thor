@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -54,18 +55,16 @@ class SettingsViewModel(
         _actionMessage,
         flow {
             // Availability probes hit binder IPC (Shizuku.pingBinder / DhizukuAPI).
-            // Run them off the Main thread to avoid janking the first subscription /
-            // every WhileSubscribed restart.
+            // flowOn(IO) below keeps them off the Main thread to avoid janking the
+            // first subscription / every WhileSubscribed restart.
             emit(
-                withContext(Dispatchers.IO) {
-                    Triple(
-                        systemRepository.isRootAvailable(),
-                        systemRepository.isShizukuAvailable(),
-                        systemRepository.isDhizukuAvailable()
-                    )
-                }
+                Triple(
+                    systemRepository.isRootAvailable(),
+                    systemRepository.isShizukuAvailable(),
+                    systemRepository.isDhizukuAvailable()
+                )
             )
-        }
+        }.flowOn(Dispatchers.IO)
     ) { prefs, message, status ->
         SettingsUiState(
             prefs = prefs,

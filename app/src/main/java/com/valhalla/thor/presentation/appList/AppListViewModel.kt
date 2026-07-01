@@ -112,9 +112,15 @@ class AppListViewModel(
             // Allow navigation/bottom bar animations to finish fluidly
             delay(800.milliseconds)
 
-            val hasRoot = systemRepository.isRootAvailable()
-            val hasShizuku = systemRepository.isShizukuAvailable()
-            val hasDhizuku = systemRepository.isDhizukuAvailable()
+            // Availability probes include non-suspend binder IPC (Shizuku / Dhizuku);
+            // keep them off the Main thread so app-list load never janks.
+            val (hasRoot, hasShizuku, hasDhizuku) = withContext(Dispatchers.IO) {
+                Triple(
+                    systemRepository.isRootAvailable(),
+                    systemRepository.isShizukuAvailable(),
+                    systemRepository.isDhizukuAvailable()
+                )
+            }
             getInstalledAppsUseCase().collect { (user, system) ->
                 _rawState.update {
                     it.copy(
