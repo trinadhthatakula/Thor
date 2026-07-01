@@ -12,11 +12,18 @@ import rikka.shizuku.SystemServiceHelper
 import com.rosan.dhizuku.api.Dhizuku as DhizukuAPI
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.R
+import java.util.concurrent.TimeUnit
 
 /**
  * Helper to interact with Dhizuku service using the actual API.
  */
 object DhizukuHelper {
+
+    /** Upper bound for a single command; a hung child is killed instead of pinning the caller forever. */
+    private const val EXECUTE_TIMEOUT_MS = 60_000L
+
+    /** Grace period for reader threads to drain their streams after the process has exited/been destroyed. */
+    private const val READER_JOIN_TIMEOUT_MS = 5_000L
 
     fun isDhizukuAvailable(): Boolean {
         return try {
@@ -52,7 +59,8 @@ object DhizukuHelper {
     }
 
     fun forceStopApp(context: Context, packageName: String): Boolean {
-        val userId = Packages(context).myUserId
+        val pkgs = Packages(context)
+        val userId = pkgs.myUserId
         // 1. Try shell first
         val result = execute("am force-stop --user $userId $packageName")
         if (result.first == 0) return true
@@ -75,19 +83,20 @@ object DhizukuHelper {
         }
         if (reflectionResult) return true
 
-        // 3. Unprivileged fallback
-        if (Packages(context).isAppStopped(packageName)) return true
+        // 3. Unprivileged fallback (re-query PM to observe post-mutation state)
+        if (pkgs.isAppStopped(packageName)) return true
         runCatching {
             val am =
                 context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
             am?.killBackgroundProcesses(packageName)
         }
-        return Packages(context).isAppStopped(packageName)
+        return pkgs.isAppStopped(packageName)
     }
 
     fun setAppDisabled(context: Context, packageName: String, disabled: Boolean): Boolean {
-        Packages(context).getApplicationInfoOrNull(packageName) ?: return false
-        val userId = Packages(context).myUserId
+        val pkgs = Packages(context)
+        pkgs.getApplicationInfoOrNull(packageName) ?: return false
+        val userId = pkgs.myUserId
 
         // 1. Try shell first
         val command = if (disabled) {
@@ -96,7 +105,7 @@ object DhizukuHelper {
             "pm enable --user $userId $packageName"
         }
         val result = execute(command)
-        if (result.first == 0 && Packages(context).isAppDisabled(packageName) == disabled) {
+        if (result.first == 0 && pkgs.isAppDisabled(packageName) == disabled) {
             return true
         }
 
@@ -134,12 +143,12 @@ object DhizukuHelper {
             )
         }.getOrDefault(false)
 
-        if (reflectionResult && Packages(context).isAppDisabled(packageName) == disabled) {
+        if (reflectionResult && pkgs.isAppDisabled(packageName) == disabled) {
             return true
         }
 
-        // 3. Unprivileged fallback
-        if (Packages(context).isAppDisabled(packageName) == disabled) {
+        // 3. Unprivileged fallback (re-query PM to observe post-mutation state)
+        if (pkgs.isAppDisabled(packageName) == disabled) {
             return true
         }
         val newState = if (disabled) {
@@ -151,7 +160,7 @@ object DhizukuHelper {
             context.packageManager.setApplicationEnabledSetting(packageName, newState, 0)
         }
 
-        return Packages(context).isAppDisabled(packageName) == disabled
+        return pkgs.isAppDisabled(packageName) == disabled
     }
 
     private var cachedUserId: String? = null
@@ -203,13 +212,14 @@ object DhizukuHelper {
         var output = ""
         var error = ""
 
+        // Daemon so a stuck read on a hung child can never keep the process/VM alive.
         val outThread = Thread {
             runCatching {
                 output = process.inputStream.bufferedReader().use { it.readText() }
             }.onFailure { err ->
                 Logger.e("Dhizuku", "Failed to read standard output", err)
             }
-        }
+        }.apply { isDaemon = true }
 
         val errThread = Thread {
             runCatching {
@@ -217,20 +227,49 @@ object DhizukuHelper {
             }.onFailure { err ->
                 Logger.e("Dhizuku", "Failed to read error output", err)
             }
-        }
+        }.apply { isDaemon = true }
 
+        var timedOut = false
         try {
             outThread.start()
             errThread.start()
 
-            val exitCode = process.waitFor()
+            // Bounded, cancellation-aware wait: Process.waitFor(timeout, unit) blocks, but a
+            // coroutine cancellation (via runInterruptible) or an explicit interrupt surfaces as
+            // InterruptedException and aborts the wait.
+            val exited = try {
+                process.waitFor(EXECUTE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                Logger.e("Dhizuku", "Command wait interrupted: $command", e)
+                false
+            }
 
-            outThread.join()
-            errThread.join()
-
-            exitCode to (output.ifBlank { error })
+            if (exited) {
+                val exitCode = process.exitValue()
+                // Give the readers a bounded window to drain, then stop waiting on them.
+                outThread.join(READER_JOIN_TIMEOUT_MS)
+                errThread.join(READER_JOIN_TIMEOUT_MS)
+                exitCode to (output.ifBlank { error })
+            } else {
+                timedOut = true
+                Logger.e(
+                    "Dhizuku",
+                    "Command timed out after ${EXECUTE_TIMEOUT_MS}ms, destroying process: $command"
+                )
+                // Kill first so the reader threads unblock, then join with a bound.
+                runCatching { process.destroyForcibly() }
+                outThread.interrupt()
+                errThread.interrupt()
+                outThread.join(READER_JOIN_TIMEOUT_MS)
+                errThread.join(READER_JOIN_TIMEOUT_MS)
+                -1 to "Command timed out after ${EXECUTE_TIMEOUT_MS}ms".let { msg ->
+                    output.ifBlank { error }.ifBlank { msg }
+                }
+            }
         } finally {
-            process.destroy()
+            // Always tear the process down (idempotent even if already destroyed on timeout).
+            if (!timedOut) runCatching { process.destroy() }
         }
     }.getOrElse { err ->
         Logger.e("Dhizuku", "Command execution failed: $command", err)
@@ -304,8 +343,9 @@ object DhizukuHelper {
     }
 
     fun setAppSuspended(context: Context, packageName: String, suspended: Boolean): Boolean {
-        Packages(context).getApplicationInfoOrNull(packageName) ?: return false
-        val userId = Packages(context).myUserId
+        val pkgs = Packages(context)
+        pkgs.getApplicationInfoOrNull(packageName) ?: return false
+        val userId = pkgs.myUserId
 
         // 1. Try shell first
         val command = if (suspended) {
@@ -391,8 +431,8 @@ object DhizukuHelper {
             if (reflectionResult) return true
         }
 
-        // 3. Unprivileged fallback
-        val currentSuspended = Packages(context).getApplicationInfoOrNull(packageName)?.run {
+        // 3. Unprivileged fallback (re-query PM to observe post-mutation state)
+        val currentSuspended = pkgs.getApplicationInfoOrNull(packageName)?.run {
             (flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED) != 0
         } ?: false
         return currentSuspended == suspended
