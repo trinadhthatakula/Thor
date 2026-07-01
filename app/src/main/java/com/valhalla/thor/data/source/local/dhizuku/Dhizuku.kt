@@ -19,8 +19,13 @@ import java.util.concurrent.TimeUnit
  */
 object DhizukuHelper {
 
-    /** Upper bound for a single command; a hung child is killed instead of pinning the caller forever. */
-    private const val EXECUTE_TIMEOUT_MS = 60_000L
+    /**
+     * Hang backstop for a single command: a stuck child is killed instead of pinning the caller
+     * forever. Deliberately generous (5 min) because valid slow operations run through here —
+     * notably `pm install` of large/split APKs on slow devices — and must not be killed. This
+     * bounds infinite hangs, it does NOT enforce a tight SLA.
+     */
+    private const val EXECUTE_TIMEOUT_MS = 300_000L
 
     /** Grace period for reader threads to drain their streams after the process has exited/been destroyed. */
     private const val READER_JOIN_TIMEOUT_MS = 5_000L
@@ -209,13 +214,16 @@ object DhizukuHelper {
     fun execute(command: String): Pair<Int, String?> = runCatching {
         // Dhizuku 2.x supports newProcess for shell commands
         val process = DhizukuAPI.newProcess(arrayOf("sh", "-c", command), null, null)
-        var output = ""
-        var error = ""
+        // Volatile via AtomicReference: the reader threads publish into these, and the timeout
+        // path may read them after a join() that timed out (no happens-before), so a plain local
+        // var could observe a stale/torn value.
+        val output = java.util.concurrent.atomic.AtomicReference("")
+        val error = java.util.concurrent.atomic.AtomicReference("")
 
         // Daemon so a stuck read on a hung child can never keep the process/VM alive.
         val outThread = Thread {
             runCatching {
-                output = process.inputStream.bufferedReader().use { it.readText() }
+                output.set(process.inputStream.bufferedReader().use { it.readText() })
             }.onFailure { err ->
                 Logger.e("Dhizuku", "Failed to read standard output", err)
             }
@@ -223,7 +231,7 @@ object DhizukuHelper {
 
         val errThread = Thread {
             runCatching {
-                error = process.errorStream.bufferedReader().use { it.readText() }
+                error.set(process.errorStream.bufferedReader().use { it.readText() })
             }.onFailure { err ->
                 Logger.e("Dhizuku", "Failed to read error output", err)
             }
@@ -234,9 +242,10 @@ object DhizukuHelper {
             outThread.start()
             errThread.start()
 
-            // Bounded, cancellation-aware wait: Process.waitFor(timeout, unit) blocks, but a
-            // coroutine cancellation (via runInterruptible) or an explicit interrupt surfaces as
-            // InterruptedException and aborts the wait.
+            // Bounded wait: DhizukuRemoteProcess.waitFor(timeout, unit) delegates to a synchronous
+            // binder transact() that does NOT respond to Thread.interrupt(). The ONLY bound is
+            // EXECUTE_TIMEOUT_MS; this is a hang backstop, not coroutine-cancellation-interruptible.
+            // The InterruptedException catch below is harmless defensive code, not a live path.
             val exited = try {
                 process.waitFor(EXECUTE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             } catch (e: InterruptedException) {
@@ -250,7 +259,7 @@ object DhizukuHelper {
                 // Give the readers a bounded window to drain, then stop waiting on them.
                 outThread.join(READER_JOIN_TIMEOUT_MS)
                 errThread.join(READER_JOIN_TIMEOUT_MS)
-                exitCode to (output.ifBlank { error })
+                exitCode to (output.get().ifBlank { error.get() })
             } else {
                 timedOut = true
                 Logger.e(
@@ -264,7 +273,7 @@ object DhizukuHelper {
                 outThread.join(READER_JOIN_TIMEOUT_MS)
                 errThread.join(READER_JOIN_TIMEOUT_MS)
                 -1 to "Command timed out after ${EXECUTE_TIMEOUT_MS}ms".let { msg ->
-                    output.ifBlank { error }.ifBlank { msg }
+                    output.get().ifBlank { error.get() }.ifBlank { msg }
                 }
             }
         } finally {
