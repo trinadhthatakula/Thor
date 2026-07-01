@@ -3,8 +3,8 @@ package com.valhalla.thor.domain.repository
 interface SystemRepository {
 
     suspend fun isRootAvailable(): Boolean
-    fun isShizukuAvailable(): Boolean
-    fun isDhizukuAvailable(): Boolean
+    suspend fun isShizukuAvailable(): Boolean
+    suspend fun isDhizukuAvailable(): Boolean
 
     // Core Actions
     suspend fun forceStopApp(packageName: String): Result<Unit>

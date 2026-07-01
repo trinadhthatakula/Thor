@@ -3,6 +3,8 @@ package com.valhalla.thor.data.gateway
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuReflector
 import com.valhalla.thor.domain.gateway.SystemGateway
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Single
 import com.valhalla.thor.util.Logger
 import com.valhalla.superuser.ShellUtils
@@ -17,10 +19,12 @@ class DhizukuSystemGateway(
 
     override suspend fun isRootAvailable() = false
 
-    override fun isShizukuAvailable(): Boolean = false
+    override suspend fun isShizukuAvailable(): Boolean = false
 
-    override fun isDhizukuAvailable(): Boolean {
-        return DhizukuHelper.isDhizukuAvailable()
+    // DhizukuHelper.isDhizukuAvailable() performs blocking binder IPC (DhizukuAPI); confine it
+    // to IO at the gateway boundary so this probe is main-safe regardless of the caller's dispatcher.
+    override suspend fun isDhizukuAvailable(): Boolean = withContext(Dispatchers.IO) {
+        DhizukuHelper.isDhizukuAvailable()
     }
 
     override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> {

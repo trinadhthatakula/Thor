@@ -4,6 +4,8 @@ import android.content.pm.PackageManager
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
 import com.valhalla.thor.domain.gateway.SystemGateway
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Single
 import rikka.shizuku.Shizuku
 import com.valhalla.thor.data.source.local.shizuku.Shizuku as ShizukuHelper
@@ -20,15 +22,17 @@ class ShizukuSystemGateway(
 
     override suspend fun isRootAvailable() = false
 
-    override fun isShizukuAvailable(): Boolean {
-        return try {
+    // Shizuku.checkSelfPermission()/pingBinder() are blocking binder IPC; confine them to IO
+    // at the gateway boundary so this probe is main-safe regardless of the caller's dispatcher.
+    override suspend fun isShizukuAvailable(): Boolean = withContext(Dispatchers.IO) {
+        try {
             Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED && Shizuku.pingBinder()
         } catch (_: Exception) {
             false
         }
     }
 
-    override fun isDhizukuAvailable(): Boolean = false
+    override suspend fun isDhizukuAvailable(): Boolean = false
 
     override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> {
         // Runs through Shizuku's privileged process (shell uid), same path as in-app actions.
