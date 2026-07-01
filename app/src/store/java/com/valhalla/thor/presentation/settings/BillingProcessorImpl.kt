@@ -21,6 +21,7 @@ import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -248,5 +249,14 @@ class BillingProcessorImpl(
 
     override fun dismissThankYouDialog() {
         _showThankYouDialog.value = false
+    }
+
+    override fun close() {
+        try {
+            billingClient.endConnection()
+        } catch (e: Exception) {
+            Logger.e("BillingProcessor", "Error ending billing connection", e)
+        }
+        scope.cancel()
     }
 }

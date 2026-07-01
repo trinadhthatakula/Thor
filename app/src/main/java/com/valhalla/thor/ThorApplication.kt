@@ -10,6 +10,7 @@ import com.valhalla.bypass.Bypass
 import com.valhalla.thor.core.ThorShellConfig
 import com.valhalla.thor.data.service.AutoFreezeManager
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.utils.AppIconFetcher
 import com.valhalla.thor.presentation.utils.AppIconKeyer
 import com.valhalla.thor.util.LocaleManager
@@ -42,6 +43,7 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
     private val preferenceRepository: PreferenceRepository by inject()
     private val localeManager: LocaleManager by inject()
     private val autoFreezeManager: AutoFreezeManager by inject()
+    private val billingProcessor: BillingProcessor by inject()
 
     override fun onCreate() {
         super.onCreate()
@@ -72,5 +74,13 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
                 localeManager.applyLocale(prefs.language)
             }
         }
+    }
+
+    override fun onTerminate() {
+        // Tear down the app-lifetime billing client + coroutine scope so the Play billing
+        // service binding and scope don't outlive the process. onTerminate is only guaranteed
+        // on emulators, but it is the correct application-lifetime teardown hook.
+        billingProcessor.close()
+        super.onTerminate()
     }
 }

@@ -3,7 +3,7 @@ package com.valhalla.thor.presentation.settings
 import android.app.Activity
 import kotlinx.coroutines.flow.StateFlow
 
-interface BillingProcessor {
+interface BillingProcessor : AutoCloseable {
     val isBillingAvailable: StateFlow<Boolean>
     val products: StateFlow<List<BillingProduct>>
     val activeSubscription: StateFlow<ActiveSubscription?>
@@ -16,6 +16,12 @@ interface BillingProcessor {
         oldProductId: String? = null
     )
     fun dismissThankYouDialog()
+
+    /**
+     * Tears down any long-lived resources (Play billing connection, coroutine scope).
+     * Invoked from the application lifecycle. No-op for flavors without a real billing client.
+     */
+    override fun close()
 }
 
 data class BillingProduct(
