@@ -810,8 +810,8 @@ private fun ActionItem(
 private fun GeneralTabScreen(details: DetailedAppInfo) {
     val appInfo = details.appInfo
     val context = LocalContext.current
-    val installTime = remember(appInfo.firstInstallTime) { formatTime(appInfo.firstInstallTime, context) }
-    val lastUpdateTime = remember(appInfo.lastUpdateTime) { formatTime(appInfo.lastUpdateTime, context) }
+    val installTime = remember(appInfo.firstInstallTime, context) { formatTime(appInfo.firstInstallTime, context) }
+    val lastUpdateTime = remember(appInfo.lastUpdateTime, context) { formatTime(appInfo.lastUpdateTime, context) }
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
