@@ -10,9 +10,21 @@ import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
 import java.text.NumberFormat
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 import com.valhalla.thor.util.Logger
 
 object Shizuku {
+
+    /**
+     * Hang backstop for a single privileged command: a stuck child is killed instead of pinning
+     * the caller forever. Deliberately generous (5 min) because valid slow operations run through
+     * here — notably `pm install` of large/split APKs on slow devices — and must not be killed.
+     * This bounds infinite hangs, it does NOT enforce a tight SLA.
+     */
+    private const val EXECUTE_TIMEOUT_MS = 300_000L
+
+    /** Grace period for reader threads to drain their streams after the process has exited/been destroyed. */
+    private const val READER_JOIN_TIMEOUT_MS = 5_000L
 
     val isRoot get() = Shizuku.getUid() == 0
 
@@ -39,7 +51,8 @@ object Shizuku {
         }
 
     fun forceStopApp(context: Context, packageName: String): Boolean {
-        val userId = Packages(context).myUserId
+        val pkgs = Packages(context)
+        val userId = pkgs.myUserId
         // 1. Try shell first
         val result = execute("am force-stop --user $userId $packageName")
         if (result.first == 0) return true
@@ -57,19 +70,20 @@ object Shizuku {
         }
         if (reflectionResult) return true
 
-        // 3. Unprivileged fallback
-        if (Packages(context).isAppStopped(packageName)) return true
+        // 3. Unprivileged fallback (re-query PM to observe post-mutation state)
+        if (pkgs.isAppStopped(packageName)) return true
         runCatching {
             val am =
                 context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
             am?.killBackgroundProcesses(packageName)
         }
-        return Packages(context).isAppStopped(packageName)
+        return pkgs.isAppStopped(packageName)
     }
 
     fun setAppDisabled(context: Context, packageName: String, disabled: Boolean): Boolean {
-        Packages(context).getApplicationInfoOrNull(packageName) ?: return false
-        val userId = Packages(context).myUserId
+        val pkgs = Packages(context)
+        pkgs.getApplicationInfoOrNull(packageName) ?: return false
+        val userId = pkgs.myUserId
 
         // 1. Try shell first
         val command = if (disabled) {
@@ -78,7 +92,7 @@ object Shizuku {
             "pm enable --user $userId $packageName"
         }
         val result = execute(command)
-        if (result.first == 0 && Packages(context).isAppDisabled(packageName) == disabled) {
+        if (result.first == 0 && pkgs.isAppDisabled(packageName) == disabled) {
             return true
         }
 
@@ -111,12 +125,12 @@ object Shizuku {
             true
         }.getOrDefault(false)
 
-        if (reflectionResult && Packages(context).isAppDisabled(packageName) == disabled) {
+        if (reflectionResult && pkgs.isAppDisabled(packageName) == disabled) {
             return true
         }
 
-        // 3. Unprivileged fallback
-        if (Packages(context).isAppDisabled(packageName) == disabled) {
+        // 3. Unprivileged fallback (re-query PM to observe post-mutation state)
+        if (pkgs.isAppDisabled(packageName) == disabled) {
             return true
         }
         val newState = if (disabled) {
@@ -128,12 +142,13 @@ object Shizuku {
             context.packageManager.setApplicationEnabledSetting(packageName, newState, 0)
         }
 
-        return Packages(context).isAppDisabled(packageName) == disabled
+        return pkgs.isAppDisabled(packageName) == disabled
     }
 
     fun setAppSuspended(context: Context, packageName: String, suspended: Boolean): Boolean {
-        Packages(context).getApplicationInfoOrNull(packageName) ?: return false
-        val userId = Packages(context).myUserId
+        val pkgs = Packages(context)
+        pkgs.getApplicationInfoOrNull(packageName) ?: return false
+        val userId = pkgs.myUserId
 
         // 1. Try shell first
         val command = if (suspended) {
@@ -223,8 +238,8 @@ object Shizuku {
             if (reflectionResult) return true
         }
 
-        // 3. Unprivileged fallback
-        val currentSuspended = Packages(context).getApplicationInfoOrNull(packageName)?.run {
+        // 3. Unprivileged fallback (re-query PM to observe post-mutation state)
+        val currentSuspended = pkgs.getApplicationInfoOrNull(packageName)?.run {
             (flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED) != 0
         } ?: false
         return currentSuspended == suspended
@@ -390,25 +405,30 @@ object Shizuku {
         IShizukuService.Stub.asInterface(binder)
             .newProcess(arrayOf(if (root) "su" else "sh"), null, null)
             .run {
-                var output = ""
-                var error = ""
+                // Volatile via AtomicReference: the reader threads publish into these, and the
+                // timeout path may read them after a join() that timed out (no happens-before),
+                // so a plain local var could observe a stale/torn value.
+                val output = java.util.concurrent.atomic.AtomicReference("")
+                val error = java.util.concurrent.atomic.AtomicReference("")
 
+                // Daemon so a stuck read on a hung child can never keep the process/VM alive.
                 val outThread = Thread {
                     runCatching {
-                        output = inputStream.text
+                        output.set(inputStream.text)
                     }.onFailure { err ->
                         Logger.e("Shizuku", "Failed to read standard output", err)
                     }
-                }
+                }.apply { isDaemon = true }
 
                 val errThread = Thread {
                     runCatching {
-                        error = errorStream.text
+                        error.set(errorStream.text)
                     }.onFailure { err ->
                         Logger.e("Shizuku", "Failed to read error output", err)
                     }
-                }
+                }.apply { isDaemon = true }
 
+                var timedOut = false
                 try {
                     outThread.start()
                     errThread.start()
@@ -422,14 +442,54 @@ object Shizuku {
                         Logger.e("Shizuku", "Failed to write command to process outputStream", err)
                     }
 
-                    val exitCode = waitFor()
+                    // Bounded wait: waitForTimeout is a synchronous binder transact() that does
+                    // NOT respond to Thread.interrupt(). The ONLY bound is EXECUTE_TIMEOUT_MS; this
+                    // is a hang backstop, not coroutine-cancellation-interruptible. The
+                    // InterruptedException catch below is harmless defensive code, not a live path.
+                    val exited = try {
+                        waitForTimeout(EXECUTE_TIMEOUT_MS, TimeUnit.MILLISECONDS.name)
+                    } catch (e: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        Logger.e("Shizuku", "Command wait interrupted: $command", e)
+                        false
+                    }
 
-                    outThread.join()
-                    errThread.join()
-
-                    exitCode to output.ifBlank { error }
+                    if (exited) {
+                        val exitCode = waitFor()
+                        // Give the readers a bounded window to drain, then stop waiting on them.
+                        outThread.join(READER_JOIN_TIMEOUT_MS)
+                        errThread.join(READER_JOIN_TIMEOUT_MS)
+                        exitCode to output.get().ifBlank { error.get() }
+                    } else {
+                        timedOut = true
+                        Logger.e(
+                            "Shizuku",
+                            "Command timed out after ${EXECUTE_TIMEOUT_MS}ms, destroying process: $command"
+                        )
+                        // Close the FDs first: this unblocks the reader threads immediately,
+                        // even if destroy() (a binder call) later hangs. Killing before closing
+                        // would block the timeout path on a stuck destroy while readers stay stuck.
+                        runCatching { inputStream.close() }
+                        runCatching { errorStream.close() }
+                        runCatching { outputStream.close() }
+                        outThread.interrupt()
+                        errThread.interrupt()
+                        outThread.join(READER_JOIN_TIMEOUT_MS)
+                        errThread.join(READER_JOIN_TIMEOUT_MS)
+                        // Readers are already free; now request the (possibly slow) kill.
+                        runCatching { destroy() }
+                        -1 to "Command timed out after ${EXECUTE_TIMEOUT_MS}ms".let { msg ->
+                            output.get().ifBlank { error.get() }.ifBlank { msg }
+                        }
+                    }
                 } finally {
-                    destroy()
+                    // Always tear the process down (idempotent even if already destroyed on timeout).
+                    if (!timedOut) runCatching { destroy() }
+                    // Close the FDs explicitly (each guarded): releases file descriptors and
+                    // unblocks the reader threads even if destroy() (a binder call) hangs or fails.
+                    runCatching { inputStream.close() }
+                    runCatching { errorStream.close() }
+                    runCatching { outputStream.close() }
                 }
             }
     }.getOrElse { err ->

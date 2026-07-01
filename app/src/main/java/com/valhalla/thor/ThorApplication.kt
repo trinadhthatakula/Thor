@@ -10,6 +10,7 @@ import com.valhalla.bypass.Bypass
 import com.valhalla.thor.core.ThorShellConfig
 import com.valhalla.thor.data.service.AutoFreezeManager
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.utils.AppIconFetcher
 import com.valhalla.thor.presentation.utils.AppIconKeyer
 import com.valhalla.thor.util.LocaleManager
@@ -43,6 +44,12 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
     private val localeManager: LocaleManager by inject()
     private val autoFreezeManager: AutoFreezeManager by inject()
 
+    // Keep the Lazy handle so we can tear the billing client down only if it was actually
+    // created this run — resolving the delegate would otherwise spin up a billing connection at
+    // shutdown, the opposite of what we want.
+    private val billingProcessorLazy = inject<BillingProcessor>()
+    private val billingProcessor by billingProcessorLazy
+
     override fun onCreate() {
         super.onCreate()
         com.valhalla.thor.extension.api.Logger.isDebug = BuildConfig.DEBUG
@@ -72,5 +79,17 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
                 localeManager.applyLocale(prefs.language)
             }
         }
+    }
+
+    override fun onTerminate() {
+        // Tear down the app-lifetime billing client + coroutine scope so the Play billing
+        // service binding and scope don't outlive the process. onTerminate is only guaranteed
+        // on emulators, but it is the correct application-lifetime teardown hook.
+        // Only close if the singleton was already created this run; touching the delegate
+        // otherwise would initialize billing at shutdown.
+        if (billingProcessorLazy.isInitialized()) {
+            billingProcessor.close()
+        }
+        super.onTerminate()
     }
 }

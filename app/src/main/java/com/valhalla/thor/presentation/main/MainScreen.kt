@@ -53,7 +53,10 @@ import androidx.window.core.layout.WindowSizeClass
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.navigation3.rememberListDetailSceneStrategy
 import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
@@ -203,46 +206,49 @@ fun MainScreen(
     val shareApp = stringResource(R.string.share_app)
 
     // 4. Handle Side Effects
-    LaunchedEffect(Unit) {
-        mainViewModel.effect.collect { effect ->
-            when (effect) {
-                is MainSideEffect.LaunchApp -> {
-                    val intent =
-                        context.packageManager.getLaunchIntentForPackage(effect.packageName)
-                    if (intent != null) context.startActivity(intent)
-                    else Toast.makeText(context, canNotLaunchApp, Toast.LENGTH_SHORT).show()
-                }
-
-                is MainSideEffect.OpenAppSettings -> {
-                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                        data = "package:${effect.packageName}".toUri()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            mainViewModel.effect.collect { effect ->
+                when (effect) {
+                    is MainSideEffect.LaunchApp -> {
+                        val intent =
+                            context.packageManager.getLaunchIntentForPackage(effect.packageName)
+                        if (intent != null) context.startActivity(intent)
+                        else Toast.makeText(context, canNotLaunchApp, Toast.LENGTH_SHORT).show()
                     }
-                    context.startActivity(intent)
-                }
 
-                is MainSideEffect.ShareApp -> {
-                    val intent = Intent(Intent.ACTION_SEND).apply {
-                        type = "application/vnd.android.package-archive"
-                        putExtra(Intent.EXTRA_STREAM, effect.uri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    is MainSideEffect.OpenAppSettings -> {
+                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = "package:${effect.packageName}".toUri()
+                        }
+                        context.startActivity(intent)
                     }
-                    context.startActivity(Intent.createChooser(intent, shareApp))
-                }
 
-                is MainSideEffect.ShareApps -> {
-                    val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                        type = "*/*"
-                        putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(effect.uris))
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    is MainSideEffect.ShareApp -> {
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "application/vnd.android.package-archive"
+                            putExtra(Intent.EXTRA_STREAM, effect.uri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(Intent.createChooser(intent, shareApp))
                     }
-                    context.startActivity(Intent.createChooser(intent, shareApp))
-                }
 
-                is MainSideEffect.NormalUninstall -> {
-                    val intent = Intent(Intent.ACTION_DELETE).apply {
-                        data = "package:${effect.packageName}".toUri()
+                    is MainSideEffect.ShareApps -> {
+                        val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                            type = "*/*"
+                            putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(effect.uris))
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(Intent.createChooser(intent, shareApp))
                     }
-                    context.startActivity(intent)
+
+                    is MainSideEffect.NormalUninstall -> {
+                        val intent = Intent(Intent.ACTION_DELETE).apply {
+                            data = "package:${effect.packageName}".toUri()
+                        }
+                        context.startActivity(intent)
+                    }
                 }
             }
         }

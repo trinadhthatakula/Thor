@@ -29,9 +29,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import org.koin.core.annotation.Single
 import java.io.File
 import java.io.FileOutputStream
@@ -46,58 +43,61 @@ class InstallerRepositoryImpl(
     private val shizukuReflector: ShizukuReflector
 ) : InstallerRepository {
 
-    @Serializable
-    private data class XapkManifest(
-        @SerialName("split_apks") val splitApks: List<XapkSplitApk> = emptyList()
-    )
-
-    @Serializable
-    private data class XapkSplitApk(
-        @SerialName("file") val file: String,
-        @SerialName("id") val id: String
-    )
-
-    private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
-
     private val defaultInstaller = context.packageManager.packageInstaller
 
     /**
-     * Returns the ordered list of APK filenames to install from an XAPK bundle.
-     * Uses manifest.json split_apks if present; falls back to all .apk entries.
+     * Returns the ordered list of APK filenames to install from a genuine bundle
+     * (XAPK/.apks/.apkm), or null when the file is a monolithic APK that must be
+     * streamed whole.
+     *
+     * A monolithic APK carries its own top-level AndroidManifest.xml (GH#207); it
+     * must never be split by its inner .apk assets. For real bundles we prefer the
+     * manifest.json split list, and otherwise order the .apk entries so the base
+     * comes first and config splits last (GH#159).
      */
     private fun resolveXapkApkFiles(uri: Uri): List<String>? {
         if (!isZipBundle(uri)) return null
         return try {
             var manifestBytes: ByteArray? = null
-            val allApkNames = mutableListOf<String>()
+            val entryNames = mutableListOf<String>()
 
             context.contentResolver.openInputStream(uri)?.use { inputStream ->
                 ZipInputStream(inputStream).use { zipStream ->
                     var entry = zipStream.nextEntry
                     while (entry != null) {
-                        when {
-                            entry.name.equals("manifest.json", ignoreCase = true) ->
-                                manifestBytes = zipStream.readBytes()
-
-                            !entry.isDirectory && entry.name.endsWith(".apk", ignoreCase = true) ->
-                                allApkNames += entry.name
-
-                            else -> zipStream.closeEntry()
+                        if (!entry.isDirectory) entryNames += entry.name
+                        if (entry.name.equals("manifest.json", ignoreCase = true)) {
+                            manifestBytes = zipStream.readBytes()
+                            zipStream.closeEntry()
+                        } else {
+                            zipStream.closeEntry()
                         }
-                        zipStream.nextEntry.also { entry = it }
+                        entry = zipStream.nextEntry
                     }
                 }
             }
 
-            manifestBytes?.let { bytes ->
-                try {
-                    val files =
-                        json.decodeFromString<XapkManifest>(String(bytes)).splitApks.map { it.file }
-                    if (files.isEmpty()) null else files
-                } catch (_: Exception) {
-                    null
+            // Monolithic-APK gate (GH#207): a file with a top-level AndroidManifest.xml
+            // is a single APK — stream it whole via the monolithic path (null).
+            if (isMonolithicApk(entryNames)) return null
+
+            // Prefer the manifest.json split_apks list for a genuine XAPK — but only when
+            // every declared split actually exists in the archive. A stale/partial manifest
+            // (splits renamed, removed, or never packaged) must not shadow the entry-scan
+            // recovery path below, or extraction would yield nothing and the install fails.
+            val manifest = manifestBytes?.let { parseXapkManifest(String(it)) }
+            val manifestFiles = manifest?.splitApkFiles()?.takeIf { it.isNotEmpty() }
+            if (manifestFiles != null) {
+                val availableNames = entryNames.mapTo(HashSet()) { it.substringAfterLast('/') }
+                if (manifestFiles.all { it.substringAfterLast('/') in availableNames }) {
+                    return manifestFiles
                 }
-            } ?: allApkNames.ifEmpty { null }
+            }
+
+            // No usable manifest: order the .apk entries base-first, splits last so
+            // install-multiple gets a valid base (GH#159). selectBaseApkCandidates is
+            // empty only when there are no .apk entries at all → treat as monolithic.
+            selectBaseApkCandidates(entryNames, manifest?.packageName).ifEmpty { null }
         } catch (_: Exception) {
             null
         }

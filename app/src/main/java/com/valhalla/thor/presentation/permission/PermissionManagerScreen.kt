@@ -35,7 +35,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
@@ -52,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.navigation3.ui.LocalNavAnimatedContentScope
@@ -72,7 +72,7 @@ fun PermissionManagerScreen(
     onBack: () -> Unit,
     viewModel: PermissionManagerViewModel = koinViewModel()
 ) {
-    val state by viewModel.uiState.collectAsState()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     LaunchedEffect(packageName) {
@@ -141,33 +141,39 @@ fun PermissionManagerScreen(
                     androidx.compose.material3.CircularProgressIndicator()
                 }
             } else {
-                // Filter the permissions
-                val filteredList = state.permissions.filter {
-                    it.name.contains(state.searchQuery, ignoreCase = true) ||
-                            it.label.contains(state.searchQuery, ignoreCase = true)
+                // Filter + classify the permissions once; recompute only when inputs change.
+                val classified = remember(state.permissions, state.searchQuery) {
+                    val filteredList = state.permissions.filter {
+                        it.name.contains(state.searchQuery, ignoreCase = true) ||
+                                it.label.contains(state.searchQuery, ignoreCase = true)
+                    }
+
+                    val runtimePermissions = filteredList.filter { it.isRuntime }
+
+                    @Suppress("DEPRECATION")
+                    val normalPermissions = filteredList.filter {
+                        if (it.isRuntime) return@filter false
+                        val base =
+                            it.protectionLevel and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE
+                        base == android.content.pm.PermissionInfo.PROTECTION_NORMAL ||
+                                base == android.content.pm.PermissionInfo.PROTECTION_DANGEROUS
+                    }
+
+                    @Suppress("DEPRECATION")
+                    val signaturePermissions = filteredList.filter {
+                        if (it.isRuntime) return@filter false
+                        val base =
+                            it.protectionLevel and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE
+                        base == android.content.pm.PermissionInfo.PROTECTION_SIGNATURE ||
+                                base == android.content.pm.PermissionInfo.PROTECTION_SIGNATURE_OR_SYSTEM ||
+                                base == android.content.pm.PermissionInfo.PROTECTION_INTERNAL
+                    }
+                    Triple(runtimePermissions, normalPermissions, signaturePermissions)
                 }
 
-                // Split into categories
-                val runtimePermissions = filteredList.filter { it.isRuntime }
-
-                @Suppress("DEPRECATION")
-                val normalPermissions = filteredList.filter {
-                    if (it.isRuntime) return@filter false
-                    val base =
-                        it.protectionLevel and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE
-                    base == android.content.pm.PermissionInfo.PROTECTION_NORMAL ||
-                            base == android.content.pm.PermissionInfo.PROTECTION_DANGEROUS
-                }
-
-                @Suppress("DEPRECATION")
-                val signaturePermissions = filteredList.filter {
-                    if (it.isRuntime) return@filter false
-                    val base =
-                        it.protectionLevel and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE
-                    base == android.content.pm.PermissionInfo.PROTECTION_SIGNATURE ||
-                            base == android.content.pm.PermissionInfo.PROTECTION_SIGNATURE_OR_SYSTEM ||
-                            base == android.content.pm.PermissionInfo.PROTECTION_INTERNAL
-                }
+                val (runtimePermissions, normalPermissions, signaturePermissions) = classified
+                val filteredIsEmpty =
+                    runtimePermissions.isEmpty() && normalPermissions.isEmpty() && signaturePermissions.isEmpty()
                 val displayedLists = when (selectedTab) {
                     0 -> Triple(runtimePermissions, normalPermissions, signaturePermissions)
                     1 -> Triple(runtimePermissions, emptyList(), emptyList())
@@ -175,7 +181,7 @@ fun PermissionManagerScreen(
                     else -> Triple(emptyList(), emptyList(), signaturePermissions)
                 }
 
-                if (filteredList.isEmpty() || (displayedLists.first.isEmpty() && displayedLists.second.isEmpty() && displayedLists.third.isEmpty())) {
+                if (filteredIsEmpty || (displayedLists.first.isEmpty() && displayedLists.second.isEmpty() && displayedLists.third.isEmpty())) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()

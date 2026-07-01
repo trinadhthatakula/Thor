@@ -18,6 +18,7 @@ import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -73,6 +74,7 @@ class AppListViewModel(
     private val freezerRepository: FreezerRepository
 ) : ViewModel() {
 
+    private var appsJob: Job? = null
     private val _rawState = MutableStateFlow(AppListUiState())
 
     // Combine raw app data with user preferences from DataStore
@@ -100,15 +102,25 @@ class AppListViewModel(
     }
 
     fun loadApps() {
-        viewModelScope.launch {
+        // Cancel any existing collector so the prior (infinite) getInstalledAppsUseCase()
+        // callbackFlow tears down (awaitClose -> unregister receivers) before we relaunch.
+        appsJob?.cancel()
+
+        appsJob = viewModelScope.launch {
             _rawState.update { it.copy(isLoading = true) }
 
             // Allow navigation/bottom bar animations to finish fluidly
             delay(800.milliseconds)
 
-            val hasRoot = systemRepository.isRootAvailable()
-            val hasShizuku = systemRepository.isShizukuAvailable()
-            val hasDhizuku = systemRepository.isDhizukuAvailable()
+            // Availability probes include non-suspend binder IPC (Shizuku / Dhizuku);
+            // keep them off the Main thread so app-list load never janks.
+            val (hasRoot, hasShizuku, hasDhizuku) = withContext(Dispatchers.IO) {
+                Triple(
+                    systemRepository.isRootAvailable(),
+                    systemRepository.isShizukuAvailable(),
+                    systemRepository.isDhizukuAvailable()
+                )
+            }
             getInstalledAppsUseCase().collect { (user, system) ->
                 _rawState.update {
                     it.copy(

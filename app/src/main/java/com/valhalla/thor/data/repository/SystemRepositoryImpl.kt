@@ -24,9 +24,11 @@ class SystemRepositoryImpl(
         rootGateway.isRootAvailable()
     }
 
-    override fun isShizukuAvailable(): Boolean = shizukuGateway.isShizukuAvailable()
+    // The gateway probes confine their blocking binder IPC to IO themselves, so no extra
+    // withContext(IO) hop is needed here (that would only double-dispatch).
+    override suspend fun isShizukuAvailable(): Boolean = shizukuGateway.isShizukuAvailable()
 
-    override fun isDhizukuAvailable(): Boolean = dhizukuGateway.isDhizukuAvailable()
+    override suspend fun isDhizukuAvailable(): Boolean = dhizukuGateway.isDhizukuAvailable()
 
     // Dynamic Resolution Strategy: Respect user preference if available, else auto-detect.
     // Must be suspend because checking root and reading preferences are suspend operations.

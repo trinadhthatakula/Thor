@@ -13,10 +13,12 @@ import com.valhalla.thor.domain.repository.InstallerRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.R
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
 
 @KoinViewModel
@@ -56,11 +58,20 @@ class InstallerViewModel(
             result.fold(
                 onSuccess = { meta ->
                     currentPackageName = meta.packageName
-                    checkPrivilegeAndModes(meta.packageName)
-                    
-                    val existing = runCatching {
-                        packageManager.getPackageInfo(meta.packageName, 0)
-                    }.getOrNull()
+
+                    // getPackageInfo() and the privilege checks in checkPrivilegeAndModes()
+                    // (isShizukuAvailable()/isDhizukuAvailable() are synchronous binder IPC)
+                    // must not run on the main thread.
+                    val existing = withContext(Dispatchers.IO) {
+                        // Privilege detection is best-effort: an unexpected repository/
+                        // binder IPC exception must not crash package parsing. On failure
+                        // the available modes simply stay at their defaults (NORMAL) and
+                        // parsing still proceeds to getPackageInfo so the user can install.
+                        runCatching { checkPrivilegeAndModes(meta.packageName) }
+                        runCatching {
+                            packageManager.getPackageInfo(meta.packageName, 0)
+                        }.getOrNull()
+                    }
 
                     isUpdateOperation = existing != null
                     isDowngrade = if (existing != null) {
