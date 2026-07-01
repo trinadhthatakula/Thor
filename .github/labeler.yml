@@ -1,0 +1,69 @@
+# Path-based auto-labeling for PRs (actions/labeler v5).
+# Applies `area:` + dependency/docs labels based on changed files.
+# `mode:` labels are intentionally left for issue triage (they describe repro, not code area).
+
+"area: installer":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "app/src/**/installer/**"
+          - "app/src/**/AppAnalyzer*"
+          - "app/src/**/InstallerRepository*"
+          - "app/src/**/BundleAnalysis*"
+          - "app/src/**/ApksMetadataGenerator*"
+          - "app/src/**/PackageVerifier*"
+
+"area: freezer":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "app/src/**/freezer/**"
+          - "app/src/**/tile/**"
+          - "app/src/**/AutoFreezeManager*"
+          - "app/src/**/Freezer*"
+
+"area: permissions":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "app/src/**/permission/**"
+          - "app/src/**/PermissionRepository*"
+
+"area: extensions":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "app/src/**/extension/**"
+          - "app/src/**/Extension*"
+
+"area: localization":
+  - changed-files:
+      - any-glob-to-any-file:
+          # values-* only — the base values/ dir holds non-translatable colors/dimens/themes.
+          - "app/src/**/res/values-*/**"
+          - "**/strings.xml"
+
+"area: billing":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "app/src/**/*Billing*"
+          - "app/src/**/SupportDeveloper*"
+
+"area: ui/ux":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "app/src/**/theme/**"
+          - "app/src/**/widgets/**"
+          - "app/src/**/components/**"
+          - "app/src/**/*Screen.kt"
+          - "app/src/**/res/drawable*/**"
+          - "app/src/**/res/layout*/**"
+
+"dependencies":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "gradle/libs.versions.toml"
+          - "**/build.gradle.kts"
+          - "gradle/wrapper/**"
+
+"documentation":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.md"
+          - "release-notes/**"

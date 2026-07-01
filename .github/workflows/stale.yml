@@ -1,0 +1,35 @@
+name: Close stale needs-info issues
+
+# Conservative: ONLY touches issues labelled "needs info" (waiting on the reporter).
+# Feature requests, confirmed bugs, and PRs are never auto-closed by this workflow.
+
+on:
+  schedule:
+    - cron: "30 3 * * *"   # daily, 03:30 UTC
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          only-labels: "needs info"
+          days-before-stale: 21
+          days-before-close: 7
+          stale-issue-label: "stale"
+          exempt-issue-labels: "confirmed,priority: high"
+          stale-issue-message: >
+            This issue has been waiting on additional information for 21 days, so it's been marked
+            stale. If it's still relevant, please add the requested details — otherwise it will be
+            closed in 7 days. Thanks!
+          close-issue-message: >
+            Closing due to inactivity (no response to the info request). Comment with the details
+            any time and we'll be happy to reopen and take another look.
+          # Never touch pull requests with this workflow.
+          days-before-pr-stale: -1
+          days-before-pr-close: -1

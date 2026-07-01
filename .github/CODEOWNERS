@@ -1,0 +1,10 @@
+# Code owners for Thor. Listed owners are auto-requested for review on matching paths.
+# Docs: https://docs.github.com/articles/about-code-owners
+
+# Default owner for everything in the repository
+*                       @trinadhthatakula
+
+# Release-gating / CI config — always flag for maintainer review
+/.github/                @trinadhthatakula
+/gradle.properties       @trinadhthatakula
+/release-notes/          @trinadhthatakula
