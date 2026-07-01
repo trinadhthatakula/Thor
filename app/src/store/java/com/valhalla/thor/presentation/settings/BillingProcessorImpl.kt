@@ -251,6 +251,16 @@ class BillingProcessorImpl(
         _showThankYouDialog.value = false
     }
 
+    /**
+     * TERMINAL teardown — safe ONLY at process shutdown (e.g. [android.app.Application.onTerminate]).
+     *
+     * This is a Koin `@Single`, so the same instance is reused for the whole process. Both the
+     * [billingClient] (via [BillingClient.endConnection]) and [scope] (via cancel) are disposed
+     * permanently and CANNOT be restarted on this instance. Do NOT call this mid-lifecycle
+     * (e.g. on Support-sheet dismissal): a later billing interaction would then use a dead client
+     * and a cancelled scope. A dismissal-driven teardown would first require changing the Koin
+     * binding to factory/scoped, or making the client + scope lazily recreatable.
+     */
     override fun close() {
         try {
             billingClient.endConnection()

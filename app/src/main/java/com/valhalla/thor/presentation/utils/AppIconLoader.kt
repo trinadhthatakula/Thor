@@ -16,6 +16,7 @@ import coil3.fetch.Fetcher
 import coil3.fetch.ImageFetchResult
 import coil3.key.Keyer
 import coil3.request.Options
+import coil3.request.bitmapConfig
 import coil3.size.pxOrElse
 import java.io.File
 import java.io.FileOutputStream
@@ -55,13 +56,20 @@ class AppIconFetcher(
                 BitmapFactory.decodeFile(iconFile.absolutePath, boundsOptions)
 
                 val sampleSize = computeInSampleSize(boundsOptions.outWidth, boundsOptions.outHeight)
-                val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                val decodeOptions = BitmapFactory.Options().apply {
+                    inSampleSize = sampleSize
+                    inPreferredConfig = options.bitmapConfig
+                }
                 val bitmap = BitmapFactory.decodeFile(iconFile.absolutePath, decodeOptions)
                 if (bitmap != null) {
                     val drawable = BitmapDrawable(context.resources, bitmap)
+                    // Report sampled only when actually smaller than the source, so a full-size
+                    // decode stays reusable for larger targets.
+                    val sampled = bitmap.width < boundsOptions.outWidth ||
+                        bitmap.height < boundsOptions.outHeight
                     return ImageFetchResult(
                         image = drawable.asImage(),
-                        isSampled = sampleSize > 1,
+                        isSampled = sampled,
                         dataSource = DataSource.DISK
                     )
                 }
@@ -99,9 +107,13 @@ class AppIconFetcher(
             // than the full adaptive-icon resolution, keeping the memory cache small.
             val bitmap = drawable.toBitmap()
 
+            // Report sampled only when the rendered bitmap is smaller than the drawable's
+            // intrinsic size, so a full-size render can be reused for larger targets.
+            val sampled = bitmap.width < drawable.intrinsicWidth ||
+                bitmap.height < drawable.intrinsicHeight
             ImageFetchResult(
                 image = BitmapDrawable(context.resources, bitmap).asImage(),
-                isSampled = true,
+                isSampled = sampled,
                 dataSource = DataSource.DISK
             )
         } catch (e: Exception) {
@@ -141,7 +153,13 @@ class AppIconFetcher(
             return this.bitmap
         }
 
-        val bitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+        // Honor Coil's requested config, but a created (mutable) bitmap can't be HARDWARE.
+        val config = if (options.bitmapConfig == Bitmap.Config.HARDWARE) {
+            Bitmap.Config.ARGB_8888
+        } else {
+            options.bitmapConfig
+        }
+        val bitmap = Bitmap.createBitmap(targetWidth, targetHeight, config)
         val canvas = Canvas(bitmap)
         val oldBounds = bounds
         setBounds(0, 0, canvas.width, canvas.height)

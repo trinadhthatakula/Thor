@@ -43,7 +43,12 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
     private val preferenceRepository: PreferenceRepository by inject()
     private val localeManager: LocaleManager by inject()
     private val autoFreezeManager: AutoFreezeManager by inject()
-    private val billingProcessor: BillingProcessor by inject()
+
+    // Keep the Lazy handle so we can tear the billing client down only if it was actually
+    // created this run — resolving the delegate would otherwise spin up a billing connection at
+    // shutdown, the opposite of what we want.
+    private val billingProcessorLazy = inject<BillingProcessor>()
+    private val billingProcessor by billingProcessorLazy
 
     override fun onCreate() {
         super.onCreate()
@@ -80,7 +85,11 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
         // Tear down the app-lifetime billing client + coroutine scope so the Play billing
         // service binding and scope don't outlive the process. onTerminate is only guaranteed
         // on emulators, but it is the correct application-lifetime teardown hook.
-        billingProcessor.close()
+        // Only close if the singleton was already created this run; touching the delegate
+        // otherwise would initialize billing at shutdown.
+        if (billingProcessorLazy.isInitialized()) {
+            billingProcessor.close()
+        }
         super.onTerminate()
     }
 }
