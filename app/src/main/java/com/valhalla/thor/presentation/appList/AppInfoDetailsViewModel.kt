@@ -47,12 +47,17 @@ class AppInfoDetailsViewModel(
             )
         }
         viewModelScope.launch {
-            val hasRoot = systemRepository.isRootAvailable()
-            val hasShizuku = systemRepository.isShizukuAvailable()
-            val hasDhizuku = systemRepository.isDhizukuAvailable()
-            val inFreezer = withContext(Dispatchers.IO) {
-                freezerRepository.contains(packageName)
+            // Availability probes include non-suspend binder IPC (Shizuku / Dhizuku);
+            // compute them and the freezer lookup in a single IO context to keep them
+            // off the Main thread and avoid an extra dispatch switch.
+            val (probes, inFreezer) = withContext(Dispatchers.IO) {
+                Triple(
+                    systemRepository.isRootAvailable(),
+                    systemRepository.isShizukuAvailable(),
+                    systemRepository.isDhizukuAvailable()
+                ) to freezerRepository.contains(packageName)
             }
+            val (hasRoot, hasShizuku, hasDhizuku) = probes
 
             val details = appRepository.getDetailedAppInfo(packageName)
             if (details != null) {
