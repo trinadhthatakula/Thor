@@ -1,6 +1,7 @@
 package com.valhalla.thor.data.repository
 
 import android.content.Context
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -14,9 +15,6 @@ import com.valhalla.thor.domain.model.AppMetadata
 import com.valhalla.thor.domain.repository.AppAnalyzer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import org.koin.core.annotation.Single
 import java.io.File
 import java.io.FileOutputStream
@@ -25,32 +23,17 @@ import java.util.zip.ZipInputStream
 @Single(binds = [AppAnalyzer::class])
 class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
 
-    @Serializable
-    private data class XapkManifest(
-        @SerialName("package_name") val packageName: String,
-        @SerialName("name") val name: String,
-        @SerialName("version_code") val versionCode: String,
-        @SerialName("version_name") val versionName: String,
-        @SerialName("permissions") val permissions: List<String> = emptyList(),
-        @SerialName("icon") val iconFile: String? = null,
-        @SerialName("split_apks") val splitApks: List<XapkSplitApk> = emptyList()
-    )
-
-    @Serializable
-    private data class XapkSplitApk(
-        @SerialName("file") val file: String,
-        @SerialName("id") val id: String
-    )
-
-    private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
-
     override suspend fun analyze(uri: Uri): Result<AppMetadata> = withContext(Dispatchers.IO) {
         val tempFile = File(context.cacheDir, "analysis_${System.currentTimeMillis()}.apk")
 
         try {
             val contentResolver = context.contentResolver
 
-            // Phase 1: Single pass — collect manifest.json and icon bytes from XAPK zip
+            // Phase 1: Single pass — collect the zip's entry names plus the XAPK
+            // manifest.json and icon bytes (if any). The entry names let us decide
+            // monolithic-vs-bundle without trusting the mere presence of a .apk
+            // entry (every APK is itself a zip that may embed nested .apk assets).
+            val entryNames = mutableListOf<String>()
             var manifestBytes: ByteArray? = null
             var iconBytes: ByteArray? = null
 
@@ -59,6 +42,7 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
                     ZipInputStream(inputStream).use { zipStream ->
                         var entry = zipStream.nextEntry
                         while (entry != null) {
+                            if (!entry.isDirectory) entryNames += entry.name
                             when {
                                 entry.name.equals("manifest.json", ignoreCase = true) -> {
                                     manifestBytes = zipStream.readBytes()
@@ -74,177 +58,77 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
 
                                 else -> zipStream.closeEntry()
                             }
-                            if (manifestBytes != null && iconBytes != null) break
                             entry = zipStream.nextEntry
                         }
                     }
                 }
             } catch (_: Exception) {
+                // Not a readable zip (or truncated). We'll still try the monolithic
+                // whole-file parse below.
             }
 
-            // Phase 2: If we have manifest.json, build metadata directly from it
-            val manifest = manifestBytes?.let { bytes ->
-                try {
-                    json.decodeFromString<XapkManifest>(String(bytes))
-                } catch (_: Exception) {
-                    null
-                }
-            }
-
-            if (manifest != null) {
-                val baseApkFile = manifest.splitApks.firstOrNull { it.id == "base" }?.file
-                if (baseApkFile != null) {
-                    // Authority check: Extract base APK and parse it to avoid trusting manifest.json
-                    try {
-                        contentResolver.openInputStream(uri)?.use { inputStream ->
-                            ZipInputStream(inputStream).use { zipStream ->
-                                var entry = zipStream.nextEntry
-                                while (entry != null) {
-                                    if (entry.name.equals(baseApkFile, ignoreCase = true)) {
-                                        FileOutputStream(tempFile).use { fos -> zipStream.copyTo(fos) }
-                                        break
-                                    }
-                                    zipStream.closeEntry()
-                                    entry = zipStream.nextEntry
-                                }
-                            }
-                        }
-
-                        if (tempFile.exists()) {
-                            val pm = context.packageManager
-                            val flags =
-                                PackageManager.GET_META_DATA or PackageManager.GET_PERMISSIONS
-                            val archiveInfo =
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                    pm.getPackageArchiveInfo(
-                                        tempFile.absolutePath,
-                                        PackageManager.PackageInfoFlags.of(flags.toLong())
-                                    )
-                                } else {
-                                    @Suppress("DEPRECATION")
-                                    pm.getPackageArchiveInfo(tempFile.absolutePath, flags)
-                                }
-
-                            if (archiveInfo != null) {
-                                archiveInfo.applicationInfo?.sourceDir = tempFile.absolutePath
-                                archiveInfo.applicationInfo?.publicSourceDir = tempFile.absolutePath
-
-                                val currentIconBytes = iconBytes
-                                val iconBitmap: Bitmap? = when {
-                                    currentIconBytes != null -> BitmapFactory.decodeByteArray(
-                                        currentIconBytes,
-                                        0,
-                                        currentIconBytes.size
-                                    )
-
-                                    else -> archiveInfo.applicationInfo?.loadIcon(pm)?.toBitmap()
-                                }
-
-                                return@withContext Result.success(
-                                    AppMetadata(
-                                        label = archiveInfo.applicationInfo?.loadLabel(pm)
-                                            ?.toString() ?: "Unknown",
-                                        packageName = archiveInfo.packageName,
-                                        version = archiveInfo.versionName ?: "Unknown",
-                                        versionCode = archiveInfo.longVersionCode,
-                                        icon = iconBitmap,
-                                        permissions = archiveInfo.requestedPermissions?.toList()
-                                            ?: emptyList()
-                                    )
-                                )
-                            }
-                        }
-                    } catch (_: Exception) {
-                        // Fall through to Phase 3 if authoritative extraction fails
-                    }
-                }
-            }
-
-            // Phase 3: No XAPK manifest — fall back to APK extraction from zip
-            // First scan: look specifically for base.apk; second scan: first .apk found
-            var isNestedBundle = false
-            try {
-                var foundBase = false
-
-                contentResolver.openInputStream(uri)?.use { inputStream ->
-                    ZipInputStream(inputStream).use { zipStream ->
-                        var entry = zipStream.nextEntry
-                        while (entry != null) {
-                            val name = entry.name
-                            if (name.equals("base.apk", ignoreCase = true) ||
-                                name.endsWith("/base.apk", ignoreCase = true)
-                            ) {
-                                FileOutputStream(tempFile).use { fos -> zipStream.copyTo(fos) }
-                                isNestedBundle = true
-                                foundBase = true
-                                break
-                            }
-                            zipStream.closeEntry()
-                            entry = zipStream.nextEntry
-                        }
-                    }
-                }
-
-                if (!foundBase) {
-                    contentResolver.openInputStream(uri)?.use { inputStream ->
-                        ZipInputStream(inputStream).use { zipStream ->
-                            var entry = zipStream.nextEntry
-                            while (entry != null) {
-                                if (entry.name.endsWith(".apk", ignoreCase = true)) {
-                                    FileOutputStream(tempFile).use { fos -> zipStream.copyTo(fos) }
-                                    isNestedBundle = true
-                                    break
-                                }
-                                zipStream.closeEntry()
-                                entry = zipStream.nextEntry
-                            }
-                        }
-                    }
-                }
-            } catch (_: Exception) {
-                isNestedBundle = false
-            }
-
-            // Phase 4: Treat as monolithic APK if nothing was extracted from a zip
-            if (!isNestedBundle) {
+            // Phase 2: Monolithic-APK gate (GH#207). A file that carries its own
+            // top-level AndroidManifest.xml is a single installable APK — parse the
+            // whole file and NEVER scan inner .apk assets. If the authoritative
+            // whole-file parse fails, we return failure here rather than falling
+            // through to the base-candidate scan: falling through could extract a
+            // nested assets/*.apk (App Manager style) and return the WRONG package
+            // identity, re-triggering the GH#207 false-downgrade bug on the rare
+            // failed-parse path. (The parse itself needs framework
+            // getPackageArchiveInfo, so this exact branch is covered by compile +
+            // manual path; the "monolithic is never routed to candidate selection"
+            // invariant is unit-tested at the helper level in BundleAnalysisTest.)
+            if (isMonolithicApk(entryNames)) {
                 contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(tempFile).use { output -> input.copyTo(output) }
                 }
+                val archiveInfo = parseArchive(tempFile)
+                    ?: return@withContext Result.failure(
+                        Exception("Failed to parse APK manifest. The file might be corrupted or encrypted.")
+                    )
+                return@withContext Result.success(metadataFrom(archiveInfo, tempFile, iconBytes))
             }
 
-            // Phase 5: Parse extracted/monolithic APK
-            val pm = context.packageManager
-            val flags = PackageManager.GET_META_DATA or PackageManager.GET_PERMISSIONS
+            // Phase 3: XAPK manifest path — build metadata from the authoritative
+            // base APK. Tolerant deserialization (GH#159) so numeric version_code /
+            // missing name don't nuke this path.
+            val manifest = manifestBytes?.let { bytes -> parseXapkManifest(String(bytes)) }
 
-            val archiveInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                pm.getPackageArchiveInfo(
-                    tempFile.absolutePath,
-                    PackageManager.PackageInfoFlags.of(flags.toLong())
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                pm.getPackageArchiveInfo(tempFile.absolutePath, flags)
+            val manifestBaseFile = manifest?.baseApkFile()
+            if (manifestBaseFile != null) {
+                val archiveInfo = extractAndParse(uri, manifestBaseFile, tempFile)
+                if (archiveInfo != null) {
+                    return@withContext Result.success(metadataFrom(archiveInfo, tempFile, iconBytes))
+                }
+                // else fall through to candidate scan below
             }
 
-            if (archiveInfo == null) {
-                return@withContext Result.failure(
+            // Phase 4: Generic bundle base selection (GH#159). Order candidates so
+            // splits/config APKs are tried last, and pick the first that parses as a
+            // non-split base.
+            val candidates = selectBaseApkCandidates(entryNames, manifest?.packageName)
+            for (candidate in candidates) {
+                val archiveInfo = extractAndParse(uri, candidate, tempFile)
+                if (archiveInfo != null && archiveInfo.applicationInfo != null) {
+                    return@withContext Result.success(metadataFrom(archiveInfo, tempFile, iconBytes))
+                }
+            }
+
+            // TODO(#159): richer .apks (bundletool/SAI toc.pb, splits/…) and .apkm
+            // (APKMirror info.json) base-layout detection + OBB extraction — tracked
+            // as a separate follow-up.
+
+            // Phase 5: Last resort — treat the whole file as a monolithic APK even
+            // without a detectable top-level manifest (e.g. an entry-listing failure).
+            contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(tempFile).use { output -> input.copyTo(output) }
+            }
+            val archiveInfo = parseArchive(tempFile)
+                ?: return@withContext Result.failure(
                     Exception("Failed to parse APK manifest. The file might be corrupted or encrypted.")
                 )
-            }
 
-            archiveInfo.applicationInfo?.sourceDir = tempFile.absolutePath
-            archiveInfo.applicationInfo?.publicSourceDir = tempFile.absolutePath
-
-            Result.success(
-                AppMetadata(
-                    label = archiveInfo.applicationInfo?.loadLabel(pm).toString(),
-                    packageName = archiveInfo.packageName,
-                    version = archiveInfo.versionName ?: "Unknown",
-                    versionCode = archiveInfo.longVersionCode,
-                    icon = archiveInfo.applicationInfo?.loadIcon(pm)?.toBitmap(),
-                    permissions = archiveInfo.requestedPermissions?.toList() ?: emptyList()
-                )
-            )
+            Result.success(metadataFrom(archiveInfo, tempFile, iconBytes))
         } catch (e: Exception) {
             Result.failure(e)
         } finally {
@@ -252,14 +136,17 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
         }
     }
 
-    private fun extractBaseApkIcon(uri: Uri, baseApkFile: String, tempFile: File): Bitmap? {
+    /** Extract a single zip entry into [tempFile] and parse it via PackageManager. */
+    private fun extractAndParse(uri: Uri, entryName: String, tempFile: File): PackageInfo? {
         return try {
+            var extracted = false
             context.contentResolver.openInputStream(uri)?.use { inputStream ->
                 ZipInputStream(inputStream).use { zipStream ->
                     var entry = zipStream.nextEntry
                     while (entry != null) {
-                        if (entry.name.equals(baseApkFile, ignoreCase = true)) {
+                        if (entry.name.equals(entryName, ignoreCase = true)) {
                             FileOutputStream(tempFile).use { fos -> zipStream.copyTo(fos) }
+                            extracted = true
                             break
                         }
                         zipStream.closeEntry()
@@ -267,28 +154,61 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
                     }
                 }
             }
-
-            if (!tempFile.exists()) return null
-
-            val pm = context.packageManager
-            val archiveInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                pm.getPackageArchiveInfo(
-                    tempFile.absolutePath,
-                    PackageManager.PackageInfoFlags.of(PackageManager.GET_META_DATA.toLong())
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                pm.getPackageArchiveInfo(tempFile.absolutePath, PackageManager.GET_META_DATA)
-            }
-
-            archiveInfo?.applicationInfo?.let { appInfo ->
-                appInfo.sourceDir = tempFile.absolutePath
-                appInfo.publicSourceDir = tempFile.absolutePath
-                appInfo.loadIcon(pm)?.toBitmap()
-            }
+            if (!extracted || !tempFile.exists()) null else parseArchive(tempFile)
         } catch (_: Exception) {
             null
         }
+    }
+
+    /** Parse an on-disk APK via getPackageArchiveInfo across API levels. */
+    private fun parseArchive(tempFile: File): PackageInfo? {
+        val pm = context.packageManager
+        val flags = PackageManager.GET_META_DATA or PackageManager.GET_PERMISSIONS
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.getPackageArchiveInfo(
+                tempFile.absolutePath,
+                PackageManager.PackageInfoFlags.of(flags.toLong())
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getPackageArchiveInfo(tempFile.absolutePath, flags)
+        }
+    }
+
+    /** Build [AppMetadata] from a parsed [PackageInfo], preferring the XAPK icon. */
+    private fun metadataFrom(
+        archiveInfo: PackageInfo,
+        tempFile: File,
+        iconBytes: ByteArray?
+    ): AppMetadata {
+        // Defensive validation (hardens GH#207): never build metadata with a
+        // null/blank package identity or a null applicationInfo — a garbage identity
+        // would drive the wrong installed-package lookup and false downgrade. Throwing
+        // here routes to the caller's catch -> Result.failure -> error_parse_package.
+        require(archiveInfo.applicationInfo != null) {
+            "Parsed archive has no applicationInfo; not an installable APK."
+        }
+        require(!archiveInfo.packageName.isNullOrBlank()) {
+            "Parsed archive has a null/blank package name; not an installable APK."
+        }
+
+        val pm = context.packageManager
+        archiveInfo.applicationInfo?.sourceDir = tempFile.absolutePath
+        archiveInfo.applicationInfo?.publicSourceDir = tempFile.absolutePath
+
+        val iconBitmap: Bitmap? = when {
+            iconBytes != null -> BitmapFactory.decodeByteArray(iconBytes, 0, iconBytes.size)
+            else -> archiveInfo.applicationInfo?.loadIcon(pm)?.toBitmap()
+        }
+
+        return AppMetadata(
+            label = archiveInfo.applicationInfo?.loadLabel(pm)?.toString() ?: "Unknown",
+            packageName = archiveInfo.packageName,
+            version = archiveInfo.versionName ?: "Unknown",
+            versionCode = archiveInfo.longVersionCode,
+            icon = iconBitmap,
+            permissions = archiveInfo.requestedPermissions?.toList() ?: emptyList()
+        )
     }
 
     private fun Drawable.toBitmap(): Bitmap {
