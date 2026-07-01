@@ -7,8 +7,8 @@ Only the latest release of Thor receives security fixes. Please update to the ne
 
 | Version          | Supported |
 |------------------|-----------|
-| Latest (1.90.x)  | ✅        |
-| Older            | ❌        |
+| Latest release   | ✅        |
+| Older versions   | ❌        |
 
 ## Reporting a vulnerability
 

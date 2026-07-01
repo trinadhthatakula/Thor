@@ -35,7 +35,8 @@
 "area: localization":
   - changed-files:
       - any-glob-to-any-file:
-          - "app/src/**/res/values*/**"
+          # values-* only — the base values/ dir holds non-translatable colors/dimens/themes.
+          - "app/src/**/res/values-*/**"
           - "**/strings.xml"
 
 "area: billing":
@@ -51,6 +52,8 @@
           - "app/src/**/widgets/**"
           - "app/src/**/components/**"
           - "app/src/**/*Screen.kt"
+          - "app/src/**/res/drawable*/**"
+          - "app/src/**/res/layout*/**"
 
 "dependencies":
   - changed-files:
