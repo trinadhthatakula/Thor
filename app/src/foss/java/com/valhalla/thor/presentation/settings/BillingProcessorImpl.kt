@@ -24,4 +24,8 @@ class BillingProcessorImpl : BillingProcessor {
     override fun dismissThankYouDialog() {
         // No-op in FOSS flavor
     }
+
+    override fun close() {
+        // No-op in FOSS flavor: no billing client or scope to tear down.
+    }
 }

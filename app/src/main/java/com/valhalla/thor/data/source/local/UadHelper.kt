@@ -17,23 +17,27 @@ class UadHelper(
     private val extensionManager: ExtensionManager
 ) {
 
+    @Volatile
     var didLoadFail = false
         private set
 
+    private val lock = Any()
+
+    @Volatile
     private var cachedMap: Map<String, UadEntry>? = null
 
     val uadMap: Map<String, UadEntry>
         get() {
-            var map = cachedMap
-            if (map == null) {
-                map = buildUadMap()
-                cachedMap = map
+            cachedMap?.let { return it }
+            return synchronized(lock) {
+                cachedMap ?: buildUadMap().also { cachedMap = it }
             }
-            return map
         }
 
     fun invalidateCache() {
-        cachedMap = null
+        synchronized(lock) {
+            cachedMap = null
+        }
     }
 
     private fun buildUadMap(): Map<String, UadEntry> {
