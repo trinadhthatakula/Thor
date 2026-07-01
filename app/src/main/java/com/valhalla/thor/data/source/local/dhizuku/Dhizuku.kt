@@ -279,6 +279,11 @@ object DhizukuHelper {
         } finally {
             // Always tear the process down (idempotent even if already destroyed on timeout).
             if (!timedOut) runCatching { process.destroy() }
+            // Close the FDs explicitly (each guarded): releases file descriptors and unblocks the
+            // reader threads even if destroy()/destroyForcibly() (a binder call) hangs or fails.
+            runCatching { process.inputStream.close() }
+            runCatching { process.errorStream.close() }
+            runCatching { process.outputStream.close() }
         }
     }.getOrElse { err ->
         Logger.e("Dhizuku", "Command execution failed: $command", err)

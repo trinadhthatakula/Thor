@@ -479,6 +479,11 @@ object Shizuku {
                 } finally {
                     // Always tear the process down (idempotent even if already destroyed on timeout).
                     if (!timedOut) runCatching { destroy() }
+                    // Close the FDs explicitly (each guarded): releases file descriptors and
+                    // unblocks the reader threads even if destroy() (a binder call) hangs or fails.
+                    runCatching { inputStream.close() }
+                    runCatching { errorStream.close() }
+                    runCatching { outputStream.close() }
                 }
             }
     }.getOrElse { err ->
