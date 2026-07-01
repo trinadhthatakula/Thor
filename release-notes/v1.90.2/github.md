@@ -1,4 +1,4 @@
-# Thor v1.90.1 Release Notes
+# Thor v1.90.2 Release Notes
 
 A focused **stability & smoothness** release on top of v1.90.0 — hardened APK installation, a fix for the Settings crash on large fonts, and a broad pass to eliminate memory leaks and UI jank across the app.
 

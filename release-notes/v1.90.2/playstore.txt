@@ -1,4 +1,4 @@
-What's new in Thor v1.90.1
+What's new in Thor v1.90.2
 
 • Fixed some apps being wrongly blocked as a "downgrade" during install.
 • Fixed .xapk files failing to install.

@@ -1,4 +1,4 @@
-⚡️ **Thor v1.90.1 is here!**
+⚡️ **Thor v1.90.2 is here!**
 
 A focused stability & smoothness update:
 
