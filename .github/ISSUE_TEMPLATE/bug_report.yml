@@ -87,6 +87,11 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: Logs / screenshots
-      description: Paste any logs (Thor has an in-app terminal log view) or attach screenshots. Text pasted here is auto-formatted.
+      label: Logs
+      description: Paste any logs (Thor has an in-app terminal log view). Text pasted here is auto-formatted as code.
       render: shell
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots / additional context
+      description: Drag & drop screenshots here, or add any other relevant context. (Don't paste images into the Logs field above — the code formatting stops them rendering.)
