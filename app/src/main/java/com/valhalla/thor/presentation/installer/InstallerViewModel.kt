@@ -63,7 +63,11 @@ class InstallerViewModel(
                     // checkPrivilegeAndModes() (isShizukuAvailable()/isDhizukuAvailable()
                     // are synchronous binder IPC) must not run on the main thread.
                     val existing = withContext(Dispatchers.IO) {
-                        checkPrivilegeAndModes(meta.packageName)
+                        // Privilege detection is best-effort: an unexpected repository/
+                        // binder IPC exception must not crash package parsing. On failure
+                        // the available modes simply stay at their defaults (NORMAL) and
+                        // parsing still proceeds to getPackageInfo so the user can install.
+                        runCatching { checkPrivilegeAndModes(meta.packageName) }
                         runCatching {
                             packageManager.getPackageInfo(meta.packageName, 0)
                         }.getOrNull()

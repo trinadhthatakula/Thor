@@ -101,10 +101,17 @@ fun looksLikeBundle(entryNames: List<String>): Boolean =
  * True for obvious split/config APK entries that are never a valid base:
  * names whose file part starts with `split_` or `config.`, or contain
  * `.config.` (e.g. `com.example.app.config.xhdpi.apk`).
+ *
+ * [packageName], when known, guards against a false positive where the package
+ * name itself contains `.config.` (e.g. `com.example.config.foo`, base entry
+ * `com.example.config.foo.apk`): an entry whose basename is exactly
+ * `{packageName}.apk` is ALWAYS the base and is never classified as a split.
  */
-fun isSplitApkName(name: String): Boolean {
+fun isSplitApkName(name: String, packageName: String? = null): Boolean {
     val fileName = name.substringAfterLast('/').lowercase()
     if (!fileName.endsWith(".apk")) return false
+    // Exact `{packageName}.apk` is the base, never a split.
+    if (!packageName.isNullOrBlank() && fileName == "$packageName.apk".lowercase()) return false
     return fileName.startsWith("split_") ||
         fileName.startsWith("config.") ||
         fileName.contains(".config.")
@@ -127,7 +134,9 @@ fun selectBaseApkCandidates(entryNames: List<String>, packageName: String?): Lis
 
     fun fileNameOf(name: String) = name.substringAfterLast('/').lowercase()
 
-    val (splits, nonSplits) = apks.partition { isSplitApkName(it) }
+    // Pass the package name so an exact `{packageName}.apk` base is never
+    // mis-classified as a split, even when the package name contains `.config.`.
+    val (splits, nonSplits) = apks.partition { isSplitApkName(it, packageName) }
 
     val preferredNames = buildList {
         add("base.apk")

@@ -85,6 +85,34 @@ class BundleAnalysisTest {
         assertFalse(isSplitApkName("com.example.app.apk"))
     }
 
+    @Test
+    fun packageNamedApk_containingDotConfig_isNeverClassifiedAsSplit() {
+        // A package name may itself contain `.config.` (e.g. com.example.config.foo).
+        // Its base entry `com.example.config.foo.apk` must NOT trip the `.config.`
+        // split heuristic when the package name is known.
+        val pkg = "com.example.config.foo"
+        assertTrue(isSplitApkName("com.example.config.foo.apk"))            // no hint -> split
+        assertFalse(isSplitApkName("com.example.config.foo.apk", pkg))      // hinted -> base
+        // A genuine config split of that same package is still a split.
+        assertTrue(isSplitApkName("com.example.config.foo.config.xhdpi.apk", pkg))
+    }
+
+    @Test
+    fun baseSelection_picksPackageNamedBaseWhenPackageContainsDotConfig() {
+        val pkg = "com.example.config.foo"
+        val entries = listOf(
+            "com.example.config.foo.config.xhdpi.apk",
+            "com.example.config.foo.apk"
+        )
+        val candidates = selectBaseApkCandidates(entries, packageName = pkg)
+        // The exact {packageName}.apk is chosen as the base, not the config split.
+        assertEquals("com.example.config.foo.apk", candidates.first())
+        assertTrue(
+            candidates.indexOf("com.example.config.foo.apk") <
+                candidates.indexOf("com.example.config.foo.config.xhdpi.apk")
+        )
+    }
+
     // --- GH#159: base selection ordering ---
 
     @Test

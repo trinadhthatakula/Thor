@@ -181,6 +181,17 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
         tempFile: File,
         iconBytes: ByteArray?
     ): AppMetadata {
+        // Defensive validation (hardens GH#207): never build metadata with a
+        // null/blank package identity or a null applicationInfo — a garbage identity
+        // would drive the wrong installed-package lookup and false downgrade. Throwing
+        // here routes to the caller's catch -> Result.failure -> error_parse_package.
+        require(archiveInfo.applicationInfo != null) {
+            "Parsed archive has no applicationInfo; not an installable APK."
+        }
+        require(!archiveInfo.packageName.isNullOrBlank()) {
+            "Parsed archive has a null/blank package name; not an installable APK."
+        }
+
         val pm = context.packageManager
         archiveInfo.applicationInfo?.sourceDir = tempFile.absolutePath
         archiveInfo.applicationInfo?.publicSourceDir = tempFile.absolutePath
