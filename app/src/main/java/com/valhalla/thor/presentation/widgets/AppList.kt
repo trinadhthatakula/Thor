@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -874,7 +875,8 @@ private fun AppFilterSheet(
                         )
                     },
                     selectedIndex = AppListType.entries.indexOf(appListType),
-                    onItemSelected = { onListTypeChanged(AppListType.entries[it]) }
+                    onItemSelected = { onListTypeChanged(AppListType.entries[it]) },
+                    modifier = Modifier.width(IntrinsicSize.Max)
                 )
             }
 
@@ -903,7 +905,8 @@ private fun AppFilterSheet(
                         )
                     ),
                     selectedIndex = if (isGrid) 0 else 1,
-                    onItemSelected = { onToggleView() }
+                    onItemSelected = { onToggleView() },
+                    modifier = Modifier.width(IntrinsicSize.Max)
                 )
             }
 

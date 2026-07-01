@@ -8,9 +8,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -99,7 +101,8 @@ fun DashboardHeader(
                     )
                 },
                 selectedIndex = AppListType.entries.indexOf(selectedType),
-                onItemSelected = { onTypeChanged(AppListType.entries[it]) }
+                onItemSelected = { onTypeChanged(AppListType.entries[it]) },
+                modifier = Modifier.width(IntrinsicSize.Max)
             )
         }
     }

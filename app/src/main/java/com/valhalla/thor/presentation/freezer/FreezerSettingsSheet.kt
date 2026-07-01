@@ -2,11 +2,13 @@ package com.valhalla.thor.presentation.freezer
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -120,7 +122,8 @@ fun FreezerSettingsSheet(
                         )
                     },
                     selectedIndex = AppListType.entries.indexOf(appListType),
-                    onItemSelected = { onListTypeChanged(AppListType.entries[it]) }
+                    onItemSelected = { onListTypeChanged(AppListType.entries[it]) },
+                    modifier = Modifier.width(IntrinsicSize.Max)
                 )
             }
 
@@ -148,7 +151,8 @@ fun FreezerSettingsSheet(
                         )
                     ),
                     selectedIndex = if (isGrid) 0 else 1,
-                    onItemSelected = { onToggleView() }
+                    onItemSelected = { onToggleView() },
+                    modifier = Modifier.width(IntrinsicSize.Max)
                 )
             }
 
