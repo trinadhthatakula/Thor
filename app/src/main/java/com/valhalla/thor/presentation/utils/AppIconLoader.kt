@@ -130,7 +130,7 @@ class AppIconFetcher(
             Bitmap.Config.ARGB_8888
         )
         val canvas = Canvas(bitmap)
-        val oldBounds = bounds
+        val oldBounds = copyBounds()
         setBounds(0, 0, canvas.width, canvas.height)
         draw(canvas)
         bounds = oldBounds
@@ -161,7 +161,7 @@ class AppIconFetcher(
         }
         val bitmap = Bitmap.createBitmap(targetWidth, targetHeight, config)
         val canvas = Canvas(bitmap)
-        val oldBounds = bounds
+        val oldBounds = copyBounds()
         setBounds(0, 0, canvas.width, canvas.height)
         draw(canvas)
         bounds = oldBounds
