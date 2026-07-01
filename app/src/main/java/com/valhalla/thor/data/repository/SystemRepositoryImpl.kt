@@ -24,9 +24,13 @@ class SystemRepositoryImpl(
         rootGateway.isRootAvailable()
     }
 
-    override fun isShizukuAvailable(): Boolean = shizukuGateway.isShizukuAvailable()
+    override suspend fun isShizukuAvailable(): Boolean = withContext(Dispatchers.IO) {
+        shizukuGateway.isShizukuAvailable()
+    }
 
-    override fun isDhizukuAvailable(): Boolean = dhizukuGateway.isDhizukuAvailable()
+    override suspend fun isDhizukuAvailable(): Boolean = withContext(Dispatchers.IO) {
+        dhizukuGateway.isDhizukuAvailable()
+    }
 
     // Dynamic Resolution Strategy: Respect user preference if available, else auto-detect.
     // Must be suspend because checking root and reading preferences are suspend operations.

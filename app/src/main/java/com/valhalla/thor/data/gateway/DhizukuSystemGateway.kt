@@ -17,9 +17,9 @@ class DhizukuSystemGateway(
 
     override suspend fun isRootAvailable() = false
 
-    override fun isShizukuAvailable(): Boolean = false
+    override suspend fun isShizukuAvailable(): Boolean = false
 
-    override fun isDhizukuAvailable(): Boolean {
+    override suspend fun isDhizukuAvailable(): Boolean {
         return DhizukuHelper.isDhizukuAvailable()
     }
 

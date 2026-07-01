@@ -28,8 +28,8 @@ class RootSystemGateway(
         return shellRepository.isRootGranted()
     }
 
-    override fun isShizukuAvailable(): Boolean = false
-    override fun isDhizukuAvailable(): Boolean = false
+    override suspend fun isShizukuAvailable(): Boolean = false
+    override suspend fun isDhizukuAvailable(): Boolean = false
 
     override suspend fun forceStopApp(packageName: String): Result<Unit> {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {

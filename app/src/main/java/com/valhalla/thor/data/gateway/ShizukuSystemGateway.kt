@@ -20,7 +20,7 @@ class ShizukuSystemGateway(
 
     override suspend fun isRootAvailable() = false
 
-    override fun isShizukuAvailable(): Boolean {
+    override suspend fun isShizukuAvailable(): Boolean {
         return try {
             Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED && Shizuku.pingBinder()
         } catch (_: Exception) {
@@ -28,7 +28,7 @@ class ShizukuSystemGateway(
         }
     }
 
-    override fun isDhizukuAvailable(): Boolean = false
+    override suspend fun isDhizukuAvailable(): Boolean = false
 
     override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> {
         // Runs through Shizuku's privileged process (shell uid), same path as in-app actions.
