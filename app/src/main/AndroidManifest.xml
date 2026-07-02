@@ -121,6 +121,18 @@
                 <data android:pathPattern=".*\\.APKM" />
                 <data android:pathPattern=".*\\.apkp" />
                 <data android:pathPattern=".*\\.APKP" />
+
+                <!-- pathPattern (SIMPLE_GLOB) is non-backtracking: ".*\.xapk" latches
+                     ".*" onto the FIRST dot in a name like
+                     "Amazon Shopping_28.15.2.100_apkpure.com.xapk" and never reaches
+                     the extension. pathAdvancedPattern (ADVANCED_GLOB, API 26+; minSdk
+                     is 28) backtracks, so multi-dot names match. Case-folded classes
+                     also cover upper/lower. -->
+                <data android:pathAdvancedPattern=".*\\.[aA][pP][kK]" />
+                <data android:pathAdvancedPattern=".*\\.[xX][aA][pP][kK]" />
+                <data android:pathAdvancedPattern=".*\\.[aA][pP][kK][sS]" />
+                <data android:pathAdvancedPattern=".*\\.[aA][pP][kK][mM]" />
+                <data android:pathAdvancedPattern=".*\\.[aA][pP][kK][pP]" />
             </intent-filter>
 
             <!-- content:// and file:// URIs: match by extension when the MIME type is
@@ -145,6 +157,15 @@
                 <data android:pathPattern=".*\\.APKM" />
                 <data android:pathPattern=".*\\.apkp" />
                 <data android:pathPattern=".*\\.APKP" />
+
+                <!-- Same non-backtracking pathPattern bug applies to typeless
+                     content:// URIs; pathAdvancedPattern backtracks so multi-dot
+                     names (e.g. "App_1.2.3.xapk") match here too. -->
+                <data android:pathAdvancedPattern=".*\\.[aA][pP][kK]" />
+                <data android:pathAdvancedPattern=".*\\.[xX][aA][pP][kK]" />
+                <data android:pathAdvancedPattern=".*\\.[aA][pP][kK][sS]" />
+                <data android:pathAdvancedPattern=".*\\.[aA][pP][kK][mM]" />
+                <data android:pathAdvancedPattern=".*\\.[aA][pP][kK][pP]" />
             </intent-filter>
         </activity>
 
