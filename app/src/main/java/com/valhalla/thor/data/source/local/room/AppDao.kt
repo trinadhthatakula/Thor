@@ -30,6 +30,14 @@ interface AppDao {
         toDelete.forEach { deleteApp(it) }
     }
 
+    @Query("UPDATE apps SET installSize = :size WHERE packageName = :packageName")
+    suspend fun updateInstallSize(packageName: String, size: Long?)
+
+    @Transaction
+    suspend fun updateInstallSizes(sizes: Map<String, Long>) {
+        sizes.forEach { (pkg, size) -> updateInstallSize(pkg, size) }
+    }
+
     @Query("DELETE FROM apps")
     suspend fun clearAll()
 }

@@ -27,7 +27,8 @@ data class AppEntity(
     val lastUpdateTime: Long,
     val firstInstallTime: Long,
     val isDebuggable: Boolean,
-    val isSuspended: Boolean
+    val isSuspended: Boolean,
+    val installSize: Long? = null
 ) {
     fun toDomain(): AppInfo {
         return AppInfo(
@@ -52,7 +53,8 @@ data class AppEntity(
             lastUpdateTime = lastUpdateTime,
             firstInstallTime = firstInstallTime,
             isDebuggable = isDebuggable,
-            isSuspended = isSuspended
+            isSuspended = isSuspended,
+            installSize = installSize
         )
     }
 
@@ -80,7 +82,8 @@ data class AppEntity(
                 lastUpdateTime = appInfo.lastUpdateTime,
                 firstInstallTime = appInfo.firstInstallTime,
                 isDebuggable = appInfo.isDebuggable,
-                isSuspended = appInfo.isSuspended
+                isSuspended = appInfo.isSuspended,
+                installSize = appInfo.installSize
             )
         }
     }

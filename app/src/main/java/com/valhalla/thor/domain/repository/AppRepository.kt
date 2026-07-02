@@ -26,4 +26,7 @@ interface AppRepository {
 
     // Parser for XAPK/APK installation features
     suspend fun getApkDetails(apkPath: String): AppInfo?
+
+    /** Persist freshly-computed total install sizes into the app cache. */
+    suspend fun updateInstallSizes(sizes: Map<String, Long>)
 }

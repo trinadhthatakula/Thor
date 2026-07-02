@@ -366,4 +366,8 @@ class AppRepositoryImpl(
             appName = pm.getApplicationLabel(appInfo).toString()
         )
     }
+
+    override suspend fun updateInstallSizes(sizes: Map<String, Long>) {
+        appDao.updateInstallSizes(sizes)
+    }
 }
