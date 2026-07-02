@@ -48,6 +48,9 @@ class PreferenceRepositoryImpl(
         // Localization
         val LANGUAGE = stringPreferencesKey("language")
 
+        // Export
+        val EXPORT_DIR_URI = stringPreferencesKey("export_dir_uri")
+
         // Auto Freeze
         val AUTO_FREEZE = booleanPreferencesKey("auto_freeze")
 
@@ -118,7 +121,8 @@ class PreferenceRepositoryImpl(
                 animationIntensity = animationIntensity,
                 appListIsGrid = appListIsGrid,
                 freezerIsGrid = freezerIsGrid,
-                extensionsUnlocked = prefs[Keys.EXTENSIONS_UNLOCKED] ?: false
+                extensionsUnlocked = prefs[Keys.EXTENSIONS_UNLOCKED] ?: false,
+                exportDirUri = prefs[Keys.EXPORT_DIR_URI]
             )
         }
 
@@ -176,6 +180,13 @@ class PreferenceRepositoryImpl(
         context.dataStore.edit {
             if (language == null) it.remove(Keys.LANGUAGE)
             else it[Keys.LANGUAGE] = language
+        }
+    }
+
+    override suspend fun setExportDirUri(uri: String?) {
+        context.dataStore.edit {
+            if (uri == null) it.remove(Keys.EXPORT_DIR_URI)
+            else it[Keys.EXPORT_DIR_URI] = uri
         }
     }
 
