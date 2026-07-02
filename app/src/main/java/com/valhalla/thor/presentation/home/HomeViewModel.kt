@@ -63,8 +63,16 @@ class HomeViewModel(
             isRootAvailable = priv.root,
             isShizukuAvailable = priv.shizuku,
             isDhizukuAvailable = priv.dhizuku,
-            // Keep the existing "null = no privilege" contract for the UI.
-            activePrivilegeMode = priv.active.takeIf { it != PrivilegeMode.NONE },
+            // Keep the existing "null = no privilege" contract for the UI. Until the
+            // first probe completes (isReady == false), optimistically fall back to the
+            // persisted preference so a configured user never sees a "no privilege"
+            // flash on cold start (this restores the old one-shot behavior, which read
+            // the preference straight from DataStore before any hardware probe).
+            activePrivilegeMode = if (priv.isReady) {
+                priv.active.takeIf { it != PrivilegeMode.NONE }
+            } else {
+                prefs.preferredPrivilegeMode
+            },
             extensionsUnlocked = prefs.extensionsUnlocked
         )
     }.stateIn(

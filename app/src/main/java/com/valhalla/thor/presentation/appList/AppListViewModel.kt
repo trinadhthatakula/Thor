@@ -122,7 +122,12 @@ class AppListViewModel(
             }.collect { (user, system, priv) ->
                 _rawState.update {
                     it.copy(
-                        isLoading = false,
+                        // Hold the loader until the first privilege probe lands
+                        // (isReady) so privilege-gated controls never flash their
+                        // disabled state on cold start. This restores the old
+                        // await-probe-before-reveal behavior; later Shizuku grants
+                        // still update reactively once isReady is true.
+                        isLoading = !priv.isReady,
                         isRoot = priv.root,
                         isShizuku = priv.shizuku,
                         isDhizuku = priv.dhizuku,
