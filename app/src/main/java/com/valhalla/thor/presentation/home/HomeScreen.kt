@@ -108,6 +108,7 @@ fun HomeScreen(
             isShizuku = state.isShizukuAvailable,
             isDhizuku = state.isDhizukuAvailable,
             activeMode = state.activePrivilegeMode,
+            isPrivilegeReady = state.isPrivilegeReady,
             selectedType = state.selectedType,
             onTypeChanged = { viewModel.onTypeChanged(it) },
             onPrivilegeChanged = { viewModel.onPrivilegeModeChanged(it) },

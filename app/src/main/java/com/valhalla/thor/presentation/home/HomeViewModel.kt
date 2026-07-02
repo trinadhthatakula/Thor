@@ -32,6 +32,9 @@ data class HomeUiState(
     val isShizukuAvailable: Boolean = false,
     val isDhizukuAvailable: Boolean = false,
     val activePrivilegeMode: PrivilegeMode? = null,
+    // False until the first privilege probe completes — lets the status icon show a
+    // neutral "detecting" state instead of flashing the red "no privilege" icon on cold start.
+    val isPrivilegeReady: Boolean = false,
 
     // Preferences
     val showReinstallCard: Boolean = true, // <--- Controlled by DataStore
@@ -63,6 +66,7 @@ class HomeViewModel(
             isRootAvailable = priv.root,
             isShizukuAvailable = priv.shizuku,
             isDhizukuAvailable = priv.dhizuku,
+            isPrivilegeReady = priv.isReady,
             // Keep the existing "null = no privilege" contract for the UI. Until the
             // first probe completes (isReady == false), optimistically fall back to the
             // persisted preference so a configured user never sees a "no privilege"

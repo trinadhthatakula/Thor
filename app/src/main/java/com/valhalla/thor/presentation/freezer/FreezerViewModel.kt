@@ -59,7 +59,6 @@ class FreezerViewModel(
     init {
         observeApps()
         observePreferences()
-        observePrivileges()
     }
 
     private fun observeApps() {
@@ -67,20 +66,28 @@ class FreezerViewModel(
             try {
                 combine(
                     freezerRepository.getAll(),
-                    getInstalledAppsUseCase()
-                ) { freezerPkgs, (userApps, systemApps) ->
+                    getInstalledAppsUseCase(),
+                    privilegeManager.state
+                ) { freezerPkgs, (userApps, systemApps), priv ->
                     val pkgSet = freezerPkgs.toSet()
                     val allApps = userApps + systemApps
-                    Triple(pkgSet, allApps.filter { it.packageName in pkgSet }, allApps)
+                    Triple(pkgSet, allApps.filter { it.packageName in pkgSet }, allApps) to priv
                 }
                     .flowOn(Dispatchers.Default)
-                    .collect { (pkgSet, freezerApps, allApps) ->
+                    .collect { (appsData, priv) ->
+                        val (pkgSet, freezerApps, allApps) = appsData
                         _uiState.update {
                             it.copy(
-                                isLoading = false,
+                                // Hold the loader until the first privilege probe lands so
+                                // freeze/unfreeze controls never flash disabled on cold start;
+                                // privilege flags now update atomically with the app list.
+                                isLoading = !priv.isReady,
                                 freezerPackageNames = pkgSet,
                                 freezerApps = freezerApps,
-                                allInstalledApps = allApps
+                                allInstalledApps = allApps,
+                                isRoot = priv.root,
+                                isShizuku = priv.shizuku,
+                                isDhizuku = priv.dhizuku
                             )
                         }
                     }
@@ -91,16 +98,6 @@ class FreezerViewModel(
                         isLoading = false,
                         actionMessage = UiText.StringResource(R.string.failed_to_load_apps)
                     )
-                }
-            }
-        }
-    }
-
-    private fun observePrivileges() {
-        viewModelScope.launch {
-            privilegeManager.state.collect { p ->
-                _uiState.update {
-                    it.copy(isRoot = p.root, isShizuku = p.shizuku, isDhizuku = p.dhizuku)
                 }
             }
         }

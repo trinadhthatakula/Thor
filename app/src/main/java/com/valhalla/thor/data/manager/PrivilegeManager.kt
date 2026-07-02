@@ -5,9 +5,12 @@ import com.valhalla.thor.domain.model.resolvePrivilegeMode
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.Single
 import rikka.shizuku.Shizuku
@@ -69,7 +73,10 @@ class PrivilegeManager(
 
     /** Force a re-probe (e.g. after the user enables root outside the app). */
     fun refresh() {
-        refreshTrigger.value += 1
+        // Called from Shizuku's binder/permission listeners on arbitrary threads, so the
+        // bump must be atomic — `value +=` is a non-atomic read-modify-write that can drop
+        // a concurrent trigger.
+        refreshTrigger.update { it + 1 }
     }
 
     private data class Availability(val root: Boolean, val shizuku: Boolean, val dhizuku: Boolean)
@@ -77,16 +84,22 @@ class PrivilegeManager(
     private fun availabilityFlow(): Flow<Availability> =
         refreshTrigger
             .map {
-                Availability(
-                    root = safeProbe { systemRepository.isRootAvailable() },
-                    shizuku = safeProbe { systemRepository.isShizukuAvailable() },
-                    dhizuku = safeProbe { systemRepository.isDhizukuAvailable() }
-                )
+                // Probe the three sources concurrently: the root probe can spawn a shell
+                // (100-500ms), so running them in parallel keeps cold-start latency at
+                // max(probe) instead of the sum.
+                coroutineScope {
+                    val root = async { safeProbe { systemRepository.isRootAvailable() } }
+                    val shizuku = async { safeProbe { systemRepository.isShizukuAvailable() } }
+                    val dhizuku = async { safeProbe { systemRepository.isDhizukuAvailable() } }
+                    Availability(root.await(), shizuku.await(), dhizuku.await())
+                }
             }
             .flowOn(Dispatchers.IO)
 
     private suspend fun safeProbe(block: suspend () -> Boolean): Boolean = try {
         block()
+    } catch (e: CancellationException) {
+        throw e // never swallow cancellation — it breaks cooperative coroutine cancellation
     } catch (e: Exception) {
         Logger.e("PrivilegeManager", "privilege probe failed", e)
         false
