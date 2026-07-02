@@ -3,3 +3,6 @@ contact_links:
   - name: 💬 Questions & discussion
     url: https://github.com/trinadhthatakula/Thor/discussions
     about: Ask questions, share setups, or discuss ideas here instead of opening an issue.
+  - name: 📣 Telegram channel & chat
+    url: https://t.me/thorAppDev
+    about: Follow releases and ask quick questions in the community chat.
