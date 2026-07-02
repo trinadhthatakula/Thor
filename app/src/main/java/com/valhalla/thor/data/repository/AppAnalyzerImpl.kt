@@ -10,28 +10,31 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Build
-import android.provider.OpenableColumns
 import androidx.core.graphics.createBitmap
 import com.valhalla.thor.domain.model.AppMetadata
 import com.valhalla.thor.domain.repository.AppAnalyzer
+import com.valhalla.thor.util.getDisplayName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Single
 import java.io.File
 import java.io.FileOutputStream
+import java.util.UUID
 
 @Single(binds = [AppAnalyzer::class])
 class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
 
     override suspend fun analyze(uri: Uri): Result<AppMetadata> = withContext(Dispatchers.IO) {
-        val displayName = displayNameOf(uri)
-        val stamp = System.currentTimeMillis()
+        val displayName = uri.getDisplayName(context)
+        // Random, unpredictable temp names (CWE-377): avoids collisions between
+        // concurrent analyses and predictable cache paths.
+        val token = UUID.randomUUID()
         // The whole input is copied to disk once so it can be read with ZipFile
         // (random access via the central directory). ZipInputStream cannot handle
         // APKPure's STORED-with-data-descriptor entries (zero-size local headers) and
         // mis-reads the archive; ZipFile reads the central directory like `unzip`.
-        val bundleFile = File(context.cacheDir, "analysis_bundle_$stamp")
-        val apkFile = File(context.cacheDir, "analysis_$stamp.apk")
+        val bundleFile = File(context.cacheDir, "analysis_bundle_$token")
+        val apkFile = File(context.cacheDir, "analysis_$token.apk")
 
         try {
             context.contentResolver.openInputStream(uri)?.use { input ->
@@ -149,25 +152,6 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
             @Suppress("DEPRECATION")
             pm.getPackageArchiveInfo(tempFile.absolutePath, flags)
         }
-    }
-
-    /**
-     * Best-effort display name (hence file extension) for [uri]: the provider's
-     * OpenableColumns.DISPLAY_NAME, falling back to the URI's last path segment.
-     * Used only as a secondary bundle signal, so null is fine.
-     */
-    private fun displayNameOf(uri: Uri): String? {
-        val fromProvider = try {
-            context.contentResolver.query(
-                uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
-            )?.use { cursor ->
-                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                if (index != -1 && cursor.moveToFirst()) cursor.getString(index) else null
-            }
-        } catch (_: Exception) {
-            null
-        }
-        return fromProvider?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment
     }
 
     /**

@@ -24,6 +24,7 @@ import com.valhalla.thor.domain.repository.InstallerRepository
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.R
 import com.valhalla.thor.util.Logger
+import com.valhalla.thor.util.getDisplayName
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +34,7 @@ import org.koin.core.annotation.Single
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
+import java.util.UUID
 import java.util.zip.ZipFile
 
 @Single(binds = [InstallerRepository::class])
@@ -73,25 +75,6 @@ class InstallerRepositoryImpl(
 
         return resolveBundleInstallSet(contents.entryNames, manifest?.splitApkFiles(), packageHint)
             .ifEmpty { null }
-    }
-
-    /**
-     * Best-effort display name (hence file extension) for [uri]: the provider's
-     * OpenableColumns.DISPLAY_NAME, falling back to the URI's last path segment.
-     * Used only as a secondary bundle signal, so null is acceptable.
-     */
-    private fun displayNameOf(uri: Uri): String? {
-        val fromProvider = try {
-            context.contentResolver.query(
-                uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
-            )?.use { cursor ->
-                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                if (index != -1 && cursor.moveToFirst()) cursor.getString(index) else null
-            }
-        } catch (_: Exception) {
-            null
-        }
-        return fromProvider?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment
     }
 
     override suspend fun installPackage(uri: Uri, mode: InstallMode, canDowngrade: Boolean) =
@@ -311,7 +294,7 @@ class InstallerRepositoryImpl(
                 FileOutputStream(bundleFile).use { output -> input.copyTo(output) }
             } ?: return null
 
-            val installSet = resolveInstallSetFromFile(bundleFile, displayNameOf(uri))
+            val installSet = resolveInstallSetFromFile(bundleFile, uri.getDisplayName(context))
             if (installSet == null) {
                 // Monolithic APK: install the copied file as-is (renamed to base.apk).
                 val tempApk = File(tempDir, "base.apk")
@@ -336,7 +319,7 @@ class InstallerRepositoryImpl(
     private suspend fun installWithRoot(uri: Uri, canDowngrade: Boolean) {
         eventBus.emit(InstallState.Installing(0f))
 
-        val tempDir = File(context.cacheDir, "install_root_${System.currentTimeMillis()}")
+        val tempDir = File(context.cacheDir, "install_root_${UUID.randomUUID()}")
         val tempFiles = copyUriToTempFiles(uri, tempDir)
 
         if (tempFiles == null || tempFiles.isEmpty()) {
@@ -375,7 +358,7 @@ class InstallerRepositoryImpl(
         eventBus.emit(InstallState.Installing(0f))
 
         val baseDir = context.externalCacheDir ?: context.cacheDir
-        val tempDir = File(baseDir, "install_shizuku_${System.currentTimeMillis()}")
+        val tempDir = File(baseDir, "install_shizuku_${UUID.randomUUID()}")
         val tempFiles = copyUriToTempFiles(uri, tempDir)
 
         if (tempFiles == null || tempFiles.isEmpty()) {
@@ -421,7 +404,7 @@ class InstallerRepositoryImpl(
         eventBus.emit(InstallState.Installing(0f))
 
         val baseDir = context.externalCacheDir ?: context.cacheDir
-        val tempDir = File(baseDir, "install_dhizuku_${System.currentTimeMillis()}")
+        val tempDir = File(baseDir, "install_dhizuku_${UUID.randomUUID()}")
         val tempFiles = copyUriToTempFiles(uri, tempDir)
 
         if (tempFiles == null || tempFiles.isEmpty()) {
@@ -553,7 +536,7 @@ class InstallerRepositoryImpl(
             // Copy the input to disk once (tracking progress), then read it with
             // ZipFile (central directory). ZipInputStream cannot handle APKPure's
             // STORED-with-data-descriptor entries and derails on the first one.
-            val bundleFile = File(context.cacheDir, "install_bundle_${System.currentTimeMillis()}")
+            val bundleFile = File(context.cacheDir, "install_bundle_${UUID.randomUUID()}")
             try {
                 val copied = context.contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(bundleFile).use { output ->
@@ -573,7 +556,7 @@ class InstallerRepositoryImpl(
 
                 // Genuine bundle: write each resolved split into the session, read via
                 // ZipFile so STORED-with-data-descriptor entries stream correctly.
-                val installSet = resolveInstallSetFromFile(bundleFile, displayNameOf(uri))
+                val installSet = resolveInstallSetFromFile(bundleFile, uri.getDisplayName(context))
                 if (installSet != null) {
                     val wanted = installSet.mapTo(HashSet()) { it.substringAfterLast('/').lowercase() }
                     val seen = HashSet<String>()
