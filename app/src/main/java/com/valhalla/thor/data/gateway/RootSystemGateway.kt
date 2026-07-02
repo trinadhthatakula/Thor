@@ -227,6 +227,11 @@ class RootSystemGateway(
         }
         val downgrade = if (canDowngrade) " -d" else ""
         val sb = StringBuilder()
+        // Run the whole thing in a subshell so our `exit` codes exit the SUBSHELL, not
+        // libsu's long-lived root shell. Exiting the parent shell would kill it before
+        // libsu appends its end-marker, leaving it unable to read the real exit code
+        // (it then falls back to code 1) — and would break every later root command.
+        sb.append("(\n")
         // Create the session; pull the numeric id out of "…created install session [<id>]".
         sb.append("SID=\$(pm install-create -r -g").append(downgrade)
             .append(" 2>/dev/null | sed -n 's/.*\\[\\([0-9]*\\)\\].*/\\1/p')\n")
@@ -236,11 +241,11 @@ class RootSystemGateway(
             val size = File(path).length()
             val escPath = ShellUtils.escapedString(path)
             val escName = ShellUtils.escapedString(File(path).name)
-            sb.append("cat ").append(escPath)
+            sb.append("WERR=\$(cat ").append(escPath)
                 .append(" | pm install-write -S ").append(size)
-                .append(" \"\$SID\" ").append(escName).append(" -")
-                .append(" 1>/dev/null 2>&1 || { pm install-abandon \"\$SID\" 2>/dev/null;")
-                .append(" echo 'pm install-write failed' 1>&2; exit 102; }\n")
+                .append(" \"\$SID\" ").append(escName).append(" - 2>&1 1>/dev/null)")
+                .append(" || { pm install-abandon \"\$SID\" 2>/dev/null;")
+                .append(" echo \"pm install-write failed: \$WERR\" 1>&2; exit 102; }\n")
         }
         // Commit; anything but a Success line is a failure — surface pm's reason.
         sb.append("COMMIT=\$(pm install-commit \"\$SID\" 2>&1)\n")
@@ -249,6 +254,7 @@ class RootSystemGateway(
         sb.append("  *) pm install-abandon \"\$SID\" 2>/dev/null;")
             .append(" echo \"pm install-commit failed: \$COMMIT\" 1>&2; exit 103 ;;\n")
         sb.append("esac\n")
+        sb.append(")\n")
         return runCommand(sb.toString())
     }
 
