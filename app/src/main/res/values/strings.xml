@@ -141,6 +141,15 @@
     <string name="action_uninstall">Uninstall</string>
     <string name="action_reinstall">Reinstall</string>
 
+    <!-- Export -->
+    <string name="action_export">Export</string>
+    <string name="export_title">Export %1$s</string>
+    <string name="export_destination">Destination: %1$s</string>
+    <string name="export_change_folder">Change folder</string>
+    <string name="export_in_progress">Exporting…</string>
+    <string name="export_saved">Saved to %1$s</string>
+    <string name="export_failed">Export failed: %1$s</string>
+
     <!-- Main Screen / Global -->
     <string name="cannot_launch_app">Cannot launch app</string>
     <string name="share_app">Share App</string>

@@ -110,6 +110,7 @@ fun AppInfoDetailsScreen(
     var showClearDataConfirmation by remember { mutableStateOf(false) }
     var showUninstallConfirmation by remember { mutableStateOf(false) }
     var showFreezeConfirmation by remember { mutableStateOf(false) }
+    var showExportSheet by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -229,7 +230,8 @@ fun AppInfoDetailsScreen(
                                 onUninstall = { showUninstallConfirmation = true },
                                 onShare = {
                                     onAppAction(AppClickAction.Share(details.appInfo))
-                                }
+                                },
+                                onExport = { showExportSheet = true }
                             )
                         }
 
@@ -496,6 +498,12 @@ fun AppInfoDetailsScreen(
             )
         }
     }
+
+    if (showExportSheet) {
+        state.detailedInfo?.appInfo?.let { appInfo ->
+            ExportBottomSheet(appInfo = appInfo, onDismiss = { showExportSheet = false })
+        }
+    }
 }
 
 @Composable
@@ -666,7 +674,8 @@ private fun AppDetailsActionRow(
     onClearCache: () -> Unit,
     onClearData: () -> Unit,
     onUninstall: () -> Unit,
-    onShare: () -> Unit
+    onShare: () -> Unit,
+    onExport: () -> Unit
 ) {
     val hasPrivilege = isRoot || isShizuku || isDhizuku
     val isFrozen = !appInfo.enabled
@@ -753,6 +762,12 @@ private fun AppDetailsActionRow(
             icon = R.drawable.share,
             label = stringResource(R.string.action_share),
             onClick = onShare
+        )
+
+        ActionItem(
+            icon = R.drawable.storage,
+            label = stringResource(R.string.action_export),
+            onClick = onExport
         )
 
         if (appInfo.packageName != BuildConfig.APPLICATION_ID) {
