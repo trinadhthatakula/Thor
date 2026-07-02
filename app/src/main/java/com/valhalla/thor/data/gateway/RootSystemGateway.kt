@@ -232,10 +232,11 @@ class RootSystemGateway(
         // libsu appends its end-marker, leaving it unable to read the real exit code
         // (it then falls back to code 1) — and would break every later root command.
         sb.append("(\n")
-        // Create the session; pull the numeric id out of "…created install session [<id>]".
-        sb.append("SID=\$(pm install-create -r -g").append(downgrade)
-            .append(" 2>/dev/null | sed -n 's/.*\\[\\([0-9]*\\)\\].*/\\1/p')\n")
-        sb.append("if [ -z \"\$SID\" ]; then echo 'pm install-create failed' 1>&2; exit 101; fi\n")
+        // Create the session; capture stdout+stderr so a failure reason isn't lost, then
+        // pull the numeric id out of "…created install session [<id>]".
+        sb.append("CREATE_OUT=\$(pm install-create -r -g").append(downgrade).append(" 2>&1)\n")
+        sb.append("SID=\$(printf '%s\\n' \"\$CREATE_OUT\" | sed -n 's/.*\\[\\([0-9]*\\)\\].*/\\1/p')\n")
+        sb.append("if [ -z \"\$SID\" ]; then echo \"pm install-create failed: \$CREATE_OUT\" 1>&2; exit 101; fi\n")
         // Stream each APK's bytes into the session via stdin.
         for (path in apkPaths) {
             val size = File(path).length()
