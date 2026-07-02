@@ -21,11 +21,12 @@ class StorageStatsHelper(private val context: Context) {
 
     suspend fun installSizes(packages: List<String>): Map<String, Long> =
         withContext(Dispatchers.IO) {
+            val manager = statsManager ?: return@withContext emptyMap()
             val out = HashMap<String, Long>(packages.size)
             for (pkg in packages) {
                 val size = runCatching {
                     val ai = pm.getApplicationInfo(pkg, 0)
-                    val stats = statsManager.queryStatsForPackage(ai.storageUuid, pkg, user)
+                    val stats = manager.queryStatsForPackage(ai.storageUuid, pkg, user)
                     stats.appBytes + stats.dataBytes + stats.cacheBytes
                 }.getOrNull()
                 if (size != null) out[pkg] = size

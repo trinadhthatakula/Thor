@@ -35,8 +35,12 @@ interface AppDao {
             // Scanned entities carry installSize = null (StorageStats is computed
             // lazily). Preserve any already-persisted size across the REPLACE so the
             // size cache survives re-syncs.
-            val existing = getInstallSizes(toUpdate.map { it.packageName })
-                .associate { it.packageName to it.installSize }
+            // Chunk to stay under SQLite's IN(...) variable limit (999) on
+            // devices with very large app counts.
+            val existing = HashMap<String, Long?>(toUpdate.size)
+            for (chunk in toUpdate.map { it.packageName }.chunked(999)) {
+                for (item in getInstallSizes(chunk)) existing[item.packageName] = item.installSize
+            }
             val merged = toUpdate.map {
                 if (it.installSize == null) it.copy(installSize = existing[it.packageName]) else it
             }
