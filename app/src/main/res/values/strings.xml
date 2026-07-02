@@ -143,9 +143,10 @@
 
     <!-- Export -->
     <string name="action_export">Export</string>
-    <string name="export_title">Export %1$s</string>
-    <string name="export_destination">Destination: %1$s</string>
-    <string name="export_change_folder">Change folder</string>
+    <string name="export_explain_apk">Thor saves this app as a single installer file (.apk) to the folder below. Use it to back up the app or reinstall it later.</string>
+    <string name="export_explain_apks">This app ships as several split parts, so Thor packages them into one bundle (.apks) in the folder below. Reinstall it anytime with Thor\'s installer.</string>
+    <string name="export_save_to">Save to</string>
+    <string name="export_change">Change</string>
     <string name="export_in_progress">Exporting…</string>
     <string name="export_saved">Saved to %1$s</string>
     <string name="export_failed">Export failed: %1$s</string>

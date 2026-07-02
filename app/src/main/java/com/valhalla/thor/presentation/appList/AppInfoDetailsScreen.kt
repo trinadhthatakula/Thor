@@ -36,7 +36,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
@@ -244,10 +244,11 @@ fun AppInfoDetailsScreen(
                                 stringResource(R.string.action_permissions)
                             )
 
-                            TabRow(
+                            ScrollableTabRow(
                                 selectedTabIndex = selectedTab,
                                 containerColor = Color.Transparent,
                                 contentColor = MaterialTheme.colorScheme.primary,
+                                edgePadding = 0.dp,
                                 indicator = { tabPositions ->
                                     TabRowDefaults.SecondaryIndicator(
                                         modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
