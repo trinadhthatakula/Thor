@@ -228,7 +228,10 @@ class AppRepositoryImpl(
     override suspend fun getDetailedAppInfo(packageName: String): DetailedAppInfo? =
         withContext(Dispatchers.IO) {
             try {
-                val appInfo = getAppDetails(packageName) ?: return@withContext null
+                val appInfo = (getAppDetails(packageName) ?: return@withContext null)
+                    // Carry the persisted total install size (computed lazily on Size
+                    // sort) so the App Info sheet can show it; null until first computed.
+                    .copy(installSize = appDao.getApp(packageName)?.installSize)
 
                 val flags = (PackageManager.GET_ACTIVITIES or
                         PackageManager.GET_SERVICES or

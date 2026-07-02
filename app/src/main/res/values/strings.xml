@@ -271,6 +271,7 @@
     <string name="info_app_version">App version</string>
     <string name="info_sdk_details">SDK details</string>
     <string name="info_sdk_details_format">Target SDK: %1$d   |   Min SDK: %2$d</string>
+    <string name="info_app_size">Size</string>
     <string name="info_installer_source">Installer source</string>
     <string name="info_install_time">Install time</string>
     <string name="info_last_update_time">Last update time</string>

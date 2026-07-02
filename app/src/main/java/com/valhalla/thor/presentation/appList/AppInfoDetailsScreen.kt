@@ -843,6 +843,14 @@ private fun GeneralTabScreen(details: DetailedAppInfo) {
                 )
             )
         }
+        appInfo.installSize?.let { bytes ->
+            item {
+                InfoCard(
+                    title = stringResource(R.string.info_app_size),
+                    value = android.text.format.Formatter.formatShortFileSize(context, bytes)
+                )
+            }
+        }
         item {
             InfoCard(
                 title = stringResource(R.string.info_installer_source),
