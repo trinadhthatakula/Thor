@@ -9,6 +9,7 @@ import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Single
 import com.valhalla.thor.util.Logger
 import com.valhalla.superuser.ShellUtils
+import java.io.File
 
 private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
 private val USER_ID_REGEX = Regex("^\\d+$")
@@ -198,21 +199,64 @@ class RootSystemGateway(
     }
 
     override suspend fun installApp(apkPath: String, canDowngrade: Boolean): Result<Unit> {
-        val command = "pm install -r -g${if (canDowngrade) " -d" else ""} ${
-            ShellUtils.escapedString(apkPath)
-        }"
-        return runCommand(command)
+        return installViaSession(listOf(apkPath), canDowngrade)
     }
 
     suspend fun installMultipleApks(apkPaths: List<String>, canDowngrade: Boolean): Result<Unit> {
+        return installViaSession(apkPaths, canDowngrade)
+    }
+
+    /**
+     * Install one or more APKs through a PackageInstaller *session*, streaming each
+     * file's bytes into the session over stdin (`cat <apk> | pm install-write … -`).
+     *
+     * The old `pm install <path>` / `pm install-multiple <paths>` handed the system
+     * installer a path under the app's private cache (`/data/data/…`). On modern
+     * Android the installer can't read another app's private files, so `pm` aborted
+     * with exit 255 (GH#159). Here the root shell's own `cat` reads the app-private
+     * temp file and pipes the bytes in, so neither `pm` nor `installd` ever opens a
+     * `/data/data` path — the install works regardless of where the temp APKs live.
+     * On failure the real `pm` reason is routed to stderr so it surfaces in the error.
+     */
+    private suspend fun installViaSession(
+        apkPaths: List<String>,
+        canDowngrade: Boolean
+    ): Result<Unit> {
         if (apkPaths.isEmpty()) {
-            return Result.failure(Exception("No APK paths provided for multi-install"))
+            return Result.failure(Exception("No APK paths provided for install"))
         }
-        val escapedPaths = apkPaths.joinToString(" ") {
-            ShellUtils.escapedString(it)
+        val downgrade = if (canDowngrade) " -d" else ""
+        val sb = StringBuilder()
+        // Run the whole thing in a subshell so our `exit` codes exit the SUBSHELL, not
+        // libsu's long-lived root shell. Exiting the parent shell would kill it before
+        // libsu appends its end-marker, leaving it unable to read the real exit code
+        // (it then falls back to code 1) — and would break every later root command.
+        sb.append("(\n")
+        // Create the session; capture stdout+stderr so a failure reason isn't lost, then
+        // pull the numeric id out of "…created install session [<id>]".
+        sb.append("CREATE_OUT=\$(pm install-create -r -g").append(downgrade).append(" 2>&1)\n")
+        sb.append("SID=\$(printf '%s\\n' \"\$CREATE_OUT\" | sed -n 's/.*\\[\\([0-9]*\\)\\].*/\\1/p')\n")
+        sb.append("if [ -z \"\$SID\" ]; then echo \"pm install-create failed: \$CREATE_OUT\" 1>&2; exit 101; fi\n")
+        // Stream each APK's bytes into the session via stdin.
+        for (path in apkPaths) {
+            val size = File(path).length()
+            val escPath = ShellUtils.escapedString(path)
+            val escName = ShellUtils.escapedString(File(path).name)
+            sb.append("WERR=\$(cat ").append(escPath)
+                .append(" | pm install-write -S ").append(size)
+                .append(" \"\$SID\" ").append(escName).append(" - 2>&1 1>/dev/null)")
+                .append(" || { pm install-abandon \"\$SID\" 2>/dev/null;")
+                .append(" echo \"pm install-write failed: \$WERR\" 1>&2; exit 102; }\n")
         }
-        val command = "pm install-multiple -r -g${if (canDowngrade) " -d" else ""} $escapedPaths"
-        return runCommand(command)
+        // Commit; anything but a Success line is a failure — surface pm's reason.
+        sb.append("COMMIT=\$(pm install-commit \"\$SID\" 2>&1)\n")
+        sb.append("case \"\$COMMIT\" in\n")
+        sb.append("  *Success*) exit 0 ;;\n")
+        sb.append("  *) pm install-abandon \"\$SID\" 2>/dev/null;")
+            .append(" echo \"pm install-commit failed: \$COMMIT\" 1>&2; exit 103 ;;\n")
+        sb.append("esac\n")
+        sb.append(")\n")
+        return runCommand(sb.toString())
     }
 
     override suspend fun getAppCacheSize(packageName: String): Long {
