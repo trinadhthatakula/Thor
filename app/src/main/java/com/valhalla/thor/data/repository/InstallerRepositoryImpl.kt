@@ -33,7 +33,7 @@ import org.koin.core.annotation.Single
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
-import java.util.zip.ZipInputStream
+import java.util.zip.ZipFile
 
 @Single(binds = [InstallerRepository::class])
 class InstallerRepositoryImpl(
@@ -46,61 +46,50 @@ class InstallerRepositoryImpl(
     private val defaultInstaller = context.packageManager.packageInstaller
 
     /**
-     * Returns the ordered list of APK filenames to install from a genuine bundle
-     * (XAPK/.apks/.apkm), or null when the file is a monolithic APK that must be
-     * streamed whole.
+     * Given an on-disk copy of the installer input, return the ordered list of APK
+     * base names to install from a genuine bundle (XAPK/.apks/.apkm), or null when
+     * it is a monolithic APK that must be streamed whole.
      *
-     * A monolithic APK carries its own top-level AndroidManifest.xml (GH#207); it
-     * must never be split by its inner .apk assets. For real bundles we prefer the
-     * manifest.json split list, and otherwise order the .apk entries so the base
-     * comes first and config splits last (GH#159).
+     * Reads the bundle with [BundleZip] (ZipFile / central directory) — NOT
+     * ZipInputStream, which cannot handle APKPure's STORED-with-data-descriptor
+     * entries. A monolithic APK carries its own top-level AndroidManifest.xml and no
+     * bundle signal (GH#207); for real bundles we prefer the manifest.json split
+     * list (unioned with any present-but-unlisted splits so a stale manifest never
+     * drops one) and otherwise order the .apk entries base-first (GH#159).
      */
-    private fun resolveXapkApkFiles(uri: Uri): List<String>? {
-        if (!isZipBundle(uri)) return null
-        return try {
-            var manifestBytes: ByteArray? = null
-            val entryNames = mutableListOf<String>()
+    private fun resolveInstallSetFromFile(bundleFile: File, displayName: String?): List<String>? {
+        val entryNames = try {
+            BundleZip.entryNames(bundleFile)
+        } catch (_: Exception) {
+            return null // not a readable zip → treat as a monolithic APK
+        }
+        if (isMonolithicApk(entryNames, displayName)) return null
 
-            context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                ZipInputStream(inputStream).use { zipStream ->
-                    var entry = zipStream.nextEntry
-                    while (entry != null) {
-                        if (!entry.isDirectory) entryNames += entry.name
-                        if (entry.name.equals("manifest.json", ignoreCase = true)) {
-                            manifestBytes = zipStream.readBytes()
-                            zipStream.closeEntry()
-                        } else {
-                            zipStream.closeEntry()
-                        }
-                        entry = zipStream.nextEntry
-                    }
-                }
-            }
+        val manifest = BundleZip.readEntry(bundleFile, "manifest.json")
+            ?.let { parseXapkManifest(String(it)) }
+        val apkmInfo = BundleZip.readEntry(bundleFile, "info.json")
+            ?.let { parseApkmInfo(String(it)) }
+        val packageHint = manifest?.packageName?.takeIf { it.isNotBlank() }
+            ?: apkmInfo?.packageName?.takeIf { it.isNotBlank() }
 
-            // Monolithic-APK gate (GH#207): a file with a top-level AndroidManifest.xml
-            // is a single APK — stream it whole via the monolithic path (null).
-            if (isMonolithicApk(entryNames)) return null
+        return resolveBundleInstallSet(entryNames, manifest?.splitApkFiles(), packageHint)
+            .ifEmpty { null }
+    }
 
-            // Prefer the manifest.json split_apks list for a genuine XAPK — but only when
-            // every declared split actually exists in the archive. A stale/partial manifest
-            // (splits renamed, removed, or never packaged) must not shadow the entry-scan
-            // recovery path below, or extraction would yield nothing and the install fails.
-            val manifest = manifestBytes?.let { parseXapkManifest(String(it)) }
-            val manifestFiles = manifest?.splitApkFiles()?.takeIf { it.isNotEmpty() }
-            if (manifestFiles != null) {
-                val availableNames = entryNames.mapTo(HashSet()) { it.substringAfterLast('/') }
-                if (manifestFiles.all { it.substringAfterLast('/') in availableNames }) {
-                    return manifestFiles
-                }
-            }
-
-            // No usable manifest: order the .apk entries base-first, splits last so
-            // install-multiple gets a valid base (GH#159). selectBaseApkCandidates is
-            // empty only when there are no .apk entries at all → treat as monolithic.
-            selectBaseApkCandidates(entryNames, manifest?.packageName).ifEmpty { null }
+    /**
+     * Best-effort display name (hence file extension) for [uri]: the provider's
+     * OpenableColumns.DISPLAY_NAME, falling back to the URI's last path segment.
+     * Used only as a secondary bundle signal, so null is acceptable.
+     */
+    private fun displayNameOf(uri: Uri): String? {
+        val fromProvider = try {
+            context.contentResolver.query(
+                uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
+            )?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
         } catch (_: Exception) {
             null
         }
+        return fromProvider?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment
     }
 
     override suspend fun installPackage(uri: Uri, mode: InstallMode, canDowngrade: Boolean) =
@@ -310,36 +299,31 @@ class InstallerRepositoryImpl(
     }
 
     private fun copyUriToTempFiles(uri: Uri, tempDir: File): List<File>? {
-        val xapkApkFiles = resolveXapkApkFiles(uri)
         return try {
             tempDir.mkdirs()
-            if (xapkApkFiles != null) {
-                val extracted = mutableListOf<File>()
-                val wanted = xapkApkFiles.map { it.substringAfterLast('/') }.toSet()
+            // Copy the input to disk once, then read it with ZipFile (central
+            // directory). ZipInputStream cannot handle APKPure's
+            // STORED-with-data-descriptor entries and derails on the first one.
+            val bundleFile = File(tempDir, "__bundle__")
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(bundleFile).use { output -> input.copyTo(output) }
+            } ?: return null
 
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    ZipInputStream(input).use { zipStream ->
-                        var entry = zipStream.nextEntry
-                        while (entry != null) {
-                            val entryFileName = entry.name.substringAfterLast('/')
-                            if (!entry.isDirectory && entryFileName in wanted) {
-                                val dest = File(tempDir, entryFileName)
-                                FileOutputStream(dest).use { fos -> zipStream.copyTo(fos) }
-                                extracted.add(dest)
-                            } else {
-                                zipStream.closeEntry()
-                            }
-                            entry = zipStream.nextEntry
-                        }
-                    }
-                }
-                if (extracted.isEmpty()) null else extracted
-            } else {
+            val installSet = resolveInstallSetFromFile(bundleFile, displayNameOf(uri))
+            if (installSet == null) {
+                // Monolithic APK: install the copied file as-is (renamed to base.apk).
                 val tempApk = File(tempDir, "base.apk")
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(tempApk).use { output -> input.copyTo(output) }
-                } ?: return null
+                if (!bundleFile.renameTo(tempApk)) {
+                    bundleFile.copyTo(tempApk, overwrite = true)
+                    bundleFile.delete()
+                }
                 listOf(tempApk)
+            } else {
+                // Genuine bundle: extract exactly the resolved split set via ZipFile.
+                val wanted = installSet.mapTo(HashSet()) { it.substringAfterLast('/') }
+                val extracted = BundleZip.extractEntries(bundleFile, wanted, tempDir)
+                bundleFile.delete()
+                extracted.ifEmpty { null }
             }
         } catch (e: Exception) {
             Logger.e("InstallerRepo", "Failed to copy URI to temp files", e)
@@ -477,18 +461,6 @@ class InstallerRepositoryImpl(
         }
     }
 
-    private fun isZipBundle(uri: Uri): Boolean {
-        return try {
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                val magic = ByteArray(4)
-                input.read(magic) == 4 &&
-                        magic[0] == 0x50.toByte() && magic[1] == 0x4B.toByte() // PK header
-            } ?: false
-        } catch (_: Exception) {
-            false
-        }
-    }
-
     @SuppressLint("RequestInstallPackagesPolicy")
     private suspend fun performPackageInstallerInstall(
         uri: Uri,
@@ -530,7 +502,7 @@ class InstallerRepositoryImpl(
             } else throw e
         }
 
-        var session = try {
+        val session = try {
             packageInstaller.openSession(sessionId)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -576,85 +548,19 @@ class InstallerRepositoryImpl(
         }
 
         try {
-            // ATTEMPT 1: Try as XAPK/APKS/APKM bundle
-            // Use manifest.json split_apks list if available; otherwise include all .apk entries.
-            val xapkApkFiles = resolveXapkApkFiles(uri)
-
-            if (xapkApkFiles != null) {
-                val wanted = xapkApkFiles.map { it.substringAfterLast('/') }.toSet()
-                try {
-                    context.contentResolver.openInputStream(uri)?.use { bundleStream ->
-                        ZipInputStream(bundleStream).use { zipStream ->
-                            var entry = zipStream.nextEntry
-                            while (entry != null) {
-                                val entryFileName = entry.name.substringAfterLast('/')
-                                if (!entry.isDirectory && entryFileName in wanted) {
-                                    filesWritten = true
-                                    val size = entry.size
-
-                                    if (size == -1L) {
-                                        // Unknown size: buffer to temp file first
-                                        val tempFile = File(
-                                            context.cacheDir,
-                                            "temp_${System.currentTimeMillis()}_$entryFileName"
-                                        )
-                                        FileOutputStream(tempFile).use { fos -> zipStream.copyTo(fos) }
-                                        val actualSize = tempFile.length()
-                                        session.openWrite(entryFileName, 0, actualSize).use { out ->
-                                            tempFile.inputStream().use { fis -> fis.copyTo(out) }
-                                            session.fsync(out)
-                                        }
-                                        tempFile.delete()
-                                    } else {
-                                        // Known size: stream directly
-                                        session.openWrite(entryFileName, 0, size).use { out ->
-                                            val buffer = ByteArray(65536)
-                                            var len: Int
-                                            while (zipStream.read(buffer).also { len = it } > 0) {
-                                                out.write(buffer, 0, len)
-                                            }
-                                            session.fsync(out)
-                                        }
-                                    }
-                                } else {
-                                    zipStream.closeEntry()
-                                }
-                                entry = zipStream.nextEntry
-                            }
-                        }
+            // Copy the input to disk once (tracking progress), then read it with
+            // ZipFile (central directory). ZipInputStream cannot handle APKPure's
+            // STORED-with-data-descriptor entries and derails on the first one.
+            val bundleFile = File(context.cacheDir, "install_bundle_${System.currentTimeMillis()}")
+            try {
+                val copied = context.contentResolver.openInputStream(uri)?.use { input ->
+                    FileOutputStream(bundleFile).use { output ->
+                        getTrackedStream(input).copyTo(output)
                     }
-                } catch (e: Exception) {
-                    Logger.e("thor", "Bundle extraction failed, trying fallback: ${e.message}")
-                    if (filesWritten) {
-                        try {
-                            session.abandon()
-                            session.close()
-                        } catch (_: Exception) {
-                        }
-                        val newSessionId = packageInstaller.createSession(params)
-                        try {
-                            session = packageInstaller.openSession(newSessionId)
-                        } catch (e: Exception) {
-                            try {
-                                packageInstaller.abandonSession(newSessionId)
-                            } catch (_: Exception) {
-                            }
-                            throw e
-                        }
-                    }
-                    filesWritten = false
-                }
-            }
+                    true
+                } ?: false
 
-            // ATTEMPT 2: Fallback to Monolithic APK
-            if (!filesWritten) {
-                Logger.d("thor", "Fallback: Treating stream as monolithic base.apk")
-
-                bytesProcessed = 0
-                lastProgressEmitted = 0
-
-                val rawStream = context.contentResolver.openInputStream(uri)
-                if (rawStream == null) {
+                if (!copied) {
                     session.abandon()
                     Logger.e("thor", "Could not open file stream.")
                     if (emitErrors) {
@@ -663,16 +569,41 @@ class InstallerRepositoryImpl(
                     } else throw Exception("Could not open file stream.")
                 }
 
-                val trackedStream = getTrackedStream(rawStream)
+                // Genuine bundle: write each resolved split into the session, read via
+                // ZipFile so STORED-with-data-descriptor entries stream correctly.
+                val installSet = resolveInstallSetFromFile(bundleFile, displayNameOf(uri))
+                if (installSet != null) {
+                    val wanted = installSet.mapTo(HashSet()) { it.substringAfterLast('/').lowercase() }
+                    val seen = HashSet<String>()
+                    ZipFile(bundleFile).use { zf ->
+                        for (entry in zf.entries()) {
+                            if (entry.isDirectory) continue
+                            val base = entry.name.substringAfterLast('/')
+                            val key = base.lowercase()
+                            if (key !in wanted || !seen.add(key)) continue
+                            val size = if (entry.size >= 0) entry.size else -1L
+                            session.openWrite(base, 0, size).use { out ->
+                                zf.getInputStream(entry).use { inner -> inner.copyTo(out) }
+                                session.fsync(out)
+                            }
+                            filesWritten = true
+                        }
+                    }
+                }
 
-                trackedStream.use { input ->
-                    val size = if (totalBytes > 0) totalBytes else -1L
-                    val outStream = session.openWrite("base.apk", 0, size)
-                    input.copyTo(outStream)
-                    session.fsync(outStream)
-                    outStream.close()
+                // Monolithic APK (or not a readable bundle): stream the copied file
+                // whole as base.apk.
+                if (!filesWritten) {
+                    Logger.d("thor", "Treating stream as monolithic base.apk")
+                    val size = if (bundleFile.length() > 0) bundleFile.length() else -1L
+                    session.openWrite("base.apk", 0, size).use { out ->
+                        bundleFile.inputStream().use { inner -> inner.copyTo(out) }
+                        session.fsync(out)
+                    }
                     filesWritten = true
                 }
+            } finally {
+                bundleFile.delete()
             }
 
             eventBus.emit(InstallState.Installing(1.0f))
