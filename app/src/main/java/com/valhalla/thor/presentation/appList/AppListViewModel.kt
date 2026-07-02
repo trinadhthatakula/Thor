@@ -3,6 +3,7 @@ package com.valhalla.thor.presentation.appList
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
@@ -11,7 +12,6 @@ import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
-import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
@@ -68,7 +68,7 @@ class AppListViewModel(
     private val context: Context,
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val getAppDetailsUseCase: GetAppDetailsUseCase,
-    private val systemRepository: SystemRepository,
+    private val privilegeManager: PrivilegeManager,
     private val manageAppUseCase: ManageAppUseCase,
     private val preferenceRepository: PreferenceRepository,
     private val freezerRepository: FreezerRepository
@@ -112,22 +112,25 @@ class AppListViewModel(
             // Allow navigation/bottom bar animations to finish fluidly
             delay(800.milliseconds)
 
-            // Availability probes include non-suspend binder IPC (Shizuku / Dhizuku);
-            // keep them off the Main thread so app-list load never janks.
-            val (hasRoot, hasShizuku, hasDhizuku) = withContext(Dispatchers.IO) {
-                Triple(
-                    systemRepository.isRootAvailable(),
-                    systemRepository.isShizukuAvailable(),
-                    systemRepository.isDhizukuAvailable()
-                )
-            }
-            getInstalledAppsUseCase().collect { (user, system) ->
+            // Privilege availability now comes from the shared reactive PrivilegeManager,
+            // so a Shizuku grant reflects here without reloading the list.
+            combine(
+                getInstalledAppsUseCase(),
+                privilegeManager.state
+            ) { (user, system), priv ->
+                Triple(user, system, priv)
+            }.collect { (user, system, priv) ->
                 _rawState.update {
                     it.copy(
-                        isLoading = false,
-                        isRoot = hasRoot,
-                        isShizuku = hasShizuku,
-                        isDhizuku = hasDhizuku,
+                        // Hold the loader until the first privilege probe lands
+                        // (isReady) so privilege-gated controls never flash their
+                        // disabled state on cold start. This restores the old
+                        // await-probe-before-reveal behavior; later Shizuku grants
+                        // still update reactively once isReady is true.
+                        isLoading = !priv.isReady,
+                        isRoot = priv.root,
+                        isShizuku = priv.shizuku,
+                        isDhizuku = priv.dhizuku,
                         allUserApps = user,
                         allSystemApps = system
                     )

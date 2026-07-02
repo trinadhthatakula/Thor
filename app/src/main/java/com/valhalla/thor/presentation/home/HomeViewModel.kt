@@ -2,11 +2,11 @@ package com.valhalla.thor.presentation.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.repository.PreferenceRepository
-import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -32,6 +32,9 @@ data class HomeUiState(
     val isShizukuAvailable: Boolean = false,
     val isDhizukuAvailable: Boolean = false,
     val activePrivilegeMode: PrivilegeMode? = null,
+    // False until the first privilege probe completes — lets the status icon show a
+    // neutral "detecting" state instead of flashing the red "no privilege" icon on cold start.
+    val isPrivilegeReady: Boolean = false,
 
     // Preferences
     val showReinstallCard: Boolean = true, // <--- Controlled by DataStore
@@ -41,7 +44,7 @@ data class HomeUiState(
 @KoinViewModel
 class HomeViewModel(
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
-    private val systemRepository: SystemRepository,
+    private val privilegeManager: PrivilegeManager,
     private val preferenceRepository: PreferenceRepository // Injected
 ) : ViewModel() {
 
@@ -53,16 +56,27 @@ class HomeViewModel(
     private var lastSystemApps: List<AppInfo> = emptyList()
 
     // Combine internal data processing with user preferences
-    val state = combine(_internalState, preferenceRepository.userPreferences) { internal, prefs ->
-        val activeMode = prefs.preferredPrivilegeMode ?: when {
-            internal.isRootAvailable -> PrivilegeMode.ROOT
-            internal.isShizukuAvailable -> PrivilegeMode.SHIZUKU
-            internal.isDhizukuAvailable -> PrivilegeMode.DHIZUKU
-            else -> null
-        }
+    val state = combine(
+        _internalState,
+        preferenceRepository.userPreferences,
+        privilegeManager.state
+    ) { internal, prefs, priv ->
         internal.copy(
             showReinstallCard = prefs.showReinstallAllCard,
-            activePrivilegeMode = activeMode,
+            isRootAvailable = priv.root,
+            isShizukuAvailable = priv.shizuku,
+            isDhizukuAvailable = priv.dhizuku,
+            isPrivilegeReady = priv.isReady,
+            // Keep the existing "null = no privilege" contract for the UI. Until the
+            // first probe completes (isReady == false), optimistically fall back to the
+            // persisted preference so a configured user never sees a "no privilege"
+            // flash on cold start (this restores the old one-shot behavior, which read
+            // the preference straight from DataStore before any hardware probe).
+            activePrivilegeMode = if (priv.isReady) {
+                priv.active.takeIf { it != PrivilegeMode.NONE }
+            } else {
+                prefs.preferredPrivilegeMode
+            },
             extensionsUnlocked = prefs.extensionsUnlocked
         )
     }.stateIn(
@@ -81,21 +95,10 @@ class HomeViewModel(
 
         dashboardJob = viewModelScope.launch(Dispatchers.IO) {
             _internalState.update { it.copy(isLoading = true) }
-            val hasRoot = systemRepository.isRootAvailable()
-            val hasShizuku = systemRepository.isShizukuAvailable()
-            val hasDhizuku = systemRepository.isDhizukuAvailable()
-
             getInstalledAppsUseCase().collect { (userApps, systemApps) ->
                 lastUserApps = userApps
                 lastSystemApps = systemApps
-                processData(
-                    userApps,
-                    systemApps,
-                    _internalState.value.selectedType,
-                    hasRoot,
-                    hasShizuku,
-                    hasDhizuku
-                )
+                processData(userApps, systemApps, _internalState.value.selectedType)
             }
         }
     }
@@ -104,22 +107,15 @@ class HomeViewModel(
         _internalState.update { it.copy(selectedType = type) }
         typeChangeJob?.cancel()
         typeChangeJob = viewModelScope.launch(Dispatchers.IO) {
-            val s = _internalState.value
-            processData(
-                lastUserApps,
-                lastSystemApps,
-                type,
-                s.isRootAvailable,
-                s.isShizukuAvailable,
-                s.isDhizukuAvailable
-            )
+            processData(lastUserApps, lastSystemApps, type)
         }
     }
 
     fun onPrivilegeModeChanged(mode: PrivilegeMode) {
+        // PrivilegeManager observes the preference and recomputes `active` reactively;
+        // no dashboard reload needed (app stats don't depend on the privilege mode).
         viewModelScope.launch {
             preferenceRepository.setPrivilegeMode(mode)
-            loadDashboardData() // Refresh everything
         }
     }
 
@@ -139,10 +135,7 @@ class HomeViewModel(
     private fun processData(
         userApps: List<AppInfo>,
         systemApps: List<AppInfo>,
-        selectedType: AppListType,
-        hasRoot: Boolean,
-        hasShizuku: Boolean,
-        hasDhizuku: Boolean
+        selectedType: AppListType
     ) {
         val filteredApps = if (selectedType == AppListType.USER) userApps else systemApps
 
@@ -197,10 +190,8 @@ class HomeViewModel(
                 frozenAppCount = frozenCount,
                 suspendedAppCount = suspendedCount,
                 unknownInstallerCount = unknownCount,
-                distributionData = distribution,
-                isRootAvailable = hasRoot,
-                isShizukuAvailable = hasShizuku,
-                isDhizukuAvailable = hasDhizuku
+                distributionData = distribution
+                // Privilege fields are populated by the state combine from PrivilegeManager.
             )
         }
     }

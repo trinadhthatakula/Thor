@@ -3,14 +3,13 @@ package com.valhalla.thor.presentation.freezer
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
-import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
-import com.valhalla.thor.presentation.common.ShizukuPermissionHandler
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.Dispatchers
@@ -50,30 +49,16 @@ class FreezerViewModel(
     private val freezerRepository: FreezerRepository,
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val manageAppUseCase: ManageAppUseCase,
-    private val systemRepository: SystemRepository,
+    private val privilegeManager: PrivilegeManager,
     private val preferenceRepository: PreferenceRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FreezerUiState())
     val uiState: StateFlow<FreezerUiState> = _uiState.asStateFlow()
 
-    // Re-check privileges when Shizuku's binder connects or the user grants permission.
-    // This ViewModel is created at app start (before the first-launch Shizuku grant), so
-    // its init-time loadPrivileges() would otherwise stay stale until an app restart.
-    private val shizukuHandler = ShizukuPermissionHandler(
-        onPermissionGranted = { loadPrivileges() }
-    )
-
     init {
         observeApps()
         observePreferences()
-        loadPrivileges()
-        shizukuHandler.register()
-    }
-
-    override fun onCleared() {
-        shizukuHandler.unregister()
-        super.onCleared()
     }
 
     private fun observeApps() {
@@ -81,20 +66,28 @@ class FreezerViewModel(
             try {
                 combine(
                     freezerRepository.getAll(),
-                    getInstalledAppsUseCase()
-                ) { freezerPkgs, (userApps, systemApps) ->
+                    getInstalledAppsUseCase(),
+                    privilegeManager.state
+                ) { freezerPkgs, (userApps, systemApps), priv ->
                     val pkgSet = freezerPkgs.toSet()
                     val allApps = userApps + systemApps
-                    Triple(pkgSet, allApps.filter { it.packageName in pkgSet }, allApps)
+                    Triple(pkgSet, allApps.filter { it.packageName in pkgSet }, allApps) to priv
                 }
                     .flowOn(Dispatchers.Default)
-                    .collect { (pkgSet, freezerApps, allApps) ->
+                    .collect { (appsData, priv) ->
+                        val (pkgSet, freezerApps, allApps) = appsData
                         _uiState.update {
                             it.copy(
-                                isLoading = false,
+                                // Hold the loader until the first privilege probe lands so
+                                // freeze/unfreeze controls never flash disabled on cold start;
+                                // privilege flags now update atomically with the app list.
+                                isLoading = !priv.isReady,
                                 freezerPackageNames = pkgSet,
                                 freezerApps = freezerApps,
-                                allInstalledApps = allApps
+                                allInstalledApps = allApps,
+                                isRoot = priv.root,
+                                isShizuku = priv.shizuku,
+                                isDhizuku = priv.dhizuku
                             )
                         }
                     }
@@ -106,21 +99,6 @@ class FreezerViewModel(
                         actionMessage = UiText.StringResource(R.string.failed_to_load_apps)
                     )
                 }
-            }
-        }
-    }
-
-    private fun loadPrivileges() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val hasRoot = systemRepository.isRootAvailable()
-            val hasShizuku = systemRepository.isShizukuAvailable()
-            val hasDhizuku = systemRepository.isDhizukuAvailable()
-            _uiState.update {
-                it.copy(
-                    isRoot = hasRoot,
-                    isShizuku = hasShizuku,
-                    isDhizuku = hasDhizuku
-                )
             }
         }
     }

@@ -51,6 +51,7 @@ fun DashboardHeader(
     isShizuku: Boolean,
     isDhizuku: Boolean,
     activeMode: PrivilegeMode?,
+    isPrivilegeReady: Boolean,
     selectedType: AppListType,
     onTypeChanged: (AppListType) -> Unit,
     onPrivilegeChanged: (PrivilegeMode) -> Unit,
@@ -86,6 +87,7 @@ fun DashboardHeader(
                 isShizuku = isShizuku,
                 isDhizuku = isDhizuku,
                 activeMode = activeMode,
+                isReady = isPrivilegeReady,
                 onModeSelected = onPrivilegeChanged,
                 onClick = onRestrictedStatusClick
             )
@@ -238,6 +240,7 @@ private fun StatusIcon(
     isShizuku: Boolean,
     isDhizuku: Boolean,
     activeMode: PrivilegeMode?,
+    isReady: Boolean,
     onModeSelected: (PrivilegeMode) -> Unit,
     onClick: () -> Unit
 ) {
@@ -251,7 +254,13 @@ private fun StatusIcon(
         PrivilegeMode.ROOT -> R.drawable.magisk_icon to MaterialTheme.colorScheme.primary
         PrivilegeMode.SHIZUKU -> R.drawable.shizuku to MaterialTheme.colorScheme.primary
         PrivilegeMode.DHIZUKU -> R.drawable.dhizuku to MaterialTheme.colorScheme.primary
-        else -> R.drawable.round_close to MaterialTheme.colorScheme.error
+        // Before the first probe completes, show the placeholder in a neutral tint instead of
+        // the alarming error red, so cold start doesn't flash "no privilege".
+        else -> if (isReady) {
+            R.drawable.round_close to MaterialTheme.colorScheme.error
+        } else {
+            R.drawable.round_close to MaterialTheme.colorScheme.onSurfaceVariant
+        }
     }
 
     Box(
