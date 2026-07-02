@@ -9,3 +9,15 @@ updates:
       maven:
         patterns:
           - "*"
+
+  # Keep GitHub Actions versions current/patched (esp. actions used in the
+  # keystore-bearing release workflows). Grouped into one weekly PR.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    target-branch: "dev"
+    groups:
+      actions:
+        patterns:
+          - "*"
