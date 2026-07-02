@@ -174,6 +174,21 @@ class BundleZipTest {
     }
 
     @Test
+    fun bundleZip_read_returnsEntryNamesAndRequestedBytesInOnePass() {
+        val zip = writeStoredDataDescriptorZip(amazonEntries)
+
+        val contents = BundleZip.read(zip, setOf("manifest.json", "missing.json"))
+
+        assertEquals(amazonEntries.map { it.first }.toSet(), contents.entryNames.toSet())
+        assertArrayEquals(
+            amazonEntries.first { it.first == "manifest.json" }.second,
+            contents.bytes["manifest.json"]
+        )
+        assertNull(contents.bytes["missing.json"])          // absent entry -> not in the map
+        assertNull(contents.bytes["config.arm64_v8a.apk"])  // present but not requested
+    }
+
+    @Test
     fun zipInputStream_cannotReadThisLayout_documentingWhyTheBugExisted() {
         // The whole point of BundleZip: ZipInputStream does NOT recover the real
         // manifest.json bytes from this layout (it throws or mis-reads), whereas

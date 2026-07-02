@@ -48,12 +48,19 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
             var infoBytes: ByteArray? = null
             var iconBytes: ByteArray? = null
             try {
-                entryNames = BundleZip.entryNames(bundleFile)
-                manifestBytes = BundleZip.readEntry(bundleFile, "manifest.json")
-                infoBytes = BundleZip.readEntry(bundleFile, "info.json")
-                iconBytes = BundleZip.readEntry(bundleFile, "icon.png")
-                    ?: BundleZip.readEntry(bundleFile, "icon.jpg")
-                    ?: BundleZip.readEntry(bundleFile, "icon.webp")
+                // Single ZipFile pass for entry names + all sidecar/icon bytes, instead
+                // of re-opening (and re-parsing the central directory of) the archive per
+                // file.
+                val contents = BundleZip.read(
+                    bundleFile,
+                    setOf("manifest.json", "info.json", "icon.png", "icon.jpg", "icon.webp")
+                )
+                entryNames = contents.entryNames
+                manifestBytes = contents.bytes["manifest.json"]
+                infoBytes = contents.bytes["info.json"]
+                iconBytes = contents.bytes["icon.png"]
+                    ?: contents.bytes["icon.jpg"]
+                    ?: contents.bytes["icon.webp"]
             } catch (_: Exception) {
                 // Not a readable zip — fall through to the monolithic whole-file parse.
             }
@@ -153,7 +160,10 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
         val fromProvider = try {
             context.contentResolver.query(
                 uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
-            )?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+            )?.use { cursor ->
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index != -1 && cursor.moveToFirst()) cursor.getString(index) else null
+            }
         } catch (_: Exception) {
             null
         }

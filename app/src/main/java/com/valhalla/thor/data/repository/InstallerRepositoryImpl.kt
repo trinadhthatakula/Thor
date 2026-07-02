@@ -58,21 +58,20 @@ class InstallerRepositoryImpl(
      * drops one) and otherwise order the .apk entries base-first (GH#159).
      */
     private fun resolveInstallSetFromFile(bundleFile: File, displayName: String?): List<String>? {
-        val entryNames = try {
-            BundleZip.entryNames(bundleFile)
+        // Single ZipFile pass for entry names + both sidecar files.
+        val contents = try {
+            BundleZip.read(bundleFile, setOf("manifest.json", "info.json"))
         } catch (_: Exception) {
             return null // not a readable zip → treat as a monolithic APK
         }
-        if (isMonolithicApk(entryNames, displayName)) return null
+        if (isMonolithicApk(contents.entryNames, displayName)) return null
 
-        val manifest = BundleZip.readEntry(bundleFile, "manifest.json")
-            ?.let { parseXapkManifest(String(it)) }
-        val apkmInfo = BundleZip.readEntry(bundleFile, "info.json")
-            ?.let { parseApkmInfo(String(it)) }
+        val manifest = contents.bytes["manifest.json"]?.let { parseXapkManifest(String(it)) }
+        val apkmInfo = contents.bytes["info.json"]?.let { parseApkmInfo(String(it)) }
         val packageHint = manifest?.packageName?.takeIf { it.isNotBlank() }
             ?: apkmInfo?.packageName?.takeIf { it.isNotBlank() }
 
-        return resolveBundleInstallSet(entryNames, manifest?.splitApkFiles(), packageHint)
+        return resolveBundleInstallSet(contents.entryNames, manifest?.splitApkFiles(), packageHint)
             .ifEmpty { null }
     }
 
@@ -85,7 +84,10 @@ class InstallerRepositoryImpl(
         val fromProvider = try {
             context.contentResolver.query(
                 uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
-            )?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+            )?.use { cursor ->
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index != -1 && cursor.moveToFirst()) cursor.getString(index) else null
+            }
         } catch (_: Exception) {
             null
         }

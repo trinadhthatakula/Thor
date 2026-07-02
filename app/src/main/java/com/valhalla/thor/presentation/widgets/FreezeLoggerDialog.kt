@@ -16,6 +16,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -48,11 +50,15 @@ fun FreezeLoggerDialog(
     val succeeded = processed - failed
     val hasFailures = failed > 0
 
+    // Keyed on completion state (NOT onDismiss, which would reset the delay each
+    // recomposition); rememberUpdatedState keeps the latest onDismiss without restarting.
+    val currentOnDismiss by rememberUpdatedState(onDismiss)
+
     // Auto-dismiss shortly after a fully-successful run.
     LaunchedEffect(isComplete, hasFailures) {
         if (isComplete && !hasFailures) {
             delay(autoDismissMillis)
-            onDismiss()
+            currentOnDismiss()
         }
     }
 

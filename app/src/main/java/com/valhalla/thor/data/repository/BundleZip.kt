@@ -20,6 +20,37 @@ import java.util.zip.ZipFile
  */
 object BundleZip {
 
+    /**
+     * Result of a single-pass read: every entry name, plus the bytes of the requested
+     * base names ([bytes] keyed by lowercased base name; only entries that existed).
+     */
+    data class BundleContents(
+        val entryNames: List<String>,
+        val bytes: Map<String, ByteArray>
+    )
+
+    /**
+     * Open [zip] ONCE and return every entry name plus the bytes of any entry whose base
+     * name is in [wantedBaseNames] (case-insensitive). Avoids re-opening (and re-parsing
+     * the central directory of) the archive once per metadata file.
+     */
+    fun read(zip: File, wantedBaseNames: Set<String>): BundleContents {
+        val wanted = wantedBaseNames.mapTo(HashSet()) { it.lowercase() }
+        val names = ArrayList<String>()
+        val bytes = HashMap<String, ByteArray>()
+        ZipFile(zip).use { zf ->
+            for (entry in zf.entries()) {
+                if (entry.isDirectory) continue
+                names.add(entry.name)
+                val key = entry.name.substringAfterLast('/').lowercase()
+                if (key in wanted && key !in bytes) {
+                    bytes[key] = zf.getInputStream(entry).use { it.readBytes() }
+                }
+            }
+        }
+        return BundleContents(names, bytes)
+    }
+
     /** Top-level entry names (files only) of [zip], read from the central directory. */
     fun entryNames(zip: File): List<String> =
         ZipFile(zip).use { zf ->
