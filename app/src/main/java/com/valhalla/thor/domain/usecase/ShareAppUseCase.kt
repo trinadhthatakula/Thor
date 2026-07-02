@@ -13,7 +13,7 @@ class ShareAppUseCase(
     private val bundleBuilder: AppBundleBuilder
 ) {
     suspend operator fun invoke(appInfo: AppInfo): Result<Uri> =
-        bundleBuilder.build(appInfo).map { file ->
+        bundleBuilder.build(appInfo).mapCatching { file ->
             FileProvider.getUriForFile(context, "${BuildConfig.APPLICATION_ID}.provider", file)
         }
 }
