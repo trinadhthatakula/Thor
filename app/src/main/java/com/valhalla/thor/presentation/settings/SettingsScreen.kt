@@ -31,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,14 +50,19 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.R
+import com.valhalla.thor.data.manager.UsageAccessManager
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.asgard.components.ConnectedButtonGroup
 import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -320,6 +326,49 @@ fun SettingsScreen(
                 checked = prefs.biometricLockEnabled,
                 enabled = state.canUseBiometric,
                 onCheckedChange = { viewModel.setBiometricLock(it) }
+            )
+        }
+
+        Spacer(Modifier.height(32.dp))
+
+        // ── PERMISSIONS ─────────────────────────────────────────────────────
+        SettingsSectionLabel(stringResource(R.string.permissions))
+
+        val usageAccessManager = koinInject<UsageAccessManager>()
+        val lifecycleOwner = LocalLifecycleOwner.current
+        var usageGranted by remember { mutableStateOf(usageAccessManager.isGranted()) }
+        DisposableEffect(lifecycleOwner) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    usageGranted = usageAccessManager.isGranted()
+                }
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(32.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .padding(8.dp)
+        ) {
+            SettingsSwitchRow(
+                icon = R.drawable.shield,
+                title = stringResource(R.string.usage_access),
+                subtitle = if (usageGranted) {
+                    stringResource(R.string.usage_access_granted_subtitle)
+                } else {
+                    stringResource(R.string.usage_access_needed_subtitle)
+                },
+                checked = usageGranted,
+                onCheckedChange = {
+                    // This op can't be toggled in-app; deep-link to system settings.
+                    if (!usageGranted) {
+                        runCatching { context.startActivity(usageAccessManager.usageAccessIntent()) }
+                    }
+                }
             )
         }
 

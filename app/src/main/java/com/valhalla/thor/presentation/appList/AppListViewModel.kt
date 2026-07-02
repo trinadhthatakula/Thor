@@ -4,12 +4,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
 import com.valhalla.thor.data.manager.PrivilegeManager
+import com.valhalla.thor.data.manager.StorageStatsHelper
+import com.valhalla.thor.data.manager.UsageAccessManager
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
+import com.valhalla.thor.domain.model.sortApps
+import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
@@ -23,7 +27,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -60,7 +66,9 @@ data class AppListUiState(
     val actionMessage: UiText? = null,
     val freezerPrompt: FreezerPrompt? = null,
     val useDetailedView: Boolean = true,
-    val isGrid: Boolean = true
+    val isGrid: Boolean = true,
+    val isComputingSizes: Boolean = false,
+    val needsUsageAccessPrompt: Boolean = false
 )
 
 @KoinViewModel
@@ -71,10 +79,14 @@ class AppListViewModel(
     private val privilegeManager: PrivilegeManager,
     private val manageAppUseCase: ManageAppUseCase,
     private val preferenceRepository: PreferenceRepository,
-    private val freezerRepository: FreezerRepository
+    private val freezerRepository: FreezerRepository,
+    private val appRepository: AppRepository,
+    private val storageStatsHelper: StorageStatsHelper,
+    private val usageAccessManager: UsageAccessManager
 ) : ViewModel() {
 
     private var appsJob: Job? = null
+    private var sizeJob: Job? = null
     private val _rawState = MutableStateFlow(AppListUiState())
 
     // Combine raw app data with user preferences from DataStore
@@ -99,6 +111,7 @@ class AppListViewModel(
 
     init {
         loadApps()
+        observeSizeSort()
     }
 
     fun loadApps() {
@@ -135,8 +148,60 @@ class AppListViewModel(
                         allSystemApps = system
                     )
                 }
+                if (priv.hasAnyPrivilege) {
+                    launch { usageAccessManager.maybeAutoGrant() }
+                }
             }
         }
+    }
+
+    // Recompute total install sizes when Size is the active sort AND apps are loaded
+    // (fires both when the user picks Size and when the list finishes loading with
+    // Size already selected). distinctUntilChanged prevents a self-trigger loop.
+    private fun observeSizeSort() {
+        viewModelScope.launch {
+            combine(
+                preferenceRepository.userPreferences.map { it.appSortBy }.distinctUntilChanged(),
+                _rawState.map { it.allUserApps.size + it.allSystemApps.size }.distinctUntilChanged()
+            ) { sortBy, appCount -> sortBy to appCount }
+                .collect { (sortBy, appCount) ->
+                    if (sortBy == SortBy.SIZE && appCount > 0) ensureInstallSizes()
+                }
+        }
+    }
+
+    private fun ensureInstallSizes() {
+        sizeJob?.cancel()
+        sizeJob = viewModelScope.launch {
+            if (!usageAccessManager.isGranted() && !usageAccessManager.tryGrantViaPrivilege()) {
+                _rawState.update { it.copy(needsUsageAccessPrompt = true) }
+                return@launch
+            }
+            _rawState.update { it.copy(isComputingSizes = true) }
+            try {
+                val packages = (_rawState.value.allUserApps + _rawState.value.allSystemApps)
+                    .map { it.packageName }
+                val sizes = storageStatsHelper.installSizes(packages)
+                _rawState.update { state ->
+                    state.copy(
+                        needsUsageAccessPrompt = false,
+                        allUserApps = state.allUserApps.map {
+                            it.copy(installSize = sizes[it.packageName] ?: it.installSize)
+                        },
+                        allSystemApps = state.allSystemApps.map {
+                            it.copy(installSize = sizes[it.packageName] ?: it.installSize)
+                        }
+                    )
+                }
+                appRepository.updateInstallSizes(sizes)
+            } finally {
+                _rawState.update { it.copy(isComputingSizes = false) }
+            }
+        }
+    }
+
+    fun dismissUsageAccessPrompt() {
+        _rawState.update { it.copy(needsUsageAccessPrompt = false) }
     }
 
     fun freezeApp(packageName: String, appName: String?, freeze: Boolean) {
@@ -431,17 +496,5 @@ class AppListViewModel(
         list: List<AppInfo>,
         sortBy: SortBy,
         order: SortOrder
-    ): List<AppInfo> {
-        val comparator = when (sortBy) {
-            SortBy.NAME -> compareBy<AppInfo> { it.appName?.lowercase() }
-            SortBy.INSTALL_DATE -> compareBy { it.firstInstallTime }
-            SortBy.LAST_UPDATED -> compareBy { it.lastUpdateTime }
-            SortBy.VERSION_CODE -> compareBy { it.versionCode }
-            SortBy.VERSION_NAME -> compareBy { it.versionName }
-            SortBy.TARGET_SDK_VERSION -> compareBy { it.targetSdk }
-            SortBy.MIN_SDK_VERSION -> compareBy { it.minSdk }
-        }
-        return if (order == SortOrder.ASCENDING) list.sortedWith(comparator)
-        else list.sortedWith(comparator).reversed()
-    }
+    ): List<AppInfo> = sortApps(list, sortBy, order)
 }

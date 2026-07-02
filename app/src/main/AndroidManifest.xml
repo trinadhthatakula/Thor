@@ -22,6 +22,9 @@
     <uses-permission android:name="shizuku.permission.API_V23" />
     <uses-permission android:name="com.rosan.dhizuku.permission.API" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
 
     <permission
         android:name="com.valhalla.thor.permission.TRIGGER_EXTENSION"

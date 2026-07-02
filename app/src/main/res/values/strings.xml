@@ -175,6 +175,15 @@
     <string name="permission_state_granted">Granted</string>
     <string name="permission_state_denied">Denied</string>
 
+    <!-- Usage Access / Size sort -->
+    <string name="permissions">PERMISSIONS</string>
+    <string name="usage_access">Usage Access</string>
+    <string name="usage_access_granted_subtitle">Granted — enables app-size sorting</string>
+    <string name="usage_access_needed_subtitle">Needed to read app sizes for the Size sort</string>
+    <string name="usage_access_needed_title">Usage Access needed</string>
+    <string name="usage_access_prompt_body">Thor needs Usage Access to read app sizes. Enable it for Thor, then pick \"Size\" again. You can also manage this under Settings → Permissions.</string>
+    <string name="open_settings">Open settings</string>
+
     <!-- Quick Settings Tile -->
     <string name="tile_no_privilege">No privilege granted</string>
     <string name="tile_no_apps">No apps</string>
@@ -271,6 +280,7 @@
     <string name="info_app_version">App version</string>
     <string name="info_sdk_details">SDK details</string>
     <string name="info_sdk_details_format">Target SDK: %1$d   |   Min SDK: %2$d</string>
+    <string name="info_app_size">Size</string>
     <string name="info_installer_source">Installer source</string>
     <string name="info_install_time">Install time</string>
     <string name="info_last_update_time">Last update time</string>
