@@ -52,11 +52,26 @@ data class LoggerState(
 )
 
 /**
+ * Compact count-only progress for bulk freeze / unfreeze. Unlike [LoggerState] it
+ * never lists app names — just a live `processed / total` count — and auto-dismisses
+ * shortly after a fully-successful run.
+ */
+data class FreezeLoggerState(
+    val isVisible: Boolean = false,
+    val isFreeze: Boolean = true,
+    val total: Int = 0,
+    val processed: Int = 0,
+    val failed: Int = 0,
+    val isComplete: Boolean = false
+)
+
+/**
  * Main UI State holding global feedback.
  */
 data class MainUiState(
     val actionMessage: UiText? = null, // For transient Toasts
     val loggerState: LoggerState = LoggerState(), // For persistent Logs
+    val freezeLoggerState: FreezeLoggerState = FreezeLoggerState(), // Compact freeze/unfreeze progress
     val selectedDestination: AppDestinations = AppDestinations.HOME, // For Bottom Nav
     val hasShownSupportDeveloperPrompt: Boolean = true,
     val showSupportDeveloperPrompt: Boolean = false,
@@ -373,26 +388,9 @@ class MainViewModel(
                     }
                 }
 
-                is MultiAppAction.Freeze -> performLoggedMultiAction(
-                    UiText.StringResource(R.string.log_freezing_batch),
-                    action.appList
-                ) { appInfo ->
-                    val isSystem = appInfo.isSystem
-                    val isUadFailed = isSystem && appInfo.isUadLoadFailed
-                    val isUnsafe = isSystem && appInfo.bloatRecommendation?.lowercase() == "unsafe"
-                    if (isUadFailed || isUnsafe) {
-                        Result.failure(UiTextException(UiText.StringResource(R.string.error_unsafe_skipped)))
-                    } else {
-                        manageAppUseCase.setAppDisabled(appInfo.packageName, disabled = true)
-                    }
-                }
+                is MultiAppAction.Freeze -> performCountedFreeze(action.appList, isFreeze = true)
 
-                is MultiAppAction.UnFreeze -> performLoggedMultiAction(
-                    UiText.StringResource(R.string.log_unfreezing_batch),
-                    action.appList
-                ) {
-                    manageAppUseCase.setAppDisabled(it.packageName, disabled = false)
-                }
+                is MultiAppAction.UnFreeze -> performCountedFreeze(action.appList, isFreeze = false)
 
                 is MultiAppAction.Kill -> performLoggedMultiAction(
                     UiText.StringResource(R.string.log_killing_batch),
@@ -481,6 +479,59 @@ class MainViewModel(
                 }
             }
         }
+    }
+
+    /**
+     * Bulk freeze / unfreeze with compact count-only progress ([FreezeLoggerState]).
+     * Unsafe / UAD-failed system apps are excluded from the freeze set up-front (so the
+     * total reflects only what we actually attempt), then each app is toggled
+     * sequentially with a live `processed / total` count.
+     */
+    private suspend fun performCountedFreeze(apps: List<AppInfo>, isFreeze: Boolean) {
+        val targets = if (isFreeze) {
+            apps.filter { app ->
+                !(app.isSystem && (app.isUadLoadFailed ||
+                    app.bloatRecommendation?.lowercase() == "unsafe"))
+            }
+        } else {
+            apps
+        }
+
+        _uiState.update {
+            it.copy(
+                freezeLoggerState = FreezeLoggerState(
+                    isVisible = true,
+                    isFreeze = isFreeze,
+                    total = targets.size
+                )
+            )
+        }
+
+        var processed = 0
+        var failed = 0
+        withContext(Dispatchers.IO) {
+            targets.forEach { app ->
+                val result = manageAppUseCase.setAppDisabled(app.packageName, disabled = isFreeze)
+                processed++
+                if (result.isFailure) failed++
+                val p = processed
+                val f = failed
+                _uiState.update {
+                    it.copy(freezeLoggerState = it.freezeLoggerState.copy(processed = p, failed = f))
+                }
+            }
+        }
+
+        _uiState.update {
+            it.copy(freezeLoggerState = it.freezeLoggerState.copy(isComplete = true))
+        }
+        if (processed - failed > 0) {
+            triggerSupportPromptIfNeeded()
+        }
+    }
+
+    fun dismissFreezeLogger() {
+        _uiState.update { it.copy(freezeLoggerState = FreezeLoggerState()) }
     }
 
     private suspend fun performLoggedMultiAction(

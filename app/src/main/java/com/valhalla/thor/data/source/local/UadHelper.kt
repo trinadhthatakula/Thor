@@ -35,9 +35,15 @@ class UadHelper(
         }
 
     fun invalidateCache() {
-        synchronized(lock) {
-            cachedMap = null
-        }
+        // Lock-free by design: this is called from a main-thread BroadcastReceiver on
+        // every package change. Taking `lock` here would block the main thread behind
+        // an in-progress buildUadMap() (a ~1.6MB JSON parse), which — during a bulk
+        // freeze/unfreeze that floods PACKAGE_CHANGED broadcasts — caused an ANR.
+        // A `null` write to the @Volatile field is atomic and visible; the getter still
+        // holds `lock` to de-duplicate concurrent rebuilds. Worst case, an invalidate
+        // that races a concurrent rebuild is absorbed by that (fresh) rebuild — a
+        // harmless one-generation staleness for a static recommendation list.
+        cachedMap = null
     }
 
     private fun buildUadMap(): Map<String, UadEntry> {

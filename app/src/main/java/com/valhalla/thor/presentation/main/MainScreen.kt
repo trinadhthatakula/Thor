@@ -86,6 +86,7 @@ import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
 import com.valhalla.thor.presentation.widgets.AffirmationDialog
 import com.valhalla.thor.presentation.widgets.MultiAppAffirmationDialog
+import com.valhalla.thor.presentation.widgets.FreezeLoggerDialog
 import com.valhalla.thor.presentation.widgets.TermLoggerDialog
 import com.valhalla.thor.presentation.widgets.ThankYouDialog
 import org.koin.androidx.compose.koinViewModel
@@ -653,6 +654,17 @@ fun MainScreen(
                         logs = state.loggerState.logs,
                         isOperationComplete = state.loggerState.isComplete,
                         onDismiss = { mainViewModel.dismissLogger() }
+                    )
+                }
+
+                if (state.freezeLoggerState.isVisible) {
+                    FreezeLoggerDialog(
+                        isFreeze = state.freezeLoggerState.isFreeze,
+                        total = state.freezeLoggerState.total,
+                        processed = state.freezeLoggerState.processed,
+                        failed = state.freezeLoggerState.failed,
+                        isComplete = state.freezeLoggerState.isComplete,
+                        onDismiss = { mainViewModel.dismissFreezeLogger() }
                     )
                 }
 

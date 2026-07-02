@@ -10,6 +10,7 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Build
+import android.provider.OpenableColumns
 import androidx.core.graphics.createBitmap
 import com.valhalla.thor.domain.model.AppMetadata
 import com.valhalla.thor.domain.repository.AppAnalyzer
@@ -18,146 +19,121 @@ import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Single
 import java.io.File
 import java.io.FileOutputStream
-import java.util.zip.ZipInputStream
 
 @Single(binds = [AppAnalyzer::class])
 class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
 
     override suspend fun analyze(uri: Uri): Result<AppMetadata> = withContext(Dispatchers.IO) {
-        val tempFile = File(context.cacheDir, "analysis_${System.currentTimeMillis()}.apk")
+        val displayName = displayNameOf(uri)
+        val stamp = System.currentTimeMillis()
+        // The whole input is copied to disk once so it can be read with ZipFile
+        // (random access via the central directory). ZipInputStream cannot handle
+        // APKPure's STORED-with-data-descriptor entries (zero-size local headers) and
+        // mis-reads the archive; ZipFile reads the central directory like `unzip`.
+        val bundleFile = File(context.cacheDir, "analysis_bundle_$stamp")
+        val apkFile = File(context.cacheDir, "analysis_$stamp.apk")
 
         try {
-            val contentResolver = context.contentResolver
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(bundleFile).use { output -> input.copyTo(output) }
+            } ?: return@withContext Result.failure(
+                Exception("Could not open the selected file.")
+            )
 
-            // Phase 1: Single pass — collect the zip's entry names plus the XAPK
-            // manifest.json and icon bytes (if any). The entry names let us decide
-            // monolithic-vs-bundle without trusting the mere presence of a .apk
-            // entry (every APK is itself a zip that may embed nested .apk assets).
-            val entryNames = mutableListOf<String>()
+            // Phase 1: Enumerate entries + read sidecar metadata (XAPK manifest.json /
+            // APKMirror info.json) and icon bytes via ZipFile. If the file is not a
+            // readable zip, entryNames stays empty and the monolithic parse below runs.
+            var entryNames: List<String> = emptyList()
             var manifestBytes: ByteArray? = null
+            var infoBytes: ByteArray? = null
             var iconBytes: ByteArray? = null
-
             try {
-                contentResolver.openInputStream(uri)?.use { inputStream ->
-                    ZipInputStream(inputStream).use { zipStream ->
-                        var entry = zipStream.nextEntry
-                        while (entry != null) {
-                            if (!entry.isDirectory) entryNames += entry.name
-                            when {
-                                entry.name.equals("manifest.json", ignoreCase = true) -> {
-                                    manifestBytes = zipStream.readBytes()
-                                    zipStream.closeEntry()
-                                }
-
-                                entry.name.equals("icon.png", ignoreCase = true) ||
-                                        entry.name.equals("icon.jpg", ignoreCase = true) ||
-                                        entry.name.equals("icon.webp", ignoreCase = true) -> {
-                                    iconBytes = zipStream.readBytes()
-                                    zipStream.closeEntry()
-                                }
-
-                                else -> zipStream.closeEntry()
-                            }
-                            entry = zipStream.nextEntry
-                        }
-                    }
-                }
+                // Single ZipFile pass for entry names + all sidecar/icon bytes, instead
+                // of re-opening (and re-parsing the central directory of) the archive per
+                // file.
+                val contents = BundleZip.read(
+                    bundleFile,
+                    setOf("manifest.json", "info.json", "icon.png", "icon.jpg", "icon.webp")
+                )
+                entryNames = contents.entryNames
+                manifestBytes = contents.bytes["manifest.json"]
+                infoBytes = contents.bytes["info.json"]
+                iconBytes = contents.bytes["icon.png"]
+                    ?: contents.bytes["icon.jpg"]
+                    ?: contents.bytes["icon.webp"]
             } catch (_: Exception) {
-                // Not a readable zip (or truncated). We'll still try the monolithic
-                // whole-file parse below.
+                // Not a readable zip — fall through to the monolithic whole-file parse.
             }
 
-            // Phase 2: Monolithic-APK gate (GH#207). A file that carries its own
-            // top-level AndroidManifest.xml is a single installable APK — parse the
-            // whole file and NEVER scan inner .apk assets. If the authoritative
-            // whole-file parse fails, we return failure here rather than falling
-            // through to the base-candidate scan: falling through could extract a
-            // nested assets/*.apk (App Manager style) and return the WRONG package
-            // identity, re-triggering the GH#207 false-downgrade bug on the rare
-            // failed-parse path. (The parse itself needs framework
-            // getPackageArchiveInfo, so this exact branch is covered by compile +
-            // manual path; the "monolithic is never routed to candidate selection"
-            // invariant is unit-tested at the helper level in BundleAnalysisTest.)
-            if (isMonolithicApk(entryNames)) {
-                contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(tempFile).use { output -> input.copyTo(output) }
-                }
-                val archiveInfo = parseArchive(tempFile)
+            // Phase 2: Monolithic-APK gate (GH#207). A single installable APK carries
+            // its own top-level AndroidManifest.xml and shows no bundle signal — parse
+            // the whole file as-is and NEVER scan inner .apk assets.
+            if (isMonolithicApk(entryNames, displayName)) {
+                val archiveInfo = parseArchiveSafely(bundleFile)
                     ?: return@withContext Result.failure(
                         Exception("Failed to parse APK manifest. The file might be corrupted or encrypted.")
                     )
-                return@withContext Result.success(metadataFrom(archiveInfo, tempFile, iconBytes))
+                return@withContext Result.success(metadataFrom(archiveInfo, bundleFile, iconBytes))
             }
 
-            // Phase 3: XAPK manifest path — build metadata from the authoritative
-            // base APK. Tolerant deserialization (GH#159) so numeric version_code /
-            // missing name don't nuke this path.
+            // Phase 3: Sidecar-metadata hint. The XAPK manifest.json / APKMirror
+            // info.json declares the package; that hint drives base selection so it no
+            // longer depends on a literal `base.apk` name. Tolerant deserialization
+            // (GH#159) keeps a numeric version_code / missing name from nuking it.
             val manifest = manifestBytes?.let { bytes -> parseXapkManifest(String(bytes)) }
+            val apkmInfo = infoBytes?.let { bytes -> parseApkmInfo(String(bytes)) }
+            val packageHint = manifest?.packageName?.takeIf { it.isNotBlank() }
+                ?: apkmInfo?.packageName?.takeIf { it.isNotBlank() }
 
-            val manifestBaseFile = manifest?.baseApkFile()
-            if (manifestBaseFile != null) {
-                val archiveInfo = extractAndParse(uri, manifestBaseFile, tempFile)
-                if (archiveInfo != null) {
-                    return@withContext Result.success(metadataFrom(archiveInfo, tempFile, iconBytes))
-                }
-                // else fall through to candidate scan below
-            }
+            // Phase 4: Base selection (GH#159) — the manifest's declared base first,
+            // then generic candidates (config/splits last). Extract each from the
+            // bundle and return the first that parses as a real, non-split base APK.
+            val baseCandidates = buildList {
+                manifest?.baseApkFile()?.let { add(it) }
+                addAll(selectBaseApkCandidates(entryNames, packageHint))
+            }.distinctBy { it.substringAfterLast('/').lowercase() }
 
-            // Phase 4: Generic bundle base selection (GH#159). Order candidates so
-            // splits/config APKs are tried last, and pick the first that parses as a
-            // non-split base.
-            val candidates = selectBaseApkCandidates(entryNames, manifest?.packageName)
-            for (candidate in candidates) {
-                val archiveInfo = extractAndParse(uri, candidate, tempFile)
+            for (candidate in baseCandidates) {
+                val base = candidate.substringAfterLast('/')
+                if (!BundleZip.extractEntryTo(bundleFile, base, apkFile)) continue
+                val archiveInfo = parseArchiveSafely(apkFile)
                 if (archiveInfo != null && archiveInfo.applicationInfo != null) {
-                    return@withContext Result.success(metadataFrom(archiveInfo, tempFile, iconBytes))
+                    return@withContext Result.success(metadataFrom(archiveInfo, apkFile, iconBytes))
                 }
             }
 
-            // TODO(#159): richer .apks (bundletool/SAI toc.pb, splits/…) and .apkm
-            // (APKMirror info.json) base-layout detection + OBB extraction — tracked
-            // as a separate follow-up.
-
-            // Phase 5: Last resort — treat the whole file as a monolithic APK even
-            // without a detectable top-level manifest (e.g. an entry-listing failure).
-            contentResolver.openInputStream(uri)?.use { input ->
-                FileOutputStream(tempFile).use { output -> input.copyTo(output) }
+            // Phase 4.5: Sidecar-only metadata fallback (GH#159). If no bundled APK
+            // parsed but the bundle declares its own identity, surface that — it is the
+            // bundle's own package (never a nested APK's), so it cannot cause the
+            // GH#207 wrong-identity downgrade, and it lets the (independent) installer
+            // path proceed instead of the whole flow reading as "failed to parse".
+            buildMetadataFromSidecar(manifest, apkmInfo, iconBytes)?.let {
+                return@withContext Result.success(it)
             }
-            val archiveInfo = parseArchive(tempFile)
+
+            // Phase 5: Last resort — parse the whole file as a monolithic APK (only
+            // reachable when it wasn't a readable bundle at all).
+            val archiveInfo = parseArchiveSafely(bundleFile)
                 ?: return@withContext Result.failure(
                     Exception("Failed to parse APK manifest. The file might be corrupted or encrypted.")
                 )
-
-            Result.success(metadataFrom(archiveInfo, tempFile, iconBytes))
+            Result.success(metadataFrom(archiveInfo, bundleFile, iconBytes))
         } catch (e: Exception) {
             Result.failure(e)
         } finally {
-            tempFile.delete()
+            bundleFile.delete()
+            apkFile.delete()
         }
     }
 
-    /** Extract a single zip entry into [tempFile] and parse it via PackageManager. */
-    private fun extractAndParse(uri: Uri, entryName: String, tempFile: File): PackageInfo? {
-        return try {
-            var extracted = false
-            context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                ZipInputStream(inputStream).use { zipStream ->
-                    var entry = zipStream.nextEntry
-                    while (entry != null) {
-                        if (entry.name.equals(entryName, ignoreCase = true)) {
-                            FileOutputStream(tempFile).use { fos -> zipStream.copyTo(fos) }
-                            extracted = true
-                            break
-                        }
-                        zipStream.closeEntry()
-                        entry = zipStream.nextEntry
-                    }
-                }
-            }
-            if (!extracted || !tempFile.exists()) null else parseArchive(tempFile)
-        } catch (_: Exception) {
-            null
-        }
+    /**
+     * [parseArchive] that also swallows a thrown getPackageArchiveInfo (it can throw
+     * — not just return null — on some ROMs/APIs) so callers get a clean null.
+     */
+    private fun parseArchiveSafely(file: File): PackageInfo? = try {
+        parseArchive(file)
+    } catch (_: Exception) {
+        null
     }
 
     /** Parse an on-disk APK via getPackageArchiveInfo across API levels. */
@@ -173,6 +149,57 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
             @Suppress("DEPRECATION")
             pm.getPackageArchiveInfo(tempFile.absolutePath, flags)
         }
+    }
+
+    /**
+     * Best-effort display name (hence file extension) for [uri]: the provider's
+     * OpenableColumns.DISPLAY_NAME, falling back to the URI's last path segment.
+     * Used only as a secondary bundle signal, so null is fine.
+     */
+    private fun displayNameOf(uri: Uri): String? {
+        val fromProvider = try {
+            context.contentResolver.query(
+                uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
+            )?.use { cursor ->
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index != -1 && cursor.moveToFirst()) cursor.getString(index) else null
+            }
+        } catch (_: Exception) {
+            null
+        }
+        return fromProvider?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment
+    }
+
+    /**
+     * Build [AppMetadata] purely from bundle sidecar JSON when no bundled APK could
+     * be parsed. Returns null if neither sidecar declares a package name. The icon
+     * comes from the bundle's own icon bytes (there is no APK to load one from).
+     */
+    private fun buildMetadataFromSidecar(
+        manifest: XapkManifestInfo?,
+        apkmInfo: ApkmInfo?,
+        iconBytes: ByteArray?
+    ): AppMetadata? {
+        val pkg = manifest?.packageName?.takeIf { it.isNotBlank() }
+            ?: apkmInfo?.packageName?.takeIf { it.isNotBlank() }
+            ?: return null
+        val label = manifest?.name?.takeIf { it.isNotBlank() }
+            ?: apkmInfo?.appName?.takeIf { it.isNotBlank() }
+            ?: apkmInfo?.title?.takeIf { it.isNotBlank() }
+            ?: pkg
+        val versionName = manifest?.versionName?.takeIf { it.isNotBlank() }
+            ?: apkmInfo?.versionName?.takeIf { it.isNotBlank() }
+            ?: "Unknown"
+        val versionCode = (manifest?.versionCode ?: apkmInfo?.versionCode)?.toLongOrNull() ?: 0L
+        val icon = iconBytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+        return AppMetadata(
+            label = label,
+            packageName = pkg,
+            version = versionName,
+            versionCode = versionCode,
+            icon = icon,
+            permissions = manifest?.permissions ?: emptyList()
+        )
     }
 
     /** Build [AppMetadata] from a parsed [PackageInfo], preferring the XAPK icon. */

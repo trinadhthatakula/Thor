@@ -10,11 +10,21 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+
+/**
+ * The app's resolved dark-theme flag (from [ThemeMode] + system setting), independent
+ * of the device night mode. Widgets that load night-qualified resources (e.g. Lottie
+ * raw files under res/raw-night) read this so they follow the in-app theme rather than
+ * the device configuration's -night qualifier.
+ */
+val LocalDarkTheme = staticCompositionLocalOf { false }
 
 private val AsgardianLightColorScheme = lightColorScheme(
     primary = LightPrimary,
@@ -141,7 +151,11 @@ fun ThorTheme(
         colorScheme = colorScheme,
         motionScheme = MotionScheme.expressive(),
         typography = AppTypography,
-        content = content
+        content = {
+            CompositionLocalProvider(LocalDarkTheme provides darkTheme) {
+                content()
+            }
+        }
     )
 }
 
