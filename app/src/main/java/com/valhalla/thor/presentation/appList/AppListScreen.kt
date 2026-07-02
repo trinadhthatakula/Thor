@@ -13,10 +13,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
@@ -48,8 +50,10 @@ import com.valhalla.asgard.components.ConnectedButtonGroup
 import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import com.valhalla.thor.presentation.widgets.AppList
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
+import com.valhalla.thor.data.manager.UsageAccessManager
 import com.valhalla.thor.presentation.widgets.AppInfoDialog
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -142,7 +146,9 @@ fun AppListScreen(
             val refreshState = rememberPullToRefreshState()
 
             PullToRefreshBox(
-                isRefreshing = state.isLoading,
+                // isComputingSizes runs on a populated list, so surface it via the
+                // pull-refresh spinner (the empty-state loader wouldn't show).
+                isRefreshing = state.isLoading || state.isComputingSizes,
                 onRefresh = { viewModel.loadApps() },
                 state = refreshState,
                 modifier = Modifier.weight(1f) // Fill remaining space
@@ -157,7 +163,7 @@ fun AppListScreen(
                     sortBy = state.sortBy,
                     sortOrder = state.sortOrder,
                     searchQuery = state.searchQuery,
-                    isLoading = state.isLoading,
+                    isLoading = state.isLoading || state.isComputingSizes,
                     appList = state.displayedApps,
                     isRoot = state.isRoot,
                     isShizuku = state.isShizuku,
@@ -221,6 +227,24 @@ fun AppListScreen(
                         onAppAction(action)
                     }
                     selectedAppForDialog = null
+                }
+            )
+        }
+
+        val usageAccessManager = koinInject<UsageAccessManager>()
+        if (state.needsUsageAccessPrompt) {
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissUsageAccessPrompt() },
+                title = { Text("Usage Access needed") },
+                text = { Text("Thor needs Usage Access to read app sizes. Enable it for Thor, then pick \"Size\" again. You can also manage this under Settings → Permissions.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        runCatching { context.startActivity(usageAccessManager.usageAccessIntent()) }
+                        viewModel.dismissUsageAccessPrompt()
+                    }) { Text("Open settings") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.dismissUsageAccessPrompt() }) { Text("Cancel") }
                 }
             )
         }
