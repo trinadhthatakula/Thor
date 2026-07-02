@@ -5,6 +5,11 @@ on:
     branches: [ "master" ]
   workflow_dispatch:
 
+# Don't let overlapping release runs race on the same version tag / Play upload.
+concurrency:
+  group: dev-build-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-release-check:
     runs-on: ubuntu-latest
@@ -14,6 +19,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history + tags so the release-notes changelog fallback works
 
       - name: Setup JDK 21
         uses: actions/setup-java@v4
@@ -24,7 +31,7 @@ jobs:
 
       # Added Ruby for Fastlane in Dev
       - name: Setup Ruby
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@0dafeac902942906541bc140009cdbf32665b601 # v1
         with:
           ruby-version: '3.3'
           bundler-cache: true
@@ -145,7 +152,7 @@ jobs:
 
       # --- 5. GITHUB RELEASE (PRE-RELEASE) ---
       - name: Create GitHub Pre-Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           # Unique tag for dev builds: v1.0.0-dev-45
           tag_name: v${{ steps.prep_notes.outputs.version_name }}-dev-${{ github.run_number }}

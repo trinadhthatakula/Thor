@@ -8,3 +8,11 @@
 /.github/                @trinadhthatakula
 /gradle.properties       @trinadhthatakula
 /release-notes/          @trinadhthatakula
+
+# High-risk privilege / native surface — always flag for maintainer review
+/bypass/                                                          @trinadhthatakula
+/suCore/                                                          @trinadhthatakula
+/vm-runtime/                                                      @trinadhthatakula
+/app/src/main/java/com/valhalla/thor/data/gateway/               @trinadhthatakula
+/app/src/main/java/com/valhalla/thor/data/source/local/shizuku/  @trinadhthatakula
+/app/src/main/java/com/valhalla/thor/data/source/local/dhizuku/  @trinadhthatakula

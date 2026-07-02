@@ -72,11 +72,21 @@ body:
       description: See Settings → About (e.g. 1.90.1)
     validations:
       required: true
-  - type: input
+  - type: dropdown
     id: source
     attributes:
       label: Install source
-      placeholder: IzzyOnDroid / GitHub / Play Store / Obtainium / other
+      description: Where did you install this build from?
+      options:
+        - IzzyOnDroid
+        - GitHub Releases
+        - Play Store
+        - Indus Appstore
+        - Obtainium
+        - APKPure
+        - Other
+    validations:
+      required: true
   - type: input
     id: device
     attributes:

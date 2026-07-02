@@ -1,0 +1,41 @@
+name: PR CI
+
+on:
+  pull_request:
+    branches: [ "master", "dev" ]
+
+# Least-privilege token — this workflow only reads the repo.
+permissions:
+  contents: read
+
+# Cancel superseded runs for the same PR.
+concurrency:
+  group: pr-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+          cache: 'gradle'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Assemble + unit test (foss debug)
+        run: ./gradlew assembleFossDebug testFossDebugUnitTest --stacktrace
+
+      # Advisory for now — surfaces Android Lint without blocking merges on
+      # pre-existing lint debt. Promote to a required step once lint is clean.
+      - name: Android Lint (advisory)
+        continue-on-error: true
+        run: ./gradlew lintFossDebug
