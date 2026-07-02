@@ -9,10 +9,12 @@ import android.provider.MediaStore
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.ExportTargetChoice
 import com.valhalla.thor.domain.model.resolveExportTarget
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -29,7 +31,7 @@ class ExportAppUseCase(
     /** Build the bundle and write it to the resolved target. Returns a location label. */
     suspend operator fun invoke(appInfo: AppInfo): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val file = bundleBuilder.build(appInfo).getOrElse { return@withContext Result.failure(it) }
+            val file = bundleBuilder.build(appInfo, cacheSubDir = "export_temp").getOrElse { return@withContext Result.failure(it) }
             val mime = mimeFor(file)
 
             val savedUri = preferenceRepository.userPreferences.first().exportDirUri
@@ -43,6 +45,8 @@ class ExportAppUseCase(
                     else writeToDownloadsLegacy(file)
             }
             Result.success(location)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             if (BuildConfig.DEBUG) e.printStackTrace()
             Result.failure(e)
@@ -54,8 +58,9 @@ class ExportAppUseCase(
         // SAF validity checks hit the content resolver / disk — keep them off the main thread.
         val savedUri = preferenceRepository.userPreferences.first().exportDirUri
         if (savedUri != null && isTreeWritable(savedUri)) {
-            DocumentFile.fromTreeUri(context, savedUri.toUri())?.name ?: "Selected folder"
-        } else "Downloads/Thor"
+            DocumentFile.fromTreeUri(context, savedUri.toUri())?.name
+                ?: context.getString(R.string.export_dest_selected)
+        } else context.getString(R.string.export_dest_downloads)
     }
 
     private fun mimeFor(file: File) =
@@ -90,7 +95,7 @@ class ExportAppUseCase(
             resolver.delete(uri, null, null) // don't leave a dangling pending entry
             throw e
         }
-        return "Downloads/Thor"
+        return context.getString(R.string.export_dest_downloads)
     }
 
     private fun writeToDownloadsLegacy(source: File): String {
@@ -100,7 +105,7 @@ class ExportAppUseCase(
         )
         if (!dir.exists()) dir.mkdirs()
         source.copyTo(File(dir, source.name), overwrite = true)
-        return "Downloads/Thor"
+        return context.getString(R.string.export_dest_downloads)
     }
 
     private fun writeToTree(source: File, treeUri: Uri, mime: String): String {
@@ -110,6 +115,6 @@ class ExportAppUseCase(
         context.contentResolver.openOutputStream(doc.uri)?.use { out ->
             source.inputStream().use { it.copyTo(out) }
         } ?: throw IOException("openOutputStream failed")
-        return tree.name ?: "Selected folder"
+        return tree.name ?: context.getString(R.string.export_dest_selected)
     }
 }

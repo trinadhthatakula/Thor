@@ -150,6 +150,8 @@
     <string name="export_saved">Saved to %1$s</string>
     <string name="export_failed">Export failed: %1$s</string>
     <string name="export_failed_unknown">unknown error</string>
+    <string name="export_dest_downloads">Downloads/Thor</string>
+    <string name="export_dest_selected">Selected folder</string>
 
     <!-- Main Screen / Global -->
     <string name="cannot_launch_app">Cannot launch app</string>

@@ -43,7 +43,7 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
     val preferenceRepository = koinInject<PreferenceRepository>()
     val scope = rememberCoroutineScope()
 
-    var targetLabel by remember { mutableStateOf("Downloads/Thor") }
+    var targetLabel by remember { mutableStateOf(context.getString(R.string.export_dest_downloads)) }
     var exporting by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { targetLabel = exportUseCase.currentTargetLabel() }

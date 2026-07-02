@@ -6,6 +6,7 @@ import com.valhalla.thor.data.util.ApksMetadataGenerator
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.formattedAppName
 import com.valhalla.thor.domain.repository.SystemRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Single
@@ -28,9 +29,9 @@ class AppBundleBuilder(
     private val systemRepository: SystemRepository,
     private val apksMetadataGenerator: ApksMetadataGenerator
 ) {
-    suspend fun build(appInfo: AppInfo): Result<File> = withContext(Dispatchers.IO) {
+    suspend fun build(appInfo: AppInfo, cacheSubDir: String = "share_temp"): Result<File> = withContext(Dispatchers.IO) {
         try {
-            val cacheDir = File(context.cacheDir, "share_temp")
+            val cacheDir = File(context.cacheDir, cacheSubDir)
             if (cacheDir.exists()) cacheDir.deleteRecursively()
             cacheDir.mkdirs()
 
@@ -71,6 +72,8 @@ class AppBundleBuilder(
                 tempSplitDir.deleteRecursively()
             }
             Result.success(finalFile)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             if (BuildConfig.DEBUG) e.printStackTrace()
             Result.failure(e)
