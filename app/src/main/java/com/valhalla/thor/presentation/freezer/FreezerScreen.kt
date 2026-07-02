@@ -120,6 +120,13 @@ fun FreezerScreen(
     val hasEnabled = remember(state.freezerApps) { state.freezerApps.any { it.enabled } }
     val hasDisabled = remember(state.freezerApps) { state.freezerApps.any { !it.enabled } }
 
+    // Apps the "Freeze all" / "Unfreeze all" toolbar acts on. These route through the
+    // shared batch action (MultiAppAction) so progress streams into the TermLoggerDialog
+    // (rendered by MainScreen), identical to multi-select. The unsafe/UAD eligibility
+    // skip is applied once, centrally, by MainViewModel.onMultiAppAction.
+    val appsToFreeze = remember(state.freezerApps) { state.freezerApps.filter { it.enabled } }
+    val appsToUnfreeze = remember(state.freezerApps) { state.freezerApps.filter { !it.enabled } }
+
 
     LaunchedEffect(state.actionMessage) {
         state.actionMessage?.let {
@@ -362,7 +369,7 @@ fun FreezerScreen(
                             disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.38f)
                         )
                         IconButton(
-                            onClick = { viewModel.freezeAll() },
+                            onClick = { onMultiAppAction(MultiAppAction.Freeze(appsToFreeze)) },
                             enabled = hasEnabled && hasPrivilege,
                             colors = iconButtonColors
                         ) {
@@ -381,7 +388,7 @@ fun FreezerScreen(
                             )
                         }
                         IconButton(
-                            onClick = { viewModel.unfreezeAll() },
+                            onClick = { onMultiAppAction(MultiAppAction.UnFreeze(appsToUnfreeze)) },
                             enabled = hasDisabled && hasPrivilege,
                             colors = iconButtonColors
                         ) {
@@ -450,7 +457,7 @@ fun FreezerScreen(
             onToggleView = viewModel::toggleGridMode,
             onToggleAutoFreeze = viewModel::setAutoFreezeEnabled,
             onDismiss = { showSettingsSheet = false },
-            onUnfreezeAll = viewModel::unfreezeAll,
+            onUnfreezeAll = { onMultiAppAction(MultiAppAction.UnFreeze(appsToUnfreeze)) },
             onImportDisabledApps = {
                 showSettingsSheet = false
                 if (disabledAppsNotInFreezer.isNotEmpty()) {

@@ -10,11 +10,10 @@ import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
+import com.valhalla.thor.presentation.common.ShizukuPermissionHandler
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -58,10 +57,23 @@ class FreezerViewModel(
     private val _uiState = MutableStateFlow(FreezerUiState())
     val uiState: StateFlow<FreezerUiState> = _uiState.asStateFlow()
 
+    // Re-check privileges when Shizuku's binder connects or the user grants permission.
+    // This ViewModel is created at app start (before the first-launch Shizuku grant), so
+    // its init-time loadPrivileges() would otherwise stay stale until an app restart.
+    private val shizukuHandler = ShizukuPermissionHandler(
+        onPermissionGranted = { loadPrivileges() }
+    )
+
     init {
         observeApps()
         observePreferences()
         loadPrivileges()
+        shizukuHandler.register()
+    }
+
+    override fun onCleared() {
+        shizukuHandler.unregister()
+        super.onCleared()
     }
 
     private fun observeApps() {
@@ -113,56 +125,9 @@ class FreezerViewModel(
         }
     }
 
-    // --- Freeze All / Unfreeze All ---
-
-    fun freezeAll() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val apps = _uiState.value.freezerApps
-            val eligibleApps = apps.filter { appInfo ->
-                val isSystem = appInfo.isSystem
-                val isUadFailed = isSystem && appInfo.isUadLoadFailed
-                val isUnsafe = isSystem && appInfo.bloatRecommendation?.lowercase() == "unsafe"
-                !(isUadFailed || isUnsafe)
-            }
-            val skippedCount = apps.size - eligibleApps.size
-            val results = eligibleApps.map { app ->
-                async { manageAppUseCase.setAppDisabled(app.packageName, true) }
-            }.awaitAll()
-            val failures = results.count { it.isFailure } + skippedCount
-            val uiText = if (failures == 0) {
-                UiText.StringResource(R.string.tile_freeze_success, eligibleApps.size)
-            } else {
-                UiText.StringResource(
-                    R.string.tile_freeze_partial_failure,
-                    eligibleApps.size - results.count { it.isFailure },
-                    apps.size,
-                    failures
-                )
-            }
-            _uiState.update { it.copy(actionMessage = uiText) }
-        }
-    }
-
-    fun unfreezeAll() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val pkgs = _uiState.value.freezerPackageNames.toList()
-            val results = pkgs.map { pkg ->
-                async { manageAppUseCase.setAppDisabled(pkg, false) }
-            }.awaitAll()
-            val failures = results.count { it.isFailure }
-            val uiText = if (failures == 0) {
-                UiText.StringResource(R.string.unfrozen_count_success, pkgs.size)
-            } else {
-                UiText.StringResource(
-                    R.string.tile_unfreeze_partial_failure,
-                    pkgs.size - failures,
-                    pkgs.size,
-                    failures
-                )
-            }
-            _uiState.update { it.copy(actionMessage = uiText) }
-        }
-    }
+    // Freeze-all / Unfreeze-all are handled by the shared batch action
+    // (MultiAppAction.Freeze / UnFreeze) so their progress streams into the
+    // TermLoggerDialog; the toolbar in FreezerScreen dispatches them via onMultiAppAction.
 
     // --- Multi-select removal ---
 
