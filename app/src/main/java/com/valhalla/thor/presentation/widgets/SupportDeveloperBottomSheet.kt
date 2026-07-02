@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -142,7 +143,7 @@ fun SupportDeveloperTabbedBottomSheet(
                     items = tabs.map { ConnectedButtonGroupItem.Label(it.label) },
                     selectedIndex = selectedTab,
                     onItemSelected = { selectedTab = it },
-                    modifier = Modifier.padding(bottom = 16.dp)
+                    modifier = Modifier.width(IntrinsicSize.Max).padding(bottom = 16.dp)
                 )
             }
 

@@ -1,0 +1,97 @@
+name: 🐛 Bug report
+description: Report something that isn't working correctly
+title: "[Bug]: "
+labels: ["bug", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! The **privilege mode** and **version** fields are the most
+        important for reproducing the issue — please don't skip them.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-flight checklist
+      options:
+        - label: I'm on the latest version of Thor and the bug still happens.
+          required: true
+        - label: I searched existing issues and didn't find a duplicate.
+          required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+      placeholder: When I ..., Thor ...; I expected ...
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Tap ...
+        3. See ...
+    validations:
+      required: true
+  - type: dropdown
+    id: privilege-mode
+    attributes:
+      label: Privilege mode
+      description: Which mode was active when the bug occurred?
+      options:
+        - Root
+        - Shizuku
+        - Dhizuku
+        - None
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Installer (APK / XAPK / APKS)
+        - Freezer (freeze / unfreeze / suspend)
+        - App management (force-stop, clear cache/data, uninstall)
+        - UI / theming
+        - Permissions
+        - Extensions
+        - Localization / translation
+        - Performance (jank / memory / ANR)
+        - Support the developer / billing
+        - Other / not sure
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: Thor version
+      description: See Settings → About (e.g. 1.90.1)
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Install source
+      placeholder: IzzyOnDroid / GitHub / Play Store / Obtainium / other
+  - type: input
+    id: device
+    attributes:
+      label: Device & Android version
+      placeholder: e.g. Pixel 8, Android 15 (One UI 6, etc.)
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Paste any logs (Thor has an in-app terminal log view). Text pasted here is auto-formatted as code.
+      render: shell
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots / additional context
+      description: Drag & drop screenshots here, or add any other relevant context. (Don't paste images into the Logs field above — the code formatting stops them rendering.)

@@ -89,6 +89,13 @@ class AppRepositoryImpl(
                     val currentList = ArrayList<AppInfo>(installedPackages.size)
                     val toUpdate = mutableListOf<AppEntity>()
 
+                    // Read the (cache-backed) UAD map + load-fail flag ONCE per rescan.
+                    // Reading uadHelper.uadMap per-package rebuilt the ~1.6MB list under
+                    // its lock whenever a bulk freeze/unfreeze invalidated the cache
+                    // mid-loop, stalling the main-thread receiver (ANR) and this rescan.
+                    val uadMap = uadHelper.uadMap
+                    val uadLoadFailed = uadHelper.didLoadFail
+
                     for (packInfo in installedPackages) {
                         val appInfo = packInfo.applicationInfo ?: continue
                         val packageName = packInfo.packageName
@@ -100,7 +107,6 @@ class AppRepositoryImpl(
                         val isInstalled = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0
                         val isEnabled = appInfo.enabled && isInstalled
 
-                        val uadMap = uadHelper.uadMap
                         if (!forceRefresh &&
                             cachedEntry != null &&
                             cachedEntry.lastUpdateTime == packInfo.lastUpdateTime &&
@@ -113,7 +119,7 @@ class AppRepositoryImpl(
                                 bloatRecommendation = bloat?.removal,
                                 bloatDescription = bloat?.description,
                                 isInstalled = isInstalled,
-                                isUadLoadFailed = uadHelper.didLoadFail
+                                isUadLoadFailed = uadLoadFailed
                             ))
                         } else {
                             val mapped =
@@ -122,7 +128,7 @@ class AppRepositoryImpl(
                             val mappedWithBloat = mapped.copy(
                                 bloatRecommendation = bloat?.removal,
                                 bloatDescription = bloat?.description,
-                                isUadLoadFailed = uadHelper.didLoadFail
+                                isUadLoadFailed = uadLoadFailed
                             )
                             currentList.add(mappedWithBloat)
                             val entity = AppEntity.fromDomain(mapped)

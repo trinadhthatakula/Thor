@@ -188,4 +188,216 @@ class BundleAnalysisTest {
     fun parseXapkManifest_returnsNullForGarbage() {
         assertNull(parseXapkManifest("not json at all"))
     }
+
+    // --- stray top-level AndroidManifest.xml in a genuine bundle (APKPure crash) ---
+
+    @Test
+    fun bundleWithStrayTopLevelManifest_isNotMonolithic() {
+        // Root cause of the APKPure install failure: a genuine XAPK that ALSO ships
+        // a top-level AndroidManifest.xml. The old gate ("AndroidManifest.xml ⇒
+        // monolithic") routed the whole multi-APK zip into getPackageArchiveInfo,
+        // which threw FileNotFoundException: AndroidManifest.xml. Bundle signals
+        // (manifest.json + top-level {package}.apk/config splits) must win.
+        val entries = listOf(
+            "AndroidManifest.xml",
+            "manifest.json",
+            "com.amazon.mShop.android.shopping.apk",
+            "config.arm64_v8a.apk",
+            "config.xxhdpi.apk",
+            "icon.png"
+        )
+        assertTrue(hasTopLevelAndroidManifest(entries))
+        assertFalse(isMonolithicApk(entries))
+        assertTrue(looksLikeBundle(entries))
+    }
+
+    @Test
+    fun apkmShapedZipWithStrayManifest_isNotMonolithic() {
+        // Same defect for an .apkm-shaped zip: a stray root AndroidManifest.xml plus
+        // a top-level base.apk sibling and info.json must be classified as a bundle.
+        val entries = listOf(
+            "AndroidManifest.xml",
+            "base.apk",
+            "split_config.arm64_v8a.apk",
+            "info.json"
+        )
+        assertFalse(isMonolithicApk(entries))
+        assertTrue(looksLikeBundle(entries))
+    }
+
+    // --- file-extension as a secondary bundle signal ---
+
+    @Test
+    fun fileExtension_forcesBundleButNeverBreaksAPlainApk() {
+        val plainApk = listOf("AndroidManifest.xml", "classes.dex", "resources.arsc")
+        // No bundle signal at all → monolithic.
+        assertTrue(isMonolithicApk(plainApk))
+        // .apk name keeps it monolithic.
+        assertTrue(isMonolithicApk(plainApk, "app.apk"))
+        // A known bundle extension forces the bundle path even with a stray manifest.
+        assertFalse(isMonolithicApk(plainApk, "app.xapk"))
+        assertFalse(isMonolithicApk(plainApk, "App.APKM"))
+        assertFalse(isMonolithicApk(plainApk, "thing.apks"))
+    }
+
+    @Test
+    fun hasBundleExtension_recognizesKnownContainers() {
+        assertTrue(hasBundleExtension("foo.xapk"))
+        assertTrue(hasBundleExtension("Foo.APKM"))
+        assertTrue(hasBundleExtension("bar.apks"))
+        assertFalse(hasBundleExtension("bar.apk"))
+        assertFalse(hasBundleExtension("noextension"))
+        assertFalse(hasBundleExtension(null))
+    }
+
+    // --- APKPure .xapk manifest + APKMirror .apkm info.json ---
+
+    @Test
+    fun amazonXapkManifest_picksPackageNamedBaseAndAllSplits() {
+        // Real APKPure manifest.json: base is named {package}.apk (not base.apk) and
+        // version_code is numeric.
+        val json = """
+            {
+              "xapk_version": 2,
+              "package_name": "com.amazon.mShop.android.shopping",
+              "version_code": 1241319416,
+              "version_name": "32.12.4.100",
+              "split_apks": [
+                { "file": "com.amazon.mShop.android.shopping.apk", "id": "base" },
+                { "file": "config.arm64_v8a.apk", "id": "config.arm64_v8a" },
+                { "file": "config.xxhdpi.apk", "id": "config.xxhdpi" }
+              ]
+            }
+        """.trimIndent()
+        val manifest = parseXapkManifest(json)
+        assertNotNull(manifest)
+        assertEquals("com.amazon.mShop.android.shopping.apk", manifest!!.baseApkFile())
+        assertEquals(
+            listOf(
+                "com.amazon.mShop.android.shopping.apk",
+                "config.arm64_v8a.apk",
+                "config.xxhdpi.apk"
+            ),
+            manifest.splitApkFiles()
+        )
+    }
+
+    @Test
+    fun parseApkmInfo_readsPackageLabelAndVersion() {
+        val json = """
+            {
+              "apkm_version": 5,
+              "app_name": "Google Journal",
+              "apk_title": "Google Journal 2026.02.10.867917178",
+              "release_version": "2026.02.10.867917178",
+              "versioncode": "30271",
+              "pname": "com.google.android.apps.pixel.aurelius",
+              "arches": ["arm64-v8a"]
+            }
+        """.trimIndent()
+        val info = parseApkmInfo(json)
+        assertNotNull(info)
+        assertEquals("com.google.android.apps.pixel.aurelius", info!!.packageName)
+        assertEquals("Google Journal", info.appName)
+        assertEquals("30271", info.versionCode)
+        assertNull(parseApkmInfo("definitely not json"))
+    }
+
+    @Test
+    fun apkmWithoutManifest_infoHintSelectsPackageNamedBase() {
+        // .apkm has no manifest.json; the base is {package}.apk. The info.json
+        // package hint must surface it as the base even though a split precedes it.
+        val entries = listOf(
+            "split_config.arm64_v8a.apk",
+            "com.google.android.apps.pixel.aurelius.apk",
+            "info.json",
+            "icon.png"
+        )
+        val set = resolveBundleInstallSet(
+            entries,
+            manifestSplitFiles = null,
+            packageName = "com.google.android.apps.pixel.aurelius"
+        )
+        assertEquals("com.google.android.apps.pixel.aurelius.apk", set.first())
+    }
+
+    // --- split completeness: a subset/stale manifest must never drop a real split ---
+
+    @Test
+    fun resolveBundleInstallSet_appendsSplitsMissingFromManifest() {
+        val entries = listOf(
+            "base.apk",
+            "config.arm64_v8a.apk",
+            "config.xxhdpi.apk",
+            "manifest.json",
+            "icon.png"
+        )
+        // Manifest omits config.xxhdpi.apk (stale/subset).
+        val manifestSplits = listOf("base.apk", "config.arm64_v8a.apk")
+        val set = resolveBundleInstallSet(entries, manifestSplits, packageName = null)
+        assertEquals("base.apk", set.first())
+        assertEquals(
+            setOf("base.apk", "config.arm64_v8a.apk", "config.xxhdpi.apk"),
+            set.map { it.substringAfterLast('/') }.toSet()
+        )
+    }
+
+    @Test
+    fun resolveBundleInstallSet_ignoresManifestReferencingMissingFiles() {
+        val entries = listOf("base.apk", "split_config.arm64_v8a.apk")
+        // Manifest references a file that isn't in the archive → fall back to scan.
+        val manifestSplits = listOf("base.apk", "config.does_not_exist.apk")
+        val set = resolveBundleInstallSet(entries, manifestSplits, packageName = null)
+        assertEquals("base.apk", set.first())
+        assertFalse(set.any { it.contains("does_not_exist") })
+        assertEquals(
+            setOf("base.apk", "split_config.arm64_v8a.apk"),
+            set.map { it.substringAfterLast('/') }.toSet()
+        )
+    }
+
+    @Test
+    fun resolveBundleInstallSet_keepsManifestOrderWhenComplete() {
+        val entries = listOf(
+            "config.arm64_v8a.apk",
+            "com.amazon.mShop.android.shopping.apk",
+            "config.xxhdpi.apk",
+            "manifest.json"
+        )
+        val manifestSplits = listOf(
+            "com.amazon.mShop.android.shopping.apk",
+            "config.arm64_v8a.apk",
+            "config.xxhdpi.apk"
+        )
+        val set = resolveBundleInstallSet(
+            entries,
+            manifestSplits,
+            packageName = "com.amazon.mShop.android.shopping"
+        )
+        // Base first, exactly the manifest order, no extras.
+        assertEquals(manifestSplits, set)
+    }
+
+    @Test
+    fun resolveBundleInstallSet_returnsEmptyWhenNoApkEntries() {
+        val entries = listOf("manifest.json", "icon.png", "obb/main.obb")
+        assertTrue(resolveBundleInstallSet(entries, null, null).isEmpty())
+    }
+
+    @Test
+    fun resolveBundleInstallSet_doesNotAppendForeignStandaloneApk() {
+        // A complete manifest plus a stray standalone top-level APK (e.g. a
+        // `universal.apk` fallback): the union must NOT add it, or install-multiple
+        // would receive two base APKs and fail. Only real config/splits are appended.
+        val entries = listOf(
+            "base.apk",
+            "config.arm64_v8a.apk",
+            "universal.apk",
+            "manifest.json"
+        )
+        val manifestSplits = listOf("base.apk", "config.arm64_v8a.apk")
+        val set = resolveBundleInstallSet(entries, manifestSplits, packageName = null)
+        assertEquals(manifestSplits, set)
+        assertFalse(set.any { it.contains("universal") })
+    }
 }

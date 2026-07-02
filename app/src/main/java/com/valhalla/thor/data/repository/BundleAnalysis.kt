@@ -67,6 +67,46 @@ fun parseXapkManifest(jsonText: String): XapkManifestInfo? = try {
 }
 
 /**
+ * Tolerant representation of an APKMirror `.apkm` `info.json` (schema v5). Its
+ * layout differs from an XAPK `manifest.json`: the package is `pname`, the label
+ * `app_name`, the version `release_version`, and the version code `versioncode`.
+ * It does NOT enumerate the split file names — .apkm always ships a literal
+ * `base.apk` plus `split_config.*.apk` entries — so we only mine it for the
+ * package-name hint + display metadata (GH#159 follow-up: base detection must not
+ * depend solely on the literal `base.apk` name).
+ */
+@Serializable
+data class ApkmInfo(
+    @SerialName("pname") val packageName: String? = null,
+    @SerialName("app_name") val appName: String? = null,
+    @SerialName("apk_title") val title: String? = null,
+    @SerialName("release_version") val versionName: String? = null,
+    @SerialName("versioncode") val versionCode: String? = null
+)
+
+/**
+ * Parse an APKMirror `info.json` tolerantly. Returns null only when the input is
+ * not valid JSON at all; missing or oddly-typed fields are tolerated.
+ */
+fun parseApkmInfo(jsonText: String): ApkmInfo? = try {
+    bundleJson.decodeFromString<ApkmInfo>(jsonText)
+} catch (_: Exception) {
+    null
+}
+
+/** File extensions that unambiguously denote a bundle container (never a single APK). */
+private val BUNDLE_EXTENSIONS = setOf("xapk", "apkm", "apks")
+
+/**
+ * True when [fileName] carries a known bundle extension (`.xapk`/`.apkm`/`.apks`).
+ * A cheap, reliable secondary signal so a genuine bundle that also happens to
+ * carry a stray top-level `AndroidManifest.xml` is never mis-parsed as a single
+ * APK (root cause of the APKPure install failure).
+ */
+fun hasBundleExtension(fileName: String?): Boolean =
+    fileName != null && fileName.substringAfterLast('.', "").lowercase() in BUNDLE_EXTENSIONS
+
+/**
  * True if the archive has a top-level (root) `AndroidManifest.xml` entry. Every
  * real APK has exactly this; bundles (XAPK/.apks/.apkm) do not have one at the
  * archive root (their manifests live inside the nested APKs).
@@ -78,24 +118,62 @@ fun hasTopLevelAndroidManifest(entryNames: List<String>): Boolean =
 fun hasXapkManifest(entryNames: List<String>): Boolean =
     entryNames.any { it.equals("manifest.json", ignoreCase = true) }
 
-/**
- * A file is a monolithic APK (single, installable APK) when it carries its own
- * top-level `AndroidManifest.xml`. This is the primary signal used to avoid the
- * old "it's a zip containing a .apk, therefore a bundle" mistake (GH#207).
- */
-fun isMonolithicApk(entryNames: List<String>): Boolean =
-    hasTopLevelAndroidManifest(entryNames)
+/** True if the archive contains a top-level APKMirror `info.json`. */
+fun hasApkmInfoJson(entryNames: List<String>): Boolean =
+    entryNames.any { it.equals("info.json", ignoreCase = true) }
 
 /**
- * A file looks like a genuine bundle when it does NOT have a top-level
- * `AndroidManifest.xml`. An explicit top-level `manifest.json` (XAPK) is a
- * positive bundle signal too, but the absence of the manifest is the decisive
- * one — a monolithic APK always wins.
+ * True if the archive carries bundle sidecar metadata — an XAPK `manifest.json`
+ * or an APKMirror `info.json`. Either is a decisive positive bundle signal.
  */
-fun looksLikeBundle(entryNames: List<String>): Boolean =
-    !isMonolithicApk(entryNames) && (hasXapkManifest(entryNames) || entryNames.any {
-        it.endsWith(".apk", ignoreCase = true)
-    })
+fun hasBundleMetadata(entryNames: List<String>): Boolean =
+    hasXapkManifest(entryNames) || hasApkmInfoJson(entryNames)
+
+/**
+ * True for a *top-level* `.apk` entry (archive root, no `/` in the name). A real
+ * single APK never has a sibling `.apk` at its root — only bundles do — so this
+ * distinguishes a genuine bundle from a monolithic APK that merely embeds a
+ * nested `assets/child.apk` (GH#207), whose name contains a `/`.
+ */
+fun isTopLevelApkEntry(name: String): Boolean =
+    !name.contains('/') && name.endsWith(".apk", ignoreCase = true)
+
+/**
+ * A file is a monolithic APK (single, installable APK) only when it carries its
+ * own top-level `AndroidManifest.xml` AND shows no bundle signal. Requiring the
+ * *absence* of bundle signals — not just the presence of a manifest — is the fix
+ * for genuine bundles (XAPK/.apkm/.apks) that also ship a stray top-level
+ * `AndroidManifest.xml`: the old "AndroidManifest.xml ⇒ monolithic" gate routed
+ * the whole multi-APK zip into `getPackageArchiveInfo`, which failed with
+ * `FileNotFoundException: AndroidManifest.xml`.
+ *
+ * Bundle signals (any ⇒ NOT monolithic):
+ *  - a known bundle [fileName] extension (`.xapk`/`.apkm`/`.apks`), when known;
+ *  - a top-level `manifest.json` / `info.json`;
+ *  - a top-level `.apk` sibling (a real APK never has one).
+ *
+ * The GH#207 case is preserved: a monolithic APK with a nested `assets/child.apk`
+ * has no bundle metadata and no *top-level* `.apk`, so it stays monolithic.
+ */
+fun isMonolithicApk(entryNames: List<String>, fileName: String? = null): Boolean {
+    if (hasBundleExtension(fileName)) return false
+    if (!hasTopLevelAndroidManifest(entryNames)) return false
+    if (hasBundleMetadata(entryNames)) return false
+    if (entryNames.any { isTopLevelApkEntry(it) }) return false
+    return true
+}
+
+/**
+ * A file looks like a genuine bundle when it is not monolithic and shows at least
+ * one positive bundle signal: sidecar metadata, a top-level `.apk`, a nested
+ * split `.apk`, or a known bundle extension.
+ */
+fun looksLikeBundle(entryNames: List<String>, fileName: String? = null): Boolean =
+    !isMonolithicApk(entryNames, fileName) && (
+        hasBundleMetadata(entryNames) ||
+            hasBundleExtension(fileName) ||
+            entryNames.any { it.endsWith(".apk", ignoreCase = true) }
+        )
 
 /**
  * True for obvious split/config APK entries that are never a valid base:
@@ -156,4 +234,41 @@ fun selectBaseApkCandidates(entryNames: List<String>, packageName: String?): Lis
     ordered.addAll(splits)
 
     return ordered.toList()
+}
+
+/**
+ * Resolve the complete, base-first set of APK entry names to hand to
+ * `install-multiple` for a genuine bundle.
+ *
+ * When a `manifest.json` split list is present AND every declared split
+ * physically exists, that list is authoritative for base ordering — but we then
+ * *union* it with any additional top-level `.apk` entries the manifest omitted,
+ * so a stale/subset manifest can never silently drop a physically-present split
+ * (which would yield a base-only/partial install). Otherwise we fall back to
+ * [selectBaseApkCandidates], which orders every `.apk` base-first.
+ *
+ * Returns an empty list only when there are no `.apk` entries at all (caller then
+ * treats the input as monolithic).
+ */
+fun resolveBundleInstallSet(
+    entryNames: List<String>,
+    manifestSplitFiles: List<String>?,
+    packageName: String?
+): List<String> {
+    val ordered = selectBaseApkCandidates(entryNames, packageName)
+    if (manifestSplitFiles.isNullOrEmpty()) return ordered
+
+    val available = entryNames.mapTo(HashSet()) { it.substringAfterLast('/') }
+    // A manifest that references files not present is stale/partial: ignore it and
+    // fall back to the entry scan rather than extracting nothing.
+    if (!manifestSplitFiles.all { it.substringAfterLast('/') in available }) return ordered
+
+    val listed = manifestSplitFiles.mapTo(HashSet()) { it.substringAfterLast('/') }
+    // Only append entries that are genuinely config/splits the manifest omitted —
+    // never a standalone/foreign top-level APK (e.g. a `universal.apk`), which would
+    // add a second base and break install-multiple.
+    val extras = ordered.filter {
+        it.substringAfterLast('/') !in listed && isSplitApkName(it, packageName)
+    }
+    return manifestSplitFiles + extras
 }

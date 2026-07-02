@@ -3,18 +3,16 @@ package com.valhalla.thor.presentation.freezer
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
-import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -51,7 +49,7 @@ class FreezerViewModel(
     private val freezerRepository: FreezerRepository,
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val manageAppUseCase: ManageAppUseCase,
-    private val systemRepository: SystemRepository,
+    private val privilegeManager: PrivilegeManager,
     private val preferenceRepository: PreferenceRepository
 ) : ViewModel() {
 
@@ -61,7 +59,6 @@ class FreezerViewModel(
     init {
         observeApps()
         observePreferences()
-        loadPrivileges()
     }
 
     private fun observeApps() {
@@ -69,20 +66,28 @@ class FreezerViewModel(
             try {
                 combine(
                     freezerRepository.getAll(),
-                    getInstalledAppsUseCase()
-                ) { freezerPkgs, (userApps, systemApps) ->
+                    getInstalledAppsUseCase(),
+                    privilegeManager.state
+                ) { freezerPkgs, (userApps, systemApps), priv ->
                     val pkgSet = freezerPkgs.toSet()
                     val allApps = userApps + systemApps
-                    Triple(pkgSet, allApps.filter { it.packageName in pkgSet }, allApps)
+                    Triple(pkgSet, allApps.filter { it.packageName in pkgSet }, allApps) to priv
                 }
                     .flowOn(Dispatchers.Default)
-                    .collect { (pkgSet, freezerApps, allApps) ->
+                    .collect { (appsData, priv) ->
+                        val (pkgSet, freezerApps, allApps) = appsData
                         _uiState.update {
                             it.copy(
-                                isLoading = false,
+                                // Hold the loader until the first privilege probe lands so
+                                // freeze/unfreeze controls never flash disabled on cold start;
+                                // privilege flags now update atomically with the app list.
+                                isLoading = !priv.isReady,
                                 freezerPackageNames = pkgSet,
                                 freezerApps = freezerApps,
-                                allInstalledApps = allApps
+                                allInstalledApps = allApps,
+                                isRoot = priv.root,
+                                isShizuku = priv.shizuku,
+                                isDhizuku = priv.dhizuku
                             )
                         }
                     }
@@ -98,71 +103,9 @@ class FreezerViewModel(
         }
     }
 
-    private fun loadPrivileges() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val hasRoot = systemRepository.isRootAvailable()
-            val hasShizuku = systemRepository.isShizukuAvailable()
-            val hasDhizuku = systemRepository.isDhizukuAvailable()
-            _uiState.update {
-                it.copy(
-                    isRoot = hasRoot,
-                    isShizuku = hasShizuku,
-                    isDhizuku = hasDhizuku
-                )
-            }
-        }
-    }
-
-    // --- Freeze All / Unfreeze All ---
-
-    fun freezeAll() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val apps = _uiState.value.freezerApps
-            val eligibleApps = apps.filter { appInfo ->
-                val isSystem = appInfo.isSystem
-                val isUadFailed = isSystem && appInfo.isUadLoadFailed
-                val isUnsafe = isSystem && appInfo.bloatRecommendation?.lowercase() == "unsafe"
-                !(isUadFailed || isUnsafe)
-            }
-            val skippedCount = apps.size - eligibleApps.size
-            val results = eligibleApps.map { app ->
-                async { manageAppUseCase.setAppDisabled(app.packageName, true) }
-            }.awaitAll()
-            val failures = results.count { it.isFailure } + skippedCount
-            val uiText = if (failures == 0) {
-                UiText.StringResource(R.string.tile_freeze_success, eligibleApps.size)
-            } else {
-                UiText.StringResource(
-                    R.string.tile_freeze_partial_failure,
-                    eligibleApps.size - results.count { it.isFailure },
-                    apps.size,
-                    failures
-                )
-            }
-            _uiState.update { it.copy(actionMessage = uiText) }
-        }
-    }
-
-    fun unfreezeAll() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val pkgs = _uiState.value.freezerPackageNames.toList()
-            val results = pkgs.map { pkg ->
-                async { manageAppUseCase.setAppDisabled(pkg, false) }
-            }.awaitAll()
-            val failures = results.count { it.isFailure }
-            val uiText = if (failures == 0) {
-                UiText.StringResource(R.string.unfrozen_count_success, pkgs.size)
-            } else {
-                UiText.StringResource(
-                    R.string.tile_unfreeze_partial_failure,
-                    pkgs.size - failures,
-                    pkgs.size,
-                    failures
-                )
-            }
-            _uiState.update { it.copy(actionMessage = uiText) }
-        }
-    }
+    // Freeze-all / Unfreeze-all are handled by the shared batch action
+    // (MultiAppAction.Freeze / UnFreeze) so their progress streams into the
+    // TermLoggerDialog; the toolbar in FreezerScreen dispatches them via onMultiAppAction.
 
     // --- Multi-select removal ---
 

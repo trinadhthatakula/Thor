@@ -1,4 +1,4 @@
-# Thor v1.90.1 Release Notes
+# Thor v1.90.2 Release Notes
 
 A focused **stability & smoothness** release on top of v1.90.0 — hardened APK installation, a fix for the Settings crash on large fonts, and a broad pass to eliminate memory leaks and UI jank across the app.
 
@@ -7,6 +7,13 @@ A focused **stability & smoothness** release on top of v1.90.0 — hardened APK 
 ### 📦 Installer
 *   **No more false "downgrade" blocks**: normal apps that bundle helper `.apk` assets (e.g. Muntashirakon **App Manager**, **MT File Manager**) were being misidentified as a system downgrade and blocked. A file is now recognized as a single APK by its top-level manifest instead of by any nested `.apk` entry, so it installs correctly. (#207)
 *   **`.xapk` installs fixed**: bundles that failed with *"Error: failed to parse package"* now install — tolerant manifest parsing (numeric `version_code`, missing fields) and correct base-APK selection that skips config splits. (#159)
+*   **APKPure `.xapk` now installs too**: APKPure stores a bundle's inner APKs uncompressed with streaming data descriptors, which the old sequential zip reader couldn't parse — it failed with *`AndroidManifest.xml` not found*. Bundles are now read via the archive's central directory (like `unzip`), so APKPure `.xapk` — and APKMirror `.apkm` (via its `info.json`) — install reliably.
+
+### ❄️ Freezer
+*   **"Freeze all / Unfreeze all" no longer freezes the app**: a bulk toggle flooded package-change broadcasts that stalled the main thread on the debloat cache, so the app hung and the list wouldn't refresh. The cache is no longer rebuilt under a main-thread lock — bulk actions stay responsive.
+*   **Live progress**: bulk freeze/unfreeze now shows a compact sheet with a running count that auto-dismisses when it finishes.
+*   **Shizuku recognized on first launch**: granting Shizuku is now picked up by the Freezer screen immediately, without an app restart.
+*   **Animations follow the in-app theme**: the progress/terminal Lottie now respects the app's Light/Dark setting instead of the device theme.
 
 ### 🐛 Crash Fix
 *   **Settings no longer crashes** with system Font Size = Maximum and Display Size = Larger. The connected button group was rebuilt (via **Asgard 1.0.1**) so it can no longer produce the internal `ButtonGroup` measurement crash at any font/display scale. (#197)

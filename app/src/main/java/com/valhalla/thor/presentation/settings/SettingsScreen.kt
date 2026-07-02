@@ -405,6 +405,8 @@ fun SettingsScreen(
                         PrivilegeMode.ROOT -> R.drawable.magisk_icon
                         PrivilegeMode.SHIZUKU -> R.drawable.shizuku
                         PrivilegeMode.DHIZUKU -> R.drawable.dhizuku
+                        // Unreachable here: WORK MODE only renders when a real privilege mode is available.
+                        PrivilegeMode.NONE -> R.drawable.shield
                     }
                     IconBox(icon)
                     Spacer(Modifier.width(16.dp))
