@@ -30,7 +30,7 @@ jobs:
           cache: 'gradle'
 
       - name: Setup Ruby
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@0dafeac902942906541bc140009cdbf32665b601 # v1
         with:
           ruby-version: '3.3'
           bundler-cache: true
@@ -99,7 +99,7 @@ jobs:
           fi
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: v${{ steps.prep_notes.outputs.version_name }}
           name: Release v${{ steps.prep_notes.outputs.version_name }}
