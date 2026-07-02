@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # Use a PAT if you want this push to trigger the 'production-deploy' workflow automatically.
           # If you use the default token, you must trigger production-deploy manually.
@@ -30,7 +30,7 @@ jobs:
           ref: production
 
       - name: Setup Java (for property parsing if needed, or simple bash)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'zulu'
           java-version: '21'

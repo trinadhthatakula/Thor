@@ -11,10 +11,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'zulu'
           java-version: '21'
@@ -59,7 +59,7 @@ jobs:
           echo "VERSION_CODE=$(cat version_code.txt)" >> $GITHUB_ENV
 
       - name: Upload APKs to GitHub Actions
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Thor-v${{ env.VERSION_NAME }}-Build-${{ env.VERSION_CODE }}
           path: |
