@@ -178,22 +178,25 @@ class AppListViewModel(
                 return@launch
             }
             _rawState.update { it.copy(isComputingSizes = true) }
-            val packages = (_rawState.value.allUserApps + _rawState.value.allSystemApps)
-                .map { it.packageName }
-            val sizes = storageStatsHelper.installSizes(packages)
-            _rawState.update { state ->
-                state.copy(
-                    isComputingSizes = false,
-                    needsUsageAccessPrompt = false, // clear any stale prompt once sizes resolve
-                    allUserApps = state.allUserApps.map {
-                        it.copy(installSize = sizes[it.packageName] ?: it.installSize)
-                    },
-                    allSystemApps = state.allSystemApps.map {
-                        it.copy(installSize = sizes[it.packageName] ?: it.installSize)
-                    }
-                )
+            try {
+                val packages = (_rawState.value.allUserApps + _rawState.value.allSystemApps)
+                    .map { it.packageName }
+                val sizes = storageStatsHelper.installSizes(packages)
+                _rawState.update { state ->
+                    state.copy(
+                        needsUsageAccessPrompt = false,
+                        allUserApps = state.allUserApps.map {
+                            it.copy(installSize = sizes[it.packageName] ?: it.installSize)
+                        },
+                        allSystemApps = state.allSystemApps.map {
+                            it.copy(installSize = sizes[it.packageName] ?: it.installSize)
+                        }
+                    )
+                }
+                appRepository.updateInstallSizes(sizes)
+            } finally {
+                _rawState.update { it.copy(isComputingSizes = false) }
             }
-            appRepository.updateInstallSizes(sizes)
         }
     }
 

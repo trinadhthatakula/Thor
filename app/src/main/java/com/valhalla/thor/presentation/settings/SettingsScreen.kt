@@ -332,7 +332,7 @@ fun SettingsScreen(
         Spacer(Modifier.height(32.dp))
 
         // ── PERMISSIONS ─────────────────────────────────────────────────────
-        SettingsSectionLabel("PERMISSIONS")
+        SettingsSectionLabel(stringResource(R.string.permissions))
 
         val usageAccessManager = koinInject<UsageAccessManager>()
         val lifecycleOwner = LocalLifecycleOwner.current
@@ -356,11 +356,11 @@ fun SettingsScreen(
         ) {
             SettingsSwitchRow(
                 icon = R.drawable.shield,
-                title = "Usage Access",
+                title = stringResource(R.string.usage_access),
                 subtitle = if (usageGranted) {
-                    "Granted — enables app-size sorting"
+                    stringResource(R.string.usage_access_granted_subtitle)
                 } else {
-                    "Needed to read app sizes for the Size sort"
+                    stringResource(R.string.usage_access_needed_subtitle)
                 },
                 checked = usageGranted,
                 onCheckedChange = {

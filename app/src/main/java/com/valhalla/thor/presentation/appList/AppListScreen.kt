@@ -235,16 +235,16 @@ fun AppListScreen(
         if (state.needsUsageAccessPrompt) {
             AlertDialog(
                 onDismissRequest = { viewModel.dismissUsageAccessPrompt() },
-                title = { Text("Usage Access needed") },
-                text = { Text("Thor needs Usage Access to read app sizes. Enable it for Thor, then pick \"Size\" again. You can also manage this under Settings → Permissions.") },
+                title = { Text(stringResource(R.string.usage_access_needed_title)) },
+                text = { Text(stringResource(R.string.usage_access_prompt_body)) },
                 confirmButton = {
                     TextButton(onClick = {
                         runCatching { context.startActivity(usageAccessManager.usageAccessIntent()) }
                         viewModel.dismissUsageAccessPrompt()
-                    }) { Text("Open settings") }
+                    }) { Text(stringResource(R.string.open_settings)) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { viewModel.dismissUsageAccessPrompt() }) { Text("Cancel") }
+                    TextButton(onClick = { viewModel.dismissUsageAccessPrompt() }) { Text(stringResource(R.string.cancel)) }
                 }
             )
         }
