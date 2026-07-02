@@ -6,8 +6,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class SortBy {
     NAME,
-
-    //SIZE,
+    SIZE,
     INSTALL_DATE,
     LAST_UPDATED,
     VERSION_CODE,
@@ -17,7 +16,7 @@ enum class SortBy {
 
     fun asGeneralName(): String = when (this) {
         NAME -> "Name"
-        //SIZE -> "Size"
+        SIZE -> "Size"
         INSTALL_DATE -> "Install Date"
         LAST_UPDATED -> "Last Updated"
         VERSION_CODE -> "Version Code"

@@ -40,6 +40,8 @@ data class AppInfo(
     val bloatDescription: String? = null,
     val isInstalled: Boolean = true,
     val isUadLoadFailed: Boolean = false,
+    /** Total install size in bytes (app + data + cache). null = not yet computed. */
+    val installSize: Long? = null,
 ) {
     companion object {
 

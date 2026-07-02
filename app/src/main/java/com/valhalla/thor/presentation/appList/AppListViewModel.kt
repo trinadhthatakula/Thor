@@ -10,6 +10,7 @@ import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
+import com.valhalla.thor.domain.model.sortApps
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
@@ -431,17 +432,5 @@ class AppListViewModel(
         list: List<AppInfo>,
         sortBy: SortBy,
         order: SortOrder
-    ): List<AppInfo> {
-        val comparator = when (sortBy) {
-            SortBy.NAME -> compareBy<AppInfo> { it.appName?.lowercase() }
-            SortBy.INSTALL_DATE -> compareBy { it.firstInstallTime }
-            SortBy.LAST_UPDATED -> compareBy { it.lastUpdateTime }
-            SortBy.VERSION_CODE -> compareBy { it.versionCode }
-            SortBy.VERSION_NAME -> compareBy { it.versionName }
-            SortBy.TARGET_SDK_VERSION -> compareBy { it.targetSdk }
-            SortBy.MIN_SDK_VERSION -> compareBy { it.minSdk }
-        }
-        return if (order == SortOrder.ASCENDING) list.sortedWith(comparator)
-        else list.sortedWith(comparator).reversed()
-    }
+    ): List<AppInfo> = sortApps(list, sortBy, order)
 }
