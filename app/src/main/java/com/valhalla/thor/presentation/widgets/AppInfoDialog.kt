@@ -47,6 +47,7 @@ import coil3.compose.AsyncImage
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.presentation.appList.ExportBottomSheet
 import com.valhalla.thor.presentation.utils.AppIconModel
 import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 
@@ -73,6 +74,7 @@ fun AppInfoDialog(
     var showReinstallWarning by remember { mutableStateOf(false) }
     var showClearDataConfirmation by remember { mutableStateOf(false) }
     var showFreezeConfirmation by remember { mutableStateOf(false) }
+    var showExportSheet by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -101,6 +103,7 @@ fun AppInfoDialog(
                 isRoot = isRoot,
                 isShizuku = isShizuku,
                 isDhizuku = isDhizuku,
+                onExport = { showExportSheet = true },
                 onAction = { action ->
                     // Intercept dangerous actions for local confirmation
                     when (action) {
@@ -132,7 +135,11 @@ fun AppInfoDialog(
         }
     }
 
-    // --- ALERTS ---
+    // --- OVERLAYS ---
+
+    if (showExportSheet) {
+        ExportBottomSheet(appInfo = appInfo, onDismiss = { showExportSheet = false })
+    }
 
     if (showClearDataConfirmation) {
         AlertDialog(
@@ -501,6 +508,7 @@ private fun AppActionRow(
     isRoot: Boolean,
     isShizuku: Boolean,
     isDhizuku: Boolean,
+    onExport: () -> Unit,
     onAction: (AppClickAction) -> Unit
 ) {
     val hasPrivilege = isRoot || isShizuku || isDhizuku
@@ -584,6 +592,10 @@ private fun AppActionRow(
             onAction(
                 AppClickAction.Share(appInfo)
             )
+        }
+
+        ActionItem(R.drawable.storage, stringResource(R.string.action_export)) {
+            onExport()
         }
 
         ActionItem(R.drawable.shield, stringResource(R.string.action_permissions)) {

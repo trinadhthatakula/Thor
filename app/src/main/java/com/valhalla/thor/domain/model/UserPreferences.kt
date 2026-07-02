@@ -44,7 +44,10 @@ data class UserPreferences(
     val freezerIsGrid: Boolean = true,
 
     // Extensions (hidden until unlocked via the home-screen easter egg — feature not yet stable)
-    val extensionsUnlocked: Boolean = false
+    val extensionsUnlocked: Boolean = false,
+
+    // Export destination (persisted SAF tree URI; null = default Downloads/Thor)
+    val exportDirUri: String? = null
 )
 
 

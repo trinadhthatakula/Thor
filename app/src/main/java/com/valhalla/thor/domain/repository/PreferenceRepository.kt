@@ -34,6 +34,9 @@ interface PreferenceRepository {
     // --- Localization ---
     suspend fun setLanguage(language: String?)
 
+    // --- Export ---
+    suspend fun setExportDirUri(uri: String?)
+
     // --- Auto Freeze ---
     suspend fun setAutoFreezeEnabled(enabled: Boolean)
 
