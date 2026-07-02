@@ -14,7 +14,7 @@
 
 | Issue | Feature | Status |
 |-------|---------|--------|
-| **#57** | Sort by size | ✅ **Done** — built as *total install size* (metric upgraded from APK size at maintainer's call); PR #230 → `dev`, awaiting CI merge |
+| **#57** | Sort by size | ✅ **Done** — built as *total install size* (metric upgraded from APK size at maintainer's call); Merged to `dev` (3e8de3e) |
 | #164 | Export bundles | ⬜ next green |
 | #55a | Freeze profiles | ⬜ next green |
 | _all others_ | | ⬜ not started |
@@ -25,7 +25,7 @@
 
 | # | Issue | Feature | Impact | Est. time | Complexity | Tier / verdict |
 |---|-------|---------|:------:|:---------:|:----------:|----------------|
-| 1 | **#57** | Sort by (install) size | 3–4 | done | 2 | 🟢 **Done** (PR #230) |
+| 1 | **#57** | Sort by (install) size | 3–4 | done | 2 | 🟢 **Merged** (#230) |
 | 2 | **#164** | Export to folder (APK/XAPK/APKS/split) | 3 | **3–5 d** | 3 | 🟢 quick win — ~70–80% reuses `ShareAppUseCase` |
 | 3 | **#55a** | Freeze **profiles** (named groups) | 3 | **2–3 d** | 4 | 🟢 quick win — reuses Room + batch-freeze *(split from #55)* |
 | 4 | **#51** | App **+ data backup** / transfer | **4** | APK-only ≈free · root-data **5–8 d** · P2P 12–20 d | 5 | 🟡 highest impact, root-gated — phase it |
