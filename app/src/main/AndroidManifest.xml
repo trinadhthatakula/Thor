@@ -95,6 +95,8 @@
                 <data android:mimeType="application/apkm" />
                 <data android:mimeType="application/vnd.apkm" />
                 <data android:mimeType="application/vnd.apkm-archive" />
+                <data android:mimeType="application/x-apkp" />
+                <data android:mimeType="application/vnd.apkp" />
             </intent-filter>
 
             <!-- Match by extension for content/file URIs with a wildcard MIME type (common in modern file managers) -->
@@ -117,15 +119,19 @@
                 <data android:pathPattern=".*\\.APKS" />
                 <data android:pathPattern=".*\\.apkm" />
                 <data android:pathPattern=".*\\.APKM" />
+                <data android:pathPattern=".*\\.apkp" />
+                <data android:pathPattern=".*\\.APKP" />
             </intent-filter>
 
-            <!-- file:// URIs: match by extension, no MIME type required -->
+            <!-- content:// and file:// URIs: match by extension when the MIME type is
+                 absent/unknown (many file managers hand a typeless content:// URI). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
+                <data android:scheme="content" />
                 <data android:scheme="file" />
                 <data android:host="*" />
 
@@ -137,6 +143,8 @@
                 <data android:pathPattern=".*\\.APKS" />
                 <data android:pathPattern=".*\\.apkm" />
                 <data android:pathPattern=".*\\.APKM" />
+                <data android:pathPattern=".*\\.apkp" />
+                <data android:pathPattern=".*\\.APKP" />
             </intent-filter>
         </activity>
 
