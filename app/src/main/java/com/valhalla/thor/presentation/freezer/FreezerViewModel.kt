@@ -3,14 +3,13 @@ package com.valhalla.thor.presentation.freezer
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
-import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
-import com.valhalla.thor.presentation.common.ShizukuPermissionHandler
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.Dispatchers
@@ -50,30 +49,17 @@ class FreezerViewModel(
     private val freezerRepository: FreezerRepository,
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val manageAppUseCase: ManageAppUseCase,
-    private val systemRepository: SystemRepository,
+    private val privilegeManager: PrivilegeManager,
     private val preferenceRepository: PreferenceRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FreezerUiState())
     val uiState: StateFlow<FreezerUiState> = _uiState.asStateFlow()
 
-    // Re-check privileges when Shizuku's binder connects or the user grants permission.
-    // This ViewModel is created at app start (before the first-launch Shizuku grant), so
-    // its init-time loadPrivileges() would otherwise stay stale until an app restart.
-    private val shizukuHandler = ShizukuPermissionHandler(
-        onPermissionGranted = { loadPrivileges() }
-    )
-
     init {
         observeApps()
         observePreferences()
-        loadPrivileges()
-        shizukuHandler.register()
-    }
-
-    override fun onCleared() {
-        shizukuHandler.unregister()
-        super.onCleared()
+        observePrivileges()
     }
 
     private fun observeApps() {
@@ -110,17 +96,12 @@ class FreezerViewModel(
         }
     }
 
-    private fun loadPrivileges() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val hasRoot = systemRepository.isRootAvailable()
-            val hasShizuku = systemRepository.isShizukuAvailable()
-            val hasDhizuku = systemRepository.isDhizukuAvailable()
-            _uiState.update {
-                it.copy(
-                    isRoot = hasRoot,
-                    isShizuku = hasShizuku,
-                    isDhizuku = hasDhizuku
-                )
+    private fun observePrivileges() {
+        viewModelScope.launch {
+            privilegeManager.state.collect { p ->
+                _uiState.update {
+                    it.copy(isRoot = p.root, isShizuku = p.shizuku, isDhizuku = p.dhizuku)
+                }
             }
         }
     }
