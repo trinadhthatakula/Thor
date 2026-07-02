@@ -44,6 +44,7 @@ class SystemRepositoryImpl(
                 PrivilegeMode.ROOT -> if (isRootAvail) return Result.success(rootGateway)
                 PrivilegeMode.SHIZUKU -> if (isShizukuAvail) return Result.success(shizukuGateway)
                 PrivilegeMode.DHIZUKU -> if (isDhizukuAvail) return Result.success(dhizukuGateway)
+                PrivilegeMode.NONE -> Unit // never persisted as a preference; fall through to auto-detection
             }
         }
 
