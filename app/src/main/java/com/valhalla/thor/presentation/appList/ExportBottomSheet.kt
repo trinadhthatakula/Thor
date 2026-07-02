@@ -67,7 +67,7 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                         context,
                         context.getString(
                             R.string.export_failed,
-                            it.message ?: "unknown error"
+                            it.message ?: context.getString(R.string.export_failed_unknown)
                         ),
                         Toast.LENGTH_LONG
                     ).show()

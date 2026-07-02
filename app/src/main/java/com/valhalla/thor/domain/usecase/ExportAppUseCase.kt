@@ -50,9 +50,10 @@ class ExportAppUseCase(
     }
 
     /** The label shown in the export sheet ("Downloads/Thor" or the saved folder name). */
-    suspend fun currentTargetLabel(): String {
+    suspend fun currentTargetLabel(): String = withContext(Dispatchers.IO) {
+        // SAF validity checks hit the content resolver / disk — keep them off the main thread.
         val savedUri = preferenceRepository.userPreferences.first().exportDirUri
-        return if (savedUri != null && isTreeWritable(savedUri)) {
+        if (savedUri != null && isTreeWritable(savedUri)) {
             DocumentFile.fromTreeUri(context, savedUri.toUri())?.name ?: "Selected folder"
         } else "Downloads/Thor"
     }

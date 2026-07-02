@@ -149,6 +149,7 @@
     <string name="export_in_progress">Exporting…</string>
     <string name="export_saved">Saved to %1$s</string>
     <string name="export_failed">Export failed: %1$s</string>
+    <string name="export_failed_unknown">unknown error</string>
 
     <!-- Main Screen / Global -->
     <string name="cannot_launch_app">Cannot launch app</string>
