@@ -77,10 +77,19 @@ class ExportAppUseCase(
 
     private fun writeToDownloads(source: File, mime: String): String {
         val resolver = context.contentResolver
+        val relativePath = Environment.DIRECTORY_DOWNLOADS + "/Thor/"
+        // MediaStore.insert appends " (1)" instead of overwriting, so delete any same-named
+        // entry first. RELATIVE_PATH must match exactly, including the trailing slash.
+        val selection =
+            "${MediaStore.Downloads.DISPLAY_NAME} = ? AND ${MediaStore.Downloads.RELATIVE_PATH} = ?"
+        val selectionArgs = arrayOf(source.name, relativePath)
+        try {
+            resolver.delete(MediaStore.Downloads.EXTERNAL_CONTENT_URI, selection, selectionArgs)
+        } catch (_: Exception) { /* best-effort overwrite; fall through to insert */ }
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, source.name)
             put(MediaStore.Downloads.MIME_TYPE, mime)
-            put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Thor")
+            put(MediaStore.Downloads.RELATIVE_PATH, relativePath)
             put(MediaStore.Downloads.IS_PENDING, 1)
         }
         val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
@@ -112,9 +121,14 @@ class ExportAppUseCase(
         val tree = DocumentFile.fromTreeUri(context, treeUri) ?: throw IOException("Invalid folder")
         tree.findFile(source.name)?.delete() // overwrite
         val doc = tree.createFile(mime, source.name) ?: throw IOException("Could not create file")
-        context.contentResolver.openOutputStream(doc.uri)?.use { out ->
-            source.inputStream().use { it.copyTo(out) }
-        } ?: throw IOException("openOutputStream failed")
+        try {
+            context.contentResolver.openOutputStream(doc.uri)?.use { out ->
+                source.inputStream().use { it.copyTo(out) }
+            } ?: throw IOException("openOutputStream failed")
+        } catch (e: Exception) {
+            doc.delete() // don't leave a partial/corrupted file behind
+            throw e
+        }
         return tree.name ?: context.getString(R.string.export_dest_selected)
     }
 }

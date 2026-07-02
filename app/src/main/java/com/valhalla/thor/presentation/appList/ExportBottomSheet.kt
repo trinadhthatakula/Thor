@@ -272,7 +272,12 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                 Button(
                     enabled = !exporting,
                     onClick = {
-                        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+                        // A custom SAF folder writes via DocumentFile and needs no
+                        // WRITE_EXTERNAL_STORAGE — only the legacy Downloads path (API <= 28) does.
+                        val usingCustomFolder =
+                            targetLabel != context.getString(R.string.export_dest_downloads)
+                        if (!usingCustomFolder &&
+                            Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
                             ContextCompat.checkSelfPermission(
                                 context,
                                 Manifest.permission.WRITE_EXTERNAL_STORAGE

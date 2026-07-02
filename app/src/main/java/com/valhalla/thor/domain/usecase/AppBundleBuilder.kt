@@ -91,7 +91,8 @@ class AppBundleBuilder(
 
     private fun zipFiles(files: List<File>, zipFile: File) {
         ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { out ->
-            val data = ByteArray(1024)
+            // 8 KB buffer — 1 KB is needlessly slow when zipping multi-MB APK splits.
+            val data = ByteArray(8192)
             files.forEach { file ->
                 FileInputStream(file).use { fi ->
                     BufferedInputStream(fi).use { origin ->
