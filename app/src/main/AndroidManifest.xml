@@ -111,28 +111,56 @@
                 <data android:host="*" />
                 <data android:mimeType="*/*" />
 
+                <!-- Match bundle files by extension. SIMPLE_GLOB pathPattern is
+                     case-sensitive and its ".*" latches onto the FIRST '.' with NO
+                     backtracking, so ".*\.xapk" only matches single-dot names and
+                     drops real ones like "Amazon+Shopping_32.12.4.100_APKPure.xapk".
+                     We therefore enumerate one pattern per dot-count (up to 6 dots).
+                     pathAdvancedPattern (ADVANCED_GLOB) CANNOT help here: it is greedy
+                     with no backtracking (PatternMatcher docs), so a leading ".*" eats
+                     the whole path and the trailing ".xapk" never matches. Uppercase
+                     variants are single-dot only (rare); the runtime type check in
+                     BundleAnalysis is case-insensitive and inspects ZIP contents. -->
+                <!-- .apk -->
                 <data android:pathPattern=".*\\.apk" />
                 <data android:pathPattern=".*\\.APK" />
+                <data android:pathPattern=".*\\..*\\.apk" />
+                <data android:pathPattern=".*\\..*\\..*\\.apk" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.apk" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.apk" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.apk" />
+                <!-- .xapk -->
                 <data android:pathPattern=".*\\.xapk" />
                 <data android:pathPattern=".*\\.XAPK" />
+                <data android:pathPattern=".*\\..*\\.xapk" />
+                <data android:pathPattern=".*\\..*\\..*\\.xapk" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.xapk" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.xapk" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.xapk" />
+                <!-- .apks -->
                 <data android:pathPattern=".*\\.apks" />
                 <data android:pathPattern=".*\\.APKS" />
+                <data android:pathPattern=".*\\..*\\.apks" />
+                <data android:pathPattern=".*\\..*\\..*\\.apks" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.apks" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.apks" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.apks" />
+                <!-- .apkm -->
                 <data android:pathPattern=".*\\.apkm" />
                 <data android:pathPattern=".*\\.APKM" />
+                <data android:pathPattern=".*\\..*\\.apkm" />
+                <data android:pathPattern=".*\\..*\\..*\\.apkm" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.apkm" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.apkm" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.apkm" />
+                <!-- .apkp -->
                 <data android:pathPattern=".*\\.apkp" />
                 <data android:pathPattern=".*\\.APKP" />
-
-                <!-- pathPattern (SIMPLE_GLOB) is non-backtracking: ".*\.xapk" latches
-                     ".*" onto the FIRST dot in a name like
-                     "Amazon Shopping_28.15.2.100_apkpure.com.xapk" and never reaches
-                     the extension. pathAdvancedPattern (ADVANCED_GLOB, API 26+; minSdk
-                     is 28) backtracks, so multi-dot names match. Case-folded classes
-                     also cover upper/lower. -->
-                <data android:pathAdvancedPattern=".*\\.[aA][pP][kK]" />
-                <data android:pathAdvancedPattern=".*\\.[xX][aA][pP][kK]" />
-                <data android:pathAdvancedPattern=".*\\.[aA][pP][kK][sS]" />
-                <data android:pathAdvancedPattern=".*\\.[aA][pP][kK][mM]" />
-                <data android:pathAdvancedPattern=".*\\.[aA][pP][kK][pP]" />
+                <data android:pathPattern=".*\\..*\\.apkp" />
+                <data android:pathPattern=".*\\..*\\..*\\.apkp" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.apkp" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.apkp" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.apkp" />
             </intent-filter>
 
             <!-- content:// and file:// URIs: match by extension when the MIME type is
@@ -147,25 +175,51 @@
                 <data android:scheme="file" />
                 <data android:host="*" />
 
+                <!-- Same multi-dot handling as the wildcard-MIME filter above:
+                     one SIMPLE_GLOB pattern per dot-count (up to 6 dots), because
+                     ".*\.xapk" alone latches onto the first dot, and ADVANCED_GLOB
+                     does not backtrack. Covers typeless content:// URIs whose path
+                     carries the filename (e.g. "App_1.2.3.xapk"). -->
+                <!-- .apk -->
                 <data android:pathPattern=".*\\.apk" />
                 <data android:pathPattern=".*\\.APK" />
+                <data android:pathPattern=".*\\..*\\.apk" />
+                <data android:pathPattern=".*\\..*\\..*\\.apk" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.apk" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.apk" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.apk" />
+                <!-- .xapk -->
                 <data android:pathPattern=".*\\.xapk" />
                 <data android:pathPattern=".*\\.XAPK" />
+                <data android:pathPattern=".*\\..*\\.xapk" />
+                <data android:pathPattern=".*\\..*\\..*\\.xapk" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.xapk" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.xapk" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.xapk" />
+                <!-- .apks -->
                 <data android:pathPattern=".*\\.apks" />
                 <data android:pathPattern=".*\\.APKS" />
+                <data android:pathPattern=".*\\..*\\.apks" />
+                <data android:pathPattern=".*\\..*\\..*\\.apks" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.apks" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.apks" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.apks" />
+                <!-- .apkm -->
                 <data android:pathPattern=".*\\.apkm" />
                 <data android:pathPattern=".*\\.APKM" />
+                <data android:pathPattern=".*\\..*\\.apkm" />
+                <data android:pathPattern=".*\\..*\\..*\\.apkm" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.apkm" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.apkm" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.apkm" />
+                <!-- .apkp -->
                 <data android:pathPattern=".*\\.apkp" />
                 <data android:pathPattern=".*\\.APKP" />
-
-                <!-- Same non-backtracking pathPattern bug applies to typeless
-                     content:// URIs; pathAdvancedPattern backtracks so multi-dot
-                     names (e.g. "App_1.2.3.xapk") match here too. -->
-                <data android:pathAdvancedPattern=".*\\.[aA][pP][kK]" />
-                <data android:pathAdvancedPattern=".*\\.[xX][aA][pP][kK]" />
-                <data android:pathAdvancedPattern=".*\\.[aA][pP][kK][sS]" />
-                <data android:pathAdvancedPattern=".*\\.[aA][pP][kK][mM]" />
-                <data android:pathAdvancedPattern=".*\\.[aA][pP][kK][pP]" />
+                <data android:pathPattern=".*\\..*\\.apkp" />
+                <data android:pathPattern=".*\\..*\\..*\\.apkp" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.apkp" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.apkp" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.apkp" />
             </intent-filter>
         </activity>
 

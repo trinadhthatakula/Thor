@@ -238,6 +238,9 @@ class BundleAnalysisTest {
         assertFalse(isMonolithicApk(plainApk, "app.xapk"))
         assertFalse(isMonolithicApk(plainApk, "App.APKM"))
         assertFalse(isMonolithicApk(plainApk, "thing.apks"))
+        // .apkp is registered as an installable bundle in the manifest, so it must
+        // force the bundle path here too (even with a multi-dot version string).
+        assertFalse(isMonolithicApk(plainApk, "App_1.2.3.apkp"))
     }
 
     @Test
@@ -245,9 +248,22 @@ class BundleAnalysisTest {
         assertTrue(hasBundleExtension("foo.xapk"))
         assertTrue(hasBundleExtension("Foo.APKM"))
         assertTrue(hasBundleExtension("bar.apks"))
+        assertTrue(hasBundleExtension("baz.apkp"))
         assertFalse(hasBundleExtension("bar.apk"))
         assertFalse(hasBundleExtension("noextension"))
         assertFalse(hasBundleExtension(null))
+    }
+
+    @Test
+    fun hasBundleExtension_resolvesExtensionFromMultiDotNames() {
+        // GH#159 reporter's exact file: substringAfterLast('.') must yield the true
+        // extension for names with version dots / apkpure.com in them, so the bundle
+        // path is taken regardless of how many dots precede the extension.
+        assertTrue(hasBundleExtension("Amazon+Shopping_32.12.4.100_APKPure.xapk"))
+        assertTrue(hasBundleExtension("Amazon Shopping_28.15.2.100_apkpure.com.xapk"))
+        assertTrue(hasBundleExtension("App_1.2.3.APKP"))
+        // A multi-dot plain .apk is still not a bundle container.
+        assertFalse(hasBundleExtension("com.example.app_1.2.3.apk"))
     }
 
     // --- APKPure .xapk manifest + APKMirror .apkm info.json ---
