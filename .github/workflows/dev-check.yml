@@ -18,12 +18,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0 # full history + tags so the release-notes changelog fallback works
 
       - name: Setup JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'zulu'
           java-version: '21'
@@ -152,7 +152,7 @@ jobs:
 
       # --- 5. GITHUB RELEASE (PRE-RELEASE) ---
       - name: Create GitHub Pre-Release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
           # Unique tag for dev builds: v1.0.0-dev-45
           tag_name: v${{ steps.prep_notes.outputs.version_name }}-dev-${{ github.run_number }}

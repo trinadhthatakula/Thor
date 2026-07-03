@@ -141,6 +141,19 @@
     <string name="action_uninstall">Uninstall</string>
     <string name="action_reinstall">Reinstall</string>
 
+    <!-- Export -->
+    <string name="action_export">Export</string>
+    <string name="export_explain_apk">Thor saves this app as a single installer file (.apk) to the folder below. Use it to back up the app or reinstall it later.</string>
+    <string name="export_explain_apks">This app ships as several split parts, so Thor packages them into one bundle (.apks) in the folder below. Reinstall it anytime with Thor\'s installer.</string>
+    <string name="export_save_to">Save to</string>
+    <string name="export_change">Change</string>
+    <string name="export_in_progress">Exporting…</string>
+    <string name="export_saved">Saved to %1$s</string>
+    <string name="export_failed">Export failed: %1$s</string>
+    <string name="export_failed_unknown">unknown error</string>
+    <string name="export_dest_downloads">Downloads/Thor</string>
+    <string name="export_dest_selected">Selected folder</string>
+
     <!-- Main Screen / Global -->
     <string name="cannot_launch_app">Cannot launch app</string>
     <string name="share_app">Share App</string>
@@ -174,6 +187,15 @@
     <string name="permissions_no_found">No permissions requested by this app</string>
     <string name="permission_state_granted">Granted</string>
     <string name="permission_state_denied">Denied</string>
+
+    <!-- Usage Access / Size sort -->
+    <string name="permissions">PERMISSIONS</string>
+    <string name="usage_access">Usage Access</string>
+    <string name="usage_access_granted_subtitle">Granted — enables app-size sorting</string>
+    <string name="usage_access_needed_subtitle">Needed to read app sizes for the Size sort</string>
+    <string name="usage_access_needed_title">Usage Access needed</string>
+    <string name="usage_access_prompt_body">Thor needs Usage Access to read app sizes. Enable it for Thor, then pick \"Size\" again. You can also manage this under Settings → Permissions.</string>
+    <string name="open_settings">Open settings</string>
 
     <!-- Quick Settings Tile -->
     <string name="tile_no_privilege">No privilege granted</string>
@@ -271,6 +293,7 @@
     <string name="info_app_version">App version</string>
     <string name="info_sdk_details">SDK details</string>
     <string name="info_sdk_details_format">Target SDK: %1$d   |   Min SDK: %2$d</string>
+    <string name="info_app_size">Size</string>
     <string name="info_installer_source">Installer source</string>
     <string name="info_install_time">Install time</string>
     <string name="info_last_update_time">Last update time</string>
