@@ -1,0 +1,9 @@
+What's new in Thor v1.90.3
+
+• New: sort apps by install size, and see each app's size in App Info.
+• New: export an app's APK or bundle straight to a folder you choose.
+• Bundles with version numbers in the name (e.g. App_1.2.3.xapk) now open from file managers; added .apkp support.
+• Root installs no longer fail with a generic error — the real reason is shown, and exit-255 failures are fixed.
+• Privilege status (Root/Shizuku/Dhizuku) now updates instantly.
+
+Thanks for using Thor!
