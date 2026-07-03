@@ -46,11 +46,14 @@ class UsageAccessManager(
         return isGranted()
     }
 
-    /** One-shot per-process auto-grant, meant to run once a privilege is available. */
+    /**
+     * Best-effort per-process auto-grant. Latches only after a *successful* grant, so a
+     * transient failure (e.g. the privilege gateway not fully ready yet) can still be
+     * retried the next time this runs rather than being disabled for the whole process.
+     */
     suspend fun maybeAutoGrant() {
         if (autoGrantAttempted || isGranted()) return
-        autoGrantAttempted = true
-        tryGrantViaPrivilege()
+        if (tryGrantViaPrivilege()) autoGrantAttempted = true
     }
 
     /** Settings deep-link (best-effort per-app; OEMs may land on the list). */

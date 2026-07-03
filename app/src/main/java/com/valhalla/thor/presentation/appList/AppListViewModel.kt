@@ -155,17 +155,20 @@ class AppListViewModel(
         }
     }
 
-    // Recompute total install sizes when Size is the active sort AND apps are loaded
-    // (fires both when the user picks Size and when the list finishes loading with
-    // Size already selected). distinctUntilChanged prevents a self-trigger loop.
+    // Recompute total install sizes when Size is the active sort AND apps are loaded.
+    // Keyed on the SET of package names (not the count) so an install+uninstall that
+    // keeps the total unchanged still re-triggers; distinctUntilChanged then suppresses
+    // the self-trigger loop (ensureInstallSizes only writes installSize, not the set).
     private fun observeSizeSort() {
         viewModelScope.launch {
             combine(
                 preferenceRepository.userPreferences.map { it.appSortBy }.distinctUntilChanged(),
-                _rawState.map { it.allUserApps.size + it.allSystemApps.size }.distinctUntilChanged()
-            ) { sortBy, appCount -> sortBy to appCount }
-                .collect { (sortBy, appCount) ->
-                    if (sortBy == SortBy.SIZE && appCount > 0) ensureInstallSizes()
+                _rawState.map { state ->
+                    (state.allUserApps + state.allSystemApps).mapTo(HashSet()) { it.packageName }
+                }.distinctUntilChanged()
+            ) { sortBy, packages -> sortBy to packages }
+                .collect { (sortBy, packages) ->
+                    if (sortBy == SortBy.SIZE && packages.isNotEmpty()) ensureInstallSizes()
                 }
         }
     }

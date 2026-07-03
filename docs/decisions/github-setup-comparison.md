@@ -32,7 +32,7 @@
 
 The recurring friction in day-to-day maintenance (visible across #159, #197, #207) is **issue lifecycle tracking**, not classification. Your real flow is:
 
-```
+```text
 report → triage → confirm → fix on dev → ship pre-release → ask reporter to test → close on stable release
 ```
 
