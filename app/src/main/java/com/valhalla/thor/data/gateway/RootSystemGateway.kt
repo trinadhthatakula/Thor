@@ -225,6 +225,13 @@ class RootSystemGateway(
         if (apkPaths.isEmpty()) {
             return Result.failure(Exception("No APK paths provided for install"))
         }
+        // Abort before opening a session if any APK is missing/unreadable: otherwise a
+        // 0-byte File.length() below would stream `-S 0` into pm install-write and only
+        // fail later at commit with a cryptic reason.
+        apkPaths.firstOrNull { File(it).length() == 0L }?.let {
+            return Result.failure(Exception("APK file is missing or empty: $it"))
+        }
+        val currentUser = getCurrentUserId()
         val downgrade = if (canDowngrade) " -d" else ""
         val sb = StringBuilder()
         // Run the whole thing in a subshell so our `exit` codes exit the SUBSHELL, not
@@ -232,9 +239,14 @@ class RootSystemGateway(
         // libsu appends its end-marker, leaving it unable to read the real exit code
         // (it then falls back to code 1) — and would break every later root command.
         sb.append("(\n")
-        // Create the session; capture stdout+stderr so a failure reason isn't lost, then
-        // pull the numeric id out of "…created install session [<id>]".
-        sb.append("CREATE_OUT=\$(pm install-create -r -g").append(downgrade).append(" 2>&1)\n")
+        // pipefail so a failed `cat` (missing/unreadable APK) in the install-write
+        // pipeline below propagates to the || abort branch instead of being masked by
+        // pm install-write's exit code.
+        sb.append("set -o pipefail\n")
+        // Create the session (targeting the current user, like every other pm command in
+        // this gateway); capture stdout+stderr so a failure reason isn't lost, then pull
+        // the numeric id out of "…created install session [<id>]".
+        sb.append("CREATE_OUT=\$(pm install-create -r -g --user ").append(currentUser).append(downgrade).append(" 2>&1)\n")
         sb.append("SID=\$(printf '%s\\n' \"\$CREATE_OUT\" | sed -n 's/.*\\[\\([0-9]*\\)\\].*/\\1/p')\n")
         sb.append("if [ -z \"\$SID\" ]; then echo \"pm install-create failed: \$CREATE_OUT\" 1>&2; exit 101; fi\n")
         // Stream each APK's bytes into the session via stdin.

@@ -31,20 +31,31 @@ class AppBundleBuilder(
 ) {
     suspend fun build(appInfo: AppInfo, cacheSubDir: String = "share_temp"): Result<File> = withContext(Dispatchers.IO) {
         try {
-            val cacheDir = File(context.cacheDir, cacheSubDir)
+            // Per-package subdir. Bulk share builds each selected app sequentially into
+            // the same cacheSubDir and hands all the resulting content:// URIs to
+            // ACTION_SEND_MULTIPLE together AFTER the loop; wiping the whole dir on each
+            // call would delete earlier apps' bundles before they are read. Distinct
+            // packages (a multi-select can't pick the same app twice) never collide.
+            val cacheDir = File(File(context.cacheDir, cacheSubDir), appInfo.packageName)
             if (cacheDir.exists()) cacheDir.deleteRecursively()
             cacheDir.mkdirs()
+
+            // Sanitize the output filename: appName/versionName are app-controlled and
+            // formattedAppName() only strips spaces, so a "/" or ".." could escape
+            // cacheDir once copyFileSafely() falls back to a root `cp`. Keep safe chars.
+            val safeName = "${appInfo.formattedAppName()}_${appInfo.versionName}"
+                .replace(Regex("[^A-Za-z0-9._-]"), "_")
 
             val finalFile: File
             if (appInfo.splitPublicSourceDirs.isEmpty()) {
                 val sourcePath = appInfo.publicSourceDir ?: appInfo.sourceDir
                     ?: return@withContext Result.failure(Exception("No source path found"))
-                finalFile = File(cacheDir, "${appInfo.formattedAppName()}_${appInfo.versionName}.apk")
+                finalFile = File(cacheDir, "$safeName.apk")
                 if (!copyFileSafely(sourcePath, finalFile)) {
                     return@withContext Result.failure(Exception("Failed to copy base APK"))
                 }
             } else {
-                finalFile = File(cacheDir, "${appInfo.formattedAppName()}_${appInfo.versionName}.apks")
+                finalFile = File(cacheDir, "$safeName.apks")
                 val tempSplitDir = File(cacheDir, "splits_staging")
                 tempSplitDir.mkdirs()
 
