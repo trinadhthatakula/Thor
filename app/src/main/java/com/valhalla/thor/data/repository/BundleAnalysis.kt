@@ -95,7 +95,7 @@ fun parseApkmInfo(jsonText: String): ApkmInfo? = try {
 }
 
 /** File extensions that unambiguously denote a bundle container (never a single APK). */
-private val BUNDLE_EXTENSIONS = setOf("xapk", "apkm", "apks")
+private val BUNDLE_EXTENSIONS = setOf("xapk", "apkm", "apks", "apkp")
 
 /**
  * True when [fileName] carries a known bundle extension (`.xapk`/`.apkm`/`.apks`).
