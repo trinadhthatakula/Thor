@@ -248,6 +248,10 @@
 
 
         <receiver
+            android:name=".data.receivers.FreezerShortcutPinnedReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".data.receivers.InstallReceiver"
             android:exported="false">
             <intent-filter>

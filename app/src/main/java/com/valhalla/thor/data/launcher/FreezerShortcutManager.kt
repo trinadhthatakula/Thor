@@ -1,5 +1,6 @@
 package com.valhalla.thor.data.launcher
 
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -15,6 +16,7 @@ import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
 import androidx.core.graphics.drawable.toBitmap
 import com.valhalla.thor.R
+import com.valhalla.thor.data.receivers.FreezerShortcutPinnedReceiver
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.Logger
@@ -54,7 +56,7 @@ class FreezerShortcutManager(
             // A shortcut id previously greyed by disableShortcuts stays disabled on re-pin unless we
             // re-enable it — otherwise a re-frozen app comes back greyed/uninteractive.
             ShortcutManagerCompat.enableShortcuts(context, listOf(shortcut))
-            ShortcutManagerCompat.requestPinShortcut(context, shortcut, null)
+            ShortcutManagerCompat.requestPinShortcut(context, shortcut, pinnedCallback(label).intentSender)
         }
     }
 
@@ -66,7 +68,9 @@ class FreezerShortcutManager(
 
     /** Ask the launcher to pin a Freeze-all / Unfreeze-all action shortcut. */
     fun pinBulkShortcut(action: String) {
-        ShortcutManagerCompat.requestPinShortcut(context, bulkShortcut(action), null)
+        val shortcut = bulkShortcut(action)
+        val label = shortcut.shortLabel.toString()
+        ShortcutManagerCompat.requestPinShortcut(context, shortcut, pinnedCallback(label).intentSender)
     }
 
     /** Publish (or remove) the Freeze-all + Unfreeze-all long-press dynamic shortcuts. */
@@ -153,6 +157,19 @@ class FreezerShortcutManager(
             Logger.e("FreezerShortcut", "bulk icon glyph load failed", e)
         }
         return IconCompat.createWithAdaptiveBitmap(bitmap)
+    }
+
+    // Fires (broadcast) ONLY when the launcher actually pins the shortcut — Android provides no
+    // failure/cancel callback, so this confirms success and can't detect a user cancel.
+    private fun pinnedCallback(label: String): PendingIntent {
+        val intent = Intent(context, FreezerShortcutPinnedReceiver::class.java)
+            .putExtra(FreezerShortcutPinnedReceiver.EXTRA_LABEL, label)
+        return PendingIntent.getBroadcast(
+            context,
+            label.hashCode(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
     }
 
     // Explicit-component intent → our (non-exported) trampoline, targeted by string class name so
