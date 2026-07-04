@@ -38,8 +38,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.asgard.components.AsgardActionItem
 import com.valhalla.asgard.components.StatusChip as AsgardStatusChip
+import com.valhalla.thor.data.launcher.FreezerShortcutManager
+import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.domain.repository.PreferenceRepository
+import org.koin.compose.koinInject
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -62,6 +67,7 @@ fun AppInfoDialog(
     isRoot: Boolean = false,
     isShizuku: Boolean = false,
     isDhizuku: Boolean = false,
+    showAddToHomeScreen: Boolean = false,
     onDismiss: () -> Unit,
     onAppAction: (AppClickAction) -> Unit = {}
 ) {
@@ -107,6 +113,7 @@ fun AppInfoDialog(
                 isRoot = isRoot,
                 isShizuku = isShizuku,
                 isDhizuku = isDhizuku,
+                showAddToHomeScreen = showAddToHomeScreen,
                 onExport = { showExportSheet = true },
                 onAction = { action ->
                     // Intercept dangerous actions for local confirmation
@@ -503,6 +510,7 @@ private fun AppActionRow(
     isRoot: Boolean,
     isShizuku: Boolean,
     isDhizuku: Boolean,
+    showAddToHomeScreen: Boolean,
     onExport: () -> Unit,
     onAction: (AppClickAction) -> Unit
 ) {
@@ -516,7 +524,7 @@ private fun AppActionRow(
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.Top
     ) {
         // 1. Standard Actions
         ActionItem(R.drawable.open_in_new, stringResource(R.string.action_launch)) {
@@ -605,7 +613,16 @@ private fun AppActionRow(
             )
         }
 
-
+        // Freezer launcher shortcut — self-contained so it's available wherever this dialog shows
+        // (app list, freezer, …). Gated on the feature setting + launcher pin support + user apps.
+        val shortcutManager = koinInject<FreezerShortcutManager>()
+        val preferenceRepository = koinInject<PreferenceRepository>()
+        val prefs by preferenceRepository.userPreferences.collectAsStateWithLifecycle(UserPreferences())
+        if (prefs.addFreezerToLauncher && !appInfo.isSystem && shortcutManager.isPinSupported()) {
+            ActionItem(R.drawable.home, stringResource(R.string.add_to_home_screen)) {
+                shortcutManager.pinAppShortcut(appInfo.packageName, appInfo.appName ?: appInfo.packageName)
+            }
+        }
     }
 }
 

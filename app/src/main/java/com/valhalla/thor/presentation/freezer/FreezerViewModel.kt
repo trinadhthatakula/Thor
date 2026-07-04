@@ -3,6 +3,8 @@ package com.valhalla.thor.presentation.freezer
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.data.launcher.FreezerShortcutContract
+import com.valhalla.thor.data.launcher.FreezerShortcutManager
 import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
@@ -13,6 +15,7 @@ import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,7 +44,8 @@ data class FreezerUiState(
     val isDhizuku: Boolean = false,
     val hasShownDisabledAppsPrompt: Boolean = false,
     val appListType: AppListType = AppListType.USER,
-    val isGrid: Boolean = true
+    val isGrid: Boolean = true,
+    val addFreezerToLauncher: Boolean = false
 )
 
 @KoinViewModel
@@ -50,7 +54,8 @@ class FreezerViewModel(
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val manageAppUseCase: ManageAppUseCase,
     private val privilegeManager: PrivilegeManager,
-    private val preferenceRepository: PreferenceRepository
+    private val preferenceRepository: PreferenceRepository,
+    private val freezerShortcutManager: FreezerShortcutManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FreezerUiState())
@@ -134,6 +139,7 @@ class FreezerViewModel(
             packageNames.forEach { pkg ->
                 freezerRepository.remove(pkg)
                 manageAppUseCase.setAppDisabled(pkg, false)
+                freezerShortcutManager.disableAppShortcut(pkg)
             }
             _uiState.update {
                 it.copy(
@@ -168,6 +174,7 @@ class FreezerViewModel(
                     }
             } else {
                 freezerRepository.remove(packageName)
+                freezerShortcutManager.disableAppShortcut(packageName)
                 manageAppUseCase.setAppDisabled(packageName, false)
                     .onFailure { e ->
                         _uiState.update {
@@ -219,6 +226,7 @@ class FreezerViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             manageAppUseCase.setAppDisabled(packageName, true)
                 .onSuccess {
+                    freezerShortcutManager.refreshAppShortcut(packageName)
                     if (!inFreezer) {
                         _uiState.update {
                             it.copy(
@@ -256,6 +264,7 @@ class FreezerViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             manageAppUseCase.setAppDisabled(packageName, false)
                 .onSuccess {
+                    freezerShortcutManager.refreshAppShortcut(packageName)
                     _uiState.update {
                         it.copy(
                             actionMessage = UiText.StringResource(
@@ -291,7 +300,8 @@ class FreezerViewModel(
                     it.copy(
                         autoFreezeEnabled = prefs.autoFreezeEnabled,
                         hasShownDisabledAppsPrompt = prefs.hasShownDisabledAppsPrompt,
-                        isGrid = prefs.freezerIsGrid
+                        isGrid = prefs.freezerIsGrid,
+                        addFreezerToLauncher = prefs.addFreezerToLauncher
                     )
                 }
             }
@@ -330,5 +340,38 @@ class FreezerViewModel(
                 )
             }
         }
+    }
+
+    // --- Launcher shortcuts (gated by the "Add Freezer to launcher" preference) ---
+
+    fun isPinSupported(): Boolean = freezerShortcutManager.isPinSupported()
+
+    fun pinAppToLauncher(app: AppInfo) {
+        if (app.isSystem) return // v1: user apps only
+        // Grayscale icon decode + binder pin request — keep it off Main to avoid jank.
+        viewModelScope.launch(Dispatchers.Default) {
+            freezerShortcutManager.pinAppShortcut(app.packageName, app.appName ?: app.packageName)
+        }
+    }
+
+    fun pinAllToLauncher() {
+        // Pin sequentially (suspending) off Main: a rapid loop of the fire-and-forget pinAppShortcut
+        // would spawn N concurrent bitmap decodes + binder pin requests and risk OOM / overwhelming
+        // the shortcut service. A small gap keeps the per-shortcut system prompts orderly too.
+        viewModelScope.launch(Dispatchers.Default) {
+            _uiState.value.freezerApps
+                .filter { !it.isSystem }
+                .forEach {
+                    freezerShortcutManager.pinAppShortcutSuspend(it.packageName, it.appName ?: it.packageName)
+                    delay(100)
+                }
+        }
+    }
+
+    fun pinBulkShortcut(freeze: Boolean) {
+        freezerShortcutManager.pinBulkShortcut(
+            if (freeze) FreezerShortcutContract.ACTION_FREEZE_ALL
+            else FreezerShortcutContract.ACTION_UNFREEZE_ALL
+        )
     }
 }

@@ -248,6 +248,10 @@
 
 
         <receiver
+            android:name=".data.receivers.FreezerShortcutPinnedReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".data.receivers.InstallReceiver"
             android:exported="false">
             <intent-filter>
@@ -303,6 +307,15 @@
             android:name=".presentation.extension.ShortcutTriggerActivity"
             android:exported="false"
             android:theme="@android:style/Theme.NoDisplay" />
+
+        <activity
+            android:name=".presentation.launcher.FreezerLaunchActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <receiver
             android:name=".data.receivers.ExtensionTriggerReceiver"
