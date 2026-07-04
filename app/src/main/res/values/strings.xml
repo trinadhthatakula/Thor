@@ -218,6 +218,8 @@
     <string name="add_to_home_screen">Add to Home screen</string>
     <string name="pin_all_to_home_screen">Pin all to Home screen</string>
     <string name="freeze_all_apps">Freeze all</string>
+    <string name="shortcuts">Shortcuts</string>
+    <string name="shortcut_add_all">Add all apps</string>
     <string name="freezer_launch_failed">Couldn\'t launch this app</string>
     <string name="shortcut_no_longer_frozen">No longer frozen</string>
     <string name="privilege_required_warning">Privilege required (Root, Shizuku or Dhizuku)</string>

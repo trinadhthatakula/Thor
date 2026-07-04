@@ -1,5 +1,6 @@
 package com.valhalla.thor.presentation.freezer
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -8,8 +9,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -36,6 +37,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppListType
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
+import com.valhalla.asgard.components.AsgardActionItem
 import com.valhalla.asgard.components.ConnectedButtonGroup
 import com.valhalla.asgard.components.ConnectedButtonGroupItem
 
@@ -228,28 +230,41 @@ fun FreezerSettingsSheet(
                 )
             }
 
-            // Launcher-shortcut pin actions — only when the launcher integration is enabled
-            // and the current launcher supports pinning.
+            // Launcher-shortcut actions — a dedicated "Shortcuts" section, shown only when the
+            // launcher integration is enabled and the current launcher supports pinning. Rendered as
+            // action-item rows (matching the app-info dialog) rather than full-width buttons.
             if (showLauncherPinActions) {
                 Spacer(Modifier.height(24.dp))
 
-                PinActionButton(
-                    icon = R.drawable.home,
-                    label = stringResource(R.string.pin_all_to_home_screen),
-                    onClick = onPinAllToLauncher
+                Text(
+                    stringResource(R.string.shortcuts),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                 )
                 Spacer(Modifier.height(12.dp))
-                PinActionButton(
-                    icon = R.drawable.frozen,
-                    label = stringResource(R.string.freeze_all_apps),
-                    onClick = onPinFreezeAllShortcut
-                )
-                Spacer(Modifier.height(12.dp))
-                PinActionButton(
-                    icon = R.drawable.unfreeze,
-                    label = stringResource(R.string.unfreeze_all_apps),
-                    onClick = onPinUnfreezeAllShortcut
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ShortcutActionItem(
+                        icon = R.drawable.frozen,
+                        label = stringResource(R.string.freeze_all_apps),
+                        onClick = onPinFreezeAllShortcut
+                    )
+                    ShortcutActionItem(
+                        icon = R.drawable.unfreeze,
+                        label = stringResource(R.string.unfreeze_all_apps),
+                        onClick = onPinUnfreezeAllShortcut
+                    )
+                    ShortcutActionItem(
+                        icon = R.drawable.home,
+                        label = stringResource(R.string.shortcut_add_all),
+                        onClick = onPinAllToLauncher
+                    )
+                }
             }
 
             Spacer(Modifier.height(24.dp))
@@ -258,26 +273,10 @@ fun FreezerSettingsSheet(
 }
 
 @Composable
-private fun PinActionButton(
-    icon: Int,
-    label: String,
-    onClick: () -> Unit
-) {
-    Button(
+private fun ShortcutActionItem(icon: Int, label: String, onClick: () -> Unit) {
+    AsgardActionItem(
+        icon = ImageVector.vectorResource(icon),
+        label = label,
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-        ),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Icon(
-            painter = painterResource(icon),
-            contentDescription = null,
-            modifier = Modifier.size(20.dp)
-        )
-        Spacer(Modifier.width(12.dp))
-        Text(label)
-    }
+    )
 }

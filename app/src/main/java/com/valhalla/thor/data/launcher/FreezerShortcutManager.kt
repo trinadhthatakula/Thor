@@ -4,9 +4,11 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
+import androidx.core.content.ContextCompat
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
@@ -30,6 +32,10 @@ class FreezerShortcutManager(
 ) {
     // App-scoped: bulk work must survive the (finishing) trampoline activity.
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // Solid launcher-tile backgrounds for the bulk action shortcuts (white glyph on colour).
+    private val freezeShortcutBg = Color.parseColor("#1E88E5")   // cold blue
+    private val unfreezeShortcutBg = Color.parseColor("#EF6C00")  // warm orange
 
     private companion object {
         const val LAUNCH_ACTIVITY = "com.valhalla.thor.presentation.launcher.FreezerLaunchActivity"
@@ -97,26 +103,52 @@ class FreezerShortcutManager(
     }
 
     private fun bulkShortcut(action: String): ShortcutInfoCompat {
-        val (id, labelRes, iconRes) = when (action) {
-            FreezerShortcutContract.ACTION_FREEZE_ALL -> Triple(
+        val spec = when (action) {
+            FreezerShortcutContract.ACTION_FREEZE_ALL -> BulkSpec(
                 FreezerShortcutContract.SHORTCUT_FREEZE_ALL,
                 R.string.freeze_all_apps,
-                R.drawable.frozen
+                R.drawable.frozen,
+                freezeShortcutBg
             )
-            FreezerShortcutContract.ACTION_UNFREEZE_ALL -> Triple(
+            FreezerShortcutContract.ACTION_UNFREEZE_ALL -> BulkSpec(
                 FreezerShortcutContract.SHORTCUT_UNFREEZE_ALL,
                 R.string.unfreeze_all_apps,
-                R.drawable.unfreeze
+                R.drawable.unfreeze,
+                unfreezeShortcutBg
             )
             else -> error("Unsupported bulk shortcut action: $action")
         }
-        val label = context.getString(labelRes)
-        return ShortcutInfoCompat.Builder(context, id)
+        val label = context.getString(spec.labelRes)
+        return ShortcutInfoCompat.Builder(context, spec.id)
             .setShortLabel(label)
             .setLongLabel(label)
-            .setIcon(IconCompat.createWithResource(context, iconRes))
+            .setIcon(bulkIcon(spec.iconRes, spec.background))
             .setIntent(trampolineIntent(action))
             .build()
+    }
+
+    private data class BulkSpec(val id: String, val labelRes: Int, val iconRes: Int, val background: Int)
+
+    // A launcher-visible adaptive icon: the white-tinted glyph centred on a solid colour tile. The raw
+    // frozen/unfreeze vectors are white-on-transparent (meant to be tinted by the host), so passing them
+    // to createWithResource renders an invisible/white blob on the launcher — hence this composed bitmap.
+    private fun bulkIcon(iconRes: Int, backgroundColor: Int): IconCompat {
+        val size = 216
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(backgroundColor)
+        try {
+            ContextCompat.getDrawable(context, iconRes)?.mutate()?.apply {
+                setTint(Color.WHITE)
+                val inset = size / 4 // glyph fills the centre ~50%, within the adaptive safe zone
+                setBounds(inset, inset, size - inset, size - inset)
+                draw(canvas)
+            }
+        } catch (e: Exception) {
+            // Fall back to a solid coloured tile rather than a broken/blank icon.
+            Logger.e("FreezerShortcut", "bulk icon glyph load failed", e)
+        }
+        return IconCompat.createWithAdaptiveBitmap(bitmap)
     }
 
     // Explicit-component intent → our (non-exported) trampoline, targeted by string class name so
