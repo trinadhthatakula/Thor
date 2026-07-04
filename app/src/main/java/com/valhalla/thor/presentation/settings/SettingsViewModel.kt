@@ -138,6 +138,12 @@ class SettingsViewModel(
         }
     }
 
+    fun setAddFreezerToLauncher(enabled: Boolean) {
+        viewModelScope.launch {
+            preferenceRepository.setAddFreezerToLauncher(enabled)
+        }
+    }
+
     fun unfreezeAll() {
         viewModelScope.launch {
             val pkgs = freezerRepository.getAllPackageNames()

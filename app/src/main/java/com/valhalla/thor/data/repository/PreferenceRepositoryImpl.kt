@@ -53,6 +53,7 @@ class PreferenceRepositoryImpl(
 
         // Auto Freeze
         val AUTO_FREEZE = booleanPreferencesKey("auto_freeze")
+        val ADD_FREEZER_TO_LAUNCHER = booleanPreferencesKey("add_freezer_to_launcher")
 
         // Freezer Prompts
         val HAS_SHOWN_DISABLED_APPS_PROMPT = booleanPreferencesKey("has_shown_disabled_apps_prompt")
@@ -115,6 +116,7 @@ class PreferenceRepositoryImpl(
                 preferredPrivilegeMode = privilegeMode,
                 language = prefs[Keys.LANGUAGE],
                 autoFreezeEnabled = prefs[Keys.AUTO_FREEZE] ?: false,
+                addFreezerToLauncher = prefs[Keys.ADD_FREEZER_TO_LAUNCHER] ?: false,
                 hasShownDisabledAppsPrompt = prefs[Keys.HAS_SHOWN_DISABLED_APPS_PROMPT] ?: false,
                 hasShownSupportDeveloperPrompt = prefs[Keys.HAS_SHOWN_SUPPORT_DEVELOPER_PROMPT] ?: false,
                 useDetailedView = useDetailedView,
@@ -193,6 +195,12 @@ class PreferenceRepositoryImpl(
     override suspend fun setAutoFreezeEnabled(enabled: Boolean) {
         context.dataStore.edit {
             it[Keys.AUTO_FREEZE] = enabled
+        }
+    }
+
+    override suspend fun setAddFreezerToLauncher(enabled: Boolean) {
+        context.dataStore.edit {
+            it[Keys.ADD_FREEZER_TO_LAUNCHER] = enabled
         }
     }
 

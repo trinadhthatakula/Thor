@@ -405,6 +405,17 @@ fun SettingsScreen(
                 enabled = hasPrivilege,
                 onClick = { showUnfreezeConfirmation = true }
             )
+
+            SettingsSwitchRow(
+                icon = R.drawable.frozen,
+                title = stringResource(R.string.add_freezer_to_launcher),
+                subtitle = if (hasPrivilege) stringResource(R.string.add_freezer_to_launcher_desc) else stringResource(
+                    R.string.privilege_required_warning
+                ),
+                checked = prefs.addFreezerToLauncher,
+                enabled = hasPrivilege,
+                onCheckedChange = { viewModel.setAddFreezerToLauncher(it) }
+            )
         }
 
         // ── EXTENSIONS ──────────────────────────────────────────────────────
