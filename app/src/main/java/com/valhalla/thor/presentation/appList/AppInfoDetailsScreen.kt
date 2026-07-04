@@ -67,6 +67,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.data.launcher.FreezerShortcutManager
+import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import org.koin.compose.koinInject
@@ -290,6 +291,18 @@ fun AppInfoDetailsScreen(
                     }
                 }
             }
+
+            FreezerPromptSnackbar(
+                visible = state.freezerPrompt != null,
+                appName = state.freezerPrompt?.appName,
+                onAddToFreezer = {
+                    state.freezerPrompt?.let { viewModel.addToFreezer(it.packageName) }
+                },
+                onDismiss = viewModel::dismissFreezerPrompt,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 16.dp)
+            )
         }
     }
 

@@ -221,10 +221,14 @@ fun AppListScreen(
                 isDhizuku = state.isDhizuku,
                 onDismiss = { selectedAppForDialog = null },
                 onAppAction = { action ->
-                    if (action is AppClickAction.OpenDetails) {
-                        onNavigateToAppInfo(app.packageName, app.appName ?: "")
-                    } else {
-                        onAppAction(action)
+                    when {
+                        action is AppClickAction.OpenDetails ->
+                            onNavigateToAppInfo(app.packageName, app.appName ?: "")
+                        // Freeze from the dialog goes through the local VM so it surfaces the
+                        // "Frozen — Add to Freezer?" prompt instead of silently just disabling.
+                        action is AppClickAction.Freeze ->
+                            viewModel.freezeApp(action.appInfo.packageName, action.appInfo.appName, true)
+                        else -> onAppAction(action)
                     }
                     selectedAppForDialog = null
                 }

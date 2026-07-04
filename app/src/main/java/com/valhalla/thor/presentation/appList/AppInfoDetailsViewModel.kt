@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
 import com.valhalla.thor.data.launcher.FreezerShortcutManager
 import com.valhalla.thor.domain.model.DetailedAppInfo
+import com.valhalla.thor.presentation.freezer.FreezerPrompt
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.SystemRepository
@@ -27,6 +28,7 @@ data class AppInfoDetailsUiState(
     val detailedInfo: DetailedAppInfo? = null,
     val isInFreezer: Boolean = false,
     val actionMessage: UiText? = null,
+    val freezerPrompt: FreezerPrompt? = null,
     val errorMessage: UiText? = null
 )
 
@@ -94,19 +96,19 @@ class AppInfoDetailsViewModel(
         viewModelScope.launch {
             val result = manageAppUseCase.setAppDisabled(packageName, freeze)
             result.onSuccess {
-                val updatedInFreezer = withContext(Dispatchers.IO) {
-                    if (freeze && !freezerRepository.contains(packageName)) {
-                        freezerRepository.add(packageName)
+                freezerShortcutManager.refreshAppShortcut(packageName)
+                val inFreezer = withContext(Dispatchers.IO) { freezerRepository.contains(packageName) }
+                if (freeze && !inFreezer) {
+                    // Don't auto-add — prompt the user to add it to the Freezer instead.
+                    _uiState.update { it.copy(freezerPrompt = FreezerPrompt(packageName, appName)) }
+                } else {
+                    val msgRes = if (freeze) R.string.frozen_success else R.string.unfrozen_success
+                    _uiState.update {
+                        it.copy(
+                            actionMessage = UiText.StringResource(msgRes, appName ?: packageName),
+                            isInFreezer = inFreezer
+                        )
                     }
-                    freezerRepository.contains(packageName)
-                }
-
-                val msgRes = if (freeze) R.string.frozen_success else R.string.unfrozen_success
-                _uiState.update {
-                    it.copy(
-                        actionMessage = UiText.StringResource(msgRes, appName ?: packageName),
-                        isInFreezer = updatedInFreezer
-                    )
                 }
                 // Reload state
                 loadAppDetails(packageName)
@@ -216,6 +218,18 @@ class AppInfoDetailsViewModel(
                 }
             }
         }
+    }
+
+    fun addToFreezer(packageName: String) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { freezerRepository.add(packageName) }
+            _uiState.update { it.copy(freezerPrompt = null, isInFreezer = true) }
+            loadAppDetails(packageName)
+        }
+    }
+
+    fun dismissFreezerPrompt() {
+        _uiState.update { it.copy(freezerPrompt = null) }
     }
 
     fun addOrRemoveFromFreezer(packageName: String) {
