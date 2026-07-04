@@ -524,7 +524,7 @@ private fun AppActionRow(
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.Top
     ) {
         // 1. Standard Actions
         ActionItem(R.drawable.open_in_new, stringResource(R.string.action_launch)) {

@@ -705,7 +705,7 @@ private fun AppDetailsActionRow(
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.Top
     ) {
         ActionItem(
             icon = R.drawable.open_in_new,
