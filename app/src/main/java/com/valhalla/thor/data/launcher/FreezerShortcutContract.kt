@@ -13,6 +13,11 @@ object FreezerShortcutContract {
     const val SHORTCUT_UNFREEZE_ALL = "freezer_unfreeze_all"
     private const val APP_SHORTCUT_PREFIX = "freezer_app_"
 
+    // Launcher-tile ARGB colours for the bulk shortcuts — shared by the pinned adaptive icon and the
+    // in-app "Shortcuts" preview so the two always match.
+    val FREEZE_TILE_COLOR: Int = 0xFF29B6F6.toInt()   // sky blue
+    val UNFREEZE_TILE_COLOR: Int = 0xFFFB8C00.toInt() // orange
+
     /** Stable, package-scoped id for a per-app frozen-app shortcut. */
     fun appShortcutId(packageName: String): String = "$APP_SHORTCUT_PREFIX$packageName"
 

@@ -309,6 +309,8 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:noHistory="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <receiver

@@ -33,9 +33,9 @@ class FreezerShortcutManager(
     // App-scoped: bulk work must survive the (finishing) trampoline activity.
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    // Solid launcher-tile backgrounds for the bulk action shortcuts (white glyph on colour).
-    private val freezeShortcutBg = Color.parseColor("#1E88E5")   // cold blue
-    private val unfreezeShortcutBg = Color.parseColor("#EF6C00")  // warm orange
+    // Solid launcher-tile backgrounds for the bulk action shortcuts (shared with the in-app preview).
+    private val freezeShortcutBg = FreezerShortcutContract.FREEZE_TILE_COLOR
+    private val unfreezeShortcutBg = FreezerShortcutContract.UNFREEZE_TILE_COLOR
 
     private companion object {
         const val LAUNCH_ACTIVITY = "com.valhalla.thor.presentation.launcher.FreezerLaunchActivity"
@@ -157,6 +157,9 @@ class FreezerShortcutManager(
         Intent().apply {
             setClassName(context, LAUNCH_ACTIVITY)
             this.action = Intent.ACTION_VIEW
+            // Start the trampoline in its own task (it also declares an empty taskAffinity), so tapping
+            // a shortcut never brings Thor's existing task to the foreground.
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             putExtra(FreezerShortcutContract.EXTRA_ACTION, action)
         }
 

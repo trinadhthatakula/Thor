@@ -29,11 +29,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.valhalla.thor.R
+import com.valhalla.thor.data.launcher.FreezerShortcutContract
 import com.valhalla.thor.domain.model.AppListType
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
@@ -247,21 +249,24 @@ fun FreezerSettingsSheet(
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.Top
                 ) {
                     ShortcutActionItem(
                         icon = R.drawable.frozen,
                         label = stringResource(R.string.freeze_all_apps),
+                        tileColor = Color(FreezerShortcutContract.FREEZE_TILE_COLOR),
                         onClick = onPinFreezeAllShortcut
                     )
                     ShortcutActionItem(
                         icon = R.drawable.unfreeze,
                         label = stringResource(R.string.unfreeze_all_apps),
+                        tileColor = Color(FreezerShortcutContract.UNFREEZE_TILE_COLOR),
                         onClick = onPinUnfreezeAllShortcut
                     )
                     ShortcutActionItem(
                         icon = R.drawable.home,
                         label = stringResource(R.string.shortcut_add_all),
+                        tileColor = Color(0xFF607D8B),
                         onClick = onPinAllToLauncher
                     )
                 }
@@ -273,10 +278,13 @@ fun FreezerSettingsSheet(
 }
 
 @Composable
-private fun ShortcutActionItem(icon: Int, label: String, onClick: () -> Unit) {
+private fun ShortcutActionItem(icon: Int, label: String, tileColor: Color, onClick: () -> Unit) {
+    // Preview the actual pinned-shortcut tile: white glyph on the same coloured background.
     AsgardActionItem(
         icon = ImageVector.vectorResource(icon),
         label = label,
         onClick = onClick,
+        containerColor = tileColor,
+        iconTint = Color.White,
     )
 }
