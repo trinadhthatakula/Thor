@@ -38,8 +38,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.asgard.components.AsgardActionItem
 import com.valhalla.asgard.components.StatusChip as AsgardStatusChip
+import com.valhalla.thor.data.launcher.FreezerShortcutManager
+import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.domain.repository.PreferenceRepository
+import org.koin.compose.koinInject
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -608,10 +613,14 @@ private fun AppActionRow(
             )
         }
 
-        // Freezer launcher shortcut — user apps only, gated by the caller
-        if (showAddToHomeScreen && !appInfo.isSystem) {
+        // Freezer launcher shortcut — self-contained so it's available wherever this dialog shows
+        // (app list, freezer, …). Gated on the feature setting + launcher pin support + user apps.
+        val shortcutManager = koinInject<FreezerShortcutManager>()
+        val preferenceRepository = koinInject<PreferenceRepository>()
+        val prefs by preferenceRepository.userPreferences.collectAsStateWithLifecycle(UserPreferences())
+        if (prefs.addFreezerToLauncher && !appInfo.isSystem && shortcutManager.isPinSupported()) {
             ActionItem(R.drawable.home, stringResource(R.string.add_to_home_screen)) {
-                onAction(AppClickAction.AddToHomeScreen(appInfo))
+                shortcutManager.pinAppShortcut(appInfo.packageName, appInfo.appName ?: appInfo.packageName)
             }
         }
     }

@@ -2,6 +2,7 @@ package com.valhalla.thor.data.launcher
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -44,21 +45,23 @@ class FreezerShortcutManager(
     fun isPinSupported(): Boolean =
         ShortcutManagerCompat.isRequestPinShortcutSupported(context)
 
-    /** Ask the launcher to pin a home-screen shortcut for a frozen app (grayscale icon). */
+    /** Ask the launcher to pin a home-screen shortcut for an app. The icon follows the app's state
+     *  (grey while frozen, full colour while enabled). Runs off the caller's thread — the icon
+     *  decode is heavy — so any surface (dialog, details, freezer) can call this directly. */
     fun pinAppShortcut(packageName: String, label: String) {
-        val shortcut = ShortcutInfoCompat.Builder(context, FreezerShortcutContract.appShortcutId(packageName))
-            .setShortLabel(label)
-            .setLongLabel(label)
-            .setIcon(grayscaleIcon(packageName))
-            .setIntent(
-                trampolineIntent(FreezerShortcutContract.ACTION_LAUNCH)
-                    .putExtra(FreezerShortcutContract.EXTRA_PACKAGE, packageName)
-            )
-            .build()
-        // A shortcut id previously greyed by disableShortcuts stays disabled on re-pin unless we
-        // re-enable it — otherwise a re-frozen app comes back greyed/uninteractive.
-        ShortcutManagerCompat.enableShortcuts(context, listOf(shortcut))
-        ShortcutManagerCompat.requestPinShortcut(context, shortcut, null)
+        scope.launch {
+            val shortcut = buildAppShortcut(packageName, label)
+            // A shortcut id previously greyed by disableShortcuts stays disabled on re-pin unless we
+            // re-enable it — otherwise a re-frozen app comes back greyed/uninteractive.
+            ShortcutManagerCompat.enableShortcuts(context, listOf(shortcut))
+            ShortcutManagerCompat.requestPinShortcut(context, shortcut, null)
+        }
+    }
+
+    /** Update an already-pinned per-app shortcut so its icon reflects the app's current state.
+     *  No-op if no such shortcut exists. Call after any freeze/unfreeze of the package. */
+    fun refreshAppShortcut(packageName: String) {
+        scope.launch { updateShortcutIcon(packageName) }
     }
 
     /** Ask the launcher to pin a Freeze-all / Unfreeze-all action shortcut. */
@@ -98,6 +101,7 @@ class FreezerShortcutManager(
         scope.launch {
             freezerRepository.getAllPackageNames().forEach { pkg ->
                 manageAppUseCase.setAppDisabled(pkg, disable)
+                updateShortcutIcon(pkg) // keep the launcher icon in sync with the new state
             }
         }
     }
@@ -163,18 +167,58 @@ class FreezerShortcutManager(
             putExtra(FreezerShortcutContract.EXTRA_ACTION, action)
         }
 
-    // Saturation-0 grayscale of the app's own icon (loadable for a disabled-but-installed app).
-    private fun grayscaleIcon(packageName: String): IconCompat {
+    private fun buildAppShortcut(packageName: String, label: String): ShortcutInfoCompat =
+        ShortcutInfoCompat.Builder(context, FreezerShortcutContract.appShortcutId(packageName))
+            .setShortLabel(label)
+            .setLongLabel(label)
+            .setIcon(appIcon(packageName, grayscale = isFrozen(packageName)))
+            .setIntent(
+                trampolineIntent(FreezerShortcutContract.ACTION_LAUNCH)
+                    .putExtra(FreezerShortcutContract.EXTRA_PACKAGE, packageName)
+            )
+            .build()
+
+    // Rebuild + push the current-state icon for a package's pinned shortcut (no-op if absent).
+    private fun updateShortcutIcon(packageName: String) {
+        val label = appLabel(packageName) ?: return
+        ShortcutManagerCompat.updateShortcuts(context, listOf(buildAppShortcut(packageName, label)))
+    }
+
+    // "Frozen" == the app is currently disabled. MATCH_DISABLED_COMPONENTS so we can still read it.
+    private fun isFrozen(packageName: String): Boolean = try {
+        !context.packageManager
+            .getApplicationInfo(packageName, PackageManager.MATCH_DISABLED_COMPONENTS)
+            .enabled
+    } catch (e: Exception) {
+        false
+    }
+
+    private fun appLabel(packageName: String): String? = try {
+        val pm = context.packageManager
+        pm.getApplicationLabel(
+            pm.getApplicationInfo(packageName, PackageManager.MATCH_DISABLED_COMPONENTS)
+        ).toString()
+    } catch (e: Exception) {
+        null
+    }
+
+    // The app's own icon, optionally desaturated to grey (used while the app is frozen).
+    private fun appIcon(packageName: String, grayscale: Boolean): IconCompat {
         return try {
             val src = context.packageManager.getApplicationIcon(packageName).toBitmap()
-            val gray = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
-            Canvas(gray).drawBitmap(
-                src, 0f, 0f,
-                Paint().apply {
-                    colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) })
+            val out = if (grayscale) {
+                Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888).also { gray ->
+                    Canvas(gray).drawBitmap(
+                        src, 0f, 0f,
+                        Paint().apply {
+                            colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) })
+                        }
+                    )
                 }
-            )
-            IconCompat.createWithBitmap(gray)
+            } else {
+                src
+            }
+            IconCompat.createWithBitmap(out)
         } catch (e: Exception) {
             Logger.e("FreezerShortcut", "icon load failed for $packageName", e)
             IconCompat.createWithResource(context, R.drawable.frozen)

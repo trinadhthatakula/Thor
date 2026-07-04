@@ -29,7 +29,8 @@ class AutoFreezeManager(
     private val freezerRepository: FreezerRepository,
     private val manageAppUseCase: ManageAppUseCase,
     private val systemRepository: SystemRepository,
-    private val appRepository: AppRepository
+    private val appRepository: AppRepository,
+    private val freezerShortcutManager: com.valhalla.thor.data.launcher.FreezerShortcutManager
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -99,6 +100,7 @@ class AutoFreezeManager(
                                         val result = manageAppUseCase.setAppDisabled(pkg, true)
                                         if (result.isSuccess) {
                                             Logger.d("AutoFreezeManager", "Auto-froze: $pkg")
+                                            freezerShortcutManager.refreshAppShortcut(pkg) // → grey the shortcut icon
                                         } else {
                                             Logger.e(
                                                 "AutoFreezeManager",

@@ -75,6 +75,7 @@ class FreezerLaunchActivity : Activity() {
             val toStart = launchIntent
             if (toStart != null) startActivity(toStart)
             else toast(getString(R.string.freezer_launch_failed))
+            freezerShortcutManager.refreshAppShortcut(pkg) // now enabled → recolour the shortcut icon
             finish()
         }
     }

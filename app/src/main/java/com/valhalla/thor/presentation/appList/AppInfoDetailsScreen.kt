@@ -66,6 +66,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.valhalla.thor.data.launcher.FreezerShortcutManager
+import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.domain.repository.PreferenceRepository
+import org.koin.compose.koinInject
 import coil3.compose.AsyncImage
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
@@ -677,6 +681,11 @@ private fun AppDetailsActionRow(
     val isFrozen = !appInfo.enabled
     val isSuspended = appInfo.isSuspended
 
+    // Self-contained launcher-shortcut action — gated on the feature setting + pin support + user app.
+    val shortcutManager = koinInject<FreezerShortcutManager>()
+    val preferenceRepository = koinInject<PreferenceRepository>()
+    val prefs by preferenceRepository.userPreferences.collectAsStateWithLifecycle(UserPreferences())
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -765,6 +774,19 @@ private fun AppDetailsActionRow(
             label = stringResource(R.string.action_export),
             onClick = onExport
         )
+
+        if (prefs.addFreezerToLauncher && !appInfo.isSystem && shortcutManager.isPinSupported()) {
+            ActionItem(
+                icon = R.drawable.home,
+                label = stringResource(R.string.add_to_home_screen),
+                onClick = {
+                    shortcutManager.pinAppShortcut(
+                        appInfo.packageName,
+                        appInfo.appName ?: appInfo.packageName
+                    )
+                }
+            )
+        }
 
         if (appInfo.packageName != BuildConfig.APPLICATION_ID) {
             ActionItem(

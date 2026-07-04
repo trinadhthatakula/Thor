@@ -225,6 +225,7 @@ class FreezerViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             manageAppUseCase.setAppDisabled(packageName, true)
                 .onSuccess {
+                    freezerShortcutManager.refreshAppShortcut(packageName)
                     if (!inFreezer) {
                         _uiState.update {
                             it.copy(
@@ -262,6 +263,7 @@ class FreezerViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             manageAppUseCase.setAppDisabled(packageName, false)
                 .onSuccess {
+                    freezerShortcutManager.refreshAppShortcut(packageName)
                     _uiState.update {
                         it.copy(
                             actionMessage = UiText.StringResource(
