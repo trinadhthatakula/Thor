@@ -49,6 +49,9 @@ class FreezerShortcutManager(
                     .putExtra(FreezerShortcutContract.EXTRA_PACKAGE, packageName)
             )
             .build()
+        // A shortcut id previously greyed by disableShortcuts stays disabled on re-pin unless we
+        // re-enable it — otherwise a re-frozen app comes back greyed/uninteractive.
+        ShortcutManagerCompat.enableShortcuts(context, listOf(shortcut))
         ShortcutManagerCompat.requestPinShortcut(context, shortcut, null)
     }
 
@@ -59,25 +62,28 @@ class FreezerShortcutManager(
 
     /** Publish (or remove) the Freeze-all + Unfreeze-all long-press dynamic shortcuts. */
     fun syncDynamicShortcuts(enabled: Boolean) {
-        if (enabled) {
-            ShortcutManagerCompat.setDynamicShortcuts(
-                context,
-                listOf(
-                    bulkShortcut(FreezerShortcutContract.ACTION_FREEZE_ALL),
-                    bulkShortcut(FreezerShortcutContract.ACTION_UNFREEZE_ALL),
+        // Binder IPC — called from Main (cold-start + Settings); keep it off the caller's thread.
+        scope.launch {
+            if (enabled) {
+                ShortcutManagerCompat.setDynamicShortcuts(
+                    context,
+                    listOf(
+                        bulkShortcut(FreezerShortcutContract.ACTION_FREEZE_ALL),
+                        bulkShortcut(FreezerShortcutContract.ACTION_UNFREEZE_ALL),
+                    )
                 )
-            )
-        } else {
-            ShortcutManagerCompat.removeAllDynamicShortcuts(context)
+            } else {
+                ShortcutManagerCompat.removeAllDynamicShortcuts(context)
+            }
         }
     }
 
     /** Grey out a per-app shortcut (the ceiling — pinned icons can't be silently removed). */
-    fun disableAppShortcut(packageName: String, reason: CharSequence) {
+    fun disableAppShortcut(packageName: String) {
         ShortcutManagerCompat.disableShortcuts(
             context,
             listOf(FreezerShortcutContract.appShortcutId(packageName)),
-            reason
+            context.getString(R.string.shortcut_no_longer_frozen)
         )
     }
 
@@ -91,17 +97,18 @@ class FreezerShortcutManager(
     }
 
     private fun bulkShortcut(action: String): ShortcutInfoCompat {
-        val id: String
-        val labelRes: Int
-        val iconRes: Int
-        if (action == FreezerShortcutContract.ACTION_FREEZE_ALL) {
-            id = FreezerShortcutContract.SHORTCUT_FREEZE_ALL
-            labelRes = R.string.freeze_all_apps
-            iconRes = R.drawable.frozen
-        } else {
-            id = FreezerShortcutContract.SHORTCUT_UNFREEZE_ALL
-            labelRes = R.string.unfreeze_all_apps
-            iconRes = R.drawable.unfreeze
+        val (id, labelRes, iconRes) = when (action) {
+            FreezerShortcutContract.ACTION_FREEZE_ALL -> Triple(
+                FreezerShortcutContract.SHORTCUT_FREEZE_ALL,
+                R.string.freeze_all_apps,
+                R.drawable.frozen
+            )
+            FreezerShortcutContract.ACTION_UNFREEZE_ALL -> Triple(
+                FreezerShortcutContract.SHORTCUT_UNFREEZE_ALL,
+                R.string.unfreeze_all_apps,
+                R.drawable.unfreeze
+            )
+            else -> error("Unsupported bulk shortcut action: $action")
         }
         val label = context.getString(labelRes)
         return ShortcutInfoCompat.Builder(context, id)

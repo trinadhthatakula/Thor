@@ -3,6 +3,7 @@ package com.valhalla.thor.presentation.appList
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.data.launcher.FreezerShortcutManager
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
@@ -34,7 +35,8 @@ class AppInfoDetailsViewModel(
     private val appRepository: AppRepository,
     private val systemRepository: SystemRepository,
     private val manageAppUseCase: ManageAppUseCase,
-    private val freezerRepository: FreezerRepository
+    private val freezerRepository: FreezerRepository,
+    private val freezerShortcutManager: FreezerShortcutManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AppInfoDetailsUiState())
@@ -221,6 +223,7 @@ class AppInfoDetailsViewModel(
             val currentlyIn = freezerRepository.contains(packageName)
             if (currentlyIn) {
                 freezerRepository.remove(packageName)
+                freezerShortcutManager.disableAppShortcut(packageName)
                 _uiState.update {
                     it.copy(
                         isInFreezer = false,

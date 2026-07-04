@@ -138,7 +138,7 @@ class FreezerViewModel(
             packageNames.forEach { pkg ->
                 freezerRepository.remove(pkg)
                 manageAppUseCase.setAppDisabled(pkg, false)
-                freezerShortcutManager.disableAppShortcut(pkg, "No longer frozen")
+                freezerShortcutManager.disableAppShortcut(pkg)
             }
             _uiState.update {
                 it.copy(
@@ -173,7 +173,7 @@ class FreezerViewModel(
                     }
             } else {
                 freezerRepository.remove(packageName)
-                freezerShortcutManager.disableAppShortcut(packageName, "No longer frozen")
+                freezerShortcutManager.disableAppShortcut(packageName)
                 manageAppUseCase.setAppDisabled(packageName, false)
                     .onFailure { e ->
                         _uiState.update {
@@ -345,13 +345,19 @@ class FreezerViewModel(
 
     fun pinAppToLauncher(app: AppInfo) {
         if (app.isSystem) return // v1: user apps only
-        freezerShortcutManager.pinAppShortcut(app.packageName, app.appName ?: app.packageName)
+        // Grayscale icon decode + binder pin request — keep it off Main to avoid jank.
+        viewModelScope.launch(Dispatchers.Default) {
+            freezerShortcutManager.pinAppShortcut(app.packageName, app.appName ?: app.packageName)
+        }
     }
 
     fun pinAllToLauncher() {
-        _uiState.value.freezerApps
-            .filter { !it.isSystem }
-            .forEach { freezerShortcutManager.pinAppShortcut(it.packageName, it.appName ?: it.packageName) }
+        // N grayscale icon decodes — must not run on Main (would jank/ANR for large lists).
+        viewModelScope.launch(Dispatchers.Default) {
+            _uiState.value.freezerApps
+                .filter { !it.isSystem }
+                .forEach { freezerShortcutManager.pinAppShortcut(it.packageName, it.appName ?: it.packageName) }
+        }
     }
 
     fun pinBulkShortcut(freeze: Boolean) {

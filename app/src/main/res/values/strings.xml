@@ -219,6 +219,7 @@
     <string name="pin_all_to_home_screen">Pin all to Home screen</string>
     <string name="freeze_all_apps">Freeze all</string>
     <string name="freezer_launch_failed">Couldn\'t launch this app</string>
+    <string name="shortcut_no_longer_frozen">No longer frozen</string>
     <string name="privilege_required_warning">Privilege required (Root, Shizuku or Dhizuku)</string>
     <string name="unfreeze_all_confirmation_title">Unfreeze All Apps?</string>
     <string name="unfreeze_all_confirmation_desc">This will unfreeze (enable) all apps currently in the Freezer list. Are you sure you want to proceed?</string>

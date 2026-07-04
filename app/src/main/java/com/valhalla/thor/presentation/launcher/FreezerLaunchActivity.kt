@@ -64,10 +64,11 @@ class FreezerLaunchActivity : Activity() {
                     finish(); return@launch
                 }
                 withContext(Dispatchers.IO) { manageAppUseCase.setAppDisabled(pkg, false) }
-                // Enabled state / launcher intent may not be visible instantly — retry briefly.
-                repeat(10) {
+                // Enabled state / launcher intent may not be visible instantly — retry briefly
+                // (~10×150ms budget), stopping as soon as the intent resolves.
+                for (attempt in 0 until 10) {
                     launchIntent = packageManager.getLaunchIntentForPackage(pkg)
-                    if (launchIntent != null) return@repeat
+                    if (launchIntent != null) break
                     delay(150)
                 }
             }
