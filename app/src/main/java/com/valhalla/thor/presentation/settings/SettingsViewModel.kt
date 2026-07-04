@@ -35,7 +35,8 @@ class SettingsViewModel(
     private val biometricHelper: BiometricHelper,
     private val localeManager: LocaleManager,
     private val freezerRepository: FreezerRepository,
-    private val manageAppUseCase: ManageAppUseCase
+    private val manageAppUseCase: ManageAppUseCase,
+    private val freezerShortcutManager: com.valhalla.thor.data.launcher.FreezerShortcutManager
 ) : ViewModel() {
 
     data class SettingsUiState(
@@ -141,6 +142,7 @@ class SettingsViewModel(
     fun setAddFreezerToLauncher(enabled: Boolean) {
         viewModelScope.launch {
             preferenceRepository.setAddFreezerToLauncher(enabled)
+            freezerShortcutManager.syncDynamicShortcuts(enabled)
         }
     }
 

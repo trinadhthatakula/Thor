@@ -138,6 +138,7 @@ class FreezerViewModel(
             packageNames.forEach { pkg ->
                 freezerRepository.remove(pkg)
                 manageAppUseCase.setAppDisabled(pkg, false)
+                freezerShortcutManager.disableAppShortcut(pkg, "No longer frozen")
             }
             _uiState.update {
                 it.copy(
@@ -172,6 +173,7 @@ class FreezerViewModel(
                     }
             } else {
                 freezerRepository.remove(packageName)
+                freezerShortcutManager.disableAppShortcut(packageName, "No longer frozen")
                 manageAppUseCase.setAppDisabled(packageName, false)
                     .onFailure { e ->
                         _uiState.update {
