@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -46,12 +47,16 @@ fun FreezerSettingsSheet(
     hasPrivilege: Boolean,
     showImportDisabledApps: Boolean,
     appListType: AppListType,
+    showLauncherPinActions: Boolean = false,
     onToggleView: () -> Unit,
     onToggleAutoFreeze: (Boolean) -> Unit,
     onDismiss: () -> Unit,
     onUnfreezeAll: () -> Unit,
     onImportDisabledApps: () -> Unit,
-    onListTypeChanged: (AppListType) -> Unit
+    onListTypeChanged: (AppListType) -> Unit,
+    onPinAllToLauncher: () -> Unit = {},
+    onPinFreezeAllShortcut: () -> Unit = {},
+    onPinUnfreezeAllShortcut: () -> Unit = {}
 ) {
     var showUnfreezeConfirmation by remember { mutableStateOf(false) }
 
@@ -222,7 +227,57 @@ fun FreezerSettingsSheet(
                     enabled = hasPrivilege
                 )
             }
+
+            // Launcher-shortcut pin actions — only when the launcher integration is enabled
+            // and the current launcher supports pinning.
+            if (showLauncherPinActions) {
+                Spacer(Modifier.height(24.dp))
+
+                PinActionButton(
+                    icon = R.drawable.home,
+                    label = stringResource(R.string.pin_all_to_home_screen),
+                    onClick = onPinAllToLauncher
+                )
+                Spacer(Modifier.height(12.dp))
+                PinActionButton(
+                    icon = R.drawable.frozen,
+                    label = stringResource(R.string.freeze_all_apps),
+                    onClick = onPinFreezeAllShortcut
+                )
+                Spacer(Modifier.height(12.dp))
+                PinActionButton(
+                    icon = R.drawable.unfreeze,
+                    label = stringResource(R.string.unfreeze_all_apps),
+                    onClick = onPinUnfreezeAllShortcut
+                )
+            }
+
             Spacer(Modifier.height(24.dp))
         }
+    }
+}
+
+@Composable
+private fun PinActionButton(
+    icon: Int,
+    label: String,
+    onClick: () -> Unit
+) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = null,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(label)
     }
 }

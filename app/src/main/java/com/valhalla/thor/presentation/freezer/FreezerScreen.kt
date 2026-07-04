@@ -410,6 +410,7 @@ fun FreezerScreen(
             isRoot = state.isRoot,
             isShizuku = state.isShizuku,
             isDhizuku = state.isDhizuku,
+            showAddToHomeScreen = state.addFreezerToLauncher && viewModel.isPinSupported(),
             onDismiss = { selectedPackageName = null },
             onAppAction = { action ->
                 when (action) {
@@ -424,6 +425,11 @@ fun FreezerScreen(
 
                     is AppClickAction.UnFreeze -> {
                         viewModel.unfreezeSingleApp(app.packageName, app.appName)
+                        selectedPackageName = null
+                    }
+
+                    is AppClickAction.AddToHomeScreen -> {
+                        viewModel.pinAppToLauncher(app)
                         selectedPackageName = null
                     }
 
@@ -454,10 +460,14 @@ fun FreezerScreen(
             hasPrivilege = hasPrivilege,
             showImportDisabledApps = disabledAppsNotInFreezer.isNotEmpty(),
             appListType = state.appListType,
+            showLauncherPinActions = state.addFreezerToLauncher && viewModel.isPinSupported(),
             onToggleView = viewModel::toggleGridMode,
             onToggleAutoFreeze = viewModel::setAutoFreezeEnabled,
             onDismiss = { showSettingsSheet = false },
             onUnfreezeAll = { onMultiAppAction(MultiAppAction.UnFreeze(appsToUnfreeze)) },
+            onPinAllToLauncher = viewModel::pinAllToLauncher,
+            onPinFreezeAllShortcut = { viewModel.pinBulkShortcut(freeze = true) },
+            onPinUnfreezeAllShortcut = { viewModel.pinBulkShortcut(freeze = false) },
             onImportDisabledApps = {
                 showSettingsSheet = false
                 if (disabledAppsNotInFreezer.isNotEmpty()) {

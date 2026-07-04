@@ -18,4 +18,5 @@ sealed interface AppClickAction {
     data class UnSuspend(val appInfo: AppInfo) : AppClickAction
     data class ManagePermissions(val appInfo: AppInfo) : AppClickAction
     data class OpenDetails(val appInfo: AppInfo) : AppClickAction
+    data class AddToHomeScreen(val appInfo: AppInfo) : AppClickAction
 }

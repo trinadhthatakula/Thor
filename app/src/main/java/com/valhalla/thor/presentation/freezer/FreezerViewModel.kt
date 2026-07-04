@@ -3,6 +3,8 @@ package com.valhalla.thor.presentation.freezer
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.data.launcher.FreezerShortcutContract
+import com.valhalla.thor.data.launcher.FreezerShortcutManager
 import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
@@ -41,7 +43,8 @@ data class FreezerUiState(
     val isDhizuku: Boolean = false,
     val hasShownDisabledAppsPrompt: Boolean = false,
     val appListType: AppListType = AppListType.USER,
-    val isGrid: Boolean = true
+    val isGrid: Boolean = true,
+    val addFreezerToLauncher: Boolean = false
 )
 
 @KoinViewModel
@@ -50,7 +53,8 @@ class FreezerViewModel(
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val manageAppUseCase: ManageAppUseCase,
     private val privilegeManager: PrivilegeManager,
-    private val preferenceRepository: PreferenceRepository
+    private val preferenceRepository: PreferenceRepository,
+    private val freezerShortcutManager: FreezerShortcutManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FreezerUiState())
@@ -291,7 +295,8 @@ class FreezerViewModel(
                     it.copy(
                         autoFreezeEnabled = prefs.autoFreezeEnabled,
                         hasShownDisabledAppsPrompt = prefs.hasShownDisabledAppsPrompt,
-                        isGrid = prefs.freezerIsGrid
+                        isGrid = prefs.freezerIsGrid,
+                        addFreezerToLauncher = prefs.addFreezerToLauncher
                     )
                 }
             }
@@ -330,5 +335,27 @@ class FreezerViewModel(
                 )
             }
         }
+    }
+
+    // --- Launcher shortcuts (gated by the "Add Freezer to launcher" preference) ---
+
+    fun isPinSupported(): Boolean = freezerShortcutManager.isPinSupported()
+
+    fun pinAppToLauncher(app: AppInfo) {
+        if (app.isSystem) return // v1: user apps only
+        freezerShortcutManager.pinAppShortcut(app.packageName, app.appName ?: app.packageName)
+    }
+
+    fun pinAllToLauncher() {
+        _uiState.value.freezerApps
+            .filter { !it.isSystem }
+            .forEach { freezerShortcutManager.pinAppShortcut(it.packageName, it.appName ?: it.packageName) }
+    }
+
+    fun pinBulkShortcut(freeze: Boolean) {
+        freezerShortcutManager.pinBulkShortcut(
+            if (freeze) FreezerShortcutContract.ACTION_FREEZE_ALL
+            else FreezerShortcutContract.ACTION_UNFREEZE_ALL
+        )
     }
 }
