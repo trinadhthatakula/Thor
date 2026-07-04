@@ -51,13 +51,17 @@ class FreezerShortcutManager(
      *  (grey while frozen, full colour while enabled). Runs off the caller's thread — the icon
      *  decode is heavy — so any surface (dialog, details, freezer) can call this directly. */
     fun pinAppShortcut(packageName: String, label: String) {
-        scope.launch {
-            val shortcut = buildAppShortcut(packageName, label)
-            // A shortcut id previously greyed by disableShortcuts stays disabled on re-pin unless we
-            // re-enable it — otherwise a re-frozen app comes back greyed/uninteractive.
-            ShortcutManagerCompat.enableShortcuts(context, listOf(shortcut))
-            ShortcutManagerCompat.requestPinShortcut(context, shortcut, pinnedCallback(label).intentSender)
-        }
+        scope.launch { pinAppShortcutSuspend(packageName, label) }
+    }
+
+    /** Suspending pin so bulk callers can pin sequentially instead of spawning N concurrent bitmap
+     *  decodes + binder pin requests (which risks OOM / overwhelming the shortcut service). */
+    suspend fun pinAppShortcutSuspend(packageName: String, label: String) {
+        val shortcut = buildAppShortcut(packageName, label)
+        // A shortcut id previously greyed by disableShortcuts stays disabled on re-pin unless we
+        // re-enable it — otherwise a re-frozen app comes back greyed/uninteractive.
+        ShortcutManagerCompat.enableShortcuts(context, listOf(shortcut))
+        ShortcutManagerCompat.requestPinShortcut(context, shortcut, pinnedCallback(label).intentSender)
     }
 
     /** Update an already-pinned per-app shortcut so its icon reflects the app's current state.
@@ -103,12 +107,25 @@ class FreezerShortcutManager(
     /** Bulk freeze/unfreeze every package in the freezer, off the finishing activity. */
     fun runBulk(disable: Boolean) {
         scope.launch {
+            val pinnedIds = pinnedShortcutIds()
+            val updated = mutableListOf<ShortcutInfoCompat>()
             freezerRepository.getAllPackageNames().forEach { pkg ->
                 manageAppUseCase.setAppDisabled(pkg, disable)
-                updateShortcutIcon(pkg) // keep the launcher icon in sync with the new state
+                // Only apps that actually have a pinned shortcut need a state-following icon refresh;
+                // accumulate them and push ONE updateShortcuts IPC instead of N.
+                if (FreezerShortcutContract.appShortcutId(pkg) in pinnedIds) {
+                    appLabel(pkg)?.let { updated.add(buildAppShortcut(pkg, it)) }
+                }
+            }
+            if (updated.isNotEmpty()) {
+                ShortcutManagerCompat.updateShortcuts(context, updated)
             }
         }
     }
+
+    private fun pinnedShortcutIds(): Set<String> =
+        ShortcutManagerCompat.getShortcuts(context, ShortcutManagerCompat.FLAG_MATCH_PINNED)
+            .mapTo(HashSet()) { it.id }
 
     private fun bulkShortcut(action: String): ShortcutInfoCompat {
         val spec = when (action) {

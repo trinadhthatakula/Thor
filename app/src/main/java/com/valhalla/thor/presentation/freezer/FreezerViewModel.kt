@@ -15,6 +15,7 @@ import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -354,11 +355,16 @@ class FreezerViewModel(
     }
 
     fun pinAllToLauncher() {
-        // N grayscale icon decodes — must not run on Main (would jank/ANR for large lists).
+        // Pin sequentially (suspending) off Main: a rapid loop of the fire-and-forget pinAppShortcut
+        // would spawn N concurrent bitmap decodes + binder pin requests and risk OOM / overwhelming
+        // the shortcut service. A small gap keeps the per-shortcut system prompts orderly too.
         viewModelScope.launch(Dispatchers.Default) {
             _uiState.value.freezerApps
                 .filter { !it.isSystem }
-                .forEach { freezerShortcutManager.pinAppShortcut(it.packageName, it.appName ?: it.packageName) }
+                .forEach {
+                    freezerShortcutManager.pinAppShortcutSuspend(it.packageName, it.appName ?: it.packageName)
+                    delay(100)
+                }
         }
     }
 

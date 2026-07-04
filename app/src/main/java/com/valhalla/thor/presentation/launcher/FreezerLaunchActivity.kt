@@ -63,7 +63,12 @@ class FreezerLaunchActivity : Activity() {
                     toast(getString(R.string.tile_grant_privilege_toast))
                     finish(); return@launch
                 }
-                withContext(Dispatchers.IO) { manageAppUseCase.setAppDisabled(pkg, false) }
+                val enabled = withContext(Dispatchers.IO) { manageAppUseCase.setAppDisabled(pkg, false) }
+                if (enabled.isFailure) {
+                    // Enable failed (privilege/shell error) — fail fast instead of waiting out the retry loop.
+                    toast(getString(R.string.freezer_launch_failed))
+                    finish(); return@launch
+                }
                 // Enabled state / launcher intent may not be visible instantly — retry briefly
                 // (~10×150ms budget), stopping as soon as the intent resolves.
                 for (attempt in 0 until 10) {

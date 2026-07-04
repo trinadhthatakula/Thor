@@ -60,9 +60,11 @@ fun FreezerSettingsSheet(
     onListTypeChanged: (AppListType) -> Unit,
     onPinAllToLauncher: () -> Unit = {},
     onPinFreezeAllShortcut: () -> Unit = {},
-    onPinUnfreezeAllShortcut: () -> Unit = {}
+    onPinUnfreezeAllShortcut: () -> Unit = {},
+    pinAllCount: Int = 0
 ) {
     var showUnfreezeConfirmation by remember { mutableStateOf(false) }
+    var showPinAllConfirmation by remember { mutableStateOf(false) }
 
     if (showUnfreezeConfirmation) {
         AlertDialog(
@@ -89,6 +91,37 @@ fun FreezerSettingsSheet(
             },
             dismissButton = {
                 TextButton(onClick = { showUnfreezeConfirmation = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    if (showPinAllConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showPinAllConfirmation = false },
+            icon = {
+                Icon(
+                    painter = painterResource(R.drawable.home),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = { Text(stringResource(R.string.pin_all_confirm_title)) },
+            text = { Text(stringResource(R.string.pin_all_confirm_desc, pinAllCount)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onPinAllToLauncher()
+                        showPinAllConfirmation = false
+                        onDismiss()
+                    }
+                ) {
+                    Text(stringResource(R.string.add))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPinAllConfirmation = false }) {
                     Text(stringResource(R.string.cancel))
                 }
             }
@@ -267,7 +300,7 @@ fun FreezerSettingsSheet(
                         icon = R.drawable.home,
                         label = stringResource(R.string.shortcut_add_all),
                         tileColor = Color(0xFF607D8B),
-                        onClick = onPinAllToLauncher
+                        onClick = { showPinAllConfirmation = true }
                     )
                 }
             }

@@ -466,6 +466,7 @@ fun FreezerScreen(
             onDismiss = { showSettingsSheet = false },
             onUnfreezeAll = { onMultiAppAction(MultiAppAction.UnFreeze(appsToUnfreeze)) },
             onPinAllToLauncher = viewModel::pinAllToLauncher,
+            pinAllCount = state.freezerApps.count { !it.isSystem },
             onPinFreezeAllShortcut = { viewModel.pinBulkShortcut(freeze = true) },
             onPinUnfreezeAllShortcut = { viewModel.pinBulkShortcut(freeze = false) },
             onImportDisabledApps = {
