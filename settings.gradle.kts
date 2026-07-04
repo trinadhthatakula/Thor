@@ -50,12 +50,22 @@ if (thorExtensionApiDir != null) {
 }
 
 // Local cross-repo development against the Asgard UI library. Set `asgardDir` to a local Asgard
-// checkout to build against its source without publishing; unset to use the pinned published
-// version. The included build's project IS named `asgard` (== its artifactId), so Gradle's
-// automatic dependency substitution resolves `com.trinadhthatakula:asgard` to it with no explicit mapping.
+// checkout (via -PasgardDir=... or a Gradle properties file — local.properties is NOT consulted) to
+// build against its source without publishing; unset to use the pinned published version.
+//
+// Asgard is a Kotlin Multiplatform build: its `:asgard` project publishes the
+// `com.trinadhthatakula:asgard` coordinate through vanniktech, but Gradle's automatic composite
+// substitution keys off project identity (group), which isn't set to the publishing group — so the
+// automatic mapping silently misses and the pinned Maven artifact wins. We therefore map it
+// explicitly via dependencySubstitution, exactly like thor-extension-api above.
 val asgardDir = providers.gradleProperty("asgardDir").orNull
 if (asgardDir != null) {
-    includeBuild(asgardDir)
+    includeBuild(asgardDir) {
+        dependencySubstitution {
+            substitute(module("com.trinadhthatakula:asgard"))
+                .using(project(":asgard"))
+        }
+    }
 }
 
 rootProject.name = "Thor"

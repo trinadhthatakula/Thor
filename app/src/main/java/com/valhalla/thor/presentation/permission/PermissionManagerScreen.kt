@@ -44,6 +44,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import com.valhalla.asgard.components.AsgardBadge
+import com.valhalla.asgard.components.AsgardBanner
+import com.valhalla.asgard.components.AsgardSearchBar
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -331,44 +336,22 @@ private fun PermissionTopAppBar(
 
 @Composable
 private fun ReadOnlyBanner() {
-    Row(
+    AsgardBanner(
+        title = stringResource(R.string.permissions_read_only_title),
+        description = stringResource(R.string.permissions_read_only_desc),
+        icon = ImageVector.vectorResource(R.drawable.warning),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(
-                Brush.horizontalGradient(
-                    colors = listOf(
-                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f),
-                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f)
-                    )
-                )
-            )
             .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            painter = painterResource(R.drawable.warning),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onErrorContainer,
-            modifier = Modifier.size(24.dp)
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        Column {
-            Text(
-                text = stringResource(R.string.permissions_read_only_title),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onErrorContainer
+        containerBrush = Brush.horizontalGradient(
+            colors = listOf(
+                MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f),
+                MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f)
             )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = stringResource(R.string.permissions_read_only_desc),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
-            )
-        }
-    }
+        ),
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        descriptionStyle = MaterialTheme.typography.bodySmall,
+    )
 }
 
 @Composable
@@ -376,46 +359,23 @@ private fun SearchBar(
     query: String,
     onQueryChange: (String) -> Unit
 ) {
-    Box(
+    AsgardSearchBar(
+        query = query,
+        onQueryChange = onQueryChange,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-    ) {
-        OutlinedTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            placeholder = { Text(stringResource(R.string.permissions_search)) },
-            leadingIcon = {
-                Icon(
-                    painter = painterResource(R.drawable.round_search),
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            },
-            trailingIcon = {
-                if (query.isNotEmpty()) {
-                    IconButton(onClick = { onQueryChange("") }) {
-                        Icon(
-                            painter = painterResource(R.drawable.round_close),
-                            contentDescription = stringResource(R.string.cd_clear),
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            },
-            shape = RoundedCornerShape(24.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.3f)
-            ),
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
-    }
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        placeholder = stringResource(R.string.permissions_search),
+        leadingIcon = ImageVector.vectorResource(R.drawable.round_search),
+        clearIcon = ImageVector.vectorResource(R.drawable.round_close),
+        shape = RoundedCornerShape(24.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = MaterialTheme.colorScheme.primary,
+            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.3f)
+        ),
+    )
 }
 
 @Composable
@@ -577,15 +537,9 @@ private fun PermissionRow(
 
 @Composable
 private fun StatusBadge(text: String, color: androidx.compose.ui.graphics.Color) {
-    Text(
+    AsgardBadge(
         text = text,
-        style = MaterialTheme.typography.labelSmall,
-        fontWeight = FontWeight.Black,
-        color = MaterialTheme.colorScheme.onErrorContainer,
-        modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(color)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-        fontSize = 9.sp
+        containerColor = color,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
     )
 }
