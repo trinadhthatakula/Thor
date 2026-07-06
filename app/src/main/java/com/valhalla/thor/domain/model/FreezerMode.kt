@@ -15,11 +15,10 @@ data class RestorePlan(val unsuspend: Boolean, val enable: Boolean)
 /**
  * Plan to restore an app to active. Clears BOTH freeze dimensions when both are set —
  * an app can be disabled AND suspended (e.g. after a mode switch), and reversing only one
- * leaves it frozen. For an already-active app it defaults to a harmless enable so
- * "remove from freezer" keeps its prior always-enable behavior.
+ * leaves it frozen. An already-active app yields a no-op plan (no redundant pm enable).
  */
 fun restorePlanFor(enabled: Boolean, isSuspended: Boolean): RestorePlan =
-    RestorePlan(unsuspend = isSuspended, enable = !enabled || !isSuspended)
+    RestorePlan(unsuspend = isSuspended, enable = !enabled)
 
 // Ergonomic call-site helpers over AppInfo.
 val AppInfo.isFrozen: Boolean get() = isFrozen(enabled, isSuspended)

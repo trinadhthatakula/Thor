@@ -138,10 +138,10 @@ class FreezerViewModel(
 
     fun removeFromFreezer(packageNames: Set<String>) {
         viewModelScope.launch(Dispatchers.IO) {
+            val appByPkg = _uiState.value.allInstalledApps.associateBy { it.packageName }
             packageNames.forEach { pkg ->
                 freezerRepository.remove(pkg)
-                val app = _uiState.value.freezerApps.firstOrNull { it.packageName == pkg }
-                    ?: _uiState.value.allInstalledApps.firstOrNull { it.packageName == pkg }
+                val app = appByPkg[pkg]
                 // Restore to active (unsuspend and/or enable) so a suspended app isn't stranded.
                 manageAppUseCase.restoreApp(
                     pkg,

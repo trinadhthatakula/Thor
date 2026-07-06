@@ -19,11 +19,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,13 +50,8 @@ fun FreezerSelectToolBox(
     freezerMode: FreezerMode = FreezerMode.FREEZE
 ) {
     // "Frozen" = disabled OR suspended; "active" = freezable (enabled & not suspended). GH#239.
-    var hasFrozen by remember { mutableStateOf(selected.any { it.isFrozen }) }
-    var hasUnFrozen by remember { mutableStateOf(selected.any { it.isActive }) }
-
-    LaunchedEffect(selected) {
-        hasFrozen = selected.any { it.isFrozen }
-        hasUnFrozen = selected.any { it.isActive }
-    }
+    val hasFrozen = remember(selected) { selected.any { it.isFrozen } }
+    val hasUnFrozen = remember(selected) { selected.any { it.isActive } }
 
     Card(
         modifier = modifier,

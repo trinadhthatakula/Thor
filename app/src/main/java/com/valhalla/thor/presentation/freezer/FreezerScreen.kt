@@ -120,16 +120,15 @@ fun FreezerScreen(
         filtered.sortedBy { it.appName }
     }
 
-    // "Active" = freezable (enabled & not suspended); "frozen" = disabled OR suspended (GH#239).
-    val hasEnabled = remember(state.freezerApps) { state.freezerApps.any { it.isActive } }
-    val hasDisabled = remember(state.freezerApps) { state.freezerApps.any { it.isFrozen } }
-
     // Apps the "Freeze all" / "Unfreeze all" toolbar acts on. These route through the
     // shared batch action (MultiAppAction) so progress streams into the FreezeLoggerDialog;
     // the unsafe/UAD eligibility skip is applied once, centrally, by
     // MainViewModel.performCountedFreeze. Unfreeze restores by each app's actual state.
+    // "Active" = freezable (enabled & not suspended); "frozen" = disabled OR suspended (GH#239).
     val appsToFreeze = remember(state.freezerApps) { state.freezerApps.filter { it.isActive } }
     val appsToUnfreeze = remember(state.freezerApps) { state.freezerApps.filter { it.isFrozen } }
+    val hasEnabled = appsToFreeze.isNotEmpty()
+    val hasDisabled = appsToUnfreeze.isNotEmpty()
 
 
     LaunchedEffect(state.actionMessage) {

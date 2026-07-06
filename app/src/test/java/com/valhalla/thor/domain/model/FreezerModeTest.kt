@@ -51,9 +51,9 @@ class FreezerModeTest {
     }
 
     @Test
-    fun `restore of an already-active app defaults to a harmless enable`() {
+    fun `restore of an already-active app is a no-op`() {
         assertEquals(
-            RestorePlan(unsuspend = false, enable = true),
+            RestorePlan(unsuspend = false, enable = false),
             restorePlanFor(enabled = true, isSuspended = false)
         )
     }
