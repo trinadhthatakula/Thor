@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
 import com.valhalla.thor.data.security.BiometricHelper
 import com.valhalla.thor.domain.model.AnimationIntensity
+import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
@@ -136,6 +137,12 @@ class SettingsViewModel(
     fun setAutoFreezeEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferenceRepository.setAutoFreezeEnabled(enabled)
+        }
+    }
+
+    fun setFreezerMode(mode: FreezerMode) {
+        viewModelScope.launch {
+            preferenceRepository.setFreezerMode(mode)
         }
     }
 

@@ -57,6 +57,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.R
 import com.valhalla.thor.data.manager.UsageAccessManager
 import com.valhalla.thor.domain.model.AnimationIntensity
+import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.asgard.components.ConnectedButtonGroup
@@ -394,6 +395,17 @@ fun SettingsScreen(
                 checked = prefs.autoFreezeEnabled,
                 enabled = hasPrivilege,
                 onCheckedChange = { viewModel.setAutoFreezeEnabled(it) }
+            )
+
+            SettingsSwitchRow(
+                icon = R.drawable.frozen,
+                title = stringResource(R.string.suspend_instead_of_freeze),
+                subtitle = if (hasPrivilege) stringResource(R.string.suspend_instead_of_freeze_desc) else stringResource(
+                    R.string.privilege_required_warning
+                ),
+                checked = prefs.freezerMode == FreezerMode.SUSPEND,
+                enabled = hasPrivilege,
+                onCheckedChange = { viewModel.setFreezerMode(if (it) FreezerMode.SUSPEND else FreezerMode.FREEZE) }
             )
 
             SettingsClickRow(
