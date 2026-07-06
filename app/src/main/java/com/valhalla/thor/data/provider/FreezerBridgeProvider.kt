@@ -43,19 +43,26 @@ class FreezerBridgeProvider : ContentProvider(), KoinComponent {
             return result
         }
 
-        val ok = runCatching {
-            runBlocking {
-                val inFreezer = freezerRepository.getAllPackageNames().toSet()
-                if (!mayRestore(pkg, inFreezer)) {
-                    Logger.d("FreezerBridge", "restore refused (not in freezer): $pkg")
-                    false
-                } else {
-                    manageAppUseCase.forceUnfreeze(pkg).isSuccess
+        // Caller verified above; run the privileged unfreeze under Thor's OWN identity (not the
+        // launcher's) so any downstream permission checks attribute to Thor. Restore in finally.
+        val token = Binder.clearCallingIdentity()
+        val ok = try {
+            runCatching {
+                runBlocking {
+                    val inFreezer = freezerRepository.getAllPackageNames().toSet()
+                    if (!mayRestore(pkg, inFreezer)) {
+                        Logger.d("FreezerBridge", "restore refused (not in freezer): $pkg")
+                        false
+                    } else {
+                        manageAppUseCase.forceUnfreeze(pkg).isSuccess
+                    }
                 }
+            }.getOrElse {
+                Logger.e("FreezerBridge", "restore failed for $pkg", it)
+                false
             }
-        }.getOrElse {
-            Logger.e("FreezerBridge", "restore failed for $pkg", it)
-            false
+        } finally {
+            Binder.restoreCallingIdentity(token)
         }
         result.putBoolean("ok", ok)
         return result

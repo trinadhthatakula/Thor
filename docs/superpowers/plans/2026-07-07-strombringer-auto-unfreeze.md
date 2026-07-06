@@ -89,7 +89,7 @@ fun mayRestore(packageName: String, freezerPackages: Set<String>): Boolean =
 
 ## Task 2: Base-Thor — `FreezerBridgeProvider`
 
-> **Hardened post-review (PR #242):** the shipped provider additionally (a) verifies the caller is a HOME/launcher app before any privileged work — a signature permission can't be used because the caller is the launcher process, not the extension, and extensions use a different signing key — and (b) wraps the restore in `runCatching` so a transient failure returns `ok=false` instead of throwing across Binder. See the actual `FreezerBridgeProvider.kt`; the snippet below is the pre-hardening baseline.
+> **Hardened post-review (PR #242):** the shipped provider additionally (a) verifies the caller is the device's **current default launcher** (`resolveActivity(HOME, MATCH_DEFAULT_ONLY)` — not just any HOME-declaring app, which is spoofable) before any privileged work; (b) **clears the calling identity** (`Binder.clearCallingIdentity()`) so the restore runs under Thor's own identity, not the launcher's; and (c) wraps the restore in `runCatching` so a transient failure returns `ok=false` instead of throwing across Binder. A signature permission can't be used because the caller is the launcher process, not the extension, and extensions use a different signing key. See the actual `FreezerBridgeProvider.kt`; the snippet below is the pre-hardening baseline.
 
 **Files:**
 - Create: `app/src/main/java/com/valhalla/thor/data/provider/FreezerBridgeProvider.kt`
@@ -358,7 +358,11 @@ class LaunchAppHook(private val cl: ClassLoader) {
                 res?.getBoolean("ok") == true
             }.getOrDefault(false)
             if (ok) {
-                // Wait briefly for the unsuspend to land so the original launch proceeds.
+                // Wait briefly for the unsuspend to land so the original launch proceeds. This runs
+                // on the launcher's main thread by necessity — the launch must not proceed until the
+                // target is active — but is bounded (~360ms worst case) and typically returns on the
+                // first poll, since the privileged unfreeze is fast. If a slower gateway ever makes
+                // this janky, move to cancelling + re-issuing the launch after an async restore.
                 repeat(6) { if (!isSuspended(ctx, pkg)) return; Thread.sleep(60) }
                 return
             }
