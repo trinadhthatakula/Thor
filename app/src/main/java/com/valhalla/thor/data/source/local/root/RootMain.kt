@@ -102,6 +102,24 @@ object RootMain {
             ).invoke(pm, arrayOf(packageName), suspended, null, null, dialogInfo, 0, caller, 0, 0)
             return
         } catch (_: NoSuchMethodException) {
+            // fall through to the 8-arg signature
+        }
+
+        // Some API 33 builds: 8-arg — a `flags` Int between dialogInfo and caller, single userId.
+        try {
+            pmClass.getDeclaredMethod(
+                "setPackagesSuspendedAsUser",
+                Array<String>::class.java,
+                Boolean::class.javaPrimitiveType,
+                android.os.PersistableBundle::class.java,
+                android.os.PersistableBundle::class.java,
+                dialogInfoClass,
+                Int::class.javaPrimitiveType,   // flags
+                String::class.java,             // callingPackage
+                Int::class.javaPrimitiveType    // userId
+            ).invoke(pm, arrayOf(packageName), suspended, null, null, dialogInfo, 0, caller, 0)
+            return
+        } catch (_: NoSuchMethodException) {
             // fall through to the older 7-arg signature
         }
 

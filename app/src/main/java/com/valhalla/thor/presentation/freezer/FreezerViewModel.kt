@@ -141,13 +141,10 @@ class FreezerViewModel(
             val appByPkg = _uiState.value.allInstalledApps.associateBy { it.packageName }
             packageNames.forEach { pkg ->
                 freezerRepository.remove(pkg)
-                val app = appByPkg[pkg]
                 // Restore to active (unsuspend and/or enable) so a suspended app isn't stranded.
-                manageAppUseCase.restoreApp(
-                    pkg,
-                    enabled = app?.enabled ?: false,
-                    isSuspended = app?.isSuspended ?: false
-                )
+                val app = appByPkg[pkg]
+                if (app != null) manageAppUseCase.restoreApp(pkg, app.enabled, app.isSuspended)
+                else manageAppUseCase.forceUnfreeze(pkg)
                 freezerShortcutManager.disableAppShortcut(pkg)
             }
             _uiState.update {
@@ -189,11 +186,8 @@ class FreezerViewModel(
                 freezerShortcutManager.disableAppShortcut(packageName)
                 val app = _uiState.value.freezerApps.firstOrNull { it.packageName == packageName }
                     ?: _uiState.value.allInstalledApps.firstOrNull { it.packageName == packageName }
-                manageAppUseCase.restoreApp(
-                    packageName,
-                    enabled = app?.enabled ?: false,
-                    isSuspended = app?.isSuspended ?: false
-                )
+                (if (app != null) manageAppUseCase.restoreApp(packageName, app.enabled, app.isSuspended)
+                else manageAppUseCase.forceUnfreeze(packageName))
                     .onFailure { e ->
                         _uiState.update {
                             it.copy(
@@ -285,11 +279,12 @@ class FreezerViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             val app = _uiState.value.freezerApps.firstOrNull { it.packageName == packageName }
                 ?: _uiState.value.allInstalledApps.firstOrNull { it.packageName == packageName }
-            val restoreResult = manageAppUseCase.restoreApp(
-                packageName,
-                enabled = app?.enabled ?: false,
-                isSuspended = app?.isSuspended ?: false
-            )
+            val restoreResult = if (app != null) {
+                manageAppUseCase.restoreApp(packageName, app.enabled, app.isSuspended)
+            } else {
+                // Unknown state (e.g. externally uninstalled): clear both dimensions best-effort.
+                manageAppUseCase.forceUnfreeze(packageName)
+            }
             restoreResult
                 .onSuccess {
                     freezerShortcutManager.refreshAppShortcut(packageName)
