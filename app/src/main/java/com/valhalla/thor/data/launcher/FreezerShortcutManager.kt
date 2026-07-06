@@ -110,7 +110,9 @@ class FreezerShortcutManager(
             val pinnedIds = pinnedShortcutIds()
             val updated = mutableListOf<ShortcutInfoCompat>()
             freezerRepository.getAllPackageNames().forEach { pkg ->
-                manageAppUseCase.setAppDisabled(pkg, disable)
+                // Unfreeze must restore suspended apps too, not just re-enable disabled ones.
+                if (disable) manageAppUseCase.setAppDisabled(pkg, true)
+                else manageAppUseCase.forceUnfreeze(pkg)
                 // Only apps that actually have a pinned shortcut need a state-following icon refresh;
                 // accumulate them and push ONE updateShortcuts IPC instead of N.
                 if (FreezerShortcutContract.appShortcutId(pkg) in pinnedIds) {

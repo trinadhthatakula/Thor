@@ -710,7 +710,9 @@ private fun AppDetailsActionRow(
         ActionItem(
             icon = R.drawable.open_in_new,
             label = stringResource(R.string.action_open),
-            enabled = appInfo.enabled,
+            // Always tappable: Launch restores (unsuspends / enables) a frozen or suspended app
+            // before launching. Non-launchable apps fall through to a "can't launch" toast.
+            enabled = true,
             onClick = onLaunch
         )
 

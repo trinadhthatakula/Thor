@@ -10,6 +10,7 @@ import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.isActive
+import com.valhalla.thor.domain.model.isFrozen
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
@@ -220,20 +221,23 @@ class MainViewModel(
             when (action) {
                 // 1. SMART LAUNCH
                 is AppClickAction.Launch -> {
-                    if (!action.appInfo.enabled) {
+                    val app = action.appInfo
+                    // Smart launch: a frozen app is disabled OR suspended. Restore it (enable
+                    // and/or unsuspend) before launching — otherwise a suspended app just opens the
+                    // system "app paused" dialog instead of the app.
+                    if (app.isFrozen) {
                         _uiState.update {
                             it.copy(
                                 actionMessage = UiText.StringResource(
                                     R.string.unfreezing_app,
-                                    action.appInfo.appName ?: action.appInfo.packageName
+                                    app.appName ?: app.packageName
                                 )
                             )
                         }
 
-                        val result =
-                            manageAppUseCase.setAppDisabled(action.appInfo.packageName, false)
+                        val result = manageAppUseCase.restoreApp(app.packageName, app.enabled, app.isSuspended)
                         if (result.isSuccess) {
-                            _effect.send(MainSideEffect.LaunchApp(action.appInfo.packageName))
+                            _effect.send(MainSideEffect.LaunchApp(app.packageName))
                         } else {
                             _uiState.update {
                                 it.copy(
@@ -245,7 +249,7 @@ class MainViewModel(
                             }
                         }
                     } else {
-                        _effect.send(MainSideEffect.LaunchApp(action.appInfo.packageName))
+                        _effect.send(MainSideEffect.LaunchApp(app.packageName))
                     }
                 }
 
