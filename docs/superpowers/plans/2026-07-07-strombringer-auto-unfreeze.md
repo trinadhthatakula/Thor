@@ -89,6 +89,8 @@ fun mayRestore(packageName: String, freezerPackages: Set<String>): Boolean =
 
 ## Task 2: Base-Thor — `FreezerBridgeProvider`
 
+> **Hardened post-review (PR #242):** the shipped provider additionally (a) verifies the caller is a HOME/launcher app before any privileged work — a signature permission can't be used because the caller is the launcher process, not the extension, and extensions use a different signing key — and (b) wraps the restore in `runCatching` so a transient failure returns `ok=false` instead of throwing across Binder. See the actual `FreezerBridgeProvider.kt`; the snippet below is the pre-hardening baseline.
+
 **Files:**
 - Create: `app/src/main/java/com/valhalla/thor/data/provider/FreezerBridgeProvider.kt`
 - Modify: `app/src/main/AndroidManifest.xml` (register provider, before `</application>`)
