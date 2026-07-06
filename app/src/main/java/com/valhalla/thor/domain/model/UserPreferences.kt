@@ -27,6 +27,9 @@ data class UserPreferences(
     // Auto Freeze
     val autoFreezeEnabled: Boolean = false,
 
+    // Freezer action mode: FREEZE = pm disable, SUSPEND = pm suspend
+    val freezerMode: FreezerMode = FreezerMode.FREEZE,
+
     // Add Freezer to launcher (home-screen shortcuts for frozen apps)
     val addFreezerToLauncher: Boolean = false,
 
