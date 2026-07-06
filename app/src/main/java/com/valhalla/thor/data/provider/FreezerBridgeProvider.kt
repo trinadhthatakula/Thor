@@ -3,6 +3,7 @@ package com.valhalla.thor.data.provider
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
 import android.os.Binder
@@ -37,8 +38,8 @@ class FreezerBridgeProvider : ContentProvider(), KoinComponent {
         if (method != "restore") return result
         val pkg = extras?.getString("pkg") ?: arg ?: return result
 
-        if (!callerIsHomeApp()) {
-            Logger.d("FreezerBridge", "restore refused (caller not a launcher): uid ${Binder.getCallingUid()}")
+        if (!callerIsDefaultLauncher()) {
+            Logger.d("FreezerBridge", "restore refused (caller not the default launcher): uid ${Binder.getCallingUid()}")
             return result
         }
 
@@ -60,14 +61,20 @@ class FreezerBridgeProvider : ContentProvider(), KoinComponent {
         return result
     }
 
-    /** True when the calling UID owns a package that is a HOME/launcher app. */
-    private fun callerIsHomeApp(): Boolean {
+    /**
+     * True only when the calling UID owns the device's CURRENT default home launcher. We resolve the
+     * *default* (`MATCH_DEFAULT_ONLY`) rather than querying every HOME-category app: any app can
+     * declare a HOME activity, so an all-apps query would let a malicious app spoof launcher status.
+     * The Strombringer hook only runs in the real launcher, so this is exactly the legitimate caller.
+     */
+    private fun callerIsDefaultLauncher(): Boolean {
         val pm = context?.packageManager ?: return false
         val callers = pm.getPackagesForUid(Binder.getCallingUid())?.toSet() ?: return false
-        val homeApps = pm.queryIntentActivities(
-            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0
-        ).mapNotNull { it.activityInfo?.packageName }.toSet()
-        return callers.any { it in homeApps }
+        val defaultHome = pm.resolveActivity(
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),
+            PackageManager.MATCH_DEFAULT_ONLY
+        )?.activityInfo?.packageName ?: return false
+        return defaultHome in callers
     }
 
     // Unused CRUD surface.
