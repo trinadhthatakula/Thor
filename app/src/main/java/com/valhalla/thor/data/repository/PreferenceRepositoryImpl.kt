@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.FilterType
+import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
@@ -54,6 +55,7 @@ class PreferenceRepositoryImpl(
         // Auto Freeze
         val AUTO_FREEZE = booleanPreferencesKey("auto_freeze")
         val ADD_FREEZER_TO_LAUNCHER = booleanPreferencesKey("add_freezer_to_launcher")
+        val FREEZER_MODE = stringPreferencesKey("freezer_mode")
 
         // Freezer Prompts
         val HAS_SHOWN_DISABLED_APPS_PROMPT = booleanPreferencesKey("has_shown_disabled_apps_prompt")
@@ -102,6 +104,9 @@ class PreferenceRepositoryImpl(
             val useDetailedView = prefs[Keys.USE_DETAILED_VIEW] ?: true
             val appListIsGrid = prefs[Keys.APP_LIST_IS_GRID] ?: true
             val freezerIsGrid = prefs[Keys.FREEZER_IS_GRID] ?: true
+            val freezerMode = prefs[Keys.FREEZER_MODE]
+                ?.let { runCatching { FreezerMode.valueOf(it) }.getOrNull() }
+                ?: FreezerMode.FREEZE
 
             UserPreferences(
                 appSortBy = sortBy,
@@ -116,6 +121,7 @@ class PreferenceRepositoryImpl(
                 preferredPrivilegeMode = privilegeMode,
                 language = prefs[Keys.LANGUAGE],
                 autoFreezeEnabled = prefs[Keys.AUTO_FREEZE] ?: false,
+                freezerMode = freezerMode,
                 addFreezerToLauncher = prefs[Keys.ADD_FREEZER_TO_LAUNCHER] ?: false,
                 hasShownDisabledAppsPrompt = prefs[Keys.HAS_SHOWN_DISABLED_APPS_PROMPT] ?: false,
                 hasShownSupportDeveloperPrompt = prefs[Keys.HAS_SHOWN_SUPPORT_DEVELOPER_PROMPT] ?: false,
@@ -195,6 +201,12 @@ class PreferenceRepositoryImpl(
     override suspend fun setAutoFreezeEnabled(enabled: Boolean) {
         context.dataStore.edit {
             it[Keys.AUTO_FREEZE] = enabled
+        }
+    }
+
+    override suspend fun setFreezerMode(mode: FreezerMode) {
+        context.dataStore.edit {
+            it[Keys.FREEZER_MODE] = mode.name
         }
     }
 

@@ -150,25 +150,43 @@ class RootSystemGateway(
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
+        val hasReflection = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q
         val escapedPackage = ShellUtils.escapedString(packageName)
-        // 1. Try shell first
-        val state = if (isSuspended) "suspend" else "unsuspend"
-        val shellResult = runCommand("pm $state $escapedPackage")
-        if (shellResult.isSuccess) return shellResult
 
-        // 2. Fallback to reflection via RootMain
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            val taskResult = runRootTask("suspend", packageName, isSuspended.toString())
-            if (taskResult.isSuccess) return Result.success(Unit)
-        }
-
-        // 3. Check if already in the target state
-        val currentSuspended = getApplicationInfoCompat(packageName)?.run {
+        fun isCurrentlySuspended() = getApplicationInfoCompat(packageName)?.run {
             (flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED) != 0
         } ?: false
-        if (currentSuspended == isSuspended) return Result.success(Unit)
 
-        return Result.failure(Exception("Root setAppSuspended failed. Shell command and reflection both failed."))
+        if (isSuspended) {
+            // SUSPEND via the reflection path only: setPackagesSuspendedAsUser(caller = our app id).
+            // A root-shell `pm suspend` (uid 0) records the suspender as "root", a non-existent
+            // package, so tapping the paused app crashes SuspendedAppActivity
+            // ("IllegalArgumentException: Package root does not exist"). We never fall back to the
+            // shell for suspend — a broken suspension is worse than a reported failure. GH#239.
+            if (hasReflection) {
+                val taskResult = runRootTask("suspend", packageName, "true")
+                if (taskResult.isSuccess || isCurrentlySuspended()) return Result.success(Unit)
+                return Result.failure(Exception("Root suspend failed via reflection for $packageName."))
+            }
+            // API < 29 has no SuspendDialogInfo reflection path.
+            val shell = runCommand("pm suspend $escapedPackage")
+            return if (shell.isSuccess) shell
+            else Result.failure(Exception("Root suspend failed for $packageName."))
+        }
+
+        // UNSUSPEND: a suspension can only be lifted by the package that set it, so clear BOTH
+        // possible owners — our own app (reflection, for suspensions this app set) AND
+        // "root"/"shell" (shell `pm unsuspend`, for any legacy suspension left by older builds).
+        // A root-shell `pm unsuspend` alone reports success yet leaves an app suspended by us still
+        // suspended. GH#239.
+        var cleared = false
+        if (hasReflection) {
+            cleared = runRootTask("suspend", packageName, "false").isSuccess
+        }
+        val shell = runCommand("pm unsuspend $escapedPackage")
+        cleared = cleared || shell.isSuccess
+        return if (cleared || !isCurrentlySuspended()) Result.success(Unit)
+        else Result.failure(Exception("Root unsuspend failed for $packageName."))
     }
 
     override suspend fun setAppRestricted(

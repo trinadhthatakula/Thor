@@ -19,11 +19,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,7 +32,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.isActive
+import com.valhalla.thor.domain.model.isFrozen
 
 @Composable
 fun FreezerSelectToolBox(
@@ -47,15 +46,12 @@ fun FreezerSelectToolBox(
     isDhizuku: Boolean = false,
     onCancel: () -> Unit = {},
     onRemoveFromFreezer: () -> Unit = {},
-    onMultiAppAction: (MultiAppAction) -> Unit = {}
+    onMultiAppAction: (MultiAppAction) -> Unit = {},
+    freezerMode: FreezerMode = FreezerMode.FREEZE
 ) {
-    var hasFrozen by remember { mutableStateOf(selected.any { !it.enabled }) }
-    var hasUnFrozen by remember { mutableStateOf(selected.any { it.enabled }) }
-
-    LaunchedEffect(selected) {
-        hasFrozen = selected.any { !it.enabled }
-        hasUnFrozen = selected.any { it.enabled }
-    }
+    // "Frozen" = disabled OR suspended; "active" = freezable (enabled & not suspended). GH#239.
+    val hasFrozen = remember(selected) { selected.any { it.isFrozen } }
+    val hasUnFrozen = remember(selected) { selected.any { it.isActive } }
 
     Card(
         modifier = modifier,
@@ -78,7 +74,11 @@ fun FreezerSelectToolBox(
                     FreezerToolItem(
                         icon = R.drawable.frozen,
                         label = stringResource(R.string.action_freeze),
-                        onClick = { onMultiAppAction(MultiAppAction.Freeze(selected)) }
+                        onClick = {
+                            onMultiAppAction(
+                                MultiAppAction.Freeze(selected, useSuspend = freezerMode == FreezerMode.SUSPEND)
+                            )
+                        }
                     )
                 }
                 if (hasFrozen) {

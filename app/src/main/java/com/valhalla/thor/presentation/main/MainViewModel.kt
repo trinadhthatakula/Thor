@@ -9,6 +9,8 @@ import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.isActive
+import com.valhalla.thor.domain.model.isFrozen
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
@@ -219,20 +221,23 @@ class MainViewModel(
             when (action) {
                 // 1. SMART LAUNCH
                 is AppClickAction.Launch -> {
-                    if (!action.appInfo.enabled) {
+                    val app = action.appInfo
+                    // Smart launch: a frozen app is disabled OR suspended. Restore it (enable
+                    // and/or unsuspend) before launching — otherwise a suspended app just opens the
+                    // system "app paused" dialog instead of the app.
+                    if (app.isFrozen) {
                         _uiState.update {
                             it.copy(
                                 actionMessage = UiText.StringResource(
                                     R.string.unfreezing_app,
-                                    action.appInfo.appName ?: action.appInfo.packageName
+                                    app.appName ?: app.packageName
                                 )
                             )
                         }
 
-                        val result =
-                            manageAppUseCase.setAppDisabled(action.appInfo.packageName, false)
+                        val result = manageAppUseCase.restoreApp(app.packageName, app.enabled, app.isSuspended)
                         if (result.isSuccess) {
-                            _effect.send(MainSideEffect.LaunchApp(action.appInfo.packageName))
+                            _effect.send(MainSideEffect.LaunchApp(app.packageName))
                         } else {
                             _uiState.update {
                                 it.copy(
@@ -244,7 +249,7 @@ class MainViewModel(
                             }
                         }
                     } else {
-                        _effect.send(MainSideEffect.LaunchApp(action.appInfo.packageName))
+                        _effect.send(MainSideEffect.LaunchApp(app.packageName))
                     }
                 }
 
@@ -390,7 +395,7 @@ class MainViewModel(
                     }
                 }
 
-                is MultiAppAction.Freeze -> performCountedFreeze(action.appList, isFreeze = true)
+                is MultiAppAction.Freeze -> performCountedFreeze(action.appList, isFreeze = true, useSuspend = action.useSuspend)
 
                 is MultiAppAction.UnFreeze -> performCountedFreeze(action.appList, isFreeze = false)
 
@@ -489,10 +494,12 @@ class MainViewModel(
      * total reflects only what we actually attempt), then each app is toggled
      * sequentially with a live `processed / total` count.
      */
-    private suspend fun performCountedFreeze(apps: List<AppInfo>, isFreeze: Boolean) {
+    private suspend fun performCountedFreeze(apps: List<AppInfo>, isFreeze: Boolean, useSuspend: Boolean = false) {
         val targets = if (isFreeze) {
+            // Only freeze ACTIVE apps: skip unsafe/UAD system apps AND anything already frozen
+            // (disabled or suspended) so we never stack disable+suspend into a mixed state.
             apps.filter { app ->
-                !(app.isSystem && (app.isUadLoadFailed ||
+                app.isActive && !(app.isSystem && (app.isUadLoadFailed ||
                     app.bloatRecommendation?.lowercase() == "unsafe"))
             }
         } else {
@@ -513,7 +520,13 @@ class MainViewModel(
         var failed = 0
         withContext(Dispatchers.IO) {
             targets.forEach { app ->
-                val result = manageAppUseCase.setAppDisabled(app.packageName, disabled = isFreeze)
+                val result = if (isFreeze) {
+                    if (useSuspend) manageAppUseCase.setAppSuspended(app.packageName, true)
+                    else manageAppUseCase.setAppDisabled(app.packageName, true)
+                } else {
+                    // State-aware restore: clears suspend AND disable, incl. mixed state.
+                    manageAppUseCase.restoreApp(app.packageName, app.enabled, app.isSuspended)
+                }
                 processed++
                 if (result.isFailure) failed++
                 val p = processed

@@ -8,6 +8,7 @@ import com.valhalla.thor.data.launcher.FreezerShortcutManager
 import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
@@ -41,6 +42,7 @@ data class FreezerUiState(
     val actionMessage: UiText? = null,
     val freezerPrompt: FreezerPrompt? = null,
     val autoFreezeEnabled: Boolean = false,
+    val freezerMode: FreezerMode = FreezerMode.FREEZE,
     val isDhizuku: Boolean = false,
     val hasShownDisabledAppsPrompt: Boolean = false,
     val appListType: AppListType = AppListType.USER,
@@ -136,9 +138,13 @@ class FreezerViewModel(
 
     fun removeFromFreezer(packageNames: Set<String>) {
         viewModelScope.launch(Dispatchers.IO) {
+            val appByPkg = _uiState.value.allInstalledApps.associateBy { it.packageName }
             packageNames.forEach { pkg ->
                 freezerRepository.remove(pkg)
-                manageAppUseCase.setAppDisabled(pkg, false)
+                // Restore to active (unsuspend and/or enable) so a suspended app isn't stranded.
+                val app = appByPkg[pkg]
+                if (app != null) manageAppUseCase.restoreApp(pkg, app.enabled, app.isSuspended)
+                else manageAppUseCase.forceUnfreeze(pkg)
                 freezerShortcutManager.disableAppShortcut(pkg)
             }
             _uiState.update {
@@ -158,7 +164,10 @@ class FreezerViewModel(
     fun toggleManaged(packageName: String, add: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             if (add) {
-                manageAppUseCase.setAppDisabled(packageName, true)
+                val freezeResult = if (_uiState.value.freezerMode == FreezerMode.SUSPEND)
+                    manageAppUseCase.setAppSuspended(packageName, true)
+                else manageAppUseCase.setAppDisabled(packageName, true)
+                freezeResult
                     .onSuccess {
                         freezerRepository.add(packageName)
                     }
@@ -175,7 +184,10 @@ class FreezerViewModel(
             } else {
                 freezerRepository.remove(packageName)
                 freezerShortcutManager.disableAppShortcut(packageName)
-                manageAppUseCase.setAppDisabled(packageName, false)
+                val app = _uiState.value.freezerApps.firstOrNull { it.packageName == packageName }
+                    ?: _uiState.value.allInstalledApps.firstOrNull { it.packageName == packageName }
+                (if (app != null) manageAppUseCase.restoreApp(packageName, app.enabled, app.isSuspended)
+                else manageAppUseCase.forceUnfreeze(packageName))
                     .onFailure { e ->
                         _uiState.update {
                             it.copy(
@@ -224,7 +236,10 @@ class FreezerViewModel(
 
     fun freezeSingleApp(packageName: String, appName: String?, inFreezer: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
-            manageAppUseCase.setAppDisabled(packageName, true)
+            val freezeResult = if (_uiState.value.freezerMode == FreezerMode.SUSPEND)
+                manageAppUseCase.setAppSuspended(packageName, true)
+            else manageAppUseCase.setAppDisabled(packageName, true)
+            freezeResult
                 .onSuccess {
                     freezerShortcutManager.refreshAppShortcut(packageName)
                     if (!inFreezer) {
@@ -262,7 +277,15 @@ class FreezerViewModel(
 
     fun unfreezeSingleApp(packageName: String, appName: String?) {
         viewModelScope.launch(Dispatchers.IO) {
-            manageAppUseCase.setAppDisabled(packageName, false)
+            val app = _uiState.value.freezerApps.firstOrNull { it.packageName == packageName }
+                ?: _uiState.value.allInstalledApps.firstOrNull { it.packageName == packageName }
+            val restoreResult = if (app != null) {
+                manageAppUseCase.restoreApp(packageName, app.enabled, app.isSuspended)
+            } else {
+                // Unknown state (e.g. externally uninstalled): clear both dimensions best-effort.
+                manageAppUseCase.forceUnfreeze(packageName)
+            }
+            restoreResult
                 .onSuccess {
                     freezerShortcutManager.refreshAppShortcut(packageName)
                     _uiState.update {
@@ -299,6 +322,7 @@ class FreezerViewModel(
                 _uiState.update {
                     it.copy(
                         autoFreezeEnabled = prefs.autoFreezeEnabled,
+                        freezerMode = prefs.freezerMode,
                         hasShownDisabledAppsPrompt = prefs.hasShownDisabledAppsPrompt,
                         isGrid = prefs.freezerIsGrid,
                         addFreezerToLauncher = prefs.addFreezerToLauncher
@@ -311,6 +335,12 @@ class FreezerViewModel(
     fun setAutoFreezeEnabled(enabled: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             preferenceRepository.setAutoFreezeEnabled(enabled)
+        }
+    }
+
+    fun setFreezerMode(mode: FreezerMode) {
+        viewModelScope.launch(Dispatchers.IO) {
+            preferenceRepository.setFreezerMode(mode)
         }
     }
 

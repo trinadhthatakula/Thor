@@ -212,6 +212,9 @@
     <string name="unfreeze_all_apps">Unfreeze All Apps</string>
     <string name="unfreeze_all_apps_desc">Enable all apps currently in the Freezer list</string>
     <string name="auto_freeze">Auto Freeze</string>
+    <string name="freeze_mode">Freeze Mode</string>
+    <string name="suspend_instead_of_freeze">Suspend instead of freeze</string>
+    <string name="suspend_instead_of_freeze_desc">When freezing (including auto-freeze), suspend apps instead of disabling them. Suspended apps stay visible but paused.</string>
     <string name="auto_freeze_desc">Freeze apps automatically when screen is locked</string>
     <string name="add_freezer_to_launcher">Add Freezer to launcher</string>
     <string name="add_freezer_to_launcher_desc">Show frozen apps as home-screen shortcuts you can tap to launch</string>
