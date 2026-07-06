@@ -326,6 +326,15 @@
             </intent-filter>
         </receiver>
 
+        <!-- Strombringer bridge: lets the (LSPosed) launcher hook ask Thor to unsuspend a frozen
+             app on launch. exported so the hook's process can reach it; access is bounded to
+             Freezer packages inside the provider (the caller runs in the launcher, so it can't be
+             signature-verified). -->
+        <provider
+            android:name=".data.provider.FreezerBridgeProvider"
+            android:authorities="${applicationId}.freezerbridge"
+            android:exported="true" />
+
     </application>
 
 </manifest>
