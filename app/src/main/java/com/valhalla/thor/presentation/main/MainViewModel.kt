@@ -8,7 +8,9 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.domain.model.FreezerRestore
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.restoreAction
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
@@ -390,7 +392,7 @@ class MainViewModel(
                     }
                 }
 
-                is MultiAppAction.Freeze -> performCountedFreeze(action.appList, isFreeze = true)
+                is MultiAppAction.Freeze -> performCountedFreeze(action.appList, isFreeze = true, useSuspend = action.useSuspend)
 
                 is MultiAppAction.UnFreeze -> performCountedFreeze(action.appList, isFreeze = false)
 
@@ -489,7 +491,7 @@ class MainViewModel(
      * total reflects only what we actually attempt), then each app is toggled
      * sequentially with a live `processed / total` count.
      */
-    private suspend fun performCountedFreeze(apps: List<AppInfo>, isFreeze: Boolean) {
+    private suspend fun performCountedFreeze(apps: List<AppInfo>, isFreeze: Boolean, useSuspend: Boolean = false) {
         val targets = if (isFreeze) {
             apps.filter { app ->
                 !(app.isSystem && (app.isUadLoadFailed ||
@@ -513,7 +515,17 @@ class MainViewModel(
         var failed = 0
         withContext(Dispatchers.IO) {
             targets.forEach { app ->
-                val result = manageAppUseCase.setAppDisabled(app.packageName, disabled = isFreeze)
+                val result = if (isFreeze) {
+                    if (useSuspend) manageAppUseCase.setAppSuspended(app.packageName, true)
+                    else manageAppUseCase.setAppDisabled(app.packageName, true)
+                } else {
+                    // State-aware restore: unsuspend suspended apps, enable disabled apps.
+                    when (app.restoreAction) {
+                        FreezerRestore.UNSUSPEND -> manageAppUseCase.setAppSuspended(app.packageName, false)
+                        FreezerRestore.ENABLE -> manageAppUseCase.setAppDisabled(app.packageName, false)
+                        FreezerRestore.NONE -> Result.success(Unit)
+                    }
+                }
                 processed++
                 if (result.isFailure) failed++
                 val p = processed
