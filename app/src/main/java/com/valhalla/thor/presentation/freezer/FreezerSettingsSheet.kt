@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import com.valhalla.thor.R
 import com.valhalla.thor.data.launcher.FreezerShortcutContract
 import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.domain.model.FreezerMode
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
 import com.valhalla.asgard.components.AsgardActionItem
@@ -48,6 +49,8 @@ import com.valhalla.asgard.components.ConnectedButtonGroupItem
 fun FreezerSettingsSheet(
     isGrid: Boolean,
     autoFreezeEnabled: Boolean,
+    freezerMode: FreezerMode,
+    onFreezerModeChange: (FreezerMode) -> Unit,
     hasPrivilege: Boolean,
     showImportDisabledApps: Boolean,
     appListType: AppListType,
@@ -233,6 +236,31 @@ fun FreezerSettingsSheet(
                 ) {
                     Text(stringResource(R.string.import_disabled_apps_button))
                 }
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            // Freeze vs Suspend mode (GH#239) — same segmented control style as the selectors above.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    stringResource(R.string.freeze_mode),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
+                ConnectedButtonGroup(
+                    items = listOf(
+                        ConnectedButtonGroupItem.Label(stringResource(R.string.action_freeze)),
+                        ConnectedButtonGroupItem.Label(stringResource(R.string.action_suspend))
+                    ),
+                    selectedIndex = freezerMode.ordinal,
+                    onItemSelected = { onFreezerModeChange(FreezerMode.entries[it]) },
+                    enabled = hasPrivilege,
+                    modifier = Modifier.width(IntrinsicSize.Max)
+                )
             }
 
             Spacer(Modifier.height(24.dp))
