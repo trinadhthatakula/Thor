@@ -9,8 +9,6 @@ import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FreezerMode
-import com.valhalla.thor.domain.model.FreezerRestore
-import com.valhalla.thor.domain.model.restoreAction
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
@@ -142,7 +140,14 @@ class FreezerViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             packageNames.forEach { pkg ->
                 freezerRepository.remove(pkg)
-                manageAppUseCase.setAppDisabled(pkg, false)
+                val app = _uiState.value.freezerApps.firstOrNull { it.packageName == pkg }
+                    ?: _uiState.value.allInstalledApps.firstOrNull { it.packageName == pkg }
+                // Restore to active (unsuspend and/or enable) so a suspended app isn't stranded.
+                manageAppUseCase.restoreApp(
+                    pkg,
+                    enabled = app?.enabled ?: false,
+                    isSuspended = app?.isSuspended ?: false
+                )
                 freezerShortcutManager.disableAppShortcut(pkg)
             }
             _uiState.update {
@@ -162,7 +167,10 @@ class FreezerViewModel(
     fun toggleManaged(packageName: String, add: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             if (add) {
-                manageAppUseCase.setAppDisabled(packageName, true)
+                val freezeResult = if (_uiState.value.freezerMode == FreezerMode.SUSPEND)
+                    manageAppUseCase.setAppSuspended(packageName, true)
+                else manageAppUseCase.setAppDisabled(packageName, true)
+                freezeResult
                     .onSuccess {
                         freezerRepository.add(packageName)
                     }
@@ -179,7 +187,13 @@ class FreezerViewModel(
             } else {
                 freezerRepository.remove(packageName)
                 freezerShortcutManager.disableAppShortcut(packageName)
-                manageAppUseCase.setAppDisabled(packageName, false)
+                val app = _uiState.value.freezerApps.firstOrNull { it.packageName == packageName }
+                    ?: _uiState.value.allInstalledApps.firstOrNull { it.packageName == packageName }
+                manageAppUseCase.restoreApp(
+                    packageName,
+                    enabled = app?.enabled ?: false,
+                    isSuspended = app?.isSuspended ?: false
+                )
                     .onFailure { e ->
                         _uiState.update {
                             it.copy(
@@ -271,10 +285,11 @@ class FreezerViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             val app = _uiState.value.freezerApps.firstOrNull { it.packageName == packageName }
                 ?: _uiState.value.allInstalledApps.firstOrNull { it.packageName == packageName }
-            val restoreResult = when (app?.restoreAction) {
-                FreezerRestore.UNSUSPEND -> manageAppUseCase.setAppSuspended(packageName, false)
-                else -> manageAppUseCase.setAppDisabled(packageName, false)
-            }
+            val restoreResult = manageAppUseCase.restoreApp(
+                packageName,
+                enabled = app?.enabled ?: false,
+                isSuspended = app?.isSuspended ?: false
+            )
             restoreResult
                 .onSuccess {
                     freezerShortcutManager.refreshAppShortcut(packageName)

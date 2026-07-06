@@ -27,18 +27,35 @@ class FreezerModeTest {
     }
 
     @Test
-    fun `restore of a suspended app unsuspends`() {
-        assertEquals(FreezerRestore.UNSUSPEND, restoreActionFor(enabled = true, isSuspended = true))
+    fun `restore of a suspended-only app just unsuspends`() {
+        assertEquals(
+            RestorePlan(unsuspend = true, enable = false),
+            restorePlanFor(enabled = true, isSuspended = true)
+        )
     }
 
     @Test
-    fun `restore of a disabled app enables`() {
-        assertEquals(FreezerRestore.ENABLE, restoreActionFor(enabled = false, isSuspended = false))
+    fun `restore of a disabled-only app just enables`() {
+        assertEquals(
+            RestorePlan(unsuspend = false, enable = true),
+            restorePlanFor(enabled = false, isSuspended = false)
+        )
     }
 
     @Test
-    fun `restore of an already-active app is a no-op`() {
-        assertEquals(FreezerRestore.NONE, restoreActionFor(enabled = true, isSuspended = false))
+    fun `restore of a disabled AND suspended app clears both dimensions`() {
+        assertEquals(
+            RestorePlan(unsuspend = true, enable = true),
+            restorePlanFor(enabled = false, isSuspended = true)
+        )
+    }
+
+    @Test
+    fun `restore of an already-active app defaults to a harmless enable`() {
+        assertEquals(
+            RestorePlan(unsuspend = false, enable = true),
+            restorePlanFor(enabled = true, isSuspended = false)
+        )
     }
 
     @Test

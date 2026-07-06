@@ -8,9 +8,8 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
-import com.valhalla.thor.domain.model.FreezerRestore
 import com.valhalla.thor.domain.model.MultiAppAction
-import com.valhalla.thor.domain.model.restoreAction
+import com.valhalla.thor.domain.model.isActive
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
@@ -493,8 +492,10 @@ class MainViewModel(
      */
     private suspend fun performCountedFreeze(apps: List<AppInfo>, isFreeze: Boolean, useSuspend: Boolean = false) {
         val targets = if (isFreeze) {
+            // Only freeze ACTIVE apps: skip unsafe/UAD system apps AND anything already frozen
+            // (disabled or suspended) so we never stack disable+suspend into a mixed state.
             apps.filter { app ->
-                !(app.isSystem && (app.isUadLoadFailed ||
+                app.isActive && !(app.isSystem && (app.isUadLoadFailed ||
                     app.bloatRecommendation?.lowercase() == "unsafe"))
             }
         } else {
@@ -519,12 +520,8 @@ class MainViewModel(
                     if (useSuspend) manageAppUseCase.setAppSuspended(app.packageName, true)
                     else manageAppUseCase.setAppDisabled(app.packageName, true)
                 } else {
-                    // State-aware restore: unsuspend suspended apps, enable disabled apps.
-                    when (app.restoreAction) {
-                        FreezerRestore.UNSUSPEND -> manageAppUseCase.setAppSuspended(app.packageName, false)
-                        FreezerRestore.ENABLE -> manageAppUseCase.setAppDisabled(app.packageName, false)
-                        FreezerRestore.NONE -> Result.success(Unit)
-                    }
+                    // State-aware restore: clears suspend AND disable, incl. mixed state.
+                    manageAppUseCase.restoreApp(app.packageName, app.enabled, app.isSuspended)
                 }
                 processed++
                 if (result.isFailure) failed++

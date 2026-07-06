@@ -100,9 +100,11 @@ class AutoFreezeManager(
                                         }
                                     }
                                     val appInfo = pm.getApplicationInfo(pkg, 0)
-                                    if (currentMode == FreezerMode.SUSPEND) {
-                                        val alreadySuspended = (appInfo.flags and ApplicationInfo.FLAG_SUSPENDED) != 0
-                                        if (!alreadySuspended) {
+                                    val alreadySuspended = (appInfo.flags and ApplicationInfo.FLAG_SUSPENDED) != 0
+                                    // Only act on ACTIVE apps (enabled & not suspended) so auto-freeze
+                                    // never stacks disable+suspend into an un-restorable mixed state.
+                                    if (appInfo.enabled && !alreadySuspended) {
+                                        if (currentMode == FreezerMode.SUSPEND) {
                                             Logger.d("AutoFreezeManager", "Auto-suspending app: $pkg")
                                             val result = manageAppUseCase.setAppSuspended(pkg, true)
                                             if (result.isSuccess) {
@@ -114,18 +116,18 @@ class AutoFreezeManager(
                                                     "Failed to suspend $pkg: ${result.exceptionOrNull()?.message}"
                                                 )
                                             }
-                                        }
-                                    } else if (appInfo.enabled) {
-                                        Logger.d("AutoFreezeManager", "Auto-freezing app: $pkg")
-                                        val result = manageAppUseCase.setAppDisabled(pkg, true)
-                                        if (result.isSuccess) {
-                                            Logger.d("AutoFreezeManager", "Auto-froze: $pkg")
-                                            freezerShortcutManager.refreshAppShortcut(pkg) // → grey the shortcut icon
                                         } else {
-                                            Logger.e(
-                                                "AutoFreezeManager",
-                                                "Failed to freeze $pkg: ${result.exceptionOrNull()?.message}"
-                                            )
+                                            Logger.d("AutoFreezeManager", "Auto-freezing app: $pkg")
+                                            val result = manageAppUseCase.setAppDisabled(pkg, true)
+                                            if (result.isSuccess) {
+                                                Logger.d("AutoFreezeManager", "Auto-froze: $pkg")
+                                                freezerShortcutManager.refreshAppShortcut(pkg) // → grey the shortcut icon
+                                            } else {
+                                                Logger.e(
+                                                    "AutoFreezeManager",
+                                                    "Failed to freeze $pkg: ${result.exceptionOrNull()?.message}"
+                                                )
+                                            }
                                         }
                                     }
                                 } catch (_: PackageManager.NameNotFoundException) {

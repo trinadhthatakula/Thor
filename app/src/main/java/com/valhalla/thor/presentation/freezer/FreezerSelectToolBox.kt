@@ -36,7 +36,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.isActive
+import com.valhalla.thor.domain.model.isFrozen
 
 @Composable
 fun FreezerSelectToolBox(
@@ -47,14 +50,16 @@ fun FreezerSelectToolBox(
     isDhizuku: Boolean = false,
     onCancel: () -> Unit = {},
     onRemoveFromFreezer: () -> Unit = {},
-    onMultiAppAction: (MultiAppAction) -> Unit = {}
+    onMultiAppAction: (MultiAppAction) -> Unit = {},
+    freezerMode: FreezerMode = FreezerMode.FREEZE
 ) {
-    var hasFrozen by remember { mutableStateOf(selected.any { !it.enabled }) }
-    var hasUnFrozen by remember { mutableStateOf(selected.any { it.enabled }) }
+    // "Frozen" = disabled OR suspended; "active" = freezable (enabled & not suspended). GH#239.
+    var hasFrozen by remember { mutableStateOf(selected.any { it.isFrozen }) }
+    var hasUnFrozen by remember { mutableStateOf(selected.any { it.isActive }) }
 
     LaunchedEffect(selected) {
-        hasFrozen = selected.any { !it.enabled }
-        hasUnFrozen = selected.any { it.enabled }
+        hasFrozen = selected.any { it.isFrozen }
+        hasUnFrozen = selected.any { it.isActive }
     }
 
     Card(
@@ -78,7 +83,11 @@ fun FreezerSelectToolBox(
                     FreezerToolItem(
                         icon = R.drawable.frozen,
                         label = stringResource(R.string.action_freeze),
-                        onClick = { onMultiAppAction(MultiAppAction.Freeze(selected)) }
+                        onClick = {
+                            onMultiAppAction(
+                                MultiAppAction.Freeze(selected, useSuspend = freezerMode == FreezerMode.SUSPEND)
+                            )
+                        }
                     )
                 }
                 if (hasFrozen) {

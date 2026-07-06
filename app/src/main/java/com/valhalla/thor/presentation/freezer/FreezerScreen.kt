@@ -342,6 +342,7 @@ fun FreezerScreen(
                     isRoot = state.isRoot,
                     isShizuku = state.isShizuku,
                     isDhizuku = state.isDhizuku,
+                    freezerMode = state.freezerMode,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 16.dp),

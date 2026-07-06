@@ -1,5 +1,6 @@
 package com.valhalla.thor.domain.usecase
 
+import com.valhalla.thor.domain.model.restorePlanFor
 import org.koin.core.annotation.Factory
 
 @Factory
@@ -20,6 +21,19 @@ class ManageAppUseCase(
 
     suspend fun setAppSuspended(packageName: String, suspended: Boolean): Result<Unit> =
         systemRepository.setAppSuspended(packageName, suspended)
+
+    /**
+     * Bring an app fully back to active: unsuspend if suspended AND enable if disabled
+     * (both, when both apply). Safely handles the mixed disabled+suspended state. GH#239.
+     */
+    suspend fun restoreApp(packageName: String, enabled: Boolean, isSuspended: Boolean): Result<Unit> {
+        val plan = restorePlanFor(enabled, isSuspended)
+        if (plan.unsuspend) {
+            val r = setAppSuspended(packageName, false)
+            if (r.isFailure) return r
+        }
+        return if (plan.enable) setAppDisabled(packageName, false) else Result.success(Unit)
+    }
 
     suspend fun uninstallApp(packageName: String): Result<Unit> =
         systemRepository.uninstallApp(packageName)
