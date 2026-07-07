@@ -56,7 +56,11 @@ data class UserPreferences(
     val exportDirUri: String? = null,
 
     // CorePatch (Xposed signature-bypass) opt-in — defaults off, fail-safe
-    val corePatchEnabled: Boolean = false
+    val corePatchEnabled: Boolean = false,
+
+    // CorePatch durable marker: the package verifier was intentionally turned off for a bypass
+    // install. If a crash left this true, the reconciler forces the verifier back on at next launch.
+    val verifierIntentionallyDisabled: Boolean = false
 )
 
 
