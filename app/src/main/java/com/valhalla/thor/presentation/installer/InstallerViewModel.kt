@@ -13,6 +13,7 @@ import com.valhalla.thor.domain.model.CorePatchAuthorization
 import com.valhalla.thor.domain.repository.AppAnalyzer
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
+import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.presentation.corepatch.CorePatchConfirmState
 import com.valhalla.thor.presentation.corepatch.buildCorePatchConfirmState
@@ -21,8 +22,12 @@ import com.valhalla.thor.util.UiText
 import com.valhalla.thor.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
@@ -37,10 +42,17 @@ class InstallerViewModel(
     private val analyzer: AppAnalyzer,
     private val eventBus: InstallerEventBus,
     private val packageManager: PackageManager,
-    private val systemRepository: SystemRepository
+    private val systemRepository: SystemRepository,
+    private val preferenceRepository: PreferenceRepository,
 ) : ViewModel() {
 
     val installState = eventBus.events
+
+    // Surfaced so the per-op CorePatch confirm dialog can gate its affirmative action behind a device
+    // biometric when the user has the app lock on.
+    val biometricLockEnabled: StateFlow<Boolean> = preferenceRepository.userPreferences
+        .map { it.biometricLockEnabled }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private val _installMode = MutableStateFlow(InstallMode.NORMAL)
     val installMode: StateFlow<InstallMode> = _installMode.asStateFlow()
@@ -144,7 +156,36 @@ class InstallerViewModel(
         }
 
         viewModelScope.launch {
+            // CorePatch auto-detect. Fail-safe & narrowly scoped: only on the ROOT path (the only mode
+            // that honours CorePatch), only when the master gate is on, and only when the incoming APK
+            // is signed differently from the already-installed one — the exact case a plain install
+            // rejects with INSTALL_FAILED_UPDATE_INCOMPATIBLE. Any other install (gate off, non-root,
+            // fresh install, or matching signer) falls straight through to the normal install below,
+            // byte-for-byte unchanged. The `mode == ROOT` short-circuit keeps every non-root install
+            // off even the cheap pref read.
+            if (mode == InstallMode.ROOT && needsCorePatchBypass(uri)) {
+                requestCorePatchInstall()
+                return@launch
+            }
             repository.installPackage(uri, mode, isDowngrade)
+        }
+    }
+
+    /**
+     * True when this ROOT install must be routed through the CorePatch signature-bypass confirm:
+     * CorePatch is master-enabled AND the target package is already installed AND the incoming APK's
+     * signer differs from the installed one. The master gate is read FIRST so a user who has not
+     * opted in never pays the (blocking, disk-copying) signer-probe cost — the normal install stays
+     * on its fast path. Signer reads run on IO.
+     */
+    private suspend fun needsCorePatchBypass(uri: Uri): Boolean {
+        val pkg = currentPackageName ?: return false
+        if (!preferenceRepository.userPreferences.first().corePatchEnabled) return false
+        return withContext(Dispatchers.IO) {
+            // ofInstalled == null => not installed (fresh install): nothing to mismatch, no bypass.
+            val installedSigner = ApkSignerSha.ofInstalled(context, pkg) ?: return@withContext false
+            val newSigner = newApkSignerSha(uri) ?: return@withContext false
+            !installedSigner.equals(newSigner, ignoreCase = true)
         }
     }
 

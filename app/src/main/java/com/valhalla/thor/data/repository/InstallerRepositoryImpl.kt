@@ -427,7 +427,13 @@ class InstallerRepositoryImpl(
         try {
             armState.arm(auth.pkg, auth.expectedNewSignerSha256, auth.capability, ttlMillis = 30_000)
             val result = block()
-            resultLabel = "SUCCESS"
+            // The root install returns Result<Unit>: a failed install comes back as Result.failure
+            // WITHOUT throwing, so trusting "block() returned" == success mis-logs failures as SUCCESS.
+            // Inspect the returned value; a non-Result block that returns normally is still a success
+            // (it would have thrown otherwise), so fall back to "SUCCESS" only then.
+            resultLabel = (result as? Result<*>)?.let {
+                if (it.isSuccess) "SUCCESS" else (it.exceptionOrNull()?.message ?: "FAILED")
+            } ?: "SUCCESS"
             return result
         } finally {
             armState.disarm()

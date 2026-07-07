@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.InstallState
+import com.valhalla.thor.presentation.corepatch.CorePatchConfirmDialog
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.domain.repository.InstallMode
 import kotlinx.coroutines.delay
@@ -91,6 +92,8 @@ fun PortableInstaller(
     val state by viewModel.installState.collectAsState(initial = InstallState.Idle)
     val availableModes by viewModel.availableModes.collectAsStateWithLifecycle()
     val installerMode by viewModel.installMode.collectAsStateWithLifecycle()
+    val corePatchConfirm by viewModel.corePatchConfirm.collectAsStateWithLifecycle()
+    val biometricLockEnabled by viewModel.biometricLockEnabled.collectAsStateWithLifecycle()
 
     var lastMeta by remember { mutableStateOf<AppMetadata?>(null) }
     LaunchedEffect(state) {
@@ -814,5 +817,19 @@ fun PortableInstaller(
                 }
             }
         }
+    }
+
+    // Per-op CorePatch (signature-bypass) confirm. Rendered as its own dialog window on top of the
+    // installer sheet; published by the VM only when the ROOT auto-detect fired. Confirm/dismiss feed
+    // straight back into the Task 11 VM methods — the armed package stays exactly what the user saw.
+    corePatchConfirm?.let { confirm ->
+        CorePatchConfirmDialog(
+            state = confirm,
+            biometricLockEnabled = biometricLockEnabled,
+            onConfirm = { disablePlayProtect ->
+                viewModel.confirmCorePatchInstall(confirm, disablePlayProtect)
+            },
+            onDismiss = { viewModel.dismissCorePatchConfirm() },
+        )
     }
 }
