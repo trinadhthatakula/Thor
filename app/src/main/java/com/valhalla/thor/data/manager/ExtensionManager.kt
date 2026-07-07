@@ -23,6 +23,15 @@ class ExtensionManager(private val context: Context) {
      */
     fun isStrombringerInstalled(): Boolean = isPackageInstalled(STROMBRINGER_PACKAGE)
 
+    /**
+     * Reads the CorePatch master-enable flag from Strombringer's exported config provider (IPC).
+     *
+     * The master opt-in now lives in the extension (it owns writing the flag); Thor only reads it.
+     * Fail-safe: extension absent / provider missing / IPC error / flag unset all resolve to false.
+     * Blocking binder IPC — call off the main thread.
+     */
+    fun isCorePatchEnabled(): Boolean = StrombringerConfigClient.isCorePatchEnabled(context)
+
     private fun isPackageInstalled(packageName: String): Boolean = try {
         pm.getPackageInfo(packageName, 0)
         true

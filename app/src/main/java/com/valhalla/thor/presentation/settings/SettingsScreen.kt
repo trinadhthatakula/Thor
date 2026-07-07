@@ -60,8 +60,6 @@ import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
-import com.valhalla.thor.presentation.corepatch.CorePatchOptInDialog
-import com.valhalla.thor.presentation.corepatch.corePatchAvailable
 import com.valhalla.asgard.components.ConnectedButtonGroup
 import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import org.koin.androidx.compose.koinViewModel
@@ -81,7 +79,6 @@ fun SettingsScreen(
     var showLanguageSheet by remember { mutableStateOf(false) }
     var showUnfreezeConfirmation by remember { mutableStateOf(false) }
     var showSupportSheet by remember { mutableStateOf(false) }
-    var showCorePatchOptIn by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.actionMessage) {
         state.actionMessage?.let {
@@ -518,67 +515,31 @@ fun SettingsScreen(
             Spacer(Modifier.height(32.dp))
         }
 
-        // ── DANGER ZONE / COREPATCH ─────────────────────────────────────────
-        // Master opt-in for the CorePatch (Xposed signature-bypass). Always shown so the user knows
-        // it exists, but DISABLED with an explanation unless the active engine is Root AND the
-        // Strombringer LSPosed module is present. Enabling requires the type-to-confirm dialog.
-        val activePrivilegeMode = prefs.preferredPrivilegeMode?.takeIf { it in availableModes }
-            ?: availableModes.firstOrNull()
-            ?: PrivilegeMode.NONE
-        val isCorePatchAvailable = corePatchAvailable(activePrivilegeMode, state.lsposedActive)
+        // ── COREPATCH AUDIT ─────────────────────────────────────────────────
+        // The CorePatch master opt-in + kill-switch now live in the Strombringer extension. Thor
+        // surfaces only the read-only audit log, and only when the extension is installed AND its
+        // CorePatch flag is on (both probed off-main in the ViewModel). When it is off there is
+        // nothing to review, so the entry is hidden entirely.
+        if (state.lsposedActive && state.corePatchEnabled) {
+            SettingsSectionLabel(stringResource(R.string.core_patch_audit_title))
 
-        SettingsSectionLabel(stringResource(R.string.danger_zone))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(32.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                    .padding(8.dp)
+            ) {
+                SettingsClickRow(
+                    icon = R.drawable.list,
+                    title = stringResource(R.string.core_patch_audit_title),
+                    subtitle = stringResource(R.string.core_patch_audit_desc),
+                    onClick = onNavigateToCorePatchAudit
+                )
+            }
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(32.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                .padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            SettingsSwitchRow(
-                icon = R.drawable.warning,
-                title = stringResource(R.string.core_patch_title),
-                subtitle = if (isCorePatchAvailable) {
-                    stringResource(R.string.core_patch_desc)
-                } else {
-                    stringResource(R.string.core_patch_unavailable_desc)
-                },
-                checked = prefs.corePatchEnabled,
-                enabled = isCorePatchAvailable,
-                onCheckedChange = { turnOn ->
-                    if (turnOn) {
-                        // Enabling must go through the blunt type-to-confirm gate; the VM only flips
-                        // the pref on when the user confirms.
-                        showCorePatchOptIn = true
-                    } else {
-                        // Disabling is the fail-safe direction — no confirmation needed.
-                        viewModel.setCorePatchEnabled(false)
-                    }
-                }
-            )
-
-            // Audit viewer — always reachable so the user can review/export past bypasses even after
-            // turning CorePatch back off.
-            SettingsClickRow(
-                icon = R.drawable.list,
-                title = stringResource(R.string.core_patch_audit_title),
-                subtitle = stringResource(R.string.core_patch_audit_desc),
-                onClick = onNavigateToCorePatchAudit
-            )
-
-            // One-tap kill-switch — the fail-safe surface: disable the pref AND disarm any pending
-            // per-operation bypass. Always enabled regardless of privilege/module availability.
-            SettingsClickRow(
-                icon = R.drawable.delete_forever,
-                title = stringResource(R.string.core_patch_kill_switch_title),
-                subtitle = stringResource(R.string.core_patch_kill_switch_desc),
-                onClick = { viewModel.disableAllBypasses() }
-            )
+            Spacer(Modifier.height(32.dp))
         }
-
-        Spacer(Modifier.height(32.dp))
 
         // ── ABOUT ───────────────────────────────────────────────────────────
         SettingsSectionLabel(stringResource(R.string.about))
@@ -720,16 +681,6 @@ fun SettingsScreen(
     if (showSupportSheet) {
         SupportDeveloperHelper(
             onDismiss = { showSupportSheet = false }
-        )
-    }
-
-    if (showCorePatchOptIn) {
-        CorePatchOptInDialog(
-            onConfirm = {
-                viewModel.setCorePatchEnabled(true)
-                showCorePatchOptIn = false
-            },
-            onDismiss = { showCorePatchOptIn = false }
         )
     }
 }

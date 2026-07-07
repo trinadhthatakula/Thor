@@ -16,6 +16,7 @@ import com.valhalla.thor.data.corepatch.CorePatchArmStateHolder
 import com.valhalla.thor.data.corepatch.CorePatchAudit
 import com.valhalla.thor.data.corepatch.CorePatchAuditEntry
 import com.valhalla.thor.data.gateway.RootSystemGateway
+import com.valhalla.thor.data.manager.StrombringerConfigClient
 import com.valhalla.thor.data.receivers.InstallReceiver
 import com.valhalla.thor.data.source.local.shizuku.ShizukuPackageInstallerUtils
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
@@ -34,7 +35,6 @@ import com.valhalla.thor.util.getDisplayName
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Single
@@ -363,9 +363,10 @@ class InstallerRepositoryImpl(
             }
 
             // Gate: only engage the bracket when a per-op authorization is present AND CorePatch is
-            // master-enabled. Short-circuits so the pref is never read on the ordinary (null) path.
+            // master-enabled. The master flag now lives in the Strombringer extension (read over IPC,
+            // fail-safe false); short-circuits so it is never read on the ordinary (null) path.
             val result = if (corePatch != null &&
-                preferenceRepository.userPreferences.first().corePatchEnabled
+                StrombringerConfigClient.isCorePatchEnabled(context)
             ) {
                 // Read the prior verifier value BEFORE flipping it, and only when we intend to flip.
                 val priorVerifier = if (corePatch.disablePlayProtect) {

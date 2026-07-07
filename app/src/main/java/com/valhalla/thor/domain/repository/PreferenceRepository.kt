@@ -63,7 +63,6 @@ interface PreferenceRepository {
     suspend fun setExtensionsUnlocked(unlocked: Boolean)
 
     // --- CorePatch ---
-    suspend fun setCorePatchEnabled(enabled: Boolean)
 
     /**
      * Durable "we intentionally disabled the package verifier for a bypass install" marker.

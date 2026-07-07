@@ -7,6 +7,7 @@ import androidx.core.content.pm.PackageInfoCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.data.corepatch.ApkSignerSha
+import com.valhalla.thor.data.manager.StrombringerConfigClient
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.model.CorePatchAuthorization
@@ -25,7 +26,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -180,8 +180,11 @@ class InstallerViewModel(
      */
     private suspend fun needsCorePatchBypass(uri: Uri): Boolean {
         val pkg = currentPackageName ?: return false
-        if (!preferenceRepository.userPreferences.first().corePatchEnabled) return false
         return withContext(Dispatchers.IO) {
+            // Master gate is read FIRST (over IPC to Strombringer's config provider, fail-safe false)
+            // so a user who has not opted in never pays the (blocking, disk-copying) signer-probe cost.
+            // The blocking binder read runs on IO.
+            if (!StrombringerConfigClient.isCorePatchEnabled(context)) return@withContext false
             // ofInstalled == null => not installed (fresh install): nothing to mismatch, no bypass.
             val installedSigner = ApkSignerSha.ofInstalled(context, pkg) ?: return@withContext false
             val newSigner = newApkSignerSha(uri) ?: return@withContext false
