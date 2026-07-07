@@ -71,6 +71,7 @@ import org.koin.compose.koinInject
 @Composable
 fun SettingsScreen(
     onNavigateToExtensionManager: () -> Unit,
+    onNavigateToCorePatchAudit: () -> Unit,
     viewModel: SettingsViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -533,7 +534,8 @@ fun SettingsScreen(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(32.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                .padding(8.dp)
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             SettingsSwitchRow(
                 icon = R.drawable.warning,
@@ -555,6 +557,24 @@ fun SettingsScreen(
                         viewModel.setCorePatchEnabled(false)
                     }
                 }
+            )
+
+            // Audit viewer — always reachable so the user can review/export past bypasses even after
+            // turning CorePatch back off.
+            SettingsClickRow(
+                icon = R.drawable.list,
+                title = stringResource(R.string.core_patch_audit_title),
+                subtitle = stringResource(R.string.core_patch_audit_desc),
+                onClick = onNavigateToCorePatchAudit
+            )
+
+            // One-tap kill-switch — the fail-safe surface: disable the pref AND disarm any pending
+            // per-operation bypass. Always enabled regardless of privilege/module availability.
+            SettingsClickRow(
+                icon = R.drawable.delete_forever,
+                title = stringResource(R.string.core_patch_kill_switch_title),
+                subtitle = stringResource(R.string.core_patch_kill_switch_desc),
+                onClick = { viewModel.disableAllBypasses() }
             )
         }
 

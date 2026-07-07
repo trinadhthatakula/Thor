@@ -3,6 +3,9 @@ package com.valhalla.thor.presentation.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.data.corepatch.CorePatchArmStateHolder
+import com.valhalla.thor.data.corepatch.CorePatchAudit
+import com.valhalla.thor.data.corepatch.CorePatchAuditEntry
 import com.valhalla.thor.data.security.BiometricHelper
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.FreezerMode
@@ -38,7 +41,9 @@ class SettingsViewModel(
     private val freezerRepository: FreezerRepository,
     private val manageAppUseCase: ManageAppUseCase,
     private val freezerShortcutManager: com.valhalla.thor.data.launcher.FreezerShortcutManager,
-    private val extensionManager: com.valhalla.thor.data.manager.ExtensionManager
+    private val extensionManager: com.valhalla.thor.data.manager.ExtensionManager,
+    private val corePatchAudit: CorePatchAudit,
+    private val corePatchArmStateHolder: CorePatchArmStateHolder
 ) : ViewModel() {
 
     data class SettingsUiState(
@@ -215,5 +220,25 @@ class SettingsViewModel(
         viewModelScope.launch {
             preferenceRepository.setCorePatchEnabled(enabled)
         }
+    }
+
+    /**
+     * Snapshot of the CorePatch audit trail, newest first. The audit is an in-memory ring buffer
+     * ([CorePatchAudit]); reading it is cheap, so the viewer reads a fresh snapshot on entry.
+     */
+    fun corePatchAuditEntries(): List<CorePatchAuditEntry> =
+        corePatchAudit.all().sortedByDescending { it.timestampMillis }
+
+    /**
+     * One-tap kill-switch: flips the durable `corePatchEnabled` pref off AND disarms the in-memory
+     * arm-state so any pending per-operation bypass is revoked immediately. Fail-safe direction —
+     * no confirmation needed.
+     */
+    fun disableAllBypasses() {
+        corePatchArmStateHolder.disarm()
+        viewModelScope.launch {
+            preferenceRepository.setCorePatchEnabled(false)
+        }
+        _actionMessage.value = UiText.StringResource(R.string.core_patch_kill_switch_done)
     }
 }

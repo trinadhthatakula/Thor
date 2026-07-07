@@ -503,4 +503,18 @@
     <string name="core_patch_confirm_biometric_subtitle">Authenticate to arm the CorePatch install</string>
     <string name="error_core_patch_signer">Couldn\'t read the APK signer, so a signature bypass can\'t be armed for this file.</string>
 
+    <!-- CorePatch audit viewer + kill-switch (Task 12) -->
+    <string name="core_patch_audit_title">CorePatch audit log</string>
+    <string name="core_patch_audit_desc">View and export past signature-bypass installs.</string>
+    <string name="core_patch_audit_empty">No signature bypasses have been recorded yet.</string>
+    <string name="core_patch_audit_export">Export</string>
+    <string name="core_patch_audit_export_subject">Thor CorePatch audit log</string>
+    <string name="core_patch_audit_time_label">Time</string>
+    <string name="core_patch_audit_signer_label">Signer</string>
+    <string name="core_patch_audit_downgrade_yes">Yes</string>
+    <string name="core_patch_audit_signer_flow">%1$s → %2$s</string>
+    <string name="core_patch_kill_switch_title">Disable all bypasses now</string>
+    <string name="core_patch_kill_switch_desc">Turn CorePatch off and disarm any pending bypass immediately.</string>
+    <string name="core_patch_kill_switch_done">All CorePatch bypasses disabled.</string>
+
 </resources>
