@@ -24,6 +24,11 @@ interface SystemGateway {
     suspend fun uninstallApp(packageName: String): Result<Unit>
     suspend fun installApp(apkPath: String, canDowngrade: Boolean = false): Result<Unit>
     suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit>
+
+    /** Global Play Protect / package verifier toggle. Used transiently around bypass installs. */
+    suspend fun setPackageVerifierEnabled(enabled: Boolean): Result<Unit>
+    suspend fun isPackageVerifierEnabled(): Result<Boolean>
+
     suspend fun grantPermission(packageName: String, permissionName: String): Result<Unit>
     suspend fun revokePermission(packageName: String, permissionName: String): Result<Unit>
 
