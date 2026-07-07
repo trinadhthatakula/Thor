@@ -61,4 +61,7 @@ interface PreferenceRepository {
 
     // --- Extensions ---
     suspend fun setExtensionsUnlocked(unlocked: Boolean)
+
+    // --- CorePatch ---
+    suspend fun setCorePatchEnabled(enabled: Boolean)
 }

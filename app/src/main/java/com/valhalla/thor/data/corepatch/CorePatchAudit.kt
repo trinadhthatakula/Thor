@@ -1,6 +1,8 @@
 // CorePatchAudit.kt
 package com.valhalla.thor.data.corepatch
 
+import org.koin.core.annotation.Single
+
 data class CorePatchAuditEntry(
     val timestampMillis: Long,
     val pkg: String,
@@ -16,6 +18,7 @@ interface CorePatchAudit {
     fun all(): List<CorePatchAuditEntry>
 }
 
+@Single(binds = [CorePatchAudit::class])
 class InMemoryCorePatchAudit(private val max: Int = 200) : CorePatchAudit {
     private val entries = ArrayDeque<CorePatchAuditEntry>()
 

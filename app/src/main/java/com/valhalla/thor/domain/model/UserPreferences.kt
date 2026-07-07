@@ -53,7 +53,10 @@ data class UserPreferences(
     val extensionsUnlocked: Boolean = false,
 
     // Export destination (persisted SAF tree URI; null = default Downloads/Thor)
-    val exportDirUri: String? = null
+    val exportDirUri: String? = null,
+
+    // CorePatch (Xposed signature-bypass) opt-in — defaults off, fail-safe
+    val corePatchEnabled: Boolean = false
 )
 
 
