@@ -335,6 +335,14 @@
             android:authorities="${applicationId}.freezerbridge"
             android:exported="true" />
 
+        <!-- CorePatch bridge: serves the in-memory arm-state to the Strombringer signature-bypass
+             hook running in system_server. exported so system_server can reach it; access is
+             hard-guarded to SYSTEM_UID inside the provider (any other caller sees armed=false). -->
+        <provider
+            android:name=".data.provider.CorePatchBridgeProvider"
+            android:authorities="${applicationId}.corepatchbridge"
+            android:exported="true" />
+
     </application>
 
 </manifest>
