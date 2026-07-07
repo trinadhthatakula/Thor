@@ -485,4 +485,22 @@
     <string name="core_patch_optin_field_label">Confirmation phrase</string>
     <string name="core_patch_optin_enable">Enable anyway</string>
 
+    <!-- Per-operation CorePatch confirm dialog (Task 11) -->
+    <string name="core_patch_confirm_title">Bypass signature check?</string>
+    <string name="core_patch_confirm_body">This install defeats Android\'s signature protection for the package below. A differently-signed APK will overwrite the installed one. Only continue if you trust this APK completely — Thor is not responsible for the fallout.</string>
+    <string name="core_patch_confirm_capability_label">Bypass type</string>
+    <string name="core_patch_confirm_cap_sig">Signature mismatch (sig)</string>
+    <string name="core_patch_confirm_cap_digest">Digest / downgrade (digest)</string>
+    <string name="core_patch_confirm_installed_signer">Installed signer</string>
+    <string name="core_patch_confirm_new_signer">New signer</string>
+    <string name="core_patch_confirm_signer_none">— (fresh install)</string>
+    <string name="core_patch_confirm_signers_differ">Signers differ</string>
+    <string name="core_patch_confirm_signers_match">Signers match</string>
+    <string name="core_patch_confirm_downgrade_label">Downgrade</string>
+    <string name="core_patch_confirm_disable_play_protect">Also disable Play Protect for this install</string>
+    <string name="core_patch_confirm_install">Bypass and install</string>
+    <string name="core_patch_confirm_biometric_title">Confirm signature bypass</string>
+    <string name="core_patch_confirm_biometric_subtitle">Authenticate to arm the CorePatch install</string>
+    <string name="error_core_patch_signer">Couldn\'t read the APK signer, so a signature bypass can\'t be armed for this file.</string>
+
 </resources>

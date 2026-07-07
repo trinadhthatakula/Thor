@@ -1,16 +1,22 @@
 package com.valhalla.thor.presentation.installer
 
+import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.core.content.pm.PackageInfoCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.valhalla.thor.data.corepatch.ApkSignerSha
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
+import com.valhalla.thor.domain.model.CorePatchAuthorization
 import com.valhalla.thor.domain.repository.AppAnalyzer
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
 import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.presentation.corepatch.CorePatchConfirmState
+import com.valhalla.thor.presentation.corepatch.buildCorePatchConfirmState
+import com.valhalla.thor.presentation.corepatch.capabilityFor
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.R
 import kotlinx.coroutines.Dispatchers
@@ -20,9 +26,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
+import java.io.File
+import java.io.FileOutputStream
+import java.util.UUID
 
 @KoinViewModel
 class InstallerViewModel(
+    private val context: Context,
     private val repository: InstallerRepository,
     private val analyzer: AppAnalyzer,
     private val eventBus: InstallerEventBus,
@@ -37,6 +47,11 @@ class InstallerViewModel(
 
     private val _availableModes = MutableStateFlow(listOf(InstallMode.NORMAL))
     val availableModes: StateFlow<List<InstallMode>> = _availableModes.asStateFlow()
+
+    // Non-null while the per-op CorePatch (signature-bypass) confirm dialog is shown. Cleared on
+    // confirm or dismiss so a stale authorization can never linger.
+    private val _corePatchConfirm = MutableStateFlow<CorePatchConfirmState?>(null)
+    val corePatchConfirm: StateFlow<CorePatchConfirmState?> = _corePatchConfirm.asStateFlow()
 
     var currentPackageName: String? = null
         private set
@@ -132,4 +147,83 @@ class InstallerViewModel(
             repository.installPackage(uri, mode, isDowngrade)
         }
     }
+
+    /**
+     * Trigger for the per-op CorePatch confirm dialog. Computes the installed and incoming signer
+     * SHA-256, derives the capability (`sig` vs `digest`), and publishes a [CorePatchConfirmState]
+     * for the UI to render. Call this instead of [startInstallation] when the user opts into a
+     * signature-bypass install of the currently-parsed package.
+     *
+     * The incoming signer is read from a throwaway on-disk copy of the APK; a null result (e.g. a
+     * multi-APK bundle that `getPackageArchiveInfo` can't parse) surfaces an error rather than
+     * silently arming a bypass with no expected signer to cross-check against.
+     */
+    fun requestCorePatchInstall() {
+        val pkg = currentPackageName ?: return
+        val uri = pendingUri ?: return
+        viewModelScope.launch {
+            val installedSigner = withContext(Dispatchers.IO) {
+                ApkSignerSha.ofInstalled(context, pkg)
+            }
+            val newSigner = withContext(Dispatchers.IO) { newApkSignerSha(uri) }
+            if (newSigner == null) {
+                eventBus.emit(InstallState.Error(UiText.StringResource(R.string.error_core_patch_signer)))
+                return@launch
+            }
+            _corePatchConfirm.value = buildCorePatchConfirmState(
+                pkg = pkg,
+                installed = installedSigner,
+                new = newSigner,
+                capability = capabilityFor(installedSigner, newSigner),
+                isDowngrade = isDowngrade,
+            )
+        }
+    }
+
+    fun dismissCorePatchConfirm() {
+        _corePatchConfirm.value = null
+    }
+
+    /**
+     * Confirm handler for the per-op dialog: arms a single-shot [CorePatchAuthorization] built
+     * verbatim from [state] (so the armed package is byte-identical to what the user saw) and runs
+     * the install on the ROOT path — the only [InstallMode] that honours CorePatch. [disablePlayProtect]
+     * is the user's toggle from the dialog.
+     */
+    fun confirmCorePatchInstall(state: CorePatchConfirmState, disablePlayProtect: Boolean) {
+        val uri = pendingUri ?: return
+        _corePatchConfirm.value = null
+        viewModelScope.launch {
+            repository.installPackage(
+                uri = uri,
+                mode = InstallMode.ROOT,
+                canDowngrade = state.isDowngrade,
+                corePatch = CorePatchAuthorization(
+                    pkg = state.pkg,
+                    capability = state.capability,
+                    expectedNewSignerSha256 = state.newSignerSha256,
+                    disablePlayProtect = disablePlayProtect,
+                    downgrade = state.isDowngrade,
+                ),
+            )
+        }
+    }
+
+    /**
+     * Best-effort SHA-256 of the incoming APK's signer. Copies the content [uri] to a private cache
+     * file (content URIs have no readable path) and delegates to [ApkSignerSha.ofApk]. Returns null
+     * for anything `getPackageArchiveInfo` can't read (e.g. an XAPK/.apks bundle). Blocking — call
+     * off the main thread.
+     */
+    private fun newApkSignerSha(uri: Uri): String? = runCatching {
+        val tempApk = File(context.cacheDir, "corepatch_probe_${UUID.randomUUID()}.apk")
+        try {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(tempApk).use { output -> input.copyTo(output) }
+            } ?: return null
+            ApkSignerSha.ofApk(context, tempApk.absolutePath)
+        } finally {
+            tempApk.delete()
+        }
+    }.getOrNull()
 }
