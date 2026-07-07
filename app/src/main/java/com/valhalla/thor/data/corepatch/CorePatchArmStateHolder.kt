@@ -2,12 +2,14 @@
 package com.valhalla.thor.data.corepatch
 
 import com.valhalla.thor.domain.model.ArmState
+import org.koin.core.annotation.Single
 import java.util.concurrent.atomic.AtomicReference
 
 /**
  * In-memory ONLY. Never persisted — process death / reboot => disarmed => fail-safe.
  * Lazy expiry against the injected clock guarantees correctness even if a watchdog is missed.
  */
+@Single
 class CorePatchArmStateHolder(private val clock: () -> Long = System::currentTimeMillis) {
     private val ref = AtomicReference(ArmState.DISARMED)
 
