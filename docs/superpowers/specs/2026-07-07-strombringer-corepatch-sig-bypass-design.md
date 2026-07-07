@@ -288,3 +288,27 @@ constraint: never do IPC on the tight PMS verify path. Resolution:
 Shared-UID/platform-signature spoofing; libxposed-101 rebase; a "different-build Fix Store"
 (resigned Play-flavored APK over an existing app) is *enabled* by the sig-overwrite capability but
 its UX is a separate follow-up, not this spec.
+
+## 15. Post-review refinements (2026-07-07, adversarial review `wf_00a2c535-1f4`)
+
+The design decisions above stand; a 5-lens review of the implementation plan corrected these
+mechanics (authoritative detail lives in the plan, `docs/superpowers/plans/2026-07-07-strombringer-corepatch-sig-bypass.md`):
+
+1. **Root-synchronous scoping (refines §5.2/§5.3).** CorePatch arm/disarm attaches ONLY to the
+   synchronous root `pm install-commit` shell path (blocks through PMS verification, so arm-state is
+   held while the hook fires). The async `PackageInstaller` path never carries an authorization — it
+   would disarm before the hook ran. CorePatch is root-only, so this is its only path anyway.
+2. **Coarse per-install entry hook + thread-scoped token (refines §5.3-§5.5).** A single coarse hook
+   fires once per install (off the verify lock), does the bounded arm-state IPC, matches
+   pkg+signer?+capability+deadline+installer-UID, and sets a `ThreadLocal` token that the fine
+   sig/digest hooks read. The fine digest hooks (`MessageDigest#isEqual` etc.) get no package/signer,
+   so the thread token — not a process-global flag — is what confines them to the one matched
+   install.
+3. **Epoch clock domain (§5.2).** `deadlineMillis` and all comparisons use `System.currentTimeMillis()`
+   on both sides — never `SystemClock` (boot-relative).
+4. **Lazy expiry + `finally`-disarm replace the active watchdog (§5.2).** TTL is a crash-only backstop.
+5. **Play-Protect self-heal (§7).** A durable marker + startup reconciler force-restores
+   `package_verifier_enable=1` if Thor is killed mid-install.
+6. **Bounded, off-lock IPC (§5).** The coarse hook's provider call runs on a worker thread with an
+   800ms timeout defaulting to DISARMED, so a frozen/ANRing Thor cannot trip the `system_server`
+   watchdog.
