@@ -474,4 +474,15 @@
     <string name="animation_intensity_high">High</string>    <string name="suspended_app_dialog_title">Thor</string>
     <string name="suspended_app_dialog_message">This app has been suspended by Thor.</string>
 
+    <!-- CorePatch (Xposed signature-bypass) danger zone -->
+    <string name="danger_zone">Danger Zone</string>
+    <string name="core_patch_title">CorePatch signature bypass</string>
+    <string name="core_patch_desc">Allow installs that defeat Android\'s signature checks. Off by default.</string>
+    <string name="core_patch_unavailable_desc">Requires Root mode and the Strombringer LSPosed module.</string>
+    <string name="core_patch_optin_title">Disable tamper protection?</string>
+    <string name="core_patch_optin_body">Turning this on lets Thor bypass Android\'s signature and impersonation protection, so apps signed by anyone can overwrite trusted apps. This weakens a core security guarantee of your device and can let malware masquerade as apps you trust. Thor is not responsible for any damage, data loss, or compromise that results. Only continue if you fully understand the risk.</string>
+    <string name="core_patch_optin_type_instruction">Type \"%1$s\" to continue.</string>
+    <string name="core_patch_optin_field_label">Confirmation phrase</string>
+    <string name="core_patch_optin_enable">Enable anyway</string>
+
 </resources>

@@ -37,7 +37,8 @@ class SettingsViewModel(
     private val localeManager: LocaleManager,
     private val freezerRepository: FreezerRepository,
     private val manageAppUseCase: ManageAppUseCase,
-    private val freezerShortcutManager: com.valhalla.thor.data.launcher.FreezerShortcutManager
+    private val freezerShortcutManager: com.valhalla.thor.data.launcher.FreezerShortcutManager,
+    private val extensionManager: com.valhalla.thor.data.manager.ExtensionManager
 ) : ViewModel() {
 
     data class SettingsUiState(
@@ -45,9 +46,20 @@ class SettingsViewModel(
         val isRootAvailable: Boolean = false,
         val isShizukuAvailable: Boolean = false,
         val isDhizukuAvailable: Boolean = false,
+        // Best-effort proxy for "the Strombringer LSPosed module is present" — gates the CorePatch
+        // danger-zone toggle. Precise hook-active detection is a follow-up (see ExtensionManager).
+        val lsposedActive: Boolean = false,
         val canUseBiometric: Boolean = false,
         val hasBiometricHardware: Boolean = false,
         val actionMessage: UiText? = null
+    )
+
+    /** Off-main-thread snapshot of the available privilege engines plus the LSPosed-module probe. */
+    private data class PrivilegeProbe(
+        val root: Boolean,
+        val shizuku: Boolean,
+        val dhizuku: Boolean,
+        val lsposedActive: Boolean
     )
 
     private val _actionMessage = MutableStateFlow<UiText?>(null)
@@ -56,23 +68,25 @@ class SettingsViewModel(
         preferenceRepository.userPreferences,
         _actionMessage,
         flow {
-            // Availability probes hit binder IPC (Shizuku.pingBinder / DhizukuAPI).
-            // flowOn(IO) below keeps them off the Main thread to avoid janking the
-            // first subscription / every WhileSubscribed restart.
+            // Availability probes hit binder IPC (Shizuku.pingBinder / DhizukuAPI) and the
+            // Strombringer probe hits PackageManager. flowOn(IO) below keeps them off the Main
+            // thread to avoid janking the first subscription / every WhileSubscribed restart.
             emit(
-                Triple(
-                    systemRepository.isRootAvailable(),
-                    systemRepository.isShizukuAvailable(),
-                    systemRepository.isDhizukuAvailable()
+                PrivilegeProbe(
+                    root = systemRepository.isRootAvailable(),
+                    shizuku = systemRepository.isShizukuAvailable(),
+                    dhizuku = systemRepository.isDhizukuAvailable(),
+                    lsposedActive = extensionManager.isStrombringerInstalled()
                 )
             )
         }.flowOn(Dispatchers.IO)
     ) { prefs, message, status ->
         SettingsUiState(
             prefs = prefs,
-            isRootAvailable = status.first,
-            isShizukuAvailable = status.second,
-            isDhizukuAvailable = status.third,
+            isRootAvailable = status.root,
+            isShizukuAvailable = status.shizuku,
+            isDhizukuAvailable = status.dhizuku,
+            lsposedActive = status.lsposedActive,
             canUseBiometric = biometricHelper.canAuthenticate(),
             hasBiometricHardware = biometricHelper.hasHardware(),
             actionMessage = message
@@ -190,6 +204,16 @@ class SettingsViewModel(
     fun setAnimationIntensity(intensity: AnimationIntensity) {
         viewModelScope.launch {
             preferenceRepository.setAnimationIntensity(intensity)
+        }
+    }
+
+    /**
+     * Master opt-in for CorePatch (Xposed signature-bypass). Enabling is gated behind the
+     * type-to-confirm dialog in the UI; disabling is the fail-safe direction and needs no confirm.
+     */
+    fun setCorePatchEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferenceRepository.setCorePatchEnabled(enabled)
         }
     }
 }
