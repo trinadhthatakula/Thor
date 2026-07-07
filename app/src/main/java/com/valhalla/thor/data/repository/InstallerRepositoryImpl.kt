@@ -11,12 +11,7 @@ import android.os.Build
 import android.provider.OpenableColumns
 import com.valhalla.bypass.Bypass
 import com.valhalla.thor.data.ACTION_INSTALL_STATUS
-import com.valhalla.thor.data.corepatch.ApkSignerSha
-import com.valhalla.thor.data.corepatch.CorePatchArmStateHolder
-import com.valhalla.thor.data.corepatch.CorePatchAudit
-import com.valhalla.thor.data.corepatch.CorePatchAuditEntry
 import com.valhalla.thor.data.gateway.RootSystemGateway
-import com.valhalla.thor.data.manager.StrombringerConfigClient
 import com.valhalla.thor.data.receivers.InstallReceiver
 import com.valhalla.thor.data.source.local.shizuku.ShizukuPackageInstallerUtils
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
@@ -24,10 +19,8 @@ import com.valhalla.thor.data.source.local.shizuku.Shizuku as ShizukuHelper
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
-import com.valhalla.thor.domain.model.CorePatchAuthorization
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
-import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.R
 import com.valhalla.thor.util.Logger
@@ -50,9 +43,6 @@ class InstallerRepositoryImpl(
     private val eventBus: InstallerEventBus,
     private val rootGateway: RootSystemGateway,
     private val shizukuReflector: ShizukuReflector,
-    private val preferenceRepository: PreferenceRepository,
-    private val armState: CorePatchArmStateHolder,
-    private val audit: CorePatchAudit,
 ) : InstallerRepository {
 
     private val defaultInstaller = context.packageManager.packageInstaller
@@ -91,15 +81,12 @@ class InstallerRepositoryImpl(
         uri: Uri,
         mode: InstallMode,
         canDowngrade: Boolean,
-        corePatch: CorePatchAuthorization?,
     ) =
         withContext(Dispatchers.IO) {
             try {
                 when (mode) {
                     InstallMode.ROOT -> {
-                        // CorePatch rides ONLY the synchronous root session install (it blocks through
-                        // PMS verification, so arm-state is held while the Strombringer hook fires).
-                        installWithRoot(uri, canDowngrade, corePatch)
+                        installWithRoot(uri, canDowngrade)
                     }
 
                     InstallMode.SHIZUKU -> {
@@ -336,7 +323,6 @@ class InstallerRepositoryImpl(
     private suspend fun installWithRoot(
         uri: Uri,
         canDowngrade: Boolean,
-        corePatch: CorePatchAuthorization?,
     ) {
         eventBus.emit(InstallState.Installing(0f))
 
@@ -353,30 +339,10 @@ class InstallerRepositoryImpl(
 
         try {
             val apkPaths = tempFiles.map { it.absolutePath }
-            // The single blocking root session install — the only thing the arm bracket ever wraps.
-            val doInstall: suspend () -> Result<Unit> = {
-                if (apkPaths.size == 1) {
-                    rootGateway.installApp(apkPaths[0], canDowngrade)
-                } else {
-                    rootGateway.installMultipleApks(apkPaths, canDowngrade)
-                }
-            }
-
-            // Gate: only engage the bracket when a per-op authorization is present AND CorePatch is
-            // master-enabled. The master flag now lives in the Strombringer extension (read over IPC,
-            // fail-safe false); short-circuits so it is never read on the ordinary (null) path.
-            val result = if (corePatch != null &&
-                StrombringerConfigClient.isCorePatchEnabled(context)
-            ) {
-                // Read the prior verifier value BEFORE flipping it, and only when we intend to flip.
-                val priorVerifier = if (corePatch.disablePlayProtect) {
-                    rootGateway.isPackageVerifierEnabled().getOrDefault(true)
-                } else {
-                    true
-                }
-                withCorePatchArmed(corePatch, prior = { priorVerifier }, block = doInstall)
+            val result = if (apkPaths.size == 1) {
+                rootGateway.installApp(apkPaths[0], canDowngrade)
             } else {
-                doInstall()
+                rootGateway.installMultipleApks(apkPaths, canDowngrade)
             }
 
             if (result.isSuccess) {
@@ -392,67 +358,6 @@ class InstallerRepositoryImpl(
             eventBus.emit(InstallState.Error(UiText.DynamicString("Root install error: ${e.message}")))
         } finally {
             tempDir.deleteRecursively()
-        }
-    }
-
-    /**
-     * Wraps [block] (the blocking root session install) in the CorePatch arm bracket.
-     *
-     * Ordering is safety-critical:
-     *  1. If [CorePatchAuthorization.disablePlayProtect]: write the durable marker, THEN flip the
-     *     package verifier off — both BEFORE the `try`, so a throw here can never leave us armed.
-     *  2. Inside `try`, `arm(...)` is the FIRST statement (opens the hook window), then run [block].
-     *  3. In `finally`: always `disarm()`; if we flipped, restore the prior verifier value and clear
-     *     the marker; append an audit entry either way.
-     *
-     * [prior] supplies the verifier value captured before the flip (kept as a plain lambda so the
-     * bracket stays testable without a suspend gateway read). The armed package is [auth]'s [pkg] —
-     * the exact package the user confirmed — never re-derived from the APK.
-     */
-    internal suspend fun <T> withCorePatchArmed(
-        auth: CorePatchAuthorization,
-        prior: () -> Boolean,
-        block: suspend () -> T,
-    ): T {
-        var flipped = false
-        var priorValue = true
-        if (auth.disablePlayProtect) {
-            priorValue = prior()
-            preferenceRepository.setVerifierIntentionallyDisabled(true)
-            rootGateway.setPackageVerifierEnabled(false)
-            flipped = true
-        }
-
-        val oldSigner = ApkSignerSha.ofInstalled(context, auth.pkg)
-        var resultLabel = "FAILED"
-        try {
-            armState.arm(auth.pkg, auth.expectedNewSignerSha256, auth.capability, ttlMillis = 30_000)
-            val result = block()
-            // The root install returns Result<Unit>: a failed install comes back as Result.failure
-            // WITHOUT throwing, so trusting "block() returned" == success mis-logs failures as SUCCESS.
-            // Inspect the returned value; a non-Result block that returns normally is still a success
-            // (it would have thrown otherwise), so fall back to "SUCCESS" only then.
-            resultLabel = (result as? Result<*>)?.let {
-                if (it.isSuccess) "SUCCESS" else (it.exceptionOrNull()?.message ?: "FAILED")
-            } ?: "SUCCESS"
-            return result
-        } finally {
-            armState.disarm()
-            if (flipped) {
-                rootGateway.setPackageVerifierEnabled(priorValue)
-                preferenceRepository.setVerifierIntentionallyDisabled(false)
-            }
-            audit.append(
-                CorePatchAuditEntry(
-                    timestampMillis = System.currentTimeMillis(),
-                    pkg = auth.pkg,
-                    oldSigner = oldSigner,
-                    newSigner = auth.expectedNewSignerSha256,
-                    capability = auth.capability,
-                    downgrade = auth.downgrade,
-                    result = resultLabel,
-                )
-            )
         }
     }
 

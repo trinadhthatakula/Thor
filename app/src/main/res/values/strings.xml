@@ -474,47 +474,4 @@
     <string name="animation_intensity_high">High</string>    <string name="suspended_app_dialog_title">Thor</string>
     <string name="suspended_app_dialog_message">This app has been suspended by Thor.</string>
 
-    <!-- CorePatch (Xposed signature-bypass) danger zone -->
-    <string name="danger_zone">Danger Zone</string>
-    <string name="core_patch_title">CorePatch signature bypass</string>
-    <string name="core_patch_desc">Allow installs that defeat Android\'s signature checks. Off by default.</string>
-    <string name="core_patch_unavailable_desc">Requires Root mode and the Strombringer LSPosed module.</string>
-    <string name="core_patch_optin_title">Disable tamper protection?</string>
-    <string name="core_patch_optin_body">Turning this on lets Thor bypass Android\'s signature and impersonation protection, so apps signed by anyone can overwrite trusted apps. This weakens a core security guarantee of your device and can let malware masquerade as apps you trust. Thor is not responsible for any damage, data loss, or compromise that results. Only continue if you fully understand the risk.</string>
-    <string name="core_patch_optin_type_instruction">Type \"%1$s\" to continue.</string>
-    <string name="core_patch_optin_field_label">Confirmation phrase</string>
-    <string name="core_patch_optin_enable">Enable anyway</string>
-
-    <!-- Per-operation CorePatch confirm dialog (Task 11) -->
-    <string name="core_patch_confirm_title">Bypass signature check?</string>
-    <string name="core_patch_confirm_body">This install defeats Android\'s signature protection for the package below. A differently-signed APK will overwrite the installed one. Only continue if you trust this APK completely — Thor is not responsible for the fallout.</string>
-    <string name="core_patch_confirm_capability_label">Bypass type</string>
-    <string name="core_patch_confirm_cap_sig">Signature mismatch (sig)</string>
-    <string name="core_patch_confirm_cap_digest">Digest / downgrade (digest)</string>
-    <string name="core_patch_confirm_installed_signer">Installed signer</string>
-    <string name="core_patch_confirm_new_signer">New signer</string>
-    <string name="core_patch_confirm_signer_none">— (fresh install)</string>
-    <string name="core_patch_confirm_signers_differ">Signers differ</string>
-    <string name="core_patch_confirm_signers_match">Signers match</string>
-    <string name="core_patch_confirm_downgrade_label">Downgrade</string>
-    <string name="core_patch_confirm_disable_play_protect">Also disable Play Protect for this install</string>
-    <string name="core_patch_confirm_install">Bypass and install</string>
-    <string name="core_patch_confirm_biometric_title">Confirm signature bypass</string>
-    <string name="core_patch_confirm_biometric_subtitle">Authenticate to arm the CorePatch install</string>
-    <string name="error_core_patch_signer">Couldn\'t read the APK signer, so a signature bypass can\'t be armed for this file.</string>
-
-    <!-- CorePatch audit viewer + kill-switch (Task 12) -->
-    <string name="core_patch_audit_title">CorePatch audit log</string>
-    <string name="core_patch_audit_desc">View and export past signature-bypass installs.</string>
-    <string name="core_patch_audit_empty">No signature bypasses have been recorded yet.</string>
-    <string name="core_patch_audit_export">Export</string>
-    <string name="core_patch_audit_export_subject">Thor CorePatch audit log</string>
-    <string name="core_patch_audit_time_label">Time</string>
-    <string name="core_patch_audit_signer_label">Signer</string>
-    <string name="core_patch_audit_downgrade_yes">Yes</string>
-    <string name="core_patch_audit_signer_flow">%1$s → %2$s</string>
-    <string name="core_patch_kill_switch_title">Disable all bypasses now</string>
-    <string name="core_patch_kill_switch_desc">Turn CorePatch off and disarm any pending bypass immediately.</string>
-    <string name="core_patch_kill_switch_done">All CorePatch bypasses disabled.</string>
-
 </resources>

@@ -3,8 +3,6 @@ package com.valhalla.thor.presentation.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
-import com.valhalla.thor.data.corepatch.CorePatchAudit
-import com.valhalla.thor.data.corepatch.CorePatchAuditEntry
 import com.valhalla.thor.data.security.BiometricHelper
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.FreezerMode
@@ -40,8 +38,6 @@ class SettingsViewModel(
     private val freezerRepository: FreezerRepository,
     private val manageAppUseCase: ManageAppUseCase,
     private val freezerShortcutManager: com.valhalla.thor.data.launcher.FreezerShortcutManager,
-    private val extensionManager: com.valhalla.thor.data.manager.ExtensionManager,
-    private val corePatchAudit: CorePatchAudit
 ) : ViewModel() {
 
     data class SettingsUiState(
@@ -49,25 +45,16 @@ class SettingsViewModel(
         val isRootAvailable: Boolean = false,
         val isShizukuAvailable: Boolean = false,
         val isDhizukuAvailable: Boolean = false,
-        // Best-effort proxy for "the Strombringer LSPosed module is present" — together with
-        // [corePatchEnabled] it gates the read-only CorePatch audit-log entry. Precise hook-active
-        // detection is a follow-up (see ExtensionManager).
-        val lsposedActive: Boolean = false,
-        // CorePatch master flag, read over IPC from Strombringer's config provider (fail-safe false).
-        // The master opt-in itself now lives in the extension; Thor only reads it to gate the audit log.
-        val corePatchEnabled: Boolean = false,
         val canUseBiometric: Boolean = false,
         val hasBiometricHardware: Boolean = false,
         val actionMessage: UiText? = null
     )
 
-    /** Off-main-thread snapshot of the available privilege engines plus the Strombringer probes. */
+    /** Off-main-thread snapshot of the available privilege engines. */
     private data class PrivilegeProbe(
         val root: Boolean,
         val shizuku: Boolean,
-        val dhizuku: Boolean,
-        val lsposedActive: Boolean,
-        val corePatchEnabled: Boolean
+        val dhizuku: Boolean
     )
 
     private val _actionMessage = MutableStateFlow<UiText?>(null)
@@ -76,17 +63,14 @@ class SettingsViewModel(
         preferenceRepository.userPreferences,
         _actionMessage,
         flow {
-            // Availability probes hit binder IPC (Shizuku.pingBinder / DhizukuAPI), the Strombringer
-            // presence probe hits PackageManager, and the CorePatch flag is a binder IPC to the
-            // extension's config provider. flowOn(IO) below keeps them off the Main thread to avoid
-            // janking the first subscription / every WhileSubscribed restart.
+            // Availability probes hit binder IPC (Shizuku.pingBinder / DhizukuAPI). flowOn(IO) below
+            // keeps them off the Main thread to avoid janking the first subscription / every
+            // WhileSubscribed restart.
             emit(
                 PrivilegeProbe(
                     root = systemRepository.isRootAvailable(),
                     shizuku = systemRepository.isShizukuAvailable(),
-                    dhizuku = systemRepository.isDhizukuAvailable(),
-                    lsposedActive = extensionManager.isStrombringerInstalled(),
-                    corePatchEnabled = extensionManager.isCorePatchEnabled()
+                    dhizuku = systemRepository.isDhizukuAvailable()
                 )
             )
         }.flowOn(Dispatchers.IO)
@@ -96,8 +80,6 @@ class SettingsViewModel(
             isRootAvailable = status.root,
             isShizukuAvailable = status.shizuku,
             isDhizukuAvailable = status.dhizuku,
-            lsposedActive = status.lsposedActive,
-            corePatchEnabled = status.corePatchEnabled,
             canUseBiometric = biometricHelper.canAuthenticate(),
             hasBiometricHardware = biometricHelper.hasHardware(),
             actionMessage = message
@@ -217,14 +199,4 @@ class SettingsViewModel(
             preferenceRepository.setAnimationIntensity(intensity)
         }
     }
-
-    /**
-     * Snapshot of the CorePatch audit trail, newest first. The audit is an in-memory ring buffer
-     * ([CorePatchAudit]); reading it is cheap, so the viewer reads a fresh snapshot on entry.
-     *
-     * The master opt-in + kill-switch now live in the Strombringer extension; Thor keeps only this
-     * read-only audit view (gated behind the extension's CorePatch flag in the UI).
-     */
-    fun corePatchAuditEntries(): List<CorePatchAuditEntry> =
-        corePatchAudit.all().sortedByDescending { it.timestampMillis }
 }

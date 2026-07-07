@@ -14,34 +14,6 @@ class ExtensionManager(private val context: Context) {
     private val EXTENSION_PACKAGE_PREFIX = "com.valhalla.thor.ext."
 
     /**
-     * Best-effort proxy for "the Strombringer LSPosed signature-bypass module is present".
-     *
-     * We can only cheaply observe whether the extension APK is installed — whether LSPosed has
-     * actually activated and hooked it into system_server is not reliably observable from the app
-     * side, so precise hook-active detection is a follow-up. This is the cleanest available signal
-     * for gating the CorePatch danger-zone toggle.
-     */
-    fun isStrombringerInstalled(): Boolean = isPackageInstalled(STROMBRINGER_PACKAGE)
-
-    /**
-     * Reads the CorePatch master-enable flag from Strombringer's exported config provider (IPC).
-     *
-     * The master opt-in now lives in the extension (it owns writing the flag); Thor only reads it.
-     * Fail-safe: extension absent / provider missing / IPC error / flag unset all resolve to false.
-     * Blocking binder IPC — call off the main thread.
-     */
-    fun isCorePatchEnabled(): Boolean = StrombringerConfigClient.isCorePatchEnabled(context)
-
-    private fun isPackageInstalled(packageName: String): Boolean = try {
-        pm.getPackageInfo(packageName, 0)
-        true
-    } catch (_: PackageManager.NameNotFoundException) {
-        false
-    } catch (_: Exception) {
-        false
-    }
-
-    /**
      * Finds and loads all valid installed extensions.
      */
     fun loadExtensions(): List<ThorExtension> {
@@ -120,11 +92,6 @@ class ExtensionManager(private val context: Context) {
                         app.metaData?.getString("thor.extension.class") == className
             }
             ?.packageName
-    }
-
-    companion object {
-        /** Package id of the optional Strombringer LSPosed module (CorePatch signature-bypass hook). */
-        const val STROMBRINGER_PACKAGE = "com.valhalla.thor.ext.strombringer"
     }
 }
 

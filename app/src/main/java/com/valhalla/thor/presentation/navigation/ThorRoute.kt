@@ -26,7 +26,4 @@ sealed interface ThorRoute : NavKey {
 
     @Serializable
     data object ExtensionManager : ThorRoute
-
-    @Serializable
-    data object CorePatchAudit : ThorRoute
 }

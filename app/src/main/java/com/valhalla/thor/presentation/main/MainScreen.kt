@@ -81,7 +81,6 @@ import com.valhalla.asgard.navigation.AsgardNavigationBar
 import com.valhalla.asgard.navigation.AsgardNavigationRail
 import com.valhalla.thor.presentation.permission.PermissionManagerScreen
 import com.valhalla.thor.presentation.settings.SettingsScreen
-import com.valhalla.thor.presentation.corepatch.CorePatchAuditScreen
 import com.valhalla.thor.presentation.extension.ExtensionManagerScreen
 import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
@@ -451,21 +450,6 @@ fun MainScreen(
                     SettingsScreen(
                         onNavigateToExtensionManager = {
                             settingsBackStack.add(ThorRoute.ExtensionManager)
-                        },
-                        onNavigateToCorePatchAudit = {
-                            settingsBackStack.add(ThorRoute.CorePatchAudit)
-                        }
-                    )
-                }
-
-                entry<ThorRoute.CorePatchAudit>(
-                    metadata = ListDetailSceneStrategy.detailPane()
-                ) {
-                    CorePatchAuditScreen(
-                        onBack = {
-                            if (settingsBackStack.size > 1) {
-                                settingsBackStack.removeLastOrNull()
-                            }
                         }
                     )
                 }

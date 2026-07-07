@@ -74,10 +74,6 @@ class PreferenceRepositoryImpl(
 
         // Extensions
         val EXTENSIONS_UNLOCKED = booleanPreferencesKey("extensions_unlocked")
-
-        // CorePatch — durable "we intentionally turned the package verifier off" marker. Survives a
-        // crash/kill so the reconciler can force it back on at next launch (fail-safe self-heal).
-        val VERIFIER_INTENTIONALLY_DISABLED = booleanPreferencesKey("verifier_intentionally_disabled")
     }
 
     override val userPreferences: Flow<UserPreferences> = context.dataStore.data
@@ -220,12 +216,6 @@ class PreferenceRepositoryImpl(
     override suspend fun setExtensionsUnlocked(unlocked: Boolean) {
         context.dataStore.edit { it[Keys.EXTENSIONS_UNLOCKED] = unlocked }
     }
-
-    // --- CorePatch ---
-
-    override suspend fun setVerifierIntentionallyDisabled(disabled: Boolean) {
-        context.dataStore.edit { it[Keys.VERIFIER_INTENTIONALLY_DISABLED] = disabled }
-    }
 }
 
 /**
@@ -289,7 +279,6 @@ internal fun Preferences.toUserPreferences(): UserPreferences {
         appListIsGrid = appListIsGrid,
         freezerIsGrid = freezerIsGrid,
         extensionsUnlocked = prefs[Keys.EXTENSIONS_UNLOCKED] ?: false,
-        exportDirUri = prefs[Keys.EXPORT_DIR_URI],
-        verifierIntentionallyDisabled = prefs[Keys.VERIFIER_INTENTIONALLY_DISABLED] ?: false
+        exportDirUri = prefs[Keys.EXPORT_DIR_URI]
     )
 }

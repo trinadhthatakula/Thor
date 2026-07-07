@@ -14,12 +14,6 @@ import java.io.File
 private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
 private val USER_ID_REGEX = Regex("^\\d+$")
 
-internal fun parsePackageVerifierValue(raw: String?): Boolean {
-    val v = raw?.trim()
-    if (v.isNullOrEmpty() || v.equals("null", ignoreCase = true)) return true // Android default = enabled
-    return v != "0"
-}
-
 /**
  * Modern implementation of SystemGateway using the reactive ShellRepository.
  * No more static blocking calls.
@@ -351,14 +345,6 @@ class RootSystemGateway(
             }
         }
     }
-
-    override suspend fun setPackageVerifierEnabled(enabled: Boolean): Result<Unit> =
-        executeShellCommand("settings put global package_verifier_enable ${if (enabled) 1 else 0}")
-            .map { }
-
-    override suspend fun isPackageVerifierEnabled(): Result<Boolean> =
-        executeShellCommand("settings get global package_verifier_enable")
-            .map { (_, out) -> parsePackageVerifierValue(out) }
 
     /**
      * Copies a file using Root privileges.

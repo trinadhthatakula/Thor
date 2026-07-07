@@ -53,11 +53,7 @@ data class UserPreferences(
     val extensionsUnlocked: Boolean = false,
 
     // Export destination (persisted SAF tree URI; null = default Downloads/Thor)
-    val exportDirUri: String? = null,
-
-    // CorePatch durable marker: the package verifier was intentionally turned off for a bypass
-    // install. If a crash left this true, the reconciler forces the verifier back on at next launch.
-    val verifierIntentionallyDisabled: Boolean = false
+    val exportDirUri: String? = null
 )
 
 

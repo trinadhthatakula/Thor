@@ -69,7 +69,6 @@ import org.koin.compose.koinInject
 @Composable
 fun SettingsScreen(
     onNavigateToExtensionManager: () -> Unit,
-    onNavigateToCorePatchAudit: () -> Unit,
     viewModel: SettingsViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -512,32 +511,6 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
             }
-            Spacer(Modifier.height(32.dp))
-        }
-
-        // ── COREPATCH AUDIT ─────────────────────────────────────────────────
-        // The CorePatch master opt-in + kill-switch now live in the Strombringer extension. Thor
-        // surfaces only the read-only audit log, and only when the extension is installed AND its
-        // CorePatch flag is on (both probed off-main in the ViewModel). When it is off there is
-        // nothing to review, so the entry is hidden entirely.
-        if (state.lsposedActive && state.corePatchEnabled) {
-            SettingsSectionLabel(stringResource(R.string.core_patch_audit_title))
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(32.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                    .padding(8.dp)
-            ) {
-                SettingsClickRow(
-                    icon = R.drawable.list,
-                    title = stringResource(R.string.core_patch_audit_title),
-                    subtitle = stringResource(R.string.core_patch_audit_desc),
-                    onClick = onNavigateToCorePatchAudit
-                )
-            }
-
             Spacer(Modifier.height(32.dp))
         }
 

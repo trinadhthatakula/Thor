@@ -131,13 +131,6 @@ class DhizukuSystemGateway(
         }
     }
 
-    override suspend fun setPackageVerifierEnabled(enabled: Boolean): Result<Unit> =
-        executeShellCommand("settings put global package_verifier_enable ${if (enabled) 1 else 0}").map { }
-
-    override suspend fun isPackageVerifierEnabled(): Result<Boolean> =
-        executeShellCommand("settings get global package_verifier_enable")
-            .map { (_, out) -> parsePackageVerifierValue(out) }
-
     override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> {
         return if (reflector.setAppSuspended(packageName, isSuspended)) Result.success(Unit)
         else Result.failure(Exception("Dhizuku: Set suspended state failed."))

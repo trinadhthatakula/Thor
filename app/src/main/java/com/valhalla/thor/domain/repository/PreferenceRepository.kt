@@ -61,13 +61,4 @@ interface PreferenceRepository {
 
     // --- Extensions ---
     suspend fun setExtensionsUnlocked(unlocked: Boolean)
-
-    // --- CorePatch ---
-
-    /**
-     * Durable "we intentionally disabled the package verifier for a bypass install" marker.
-     * Set before flipping the verifier off, cleared after restoring it. The reconciler reads this at
-     * startup to self-heal if a crash/kill skipped the restore.
-     */
-    suspend fun setVerifierIntentionallyDisabled(disabled: Boolean)
 }
