@@ -28,7 +28,7 @@ coil3 = "3.5.0"
 navigation3 = "1.1.4"
 play-billing = "9.1.0"
 androidx-adaptive = "1.3.0-rc01"
-thorExtensionApi = "2.0.0"
+thorExtensionApi = "3.0.0"
 asgardUi = "2.0.0"
 
 [libraries]
