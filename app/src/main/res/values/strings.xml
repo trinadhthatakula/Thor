@@ -244,6 +244,7 @@
     <string name="manage_extensions">Manage Extensions</string>
     <string name="manage_extensions_desc">View and configure installed APK plugins</string>
     <string name="extensions_unlocked">Extensions unlocked 🔓</string>
+    <string name="easter_egg_promoted">🎉 This hidden feature has already been promoted — stay tuned for the next one!</string>
     <string name="support_tab_play_store">Play Store</string>
     <string name="support_tab_direct">Direct</string>
     <string name="log_trigger_executed">Trigger executed: %1$s</string>
@@ -253,6 +254,10 @@
     <string name="installer_sideloaded">SIDELOADED</string>
     <string name="permission_protection_level">Protection: %1$s</string>
     <string name="extension_manager">Extension Manager</string>
+    <string name="extension_consent_title">Before you continue</string>
+    <string name="extension_consent_body">Extensions are powerful add-ons that can change how apps and the system behave on your device. They are not always made by us — anyone can build one. We verify and sign the extensions we distribute, but this is inherently risky territory.\n\nBy continuing you accept that you alone are responsible for what you install and enable here, and that Thor and its developers are NOT liable for any data loss, malfunction, or damage caused by an extension or any change you make through it.</string>
+    <string name="extension_consent_math_prompt">To confirm you\'ve read this, solve: %1$d + %2$d = ?</string>
+    <string name="extension_consent_accept">I understand — continue</string>
     <string name="extension_security_verified">Verified</string>
     <string name="extension_security_debug">Debug Mode (Unverified)</string>
     <string name="extension_security_untrusted">Untrusted (Blocked)</string>

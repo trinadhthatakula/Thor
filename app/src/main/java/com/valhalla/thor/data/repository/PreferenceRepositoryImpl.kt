@@ -74,6 +74,7 @@ class PreferenceRepositoryImpl(
 
         // Extensions
         val EXTENSIONS_UNLOCKED = booleanPreferencesKey("extensions_unlocked")
+        val EXTENSION_CONSENT_ACCEPTED = booleanPreferencesKey("extension_consent_accepted")
     }
 
     override val userPreferences: Flow<UserPreferences> = context.dataStore.data
@@ -216,6 +217,10 @@ class PreferenceRepositoryImpl(
     override suspend fun setExtensionsUnlocked(unlocked: Boolean) {
         context.dataStore.edit { it[Keys.EXTENSIONS_UNLOCKED] = unlocked }
     }
+
+    override suspend fun setExtensionConsentAccepted(accepted: Boolean) {
+        context.dataStore.edit { it[Keys.EXTENSION_CONSENT_ACCEPTED] = accepted }
+    }
 }
 
 /**
@@ -279,6 +284,7 @@ internal fun Preferences.toUserPreferences(): UserPreferences {
         appListIsGrid = appListIsGrid,
         freezerIsGrid = freezerIsGrid,
         extensionsUnlocked = prefs[Keys.EXTENSIONS_UNLOCKED] ?: false,
+        extensionConsentAccepted = prefs[Keys.EXTENSION_CONSENT_ACCEPTED] ?: false,
         exportDirUri = prefs[Keys.EXPORT_DIR_URI]
     )
 }

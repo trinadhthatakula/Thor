@@ -61,4 +61,5 @@ interface PreferenceRepository {
 
     // --- Extensions ---
     suspend fun setExtensionsUnlocked(unlocked: Boolean)
+    suspend fun setExtensionConsentAccepted(accepted: Boolean)
 }

@@ -431,8 +431,10 @@ fun SettingsScreen(
         }
 
         // ── EXTENSIONS ──────────────────────────────────────────────────────
-        // Hidden until unlocked via the home-screen easter egg — the feature is not yet stable.
-        if (prefs.extensionsUnlocked) {
+        // Power-user surface: shown only when an elevated privilege (Root / Shizuku / Dhizuku) is
+        // available, so normal users aren't offered it. Entry into the manager itself is further
+        // gated by a one-time liability-consent sheet (see ExtensionManagerScreen).
+        if (hasPrivilege) {
             Spacer(Modifier.height(32.dp))
 
             SettingsSectionLabel(stringResource(R.string.extensions))

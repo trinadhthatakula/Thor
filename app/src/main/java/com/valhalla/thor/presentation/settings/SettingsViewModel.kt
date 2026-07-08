@@ -130,6 +130,10 @@ class SettingsViewModel(
         viewModelScope.launch { preferenceRepository.setReinstallAllCardVisibility(visible) }
     }
 
+    fun setExtensionConsentAccepted(accepted: Boolean) {
+        viewModelScope.launch { preferenceRepository.setExtensionConsentAccepted(accepted) }
+    }
+
     fun setLanguage(language: String?) {
         viewModelScope.launch {
             preferenceRepository.setLanguage(language)

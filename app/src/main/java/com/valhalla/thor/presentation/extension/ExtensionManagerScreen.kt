@@ -27,7 +27,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import kotlin.random.Random
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,6 +85,16 @@ fun ExtensionManagerScreen(
     LifecycleResumeEffect(Unit) {
         if (firstResume) firstResume = false else viewModel.loadExtensions()
         onPauseOrDispose { }
+    }
+
+    // First-open liability gate: the manager is a powerful, third-party-capable surface, so require
+    // an explicit consent (disclaimer + a small math check) before it can be used. Persisted, so it
+    // shows only once; dismissing without solving leaves the screen.
+    if (!prefs.extensionConsentAccepted) {
+        ExtensionConsentSheet(
+            onConsent = { settingsViewModel.setExtensionConsentAccepted(true) },
+            onDismiss = onBack,
+        )
     }
 
     Scaffold(
@@ -167,6 +186,97 @@ fun ExtensionManagerScreen(
             }
         }
     }
+
+/**
+ * One-time liability-consent gate shown the first time the user opens the Extension Manager. Beyond
+ * reading the disclaimer, the user must solve a small arithmetic problem — a deliberate,
+ * un-tap-through-able confirmation that they've engaged with the warning before accepting the risk.
+ * [onConsent] persists acceptance; [onDismiss] (swipe / scrim / back) leaves the manager.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExtensionConsentSheet(
+    onConsent: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val a = remember { Random.nextInt(3, 10) }
+    val b = remember { Random.nextInt(2, 9) }
+    var answer by rememberSaveable { mutableStateOf("") }
+    val solved = answer.trim().toIntOrNull() == a + b
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.extension_consent_title),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = stringResource(R.string.extension_consent_body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = stringResource(R.string.extension_consent_math_prompt, a, b),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            OutlinedTextField(
+                value = answer,
+                onValueChange = { new -> answer = new.filter { it.isDigit() || it == '-' }.take(4) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Done
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Primary action gets the full width so its label never wraps.
+                Button(
+                    onClick = onConsent,
+                    enabled = solved,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = stringResource(R.string.extension_consent_accept),
+                        maxLines = 1
+                    )
+                }
+                // Decline = a compact close icon beside it.
+                IconButton(
+                    onClick = onDismiss,
+                    colors = IconButtonDefaults.filledTonalIconButtonColors()
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.round_close),
+                        contentDescription = stringResource(R.string.cancel)
+                    )
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun ExtensionTopAppBar(
