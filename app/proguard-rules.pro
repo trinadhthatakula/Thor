@@ -23,3 +23,13 @@
 -dontwarn javax.annotation.processing.Processor
 -dontwarn javax.annotation.Nullable
 -dontwarn dalvik.system.VMRuntime
+
+# --- Extension API ABI (host-provided contract) -----------------------------
+# Thor bundles com.trinadhthatakula:thor-extension-api and provides these types to
+# extensions at runtime. Extensions declare them `compileOnly` and are loaded via
+# PathClassLoader, so they reference the ORIGINAL fully-qualified names. R8 must NOT
+# rename or strip them, or every extension fails to load in release builds with a
+# ClassNotFoundException on its declared interface (ThorExtension/AutomationExtension/
+# DebloatExtension/AppIconModel …). Keep names + members of the whole api package.
+-keep class com.valhalla.thor.extension.api.** { *; }
+-keep interface com.valhalla.thor.extension.api.** { *; }
