@@ -81,6 +81,7 @@ import com.valhalla.asgard.navigation.AsgardNavigationBar
 import com.valhalla.asgard.navigation.AsgardNavigationRail
 import com.valhalla.thor.presentation.permission.PermissionManagerScreen
 import com.valhalla.thor.presentation.settings.SettingsScreen
+import com.valhalla.thor.presentation.extension.ExtensionBrowseScreen
 import com.valhalla.thor.presentation.extension.ExtensionManagerScreen
 import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
@@ -457,6 +458,21 @@ fun MainScreen(
                     metadata = ListDetailSceneStrategy.detailPane()
                 ) {
                     ExtensionManagerScreen(
+                        onBack = {
+                            if (settingsBackStack.size > 1) {
+                                settingsBackStack.removeLastOrNull()
+                            }
+                        },
+                        onBrowse = {
+                            settingsBackStack.add(ThorRoute.ExtensionBrowse)
+                        }
+                    )
+                }
+
+                entry<ThorRoute.ExtensionBrowse>(
+                    metadata = ListDetailSceneStrategy.detailPane()
+                ) {
+                    ExtensionBrowseScreen(
                         onBack = {
                             if (settingsBackStack.size > 1) {
                                 settingsBackStack.removeLastOrNull()

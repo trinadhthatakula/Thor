@@ -1,6 +1,5 @@
 package com.valhalla.thor.presentation.extension
 
-import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +25,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -45,7 +48,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
@@ -58,6 +60,7 @@ import androidx.compose.material3.IconButtonDefaults
 @Composable
 fun ExtensionManagerScreen(
     onBack: () -> Unit,
+    onBrowse: () -> Unit,
     viewModel: ExtensionManagerViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -65,6 +68,15 @@ fun ExtensionManagerScreen(
     val settingsViewModel: SettingsViewModel = koinViewModel()
     val prefs by settingsViewModel.preferences.collectAsStateWithLifecycle()
     val extensionManager: ExtensionManager = koinInject()
+
+    // Reload when returning to this screen (e.g. after installing from the store) so a freshly
+    // installed extension appears with its post-install cert gate. Skip the first resume, which
+    // would duplicate the VM's init-time load.
+    var firstResume by rememberSaveable { mutableStateOf(true) }
+    LifecycleResumeEffect(Unit) {
+        if (firstResume) firstResume = false else viewModel.loadExtensions()
+        onPauseOrDispose { }
+    }
 
     Scaffold(
         topBar = { ExtensionTopAppBar(onBack = onBack) },
@@ -85,14 +97,7 @@ fun ExtensionManagerScreen(
                     }
                 } else if (state.extensions.isEmpty()) {
                     EmptyExtensionState(
-                        onGetExtensions = {
-                            context.startActivity(
-                                Intent(
-                                    Intent.ACTION_VIEW,
-                                    "https://github.com/trinadhthatakula/Thor".toUri()
-                                )
-                            )
-                        }
+                        onGetExtensions = onBrowse
                     )
                 } else {
                     LazyColumn(
@@ -114,6 +119,26 @@ fun ExtensionManagerScreen(
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = onBrowse,
+                                shape = RoundedCornerShape(20.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.round_extension),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = stringResource(R.string.extension_browse_store),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                             Spacer(modifier = Modifier.height(16.dp))
                         }
 

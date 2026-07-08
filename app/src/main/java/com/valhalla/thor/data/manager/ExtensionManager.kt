@@ -95,6 +95,37 @@ class ExtensionManager(private val context: Context) {
         certBytes != null && isPinnedSigner(certBytes.toCertSha256Hex())
     }.getOrDefault(false)
 
+    /**
+     * True iff the APK FILE at [apkPath] is signed by a key whose certificate SHA-256 is in the
+     * pinned allowlist ([TrustedExtensionSigners.PINS]). This is the pre-install trust gate for
+     * catalog-downloaded extension APKs — the file is checked BEFORE it is ever handed to the
+     * package installer.
+     *
+     * Unlike [verifySignature], there is NO `BuildConfig.DEBUG` bypass here: a downloaded APK must
+     * ALWAYS be positively matched against a pinned signer. The debug bypass only ever applies to
+     * already-installed, locally-built extensions.
+     *
+     * Fail-CLOSED: any failure (unreadable archive, null signing info, hashing error, …) returns
+     * false. It never returns true unless a pinned signer is positively matched.
+     */
+    fun isApkFileSignerPinned(apkPath: String): Boolean = runCatching {
+        val certBytes: ByteArray? =
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                pm.getPackageArchiveInfo(apkPath, PackageManager.GET_SIGNING_CERTIFICATES)
+                    ?.signingInfo
+                    ?.apkContentsSigners
+                    ?.firstOrNull()
+                    ?.toByteArray()
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getPackageArchiveInfo(apkPath, PackageManager.GET_SIGNATURES)
+                    ?.signatures
+                    ?.firstOrNull()
+                    ?.toByteArray()
+            }
+        certBytes != null && isPinnedSigner(certBytes.toCertSha256Hex())
+    }.getOrDefault(false)
+
     private fun verifySignature(packageName: String): Boolean {
         // Allow all packages in debug/testing builds to simplify development.
         if (com.valhalla.thor.BuildConfig.DEBUG) return true
@@ -121,6 +152,17 @@ class ExtensionManager(private val context: Context) {
 
     /** True iff [packageName] is a trusted extension that exposes a configuration Activity. */
     fun isConfigurable(packageName: String): Boolean = getConfigLaunchIntent(packageName) != null
+
+    /**
+     * Package names of every installed extension (anything under [EXTENSION_PACKAGE_PREFIX]),
+     * WITHOUT loading their classes or verifying signatures — a cheap `getInstalledApplications`
+     * scan used by the store to mark catalog entries that are already installed. Signature trust is
+     * still enforced separately at load time by [loadExtensions].
+     */
+    fun getInstalledExtensionPackageNames(): List<String> =
+        pm.getInstalledApplications(0)
+            .map { it.packageName }
+            .filter { it.startsWith(EXTENSION_PACKAGE_PREFIX) }
 
     fun getExtensionPackageName(extension: ThorExtension): String? {
         val className = extension.javaClass.name

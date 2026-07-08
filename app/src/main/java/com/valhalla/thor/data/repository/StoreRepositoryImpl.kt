@@ -1,0 +1,149 @@
+package com.valhalla.thor.data.repository
+
+import android.content.Context
+import android.net.Uri
+import androidx.core.content.FileProvider
+import com.valhalla.thor.data.manager.ExtensionManager
+import com.valhalla.thor.domain.model.CatalogEntry
+import com.valhalla.thor.domain.model.ExtensionCatalog
+import com.valhalla.thor.domain.repository.StoreRepository
+import com.valhalla.thor.util.Logger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import org.koin.core.annotation.Single
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+import java.security.MessageDigest
+
+/**
+ * Store networking + verification. Uses the JDK's [HttpURLConnection] (no OkHttp/Ktor in the
+ * project). Every APK returned by [downloadAndVerify] has passed a SHA-256 check (when pinned by
+ * the catalog) AND a pinned-signer check — fail-closed at every step.
+ */
+@Single(binds = [StoreRepository::class])
+class StoreRepositoryImpl(
+    private val context: Context,
+    private val extensionManager: ExtensionManager,
+) : StoreRepository {
+
+    private val json = Json { ignoreUnknownKeys = true }
+
+    override suspend fun fetchCatalog(): Result<List<CatalogEntry>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val body = httpGet(CATALOG_URL)
+            val catalog = json.decodeFromString<ExtensionCatalog>(body)
+            catalog.extensions
+        }.onFailure { Logger.e(TAG, "fetchCatalog failed", it) }
+    }
+
+    override suspend fun downloadAndVerify(entry: CatalogEntry): Result<Uri> =
+        withContext(Dispatchers.IO) {
+            if (entry.apkUrl.isBlank()) {
+                return@withContext Result.failure(
+                    IllegalArgumentException("Entry '${entry.id}' has no APK to download")
+                )
+            }
+
+            val dir = File(context.cacheDir, DOWNLOAD_DIR).apply { mkdirs() }
+            val file = File(dir, "${entry.id}-${entry.version}.apk")
+
+            runCatching {
+                // 1. Stream to cache while hashing.
+                val digestHex = downloadHashing(entry.apkUrl, file)
+
+                // 2. SHA-256 gate (only when the catalog pins a hash).
+                if (entry.sha256.isNotBlank() && !entry.sha256.equals(digestHex, ignoreCase = true)) {
+                    throw SecurityException(
+                        "SHA-256 mismatch for '${entry.id}': expected ${entry.sha256}, got $digestHex"
+                    )
+                }
+
+                // 3. Pinned-signer gate on the APK file itself. Fail-closed, no debug bypass.
+                if (!extensionManager.isApkFileSignerPinned(file.path)) {
+                    throw SecurityException("Untrusted signer for '${entry.id}' — not a pinned key")
+                }
+
+                FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+            }.onFailure {
+                Logger.e(TAG, "downloadAndVerify failed for '${entry.id}'", it)
+                file.delete()
+            }
+        }
+
+    /**
+     * GET [urlString] and return the response body as text. Throws on any non-2xx response or IO
+     * failure. Redirects are followed; connect/read timeouts are bounded.
+     */
+    private fun httpGet(urlString: String): String {
+        val connection = (URL(urlString).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            instanceFollowRedirects = true
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+        }
+        try {
+            connection.connect()
+            val code = connection.responseCode
+            if (code !in 200..299) {
+                throw java.io.IOException("HTTP $code fetching $urlString")
+            }
+            return connection.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    /**
+     * Stream the APK at [urlString] into [dest] on disk, computing its SHA-256 as bytes flow so the
+     * whole file is never held in memory. Returns the digest as uppercase hex (same `%02X` + mask
+     * formatting used by the signer-cert hashing) for a case-insensitive compare with the catalog.
+     */
+    private fun downloadHashing(urlString: String, dest: File): String {
+        val connection = (URL(urlString).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            instanceFollowRedirects = true
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+        }
+        try {
+            connection.connect()
+            val code = connection.responseCode
+            if (code !in 200..299) {
+                throw java.io.IOException("HTTP $code downloading $urlString")
+            }
+            val digest = MessageDigest.getInstance("SHA-256")
+            connection.inputStream.use { input ->
+                dest.outputStream().use { output ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read == -1) break
+                        digest.update(buffer, 0, read)
+                        output.write(buffer, 0, read)
+                    }
+                }
+            }
+            return digest.digest()
+                .joinToString(separator = "") { "%02X".format(it.toInt() and 0xFF) }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    companion object {
+        private const val TAG = "StoreRepository"
+
+        /**
+         * Source-of-truth catalog URL. To test against a fork/branch, change this string (raw
+         * GitHub URL over HTTPS) — nothing else in the flow is URL-aware.
+         */
+        const val CATALOG_URL =
+            "https://raw.githubusercontent.com/trinadhthatakula/Thor-Extensions/main/catalog/extensions.json"
+
+        private const val DOWNLOAD_DIR = "ext_downloads"
+        private const val CONNECT_TIMEOUT_MS = 15_000
+        private const val READ_TIMEOUT_MS = 30_000
+    }
+}

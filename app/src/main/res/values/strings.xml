@@ -262,6 +262,23 @@
     <string name="extension_by_author">by %1$s</string>
     <string name="extension_version_prefix">v%1$s</string>
 
+    <!-- Extension store (Browse) -->
+    <string name="extension_store">Extension Store</string>
+    <string name="extension_store_desc">Download verified Thor extensions signed with the official key.</string>
+    <string name="extension_browse_store">Browse store</string>
+    <string name="extension_install">Install</string>
+    <string name="extension_installed">Installed</string>
+    <string name="extension_installing">Verifying…</string>
+    <string name="extension_source_only">Source only — build it yourself</string>
+    <string name="extension_requires_lsposed">Requires LSPosed</string>
+    <string name="extension_requires_thor">Requires a newer Thor</string>
+    <string name="extension_store_empty">No extensions available yet</string>
+    <string name="extension_store_empty_desc">Check back later — the catalog is updated as new extensions are published.</string>
+    <string name="extension_store_error">Couldn\'t load the store</string>
+    <string name="extension_store_error_desc">Check your connection and try again.</string>
+    <string name="extension_retry">Retry</string>
+    <string name="extension_install_failed">Verification failed: %1$s</string>
+
 
     <!-- UiText Messages -->
     <string name="action_completed_format">%1$s completed: %2$s</string>
