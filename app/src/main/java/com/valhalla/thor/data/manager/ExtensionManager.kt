@@ -111,11 +111,20 @@ class ExtensionManager(private val context: Context) {
     fun isApkFileSignerPinned(apkPath: String): Boolean = runCatching {
         val certBytes: ByteArray? =
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                pm.getPackageArchiveInfo(apkPath, PackageManager.GET_SIGNING_CERTIFICATES)
-                    ?.signingInfo
-                    ?.apkContentsSigners
-                    ?.firstOrNull()
-                    ?.toByteArray()
+                // getPackageArchiveInfo(GET_SIGNING_CERTIFICATES) has a known bug on some API 28+
+                // devices where signingInfo comes back null for an APK FILE; fall back to the
+                // deprecated GET_SIGNATURES so a valid, pinned extension isn't spuriously rejected.
+                val signingInfo =
+                    pm.getPackageArchiveInfo(apkPath, PackageManager.GET_SIGNING_CERTIFICATES)?.signingInfo
+                if (signingInfo != null) {
+                    signingInfo.apkContentsSigners?.firstOrNull()?.toByteArray()
+                } else {
+                    @Suppress("DEPRECATION")
+                    pm.getPackageArchiveInfo(apkPath, PackageManager.GET_SIGNATURES)
+                        ?.signatures
+                        ?.firstOrNull()
+                        ?.toByteArray()
+                }
             } else {
                 @Suppress("DEPRECATION")
                 pm.getPackageArchiveInfo(apkPath, PackageManager.GET_SIGNATURES)

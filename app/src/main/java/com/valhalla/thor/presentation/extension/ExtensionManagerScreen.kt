@@ -201,8 +201,10 @@ private fun ExtensionConsentSheet(
     onConsent: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val a = remember { Random.nextInt(3, 10) }
-    val b = remember { Random.nextInt(2, 9) }
+    // rememberSaveable so the operands survive config changes (rotation / theme toggle) and stay
+    // consistent with the already-typed answer.
+    val a = rememberSaveable { Random.nextInt(3, 10) }
+    val b = rememberSaveable { Random.nextInt(2, 9) }
     var answer by rememberSaveable { mutableStateOf("") }
     val solved = answer.trim().toIntOrNull() == a + b
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)

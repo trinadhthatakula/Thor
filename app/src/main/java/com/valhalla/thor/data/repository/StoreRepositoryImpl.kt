@@ -8,6 +8,7 @@ import com.valhalla.thor.domain.model.CatalogEntry
 import com.valhalla.thor.domain.model.ExtensionCatalog
 import com.valhalla.thor.domain.repository.StoreRepository
 import com.valhalla.thor.util.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -38,7 +39,10 @@ class StoreRepositoryImpl(
             // omitted) or a duplicate `id` would otherwise collide on the LazyColumn item key AND the
             // per-entry installStatuses map, crashing the store. Drop blanks, keep first-of-duplicate.
             catalog.extensions.filter { it.id.isNotBlank() }.distinctBy { it.id }
-        }.onFailure { Logger.e(TAG, "fetchCatalog failed", it) }
+        }.onFailure {
+            if (it is CancellationException) throw it // don't swallow cancellation
+            Logger.e(TAG, "fetchCatalog failed", it)
+        }
     }
 
     override suspend fun downloadAndVerify(entry: CatalogEntry): Result<Uri> =
@@ -89,8 +93,9 @@ class StoreRepositoryImpl(
 
                 FileProvider.getUriForFile(context, "${context.packageName}.provider", file!!)
             }.onFailure {
-                Logger.e(TAG, "downloadAndVerify failed for '${entry.id}'", it)
                 file?.delete()
+                if (it is CancellationException) throw it // preserve structured-concurrency cancellation
+                Logger.e(TAG, "downloadAndVerify failed for '${entry.id}'", it)
             }
         }
 

@@ -27,7 +27,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -72,7 +71,7 @@ fun ExtensionBrowseScreen(
     }
 
     // Refresh installed badges once the installer reports a completed install.
-    val installState by installerViewModel.installState.collectAsState(initial = InstallState.Idle)
+    val installState by installerViewModel.installState.collectAsStateWithLifecycle(initialValue = InstallState.Idle)
     LaunchedEffect(installState) {
         if (installState is InstallState.Success) {
             viewModel.refresh()
