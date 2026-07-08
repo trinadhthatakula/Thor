@@ -26,10 +26,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -37,8 +33,7 @@ import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.presentation.settings.SettingsViewModel
 import org.koin.compose.koinInject
-import com.valhalla.thor.extension.api.AutomationExtension
-import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.data.manager.ExtensionManager
 import com.valhalla.thor.presentation.theme.firaMonoFontFamily
 import org.koin.androidx.compose.koinViewModel
 import androidx.compose.ui.draw.clip
@@ -56,7 +51,6 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.IconButtonDefaults
@@ -64,46 +58,18 @@ import androidx.compose.material3.IconButtonDefaults
 @Composable
 fun ExtensionManagerScreen(
     onBack: () -> Unit,
-    onExtensionActiveChanged: (Boolean) -> Unit = {},
     viewModel: ExtensionManagerViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val settingsViewModel: SettingsViewModel = koinViewModel()
     val prefs by settingsViewModel.preferences.collectAsStateWithLifecycle()
-    val systemRepository: SystemRepository = koinInject()
-    val extensionDataDao: com.valhalla.thor.data.source.local.room.ExtensionDataDao = koinInject()
+    val extensionManager: ExtensionManager = koinInject()
 
-    var activeExtension by remember { mutableStateOf<AutomationExtension?>(null) }
-    var activeExtensionPackageName by remember { mutableStateOf("") }
-
-    LaunchedEffect(activeExtension) {
-        onExtensionActiveChanged(activeExtension != null)
-    }
-
-    BackHandler(enabled = activeExtension != null) {
-        val handled = activeExtension?.onBackPressed() ?: false
-        android.util.Log.d("ExtensionManagerScreen", "Back press intercepted. handled by extension: $handled")
-        if (!handled) {
-            activeExtension = null
-        }
-    }
-
-    if (activeExtension != null) {
-        val shellExecutor = remember { com.valhalla.thor.data.manager.ThorShellExecutor(systemRepository) }
-        val dataStore = remember(activeExtensionPackageName) {
-            com.valhalla.thor.data.manager.RoomExtensionDataStore(activeExtensionPackageName, extensionDataDao)
-        }
-        activeExtension!!.ConfigurationScreen(
-            shellExecutor = shellExecutor,
-            dataStore = dataStore,
-            onBack = { activeExtension = null }
-        )
-    } else {
-        Scaffold(
-            topBar = { ExtensionTopAppBar(onBack = onBack) },
-            contentWindowInsets = WindowInsets(0, 0, 0, 0)
-        ) { innerPadding ->
+    Scaffold(
+        topBar = { ExtensionTopAppBar(onBack = onBack) },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
+    ) { innerPadding ->
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -155,10 +121,10 @@ fun ExtensionManagerScreen(
                             ExtensionCard(
                                 item = item,
                                 prefs = prefs,
-                                onConfigure = { ext ->
-                                    if (ext is AutomationExtension) {
-                                        activeExtensionPackageName = item.packageName
-                                        activeExtension = ext
+                                onConfigure = {
+                                    // Launch the extension's OWN config Activity (its process).
+                                    extensionManager.getConfigLaunchIntent(item.packageName)?.let {
+                                        runCatching { context.startActivity(it) }
                                     }
                                 }
                             )
@@ -172,7 +138,6 @@ fun ExtensionManagerScreen(
             }
         }
     }
-}
 
 @Composable
 private fun ExtensionTopAppBar(
@@ -270,10 +235,10 @@ private fun EmptyExtensionState(
 private fun ExtensionCard(
     item: ExtensionUiItem,
     prefs: UserPreferences,
-    onConfigure: (Any) -> Unit
+    onConfigure: () -> Unit
 ) {
     val ext = item.extension
-    val isConfigurable = ext is com.valhalla.thor.extension.api.AutomationExtension
+    val isConfigurable = item.isConfigurable
 
     Column(
         modifier = Modifier
@@ -338,7 +303,7 @@ private fun ExtensionCard(
 
                 if (isConfigurable) {
                     IconButton(
-                        onClick = { onConfigure(ext) },
+                        onClick = onConfigure,
                         modifier = Modifier.size(36.dp),
                         colors = IconButtonDefaults.filledIconButtonColors()
                     ) {

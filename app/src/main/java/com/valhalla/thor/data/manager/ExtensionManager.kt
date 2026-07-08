@@ -1,6 +1,7 @@
 package com.valhalla.thor.data.manager
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import com.valhalla.thor.extension.api.DebloatExtension
 import com.valhalla.thor.extension.api.ThorExtension
@@ -12,6 +13,17 @@ class ExtensionManager(private val context: Context) {
 
     private val pm = context.packageManager
     private val EXTENSION_PACKAGE_PREFIX = "com.valhalla.thor.ext."
+
+    companion object {
+        /**
+         * Action for an extension's optional configuration Activity. Extensions render config UI in
+         * their OWN process (Thor starts it with this action) rather than inside Thor — that keeps
+         * their Compose/Asgard/kotlin-stdlib from having to link against Thor's minified runtime.
+         * The extension declares an exported activity with an intent-filter for this exact string
+         * (mirrored in its manifest, since manifests can't reference a Kotlin const).
+         */
+        const val ACTION_CONFIGURE = "com.valhalla.thor.extension.action.CONFIGURE"
+    }
 
     /**
      * Finds and loads all valid installed extensions.
@@ -79,6 +91,26 @@ class ExtensionManager(private val context: Context) {
 
         return isSignatureVerified(packageName)
     }
+
+    /**
+     * An explicit Intent to launch [packageName]'s configuration Activity, or null if it has none
+     * (or the package isn't a trusted, pinned-signer extension). Trust is enforced HERE so an
+     * untrusted look-alike package can't get Thor to launch it: [verifySignature] must pass (lax
+     * only in debug builds). The implicit [ACTION_CONFIGURE] intent is resolved to a concrete
+     * component so the launch can't be hijacked by a racing implicit match.
+     */
+    fun getConfigLaunchIntent(packageName: String): Intent? {
+        if (!verifySignature(packageName)) return null
+        val probe = Intent(ACTION_CONFIGURE).setPackage(packageName)
+        val resolved = pm.resolveActivity(probe, 0) ?: return null
+        return probe.apply {
+            setClassName(resolved.activityInfo.packageName, resolved.activityInfo.name)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+    }
+
+    /** True iff [packageName] is a trusted extension that exposes a configuration Activity. */
+    fun isConfigurable(packageName: String): Boolean = getConfigLaunchIntent(packageName) != null
 
     fun getExtensionPackageName(extension: ThorExtension): String? {
         val className = extension.javaClass.name
