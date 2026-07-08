@@ -34,7 +34,10 @@ class StoreRepositoryImpl(
         runCatching {
             val body = httpGet(CATALOG_URL)
             val catalog = json.decodeFromString<ExtensionCatalog>(body)
-            catalog.extensions
+            // Be resilient to a malformed catalog: an entry with a blank `id` (optional field
+            // omitted) or a duplicate `id` would otherwise collide on the LazyColumn item key AND the
+            // per-entry installStatuses map, crashing the store. Drop blanks, keep first-of-duplicate.
+            catalog.extensions.filter { it.id.isNotBlank() }.distinctBy { it.id }
         }.onFailure { Logger.e(TAG, "fetchCatalog failed", it) }
     }
 
@@ -45,9 +48,28 @@ class StoreRepositoryImpl(
                     IllegalArgumentException("Entry '${entry.id}' has no APK to download")
                 )
             }
+            // The catalog is not fully trusted (that's why we pin the signer + hash), so refuse a
+            // cleartext URL rather than let it downgrade the transport.
+            if (!entry.apkUrl.startsWith("https://", ignoreCase = true)) {
+                return@withContext Result.failure(
+                    SecurityException("Refusing non-HTTPS APK URL for '${entry.id}'")
+                )
+            }
 
             val dir = File(context.cacheDir, DOWNLOAD_DIR).apply { mkdirs() }
-            val file = File(dir, "${entry.id}-${entry.version}.apk")
+            // Bound cache growth: reap any leftover from a previous (successfully installed) download
+            // before writing a new one. Failed downloads already self-delete below.
+            dir.listFiles()?.forEach { it.delete() }
+            // Neutralize path traversal: `id`/`version` come from the catalog, and File(dir, "../x")
+            // escapes the download dir at open time. Replace anything outside a safe charset so no
+            // '/' can form a traversal segment, then assert the resolved path stays inside `dir`.
+            val safeName = "${entry.id}-${entry.version}".replace(Regex("[^A-Za-z0-9._-]"), "_")
+            val file = File(dir, "$safeName.apk")
+            if (!file.canonicalPath.startsWith(dir.canonicalPath + File.separator)) {
+                return@withContext Result.failure(
+                    SecurityException("Unsafe download path derived for '${entry.id}'")
+                )
+            }
 
             runCatching {
                 // 1. Stream to cache while hashing.
