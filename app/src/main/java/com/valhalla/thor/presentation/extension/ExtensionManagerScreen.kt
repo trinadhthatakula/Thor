@@ -89,8 +89,10 @@ fun ExtensionManagerScreen(
 
     // First-open liability gate: the manager is a powerful, third-party-capable surface, so require
     // an explicit consent (disclaimer + a small math check) before it can be used. Persisted, so it
-    // shows only once; dismissing without solving leaves the screen.
-    if (!prefs.extensionConsentAccepted) {
+    // shows only once; dismissing without solving leaves the screen. Gate on the TRI-STATE flow
+    // (null = prefs still loading) so an already-accepted user never gets a first-frame sheet flash.
+    val consentAccepted by settingsViewModel.extensionConsentAccepted.collectAsStateWithLifecycle()
+    if (consentAccepted == false) {
         ExtensionConsentSheet(
             onConsent = { settingsViewModel.setExtensionConsentAccepted(true) },
             onDismiss = onBack,

@@ -57,23 +57,23 @@ class StoreRepositoryImpl(
             }
 
             val dir = File(context.cacheDir, DOWNLOAD_DIR).apply { mkdirs() }
-            // Bound cache growth: reap any leftover from a previous (successfully installed) download
-            // before writing a new one. Failed downloads already self-delete below.
-            dir.listFiles()?.forEach { it.delete() }
-            // Neutralize path traversal: `id`/`version` come from the catalog, and File(dir, "../x")
-            // escapes the download dir at open time. Replace anything outside a safe charset so no
-            // '/' can form a traversal segment, then assert the resolved path stays inside `dir`.
-            val safeName = "${entry.id}-${entry.version}".replace(Regex("[^A-Za-z0-9._-]"), "_")
-            val file = File(dir, "$safeName.apk")
-            if (!file.canonicalPath.startsWith(dir.canonicalPath + File.separator)) {
-                return@withContext Result.failure(
-                    SecurityException("Unsafe download path derived for '${entry.id}'")
-                )
-            }
+            // Bound cache growth by reaping only STALE leftovers — never a concurrent in-flight
+            // download (those are seconds old). This replaces a full dir-wipe, which raced with a
+            // parallel install and could delete its APK mid-flight.
+            val staleCutoff = System.currentTimeMillis() - DOWNLOAD_STALE_MS
+            runCatching { dir.listFiles()?.forEach { if (it.lastModified() < staleCutoff) it.delete() } }
+
+            // Unique per-download file. createTempFile stays inside `dir` (so catalog-controlled
+            // id/version can't traverse out) and never collides with a parallel download. The prefix
+            // is sanitized + length-bounded; "ext_" guarantees the >=3-char minimum.
+            val slug = "ext_${entry.id}-${entry.version}".replace(Regex("[^A-Za-z0-9._-]"), "_").take(48)
+            var file: File? = null
 
             runCatching {
+                file = File.createTempFile(slug, ".apk", dir)
+
                 // 1. Stream to cache while hashing.
-                val digestHex = downloadHashing(entry.apkUrl, file)
+                val digestHex = downloadHashing(entry.apkUrl, file!!)
 
                 // 2. SHA-256 gate (only when the catalog pins a hash).
                 if (entry.sha256.isNotBlank() && !entry.sha256.equals(digestHex, ignoreCase = true)) {
@@ -83,14 +83,14 @@ class StoreRepositoryImpl(
                 }
 
                 // 3. Pinned-signer gate on the APK file itself. Fail-closed, no debug bypass.
-                if (!extensionManager.isApkFileSignerPinned(file.path)) {
+                if (!extensionManager.isApkFileSignerPinned(file!!.path)) {
                     throw SecurityException("Untrusted signer for '${entry.id}' — not a pinned key")
                 }
 
-                FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+                FileProvider.getUriForFile(context, "${context.packageName}.provider", file!!)
             }.onFailure {
                 Logger.e(TAG, "downloadAndVerify failed for '${entry.id}'", it)
-                file.delete()
+                file?.delete()
             }
         }
 
@@ -165,6 +165,7 @@ class StoreRepositoryImpl(
             "https://raw.githubusercontent.com/trinadhthatakula/Thor-Extensions/main/catalog/extensions.json"
 
         private const val DOWNLOAD_DIR = "ext_downloads"
+        private const val DOWNLOAD_STALE_MS = 10 * 60_000L // reap leftovers older than 10 min
         private const val CONNECT_TIMEOUT_MS = 15_000
         private const val READ_TIMEOUT_MS = 30_000
     }
