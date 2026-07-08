@@ -122,8 +122,12 @@ fun ExtensionManagerScreen(
                                 item = item,
                                 prefs = prefs,
                                 onConfigure = {
-                                    // Launch the extension's OWN config Activity (its process).
+                                    // Launch the extension's OWN config Activity (its process),
+                                    // passing Thor's theme so its UI can match (it can't read our prefs).
                                     extensionManager.getConfigLaunchIntent(item.packageName)?.let {
+                                        it.putExtra(ExtensionManager.EXTRA_THEME_MODE, prefs.themeMode.name)
+                                        it.putExtra(ExtensionManager.EXTRA_DYNAMIC_COLOR, prefs.useDynamicColor)
+                                        it.putExtra(ExtensionManager.EXTRA_AMOLED, prefs.useAmoled)
                                         runCatching { context.startActivity(it) }
                                     }
                                 }

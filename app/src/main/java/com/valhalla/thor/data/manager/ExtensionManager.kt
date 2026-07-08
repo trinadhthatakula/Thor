@@ -23,6 +23,16 @@ class ExtensionManager(private val context: Context) {
          * (mirrored in its manifest, since manifests can't reference a Kotlin const).
          */
         const val ACTION_CONFIGURE = "com.valhalla.thor.extension.action.CONFIGURE"
+
+        /**
+         * Theme hints Thor attaches to the CONFIGURE launch so an extension's config UI (rendered in
+         * its OWN process, with no access to Thor's prefs) can match Thor's look: light/dark/system,
+         * dynamic color, and AMOLED. The extension resolves SYSTEM against its own night config so
+         * "follow system" stays live. All optional — extensions may ignore them.
+         */
+        const val EXTRA_THEME_MODE = "com.valhalla.thor.extension.extra.THEME_MODE"      // LIGHT|DARK|SYSTEM
+        const val EXTRA_DYNAMIC_COLOR = "com.valhalla.thor.extension.extra.DYNAMIC_COLOR" // boolean
+        const val EXTRA_AMOLED = "com.valhalla.thor.extension.extra.AMOLED"              // boolean
     }
 
     /**
