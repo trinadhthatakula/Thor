@@ -1,0 +1,8 @@
+What's new in Thor v1.91.1
+
+• New: Extensions store — browse and install verified add-ons right inside Thor. Each download is checked (SHA-256 + signature) before it installs.
+• Extensions now open their own settings screen, themed to match Thor (light/dark/AMOLED/dynamic colour).
+• Extensions are a power-user feature: the section appears only when you have Root, Shizuku or Dhizuku, with a one-time consent before you enter.
+• Two extensions to start: auto-unfreeze suspended apps on launch, and freeze/unfreeze app clusters on a schedule or shortcut.
+
+Thanks for using Thor!
