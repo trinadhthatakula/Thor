@@ -47,34 +47,34 @@ class ExtensionManager(private val context: Context) {
         return loadExtensions().filterIsInstance<DebloatExtension>()
     }
 
-    fun isSignatureVerified(packageName: String): Boolean {
-        return try {
+    /**
+     * True iff [packageName] is signed by a key whose certificate SHA-256 is in the pinned
+     * allowlist ([TrustedExtensionSigners.PINS]). This is the real trust gate — an extension
+     * signed by any other key (including Thor's own app keys) is NOT trusted.
+     *
+     * Fail-CLOSED: any failure (missing package, null signing info, hashing error, …) returns
+     * false. It never returns true unless a pinned signer is positively matched.
+     */
+    fun isSignatureVerified(packageName: String): Boolean = runCatching {
+        val certBytes: ByteArray? =
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                val coreInfo = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
-                val extInfo = pm.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
-                val coreSigning = coreInfo.signingInfo
-                val extSigning = extInfo.signingInfo
-                if (coreSigning != null && extSigning != null) {
-                    if (coreSigning.hasMultipleSigners()) {
-                        coreSigning.apkContentsSigners.contentEquals(extSigning.apkContentsSigners)
-                    } else {
-                        coreSigning.signingCertificateHistory.contentEquals(extSigning.signingCertificateHistory)
-                    }
-                } else false
+                pm.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+                    .signingInfo
+                    ?.apkContentsSigners
+                    ?.firstOrNull()
+                    ?.toByteArray()
             } else {
                 @Suppress("DEPRECATION")
-                val coreSignatures = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES).signatures
-                @Suppress("DEPRECATION")
-                val extSignatures = pm.getPackageInfo(packageName, PackageManager.GET_SIGNATURES).signatures
-                coreSignatures.contentEquals(extSignatures)
+                pm.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
+                    .signatures
+                    ?.firstOrNull()
+                    ?.toByteArray()
             }
-        } catch (e: Exception) {
-            false
-        }
-    }
+        certBytes != null && isPinnedSigner(certBytes.toCertSha256Hex())
+    }.getOrDefault(false)
 
     private fun verifySignature(packageName: String): Boolean {
-        // Allow all packages in debug/testing builds to simplify development
+        // Allow all packages in debug/testing builds to simplify development.
         if (com.valhalla.thor.BuildConfig.DEBUG) return true
 
         return isSignatureVerified(packageName)
