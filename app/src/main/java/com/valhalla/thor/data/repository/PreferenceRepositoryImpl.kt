@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.valhalla.thor.data.repository.PreferenceRepositoryImpl.Keys
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FreezerMode
@@ -27,7 +28,7 @@ class PreferenceRepositoryImpl(
     private val context: Context
 ) : PreferenceRepository {
 
-    private object Keys {
+    internal object Keys {
         // App List
         val SORT_BY = stringPreferencesKey("sort_by")
         val SORT_ORDER = stringPreferencesKey("sort_order")
@@ -73,66 +74,11 @@ class PreferenceRepositoryImpl(
 
         // Extensions
         val EXTENSIONS_UNLOCKED = booleanPreferencesKey("extensions_unlocked")
+        val EXTENSION_CONSENT_ACCEPTED = booleanPreferencesKey("extension_consent_accepted")
     }
 
     override val userPreferences: Flow<UserPreferences> = context.dataStore.data
-        .map { prefs ->
-            val sortBy = prefs[Keys.SORT_BY]
-                ?.let { runCatching { SortBy.valueOf(it) }.getOrNull() }
-                ?: SortBy.NAME
-
-            val sortOrder = prefs[Keys.SORT_ORDER]
-                ?.let { runCatching { SortOrder.valueOf(it) }.getOrNull() }
-                ?: SortOrder.ASCENDING
-
-            val filterType = when (prefs[Keys.FILTER_TYPE]) {
-                "STATE" -> FilterType.State
-                else -> FilterType.Source
-            }
-
-            val themeMode = prefs[Keys.THEME_MODE]
-                ?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
-                ?: ThemeMode.SYSTEM
-
-            val privilegeMode = prefs[Keys.PRIVILEGE_MODE]
-                ?.let { runCatching { PrivilegeMode.valueOf(it) }.getOrNull() }
-
-            val animationIntensity = prefs[Keys.ANIMATION_INTENSITY]
-                ?.let { runCatching { AnimationIntensity.valueOf(it) }.getOrNull() }
-                ?: AnimationIntensity.MEDIUM
-
-            val useDetailedView = prefs[Keys.USE_DETAILED_VIEW] ?: true
-            val appListIsGrid = prefs[Keys.APP_LIST_IS_GRID] ?: true
-            val freezerIsGrid = prefs[Keys.FREEZER_IS_GRID] ?: true
-            val freezerMode = prefs[Keys.FREEZER_MODE]
-                ?.let { runCatching { FreezerMode.valueOf(it) }.getOrNull() }
-                ?: FreezerMode.FREEZE
-
-            UserPreferences(
-                appSortBy = sortBy,
-                appSortOrder = sortOrder,
-                appFilterType = filterType,
-                appSelectedFilter = prefs[Keys.SELECTED_FILTER] ?: "All",
-                showReinstallAllCard = prefs[Keys.SHOW_REINSTALL_ALL] ?: true,
-                themeMode = themeMode,
-                useDynamicColor = prefs[Keys.USE_DYNAMIC_COLOR] ?: false,
-                useAmoled = prefs[Keys.USE_AMOLED] ?: false,
-                biometricLockEnabled = prefs[Keys.BIOMETRIC_LOCK] ?: false,
-                preferredPrivilegeMode = privilegeMode,
-                language = prefs[Keys.LANGUAGE],
-                autoFreezeEnabled = prefs[Keys.AUTO_FREEZE] ?: false,
-                freezerMode = freezerMode,
-                addFreezerToLauncher = prefs[Keys.ADD_FREEZER_TO_LAUNCHER] ?: false,
-                hasShownDisabledAppsPrompt = prefs[Keys.HAS_SHOWN_DISABLED_APPS_PROMPT] ?: false,
-                hasShownSupportDeveloperPrompt = prefs[Keys.HAS_SHOWN_SUPPORT_DEVELOPER_PROMPT] ?: false,
-                useDetailedView = useDetailedView,
-                animationIntensity = animationIntensity,
-                appListIsGrid = appListIsGrid,
-                freezerIsGrid = freezerIsGrid,
-                extensionsUnlocked = prefs[Keys.EXTENSIONS_UNLOCKED] ?: false,
-                exportDirUri = prefs[Keys.EXPORT_DIR_URI]
-            )
-        }
+        .map { it.toUserPreferences() }
 
     // --- App List ---
 
@@ -271,4 +217,74 @@ class PreferenceRepositoryImpl(
     override suspend fun setExtensionsUnlocked(unlocked: Boolean) {
         context.dataStore.edit { it[Keys.EXTENSIONS_UNLOCKED] = unlocked }
     }
+
+    override suspend fun setExtensionConsentAccepted(accepted: Boolean) {
+        context.dataStore.edit { it[Keys.EXTENSION_CONSENT_ACCEPTED] = accepted }
+    }
+}
+
+/**
+ * Pure mapping from an already-read [Preferences] snapshot to [UserPreferences].
+ * Extracted from the [PreferenceRepositoryImpl.userPreferences] Flow so it is unit-testable
+ * on plain JVM (no Android / DataStore access). Every field mirrors the prior inline mapping.
+ */
+internal fun Preferences.toUserPreferences(): UserPreferences {
+    val prefs = this
+
+    val sortBy = prefs[Keys.SORT_BY]
+        ?.let { runCatching { SortBy.valueOf(it) }.getOrNull() }
+        ?: SortBy.NAME
+
+    val sortOrder = prefs[Keys.SORT_ORDER]
+        ?.let { runCatching { SortOrder.valueOf(it) }.getOrNull() }
+        ?: SortOrder.ASCENDING
+
+    val filterType = when (prefs[Keys.FILTER_TYPE]) {
+        "STATE" -> FilterType.State
+        else -> FilterType.Source
+    }
+
+    val themeMode = prefs[Keys.THEME_MODE]
+        ?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
+        ?: ThemeMode.SYSTEM
+
+    val privilegeMode = prefs[Keys.PRIVILEGE_MODE]
+        ?.let { runCatching { PrivilegeMode.valueOf(it) }.getOrNull() }
+
+    val animationIntensity = prefs[Keys.ANIMATION_INTENSITY]
+        ?.let { runCatching { AnimationIntensity.valueOf(it) }.getOrNull() }
+        ?: AnimationIntensity.MEDIUM
+
+    val useDetailedView = prefs[Keys.USE_DETAILED_VIEW] ?: true
+    val appListIsGrid = prefs[Keys.APP_LIST_IS_GRID] ?: true
+    val freezerIsGrid = prefs[Keys.FREEZER_IS_GRID] ?: true
+    val freezerMode = prefs[Keys.FREEZER_MODE]
+        ?.let { runCatching { FreezerMode.valueOf(it) }.getOrNull() }
+        ?: FreezerMode.FREEZE
+
+    return UserPreferences(
+        appSortBy = sortBy,
+        appSortOrder = sortOrder,
+        appFilterType = filterType,
+        appSelectedFilter = prefs[Keys.SELECTED_FILTER] ?: "All",
+        showReinstallAllCard = prefs[Keys.SHOW_REINSTALL_ALL] ?: true,
+        themeMode = themeMode,
+        useDynamicColor = prefs[Keys.USE_DYNAMIC_COLOR] ?: false,
+        useAmoled = prefs[Keys.USE_AMOLED] ?: false,
+        biometricLockEnabled = prefs[Keys.BIOMETRIC_LOCK] ?: false,
+        preferredPrivilegeMode = privilegeMode,
+        language = prefs[Keys.LANGUAGE],
+        autoFreezeEnabled = prefs[Keys.AUTO_FREEZE] ?: false,
+        freezerMode = freezerMode,
+        addFreezerToLauncher = prefs[Keys.ADD_FREEZER_TO_LAUNCHER] ?: false,
+        hasShownDisabledAppsPrompt = prefs[Keys.HAS_SHOWN_DISABLED_APPS_PROMPT] ?: false,
+        hasShownSupportDeveloperPrompt = prefs[Keys.HAS_SHOWN_SUPPORT_DEVELOPER_PROMPT] ?: false,
+        useDetailedView = useDetailedView,
+        animationIntensity = animationIntensity,
+        appListIsGrid = appListIsGrid,
+        freezerIsGrid = freezerIsGrid,
+        extensionsUnlocked = prefs[Keys.EXTENSIONS_UNLOCKED] ?: false,
+        extensionConsentAccepted = prefs[Keys.EXTENSION_CONSENT_ACCEPTED] ?: false,
+        exportDirUri = prefs[Keys.EXPORT_DIR_URI]
+    )
 }

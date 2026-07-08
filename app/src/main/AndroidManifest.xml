@@ -4,6 +4,11 @@
 
     <uses-sdk tools:overrideLibrary="rikka.shizuku.api" />
 
+    <!-- Needed by both flavors: the in-app Extensions store fetches its catalog and downloads
+         dedicated-key-signed extension APKs over HTTPS. Declared here (not in a flavor manifest)
+         so the FOSS flavor has internet too. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <uses-permission
         android:name="android.permission.REQUEST_INSTALL_PACKAGES"
         tools:ignore="RequestInstallPackagesPolicy" />

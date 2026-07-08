@@ -81,6 +81,7 @@ import com.valhalla.asgard.navigation.AsgardNavigationBar
 import com.valhalla.asgard.navigation.AsgardNavigationRail
 import com.valhalla.thor.presentation.permission.PermissionManagerScreen
 import com.valhalla.thor.presentation.settings.SettingsScreen
+import com.valhalla.thor.presentation.extension.ExtensionBrowseScreen
 import com.valhalla.thor.presentation.extension.ExtensionManagerScreen
 import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
@@ -109,7 +110,6 @@ fun MainScreen(
     var pendingMultiAction by remember { mutableStateOf<MultiAppAction?>(null) }
     var pendingSingleAction by remember { mutableStateOf<AppClickAction?>(null) }
     var showExitConfirmation by remember { mutableStateOf(false) }
-    var isExtensionActive by remember { mutableStateOf(false) }
 
     // --- Navigation 3 Setup (Multiple Backstacks) ---
     var activeDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
@@ -183,7 +183,7 @@ fun MainScreen(
 
     // System Back Press Handler: 
     // 1. Pop from the active stack if there are sub-screens (size > 1)
-    val canGoBackInActiveTab = (backStacks[activeTab]?.size ?: 0) > 1 && !isExtensionActive
+    val canGoBackInActiveTab = (backStacks[activeTab]?.size ?: 0) > 1
     BackHandler(enabled = canGoBackInActiveTab) {
         val stack = backStacks[activeTab]
         if (stack != null && stack.size > 1) {
@@ -463,8 +463,20 @@ fun MainScreen(
                                 settingsBackStack.removeLastOrNull()
                             }
                         },
-                        onExtensionActiveChanged = { isActive ->
-                            isExtensionActive = isActive
+                        onBrowse = {
+                            settingsBackStack.add(ThorRoute.ExtensionBrowse)
+                        }
+                    )
+                }
+
+                entry<ThorRoute.ExtensionBrowse>(
+                    metadata = ListDetailSceneStrategy.detailPane()
+                ) {
+                    ExtensionBrowseScreen(
+                        onBack = {
+                            if (settingsBackStack.size > 1) {
+                                settingsBackStack.removeLastOrNull()
+                            }
                         }
                     )
                 }

@@ -114,7 +114,7 @@ fun HomeScreen(
             onPrivilegeChanged = { viewModel.onPrivilegeModeChanged(it) },
             onRestrictedStatusClick = { showPrivilegeDialog = true },
             extensionsUnlocked = state.extensionsUnlocked,
-            onUnlockExtensions = { viewModel.unlockExtensions() },
+            onCrack = { viewModel.crackEasterEgg() },
             onShowSupport = { showSupportSheet = true }
         )
 

@@ -1,6 +1,5 @@
 package com.valhalla.thor.presentation.extension
 
-import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,10 +25,19 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import kotlin.random.Random
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -37,8 +45,7 @@ import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.presentation.settings.SettingsViewModel
 import org.koin.compose.koinInject
-import com.valhalla.thor.extension.api.AutomationExtension
-import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.data.manager.ExtensionManager
 import com.valhalla.thor.presentation.theme.firaMonoFontFamily
 import org.koin.androidx.compose.koinViewModel
 import androidx.compose.ui.draw.clip
@@ -50,13 +57,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.IconButtonDefaults
@@ -64,46 +69,40 @@ import androidx.compose.material3.IconButtonDefaults
 @Composable
 fun ExtensionManagerScreen(
     onBack: () -> Unit,
-    onExtensionActiveChanged: (Boolean) -> Unit = {},
+    onBrowse: () -> Unit,
     viewModel: ExtensionManagerViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val settingsViewModel: SettingsViewModel = koinViewModel()
     val prefs by settingsViewModel.preferences.collectAsStateWithLifecycle()
-    val systemRepository: SystemRepository = koinInject()
-    val extensionDataDao: com.valhalla.thor.data.source.local.room.ExtensionDataDao = koinInject()
+    val extensionManager: ExtensionManager = koinInject()
 
-    var activeExtension by remember { mutableStateOf<AutomationExtension?>(null) }
-    var activeExtensionPackageName by remember { mutableStateOf("") }
-
-    LaunchedEffect(activeExtension) {
-        onExtensionActiveChanged(activeExtension != null)
+    // Reload when returning to this screen (e.g. after installing from the store) so a freshly
+    // installed extension appears with its post-install cert gate. Skip the first resume, which
+    // would duplicate the VM's init-time load.
+    var firstResume by rememberSaveable { mutableStateOf(true) }
+    LifecycleResumeEffect(Unit) {
+        if (firstResume) firstResume = false else viewModel.loadExtensions()
+        onPauseOrDispose { }
     }
 
-    BackHandler(enabled = activeExtension != null) {
-        val handled = activeExtension?.onBackPressed() ?: false
-        android.util.Log.d("ExtensionManagerScreen", "Back press intercepted. handled by extension: $handled")
-        if (!handled) {
-            activeExtension = null
-        }
-    }
-
-    if (activeExtension != null) {
-        val shellExecutor = remember { com.valhalla.thor.data.manager.ThorShellExecutor(systemRepository) }
-        val dataStore = remember(activeExtensionPackageName) {
-            com.valhalla.thor.data.manager.RoomExtensionDataStore(activeExtensionPackageName, extensionDataDao)
-        }
-        activeExtension!!.ConfigurationScreen(
-            shellExecutor = shellExecutor,
-            dataStore = dataStore,
-            onBack = { activeExtension = null }
+    // First-open liability gate: the manager is a powerful, third-party-capable surface, so require
+    // an explicit consent (disclaimer + a small math check) before it can be used. Persisted, so it
+    // shows only once; dismissing without solving leaves the screen. Gate on the TRI-STATE flow
+    // (null = prefs still loading) so an already-accepted user never gets a first-frame sheet flash.
+    val consentAccepted by settingsViewModel.extensionConsentAccepted.collectAsStateWithLifecycle()
+    if (consentAccepted == false) {
+        ExtensionConsentSheet(
+            onConsent = { settingsViewModel.setExtensionConsentAccepted(true) },
+            onDismiss = onBack,
         )
-    } else {
-        Scaffold(
-            topBar = { ExtensionTopAppBar(onBack = onBack) },
-            contentWindowInsets = WindowInsets(0, 0, 0, 0)
-        ) { innerPadding ->
+    }
+
+    Scaffold(
+        topBar = { ExtensionTopAppBar(onBack = onBack) },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
+    ) { innerPadding ->
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -119,14 +118,7 @@ fun ExtensionManagerScreen(
                     }
                 } else if (state.extensions.isEmpty()) {
                     EmptyExtensionState(
-                        onGetExtensions = {
-                            context.startActivity(
-                                Intent(
-                                    Intent.ACTION_VIEW,
-                                    "https://github.com/trinadhthatakula/Thor".toUri()
-                                )
-                            )
-                        }
+                        onGetExtensions = onBrowse
                     )
                 } else {
                     LazyColumn(
@@ -148,6 +140,26 @@ fun ExtensionManagerScreen(
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = onBrowse,
+                                shape = RoundedCornerShape(20.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.round_extension),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = stringResource(R.string.extension_browse_store),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                             Spacer(modifier = Modifier.height(16.dp))
                         }
 
@@ -155,10 +167,14 @@ fun ExtensionManagerScreen(
                             ExtensionCard(
                                 item = item,
                                 prefs = prefs,
-                                onConfigure = { ext ->
-                                    if (ext is AutomationExtension) {
-                                        activeExtensionPackageName = item.packageName
-                                        activeExtension = ext
+                                onConfigure = {
+                                    // Launch the extension's OWN config Activity (its process),
+                                    // passing Thor's theme so its UI can match (it can't read our prefs).
+                                    extensionManager.getConfigLaunchIntent(item.packageName)?.let {
+                                        it.putExtra(ExtensionManager.EXTRA_THEME_MODE, prefs.themeMode.name)
+                                        it.putExtra(ExtensionManager.EXTRA_DYNAMIC_COLOR, prefs.useDynamicColor)
+                                        it.putExtra(ExtensionManager.EXTRA_AMOLED, prefs.useAmoled)
+                                        runCatching { context.startActivity(it) }
                                     }
                                 }
                             )
@@ -172,6 +188,98 @@ fun ExtensionManagerScreen(
             }
         }
     }
+
+/**
+ * One-time liability-consent gate shown the first time the user opens the Extension Manager. Beyond
+ * reading the disclaimer, the user must solve a small arithmetic problem — a deliberate,
+ * un-tap-through-able confirmation that they've engaged with the warning before accepting the risk.
+ * [onConsent] persists acceptance; [onDismiss] (swipe / scrim / back) leaves the manager.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExtensionConsentSheet(
+    onConsent: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // rememberSaveable so the operands survive config changes (rotation / theme toggle) and stay
+    // consistent with the already-typed answer.
+    val a = rememberSaveable { Random.nextInt(3, 10) }
+    val b = rememberSaveable { Random.nextInt(2, 9) }
+    var answer by rememberSaveable { mutableStateOf("") }
+    val solved = answer.trim().toIntOrNull() == a + b
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.extension_consent_title),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = stringResource(R.string.extension_consent_body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = stringResource(R.string.extension_consent_math_prompt, a, b),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            OutlinedTextField(
+                value = answer,
+                onValueChange = { new -> answer = new.filter { it.isDigit() || it == '-' }.take(4) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Done
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Primary action gets the full width so its label never wraps.
+                Button(
+                    onClick = onConsent,
+                    enabled = solved,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = stringResource(R.string.extension_consent_accept),
+                        maxLines = 1
+                    )
+                }
+                // Decline = a compact close icon beside it.
+                IconButton(
+                    onClick = onDismiss,
+                    colors = IconButtonDefaults.filledTonalIconButtonColors()
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.round_close),
+                        contentDescription = stringResource(R.string.cancel)
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -181,7 +289,7 @@ private fun ExtensionTopAppBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .background(MaterialTheme.colorScheme.background)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -270,10 +378,10 @@ private fun EmptyExtensionState(
 private fun ExtensionCard(
     item: ExtensionUiItem,
     prefs: UserPreferences,
-    onConfigure: (Any) -> Unit
+    onConfigure: () -> Unit
 ) {
     val ext = item.extension
-    val isConfigurable = ext is com.valhalla.thor.extension.api.AutomationExtension
+    val isConfigurable = item.isConfigurable
 
     Column(
         modifier = Modifier
@@ -338,7 +446,7 @@ private fun ExtensionCard(
 
                 if (isConfigurable) {
                     IconButton(
-                        onClick = { onConfigure(ext) },
+                        onClick = onConfigure,
                         modifier = Modifier.size(36.dp),
                         colors = IconButtonDefaults.filledIconButtonColors()
                     ) {

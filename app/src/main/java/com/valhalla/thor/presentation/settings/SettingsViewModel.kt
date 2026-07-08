@@ -21,6 +21,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
@@ -37,7 +38,7 @@ class SettingsViewModel(
     private val localeManager: LocaleManager,
     private val freezerRepository: FreezerRepository,
     private val manageAppUseCase: ManageAppUseCase,
-    private val freezerShortcutManager: com.valhalla.thor.data.launcher.FreezerShortcutManager
+    private val freezerShortcutManager: com.valhalla.thor.data.launcher.FreezerShortcutManager,
 ) : ViewModel() {
 
     data class SettingsUiState(
@@ -50,29 +51,36 @@ class SettingsViewModel(
         val actionMessage: UiText? = null
     )
 
+    /** Off-main-thread snapshot of the available privilege engines. */
+    private data class PrivilegeProbe(
+        val root: Boolean,
+        val shizuku: Boolean,
+        val dhizuku: Boolean
+    )
+
     private val _actionMessage = MutableStateFlow<UiText?>(null)
 
     private val _systemStatus = combine(
         preferenceRepository.userPreferences,
         _actionMessage,
         flow {
-            // Availability probes hit binder IPC (Shizuku.pingBinder / DhizukuAPI).
-            // flowOn(IO) below keeps them off the Main thread to avoid janking the
-            // first subscription / every WhileSubscribed restart.
+            // Availability probes hit binder IPC (Shizuku.pingBinder / DhizukuAPI). flowOn(IO) below
+            // keeps them off the Main thread to avoid janking the first subscription / every
+            // WhileSubscribed restart.
             emit(
-                Triple(
-                    systemRepository.isRootAvailable(),
-                    systemRepository.isShizukuAvailable(),
-                    systemRepository.isDhizukuAvailable()
+                PrivilegeProbe(
+                    root = systemRepository.isRootAvailable(),
+                    shizuku = systemRepository.isShizukuAvailable(),
+                    dhizuku = systemRepository.isDhizukuAvailable()
                 )
             )
         }.flowOn(Dispatchers.IO)
     ) { prefs, message, status ->
         SettingsUiState(
             prefs = prefs,
-            isRootAvailable = status.first,
-            isShizukuAvailable = status.second,
-            isDhizukuAvailable = status.third,
+            isRootAvailable = status.root,
+            isShizukuAvailable = status.shizuku,
+            isDhizukuAvailable = status.dhizuku,
             canUseBiometric = biometricHelper.canAuthenticate(),
             hasBiometricHardware = biometricHelper.hasHardware(),
             actionMessage = message
@@ -92,6 +100,15 @@ class SettingsViewModel(
             SharingStarted.WhileSubscribed(5000),
             UserPreferences()
         )
+
+    /**
+     * Extension-consent as a TRI-STATE: `null` while prefs are still being read from DataStore, then
+     * the real `true`/`false`. Screens gate the first-open consent sheet on `== false` (not on the
+     * default-seeded `preferences`), so an already-accepted user never sees a first-frame flash.
+     */
+    val extensionConsentAccepted: StateFlow<Boolean?> = preferenceRepository.userPreferences
+        .map { it.extensionConsentAccepted }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     /** True only if the device has enrolled biometrics or a device credential. */
     val canUseBiometric: Boolean get() = biometricHelper.canAuthenticate()
@@ -121,6 +138,10 @@ class SettingsViewModel(
 
     fun setReinstallAllCardVisibility(visible: Boolean) {
         viewModelScope.launch { preferenceRepository.setReinstallAllCardVisibility(visible) }
+    }
+
+    fun setExtensionConsentAccepted(accepted: Boolean) {
+        viewModelScope.launch { preferenceRepository.setExtensionConsentAccepted(accepted) }
     }
 
     fun setLanguage(language: String?) {

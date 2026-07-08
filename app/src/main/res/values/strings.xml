@@ -244,6 +244,7 @@
     <string name="manage_extensions">Manage Extensions</string>
     <string name="manage_extensions_desc">View and configure installed APK plugins</string>
     <string name="extensions_unlocked">Extensions unlocked 🔓</string>
+    <string name="easter_egg_promoted">🎉 This hidden feature has already been promoted — stay tuned for the next one!</string>
     <string name="support_tab_play_store">Play Store</string>
     <string name="support_tab_direct">Direct</string>
     <string name="log_trigger_executed">Trigger executed: %1$s</string>
@@ -253,6 +254,10 @@
     <string name="installer_sideloaded">SIDELOADED</string>
     <string name="permission_protection_level">Protection: %1$s</string>
     <string name="extension_manager">Extension Manager</string>
+    <string name="extension_consent_title">Before you continue</string>
+    <string name="extension_consent_body">Extensions are powerful add-ons that can change how apps and the system behave on your device. They are not always made by us — anyone can build one. We verify and sign the extensions we distribute, but this is inherently risky territory.\n\nBy continuing you accept that you alone are responsible for what you install and enable here, and that Thor and its developers are NOT liable for any data loss, malfunction, or damage caused by an extension or any change you make through it.</string>
+    <string name="extension_consent_math_prompt">To confirm you\'ve read this, solve: %1$d + %2$d = ?</string>
+    <string name="extension_consent_accept">I understand — continue</string>
     <string name="extension_security_verified">Verified</string>
     <string name="extension_security_debug">Debug Mode (Unverified)</string>
     <string name="extension_security_untrusted">Untrusted (Blocked)</string>
@@ -261,6 +266,23 @@
     <string name="no_extensions_desc">Install Thor extension APKs starting with \"com.valhalla.thor.ext.\" signed with the same key to load modular rules.</string>
     <string name="extension_by_author">by %1$s</string>
     <string name="extension_version_prefix">v%1$s</string>
+
+    <!-- Extension store (Browse) -->
+    <string name="extension_store">Extension Store</string>
+    <string name="extension_store_desc">Download verified Thor extensions signed with the official key.</string>
+    <string name="extension_browse_store">Browse store</string>
+    <string name="extension_install">Install</string>
+    <string name="extension_installed">Installed</string>
+    <string name="extension_installing">Verifying…</string>
+    <string name="extension_source_only">Source only — build it yourself</string>
+    <string name="extension_requires_lsposed">Requires LSPosed</string>
+    <string name="extension_requires_thor">Requires a newer Thor</string>
+    <string name="extension_store_empty">No extensions available yet</string>
+    <string name="extension_store_empty_desc">Check back later — the catalog is updated as new extensions are published.</string>
+    <string name="extension_store_error">Couldn\'t load the store</string>
+    <string name="extension_store_error_desc">Check your connection and try again.</string>
+    <string name="extension_retry">Retry</string>
+    <string name="extension_install_failed">Verification failed: %1$s</string>
 
 
     <!-- UiText Messages -->
