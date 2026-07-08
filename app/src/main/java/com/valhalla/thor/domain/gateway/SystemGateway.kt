@@ -24,7 +24,6 @@ interface SystemGateway {
     suspend fun uninstallApp(packageName: String): Result<Unit>
     suspend fun installApp(apkPath: String, canDowngrade: Boolean = false): Result<Unit>
     suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit>
-
     suspend fun grantPermission(packageName: String, permissionName: String): Result<Unit>
     suspend fun revokePermission(packageName: String, permissionName: String): Result<Unit>
 

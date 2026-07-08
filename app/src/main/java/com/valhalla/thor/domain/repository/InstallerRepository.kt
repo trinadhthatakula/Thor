@@ -15,9 +15,5 @@ enum class InstallMode {
  * The Domain layer doesn't care about PackageInstaller APIs, only that we can install a URI.
  */
 interface InstallerRepository {
-    suspend fun installPackage(
-        uri: Uri,
-        mode: InstallMode,
-        canDowngrade: Boolean = false,
-    )
+    suspend fun installPackage(uri: Uri, mode: InstallMode, canDowngrade: Boolean = false)
 }
