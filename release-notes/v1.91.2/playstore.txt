@@ -1,0 +1,6 @@
+What's new in Thor v1.91.2
+
+• Extension updates: the in-app store now detects when an installed extension has a newer version and shows a one-tap Update (before, it only ever said "Installed"). Updating runs the same verified path — download, SHA-256 + signature check, in-place upgrade.
+• The two verified extensions got a security + reliability update you can grab right from the store.
+
+Thanks for using Thor!
