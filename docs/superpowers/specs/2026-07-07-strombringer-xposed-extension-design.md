@@ -16,7 +16,7 @@ Strombringer is **headless**: no launcher activity, no standalone UI. It is disc
 
 ## 2. Non-negotiable constraints
 
-- **Base Thor stays Xposed-free.** No `xposed_init`, no `xposedmodule` meta-data, no Xposed API dependency, no danger-zone UI in `:app`. The `store` APK is byte-for-byte unaffected by this feature except the small, store-safe `ExtensionManager` trust change (a signature check) and the foss-only `INTERNET` addition.
+- **Base Thor stays Xposed-free.** No `xposed_init`, no `xposedmodule` meta-data, no Xposed API dependency, no danger-zone UI in `:app`. The `store` APK is byte-for-byte unaffected by this feature except the small, store-safe `ExtensionManager` trust change (a signature check). The `INTERNET` permission moves to the shared `app/src/main/AndroidManifest.xml` for both flavors (§4.2) — net-new for `foss`, but the `store` manifest already declared it, so the store APK is unchanged.
 - **GPLv3** — Thor and all extensions are GPLv3; the CorePatch fork inherits it. No license conflict.
 - **No `extension-api` changes** for v1 (verified against the published contract).
 

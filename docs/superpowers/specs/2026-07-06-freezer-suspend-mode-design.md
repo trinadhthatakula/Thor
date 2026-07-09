@@ -121,7 +121,7 @@ All four paths already have a Freeze *and* a Suspend variant; we select the vari
   val toEnable     = frozenApps.filter { !it.enabled }      // disabled → pm enable
   val toUnsuspend  = frozenApps.filter { it.enabled && it.isSuspended }
   ```
-- Restore = `MultiAppAction.UnFreeze(toEnable)` and/or `MultiAppAction.UnSuspend(toUnsuspend)`.
+- Restore = the state-aware inverse per app — enable the disabled ones (`setAppDisabled(false)`) and/or unsuspend the suspended ones (`setAppSuspended(false)`), not a single `UnFreeze` (see the `Restore` recommendation below).
 
 Because both stream progress through the single `TermLoggerDialog`, dispatch them so they don't overlap (sequential, or a thin `MainViewModel` "restore" entry that iterates once and picks the inverse per app). **Recommended:** add a small state-aware restore in `MainViewModel` (`Restore(appList)` that, per app, calls `setAppSuspended(false)` if suspended else `setAppDisabled(false)`) — one action, one log stream, future-proof. Confirm during implementation whether to add `Restore` vs. sequential dispatch.
 

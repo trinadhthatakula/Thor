@@ -1071,7 +1071,7 @@ git commit -m "feat(corepatch): audit viewer + one-tap kill-switch; bump version
 
 ## Phase D — Strombringer: forked CorePatch hooks (device-tested)
 
-Repo: `/Users/trinadhthatakula/StudioProjects/Strombringer`. This is the bootloop-risk phase — the Global-Constraints fail-safe rules are acceptance criteria, not suggestions.
+Repo: `path/to/Strombringer`. This is the bootloop-risk phase — the Global-Constraints fail-safe rules are acceptance criteria, not suggestions.
 
 ### Task 13: License — add GPLv2, verify CorePatch clause, attribution
 
@@ -1085,7 +1085,7 @@ Repo: `/Users/trinadhthatakula/StudioProjects/Strombringer`. This is the bootloo
 - [ ] **Step 3: Commit** (in the Strombringer repo).
 
 ```bash
-cd /Users/trinadhthatakula/StudioProjects/Strombringer
+cd path/to/Strombringer
 git add LICENSE NOTICE README.md
 git commit -m "chore(license): adopt GPLv2 ahead of CorePatch hook fork"
 ```
@@ -1121,7 +1121,7 @@ private static Context systemContext() {
 
 - [ ] **Step 2: Compile Strombringer**
 
-Run: `cd /Users/trinadhthatakula/StudioProjects/Strombringer && ./gradlew :app:compileDebugKotlin`
+Run: `cd path/to/Strombringer && ./gradlew :app:compileDebugKotlin`
 Expected: SUCCESS.
 
 - [ ] **Step 3: Commit**
@@ -1146,7 +1146,7 @@ git commit -m "feat(corepatch): system_server-safe arm-state fetch with fail-saf
 - [ ] **Step 4: Wrap every kept hook body in try/catch that fails safe** (do nothing on throw; never rethrow into `system_server`), if the upstream code does not already.
 - [ ] **Step 5: Compile**
 
-Run: `cd /Users/trinadhthatakula/StudioProjects/Strombringer && ./gradlew :app:compileDebugJavaWithJavac`
+Run: `cd path/to/Strombringer && ./gradlew :app:compileDebugJavaWithJavac`
 Expected: SUCCESS (Java sources compile; Xposed API is `compileOnly`).
 
 - [ ] **Step 6: Commit**
@@ -1175,7 +1175,7 @@ git commit -m "feat(corepatch): lift v4.9 sig/digest hooks (stripped, rewired of
 - [ ] **Step 3: Resolve `thorUids`** — the coarse hook must know Thor's UID(s) to satisfy the installer-UID guard; obtain via `PackageManager.getPackageUid("com.valhalla.thor"/".debug")` using the system context, cached, refreshed on failure.
 - [ ] **Step 4: Compile**
 
-Run: `cd /Users/trinadhthatakula/StudioProjects/Strombringer && ./gradlew :app:compileDebugJavaWithJavac`
+Run: `cd path/to/Strombringer && ./gradlew :app:compileDebugJavaWithJavac`
 Expected: SUCCESS.
 
 - [ ] **Step 5: Commit**
@@ -1197,7 +1197,7 @@ git commit -m "feat(corepatch): coarse per-install entry hook sets thread-scoped
 - [ ] **Step 1: Implement** the SDK dispatch + install(coarse) + install(fine) + fail-safe SDK pinning. Every dispatch branch AND each `install(...)` call wrapped in its own try/catch (a failure to install one hook must not abort the others or throw out of `start()`). Do NOT call `refresh()` here.
 - [ ] **Step 2: Compile**
 
-Run: `cd /Users/trinadhthatakula/StudioProjects/Strombringer && ./gradlew :app:compileDebugJavaWithJavac`
+Run: `cd path/to/Strombringer && ./gradlew :app:compileDebugJavaWithJavac`
 Expected: SUCCESS.
 
 - [ ] **Step 3: Commit**
@@ -1239,7 +1239,7 @@ override fun handleLoadPackage(lpp: LoadPackageParam) {
 
 - [ ] **Step 3: Build the Strombringer APK**
 
-Run: `cd /Users/trinadhthatakula/StudioProjects/Strombringer && ./gradlew :app:assembleDebug`
+Run: `cd path/to/Strombringer && ./gradlew :app:assembleDebug`
 Expected: BUILD SUCCESSFUL.
 
 - [ ] **Step 4: Commit**

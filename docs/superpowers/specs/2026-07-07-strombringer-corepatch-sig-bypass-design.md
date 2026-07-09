@@ -206,8 +206,9 @@ constraint: never do IPC on the tight PMS verify path. Resolution:
   existing auto-unfreeze hook; no libxposed-101 migration now.
 - `res/values/arrays.xml` `xposed_scope` **+= `<item>android</item>`** (system_server injection).
 - `XposedEntry.handleLoadPackage`: add, before the launcher path,
-  `if (lpp.packageName == "android") { CorePatchHook(lpp.classLoader).start(); return }`.
-  **Guard hard** so launcher code never runs in `system_server`.
+  `if (lpp.packageName == "android" && lpp.processName == "android") { CorePatchHook(lpp.classLoader).start(); return }`.
+  **Guard hard** — keep the `processName == "android"` clause (matching the `MainHook` gate) so the
+  hook is scoped to `system_server` only, and launcher code never runs there.
 - New Java sources under `.../strombringer/corepatch/`. Kotlin↔Java interop is fine in one Android
   module; keep hook classes Java (verbatim), keep `CorePatchHook` entry + `Config` in either
   (Kotlin `Config` object querying the provider is natural).

@@ -581,7 +581,7 @@ Add the imports `com.valhalla.thor.data.launcher.FreezerShortcutContract`.
 - [ ] **Step 3: Wire the per-app action.** In the freezer app's action UI (the per-app overflow/menu in `FreezerScreen.kt` / `ManageFreezerSheet.kt` — follow the existing per-app action items such as unfreeze/remove), add an "Add to Home screen" item shown only when `uiState.addFreezerToLauncher && viewModel.isPinSupported() && !app.isSystem`:
 
 ```kotlin
-if (uiState.addFreezerToLauncher && !app.isSystem) {
+if (uiState.addFreezerToLauncher && !app.isSystem && viewModel.isPinSupported()) {
     DropdownMenuItem(
         text = { Text(stringResource(R.string.add_to_home_screen)) },
         leadingIcon = { Icon(painterResource(R.drawable.frozen), contentDescription = null) },

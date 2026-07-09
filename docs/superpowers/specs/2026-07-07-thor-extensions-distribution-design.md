@@ -78,7 +78,7 @@ Result: bump a verified extension's version → CI builds, signs, releases, and 
 
 1. Dev opens a PR adding `unverified/<their-ext>/` (source only).
 2. Maintainer reviews source (safety, policy, no malware).
-3. On approval: move to `verified/`, add/confirm the **release `signingConfig`**, bump version → CI signs with the dedicated key + releases + catalogs it. The extension is now Thor-signed → loadable.
+3. On approval: move to `verified/`, add/confirm the **release `signingConfig`**, bump version → CI signs with the dedicated key + releases + catalogs it. The extension is now signed by the dedicated Thor Extensions key → loadable.
 4. Until then it stays `unverified/` (source-only; a user can build+self-sign, but a stock Thor won't load a non-allowlisted signature — the future untrusted-trust opt-in will relax this).
 
 ## 8. Security

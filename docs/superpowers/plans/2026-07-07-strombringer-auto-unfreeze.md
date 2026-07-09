@@ -166,6 +166,12 @@ class FreezerBridgeProvider : ContentProvider(), KoinComponent {
             android:authorities="${applicationId}.freezerbridge"
             android:exported="true" />
 ```
+> **Provider hardening (required in the shipped provider, not just the manifest):** the exported
+> provider must, before any privileged work, (a) verify the caller is the **current default
+> launcher** (`resolveActivity(HOME, MATCH_DEFAULT_ONLY)`, not `queryIntentActivities(HOME, 0)` which
+> any HOME-declaring app can spoof), (b) bound the target to Freezer packages (`mayRestore`), and
+> (c) wrap the restore in `Binder.clearCallingIdentity()` and **fail closed** (return not-ok) on any
+> Binder/gateway error.
 - [ ] **Step 3: Verify compile** `./gradlew :app:compileFossDebugKotlin` → BUILD SUCCESSFUL.
 - [ ] **Step 4: Commit** `git add app/src/main/java/com/valhalla/thor/data/provider/FreezerBridgeProvider.kt app/src/main/AndroidManifest.xml && git commit -m "feat(strombringer): FreezerBridge restore ContentProvider (freezer-scoped)"`
 
