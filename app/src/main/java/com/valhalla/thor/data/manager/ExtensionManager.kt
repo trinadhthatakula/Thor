@@ -163,15 +163,17 @@ class ExtensionManager(private val context: Context) {
     fun isConfigurable(packageName: String): Boolean = getConfigLaunchIntent(packageName) != null
 
     /**
-     * Package names of every installed extension (anything under [EXTENSION_PACKAGE_PREFIX]),
-     * WITHOUT loading their classes or verifying signatures — a cheap `getInstalledApplications`
-     * scan used by the store to mark catalog entries that are already installed. Signature trust is
-     * still enforced separately at load time by [loadExtensions].
+     * Installed extension packageName -> its `longVersionCode`, for every installed extension
+     * (anything under [EXTENSION_PACKAGE_PREFIX]), WITHOUT loading classes or verifying signatures —
+     * a cheap scan the store uses to mark which catalog entries are installed and to compare an
+     * installed copy against the catalog to offer updates. Signature trust is still enforced
+     * separately at load time by [loadExtensions]. `longVersionCode` is available from API 28 (Thor's
+     * minSdk), so no compat shim is needed.
      */
-    fun getInstalledExtensionPackageNames(): List<String> =
-        pm.getInstalledApplications(0)
-            .map { it.packageName }
-            .filter { it.startsWith(EXTENSION_PACKAGE_PREFIX) }
+    fun getInstalledExtensionVersionCodes(): Map<String, Long> =
+        pm.getInstalledPackages(0)
+            .filter { it.packageName.startsWith(EXTENSION_PACKAGE_PREFIX) }
+            .associate { it.packageName to it.longVersionCode }
 
     fun getExtensionPackageName(extension: ThorExtension): String? {
         val className = extension.javaClass.name

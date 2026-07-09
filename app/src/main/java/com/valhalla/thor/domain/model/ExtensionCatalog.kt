@@ -23,6 +23,8 @@ data class ExtensionCatalog(
  * @param apkUrl HTTPS URL of the dedicated-key-signed extension APK, or "" for source-only.
  * @param sha256 Expected SHA-256 of the APK file (uppercase/lowercase hex, no separators),
  *   or "" when unknown. When present it is verified before the signer pin check.
+ * @param versionCode The published APK's Android `versionCode`. Compared against the installed
+ *   copy's versionCode to offer an update; `0` means unknown (never offers an update).
  * @param minThorVersionCode Minimum Thor `versionCode` required to install this extension.
  * @param minSdk Minimum Android SDK the extension supports.
  * @param requiresLSPosed True when the extension is an LSPosed/Xposed module and only works
@@ -36,6 +38,7 @@ data class CatalogEntry(
     val description: String = "",
     val author: String = "",
     val version: String = "",
+    val versionCode: Long = 0,
     val verified: Boolean = false,
     val requiresLSPosed: Boolean = false,
     val minThorVersionCode: Int = 0,

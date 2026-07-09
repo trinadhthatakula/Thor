@@ -272,6 +272,7 @@
     <string name="extension_store_desc">Download verified Thor extensions signed with the official key.</string>
     <string name="extension_browse_store">Browse store</string>
     <string name="extension_install">Install</string>
+    <string name="extension_update">Update</string>
     <string name="extension_installed">Installed</string>
     <string name="extension_installing">Verifying…</string>
     <string name="extension_source_only">Source only — build it yourself</string>

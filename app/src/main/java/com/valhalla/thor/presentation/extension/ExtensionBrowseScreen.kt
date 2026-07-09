@@ -146,6 +146,7 @@ fun ExtensionBrowseScreen(
                                 entry = entry,
                                 status = state.installStatuses[entry.id] ?: InstallStatus.Idle,
                                 isInstalled = viewModel.isInstalled(entry),
+                                updateAvailable = viewModel.isUpdateAvailable(entry),
                                 onInstall = { viewModel.install(entry) }
                             )
                         }
@@ -252,6 +253,7 @@ private fun StoreEntryCard(
     entry: CatalogEntry,
     status: InstallStatus,
     isInstalled: Boolean,
+    updateAvailable: Boolean,
     onInstall: () -> Unit,
 ) {
     val incompatible = entry.minThorVersionCode > BuildConfig.VERSION_CODE
@@ -369,6 +371,47 @@ private fun StoreEntryCard(
 
             // Action area — mutually exclusive states.
             when {
+                // Active download/verify — for a fresh install OR an update.
+                status is InstallStatus.Downloading -> {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                }
+
+                // A newer version is published but this Thor build is too old to run it.
+                updateAvailable && incompatible -> {
+                    Text(
+                        text = stringResource(R.string.extension_requires_thor),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.End
+                    )
+                }
+
+                // A newer version is published and installable — offer the update.
+                updateAvailable -> {
+                    val isRetry = status is InstallStatus.Failed
+                    Button(
+                        onClick = onInstall,
+                        shape = RoundedCornerShape(20.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.apk_install),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = stringResource(
+                                if (isRetry) R.string.extension_retry else R.string.extension_update
+                            ),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
                 isInstalled -> {
                     Text(
                         text = stringResource(R.string.extension_installed),
@@ -394,10 +437,6 @@ private fun StoreEntryCard(
                         color = MaterialTheme.colorScheme.error,
                         textAlign = TextAlign.End
                     )
-                }
-
-                status is InstallStatus.Downloading -> {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
                 }
 
                 else -> {

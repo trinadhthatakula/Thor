@@ -31,8 +31,8 @@ data class BrowseUiState(
     val error: String? = null,
     /** Keyed by [CatalogEntry.id]. Absent == [InstallStatus.Idle]. */
     val installStatuses: Map<String, InstallStatus> = emptyMap(),
-    /** Package names of extensions already installed on-device. */
-    val installedPackageNames: Set<String> = emptySet(),
+    /** Installed extension packageName -> its installed `versionCode` (drives installed/update badges). */
+    val installedVersionCodes: Map<String, Long> = emptyMap(),
 )
 
 /**
@@ -57,9 +57,8 @@ class ExtensionBrowseViewModel(
         _uiState.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
             val installed = withContext(Dispatchers.IO) {
-                runCatching { extensionManager.getInstalledExtensionPackageNames() }
-                    .getOrDefault(emptyList())
-                    .toSet()
+                runCatching { extensionManager.getInstalledExtensionVersionCodes() }
+                    .getOrDefault(emptyMap())
             }
             storeRepository.fetchCatalog().fold(
                 onSuccess = { entries ->
@@ -68,7 +67,7 @@ class ExtensionBrowseViewModel(
                             isLoading = false,
                             entries = entries,
                             error = null,
-                            installedPackageNames = installed,
+                            installedVersionCodes = installed,
                         )
                     }
                 },
@@ -77,7 +76,7 @@ class ExtensionBrowseViewModel(
                         it.copy(
                             isLoading = false,
                             error = t.message ?: "Failed to load catalog",
-                            installedPackageNames = installed,
+                            installedVersionCodes = installed,
                         )
                     }
                 }
@@ -85,14 +84,31 @@ class ExtensionBrowseViewModel(
         }
     }
 
-    /** True when [entry] matches an already-installed extension package. */
-    fun isInstalled(entry: CatalogEntry): Boolean {
-        val installed = _uiState.value.installedPackageNames
-        return installed.any { pkg ->
+    /** Installed `versionCode` of the package matching [entry], or null when it isn't installed. */
+    private fun installedVersionCode(entry: CatalogEntry): Long? {
+        val installed = _uiState.value.installedVersionCodes
+        val pkg = installed.keys.firstOrNull { pkg ->
             pkg == entry.id ||
                 pkg == "com.valhalla.thor.ext.${entry.id}" ||
                 pkg.endsWith(".${entry.id}")
         }
+        return pkg?.let { installed[it] }
+    }
+
+    /** True when [entry] matches an already-installed extension package. */
+    fun isInstalled(entry: CatalogEntry): Boolean = installedVersionCode(entry) != null
+
+    /**
+     * True when the catalog publishes a newer [CatalogEntry.versionCode] than the installed copy.
+     * A catalog versionCode of 0 (unknown) never offers an update, so an older catalog without the
+     * field degrades to the plain installed/not-installed behaviour.
+     */
+    fun isUpdateAvailable(entry: CatalogEntry): Boolean {
+        // A source-only / unpublished entry has no APK to install, so never surface a (dead) Update
+        // button — it falls through to the plain "Installed" state instead.
+        if (!entry.isInstallable) return false
+        val installed = installedVersionCode(entry) ?: return false
+        return entry.versionCode > 0L && installed < entry.versionCode
     }
 
     fun statusFor(entry: CatalogEntry): InstallStatus =
