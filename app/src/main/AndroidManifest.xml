@@ -4,6 +4,11 @@
 
     <uses-sdk tools:overrideLibrary="rikka.shizuku.api" />
 
+    <!-- Needed by both flavors: the in-app Extensions store fetches its catalog and downloads
+         dedicated-key-signed extension APKs over HTTPS. Declared here (not in a flavor manifest)
+         so the FOSS flavor has internet too. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <uses-permission
         android:name="android.permission.REQUEST_INSTALL_PACKAGES"
         tools:ignore="RequestInstallPackagesPolicy" />
@@ -248,6 +253,10 @@
 
 
         <receiver
+            android:name=".data.receivers.FreezerShortcutPinnedReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".data.receivers.InstallReceiver"
             android:exported="false">
             <intent-filter>
@@ -304,6 +313,15 @@
             android:exported="false"
             android:theme="@android:style/Theme.NoDisplay" />
 
+        <activity
+            android:name=".presentation.launcher.FreezerLaunchActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <receiver
             android:name=".data.receivers.ExtensionTriggerReceiver"
             android:permission="com.valhalla.thor.permission.TRIGGER_EXTENSION"
@@ -312,6 +330,15 @@
                 <action android:name="com.valhalla.thor.action.TRIGGER_EXTENSION" />
             </intent-filter>
         </receiver>
+
+        <!-- Strombringer bridge: lets the (LSPosed) launcher hook ask Thor to unsuspend a frozen
+             app on launch. exported so the hook's process can reach it; access is bounded to
+             Freezer packages inside the provider (the caller runs in the launcher, so it can't be
+             signature-verified). -->
+        <provider
+            android:name=".data.provider.FreezerBridgeProvider"
+            android:authorities="${applicationId}.freezerbridge"
+            android:exported="true" />
 
     </application>
 

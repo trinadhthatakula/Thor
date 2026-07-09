@@ -57,6 +57,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.R
 import com.valhalla.thor.data.manager.UsageAccessManager
 import com.valhalla.thor.domain.model.AnimationIntensity
+import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.asgard.components.ConnectedButtonGroup
@@ -396,6 +397,17 @@ fun SettingsScreen(
                 onCheckedChange = { viewModel.setAutoFreezeEnabled(it) }
             )
 
+            SettingsSwitchRow(
+                icon = R.drawable.frozen,
+                title = stringResource(R.string.suspend_instead_of_freeze),
+                subtitle = if (hasPrivilege) stringResource(R.string.suspend_instead_of_freeze_desc) else stringResource(
+                    R.string.privilege_required_warning
+                ),
+                checked = prefs.freezerMode == FreezerMode.SUSPEND,
+                enabled = hasPrivilege,
+                onCheckedChange = { viewModel.setFreezerMode(if (it) FreezerMode.SUSPEND else FreezerMode.FREEZE) }
+            )
+
             SettingsClickRow(
                 icon = R.drawable.unfreeze,
                 title = stringResource(R.string.unfreeze_all_apps),
@@ -405,11 +417,24 @@ fun SettingsScreen(
                 enabled = hasPrivilege,
                 onClick = { showUnfreezeConfirmation = true }
             )
+
+            SettingsSwitchRow(
+                icon = R.drawable.frozen,
+                title = stringResource(R.string.add_freezer_to_launcher),
+                subtitle = if (hasPrivilege) stringResource(R.string.add_freezer_to_launcher_desc) else stringResource(
+                    R.string.privilege_required_warning
+                ),
+                checked = prefs.addFreezerToLauncher,
+                enabled = hasPrivilege,
+                onCheckedChange = { viewModel.setAddFreezerToLauncher(it) }
+            )
         }
 
         // ── EXTENSIONS ──────────────────────────────────────────────────────
-        // Hidden until unlocked via the home-screen easter egg — the feature is not yet stable.
-        if (prefs.extensionsUnlocked) {
+        // Power-user surface: shown only when an elevated privilege (Root / Shizuku / Dhizuku) is
+        // available, so normal users aren't offered it. Entry into the manager itself is further
+        // gated by a one-time liability-consent sheet (see ExtensionManagerScreen).
+        if (hasPrivilege) {
             Spacer(Modifier.height(32.dp))
 
             SettingsSectionLabel(stringResource(R.string.extensions))

@@ -1,0 +1,9 @@
+What's new in Thor v1.90.4
+
+• New: Add Freezer to launcher — pin your frozen apps to the home screen and tap to launch them (they re-freeze on screen-off).
+• Shortcut icons follow app state: grey while frozen, colour while enabled.
+• Freeze all / Unfreeze all shortcuts, plus quick actions from a long-press on Thor's icon.
+• "Add to Home screen" from the app info dialog and the app details page.
+• Freezing an app now asks before adding it to the Freezer.
+
+Thanks for using Thor!

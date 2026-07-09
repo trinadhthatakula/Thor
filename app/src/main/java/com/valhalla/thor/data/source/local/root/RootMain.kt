@@ -29,7 +29,8 @@ object RootMain {
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            // Surface the real cause to logcat — libsu only reports "code 1" to the caller.
+            android.util.Log.e("RootMain", "task '${args.getOrNull(0)}' failed", e)
             exitProcess(1)
         }
         exitProcess(0)
@@ -84,8 +85,9 @@ object RootMain {
         pmClass: Class<*>, pm: Any?, dialogInfoClass: Class<*>,
         packageName: String, suspended: Boolean, dialogInfo: Any?, caller: String
     ) {
+        // Android 14+ (API 34+): 9-arg — adds `flags` plus separate suspendingUserId + targetUserId
+        // (the quarantine-era signature; confirmed present on Android 16 / API 36).
         try {
-            // Android 13+ (API 33): 8-arg — extra flags Int between dialogInfo and caller
             pmClass.getDeclaredMethod(
                 "setPackagesSuspendedAsUser",
                 Array<String>::class.java,
@@ -93,19 +95,41 @@ object RootMain {
                 android.os.PersistableBundle::class.java,
                 android.os.PersistableBundle::class.java,
                 dialogInfoClass,
-                Int::class.javaPrimitiveType,
-                String::class.java,
-                Int::class.javaPrimitiveType
-            ).invoke(pm, arrayOf(packageName), suspended, null, null, dialogInfo, 0, caller, 0)
+                Int::class.javaPrimitiveType,   // flags
+                String::class.java,             // callingPackage
+                Int::class.javaPrimitiveType,   // suspendingUserId
+                Int::class.javaPrimitiveType    // targetUserId
+            ).invoke(pm, arrayOf(packageName), suspended, null, null, dialogInfo, 0, caller, 0, 0)
+            return
         } catch (_: NoSuchMethodException) {
-            // Android 10-12 (API 29-32): 7-arg
+            // fall through to the 8-arg signature
+        }
+
+        // Some API 33 builds: 8-arg — a `flags` Int between dialogInfo and caller, single userId.
+        try {
             pmClass.getDeclaredMethod(
                 "setPackagesSuspendedAsUser",
-                Array<String>::class.java, Boolean::class.javaPrimitiveType,
-                android.os.PersistableBundle::class.java, android.os.PersistableBundle::class.java,
-                dialogInfoClass, String::class.java, Int::class.javaPrimitiveType
-            ).invoke(pm, arrayOf(packageName), suspended, null, null, dialogInfo, caller, 0)
+                Array<String>::class.java,
+                Boolean::class.javaPrimitiveType,
+                android.os.PersistableBundle::class.java,
+                android.os.PersistableBundle::class.java,
+                dialogInfoClass,
+                Int::class.javaPrimitiveType,   // flags
+                String::class.java,             // callingPackage
+                Int::class.javaPrimitiveType    // userId
+            ).invoke(pm, arrayOf(packageName), suspended, null, null, dialogInfo, 0, caller, 0)
+            return
+        } catch (_: NoSuchMethodException) {
+            // fall through to the older 7-arg signature
         }
+
+        // Android 10-13 (API 29-33): 7-arg — SuspendDialogInfo, callingPackage, userId.
+        pmClass.getDeclaredMethod(
+            "setPackagesSuspendedAsUser",
+            Array<String>::class.java, Boolean::class.javaPrimitiveType,
+            android.os.PersistableBundle::class.java, android.os.PersistableBundle::class.java,
+            dialogInfoClass, String::class.java, Int::class.javaPrimitiveType
+        ).invoke(pm, arrayOf(packageName), suspended, null, null, dialogInfo, caller, 0)
     }
 
     private fun buildSuspendDialogInfo(): Any? = try {

@@ -2,6 +2,7 @@ package com.valhalla.thor.domain.repository
 
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.FilterType
+import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
@@ -39,6 +40,8 @@ interface PreferenceRepository {
 
     // --- Auto Freeze ---
     suspend fun setAutoFreezeEnabled(enabled: Boolean)
+    suspend fun setAddFreezerToLauncher(enabled: Boolean)
+    suspend fun setFreezerMode(mode: FreezerMode)
 
     // --- Freezer Prompts ---
     suspend fun setHasShownDisabledAppsPrompt(hasShown: Boolean)
@@ -58,4 +61,5 @@ interface PreferenceRepository {
 
     // --- Extensions ---
     suspend fun setExtensionsUnlocked(unlocked: Boolean)
+    suspend fun setExtensionConsentAccepted(accepted: Boolean)
 }

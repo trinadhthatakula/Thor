@@ -53,6 +53,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import com.valhalla.asgard.components.AsgardActionItem
+import com.valhalla.asgard.components.StatusChip as AsgardStatusChip
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -62,6 +66,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.valhalla.thor.data.launcher.FreezerShortcutManager
+import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
+import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.domain.repository.PreferenceRepository
+import org.koin.compose.koinInject
 import coil3.compose.AsyncImage
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
@@ -282,6 +291,18 @@ fun AppInfoDetailsScreen(
                     }
                 }
             }
+
+            FreezerPromptSnackbar(
+                visible = state.freezerPrompt != null,
+                appName = state.freezerPrompt?.appName,
+                onAddToFreezer = {
+                    state.freezerPrompt?.let { viewModel.addToFreezer(it.packageName) }
+                },
+                onDismiss = viewModel::dismissFreezerPrompt,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 16.dp)
+            )
         }
     }
 
@@ -646,16 +667,7 @@ private fun StatusChip(
     color: Color,
     textColor: Color = MaterialTheme.colorScheme.onSurface
 ) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelSmall,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier
-            .clip(CircleShape)
-            .background(color)
-            .padding(horizontal = 8.dp, vertical = 2.dp),
-        color = textColor
-    )
+    AsgardStatusChip(text = text, containerColor = color, contentColor = textColor)
 }
 
 @Composable
@@ -682,18 +694,25 @@ private fun AppDetailsActionRow(
     val isFrozen = !appInfo.enabled
     val isSuspended = appInfo.isSuspended
 
+    // Self-contained launcher-shortcut action — gated on the feature setting + pin support + user app.
+    val shortcutManager = koinInject<FreezerShortcutManager>()
+    val preferenceRepository = koinInject<PreferenceRepository>()
+    val prefs by preferenceRepository.userPreferences.collectAsStateWithLifecycle(UserPreferences())
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.Top
     ) {
         ActionItem(
             icon = R.drawable.open_in_new,
             label = stringResource(R.string.action_open),
-            enabled = appInfo.enabled,
+            // Always tappable: Launch restores (unsuspends / enables) a frozen or suspended app
+            // before launching. Non-launchable apps fall through to a "can't launch" toast.
+            enabled = true,
             onClick = onLaunch
         )
 
@@ -771,6 +790,19 @@ private fun AppDetailsActionRow(
             onClick = onExport
         )
 
+        if (prefs.addFreezerToLauncher && !appInfo.isSystem && shortcutManager.isPinSupported()) {
+            ActionItem(
+                icon = R.drawable.home,
+                label = stringResource(R.string.add_to_home_screen),
+                onClick = {
+                    shortcutManager.pinAppShortcut(
+                        appInfo.packageName,
+                        appInfo.appName ?: appInfo.packageName
+                    )
+                }
+            )
+        }
+
         if (appInfo.packageName != BuildConfig.APPLICATION_ID) {
             ActionItem(
                 icon = R.drawable.delete_forever,
@@ -789,37 +821,13 @@ private fun ActionItem(
     tintColor: Color? = null,
     onClick: () -> Unit
 ) {
-    val alpha = if (enabled) 1f else 0.5f
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(6.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(RoundedCornerShape(18.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = alpha)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                painter = painterResource(icon),
-                contentDescription = label,
-                modifier = Modifier.size(24.dp),
-                tint = (tintColor ?: MaterialTheme.colorScheme.primary).copy(alpha = alpha)
-            )
-        }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha),
-            maxLines = 1
-        )
-    }
+    AsgardActionItem(
+        icon = ImageVector.vectorResource(icon),
+        label = label,
+        onClick = onClick,
+        enabled = enabled,
+        iconTint = tintColor ?: MaterialTheme.colorScheme.primary,
+    )
 }
 
 @Composable

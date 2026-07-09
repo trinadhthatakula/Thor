@@ -125,8 +125,12 @@ class HomeViewModel(
         }
     }
 
-    /** Easter egg: unlock the (still-unstable) Extensions feature in Settings. */
-    fun unlockExtensions() {
+    /**
+     * The tap easter egg reached its cap: mark it "cracked" (persisted via the extensionsUnlocked
+     * flag) so it stays cracked until a new egg ships in a future update. A cracked egg no longer
+     * counts — it just shakes the logo and opens the Support Developer sheet.
+     */
+    fun crackEasterEgg() {
         viewModelScope.launch {
             preferenceRepository.setExtensionsUnlocked(true)
         }

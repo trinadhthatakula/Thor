@@ -36,6 +36,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.valhalla.asgard.components.AsgardActionItem
+import com.valhalla.asgard.components.StatusChip as AsgardStatusChip
+import com.valhalla.thor.data.launcher.FreezerShortcutManager
+import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.domain.repository.PreferenceRepository
+import org.koin.compose.koinInject
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -490,16 +499,7 @@ private fun StatusChip(
     color: Color,
     textColor: Color = MaterialTheme.colorScheme.onSurface
 ) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelSmall,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier
-            .clip(CircleShape)
-            .background(color)
-            .padding(horizontal = 12.dp, vertical = 4.dp),
-        color = textColor
-    )
+    AsgardStatusChip(text = text, containerColor = color, contentColor = textColor)
 }
 
 @Composable
@@ -521,7 +521,7 @@ private fun AppActionRow(
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.Top
     ) {
         // 1. Standard Actions
         ActionItem(R.drawable.open_in_new, stringResource(R.string.action_launch)) {
@@ -610,40 +610,24 @@ private fun AppActionRow(
             )
         }
 
-
+        // Freezer launcher shortcut — self-contained so it's available wherever this dialog shows
+        // (app list, freezer, …). Gated on the feature setting + launcher pin support + user apps.
+        val shortcutManager = koinInject<FreezerShortcutManager>()
+        val preferenceRepository = koinInject<PreferenceRepository>()
+        val prefs by preferenceRepository.userPreferences.collectAsStateWithLifecycle(UserPreferences())
+        if (prefs.addFreezerToLauncher && !appInfo.isSystem && shortcutManager.isPinSupported()) {
+            ActionItem(R.drawable.home, stringResource(R.string.add_to_home_screen)) {
+                shortcutManager.pinAppShortcut(appInfo.packageName, appInfo.appName ?: appInfo.packageName)
+            }
+        }
     }
 }
 
 @Composable
 private fun ActionItem(icon: Int, label: String, onClick: () -> Unit) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clip(RoundedCornerShape(24.dp))
-            .clickable(onClick = onClick)
-            .padding(8.dp)
-    ) {
-        // Use a Tonal Button style for better touch targets
-        Box(
-            modifier = Modifier
-                .size(64.dp)
-                .clip(RoundedCornerShape(24.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                painter = painterResource(icon),
-                contentDescription = label,
-                modifier = Modifier.size(28.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1
-        )
-    }
+    AsgardActionItem(
+        icon = ImageVector.vectorResource(icon),
+        label = label,
+        onClick = onClick,
+    )
 }

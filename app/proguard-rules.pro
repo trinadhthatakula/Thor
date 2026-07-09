@@ -23,3 +23,18 @@
 -dontwarn javax.annotation.processing.Processor
 -dontwarn javax.annotation.Nullable
 -dontwarn dalvik.system.VMRuntime
+
+# --- Extension API ABI (host-provided contract) -----------------------------
+# Thor bundles com.trinadhthatakula:thor-extension-api and provides these types to extensions at
+# runtime. Extensions declare the api `compileOnly` and their entry class is loaded via
+# PathClassLoader (parent = Thor), so they reference the ORIGINAL fully-qualified names and resolve
+# to Thor's copies parent-first. R8 must NOT rename or strip these, or every extension fails to load
+# in release with a ClassNotFoundException / ClassCastException on its declared interface
+# (ThorExtension / AutomationExtension / DebloatExtension …). Keep names + members of the api.
+#
+# NOTE: this is the ONLY host-ABI keep extensions need. Extension config UI runs in the extension's
+# OWN process (an Activity Thor launches by Intent — ExtensionManager.ACTION_CONFIGURE), NOT inside
+# Thor, so no Compose / Asgard / kotlin-stdlib types cross the boundary and Thor can shrink them
+# freely. (The old in-host @Composable model forced keeping all of those and bloated the APK ~4x.)
+-keep class com.valhalla.thor.extension.api.** { *; }
+-keep interface com.valhalla.thor.extension.api.** { *; }

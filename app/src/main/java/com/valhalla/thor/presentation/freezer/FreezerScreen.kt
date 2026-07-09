@@ -53,6 +53,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.valhalla.thor.domain.model.FreezerMode
+import com.valhalla.thor.domain.model.isActive
+import com.valhalla.thor.domain.model.isFrozen
 import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
@@ -117,15 +120,15 @@ fun FreezerScreen(
         filtered.sortedBy { it.appName }
     }
 
-    val hasEnabled = remember(state.freezerApps) { state.freezerApps.any { it.enabled } }
-    val hasDisabled = remember(state.freezerApps) { state.freezerApps.any { !it.enabled } }
-
     // Apps the "Freeze all" / "Unfreeze all" toolbar acts on. These route through the
-    // shared batch action (MultiAppAction) so progress streams into the TermLoggerDialog
-    // (rendered by MainScreen), identical to multi-select. The unsafe/UAD eligibility
-    // skip is applied once, centrally, by MainViewModel.onMultiAppAction.
-    val appsToFreeze = remember(state.freezerApps) { state.freezerApps.filter { it.enabled } }
-    val appsToUnfreeze = remember(state.freezerApps) { state.freezerApps.filter { !it.enabled } }
+    // shared batch action (MultiAppAction) so progress streams into the FreezeLoggerDialog;
+    // the unsafe/UAD eligibility skip is applied once, centrally, by
+    // MainViewModel.performCountedFreeze. Unfreeze restores by each app's actual state.
+    // "Active" = freezable (enabled & not suspended); "frozen" = disabled OR suspended (GH#239).
+    val appsToFreeze = remember(state.freezerApps) { state.freezerApps.filter { it.isActive } }
+    val appsToUnfreeze = remember(state.freezerApps) { state.freezerApps.filter { it.isFrozen } }
+    val hasEnabled = appsToFreeze.isNotEmpty()
+    val hasDisabled = appsToUnfreeze.isNotEmpty()
 
 
     LaunchedEffect(state.actionMessage) {
@@ -338,6 +341,7 @@ fun FreezerScreen(
                     isRoot = state.isRoot,
                     isShizuku = state.isShizuku,
                     isDhizuku = state.isDhizuku,
+                    freezerMode = state.freezerMode,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 16.dp),
@@ -369,7 +373,14 @@ fun FreezerScreen(
                             disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.38f)
                         )
                         IconButton(
-                            onClick = { onMultiAppAction(MultiAppAction.Freeze(appsToFreeze)) },
+                            onClick = {
+                                onMultiAppAction(
+                                    MultiAppAction.Freeze(
+                                        appsToFreeze,
+                                        useSuspend = state.freezerMode == FreezerMode.SUSPEND
+                                    )
+                                )
+                            },
                             enabled = hasEnabled && hasPrivilege,
                             colors = iconButtonColors
                         ) {
@@ -427,6 +438,11 @@ fun FreezerScreen(
                         selectedPackageName = null
                     }
 
+                    is AppClickAction.AddToHomeScreen -> {
+                        viewModel.pinAppToLauncher(app)
+                        selectedPackageName = null
+                    }
+
                     else -> {
                         onAppAction(action)
                         selectedPackageName = null
@@ -454,10 +470,17 @@ fun FreezerScreen(
             hasPrivilege = hasPrivilege,
             showImportDisabledApps = disabledAppsNotInFreezer.isNotEmpty(),
             appListType = state.appListType,
+            showLauncherPinActions = state.addFreezerToLauncher && viewModel.isPinSupported(),
             onToggleView = viewModel::toggleGridMode,
             onToggleAutoFreeze = viewModel::setAutoFreezeEnabled,
+            freezerMode = state.freezerMode,
+            onFreezerModeChange = viewModel::setFreezerMode,
             onDismiss = { showSettingsSheet = false },
             onUnfreezeAll = { onMultiAppAction(MultiAppAction.UnFreeze(appsToUnfreeze)) },
+            onPinAllToLauncher = viewModel::pinAllToLauncher,
+            pinAllCount = state.freezerApps.count { !it.isSystem },
+            onPinFreezeAllShortcut = { viewModel.pinBulkShortcut(freeze = true) },
+            onPinUnfreezeAllShortcut = { viewModel.pinBulkShortcut(freeze = false) },
             onImportDisabledApps = {
                 showSettingsSheet = false
                 if (disabledAppsNotInFreezer.isNotEmpty()) {

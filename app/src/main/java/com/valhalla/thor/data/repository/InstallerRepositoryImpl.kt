@@ -42,7 +42,7 @@ class InstallerRepositoryImpl(
     private val context: Context,
     private val eventBus: InstallerEventBus,
     private val rootGateway: RootSystemGateway,
-    private val shizukuReflector: ShizukuReflector
+    private val shizukuReflector: ShizukuReflector,
 ) : InstallerRepository {
 
     private val defaultInstaller = context.packageManager.packageInstaller
@@ -77,7 +77,11 @@ class InstallerRepositoryImpl(
             .ifEmpty { null }
     }
 
-    override suspend fun installPackage(uri: Uri, mode: InstallMode, canDowngrade: Boolean) =
+    override suspend fun installPackage(
+        uri: Uri,
+        mode: InstallMode,
+        canDowngrade: Boolean,
+    ) =
         withContext(Dispatchers.IO) {
             try {
                 when (mode) {
@@ -316,7 +320,10 @@ class InstallerRepositoryImpl(
         }
     }
 
-    private suspend fun installWithRoot(uri: Uri, canDowngrade: Boolean) {
+    private suspend fun installWithRoot(
+        uri: Uri,
+        canDowngrade: Boolean,
+    ) {
         eventBus.emit(InstallState.Installing(0f))
 
         val tempDir = File(context.cacheDir, "install_root_${UUID.randomUUID()}")

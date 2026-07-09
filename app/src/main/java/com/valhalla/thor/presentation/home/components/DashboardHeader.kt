@@ -58,7 +58,7 @@ fun DashboardHeader(
     onRestrictedStatusClick: () -> Unit,
     modifier: Modifier = Modifier,
     extensionsUnlocked: Boolean = false,
-    onUnlockExtensions: () -> Unit = {},
+    onCrack: () -> Unit = {},
     onShowSupport: () -> Unit = {}
 ) {
     Row(
@@ -72,7 +72,7 @@ fun DashboardHeader(
         // LEFT: Brand Block (hosts the hidden "unlock extensions" easter egg)
         BrandBlock(
             extensionsUnlocked = extensionsUnlocked,
-            onUnlockExtensions = onUnlockExtensions,
+            onCrack = onCrack,
             onShowSupport = onShowSupport
         )
 
@@ -111,13 +111,16 @@ fun DashboardHeader(
 }
 
 /**
- * The Thor logo + title. Tapping it runs a hidden easter egg that, after [EASTER_EGG_TARGET] taps,
- * unlocks the (still-unstable) Extensions feature in Settings. Once unlocked it's a plain brand block.
+ * The Thor logo + title, with a hidden tap easter egg. The old "tap 20× to unlock Extensions" reward
+ * is retired — Extensions is now gated on privilege — so for everyone else the counter just keeps
+ * climbing countlessly (a placeholder until a new egg is designed). Users who ALREADY cracked it
+ * ([extensionsUnlocked] == true) keep the existing behaviour: a "no" shake, then the Support Developer
+ * sheet on the next tap.
  */
 @Composable
 private fun BrandBlock(
     extensionsUnlocked: Boolean,
-    onUnlockExtensions: () -> Unit,
+    onCrack: () -> Unit,
     onShowSupport: () -> Unit
 ) {
     val context = LocalContext.current
@@ -159,13 +162,15 @@ private fun BrandBlock(
     } else {
         {
             val next = tapCount + 1
-            if (next >= EASTER_EGG_TARGET) {
+            if (next >= EASTER_EGG_CRACK) {
+                // Cracked: acknowledge (the "feature already promoted" message) and mark the egg
+                // cracked so it behaves like an already-cracked one until the next update.
                 tapCount = 0
-                onUnlockExtensions()
+                onCrack()
                 android.widget.Toast.makeText(
                     context,
-                    context.getString(R.string.extensions_unlocked),
-                    android.widget.Toast.LENGTH_SHORT
+                    context.getString(R.string.easter_egg_promoted),
+                    android.widget.Toast.LENGTH_LONG
                 ).show()
             } else {
                 tapCount = next
@@ -204,6 +209,7 @@ private fun BrandBlock(
 }
 
 private const val EASTER_EGG_TARGET = 20
+private const val EASTER_EGG_CRACK = 100
 private const val EASTER_EGG_RESET_MS = 5_000L
 
 // Escalating gag messages shown for tap counts 5..19 (count appended). Intentionally English-only.
@@ -231,6 +237,8 @@ private fun easterEggText(tapCount: Int, title: String): String = when {
     tapCount == 4 -> "Stop"
     tapCount in 5..(EASTER_EGG_TARGET - 1) ->
         "${EASTER_EGG_MESSAGES.getOrElse(tapCount - 5) { EASTER_EGG_MESSAGES.last() }} ($tapCount)"
+    // From the old target up to the crack, drop the words and just show the climbing count.
+    tapCount in EASTER_EGG_TARGET until EASTER_EGG_CRACK -> "x$tapCount"
     else -> title
 }
 

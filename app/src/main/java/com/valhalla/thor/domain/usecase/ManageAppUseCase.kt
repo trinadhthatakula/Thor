@@ -1,5 +1,6 @@
 package com.valhalla.thor.domain.usecase
 
+import com.valhalla.thor.domain.model.restorePlanFor
 import org.koin.core.annotation.Factory
 
 @Factory
@@ -20,6 +21,31 @@ class ManageAppUseCase(
 
     suspend fun setAppSuspended(packageName: String, suspended: Boolean): Result<Unit> =
         systemRepository.setAppSuspended(packageName, suspended)
+
+    /**
+     * Bring an app fully back to active: unsuspend if suspended AND enable if disabled
+     * (both, when both apply). Safely handles the mixed disabled+suspended state. GH#239.
+     */
+    suspend fun restoreApp(packageName: String, enabled: Boolean, isSuspended: Boolean): Result<Unit> {
+        val plan = restorePlanFor(enabled, isSuspended)
+        if (plan.unsuspend) {
+            val r = setAppSuspended(packageName, false)
+            if (r.isFailure) return r
+        }
+        return if (plan.enable) setAppDisabled(packageName, false) else Result.success(Unit)
+    }
+
+    /**
+     * Force an app fully back to active for bulk "unfreeze all" when per-app state isn't known:
+     * unsuspend then enable, unconditionally. Unsuspending a non-suspended app and enabling an
+     * already-enabled app are no-ops, so this restores disabled AND suspended apps alike without a
+     * prior state query. GH#239.
+     */
+    suspend fun forceUnfreeze(packageName: String): Result<Unit> {
+        val unsuspend = setAppSuspended(packageName, false)
+        if (unsuspend.isFailure) return unsuspend
+        return setAppDisabled(packageName, false)
+    }
 
     suspend fun uninstallApp(packageName: String): Result<Unit> =
         systemRepository.uninstallApp(packageName)

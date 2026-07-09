@@ -15,7 +15,8 @@ import org.koin.core.annotation.KoinViewModel
 data class ExtensionUiItem(
     val extension: ThorExtension,
     val packageName: String,
-    val isVerified: Boolean
+    val isVerified: Boolean,
+    val isConfigurable: Boolean
 )
 
 data class ExtensionUiState(
@@ -46,7 +47,8 @@ class ExtensionManagerViewModel(
                 ExtensionUiItem(
                     extension = ext,
                     packageName = packageName,
-                    isVerified = isVerified
+                    isVerified = isVerified,
+                    isConfigurable = extensionManager.isConfigurable(packageName)
                 )
             }
             _uiState.update {

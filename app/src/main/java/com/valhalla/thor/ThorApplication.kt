@@ -43,6 +43,7 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
     private val preferenceRepository: PreferenceRepository by inject()
     private val localeManager: LocaleManager by inject()
     private val autoFreezeManager: AutoFreezeManager by inject()
+    private val freezerShortcutManager: com.valhalla.thor.data.launcher.FreezerShortcutManager by inject()
 
     // Keep the Lazy handle so we can tear the billing client down only if it was actually
     // created this run — resolving the delegate would otherwise spin up a billing connection at
@@ -75,6 +76,7 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
 
         MainScope().launch {
             val prefs = preferenceRepository.userPreferences.first()
+            freezerShortcutManager.syncDynamicShortcuts(prefs.addFreezerToLauncher)
             withContext(Dispatchers.Main) {
                 localeManager.applyLocale(prefs.language)
             }

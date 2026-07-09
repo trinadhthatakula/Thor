@@ -209,7 +209,7 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.splashscreen)
     implementation(libs.androidx.core.ktx)
-    implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation("androidx.documentfile:documentfile:1.1.0")
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.biometric)
     implementation(platform(libs.androidx.compose.bom))

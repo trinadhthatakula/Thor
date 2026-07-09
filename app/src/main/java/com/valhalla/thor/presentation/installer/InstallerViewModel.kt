@@ -27,7 +27,7 @@ class InstallerViewModel(
     private val analyzer: AppAnalyzer,
     private val eventBus: InstallerEventBus,
     private val packageManager: PackageManager,
-    private val systemRepository: SystemRepository
+    private val systemRepository: SystemRepository,
 ) : ViewModel() {
 
     val installState = eventBus.events
