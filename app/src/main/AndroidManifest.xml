@@ -340,6 +340,11 @@
             android:authorities="${applicationId}.freezerbridge"
             android:exported="true" />
 
+        <provider
+            android:name=".data.provider.ExtensionOpsProvider"
+            android:authorities="${applicationId}.extensionops"
+            android:exported="true" />
+
     </application>
 
 </manifest>
