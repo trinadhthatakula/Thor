@@ -3,6 +3,7 @@ package com.valhalla.thor.data.launcher
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -220,11 +221,13 @@ class FreezerShortcutManager(
         ShortcutManagerCompat.updateShortcuts(context, listOf(buildAppShortcut(packageName, label)))
     }
 
-    // "Frozen" == the app is currently disabled. MATCH_DISABLED_COMPONENTS so we can still read it.
+    // "Frozen" == the app is disabled OR (in Suspend mode) suspended-but-enabled, so the shortcut
+    // icon greys out in both cases. MATCH_DISABLED_COMPONENTS so we can still read a disabled app;
+    // FLAG_SUSPENDED (API 24+, matches the rest of the app) catches the suspended case.
     private fun isFrozen(packageName: String): Boolean = try {
-        !context.packageManager
+        val info = context.packageManager
             .getApplicationInfo(packageName, PackageManager.MATCH_DISABLED_COMPONENTS)
-            .enabled
+        !info.enabled || (info.flags and ApplicationInfo.FLAG_SUSPENDED) != 0
     } catch (e: Exception) {
         false
     }

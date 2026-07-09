@@ -1,6 +1,8 @@
 package com.valhalla.thor.presentation.launcher
 
 import android.app.Activity
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.Toast
 import com.valhalla.thor.R
@@ -58,19 +60,22 @@ class FreezerLaunchActivity : Activity() {
     private fun launchApp(pkg: String) {
         scope.launch {
             var launchIntent = packageManager.getLaunchIntentForPackage(pkg)
-            if (launchIntent == null) {
+            // A frozen app may be DISABLED (no launch intent) or — in Suspend mode — SUSPENDED but
+            // still enabled (the intent resolves, yet launching it pops the system "app paused"
+            // dialog). Handle both: forceUnfreeze unsuspends AND enables before we launch.
+            if (launchIntent == null || isSuspended(pkg)) {
                 if (!hasPrivilege()) {
                     toast(getString(R.string.tile_grant_privilege_toast))
                     finish(); return@launch
                 }
-                val enabled = withContext(Dispatchers.IO) { manageAppUseCase.setAppDisabled(pkg, false) }
-                if (enabled.isFailure) {
-                    // Enable failed (privilege/shell error) — fail fast instead of waiting out the retry loop.
+                val restored = withContext(Dispatchers.IO) { manageAppUseCase.forceUnfreeze(pkg) }
+                if (restored.isFailure) {
+                    // Restore failed (privilege/shell error) — fail fast instead of waiting out the retry loop.
                     toast(getString(R.string.freezer_launch_failed))
                     finish(); return@launch
                 }
-                // Enabled state / launcher intent may not be visible instantly — retry briefly
-                // (~10×150ms budget), stopping as soon as the intent resolves.
+                // Unsuspended/enabled state / launcher intent may not be visible instantly — retry
+                // briefly (~10×150ms budget), stopping as soon as the intent resolves.
                 for (attempt in 0 until 10) {
                     launchIntent = packageManager.getLaunchIntentForPackage(pkg)
                     if (launchIntent != null) break
@@ -80,9 +85,19 @@ class FreezerLaunchActivity : Activity() {
             val toStart = launchIntent
             if (toStart != null) startActivity(toStart)
             else toast(getString(R.string.freezer_launch_failed))
-            freezerShortcutManager.refreshAppShortcut(pkg) // now enabled → recolour the shortcut icon
+            freezerShortcutManager.refreshAppShortcut(pkg) // now active → recolour the shortcut icon
             finish()
         }
+    }
+
+    // A suspended app stays "enabled" (Suspend mode), so getLaunchIntentForPackage still resolves —
+    // detect suspension via the FLAG_SUSPENDED bit (API 24+, matches the rest of the app; the
+    // isPackageSuspended(pkg) overload is only API 29+).
+    private fun isSuspended(pkg: String): Boolean = try {
+        val info = packageManager.getApplicationInfo(pkg, PackageManager.MATCH_DISABLED_COMPONENTS)
+        (info.flags and ApplicationInfo.FLAG_SUSPENDED) != 0
+    } catch (e: Exception) {
+        false
     }
 
     private suspend fun hasPrivilege(): Boolean = withContext(Dispatchers.IO) {

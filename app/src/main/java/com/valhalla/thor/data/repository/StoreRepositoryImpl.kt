@@ -10,6 +10,8 @@ import com.valhalla.thor.domain.repository.StoreRepository
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import org.koin.core.annotation.Single
@@ -127,7 +129,7 @@ class StoreRepositoryImpl(
      * whole file is never held in memory. Returns the digest as uppercase hex (same `%02X` + mask
      * formatting used by the signer-cert hashing) for a case-insensitive compare with the catalog.
      */
-    private fun downloadHashing(urlString: String, dest: File): String {
+    private suspend fun downloadHashing(urlString: String, dest: File): String {
         val connection = (URL(urlString).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             instanceFollowRedirects = true
@@ -145,6 +147,9 @@ class StoreRepositoryImpl(
                 dest.outputStream().use { output ->
                     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                     while (true) {
+                        // Cooperatively abort a cancelled download (user left the sheet) instead of
+                        // streaming the whole APK to /dev/null on a background thread.
+                        currentCoroutineContext().ensureActive()
                         val read = input.read(buffer)
                         if (read == -1) break
                         digest.update(buffer, 0, read)
