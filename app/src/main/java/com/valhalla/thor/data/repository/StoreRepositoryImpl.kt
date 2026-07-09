@@ -61,6 +61,15 @@ class StoreRepositoryImpl(
                     SecurityException("Refusing non-HTTPS APK URL for '${entry.id}'")
                 )
             }
+            // Belt-and-suspenders over the hash + pinned-signer gates: the (untrusted) catalog can only
+            // steer the download at GitHub, never an arbitrary host. Redirect targets are host-checked
+            // per hop in downloadHashing too.
+            val apkHost = runCatching { URL(entry.apkUrl).host }.getOrNull()
+            if (!isAllowedApkHost(apkHost)) {
+                return@withContext Result.failure(
+                    SecurityException("Refusing APK host '$apkHost' for '${entry.id}' — not an allowed release host")
+                )
+            }
 
             val dir = File(context.cacheDir, DOWNLOAD_DIR).apply { mkdirs() }
             // Bound cache growth by reaping only STALE leftovers — never a concurrent in-flight
@@ -130,38 +139,68 @@ class StoreRepositoryImpl(
      * formatting used by the signer-cert hashing) for a case-insensitive compare with the catalog.
      */
     private suspend fun downloadHashing(urlString: String, dest: File): String {
-        val connection = (URL(urlString).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            instanceFollowRedirects = true
-            connectTimeout = CONNECT_TIMEOUT_MS
-            readTimeout = READ_TIMEOUT_MS
-        }
-        try {
-            connection.connect()
-            val code = connection.responseCode
-            if (code !in 200..299) {
-                throw java.io.IOException("HTTP $code downloading $urlString")
+        var url = URL(urlString)
+        var redirects = 0
+        // Follow redirects MANUALLY so every hop — including the redirect target — is re-validated as
+        // HTTPS on an allowed GitHub host. A catalog entry (or a rogue redirect) can't steer the
+        // download to an arbitrary server.
+        while (true) {
+            if (!url.protocol.equals("https", ignoreCase = true) || !isAllowedApkHost(url.host)) {
+                throw SecurityException("Refusing APK download host '${url.host}' (${url.protocol})")
             }
-            val digest = MessageDigest.getInstance("SHA-256")
-            connection.inputStream.use { input ->
-                dest.outputStream().use { output ->
-                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                    while (true) {
-                        // Cooperatively abort a cancelled download (user left the sheet) instead of
-                        // streaming the whole APK to /dev/null on a background thread.
-                        currentCoroutineContext().ensureActive()
-                        val read = input.read(buffer)
-                        if (read == -1) break
-                        digest.update(buffer, 0, read)
-                        output.write(buffer, 0, read)
+            val connection = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                instanceFollowRedirects = false
+                connectTimeout = CONNECT_TIMEOUT_MS
+                readTimeout = READ_TIMEOUT_MS
+            }
+            try {
+                connection.connect()
+                val code = connection.responseCode
+                if (code in 300..399) {
+                    val location = connection.getHeaderField("Location")
+                        ?: throw java.io.IOException("Redirect ($code) without Location for $url")
+                    if (++redirects > MAX_REDIRECTS) {
+                        throw java.io.IOException("Too many redirects downloading $urlString")
+                    }
+                    url = URL(url, location) // resolve a possibly-relative Location against this URL
+                    continue // re-validate the new host at the top of the loop
+                }
+                if (code !in 200..299) {
+                    throw java.io.IOException("HTTP $code downloading $url")
+                }
+                val digest = MessageDigest.getInstance("SHA-256")
+                connection.inputStream.use { input ->
+                    dest.outputStream().use { output ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        while (true) {
+                            // Cooperatively abort a cancelled download (user left the sheet) instead of
+                            // streaming the whole APK to /dev/null on a background thread.
+                            currentCoroutineContext().ensureActive()
+                            val read = input.read(buffer)
+                            if (read == -1) break
+                            digest.update(buffer, 0, read)
+                            output.write(buffer, 0, read)
+                        }
                     }
                 }
+                return digest.digest()
+                    .joinToString(separator = "") { "%02X".format(it.toInt() and 0xFF) }
+            } finally {
+                connection.disconnect()
             }
-            return digest.digest()
-                .joinToString(separator = "") { "%02X".format(it.toInt() and 0xFF) }
-        } finally {
-            connection.disconnect()
         }
+    }
+
+    /**
+     * True only for the hosts GitHub actually serves verified-extension releases from: `github.com`
+     * (the release-download URL CI writes into the catalog) and its asset CDN
+     * (`*.githubusercontent.com`, e.g. `release-assets.githubusercontent.com`, which `github.com`
+     * 302-redirects to). Anything else is refused.
+     */
+    private fun isAllowedApkHost(host: String?): Boolean {
+        val h = host?.lowercase() ?: return false
+        return h == "github.com" || h == "githubusercontent.com" || h.endsWith(".githubusercontent.com")
     }
 
     companion object {
@@ -178,5 +217,6 @@ class StoreRepositoryImpl(
         private const val DOWNLOAD_STALE_MS = 10 * 60_000L // reap leftovers older than 10 min
         private const val CONNECT_TIMEOUT_MS = 15_000
         private const val READ_TIMEOUT_MS = 30_000
+        private const val MAX_REDIRECTS = 5
     }
 }

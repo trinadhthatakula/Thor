@@ -67,7 +67,6 @@ fun AppInfoDialog(
     isRoot: Boolean = false,
     isShizuku: Boolean = false,
     isDhizuku: Boolean = false,
-    showAddToHomeScreen: Boolean = false,
     onDismiss: () -> Unit,
     onAppAction: (AppClickAction) -> Unit = {}
 ) {
@@ -113,7 +112,6 @@ fun AppInfoDialog(
                 isRoot = isRoot,
                 isShizuku = isShizuku,
                 isDhizuku = isDhizuku,
-                showAddToHomeScreen = showAddToHomeScreen,
                 onExport = { showExportSheet = true },
                 onAction = { action ->
                     // Intercept dangerous actions for local confirmation
@@ -510,7 +508,6 @@ private fun AppActionRow(
     isRoot: Boolean,
     isShizuku: Boolean,
     isDhizuku: Boolean,
-    showAddToHomeScreen: Boolean,
     onExport: () -> Unit,
     onAction: (AppClickAction) -> Unit
 ) {

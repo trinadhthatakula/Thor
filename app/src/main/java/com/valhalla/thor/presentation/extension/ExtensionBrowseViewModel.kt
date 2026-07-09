@@ -87,10 +87,11 @@ class ExtensionBrowseViewModel(
     /** Installed `versionCode` of the package matching [entry], or null when it isn't installed. */
     private fun installedVersionCode(entry: CatalogEntry): Long? {
         val installed = _uiState.value.installedVersionCodes
+        // Match by exact package name (our catalog ids ARE full package names) or by the
+        // ext-prefixed short slug. No loose endsWith(".<id>") fallback — it added nothing over these
+        // two precise checks and could match an unintended package, falsely reporting installed/version.
         val pkg = installed.keys.firstOrNull { pkg ->
-            pkg == entry.id ||
-                pkg == "com.valhalla.thor.ext.${entry.id}" ||
-                pkg.endsWith(".${entry.id}")
+            pkg == entry.id || pkg == "com.valhalla.thor.ext.${entry.id}"
         }
         return pkg?.let { installed[it] }
     }

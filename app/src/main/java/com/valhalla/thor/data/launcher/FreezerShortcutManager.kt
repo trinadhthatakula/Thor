@@ -18,12 +18,15 @@ import androidx.core.graphics.drawable.IconCompat
 import androidx.core.graphics.drawable.toBitmap
 import com.valhalla.thor.R
 import com.valhalla.thor.data.receivers.FreezerShortcutPinnedReceiver
+import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.Single
 
@@ -33,6 +36,7 @@ class FreezerShortcutManager(
     private val context: Context,
     private val freezerRepository: FreezerRepository,
     private val manageAppUseCase: ManageAppUseCase,
+    private val preferenceRepository: PreferenceRepository,
 ) {
     // App-scoped: bulk work must survive the (finishing) trampoline activity.
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -110,10 +114,16 @@ class FreezerShortcutManager(
         scope.launch {
             val pinnedIds = pinnedShortcutIds()
             val updated = mutableListOf<ShortcutInfoCompat>()
+            // Freeze must honor the user's Freezer mode: Suspend mode suspends, Freeze mode disables.
+            val useSuspend = disable &&
+                    preferenceRepository.userPreferences.first().freezerMode == FreezerMode.SUSPEND
             freezerRepository.getAllPackageNames().forEach { pkg ->
-                // Unfreeze must restore suspended apps too, not just re-enable disabled ones.
-                if (disable) manageAppUseCase.setAppDisabled(pkg, true)
-                else manageAppUseCase.forceUnfreeze(pkg)
+                when {
+                    disable && useSuspend -> manageAppUseCase.setAppSuspended(pkg, true)
+                    disable -> manageAppUseCase.setAppDisabled(pkg, true)
+                    // Unfreeze must restore suspended apps too, not just re-enable disabled ones.
+                    else -> manageAppUseCase.forceUnfreeze(pkg)
+                }
                 // Only apps that actually have a pinned shortcut need a state-following icon refresh;
                 // accumulate them and push ONE updateShortcuts IPC instead of N.
                 if (FreezerShortcutContract.appShortcutId(pkg) in pinnedIds) {

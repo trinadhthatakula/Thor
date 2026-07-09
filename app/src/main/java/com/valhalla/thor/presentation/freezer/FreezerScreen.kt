@@ -421,7 +421,6 @@ fun FreezerScreen(
             isRoot = state.isRoot,
             isShizuku = state.isShizuku,
             isDhizuku = state.isDhizuku,
-            showAddToHomeScreen = state.addFreezerToLauncher && viewModel.isPinSupported(),
             onDismiss = { selectedPackageName = null },
             onAppAction = { action ->
                 when (action) {
