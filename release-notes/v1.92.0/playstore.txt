@@ -1,0 +1,7 @@
+• 🧩 Verified Extensions Store: Browse, verify signature/SHA-256, and install/update secure extensions.
+• 🗑️ Uninstall Extensions: Directly remove add-ons from the footer of the Extension card.
+• 🧊 Launcher Shortcuts: Pin frozen apps to home screen (grayscale when frozen, color when running).
+• ⚡ Reactive Privileges: Root/Shizuku/Dhizuku updates live.
+• 📏 Sort by Size: Order apps by disk footprint.
+• 📤 File Picker Export: Export APKs or bundles to any folder.
+• 🚀 Speed & stability fixes.
