@@ -1,6 +1,6 @@
 # Thor v1.92.0 Release Notes
 
-**Extensions, Shortcuts, and Security** — introducing the trust-anchored Extensions framework, home-screen launcher integration for frozen apps, reactive privileges, app sorting by size, and major under-the-hood installer & performance fixes.
+**Extensions, Shortcuts, Suspend Mode, and Security** — introducing the trust-anchored Extensions framework, home-screen launcher integration for frozen apps, dynamic Freeze/Suspend modes, reactive privileges, app sorting by size, and major under-the-hood installer & performance fixes.
 
 ---
 
@@ -14,6 +14,12 @@ Thor now supports verified, out-of-process extensions gated behind active privil
 * **Initial Extensions**:
   * *Strombringer* — Auto-unfreezes suspended apps when tapped (requires LSPosed).
   * *Thor Cluster Automator* — Group and schedule freeze/unfreeze operations.
+
+### 🥶 Freezer Mode: Suspend vs. Freeze
+* **Choose Your Freeze Method**: A new **Settings → Freezer → Freeze Mode** segmented selector lets you choose how apps are deactivated:
+  * **Freeze (Disable)**: Completely disables the application (standard Android package disabling).
+  * **Suspend (Android Suspend)**: Places the application in a suspended state (using Android's official suspend APIs).
+* **State-Aware Actions**: Bulk freeze/unfreeze, single app toggle, launcher shortcuts, and auto-freeze actions all honor the selected mode, handling mixed disabled/suspended states gracefully across all paths.
 
 ### 🧊 Freezer Launcher Integration & Shortcuts
 * **Grayscale State-Following Icons**: Pin frozen apps to your launcher. Icons display in grayscale while frozen, automatically turning full-color when enabled and launched.
