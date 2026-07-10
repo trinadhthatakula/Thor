@@ -188,5 +188,15 @@ class ExtensionManager(private val context: Context) {
             }
             ?.packageName
     }
+
+    /**
+     * Returns the installed version name (e.g. "1.00.4") of [packageName] from the package manager.
+     * Falls back to "1.0.0" on failure.
+     */
+    fun getExtensionVersionName(packageName: String): String {
+        return runCatching {
+            pm.getPackageInfo(packageName, 0).versionName
+        }.getOrNull() ?: "1.0.0"
+    }
 }
 

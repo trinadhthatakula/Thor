@@ -58,12 +58,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.content.Intent
+import android.net.Uri
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.IconButtonDefaults
 
 @Composable
@@ -176,6 +179,12 @@ fun ExtensionManagerScreen(
                                         it.putExtra(ExtensionManager.EXTRA_AMOLED, prefs.useAmoled)
                                         runCatching { context.startActivity(it) }
                                     }
+                                },
+                                onUninstall = {
+                                    val intent = Intent(Intent.ACTION_DELETE).apply {
+                                        data = Uri.parse("package:${item.packageName}")
+                                    }
+                                    runCatching { context.startActivity(intent) }
                                 }
                             )
                         }
@@ -378,7 +387,8 @@ private fun EmptyExtensionState(
 private fun ExtensionCard(
     item: ExtensionUiItem,
     prefs: UserPreferences,
-    onConfigure: () -> Unit
+    onConfigure: () -> Unit,
+    onUninstall: () -> Unit
 ) {
     val ext = item.extension
     val isConfigurable = item.isConfigurable
@@ -437,7 +447,7 @@ private fun ExtensionCard(
                         .padding(horizontal = 10.dp, vertical = 4.dp)
                 ) {
                     Text(
-                        text = stringResource(R.string.extension_version_prefix, ext.version),
+                        text = stringResource(R.string.extension_version_prefix, item.version),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold
@@ -484,35 +494,52 @@ private fun ExtensionCard(
             )
             Spacer(modifier = Modifier.width(8.dp))
 
-            val (badgeBg, badgeText, badgeLabel) = when {
-                item.isVerified -> Triple(
-                    Color(0xFFC8E6C9),
-                    Color(0xFF1B5E20),
-                    stringResource(R.string.extension_security_verified)
-                )
-                BuildConfig.DEBUG -> Triple(
-                    Color(0xFFFFE0B2),
-                    Color(0xFFE65100),
-                    stringResource(R.string.extension_security_debug)
-                )
-                else -> Triple(
-                    Color(0xFFFFCDD2),
-                    Color(0xFFB71C1C),
-                    stringResource(R.string.extension_security_untrusted)
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(badgeBg)
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(
-                    text = badgeLabel,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = badgeText,
-                    fontWeight = FontWeight.Bold
-                )
+                IconButton(
+                    onClick = onUninstall,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Delete,
+                        contentDescription = stringResource(R.string.action_uninstall),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                val (badgeBg, badgeText, badgeLabel) = when {
+                    item.isVerified -> Triple(
+                        Color(0xFFC8E6C9),
+                        Color(0xFF1B5E20),
+                        stringResource(R.string.extension_security_verified)
+                    )
+                    BuildConfig.DEBUG -> Triple(
+                        Color(0xFFFFE0B2),
+                        Color(0xFFE65100),
+                        stringResource(R.string.extension_security_debug)
+                    )
+                    else -> Triple(
+                        Color(0xFFFFCDD2),
+                        Color(0xFFB71C1C),
+                        stringResource(R.string.extension_security_untrusted)
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(badgeBg)
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = badgeLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = badgeText,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
     }

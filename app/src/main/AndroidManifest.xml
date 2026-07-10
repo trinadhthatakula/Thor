@@ -34,12 +34,6 @@
         android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
 
-    <permission
-        android:name="com.valhalla.thor.permission.TRIGGER_EXTENSION"
-        android:protectionLevel="signature" />
-
-
-
     <application
         android:name=".ThorApplication"
         android:allowBackup="true"
@@ -301,18 +295,6 @@
             </intent-filter>
         </service>
 
-        <!--
-          Internal-only entry point for extension triggers. Deliberately NOT exported and with no
-          public deep-link (VIEW/BROWSABLE) filter: an exported thor://extension/trigger link let any
-          app/web page rebroadcast through the signature-level TRIGGER_EXTENSION permission (confused
-          deputy). Launcher-shortcut triggering will return later via an authenticated handoff
-          (explicit-component intent or nonce token) — see README "Work in Progress".
-        -->
-        <activity
-            android:name=".presentation.extension.ShortcutTriggerActivity"
-            android:exported="false"
-            android:theme="@android:style/Theme.NoDisplay" />
-
         <activity
             android:name=".presentation.launcher.FreezerLaunchActivity"
             android:exported="false"
@@ -322,15 +304,6 @@
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
-        <receiver
-            android:name=".data.receivers.ExtensionTriggerReceiver"
-            android:permission="com.valhalla.thor.permission.TRIGGER_EXTENSION"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="com.valhalla.thor.action.TRIGGER_EXTENSION" />
-            </intent-filter>
-        </receiver>
-
         <!-- Strombringer bridge: lets the (LSPosed) launcher hook ask Thor to unsuspend a frozen
              app on launch. exported so the hook's process can reach it; access is bounded to
              Freezer packages inside the provider (the caller runs in the launcher, so it can't be
@@ -338,6 +311,11 @@
         <provider
             android:name=".data.provider.FreezerBridgeProvider"
             android:authorities="${applicationId}.freezerbridge"
+            android:exported="true" />
+
+        <provider
+            android:name=".data.provider.ExtensionOpsProvider"
+            android:authorities="${applicationId}.extensionops"
             android:exported="true" />
 
     </application>
