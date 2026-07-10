@@ -85,7 +85,7 @@ class StoreRepositoryImpl(
             var file: File? = null
 
             runCatching {
-                val tempFile = File.createTempFile(slug, ".apk", dir).also { file = it }
+                val tempFile = File.createTempFile(slug.padEnd(3, '_'), ".apk", dir).also { file = it }
 
                 // 1. Stream to cache while hashing.
                 val digestHex = downloadHashing(entry.apkUrl, tempFile)

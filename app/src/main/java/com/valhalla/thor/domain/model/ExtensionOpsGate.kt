@@ -27,5 +27,5 @@ fun isAuthorizedExtensionCaller(
  * The packages an op should actually touch: [requested] minus [guarded] and blanks, de-duplicated,
  * original order preserved.
  */
-fun opTargets(requested: List<String>, guarded: Set<String>): List<String> =
-    requested.filter { it.isNotBlank() && it !in guarded }.distinct()
+fun opTargets(requested: List<String?>, guarded: Set<String>): List<String> =
+    requested.filterNotNull().filter { it.isNotBlank() && it !in guarded }.distinct()

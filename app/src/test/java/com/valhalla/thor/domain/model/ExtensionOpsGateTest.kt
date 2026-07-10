@@ -41,4 +41,11 @@ class ExtensionOpsGateTest {
     @Test fun `empty when all guarded`() {
         assertEquals(emptyList<String>(), opTargets(listOf("com.valhalla.thor"), setOf("com.valhalla.thor")))
     }
+    @Test fun `filters null elements`() {
+        val out = opTargets(
+            requested = listOf("com.a", null, "com.b"),
+            guarded = setOf("com.valhalla.thor")
+        )
+        assertEquals(listOf("com.a", "com.b"), out)
+    }
 }
