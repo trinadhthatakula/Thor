@@ -102,6 +102,48 @@ fun ExtensionManagerScreen(
         )
     }
 
+    var showMigrationDialog by rememberSaveable { mutableStateOf(false) }
+    val legacyPackageName = "com.valhalla.thor.ext.strombringer"
+    val isLegacyInstalled = remember {
+        runCatching {
+            context.packageManager.getPackageInfo(legacyPackageName, 0)
+            true
+        }.getOrDefault(false)
+    }
+    androidx.compose.runtime.LaunchedEffect(isLegacyInstalled) {
+        if (isLegacyInstalled) {
+            showMigrationDialog = true
+        }
+    }
+
+    if (showMigrationDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showMigrationDialog = false },
+            title = { Text(stringResource(R.string.legacy_extension_title)) },
+            text = { Text(stringResource(R.string.legacy_extension_desc)) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_DELETE).apply {
+                            data = Uri.parse("package:$legacyPackageName")
+                        }
+                        runCatching { context.startActivity(intent) }
+                        showMigrationDialog = false
+                    }
+                ) {
+                    Text(stringResource(R.string.action_uninstall))
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = { showMigrationDialog = false }
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = { ExtensionTopAppBar(onBack = onBack) },
         contentWindowInsets = WindowInsets(0, 0, 0, 0)

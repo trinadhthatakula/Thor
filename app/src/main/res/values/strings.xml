@@ -106,6 +106,8 @@
     <string name="clear_all_data">Clear All Data</string>
     <string name="uninstall_system_app_title">Uninstall System App?</string>
     <string name="uninstall_system_app_desc">This will uninstall the system app for the current user. Proceed?</string>
+    <string name="legacy_extension_title">Legacy Extension Detected</string>
+    <string name="legacy_extension_desc">A legacy version of the Strombringer extension (misspelled as \"Strombringer\") is installed. Please uninstall it to avoid conflicts and install the updated Stormbringer extension.</string>
     <string name="uninstall_blocked">Uninstall Blocked</string>
     <string name="uninstall_expert_warning">Warning: Expert Uninstall</string>
     <string name="uad_load_failed_desc">UAD safety metadata failed to load. System app uninstallation is blocked to prevent potential bootloops or device issues.</string>

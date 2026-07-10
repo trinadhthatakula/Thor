@@ -12,7 +12,7 @@ Thor now supports verified, out-of-process extensions gated behind active privil
 * **Dynamic Versioning & Management**: Extension cards dynamically resolve version names from the `PackageManager` and feature an outlined **Uninstall** action.
 * **Security Hardening**: Replaced broadcast-based triggers with a cold-startable `ExtensionOpsProvider`. Same-process calls are secured using Binder UID verification checks (`Binder.getCallingUid() == Process.myUid()`) to block isolated processes from spoofing identities.
 * **Initial Extensions**:
-  * *Strombringer* — Auto-unfreezes suspended apps when tapped (requires LSPosed).
+  * *Stormbringer* — Auto-unfreezes suspended apps when tapped (requires LSPosed).
   * *Thor Cluster Automator* — Group and schedule freeze/unfreeze operations.
 
 ### 🥶 Freezer Mode: Suspend vs. Freeze
