@@ -74,7 +74,7 @@ class ExtensionOpsProvider : ContentProvider(), KoinComponent {
                     targets.count { pkg ->
                         when (effective) {
                             Op.FREEZE -> manageAppUseCase.setAppDisabled(pkg, true)
-                            Op.UNFREEZE -> manageAppUseCase.setAppDisabled(pkg, false)
+                            Op.UNFREEZE -> manageAppUseCase.forceUnfreeze(pkg)
                             Op.TOGGLE -> Result.failure(IllegalStateException()) // resolved above
                         }.isSuccess
                     }

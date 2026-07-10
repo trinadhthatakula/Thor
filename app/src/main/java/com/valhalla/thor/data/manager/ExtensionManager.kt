@@ -33,6 +33,7 @@ class ExtensionManager(private val context: Context) {
         const val EXTRA_THEME_MODE = "com.valhalla.thor.extension.extra.THEME_MODE"      // LIGHT|DARK|SYSTEM
         const val EXTRA_DYNAMIC_COLOR = "com.valhalla.thor.extension.extra.DYNAMIC_COLOR" // boolean
         const val EXTRA_AMOLED = "com.valhalla.thor.extension.extra.AMOLED"              // boolean
+        const val LEGACY_EXTENSION_PACKAGE = "com.valhalla.thor.ext.strombringer"
     }
 
     /**

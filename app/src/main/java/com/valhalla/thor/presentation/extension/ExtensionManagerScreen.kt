@@ -103,7 +103,7 @@ fun ExtensionManagerScreen(
     }
 
     var showMigrationDialog by rememberSaveable { mutableStateOf(false) }
-    val legacyPackageName = "com.valhalla.thor.ext.strombringer"
+    val legacyPackageName = ExtensionManager.LEGACY_EXTENSION_PACKAGE
     val isLegacyInstalled = remember {
         runCatching {
             context.packageManager.getPackageInfo(legacyPackageName, 0)

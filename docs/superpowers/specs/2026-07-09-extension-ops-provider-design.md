@@ -74,13 +74,10 @@ extension's process and already own the cluster→packages mapping.
 - **Authority:** `${applicationId}.extensionops` (`com.valhalla.thor.extensionops`, `…debug.extensionops`).
   Exported; no `query`/`insert`/etc — only `call`.
 - **Methods** (`extras = { "packages": String[] }`, returns `{ "ok": Boolean, "count": Int }`):
-  - `freeze` — freeze each package.
+  - `freeze` — freeze each package (always via `setAppDisabled(pkg, true)`).
   - `unfreeze` — `ManageAppUseCase.forceUnfreeze` each (unsuspend **and** enable).
   - `toggle` — determine the cluster's frozen state, then freeze-all or unfreeze-all.
-- **Mode-aware freeze:** honors Thor's global `freezerMode` (via `PreferenceRepository`), matching
-  manual freezing and the launcher shortcuts: `freeze` = `setAppSuspended(pkg, true)` in SUSPEND mode
-  else `setAppDisabled(pkg, true)`. (Behaviour change vs the old `pm disable-user`, which ignored
-  Suspend mode.) `toggle` uses the `isFrozen(enabled, isSuspended)` predicate from `FreezerMode.kt`.
+- **Freeze operation mode:** Provider freeze operations always use `setAppDisabled(pkg, true)` and ignore the global `freezerMode` (suspend mode). This is because the suspend path (`setAppSuspended` via reflection) is optimized out on release builds by R8's class-initialization optimization, and suspend mode adds no value for cluster automation. `unfreeze` calls `ManageAppUseCase.forceUnfreeze(pkg)` to defensively unsuspend and enable the application alike.
 - **Caller verification:** `getCallingPackage()` must start with `com.valhalla.thor.ext.` **and** pass
   `ExtensionManager.isSignatureVerified` (pinned-cert). `BuildConfig.DEBUG` relaxes the signature check
   (self-built extensions). A null/own-package caller is allowed. Unauthorized → `{ ok=false }`, no work.
