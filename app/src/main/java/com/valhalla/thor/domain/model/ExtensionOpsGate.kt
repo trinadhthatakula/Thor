@@ -14,8 +14,11 @@ fun isAuthorizedExtensionCaller(
     ownPackage: String,
     isPinnedSigner: Boolean,
     isDebug: Boolean,
+    isSameProcess: Boolean,
 ): Boolean {
-    if (caller == null || caller == ownPackage) return true
+    if (isSameProcess) return true
+    if (caller == null) return false
+    if (caller == ownPackage) return true
     if (!caller.startsWith(EXTENSION_OPS_PREFIX)) return false
     return isPinnedSigner || isDebug
 }

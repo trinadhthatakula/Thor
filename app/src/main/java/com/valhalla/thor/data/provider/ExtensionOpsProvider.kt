@@ -49,7 +49,8 @@ class ExtensionOpsProvider : ContentProvider(), KoinComponent {
 
         val caller = callingPackage
         val pinned = caller != null && runCatching { extensionManager.isSignatureVerified(caller) }.getOrDefault(false)
-        if (!isAuthorizedExtensionCaller(caller, ctx.packageName, isPinnedSigner = pinned, isDebug = BuildConfig.DEBUG)) {
+        val isSameProcess = Binder.getCallingUid() == android.os.Process.myUid()
+        if (!isAuthorizedExtensionCaller(caller, ctx.packageName, isPinnedSigner = pinned, isDebug = BuildConfig.DEBUG, isSameProcess = isSameProcess)) {
             Logger.d("ExtensionOps", "op '$method' refused (unauthorized caller): $caller / uid ${Binder.getCallingUid()}")
             return result
         }

@@ -8,23 +8,26 @@ import org.junit.Test
 class ExtensionOpsGateTest {
 
     // --- isAuthorizedExtensionCaller ---
-    @Test fun `same-process (null caller) is allowed`() {
-        assertTrue(isAuthorizedExtensionCaller(null, "com.valhalla.thor", isPinnedSigner = false, isDebug = false))
+    @Test fun testSameProcessIsAllowed() {
+        assertTrue(isAuthorizedExtensionCaller(null, "com.valhalla.thor", isPinnedSigner = false, isDebug = false, isSameProcess = true))
     }
-    @Test fun `own package is allowed`() {
-        assertTrue(isAuthorizedExtensionCaller("com.valhalla.thor", "com.valhalla.thor", isPinnedSigner = false, isDebug = false))
+    @Test fun testOwnPackageIsAllowed() {
+        assertTrue(isAuthorizedExtensionCaller("com.valhalla.thor", "com.valhalla.thor", isPinnedSigner = false, isDebug = false, isSameProcess = false))
     }
-    @Test fun `pinned-signer extension is allowed`() {
-        assertTrue(isAuthorizedExtensionCaller("com.valhalla.thor.ext.automation", "com.valhalla.thor", isPinnedSigner = true, isDebug = false))
+    @Test fun testPinnedSignerExtensionIsAllowed() {
+        assertTrue(isAuthorizedExtensionCaller("com.valhalla.thor.ext.automation", "com.valhalla.thor", isPinnedSigner = true, isDebug = false, isSameProcess = false))
     }
-    @Test fun `ext-prefixed but not pinned is refused in release`() {
-        assertFalse(isAuthorizedExtensionCaller("com.valhalla.thor.ext.automation", "com.valhalla.thor", isPinnedSigner = false, isDebug = false))
+    @Test fun testExtPrefixedButNotPinnedIsRefusedInRelease() {
+        assertFalse(isAuthorizedExtensionCaller("com.valhalla.thor.ext.automation", "com.valhalla.thor", isPinnedSigner = false, isDebug = false, isSameProcess = false))
     }
-    @Test fun `ext-prefixed unpinned is allowed in debug`() {
-        assertTrue(isAuthorizedExtensionCaller("com.valhalla.thor.ext.automation", "com.valhalla.thor", isPinnedSigner = false, isDebug = true))
+    @Test fun testExtPrefixedUnpinnedIsAllowedInDebug() {
+        assertTrue(isAuthorizedExtensionCaller("com.valhalla.thor.ext.automation", "com.valhalla.thor", isPinnedSigner = false, isDebug = true, isSameProcess = false))
     }
-    @Test fun `arbitrary app is refused even in debug`() {
-        assertFalse(isAuthorizedExtensionCaller("com.evil.app", "com.valhalla.thor", isPinnedSigner = false, isDebug = true))
+    @Test fun testArbitraryAppIsRefusedEvenInDebug() {
+        assertFalse(isAuthorizedExtensionCaller("com.evil.app", "com.valhalla.thor", isPinnedSigner = false, isDebug = true, isSameProcess = false))
+    }
+    @Test fun testNullCallerFromCrossProcessIsRefused() {
+        assertFalse(isAuthorizedExtensionCaller(null, "com.valhalla.thor", isPinnedSigner = false, isDebug = false, isSameProcess = false))
     }
 
     // --- opTargets ---
