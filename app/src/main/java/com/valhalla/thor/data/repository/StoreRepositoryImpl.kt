@@ -85,10 +85,10 @@ class StoreRepositoryImpl(
             var file: File? = null
 
             runCatching {
-                file = File.createTempFile(slug, ".apk", dir)
+                val tempFile = File.createTempFile(slug.padEnd(3, '_'), ".apk", dir).also { file = it }
 
                 // 1. Stream to cache while hashing.
-                val digestHex = downloadHashing(entry.apkUrl, file!!)
+                val digestHex = downloadHashing(entry.apkUrl, tempFile)
 
                 // 2. SHA-256 gate (only when the catalog pins a hash).
                 if (entry.sha256.isNotBlank() && !entry.sha256.equals(digestHex, ignoreCase = true)) {
@@ -98,11 +98,11 @@ class StoreRepositoryImpl(
                 }
 
                 // 3. Pinned-signer gate on the APK file itself. Fail-closed, no debug bypass.
-                if (!extensionManager.isApkFileSignerPinned(file!!.path)) {
+                if (!extensionManager.isApkFileSignerPinned(tempFile.path)) {
                     throw SecurityException("Untrusted signer for '${entry.id}' — not a pinned key")
                 }
 
-                FileProvider.getUriForFile(context, "${context.packageName}.provider", file!!)
+                FileProvider.getUriForFile(context, "${context.packageName}.provider", tempFile)
             }.onFailure {
                 file?.delete()
                 if (it is CancellationException) throw it // preserve structured-concurrency cancellation
@@ -139,56 +139,61 @@ class StoreRepositoryImpl(
      * formatting used by the signer-cert hashing) for a case-insensitive compare with the catalog.
      */
     private suspend fun downloadHashing(urlString: String, dest: File): String {
-        var url = URL(urlString)
-        var redirects = 0
-        // Follow redirects MANUALLY so every hop — including the redirect target — is re-validated as
-        // HTTPS on an allowed GitHub host. A catalog entry (or a rogue redirect) can't steer the
-        // download to an arbitrary server.
-        while (true) {
-            if (!url.protocol.equals("https", ignoreCase = true) || !isAllowedApkHost(url.host)) {
-                throw SecurityException("Refusing APK download host '${url.host}' (${url.protocol})")
-            }
-            val connection = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                instanceFollowRedirects = false
-                connectTimeout = CONNECT_TIMEOUT_MS
-                readTimeout = READ_TIMEOUT_MS
-            }
-            try {
-                connection.connect()
-                val code = connection.responseCode
-                if (code in 300..399) {
-                    val location = connection.getHeaderField("Location")
-                        ?: throw java.io.IOException("Redirect ($code) without Location for $url")
-                    if (++redirects > MAX_REDIRECTS) {
-                        throw java.io.IOException("Too many redirects downloading $urlString")
+        return withContext(Dispatchers.IO) {
+            var url = URL(urlString)
+            var redirects = 0
+            // Follow redirects MANUALLY so every hop — including the redirect target — is re-validated as
+            // HTTPS on an allowed GitHub host. A catalog entry (or a rogue redirect) can't steer the
+            // download to an arbitrary server.
+            while (true) {
+                if (!url.protocol.equals("https", ignoreCase = true) || !isAllowedApkHost(url.host)) {
+                    throw SecurityException("Refusing APK download host '${url.host}' (${url.protocol})")
+                }
+                val connection = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    instanceFollowRedirects = false
+                    connectTimeout = CONNECT_TIMEOUT_MS
+                    readTimeout = READ_TIMEOUT_MS
+                }
+                try {
+                    connection.connect()
+                    val code = connection.responseCode
+                    if (code in 300..399) {
+                        val location = connection.getHeaderField("Location")
+                            ?: throw java.io.IOException("Redirect ($code) without Location for $url")
+                        if (++redirects > MAX_REDIRECTS) {
+                            throw java.io.IOException("Too many redirects downloading $urlString")
+                        }
+                        url = URL(url, location) // resolve a possibly-relative Location against this URL
+                        continue // re-validate the new host at the top of the loop
                     }
-                    url = URL(url, location) // resolve a possibly-relative Location against this URL
-                    continue // re-validate the new host at the top of the loop
-                }
-                if (code !in 200..299) {
-                    throw java.io.IOException("HTTP $code downloading $url")
-                }
-                val digest = MessageDigest.getInstance("SHA-256")
-                connection.inputStream.use { input ->
-                    dest.outputStream().use { output ->
-                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                        while (true) {
-                            // Cooperatively abort a cancelled download (user left the sheet) instead of
-                            // streaming the whole APK to /dev/null on a background thread.
-                            currentCoroutineContext().ensureActive()
-                            val read = input.read(buffer)
-                            if (read == -1) break
-                            digest.update(buffer, 0, read)
-                            output.write(buffer, 0, read)
+                    if (code !in 200..299) {
+                        throw java.io.IOException("HTTP $code downloading $url")
+                    }
+                    val digest = MessageDigest.getInstance("SHA-256")
+                    connection.inputStream.use { input ->
+                        dest.outputStream().use { output ->
+                            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                            while (true) {
+                                // Cooperatively abort a cancelled download (user left the sheet) instead of
+                                // streaming the whole APK to /dev/null on a background thread.
+                                currentCoroutineContext().ensureActive()
+                                val read = input.read(buffer)
+                                if (read == -1) break
+                                digest.update(buffer, 0, read)
+                                output.write(buffer, 0, read)
+                            }
                         }
                     }
+                    return@withContext digest.digest()
+                        .joinToString(separator = "") { "%02X".format(it.toInt() and 0xFF) }
+                } finally {
+                    connection.disconnect()
                 }
-                return digest.digest()
-                    .joinToString(separator = "") { "%02X".format(it.toInt() and 0xFF) }
-            } finally {
-                connection.disconnect()
             }
+            @Suppress("UNREACHABLE_CODE")
+            // Satisfies compiler type inference for withContext lambda return type (Nothing is a subtype of String)
+            throw java.io.IOException("Unreachable")
         }
     }
 

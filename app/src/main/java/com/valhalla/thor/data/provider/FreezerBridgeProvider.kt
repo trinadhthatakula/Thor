@@ -17,7 +17,7 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
 /**
- * Lets the Strombringer launcher hook ask Thor (which holds root/Shizuku/Dhizuku privilege) to
+ * Lets the Stormbringer launcher hook ask Thor (which holds root/Shizuku/Dhizuku privilege) to
  * unsuspend an app on launch.
  *
  * The hook runs INSIDE the launcher's process, so the caller is the launcher — it cannot be
@@ -72,7 +72,7 @@ class FreezerBridgeProvider : ContentProvider(), KoinComponent {
      * True only when the calling UID owns the device's CURRENT default home launcher. We resolve the
      * *default* (`MATCH_DEFAULT_ONLY`) rather than querying every HOME-category app: any app can
      * declare a HOME activity, so an all-apps query would let a malicious app spoof launcher status.
-     * The Strombringer hook only runs in the real launcher, so this is exactly the legitimate caller.
+     * The Stormbringer hook only runs in the real launcher, so this is exactly the legitimate caller.
      */
     private fun callerIsDefaultLauncher(): Boolean {
         val pm = context?.packageManager ?: return false

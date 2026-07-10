@@ -33,6 +33,7 @@ class ExtensionManager(private val context: Context) {
         const val EXTRA_THEME_MODE = "com.valhalla.thor.extension.extra.THEME_MODE"      // LIGHT|DARK|SYSTEM
         const val EXTRA_DYNAMIC_COLOR = "com.valhalla.thor.extension.extra.DYNAMIC_COLOR" // boolean
         const val EXTRA_AMOLED = "com.valhalla.thor.extension.extra.AMOLED"              // boolean
+        const val LEGACY_EXTENSION_PACKAGE = "com.valhalla.thor.ext.strombringer"
     }
 
     /**
@@ -187,6 +188,16 @@ class ExtensionManager(private val context: Context) {
                         app.metaData?.getString("thor.extension.class") == className
             }
             ?.packageName
+    }
+
+    /**
+     * Returns the installed version name (e.g. "1.00.4") of [packageName] from the package manager.
+     * Falls back to "1.0.0" on failure.
+     */
+    fun getExtensionVersionName(packageName: String): String {
+        return runCatching {
+            pm.getPackageInfo(packageName, 0).versionName
+        }.getOrNull() ?: "1.0.0"
     }
 }
 

@@ -16,7 +16,8 @@ data class ExtensionUiItem(
     val extension: ThorExtension,
     val packageName: String,
     val isVerified: Boolean,
-    val isConfigurable: Boolean
+    val isConfigurable: Boolean,
+    val version: String
 )
 
 data class ExtensionUiState(
@@ -44,11 +45,13 @@ class ExtensionManagerViewModel(
                 val packageName = extensionManager.getExtensionPackageName(ext) 
                     ?: ext.javaClass.name.substringBeforeLast('.')
                 val isVerified = extensionManager.isSignatureVerified(packageName)
+                val version = extensionManager.getExtensionVersionName(packageName)
                 ExtensionUiItem(
                     extension = ext,
                     packageName = packageName,
                     isVerified = isVerified,
-                    isConfigurable = extensionManager.isConfigurable(packageName)
+                    isConfigurable = extensionManager.isConfigurable(packageName),
+                    version = version
                 )
             }
             _uiState.update {
