@@ -10,13 +10,10 @@ import android.os.Binder
 import android.os.Bundle
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.manager.ExtensionManager
-import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.isAuthorizedExtensionCaller
 import com.valhalla.thor.domain.model.opTargets
-import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.Logger
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -34,7 +31,6 @@ import org.koin.core.component.inject
  */
 class ExtensionOpsProvider : ContentProvider(), KoinComponent {
     private val manageAppUseCase: ManageAppUseCase by inject()
-    private val preferenceRepository: PreferenceRepository by inject()
     private val extensionManager: ExtensionManager by inject()
 
     private enum class Op { FREEZE, UNFREEZE, TOGGLE }
@@ -66,16 +62,18 @@ class ExtensionOpsProvider : ContentProvider(), KoinComponent {
         val count = try {
             runCatching {
                 runBlocking {
-                    val suspendMode = preferenceRepository.userPreferences.first().freezerMode == FreezerMode.SUSPEND
+                    // Extensions freeze via disable/enable ONLY — never suspend. The suspend path
+                    // (setAppSuspended → RootMain reflection) is broken on release by R8's class-init
+                    // optimization, and suspend adds nothing for cluster automation. So we ignore the
+                    // user's global Freeze/Suspend preference here and always disable/enable. The
+                    // extension's config UI states that Suspend mode doesn't apply to clusters.
                     val effective = if (op == Op.TOGGLE) {
                         if (anyFrozen(ctx.packageManager, targets)) Op.UNFREEZE else Op.FREEZE
                     } else op
                     targets.count { pkg ->
                         when (effective) {
-                            Op.FREEZE ->
-                                if (suspendMode) manageAppUseCase.setAppSuspended(pkg, true)
-                                else manageAppUseCase.setAppDisabled(pkg, true)
-                            Op.UNFREEZE -> manageAppUseCase.forceUnfreeze(pkg)
+                            Op.FREEZE -> manageAppUseCase.setAppDisabled(pkg, true)
+                            Op.UNFREEZE -> manageAppUseCase.setAppDisabled(pkg, false)
                             Op.TOGGLE -> Result.failure(IllegalStateException()) // resolved above
                         }.isSuccess
                     }
