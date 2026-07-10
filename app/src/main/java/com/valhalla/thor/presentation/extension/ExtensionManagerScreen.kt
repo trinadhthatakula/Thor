@@ -437,7 +437,7 @@ private fun ExtensionCard(
                         .padding(horizontal = 10.dp, vertical = 4.dp)
                 ) {
                     Text(
-                        text = stringResource(R.string.extension_version_prefix, ext.version),
+                        text = stringResource(R.string.extension_version_prefix, item.version),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold
