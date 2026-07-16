@@ -62,4 +62,8 @@ interface PreferenceRepository {
     // --- Extensions ---
     suspend fun setExtensionsUnlocked(unlocked: Boolean)
     suspend fun setExtensionConsentAccepted(accepted: Boolean)
+
+    // --- Auto Reinstall ---
+    suspend fun setAutoReinstallEnabled(enabled: Boolean)
+    suspend fun getInstallerArg(): String
 }

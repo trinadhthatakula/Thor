@@ -19,6 +19,7 @@ import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import org.koin.core.annotation.Single
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "thor_preferences")
@@ -75,6 +76,9 @@ class PreferenceRepositoryImpl(
         // Extensions
         val EXTENSIONS_UNLOCKED = booleanPreferencesKey("extensions_unlocked")
         val EXTENSION_CONSENT_ACCEPTED = booleanPreferencesKey("extension_consent_accepted")
+
+        // Auto Reinstall
+        val AUTO_REINSTALL_ENABLED = booleanPreferencesKey("auto_reinstall_enabled")
     }
 
     override val userPreferences: Flow<UserPreferences> = context.dataStore.data
@@ -221,6 +225,14 @@ class PreferenceRepositoryImpl(
     override suspend fun setExtensionConsentAccepted(accepted: Boolean) {
         context.dataStore.edit { it[Keys.EXTENSION_CONSENT_ACCEPTED] = accepted }
     }
+
+    override suspend fun setAutoReinstallEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.AUTO_REINSTALL_ENABLED] = enabled }
+    }
+
+    override suspend fun getInstallerArg(): String {
+        return if (userPreferences.first().autoReinstallEnabled) " -i com.android.vending" else ""
+    }
 }
 
 /**
@@ -285,6 +297,7 @@ internal fun Preferences.toUserPreferences(): UserPreferences {
         freezerIsGrid = freezerIsGrid,
         extensionsUnlocked = prefs[Keys.EXTENSIONS_UNLOCKED] ?: false,
         extensionConsentAccepted = prefs[Keys.EXTENSION_CONSENT_ACCEPTED] ?: false,
+        autoReinstallEnabled = prefs[Keys.AUTO_REINSTALL_ENABLED] ?: false,
         exportDirUri = prefs[Keys.EXPORT_DIR_URI]
     )
 }

@@ -167,6 +167,7 @@ fun SettingsScreen(
                 title = stringResource(R.string.show_reinstall_card),
                 subtitle = stringResource(R.string.show_reinstall_card_desc),
                 checked = prefs.showReinstallAllCard,
+                enableMarqueeOnClick = true,
                 onCheckedChange = { viewModel.setReinstallAllCardVisibility(it) }
             )
 
@@ -177,6 +178,15 @@ fun SettingsScreen(
                 checked = prefs.useDetailedView,
                 enableMarqueeOnClick = true,
                 onCheckedChange = { viewModel.setDetailedViewEnabled(it) }
+            )
+
+            SettingsSwitchRow(
+                icon = R.drawable.settings_backup_restore,
+                title = stringResource(R.string.auto_reinstall),
+                subtitle = stringResource(R.string.auto_reinstall_desc),
+                checked = prefs.autoReinstallEnabled,
+                enableMarqueeOnClick = true,
+                onCheckedChange = { viewModel.setAutoReinstallEnabled(it) }
             )
         }
 
@@ -394,6 +404,7 @@ fun SettingsScreen(
                 ),
                 checked = prefs.autoFreezeEnabled,
                 enabled = hasPrivilege,
+                enableMarqueeOnClick = true,
                 onCheckedChange = { viewModel.setAutoFreezeEnabled(it) }
             )
 
@@ -405,6 +416,7 @@ fun SettingsScreen(
                 ),
                 checked = prefs.freezerMode == FreezerMode.SUSPEND,
                 enabled = hasPrivilege,
+                enableMarqueeOnClick = true,
                 onCheckedChange = { viewModel.setFreezerMode(if (it) FreezerMode.SUSPEND else FreezerMode.FREEZE) }
             )
 
@@ -426,6 +438,7 @@ fun SettingsScreen(
                 ),
                 checked = prefs.addFreezerToLauncher,
                 enabled = hasPrivilege,
+                enableMarqueeOnClick = true,
                 onCheckedChange = { viewModel.setAddFreezerToLauncher(it) }
             )
         }

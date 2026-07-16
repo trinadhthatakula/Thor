@@ -140,6 +140,10 @@ class SettingsViewModel(
         viewModelScope.launch { preferenceRepository.setReinstallAllCardVisibility(visible) }
     }
 
+    fun setAutoReinstallEnabled(enabled: Boolean) {
+        viewModelScope.launch { preferenceRepository.setAutoReinstallEnabled(enabled) }
+    }
+
     fun setExtensionConsentAccepted(accepted: Boolean) {
         viewModelScope.launch { preferenceRepository.setExtensionConsentAccepted(accepted) }
     }
