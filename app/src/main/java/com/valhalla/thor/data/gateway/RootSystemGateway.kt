@@ -255,8 +255,7 @@ class RootSystemGateway(
         val currentUser = getCurrentUserId()
         val downgrade = if (canDowngrade) " -d" else ""
         
-        val prefs = preferenceRepository.userPreferences.first()
-        val installerArg = if (prefs.autoReinstallEnabled) " -i com.android.vending" else ""
+        val installerArg = preferenceRepository.getInstallerArg()
 
         val sb = StringBuilder()
         // Run the whole thing in a subshell so our `exit` codes exit the SUBSHELL, not

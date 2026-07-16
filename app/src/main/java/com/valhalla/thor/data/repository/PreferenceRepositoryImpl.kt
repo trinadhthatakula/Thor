@@ -19,6 +19,7 @@ import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import org.koin.core.annotation.Single
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "thor_preferences")
@@ -227,6 +228,10 @@ class PreferenceRepositoryImpl(
 
     override suspend fun setAutoReinstallEnabled(enabled: Boolean) {
         context.dataStore.edit { it[Keys.AUTO_REINSTALL_ENABLED] = enabled }
+    }
+
+    override suspend fun getInstallerArg(): String {
+        return if (userPreferences.first().autoReinstallEnabled) " -i com.android.vending" else ""
     }
 }
 

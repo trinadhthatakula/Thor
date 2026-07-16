@@ -85,8 +85,7 @@ class DhizukuSystemGateway(
     }
 
     override suspend fun installApp(apkPath: String, canDowngrade: Boolean): Result<Unit> {
-        val prefs = preferenceRepository.userPreferences.first()
-        val installerArg = if (prefs.autoReinstallEnabled) " -i com.android.vending" else ""
+        val installerArg = preferenceRepository.getInstallerArg()
         
         val result = DhizukuHelper.execute(
             "pm install -r -g${if (canDowngrade) " -d" else ""}$installerArg ${

@@ -65,4 +65,5 @@ interface PreferenceRepository {
 
     // --- Auto Reinstall ---
     suspend fun setAutoReinstallEnabled(enabled: Boolean)
+    suspend fun getInstallerArg(): String
 }

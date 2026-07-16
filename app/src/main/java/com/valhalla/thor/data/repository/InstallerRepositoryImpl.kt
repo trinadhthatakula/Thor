@@ -378,8 +378,7 @@ class InstallerRepositoryImpl(
 
         eventBus.emit(InstallState.Installing(0.5f))
 
-        val prefs = preferenceRepository.userPreferences.first()
-        val installerArg = if (prefs.autoReinstallEnabled) " -i com.android.vending" else ""
+        val installerArg = preferenceRepository.getInstallerArg()
 
         return try {
             val apkPaths = tempFiles.map { it.absolutePath }
@@ -427,8 +426,7 @@ class InstallerRepositoryImpl(
 
         eventBus.emit(InstallState.Installing(0.5f))
 
-        val prefs = preferenceRepository.userPreferences.first()
-        val installerArg = if (prefs.autoReinstallEnabled) " -i com.android.vending" else ""
+        val installerArg = preferenceRepository.getInstallerArg()
 
         return try {
             val apkPaths = tempFiles.map { it.absolutePath }
