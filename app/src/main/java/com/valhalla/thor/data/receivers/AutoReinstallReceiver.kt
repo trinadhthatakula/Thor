@@ -23,28 +23,7 @@ class AutoReinstallReceiver : BroadcastReceiver(), KoinComponent {
 
     companion object {
         private const val TAG = "AutoReinstallReceiver"
-        private const val CACHE_LIMIT = 100
         private const val GOOGLE_PLAY_STORE = "com.android.vending"
-
-        // Robust thread-safe in-memory cache to prevent loops or redundant processes
-        private val processedPackages = Collections.synchronizedSet(LinkedHashSet<String>())
-
-        private fun shouldProcess(packageName: String): Boolean {
-            synchronized(processedPackages) {
-                if (processedPackages.contains(packageName)) {
-                    return false
-                }
-                processedPackages.add(packageName)
-                if (processedPackages.size > CACHE_LIMIT) {
-                    val iterator = processedPackages.iterator()
-                    if (iterator.hasNext()) {
-                        iterator.next()
-                        iterator.remove()
-                    }
-                }
-                return true
-            }
-        }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -62,10 +41,7 @@ class AutoReinstallReceiver : BroadcastReceiver(), KoinComponent {
                 val prefs = preferenceRepository.userPreferences.first()
                 if (!prefs.autoReinstallEnabled) return@launch
 
-                // 2. Prevent duplication loops
-                if (!shouldProcess(packageName)) return@launch
-
-                // 3. Inspect Current Installer of Record
+                // 2. Inspect Current Installer of Record
                 val currentInstaller = getInstallerOfRecord(context, packageName)
                 if (currentInstaller == GOOGLE_PLAY_STORE) {
                     Logger.d(TAG, "Package $packageName is already mapped to Google Play Store.")
@@ -74,7 +50,7 @@ class AutoReinstallReceiver : BroadcastReceiver(), KoinComponent {
 
                 Logger.d(TAG, "Package $packageName has installer '$currentInstaller'. Overriding to Google Play Store...")
 
-                // 4. Overwrite Installer of Record using Thor System Executor
+                // 3. Overwrite Installer of Record using Thor System Executor
                 val escapedPackage = ShellUtils.escapedString(packageName)
                 val command = "pm set-installer $escapedPackage $GOOGLE_PLAY_STORE"
                 
