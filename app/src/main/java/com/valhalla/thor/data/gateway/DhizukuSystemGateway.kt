@@ -8,13 +8,16 @@ import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Single
 import com.valhalla.thor.util.Logger
 import com.valhalla.superuser.ShellUtils
+import com.valhalla.thor.domain.repository.PreferenceRepository
+import kotlinx.coroutines.flow.first
 
 private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
 private val USER_ID_REGEX = Regex("^\\d+$")
 
 @Single
 class DhizukuSystemGateway(
-    private val reflector: DhizukuReflector
+    private val reflector: DhizukuReflector,
+    private val preferenceRepository: PreferenceRepository
 ) : SystemGateway {
 
     override suspend fun isRootAvailable() = false
@@ -82,9 +85,12 @@ class DhizukuSystemGateway(
     }
 
     override suspend fun installApp(apkPath: String, canDowngrade: Boolean): Result<Unit> {
+        val prefs = preferenceRepository.userPreferences.first()
+        val installerArg = if (prefs.autoReinstallEnabled) " -i com.android.vending" else ""
+        
         val result = DhizukuHelper.execute(
-            "pm install -r -g${if (canDowngrade) " -d" else ""} ${
-                com.valhalla.superuser.ShellUtils.escapedString(apkPath)
+            "pm install -r -g${if (canDowngrade) " -d" else ""}$installerArg ${
+                ShellUtils.escapedString(apkPath)
             }"
         )
         return if (result.first == 0) {

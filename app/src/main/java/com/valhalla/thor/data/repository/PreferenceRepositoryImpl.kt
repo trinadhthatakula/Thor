@@ -75,6 +75,9 @@ class PreferenceRepositoryImpl(
         // Extensions
         val EXTENSIONS_UNLOCKED = booleanPreferencesKey("extensions_unlocked")
         val EXTENSION_CONSENT_ACCEPTED = booleanPreferencesKey("extension_consent_accepted")
+
+        // Auto Reinstall
+        val AUTO_REINSTALL_ENABLED = booleanPreferencesKey("auto_reinstall_enabled")
     }
 
     override val userPreferences: Flow<UserPreferences> = context.dataStore.data
@@ -221,6 +224,10 @@ class PreferenceRepositoryImpl(
     override suspend fun setExtensionConsentAccepted(accepted: Boolean) {
         context.dataStore.edit { it[Keys.EXTENSION_CONSENT_ACCEPTED] = accepted }
     }
+
+    override suspend fun setAutoReinstallEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.AUTO_REINSTALL_ENABLED] = enabled }
+    }
 }
 
 /**
@@ -285,6 +292,7 @@ internal fun Preferences.toUserPreferences(): UserPreferences {
         freezerIsGrid = freezerIsGrid,
         extensionsUnlocked = prefs[Keys.EXTENSIONS_UNLOCKED] ?: false,
         extensionConsentAccepted = prefs[Keys.EXTENSION_CONSENT_ACCEPTED] ?: false,
+        autoReinstallEnabled = prefs[Keys.AUTO_REINSTALL_ENABLED] ?: false,
         exportDirUri = prefs[Keys.EXPORT_DIR_URI]
     )
 }

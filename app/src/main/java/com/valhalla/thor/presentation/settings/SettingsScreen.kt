@@ -178,6 +178,14 @@ fun SettingsScreen(
                 enableMarqueeOnClick = true,
                 onCheckedChange = { viewModel.setDetailedViewEnabled(it) }
             )
+
+            SettingsSwitchRow(
+                icon = R.drawable.settings_backup_restore,
+                title = stringResource(R.string.auto_reinstall),
+                subtitle = stringResource(R.string.auto_reinstall_desc),
+                checked = prefs.autoReinstallEnabled,
+                onCheckedChange = { viewModel.setAutoReinstallEnabled(it) }
+            )
         }
 
         Spacer(Modifier.height(32.dp))

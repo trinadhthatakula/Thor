@@ -31,6 +31,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Single
+import kotlinx.coroutines.flow.first
+import com.valhalla.thor.domain.repository.PreferenceRepository
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -43,6 +45,7 @@ class InstallerRepositoryImpl(
     private val eventBus: InstallerEventBus,
     private val rootGateway: RootSystemGateway,
     private val shizukuReflector: ShizukuReflector,
+    private val preferenceRepository: PreferenceRepository
 ) : InstallerRepository {
 
     private val defaultInstaller = context.packageManager.packageInstaller
@@ -375,10 +378,13 @@ class InstallerRepositoryImpl(
 
         eventBus.emit(InstallState.Installing(0.5f))
 
+        val prefs = preferenceRepository.userPreferences.first()
+        val installerArg = if (prefs.autoReinstallEnabled) " -i com.android.vending" else ""
+
         return try {
             val apkPaths = tempFiles.map { it.absolutePath }
             val result = if (apkPaths.size == 1) {
-                val command = "pm install -r -g${if (canDowngrade) " -d" else ""} ${
+                val command = "pm install -r -g${if (canDowngrade) " -d" else ""}$installerArg ${
                     com.valhalla.superuser.ShellUtils.escapedString(apkPaths[0])
                 }"
                 ShizukuHelper.execute(command)
@@ -386,7 +392,7 @@ class InstallerRepositoryImpl(
                 val escapedPaths = apkPaths.joinToString(" ") {
                     com.valhalla.superuser.ShellUtils.escapedString(it)
                 }
-                val command = "pm install-multiple -r -g${if (canDowngrade) " -d" else ""} $escapedPaths"
+                val command = "pm install-multiple -r -g${if (canDowngrade) " -d" else ""}$installerArg $escapedPaths"
                 ShizukuHelper.execute(command)
             }
 
@@ -421,10 +427,13 @@ class InstallerRepositoryImpl(
 
         eventBus.emit(InstallState.Installing(0.5f))
 
+        val prefs = preferenceRepository.userPreferences.first()
+        val installerArg = if (prefs.autoReinstallEnabled) " -i com.android.vending" else ""
+
         return try {
             val apkPaths = tempFiles.map { it.absolutePath }
             val result = if (apkPaths.size == 1) {
-                val command = "pm install -r -g${if (canDowngrade) " -d" else ""} ${
+                val command = "pm install -r -g${if (canDowngrade) " -d" else ""}$installerArg ${
                     com.valhalla.superuser.ShellUtils.escapedString(apkPaths[0])
                 }"
                 DhizukuHelper.execute(command)
@@ -432,7 +441,7 @@ class InstallerRepositoryImpl(
                 val escapedPaths = apkPaths.joinToString(" ") {
                     com.valhalla.superuser.ShellUtils.escapedString(it)
                 }
-                val command = "pm install-multiple -r -g${if (canDowngrade) " -d" else ""} $escapedPaths"
+                val command = "pm install-multiple -r -g${if (canDowngrade) " -d" else ""}$installerArg $escapedPaths"
                 DhizukuHelper.execute(command)
             }
 

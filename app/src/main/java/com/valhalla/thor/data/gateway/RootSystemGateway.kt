@@ -9,6 +9,8 @@ import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Single
 import com.valhalla.thor.util.Logger
 import com.valhalla.superuser.ShellUtils
+import com.valhalla.thor.domain.repository.PreferenceRepository
+import kotlinx.coroutines.flow.first
 import java.io.File
 
 private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
@@ -21,7 +23,8 @@ private val USER_ID_REGEX = Regex("^\\d+$")
 @Single
 class RootSystemGateway(
     private val context: Context,
-    private val shellRepository: ShellRepository
+    private val shellRepository: ShellRepository,
+    private val preferenceRepository: PreferenceRepository
 ) : SystemGateway {
 
     // A root check is strictly asynchronous. Blocking the thread for this is unacceptable.
@@ -251,6 +254,10 @@ class RootSystemGateway(
         }
         val currentUser = getCurrentUserId()
         val downgrade = if (canDowngrade) " -d" else ""
+        
+        val prefs = preferenceRepository.userPreferences.first()
+        val installerArg = if (prefs.autoReinstallEnabled) " -i com.android.vending" else ""
+
         val sb = StringBuilder()
         // Run the whole thing in a subshell so our `exit` codes exit the SUBSHELL, not
         // libsu's long-lived root shell. Exiting the parent shell would kill it before
@@ -264,7 +271,7 @@ class RootSystemGateway(
         // Create the session (targeting the current user, like every other pm command in
         // this gateway); capture stdout+stderr so a failure reason isn't lost, then pull
         // the numeric id out of "…created install session [<id>]".
-        sb.append("CREATE_OUT=\$(pm install-create -r -g --user ").append(currentUser).append(downgrade).append(" 2>&1)\n")
+        sb.append("CREATE_OUT=\$(pm install-create -r -g").append(installerArg).append(" --user ").append(currentUser).append(downgrade).append(" 2>&1)\n")
         sb.append("SID=\$(printf '%s\\n' \"\$CREATE_OUT\" | sed -n 's/.*\\[\\([0-9]*\\)\\].*/\\1/p')\n")
         sb.append("if [ -z \"\$SID\" ]; then echo \"pm install-create failed: \$CREATE_OUT\" 1>&2; exit 101; fi\n")
         // Stream each APK's bytes into the session via stdin.
