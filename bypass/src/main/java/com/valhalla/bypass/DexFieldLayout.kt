@@ -1,8 +1,6 @@
 package com.valhalla.bypass
 
-import android.os.Build
 import android.os.SharedMemory
-import androidx.annotation.RequiresApi
 import java.io.IOException
 import java.lang.invoke.MethodHandle
 import java.lang.reflect.AccessibleObject
@@ -17,7 +15,6 @@ import java.nio.file.StandardOpenOption
 import java.util.PriorityQueue
 import java.util.zip.ZipException
 
-@RequiresApi(Build.VERSION_CODES.P)
 internal class DexFieldLayout {
 
     private val classes = HashMap<String, DexClass>()
@@ -202,7 +199,7 @@ internal class DexFieldLayout {
 
         @Throws(ZipException::class)
         private fun findEndOfCentralDirectory(): Int {
-            val start = Math.max(0, fileData.limit() - MAX_EOCD_SEARCH)
+            val start = 0.coerceAtLeast(fileData.limit() - MAX_EOCD_SEARCH)
             for (offset in fileData.limit() - 22 downTo start) {
                 if (readInt(offset) == EOCD_SIGNATURE) {
                     return offset
@@ -323,7 +320,7 @@ internal class DexFieldLayout {
         }
 
         private fun readField(fieldIndex: Int): DexField {
-            if (fieldIndex < 0 || fieldIndex >= fieldIdsSize) {
+            if (fieldIndex !in 0..<fieldIdsSize) {
                 throw IllegalArgumentException("Invalid field index $fieldIndex")
             }
             val offset = fieldIdsOff + fieldIndex * 8
@@ -333,7 +330,7 @@ internal class DexFieldLayout {
         }
 
         private fun getTypeDescriptor(typeIndex: Int): String {
-            if (typeIndex < 0 || typeIndex >= typeIdsSize) {
+            if (typeIndex !in 0..<typeIdsSize) {
                 throw IllegalArgumentException("Invalid type index $typeIndex")
             }
             return getString(readInt(typeIdsOff + typeIndex * 4))
@@ -377,7 +374,7 @@ internal class DexFieldLayout {
         }
 
         private fun compareString(stringIndex: Int, expected: String): Int {
-            if (stringIndex < 0 || stringIndex >= stringIdsSize) {
+            if (stringIndex !in 0..<stringIdsSize) {
                 throw IllegalArgumentException("Invalid string index $stringIndex")
             }
             val position = Position(readInt(stringIdsOff + stringIndex * 4))
@@ -399,7 +396,7 @@ internal class DexFieldLayout {
         }
 
         private fun readModifiedUtf8Char(position: Position): Int {
-            var current = dex.get(position.offset).toInt() and 0xff
+            val current = dex.get(position.offset).toInt() and 0xff
             position.offset++
             if (current == 0 || (current and 0x80) == 0) {
                 return current
@@ -417,7 +414,7 @@ internal class DexFieldLayout {
         }
 
         private fun getString(stringIndex: Int): String {
-            if (stringIndex < 0 || stringIndex >= stringIdsSize) {
+            if (stringIndex !in 0..<stringIdsSize) {
                 throw IllegalArgumentException("Invalid string index $stringIndex")
             }
             val position = Position(readInt(stringIdsOff + stringIndex * 4))
@@ -461,7 +458,7 @@ internal class DexFieldLayout {
             get() = primitiveType != '\u0000'
 
         fun componentSize(): Int {
-            return DexFieldLayout.componentSize(primitiveType)
+            return componentSize(primitiveType)
         }
     }
 

@@ -1,12 +1,9 @@
 package com.valhalla.bypass
 
-import android.os.Build
-import androidx.annotation.RequiresApi
 import dalvik.system.PathClassLoader
 import java.lang.invoke.MethodHandle
 import java.lang.reflect.Executable
 
-@RequiresApi(Build.VERSION_CODES.P)
 internal class CoreOjClassLoader : PathClassLoader(getCoreOjPath(), null) {
 
     override fun loadClass(name: String): Class<*> {

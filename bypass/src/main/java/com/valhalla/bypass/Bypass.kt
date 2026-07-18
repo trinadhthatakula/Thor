@@ -2,9 +2,7 @@ package com.valhalla.bypass
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.os.Build
 import android.util.Property
-import androidx.annotation.RequiresApi
 import dalvik.system.VMRuntime
 import sun.misc.Unsafe
 import java.lang.invoke.MethodHandle
@@ -15,10 +13,8 @@ import java.lang.reflect.Field
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
-import java.util.ArrayList
 
 @SuppressLint("DiscouragedPrivateApi")
-@RequiresApi(Build.VERSION_CODES.P)
 object Bypass {
 
     private var logger: ((String, Throwable?) -> Unit)? = null
@@ -610,6 +606,7 @@ object Bypass {
      */
     fun <T> getField(instance: Any, fieldName: String): T {
         val target = if (instance is Class<*>) null else instance
+        @Suppress("RedundantNullableReturnType") //might be null in some superclasses
         val clazz: Class<*>? = instance as? Class<*> ?: instance.javaClass
 
         // 1. Try standard reflection first

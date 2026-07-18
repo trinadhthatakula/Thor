@@ -3,7 +3,6 @@ package com.valhalla.bypass
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.annotation.RequiresApi
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileInputStream
@@ -13,9 +12,7 @@ import java.io.IOException
 import java.io.ObjectInputStream
 import java.io.ObjectOutputStream
 import java.lang.invoke.MethodType
-import java.util.HashSet
 
-@RequiresApi(Build.VERSION_CODES.P)
 object Helper {
     val signaturePrefixes: MutableSet<String> = HashSet()
 
@@ -101,14 +98,16 @@ object Helper {
             val param = params[i]
             val arg = args[i]
             if (param.isPrimitive) {
-                if (param == Int::class.javaPrimitiveType && arg !is Int) return false
-                else if (param == Byte::class.javaPrimitiveType && arg !is Byte) return false
-                else if (param == Char::class.javaPrimitiveType && arg !is Char) return false
-                else if (param == Boolean::class.javaPrimitiveType && arg !is Boolean) return false
-                else if (param == Double::class.javaPrimitiveType && arg !is Double) return false
-                else if (param == Float::class.javaPrimitiveType && arg !is Float) return false
-                else if (param == Long::class.javaPrimitiveType && arg !is Long) return false
-                else if (param == Short::class.javaPrimitiveType && arg !is Short) return false
+                when (param) {
+                    Int::class.javaPrimitiveType if arg !is Int -> return false
+                    Byte::class.javaPrimitiveType if arg !is Byte -> return false
+                    Char::class.javaPrimitiveType if arg !is Char -> return false
+                    Boolean::class.javaPrimitiveType if arg !is Boolean -> return false
+                    Double::class.javaPrimitiveType if arg !is Double -> return false
+                    Float::class.javaPrimitiveType if arg !is Float -> return false
+                    Long::class.javaPrimitiveType if arg !is Long -> return false
+                    Short::class.javaPrimitiveType if arg !is Short -> return false
+                }
             } else if (arg != null && !param.isInstance(arg)) return false
         }
         return true
@@ -156,7 +155,7 @@ object Helper {
         @JvmField var virtualMethodsOffset: Short = 0
     }
 
-    class MethodHandle {
+    open class MethodHandle {
         @JvmField var type: MethodType? = null
         @JvmField var nominalType: MethodType? = null
         @JvmField var cachedSpreadInvoker: MethodHandle? = null
