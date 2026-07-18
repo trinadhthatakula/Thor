@@ -38,6 +38,7 @@ internal class RootServiceServer private constructor(context: Context) : IRootSe
     private val services: MutableMap<ComponentName, ServiceRecord> = ArrayMap()
     private val clients = SparseArray<ClientProcess>()
     private var isDaemon = false
+    private var authorizedUid: Int = -1
 
     init {
         com.valhalla.superuser.Shell.enableVerboseLogging = System.getenv(RootServiceManager.LOGGING_ENV) != null
@@ -59,6 +60,7 @@ internal class RootServiceServer private constructor(context: Context) : IRootSe
         if (context is Callable<*>) {
             runCatching {
                 val objs = context.call() as Array<*>
+                authorizedUid = objs[0] as Int
                 isDaemon = objs[1] as Boolean
                 if (isDaemon) {
                     HiddenAPIs.addService(Constants.getServiceName(context.packageName), this)
@@ -76,6 +78,13 @@ internal class RootServiceServer private constructor(context: Context) : IRootSe
         }
     }
 
+    private fun enforceCaller() {
+        val callingUid = getCallingUid()
+        if (callingUid != 0 && callingUid != 1000 && callingUid != authorizedUid) {
+            throw SecurityException("Access Denied: UID $callingUid is not authorized to invoke Odin.")
+        }
+    }
+
     override fun run() {
         if (clients.size() == 0) {
             exit("No active clients")
@@ -83,6 +92,7 @@ internal class RootServiceServer private constructor(context: Context) : IRootSe
     }
 
     override fun connect(binder: IBinder) {
+        enforceCaller()
         val uid = getCallingUid()
         UiThreadHandler.run { connectInternal(uid, binder) }
     }
@@ -99,6 +109,7 @@ internal class RootServiceServer private constructor(context: Context) : IRootSe
 
     @SuppressLint("MissingPermission")
     override fun broadcast(uid: Int) {
+        enforceCaller()
         val targetUid = if (getCallingUid() == 0) uid else getCallingUid()
         Utils.log(RootServiceManager.TAG, "broadcast to uid=$targetUid")
         val intent = RootServiceManager.getBroadcastIntent(this, isDaemon)
@@ -111,6 +122,7 @@ internal class RootServiceServer private constructor(context: Context) : IRootSe
     }
 
     override fun bind(intent: Intent): IBinder? {
+        enforceCaller()
         val b = arrayOfNulls<IBinder>(1)
         val uid = getCallingUid()
         UiThreadHandler.runAndWait {
@@ -124,6 +136,7 @@ internal class RootServiceServer private constructor(context: Context) : IRootSe
     }
 
     override fun unbind(name: ComponentName) {
+        enforceCaller()
         val uid = getCallingUid()
         UiThreadHandler.run {
             Utils.log(RootServiceManager.TAG, name.className + " unbind")
@@ -132,6 +145,7 @@ internal class RootServiceServer private constructor(context: Context) : IRootSe
     }
 
     override fun stop(name: ComponentName, uid: Int) {
+        enforceCaller()
         val clientUid = if (getCallingUid() == 0) uid else getCallingUid()
         UiThreadHandler.run {
             Utils.log(RootServiceManager.TAG, name.className + " stop")
@@ -159,6 +173,9 @@ internal class RootServiceServer private constructor(context: Context) : IRootSe
         if (s == null) {
             val context = Utils.context ?: return null
             val clz = context.classLoader.loadClass(name.className)
+            if (!RootService::class.java.isAssignableFrom(clz)) {
+                throw IllegalArgumentException("Target class ${clz.name} does not extend RootService")
+            }
             val ctor = clz.getDeclaredConstructor()
             ctor.isAccessible = true
             HiddenAPIs.attachBaseContext(ctor.newInstance(), context)

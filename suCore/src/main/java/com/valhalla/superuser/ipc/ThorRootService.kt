@@ -16,47 +16,50 @@ class ThorRootService : RootService() {
 
     override fun onBind(intent: Intent): IBinder {
         return object : IThorRootService.Stub() {
+            private fun enforceCaller() {
+                val callingUid = getCallingUid()
+                val context = com.valhalla.superuser.internal.Utils.context
+                val ourUid = try {
+                    context?.packageManager?.getPackageUid(context.packageName, 0) ?: -1
+                } catch (e: Exception) {
+                    -1
+                }
+                if (callingUid != 0 && callingUid != 1000 && callingUid != ourUid) {
+                    throw SecurityException("Access denied: UID $callingUid is not authorized.")
+                }
+            }
+
             override fun setAppSuspended(packageName: String, suspended: Boolean) {
+                enforceCaller()
                 this@ThorRootService.setAppSuspended(packageName, suspended)
             }
 
             override fun clearAppData(packageName: String) {
+                enforceCaller()
                 this@ThorRootService.clearAppData(packageName)
             }
         }
     }
 
     private fun setAppSuspended(packageName: String, suspended: Boolean) {
-        val binder = Class.forName("android.os.ServiceManager")
-            .getMethod("getService", String::class.java)
-            .invoke(null, "package") as IBinder
-        val pm = Class.forName("android.content.pm.IPackageManager\$Stub")
-            .getMethod("asInterface", IBinder::class.java)
-            .invoke(null, binder)
-        val pmClass = Class.forName("android.content.pm.IPackageManager")
+        runCatching {
+            val binder = Class.forName("android.os.ServiceManager")
+                .getMethod("getService", String::class.java)
+                .invoke(null, "package") as IBinder
+            val pm = Class.forName("android.content.pm.IPackageManager\$Stub")
+                .getMethod("asInterface", IBinder::class.java)
+                .invoke(null, binder)
+            val pmClass = Class.forName("android.content.pm.IPackageManager")
 
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            throw UnsupportedOperationException("suspend via reflection requires API 29+")
-        }
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                throw UnsupportedOperationException("suspend via reflection requires API 29+")
+            }
 
-        val dialogInfoClass = Class.forName("android.content.pm.SuspendDialogInfo")
-        val dialogInfo = if (suspended) buildSuspendDialogInfo() else null
+            val dialogInfoClass = Class.forName("android.content.pm.SuspendDialogInfo")
+            val dialogInfo = if (suspended) buildSuspendDialogInfo() else null
 
-        val myPkg = packageName // Use the target package itself or current package context
-        try {
-            callSetSuspended(
-                pmClass,
-                pm,
-                dialogInfoClass,
-                packageName,
-                suspended,
-                dialogInfo,
-                myPkg
-            )
-        } catch (e: Exception) {
-            val cause = if (e is InvocationTargetException) e.cause else e
-            if (cause is SecurityException) {
-                // Some devices reject non-privileged callers; fallback to com.android.shell
+            val myPkg = packageName // Use the target package itself or current package context
+            try {
                 callSetSuspended(
                     pmClass,
                     pm,
@@ -64,9 +67,25 @@ class ThorRootService : RootService() {
                     packageName,
                     suspended,
                     dialogInfo,
-                    "com.android.shell"
+                    myPkg
                 )
-            } else throw e
+            } catch (e: Exception) {
+                val cause = if (e is InvocationTargetException) e.cause else e
+                if (cause is SecurityException) {
+                    // Some devices reject non-privileged callers; fallback to com.android.shell
+                    callSetSuspended(
+                        pmClass,
+                        pm,
+                        dialogInfoClass,
+                        packageName,
+                        suspended,
+                        dialogInfo,
+                        "com.android.shell"
+                    )
+                } else throw e
+            }
+        }.onFailure { e ->
+            android.util.Log.e("Odin", "Failed to set app suspended for $packageName", e)
         }
     }
 
@@ -134,20 +153,24 @@ class ThorRootService : RootService() {
     }
 
     private fun clearAppData(packageName: String) {
-        val pmStub = Class.forName("android.content.pm.IPackageManager\$Stub")
-        val serviceManager = Class.forName("android.os.ServiceManager")
-        val getService = serviceManager.getMethod("getService", String::class.java)
-        val binder = getService.invoke(null, "package") as IBinder
-        val asInterface = pmStub.getMethod("asInterface", IBinder::class.java)
-        val pm = asInterface.invoke(null, binder)
-        val pmClass = Class.forName("android.content.pm.IPackageManager")
+        runCatching {
+            val pmStub = Class.forName("android.content.pm.IPackageManager\$Stub")
+            val serviceManager = Class.forName("android.os.ServiceManager")
+            val getService = serviceManager.getMethod("getService", String::class.java)
+            val binder = getService.invoke(null, "package") as IBinder
+            val asInterface = pmStub.getMethod("asInterface", IBinder::class.java)
+            val pm = asInterface.invoke(null, binder)
+            val pmClass = Class.forName("android.content.pm.IPackageManager")
 
-        val method = pmClass.getDeclaredMethod(
-            "clearApplicationUserData",
-            String::class.java,
-            Class.forName("android.content.pm.IPackageDataObserver"),
-            Int::class.javaPrimitiveType
-        )
-        method.invoke(pm, packageName, null, 0)
+            val method = pmClass.getDeclaredMethod(
+                "clearApplicationUserData",
+                String::class.java,
+                Class.forName("android.content.pm.IPackageDataObserver"),
+                Int::class.javaPrimitiveType
+            )
+            method.invoke(pm, packageName, null, 0)
+        }.onFailure { e ->
+            android.util.Log.e("Odin", "Failed to clear app data for $packageName", e)
+        }
     }
 }

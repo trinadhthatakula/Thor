@@ -43,23 +43,31 @@ class RootSystemGateway(
     private suspend fun getRootService(): IThorRootService? = connectionMutex.withLock {
         rootService?.let { return it }
 
-        suspendCancellableCoroutine { continuation ->
-            val intent = Intent(context, com.valhalla.superuser.ipc.ThorRootService::class.java)
-            val conn = object : ServiceConnection {
-                override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-                    val binder = IThorRootService.Stub.asInterface(service)
-                    rootService = binder
-                    if (continuation.isActive) {
-                        continuation.resume(binder)
+        withContext(Dispatchers.Main) {
+            suspendCancellableCoroutine { continuation ->
+                val intent = Intent(context, com.valhalla.superuser.ipc.ThorRootService::class.java)
+                val conn = object : ServiceConnection {
+                    override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+                        val binder = IThorRootService.Stub.asInterface(service)
+                        rootService = binder
+                        if (continuation.isActive) {
+                            continuation.resume(binder)
+                        }
+                    }
+
+                    override fun onServiceDisconnected(name: ComponentName?) {
+                        rootService = null
                     }
                 }
 
-                override fun onServiceDisconnected(name: ComponentName?) {
-                    rootService = null
+                continuation.invokeOnCancellation {
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        RootService.unbind(conn)
+                    }
                 }
-            }
 
-            RootService.bind(intent, conn)
+                RootService.bind(intent, conn)
+            }
         }
     }
 
@@ -108,25 +116,26 @@ class RootSystemGateway(
         return runCommand(command)
     }
 
-    override suspend fun clearAppData(packageName: String): Result<Unit> {
+    override suspend fun clearAppData(packageName: String): Result<Unit> = withContext(Dispatchers.IO) {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+            return@withContext Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = ShellUtils.escapedString(packageName)
         val shellResult = runCommand("pm clear $escapedPackage")
-        if (shellResult.isSuccess) return shellResult
+        if (shellResult.isSuccess) return@withContext shellResult
 
         // Fallback to ThorRootService AIDL daemon
         val service = getRootService()
         if (service != null) {
-            runCatching {
+            val aidlResult = runCatching {
                 service.clearAppData(packageName)
-            }.onSuccess {
-                return Result.success(Unit)
+            }
+            if (aidlResult.isSuccess) {
+                return@withContext Result.success(Unit)
             }
         }
 
-        return Result.failure(Exception("Root clear app data failed. Shell command and AIDL both failed."))
+        return@withContext Result.failure(Exception("Root clear app data failed. Shell command and AIDL both failed."))
     }
 
     override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> {
@@ -191,9 +200,9 @@ class RootSystemGateway(
         return Result.failure(Exception("Root setAppDisabled failed."))
     }
 
-    override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> {
+    override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+            return@withContext Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val hasReflection = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q
         val escapedPackage = ShellUtils.escapedString(packageName)
@@ -215,13 +224,13 @@ class RootSystemGateway(
                         service.setAppSuspended(packageName, true)
                         true
                     }.getOrDefault(false)
-                    if (taskResult || isCurrentlySuspended()) return Result.success(Unit)
+                    if (taskResult || isCurrentlySuspended()) return@withContext Result.success(Unit)
                 }
-                return Result.failure(Exception("Root suspend failed via AIDL for $packageName."))
+                return@withContext Result.failure(Exception("Root suspend failed via AIDL for $packageName."))
             }
             // API < 29 has no SuspendDialogInfo reflection path.
             val shell = runCommand("pm suspend $escapedPackage")
-            return if (shell.isSuccess) shell
+            return@withContext if (shell.isSuccess) shell
             else Result.failure(Exception("Root suspend failed for $packageName."))
         }
 
@@ -242,7 +251,7 @@ class RootSystemGateway(
         }
         val shell = runCommand("pm unsuspend $escapedPackage")
         cleared = cleared || shell.isSuccess
-        return if (cleared || !isCurrentlySuspended()) Result.success(Unit)
+        return@withContext if (cleared || !isCurrentlySuspended()) Result.success(Unit)
         else Result.failure(Exception("Root unsuspend failed for $packageName."))
     }
 
