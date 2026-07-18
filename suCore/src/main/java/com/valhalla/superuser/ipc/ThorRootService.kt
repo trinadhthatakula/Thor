@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PersistableBundle
 import com.valhalla.superuser.ipc.RootService
+import com.valhalla.superuser.utils.Logger
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 
@@ -19,6 +20,7 @@ class ThorRootService : RootService() {
             private fun enforceCaller() {
                 val callingUid = getCallingUid()
                 val authorizedUid = com.valhalla.superuser.internal.RootServiceServer.getInstanceOrNull()?.authorizedUid ?: -1
+                Logger.i("Odin", "enforceCaller: callingUid=$callingUid, authorizedUid=$authorizedUid")
                 if (callingUid != 0 && callingUid != 1000 && callingUid != authorizedUid) {
                     throw SecurityException("Access denied: UID $callingUid is not authorized.")
                 }
@@ -37,6 +39,7 @@ class ThorRootService : RootService() {
     }
 
     private fun setAppSuspended(packageName: String, suspended: Boolean) {
+        Logger.i("Odin", "setAppSuspended: packageName=$packageName, suspended=$suspended")
         runCatching {
             val binder = Class.forName("android.os.ServiceManager")
                 .getMethod("getService", String::class.java)
@@ -53,44 +56,48 @@ class ThorRootService : RootService() {
             val dialogInfoClass = Class.forName("android.content.pm.SuspendDialogInfo")
             val dialogInfo = if (suspended) buildSuspendDialogInfo() else null
 
-            val myPkg = packageName // Use the target package itself or current package context
-            try {
-                callSetSuspended(
-                    pmClass,
-                    pm,
-                    dialogInfoClass,
-                    packageName,
-                    suspended,
-                    dialogInfo,
-                    myPkg
-                )
-            } catch (e: Exception) {
-                val cause = if (e is InvocationTargetException) e.cause else e
-                if (cause is SecurityException) {
-                    // Some devices reject non-privileged callers; fallback to com.android.shell
-                    callSetSuspended(
-                        pmClass,
-                        pm,
-                        dialogInfoClass,
-                        packageName,
-                        suspended,
-                        dialogInfo,
-                        "com.android.shell"
-                    )
-                } else throw e
+            // Try different caller packages in order of preference to find one that succeeds.
+            // Prioritize Thor's own package name so that the OS displays "Managed by Thor" on clicking a suspended app.
+            val callers = listOf(
+                this@ThorRootService.packageName,
+                "com.valhalla.thor.debug",
+                "com.valhalla.thor",
+                "com.android.shell",
+                "android"
+            )
+            var success = false
+
+            for (caller in callers) {
+                try {
+                    if (callSetSuspended(pmClass, pm, dialogInfoClass, packageName, suspended, dialogInfo, caller)) {
+                        Logger.i("Odin", "setAppSuspended successfully suspended $packageName using caller $caller")
+                        success = true
+                        break
+                    } else {
+                        Logger.w("Odin", "setAppSuspended failed for $packageName using caller $caller (returned in failed list)")
+                    }
+                } catch (e: Exception) {
+                    val cause = if (e is InvocationTargetException) e.cause else e
+                    Logger.w("Odin", "setAppSuspended threw exception for $packageName using caller $caller: " + cause?.message)
+                }
+            }
+
+            if (!success) {
+                throw RuntimeException("All caller package strategies failed to suspend $packageName")
             }
         }.onFailure { e ->
-            android.util.Log.e("Odin", "Failed to set app suspended for $packageName", e)
+            Logger.e("Odin", "Failed to set app suspended for $packageName", e)
         }
     }
 
     private fun callSetSuspended(
         pmClass: Class<*>, pm: Any?, dialogInfoClass: Class<*>,
         packageName: String, suspended: Boolean, dialogInfo: Any?, caller: String
-    ) {
+    ): Boolean {
         // Android 14+ (API 34+): 9-arg signature
         try {
-            pmClass.getDeclaredMethod(
+            Logger.i("Odin", "Trying API 34+ 9-arg signature with caller=$caller")
+            val method = pmClass.getDeclaredMethod(
                 "setPackagesSuspendedAsUser",
                 Array<String>::class.java,
                 Boolean::class.javaPrimitiveType,
@@ -101,15 +108,22 @@ class ThorRootService : RootService() {
                 String::class.java,             // callingPackage
                 Int::class.javaPrimitiveType,   // suspendingUserId
                 Int::class.javaPrimitiveType    // targetUserId
-            ).invoke(pm, arrayOf(packageName), suspended, null, null, dialogInfo, 0, caller, 0, 0)
-            return
-        } catch (_: NoSuchMethodException) {
-            // fall through
+            )
+            val result = method.invoke(pm, arrayOf(packageName), suspended, null, null, dialogInfo, 0, caller, 0, 0) as? Array<*>
+            val failedList = result?.filterIsInstance<String>() ?: emptyList()
+            Logger.i("Odin", "Successfully invoked API 34+ 9-arg signature. Failed packages: $failedList")
+            return !failedList.contains(packageName)
+        } catch (e: NoSuchMethodException) {
+            Logger.d("Odin", "API 34+ signature not found: " + e.message)
+        } catch (e: Exception) {
+            Logger.e("Odin", "API 34+ signature invocation error", e)
+            throw e
         }
 
         // Some API 33 builds: 8-arg signature
         try {
-            pmClass.getDeclaredMethod(
+            Logger.i("Odin", "Trying API 33 8-arg signature with caller=$caller")
+            val method = pmClass.getDeclaredMethod(
                 "setPackagesSuspendedAsUser",
                 Array<String>::class.java,
                 Boolean::class.javaPrimitiveType,
@@ -119,19 +133,35 @@ class ThorRootService : RootService() {
                 Int::class.javaPrimitiveType,   // flags
                 String::class.java,             // callingPackage
                 Int::class.javaPrimitiveType    // userId
-            ).invoke(pm, arrayOf(packageName), suspended, null, null, dialogInfo, 0, caller, 0)
-            return
-        } catch (_: NoSuchMethodException) {
-            // fall through
+            )
+            val result = method.invoke(pm, arrayOf(packageName), suspended, null, null, dialogInfo, 0, caller, 0) as? Array<*>
+            val failedList = result?.filterIsInstance<String>() ?: emptyList()
+            Logger.i("Odin", "Successfully invoked API 33 8-arg signature. Failed packages: $failedList")
+            return !failedList.contains(packageName)
+        } catch (e: NoSuchMethodException) {
+            Logger.d("Odin", "API 33 signature not found: " + e.message)
+        } catch (e: Exception) {
+            Logger.e("Odin", "API 33 signature invocation error", e)
+            throw e
         }
 
         // Android 10-13 (API 29-33): 7-arg signature
-        pmClass.getDeclaredMethod(
-            "setPackagesSuspendedAsUser",
-            Array<String>::class.java, Boolean::class.javaPrimitiveType,
-            PersistableBundle::class.java, PersistableBundle::class.java,
-            dialogInfoClass, String::class.java, Int::class.javaPrimitiveType
-        ).invoke(pm, arrayOf(packageName), suspended, null, null, dialogInfo, caller, 0)
+        try {
+            Logger.i("Odin", "Trying API 29-33 7-arg signature with caller=$caller")
+            val method = pmClass.getDeclaredMethod(
+                "setPackagesSuspendedAsUser",
+                Array<String>::class.java, Boolean::class.javaPrimitiveType,
+                PersistableBundle::class.java, PersistableBundle::class.java,
+                dialogInfoClass, String::class.java, Int::class.javaPrimitiveType
+            )
+            val result = method.invoke(pm, arrayOf(packageName), suspended, null, null, dialogInfo, caller, 0) as? Array<*>
+            val failedList = result?.filterIsInstance<String>() ?: emptyList()
+            Logger.i("Odin", "Successfully invoked API 29-33 7-arg signature. Failed packages: $failedList")
+            return !failedList.contains(packageName)
+        } catch (e: Exception) {
+            Logger.e("Odin", "API 29-33 signature invocation error", e)
+            throw e
+        }
     }
 
     private fun buildSuspendDialogInfo(): Any? = try {
@@ -165,7 +195,7 @@ class ThorRootService : RootService() {
             )
             method.invoke(pm, packageName, null, 0)
         }.onFailure { e ->
-            android.util.Log.e("Odin", "Failed to clear app data for $packageName", e)
+            Logger.e("Odin", "Failed to clear app data for $packageName", e)
         }
     }
 }
