@@ -50,7 +50,18 @@ class RootSystemGateway(
                 shellRepository.runCommand("pkill -f ${context.packageName}:root")
             }
         }
-        rootService?.let { return it }
+
+        rootService?.let { binder ->
+            if (binder.asBinder().isBinderAlive) {
+                return binder
+            } else {
+                rootService = null
+                activeConnection?.let { oldConn ->
+                    runCatching { RootService.unbind(oldConn) }
+                    activeConnection = null
+                }
+            }
+        }
 
         // Clean up any stale connection before creating a new one
         activeConnection?.let { oldConn ->
@@ -74,6 +85,9 @@ class RootSystemGateway(
 
                     override fun onServiceDisconnected(name: ComponentName?) {
                         rootService = null
+                        if (activeConnection === this) {
+                            activeConnection = null
+                        }
                     }
                 }
 

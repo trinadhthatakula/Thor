@@ -24,6 +24,7 @@ class AutoReinstallReceiver : BroadcastReceiver(), KoinComponent {
     companion object {
         private const val TAG = "AutoReinstallReceiver"
         private const val GOOGLE_PLAY_STORE = "com.android.vending"
+        private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -31,7 +32,7 @@ class AutoReinstallReceiver : BroadcastReceiver(), KoinComponent {
         if (action != Intent.ACTION_PACKAGE_ADDED && action != Intent.ACTION_PACKAGE_REPLACED) return
 
         val packageName = intent.data?.schemeSpecificPart ?: return
-        if (packageName.isBlank()) return
+        if (packageName.isBlank() || !PACKAGE_NAME_REGEX.matches(packageName)) return
 
         val pendingResult = goAsync()
 
@@ -67,8 +68,8 @@ class AutoReinstallReceiver : BroadcastReceiver(), KoinComponent {
                         Logger.e(TAG, "Failed to run set-installer command.", error)
                     }
                 )
-            } catch (e: Exception) {
-                Logger.e(TAG, "Error in AutoReinstallReceiver process.", e)
+            } catch (t: Throwable) {
+                Logger.e(TAG, "Error in AutoReinstallReceiver process.", t)
             } finally {
                 pendingResult.finish()
             }

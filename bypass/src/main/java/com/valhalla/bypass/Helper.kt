@@ -104,16 +104,18 @@ object Helper {
             val param = params[i]
             val arg = args[i]
             if (param.isPrimitive) {
-                when (param) {
-                    Int::class.javaPrimitiveType if arg !is Int -> return false
-                    Byte::class.javaPrimitiveType if arg !is Byte -> return false
-                    Char::class.javaPrimitiveType if arg !is Char -> return false
-                    Boolean::class.javaPrimitiveType if arg !is Boolean -> return false
-                    Double::class.javaPrimitiveType if arg !is Double -> return false
-                    Float::class.javaPrimitiveType if arg !is Float -> return false
-                    Long::class.javaPrimitiveType if arg !is Long -> return false
-                    Short::class.javaPrimitiveType if arg !is Short -> return false
+                val isValid = when (param) {
+                    Int::class.javaPrimitiveType -> arg is Int
+                    Byte::class.javaPrimitiveType -> arg is Byte
+                    Char::class.javaPrimitiveType -> arg is Char
+                    Boolean::class.javaPrimitiveType -> arg is Boolean
+                    Double::class.javaPrimitiveType -> arg is Double
+                    Float::class.javaPrimitiveType -> arg is Float
+                    Long::class.javaPrimitiveType -> arg is Long
+                    Short::class.javaPrimitiveType -> arg is Short
+                    else -> false
                 }
+                if (!isValid) return false
             } else if (arg != null && !param.isInstance(arg)) return false
         }
         return true
