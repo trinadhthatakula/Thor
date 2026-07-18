@@ -26,3 +26,10 @@
 
 # Make sure R8/Proguard don't break things
 -keep,allowobfuscation class * extends com.valhalla.superuser.Shell$Initializer { *; }
+
+# Keep all classes under com.valhalla.superuser for reflection-based trampoline compatibility
+-keep class com.valhalla.superuser.** { *; }
+
+# Keep all IPC interfaces and service classes
+-keep class com.valhalla.superuser.ipc.** { *; }
+-keep interface com.valhalla.superuser.ipc.** { *; }

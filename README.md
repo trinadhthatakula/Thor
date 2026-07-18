@@ -96,20 +96,20 @@ contributions help keep the project alive and free for everyone.
 
 ## Credits
 
-- Portions of this app use code from [`libsu`](https://github.com/topjohnwu/libsu)
-  by [topjohnwu](https://github.com/topjohnwu/), adapted and integrated as the [
-  `suCore`](https://github.com/trinadhthatakula/Thor/tree/master/suCore) module.
+- Built the **Odin** root-service binding framework inside the [
+  `suCore`](https://github.com/trinadhthatakula/Thor/tree/master/suCore) module under package `com.valhalla.superuser`. Odin was adapted from the architectural design of [`libsu`](https://github.com/topjohnwu/libsu) by [topjohnwu](https://github.com/topjohnwu/) and completely rewritten to eliminate all `com.topjohnwu` package namespaces.
 - Replaced [`AndroidHiddenApiBypass`](https://github.com/LSPosed/AndroidHiddenApiBypass) with an
   internal Kotlin implementation in the [
   `bypass`](https://github.com/trinadhthatakula/Thor/tree/master/bypass) module, backed by Java
   stubs in the [`vm-runtime`](https://github.com/trinadhthatakula/Thor/tree/master/vm-runtime)
   module for maximum compatibility when shadowing system classes.
 
-### Modifications to libsu
+### Architectural Advances in Odin (suCore)
 
-- Fully converted the original Java-based `libsu` code to Kotlin for `suCore`
-- Refer SuCore [README](https://github.com/trinadhthatakula/Thor/blob/master/suCore/README.md) for
-  more details
+- **Pure Kotlin**: Fully converted the original Java-based design of `libsu` into a high-performance, modern, reactive Kotlin library.
+- **Zero Raw Binaries**: Completely eliminated precompiled binary dependencies (such as `main.jar`), bypassing external file extractions.
+- **Direct APK Classpath Invocations**: Dynamically mounts the app's main APK (`base.apk`) on `app_process`'s execution `CLASSPATH`, bootstrapping directly using a custom Kotlin classloader trampoline (`com.valhalla.superuser.internal.RootServerMain`).
+- Refer to the SuCore [README](https://github.com/trinadhthatakula/Thor/blob/master/suCore/README.md) for more details.
 
 ## License
 

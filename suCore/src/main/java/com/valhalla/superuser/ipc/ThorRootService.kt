@@ -1,39 +1,29 @@
-package com.valhalla.thor.data.source.local.root
+package com.valhalla.superuser.ipc
 
+import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.os.IBinder
-import com.valhalla.thor.BuildConfig
+import android.os.PersistableBundle
+import com.valhalla.superuser.ipc.RootService
 import java.lang.reflect.InvocationTargetException
-import kotlin.system.exitProcess
+import java.lang.reflect.Method
 
 /**
- * Entry point for one-shot Root commands.
- * This runs in a separate process as root, bypassing Hidden API restrictions.
+ * A highly-stable, persistent root-level daemon service implementing privileged actions.
  */
-object RootMain {
-    @JvmStatic
-    fun main(args: Array<String>) {
-        if (args.isEmpty()) return
+class ThorRootService : RootService() {
 
-        try {
-            when (args[0]) {
-                "suspend" -> {
-                    val packageName = args[1]
-                    val suspended = args[2].toBoolean()
-                    setAppSuspended(packageName, suspended)
-                }
-
-                "clear-data" -> {
-                    val packageName = args[1]
-                    clearData(packageName)
-                }
+    override fun onBind(intent: Intent): IBinder {
+        return object : IThorRootService.Stub() {
+            override fun setAppSuspended(packageName: String, suspended: Boolean) {
+                this@ThorRootService.setAppSuspended(packageName, suspended)
             }
-        } catch (e: Exception) {
-            // Surface the real cause to logcat — libsu only reports "code 1" to the caller.
-            android.util.Log.e("RootMain", "task '${args.getOrNull(0)}' failed", e)
-            exitProcess(1)
+
+            override fun clearAppData(packageName: String) {
+                this@ThorRootService.clearAppData(packageName)
+            }
         }
-        exitProcess(0)
     }
 
     private fun setAppSuspended(packageName: String, suspended: Boolean) {
@@ -45,7 +35,6 @@ object RootMain {
             .invoke(null, binder)
         val pmClass = Class.forName("android.content.pm.IPackageManager")
 
-        // SuspendDialogInfo and its method overloads were introduced in API 29
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             throw UnsupportedOperationException("suspend via reflection requires API 29+")
         }
@@ -53,6 +42,7 @@ object RootMain {
         val dialogInfoClass = Class.forName("android.content.pm.SuspendDialogInfo")
         val dialogInfo = if (suspended) buildSuspendDialogInfo() else null
 
+        val myPkg = packageName // Use the target package itself or current package context
         try {
             callSetSuspended(
                 pmClass,
@@ -61,13 +51,12 @@ object RootMain {
                 packageName,
                 suspended,
                 dialogInfo,
-                BuildConfig.APPLICATION_ID
+                myPkg
             )
         } catch (e: Exception) {
-            // invoke() wraps the actual exception in InvocationTargetException; unwrap to check
             val cause = if (e is InvocationTargetException) e.cause else e
             if (cause is SecurityException) {
-                // Some devices reject non-privileged callers even from UID 0; fall back to shell
+                // Some devices reject non-privileged callers; fallback to com.android.shell
                 callSetSuspended(
                     pmClass,
                     pm,
@@ -85,15 +74,14 @@ object RootMain {
         pmClass: Class<*>, pm: Any?, dialogInfoClass: Class<*>,
         packageName: String, suspended: Boolean, dialogInfo: Any?, caller: String
     ) {
-        // Android 14+ (API 34+): 9-arg — adds `flags` plus separate suspendingUserId + targetUserId
-        // (the quarantine-era signature; confirmed present on Android 16 / API 36).
+        // Android 14+ (API 34+): 9-arg signature
         try {
             pmClass.getDeclaredMethod(
                 "setPackagesSuspendedAsUser",
                 Array<String>::class.java,
                 Boolean::class.javaPrimitiveType,
-                android.os.PersistableBundle::class.java,
-                android.os.PersistableBundle::class.java,
+                PersistableBundle::class.java,
+                PersistableBundle::class.java,
                 dialogInfoClass,
                 Int::class.javaPrimitiveType,   // flags
                 String::class.java,             // callingPackage
@@ -102,17 +90,17 @@ object RootMain {
             ).invoke(pm, arrayOf(packageName), suspended, null, null, dialogInfo, 0, caller, 0, 0)
             return
         } catch (_: NoSuchMethodException) {
-            // fall through to the 8-arg signature
+            // fall through
         }
 
-        // Some API 33 builds: 8-arg — a `flags` Int between dialogInfo and caller, single userId.
+        // Some API 33 builds: 8-arg signature
         try {
             pmClass.getDeclaredMethod(
                 "setPackagesSuspendedAsUser",
                 Array<String>::class.java,
                 Boolean::class.javaPrimitiveType,
-                android.os.PersistableBundle::class.java,
-                android.os.PersistableBundle::class.java,
+                PersistableBundle::class.java,
+                PersistableBundle::class.java,
                 dialogInfoClass,
                 Int::class.javaPrimitiveType,   // flags
                 String::class.java,             // callingPackage
@@ -120,14 +108,14 @@ object RootMain {
             ).invoke(pm, arrayOf(packageName), suspended, null, null, dialogInfo, 0, caller, 0)
             return
         } catch (_: NoSuchMethodException) {
-            // fall through to the older 7-arg signature
+            // fall through
         }
 
-        // Android 10-13 (API 29-33): 7-arg — SuspendDialogInfo, callingPackage, userId.
+        // Android 10-13 (API 29-33): 7-arg signature
         pmClass.getDeclaredMethod(
             "setPackagesSuspendedAsUser",
             Array<String>::class.java, Boolean::class.javaPrimitiveType,
-            android.os.PersistableBundle::class.java, android.os.PersistableBundle::class.java,
+            PersistableBundle::class.java, PersistableBundle::class.java,
             dialogInfoClass, String::class.java, Int::class.javaPrimitiveType
         ).invoke(pm, arrayOf(packageName), suspended, null, null, dialogInfo, caller, 0)
     }
@@ -138,8 +126,6 @@ object RootMain {
         builderClass.getMethod("setTitle", CharSequence::class.java).invoke(builder, "Thor")
         builderClass.getMethod("setMessage", CharSequence::class.java)
             .invoke(builder, "This app has been suspended by Thor.")
-        // Suppress the neutral button — prevents an unresolved intent from crashing SystemUI
-        // BUTTON_ACTION_NO_ACTION = 2
         builderClass.getMethod("setNeutralButtonAction", Int::class.javaPrimitiveType)
             .invoke(builder, 2)
         builderClass.getMethod("build").invoke(builder)
@@ -147,7 +133,7 @@ object RootMain {
         null
     }
 
-    private fun clearData(packageName: String) {
+    private fun clearAppData(packageName: String) {
         val pmStub = Class.forName("android.content.pm.IPackageManager\$Stub")
         val serviceManager = Class.forName("android.os.ServiceManager")
         val getService = serviceManager.getMethod("getService", String::class.java)
