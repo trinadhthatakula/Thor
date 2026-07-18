@@ -42,6 +42,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.core.net.toUri
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -410,7 +411,7 @@ fun AppInfoDetailsScreen(
                             } else {
                                 val intent =
                                     android.content.Intent(android.content.Intent.ACTION_DELETE).apply {
-                                        data = android.net.Uri.parse("package:$packageName")
+                                        data = "package:$packageName".toUri()
                                     }
                                 context.startActivity(intent)
                             }
