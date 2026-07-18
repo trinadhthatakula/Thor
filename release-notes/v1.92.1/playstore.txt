@@ -1,0 +1,9 @@
+• 🔄 Auto Reinstall Apps: Seamlessly reinstall previously installed apps with custom install-time overrides.
+
+• 🥶 Odin Engine: Re-engineered secure root/privileged communication daemon for lightning-fast 2ms actions.
+
+• ⚡ Threading & Security: Fixed background ANRs, memory leaks, and reinforced military-grade UID verification.
+
+• 🎨 UI Polishing: Styled freezer action buttons and enabled marquee scrolling on various settings.
+
+• 🚀 General stability improvements and bug fixes.
