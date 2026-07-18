@@ -129,6 +129,8 @@ class RootSystemGateway(
         if (service != null) {
             val aidlResult = runCatching {
                 service.clearAppData(packageName)
+            }.onFailure { e ->
+                Logger.e("RootSystemGateway", "AIDL clearAppData failed", e)
             }
             if (aidlResult.isSuccess) {
                 return@withContext Result.success(Unit)
@@ -223,6 +225,8 @@ class RootSystemGateway(
                     val taskResult = runCatching {
                         service.setAppSuspended(packageName, true)
                         true
+                    }.onFailure { e ->
+                        Logger.e("RootSystemGateway", "AIDL suspend failed", e)
                     }.getOrDefault(false)
                     if (taskResult || isCurrentlySuspended()) return@withContext Result.success(Unit)
                 }
@@ -246,6 +250,8 @@ class RootSystemGateway(
                 cleared = runCatching {
                     service.setAppSuspended(packageName, false)
                     true
+                }.onFailure { e ->
+                    Logger.e("RootSystemGateway", "AIDL unsuspend failed", e)
                 }.getOrDefault(false)
             }
         }

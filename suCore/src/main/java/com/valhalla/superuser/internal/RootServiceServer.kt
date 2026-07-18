@@ -32,13 +32,18 @@ internal class RootServiceServer private constructor(context: Context) : IRootSe
             }
             return mInstance!!
         }
+
+        @JvmStatic
+        fun getInstanceOrNull(): RootServiceServer? {
+            return mInstance
+        }
     }
 
     private val observer: FileObserver
     private val services: MutableMap<ComponentName, ServiceRecord> = ArrayMap()
     private val clients = SparseArray<ClientProcess>()
     private var isDaemon = false
-    private var authorizedUid: Int = -1
+    internal var authorizedUid: Int = -1
 
     init {
         com.valhalla.superuser.Shell.enableVerboseLogging = System.getenv(RootServiceManager.LOGGING_ENV) != null

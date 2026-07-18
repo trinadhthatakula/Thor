@@ -18,13 +18,8 @@ class ThorRootService : RootService() {
         return object : IThorRootService.Stub() {
             private fun enforceCaller() {
                 val callingUid = getCallingUid()
-                val context = com.valhalla.superuser.internal.Utils.context
-                val ourUid = try {
-                    context?.packageManager?.getPackageUid(context.packageName, 0) ?: -1
-                } catch (e: Exception) {
-                    -1
-                }
-                if (callingUid != 0 && callingUid != 1000 && callingUid != ourUid) {
+                val authorizedUid = com.valhalla.superuser.internal.RootServiceServer.getInstanceOrNull()?.authorizedUid ?: -1
+                if (callingUid != 0 && callingUid != 1000 && callingUid != authorizedUid) {
                     throw SecurityException("Access denied: UID $callingUid is not authorized.")
                 }
             }
