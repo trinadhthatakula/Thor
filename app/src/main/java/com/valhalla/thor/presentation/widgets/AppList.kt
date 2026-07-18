@@ -332,10 +332,10 @@ private fun AppQuickFilters(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun AppSearchBar(
+    modifier: Modifier = Modifier,
     query: String,
     onQueryChange: (String) -> Unit,
-    onOpenConfig: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    onOpenConfig: (() -> Unit)? = null
 ) {
     var localQuery by remember(query) { mutableStateOf(query) }
 
@@ -558,57 +558,6 @@ internal fun AppItemList(
                 animatedVisibilityScope = animatedVisibilityScope
             )
         },
-        headlineContent = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val textSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-                    with(sharedTransitionScope) {
-                        Modifier.sharedBounds(
-                            sharedContentState = rememberSharedContentState(key = "name-${app.packageName}"),
-                            animatedVisibilityScope = animatedVisibilityScope
-                        ).skipToLookaheadSize()
-                    }
-                } else {
-                    Modifier
-                }
-                Text(
-                    app.appName ?: stringResource(R.string.unknown),
-                    maxLines = 1,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .weight(1f, fill = false)
-                        .then(textSharedModifier)
-                )
-                if (app.isSystem && !app.isInstalled) {
-                    Icon(
-                        painterResource(R.drawable.danger),
-                        stringResource(R.string.cd_uninstalled),
-                        modifier = Modifier
-                            .size(16.dp)
-                            .padding(start = 4.dp),
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                } else if (!app.enabled) {
-                    Icon(
-                        painterResource(R.drawable.frozen),
-                        stringResource(R.string.cd_frozen),
-                        modifier = Modifier
-                            .size(16.dp)
-                            .padding(start = 4.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                } else if (app.isSuspended) {
-                    Icon(
-                        painterResource(R.drawable.bolt),
-                        stringResource(R.string.cd_suspended),
-                        modifier = Modifier
-                            .size(16.dp)
-                            .padding(start = 4.dp),
-                        tint = MaterialTheme.colorScheme.secondary
-                    )
-                }
-            }
-        },
         supportingContent = {
             Text(
                 app.packageName,
@@ -629,7 +578,57 @@ internal fun AppItemList(
         colors = androidx.compose.material3.ListItemDefaults.colors(
             containerColor = Color.Transparent
         )
-    )
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val textSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+                with(sharedTransitionScope) {
+                    Modifier.sharedBounds(
+                        sharedContentState = rememberSharedContentState(key = "name-${app.packageName}"),
+                        animatedVisibilityScope = animatedVisibilityScope
+                    ).skipToLookaheadSize()
+                }
+            } else {
+                Modifier
+            }
+            Text(
+                app.appName ?: stringResource(R.string.unknown),
+                maxLines = 1,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .then(textSharedModifier)
+            )
+            if (app.isSystem && !app.isInstalled) {
+                Icon(
+                    painterResource(R.drawable.danger),
+                    stringResource(R.string.cd_uninstalled),
+                    modifier = Modifier
+                        .size(16.dp)
+                        .padding(start = 4.dp),
+                    tint = MaterialTheme.colorScheme.error
+                )
+            } else if (!app.enabled) {
+                Icon(
+                    painterResource(R.drawable.frozen),
+                    stringResource(R.string.cd_frozen),
+                    modifier = Modifier
+                        .size(16.dp)
+                        .padding(start = 4.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            } else if (app.isSuspended) {
+                Icon(
+                    painterResource(R.drawable.bolt),
+                    stringResource(R.string.cd_suspended),
+                    modifier = Modifier
+                        .size(16.dp)
+                        .padding(start = 4.dp),
+                    tint = MaterialTheme.colorScheme.secondary
+                )
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -929,13 +928,6 @@ private fun AppFilterSheet(
                     ) {
                         items(filterTypes) { type ->
                             ListItem(
-                                headlineContent = {
-                                    Text(
-                                        type.asGeneralName(),
-                                        maxLines = 1,
-                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                    )
-                                },
                                 trailingContent = {
                                     if (filterType == type) Icon(
                                         painterResource(R.drawable.check_circle),
@@ -954,7 +946,13 @@ private fun AppFilterSheet(
                                 colors = androidx.compose.material3.ListItemDefaults.colors(
                                     containerColor = Color.Transparent
                                 )
-                            )
+                            ) {
+                                Text(
+                                    type.asGeneralName(),
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                 }
@@ -987,13 +985,6 @@ private fun AppFilterSheet(
                     ) {
                         items(SortBy.entries) { item ->
                             ListItem(
-                                headlineContent = {
-                                    Text(
-                                        item.asGeneralName(),
-                                        maxLines = 1,
-                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                    )
-                                },
                                 trailingContent = {
                                     if (sortBy == item) Icon(
                                         painterResource(R.drawable.check_circle),
@@ -1012,7 +1003,13 @@ private fun AppFilterSheet(
                                 colors = androidx.compose.material3.ListItemDefaults.colors(
                                     containerColor = Color.Transparent
                                 )
-                            )
+                            ) {
+                                Text(
+                                    item.asGeneralName(),
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                 }

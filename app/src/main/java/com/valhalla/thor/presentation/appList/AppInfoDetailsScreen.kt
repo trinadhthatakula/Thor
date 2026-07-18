@@ -36,9 +36,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
-import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -89,7 +89,7 @@ import androidx.compose.ui.platform.ClipEntry
 import java.util.Date
 import java.util.Locale
 
-@OptIn(ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalSharedTransitionApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun AppInfoDetailsScreen(
     packageName: String,
@@ -253,14 +253,14 @@ fun AppInfoDetailsScreen(
                                 stringResource(R.string.action_permissions)
                             )
 
-                            ScrollableTabRow(
+                            SecondaryScrollableTabRow(
                                 selectedTabIndex = selectedTab,
                                 containerColor = Color.Transparent,
                                 contentColor = MaterialTheme.colorScheme.primary,
                                 edgePadding = 0.dp,
-                                indicator = { tabPositions ->
+                                indicator = {
                                     TabRowDefaults.SecondaryIndicator(
-                                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                                        modifier = Modifier.tabIndicatorOffset(selectedTab),
                                         color = MaterialTheme.colorScheme.primary
                                     )
                                 },
