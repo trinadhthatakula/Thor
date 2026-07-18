@@ -31,7 +31,7 @@ jobs:
 
       # Added Ruby for Fastlane in Dev
       - name: Setup Ruby
-        uses: ruby/setup-ruby@d45b1a4e94b71acab930e56e79c6aa188764e7f9 # v1
+        uses: ruby/setup-ruby@003a5c4d8d6321bd302e38f6f0ec593f77f06600 # v1
         with:
           ruby-version: '3.3'
           bundler-cache: true
@@ -152,7 +152,7 @@ jobs:
 
       # --- 5. GITHUB RELEASE (PRE-RELEASE) ---
       - name: Create GitHub Pre-Release
-        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           # Unique tag for dev builds: v1.0.0-dev-45
           tag_name: v${{ steps.prep_notes.outputs.version_name }}-dev-${{ github.run_number }}
