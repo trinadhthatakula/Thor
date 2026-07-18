@@ -1174,7 +1174,7 @@ private fun CollapsibleSection(title: String, items: List<String>) {
                                     }
                                     Toast.makeText(
                                         context,
-                                        context.getString(R.string.toast_copied_class_name),
+                                        (R.string.toast_copied_class_name),
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 }
@@ -1297,7 +1297,7 @@ private fun InfoCard(title: String, value: String) {
                 }
                 Toast.makeText(
                     context,
-                    context.getString(R.string.toast_copy_saved),
+                    (R.string.toast_copy_saved),
                     Toast.LENGTH_SHORT
                 ).show()
             }
