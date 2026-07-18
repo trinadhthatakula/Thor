@@ -1,15 +1,27 @@
 package com.valhalla.thor.data.gateway
 
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
+import android.os.IBinder
+import com.valhalla.superuser.ipc.RootService
+import com.valhalla.superuser.ShellUtils
+import com.valhalla.superuser.ipc.IThorRootService
 import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.domain.gateway.SystemGateway
+import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Single
-import com.valhalla.thor.util.Logger
-import com.valhalla.superuser.ShellUtils
 import java.io.File
+import kotlin.coroutines.resume
 
 private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
 private val USER_ID_REGEX = Regex("^\\d+$")
@@ -21,8 +33,81 @@ private val USER_ID_REGEX = Regex("^\\d+$")
 @Single
 class RootSystemGateway(
     private val context: Context,
-    private val shellRepository: ShellRepository
+    private val shellRepository: ShellRepository,
+    private val preferenceRepository: PreferenceRepository
 ) : SystemGateway {
+
+    private var rootService: IThorRootService? = null
+    private val connectionMutex = Mutex()
+    private var isDaemonReset = false
+    private var activeConnection: ServiceConnection? = null
+
+    private suspend fun getRootService(): IThorRootService? = connectionMutex.withLock {
+        if (!isDaemonReset) {
+            isDaemonReset = true
+            // Kill any old daemon to make sure the newly compiled suCore is loaded and executed
+            runCatching {
+                shellRepository.runCommand("pkill -f ${context.packageName}:root")
+            }
+        }
+
+        rootService?.let { binder ->
+            if (binder.asBinder().isBinderAlive) {
+                return binder
+            } else {
+                rootService = null
+                activeConnection?.let { oldConn ->
+                    runCatching { RootService.unbind(oldConn) }
+                    activeConnection = null
+                }
+            }
+        }
+
+        // Clean up any stale connection before creating a new one
+        activeConnection?.let { oldConn ->
+            runCatching {
+                RootService.unbind(oldConn)
+            }
+            activeConnection = null
+        }
+
+        withContext(Dispatchers.Main) {
+            suspendCancellableCoroutine { continuation ->
+                val intent = Intent(context, com.valhalla.superuser.ipc.ThorRootService::class.java)
+                val conn = object : ServiceConnection {
+                    override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+                        val binder = IThorRootService.Stub.asInterface(service)
+                        rootService = binder
+                        if (continuation.isActive) {
+                            continuation.resume(binder)
+                        }
+                    }
+
+                    override fun onServiceDisconnected(name: ComponentName?) {
+                        rootService = null
+                        if (activeConnection === this) {
+                            activeConnection = null
+                        }
+                    }
+                }
+
+                activeConnection = conn
+
+                continuation.invokeOnCancellation {
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        runCatching {
+                            RootService.unbind(conn)
+                        }
+                        if (activeConnection === conn) {
+                            activeConnection = null
+                        }
+                    }
+                }
+
+                RootService.bind(intent, conn)
+            }
+        }
+    }
 
     // A root check is strictly asynchronous. Blocking the thread for this is unacceptable.
     override suspend fun isRootAvailable(): Boolean {
@@ -69,19 +154,28 @@ class RootSystemGateway(
         return runCommand(command)
     }
 
-    override suspend fun clearAppData(packageName: String): Result<Unit> {
+    override suspend fun clearAppData(packageName: String): Result<Unit> = withContext(Dispatchers.IO) {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+            return@withContext Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = ShellUtils.escapedString(packageName)
         val shellResult = runCommand("pm clear $escapedPackage")
-        if (shellResult.isSuccess) return shellResult
+        if (shellResult.isSuccess) return@withContext shellResult
 
-        // Fallback to reflection via RootMain
-        val taskResult = runRootTask("clear-data", packageName)
-        if (taskResult.isSuccess) return Result.success(Unit)
+        // Fallback to ThorRootService AIDL daemon
+        val service = getRootService()
+        if (service != null) {
+            val aidlResult = runCatching {
+                service.clearAppData(packageName)
+            }.onFailure { e ->
+                Logger.e("RootSystemGateway", "AIDL clearAppData failed", e)
+            }
+            if (aidlResult.isSuccess) {
+                return@withContext Result.success(Unit)
+            }
+        }
 
-        return Result.failure(Exception("Root clear app data failed. Shell command and reflection both failed."))
+        return@withContext Result.failure(Exception("Root clear app data failed. Shell command and AIDL both failed."))
     }
 
     override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> {
@@ -146,9 +240,9 @@ class RootSystemGateway(
         return Result.failure(Exception("Root setAppDisabled failed."))
     }
 
-    override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> {
+    override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
+            return@withContext Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val hasReflection = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q
         val escapedPackage = ShellUtils.escapedString(packageName)
@@ -164,13 +258,21 @@ class RootSystemGateway(
             // ("IllegalArgumentException: Package root does not exist"). We never fall back to the
             // shell for suspend — a broken suspension is worse than a reported failure. GH#239.
             if (hasReflection) {
-                val taskResult = runRootTask("suspend", packageName, "true")
-                if (taskResult.isSuccess || isCurrentlySuspended()) return Result.success(Unit)
-                return Result.failure(Exception("Root suspend failed via reflection for $packageName."))
+                val service = getRootService()
+                if (service != null) {
+                    val taskResult = runCatching {
+                        service.setAppSuspended(packageName, true)
+                        true
+                    }.onFailure { e ->
+                        Logger.e("RootSystemGateway", "AIDL suspend failed", e)
+                    }.getOrDefault(false)
+                    if (taskResult || isCurrentlySuspended()) return@withContext Result.success(Unit)
+                }
+                return@withContext Result.failure(Exception("Root suspend failed via AIDL for $packageName."))
             }
             // API < 29 has no SuspendDialogInfo reflection path.
             val shell = runCommand("pm suspend $escapedPackage")
-            return if (shell.isSuccess) shell
+            return@withContext if (shell.isSuccess) shell
             else Result.failure(Exception("Root suspend failed for $packageName."))
         }
 
@@ -181,11 +283,19 @@ class RootSystemGateway(
         // suspended. GH#239.
         var cleared = false
         if (hasReflection) {
-            cleared = runRootTask("suspend", packageName, "false").isSuccess
+            val service = getRootService()
+            if (service != null) {
+                cleared = runCatching {
+                    service.setAppSuspended(packageName, false)
+                    true
+                }.onFailure { e ->
+                    Logger.e("RootSystemGateway", "AIDL unsuspend failed", e)
+                }.getOrDefault(false)
+            }
         }
         val shell = runCommand("pm unsuspend $escapedPackage")
         cleared = cleared || shell.isSuccess
-        return if (cleared || !isCurrentlySuspended()) Result.success(Unit)
+        return@withContext if (cleared || !isCurrentlySuspended()) Result.success(Unit)
         else Result.failure(Exception("Root unsuspend failed for $packageName."))
     }
 
@@ -251,6 +361,9 @@ class RootSystemGateway(
         }
         val currentUser = getCurrentUserId()
         val downgrade = if (canDowngrade) " -d" else ""
+        
+        val installerArg = preferenceRepository.getInstallerArg()
+
         val sb = StringBuilder()
         // Run the whole thing in a subshell so our `exit` codes exit the SUBSHELL, not
         // libsu's long-lived root shell. Exiting the parent shell would kill it before
@@ -264,7 +377,7 @@ class RootSystemGateway(
         // Create the session (targeting the current user, like every other pm command in
         // this gateway); capture stdout+stderr so a failure reason isn't lost, then pull
         // the numeric id out of "…created install session [<id>]".
-        sb.append("CREATE_OUT=\$(pm install-create -r -g --user ").append(currentUser).append(downgrade).append(" 2>&1)\n")
+        sb.append("CREATE_OUT=\$(pm install-create -r -g").append(installerArg).append(" --user ").append(currentUser).append(downgrade).append(" 2>&1)\n")
         sb.append("SID=\$(printf '%s\\n' \"\$CREATE_OUT\" | sed -n 's/.*\\[\\([0-9]*\\)\\].*/\\1/p')\n")
         sb.append("if [ -z \"\$SID\" ]; then echo \"pm install-create failed: \$CREATE_OUT\" 1>&2; exit 101; fi\n")
         // Stream each APK's bytes into the session via stdin.
@@ -376,17 +489,6 @@ class RootSystemGateway(
             .map { it.removePrefix("package:").trim() }
     }
 
-    /**
-     * Executes a Root command in a separate process using app_process.
-     */
-    private suspend fun runRootTask(action: String, vararg args: String): Result<Unit> {
-        val apkPath = context.packageCodePath
-        val className = "com.valhalla.thor.data.source.local.root.RootMain"
-        val escapedApk = ShellUtils.escapedString(apkPath)
-        val escapedArgs = args.joinToString(" ") { ShellUtils.escapedString(it) }
-        val cmd = "export CLASSPATH=$escapedApk && app_process /system/bin $className $action $escapedArgs"
-        return runCommand(cmd)
-    }
 
     override suspend fun grantPermission(
         packageName: String,

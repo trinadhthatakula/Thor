@@ -11,13 +11,16 @@ import rikka.shizuku.Shizuku
 import com.valhalla.thor.data.source.local.shizuku.Shizuku as ShizukuHelper
 import com.valhalla.thor.util.Logger
 import com.valhalla.superuser.ShellUtils
+import com.valhalla.thor.domain.repository.PreferenceRepository
+import kotlinx.coroutines.flow.first
 
 private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
 private val USER_ID_REGEX = Regex("^\\d+$")
 
 @Single
 class ShizukuSystemGateway(
-    private val reflector: ShizukuReflector
+    private val reflector: ShizukuReflector,
+    private val preferenceRepository: PreferenceRepository
 ) : SystemGateway {
 
     override suspend fun isRootAvailable() = false
@@ -94,10 +97,17 @@ class ShizukuSystemGateway(
     }
 
     override suspend fun installApp(apkPath: String, canDowngrade: Boolean): Result<Unit> {
-        return if (reflector.installPackage(apkPath, canDowngrade)) {
+        val installerArg = preferenceRepository.getInstallerArg()
+        
+        val command = "pm install -r -g${if (canDowngrade) " -d" else ""}$installerArg ${
+            ShellUtils.escapedString(apkPath)
+        }"
+        
+        val result = ShizukuHelper.execute(command)
+        return if (result.first == 0) {
             Result.success(Unit)
         } else {
-            Result.failure(Exception("Shizuku install failed. Ensure the file path is readable by Shell/ADB."))
+            Result.failure(Exception("Shizuku install failed: ${result.second}"))
         }
     }
 

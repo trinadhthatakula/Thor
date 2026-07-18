@@ -59,6 +59,12 @@
             </intent-filter>
         </activity>
 
+        <service
+            android:name="com.valhalla.superuser.ipc.ThorRootService"
+            android:process=":root"
+            android:exported="false"
+            tools:ignore="Instantiatable" />
+
         <activity
             android:name=".presentation.installer.PortableInstallerActivity"
             android:exported="true"
@@ -265,6 +271,18 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <!-- Auto Reinstall Installer of Record Sync Monitor Receiver -->
+        <receiver
+            android:name=".data.receivers.AutoReinstallReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.PACKAGE_ADDED" />
+                <action android:name="android.intent.action.PACKAGE_REPLACED" />
+                <data android:scheme="package" />
+            </intent-filter>
+        </receiver>
+
 
         <provider
             android:name="androidx.core.content.FileProvider"

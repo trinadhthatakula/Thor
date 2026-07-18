@@ -54,6 +54,9 @@ data class UserPreferences(
     val extensionsUnlocked: Boolean = false,
     val extensionConsentAccepted: Boolean = false,
 
+    // Auto Reinstall Config
+    val autoReinstallEnabled: Boolean = false,
+
     // Export destination (persisted SAF tree URI; null = default Downloads/Thor)
     val exportDirUri: String? = null
 )

@@ -15,6 +15,8 @@
     <string name="general">GENERAL</string>
     <string name="show_reinstall_card">Show Reinstall Card</string>
     <string name="show_reinstall_card_desc">Show Fix Store reminder on home screen</string>
+    <string name="auto_reinstall">Auto Reinstall Apps</string>
+    <string name="auto_reinstall_desc">Automatically preserve Google Play Store as the installer of record to enable background updates</string>
     <string name="appearance">APPEARANCE</string>
     <string name="theme">Theme</string>
     <string name="theme_desc">Visual interface style</string>

@@ -36,12 +36,13 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
-import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.core.net.toUri
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -89,7 +90,7 @@ import androidx.compose.ui.platform.ClipEntry
 import java.util.Date
 import java.util.Locale
 
-@OptIn(ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalSharedTransitionApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun AppInfoDetailsScreen(
     packageName: String,
@@ -253,14 +254,14 @@ fun AppInfoDetailsScreen(
                                 stringResource(R.string.action_permissions)
                             )
 
-                            ScrollableTabRow(
+                            SecondaryScrollableTabRow(
                                 selectedTabIndex = selectedTab,
                                 containerColor = Color.Transparent,
                                 contentColor = MaterialTheme.colorScheme.primary,
                                 edgePadding = 0.dp,
-                                indicator = { tabPositions ->
+                                indicator = {
                                     TabRowDefaults.SecondaryIndicator(
-                                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                                        modifier = Modifier.tabIndicatorOffset(selectedTab),
                                         color = MaterialTheme.colorScheme.primary
                                     )
                                 },
@@ -410,7 +411,7 @@ fun AppInfoDetailsScreen(
                             } else {
                                 val intent =
                                     android.content.Intent(android.content.Intent.ACTION_DELETE).apply {
-                                        data = android.net.Uri.parse("package:$packageName")
+                                        data = "package:$packageName".toUri()
                                     }
                                 context.startActivity(intent)
                             }
@@ -1174,7 +1175,7 @@ private fun CollapsibleSection(title: String, items: List<String>) {
                                     }
                                     Toast.makeText(
                                         context,
-                                        context.getString(R.string.toast_copied_class_name),
+                                        (R.string.toast_copied_class_name),
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 }
@@ -1297,7 +1298,7 @@ private fun InfoCard(title: String, value: String) {
                 }
                 Toast.makeText(
                     context,
-                    context.getString(R.string.toast_copy_saved),
+                    (R.string.toast_copy_saved),
                     Toast.LENGTH_SHORT
                 ).show()
             }
