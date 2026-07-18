@@ -40,6 +40,7 @@ class RootSystemGateway(
     private var rootService: IThorRootService? = null
     private val connectionMutex = Mutex()
     private var isDaemonReset = false
+    private var activeConnection: ServiceConnection? = null
 
     private suspend fun getRootService(): IThorRootService? = connectionMutex.withLock {
         if (!isDaemonReset) {
@@ -50,6 +51,14 @@ class RootSystemGateway(
             }
         }
         rootService?.let { return it }
+
+        // Clean up any stale connection before creating a new one
+        activeConnection?.let { oldConn ->
+            runCatching {
+                RootService.unbind(oldConn)
+            }
+            activeConnection = null
+        }
 
         withContext(Dispatchers.Main) {
             suspendCancellableCoroutine { continuation ->
@@ -68,9 +77,16 @@ class RootSystemGateway(
                     }
                 }
 
+                activeConnection = conn
+
                 continuation.invokeOnCancellation {
                     android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        RootService.unbind(conn)
+                        runCatching {
+                            RootService.unbind(conn)
+                        }
+                        if (activeConnection === conn) {
+                            activeConnection = null
+                        }
                     }
                 }
 

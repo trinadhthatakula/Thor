@@ -26,6 +26,12 @@ object Helper {
     }
 
     @JvmStatic
+    fun getCoreOjPath(): String {
+        val bootClassPath = System.getProperty("java.boot.class.path", "") ?: ""
+        return bootClassPath.split(":".toRegex(), 2).toTypedArray()[0]
+    }
+
+    @JvmStatic
     fun setCachedOffsetData(data: LongArray) {
         if (cachedOffsetData != null || data.size != 6) return
         cachedOffsetData = data

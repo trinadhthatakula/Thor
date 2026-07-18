@@ -66,7 +66,9 @@ object Bypass {
 
         // Initialize HiddenApiBypass (Unsafe-based)
         try {
-            unsafe = Unsafe::class.java.getDeclaredMethod("getUnsafe").invoke(null) as Unsafe
+            val theUnsafeField = Unsafe::class.java.getDeclaredField("theUnsafe")
+            theUnsafeField.isAccessible = true
+            unsafe = theUnsafeField.get(null) as Unsafe
             val u = unsafe!!
             var data = Helper.getCachedOffsetData()
             if (data == null) {
@@ -184,7 +186,7 @@ object Bypass {
 
     private fun readOffsetDataDex(): LongArray {
         val scanner = DexFieldLayout()
-        scanner.scanPath(CoreOjClassLoader.getCoreOjPath())
+        scanner.scanPath(Helper.getCoreOjPath())
         val executable = scanner.layoutOf(DexFieldLayout.EXECUTABLE)
         val methodHandle = scanner.layoutOf(DexFieldLayout.METHOD_HANDLE)
         val classClass = scanner.layoutOf(DexFieldLayout.CLASS)
@@ -205,23 +207,18 @@ object Bypass {
     }
 
     private fun readOffsetDataClassLoader(): LongArray {
-        val bootClassloader = CoreOjClassLoader()
-        val executableClass = bootClassloader.loadClass(Executable::class.java.name)
-        val methodHandleClass = bootClassloader.loadClass(MethodHandle::class.java.name)
-        val classClass = bootClassloader.loadClass(Class::class.java.name)
-
-        val u = unsafe ?: throw IllegalStateException("Unsafe is not initialized")
+        val u = unsafe ?: throw IllegalStateException("Unsafe not initialized")
         val data = LongArray(6)
-        data[0] = u.objectFieldOffset(executableClass.getDeclaredField("artMethod"))
-        data[1] = u.objectFieldOffset(executableClass.getDeclaredField("declaringClass"))
-        data[2] = u.objectFieldOffset(methodHandleClass.getDeclaredField("artFieldOrMethod"))
-        data[3] = u.objectFieldOffset(classClass.getDeclaredField("methods"))
+        data[0] = u.objectFieldOffset(Helper.Executable::class.java.getDeclaredField("artMethod"))
+        data[1] = u.objectFieldOffset(Helper.Executable::class.java.getDeclaredField("declaringClass"))
+        data[2] = u.objectFieldOffset(Helper.MethodHandle::class.java.getDeclaredField("artFieldOrMethod"))
+        data[3] = u.objectFieldOffset(Helper.Class::class.java.getDeclaredField("methods"))
         try {
-            data[4] = u.objectFieldOffset(classClass.getDeclaredField("fields"))
+            data[4] = u.objectFieldOffset(Helper.Class::class.java.getDeclaredField("fields"))
             data[5] = data[4]
         } catch (e: NoSuchFieldException) {
-            data[4] = u.objectFieldOffset(classClass.getDeclaredField("iFields"))
-            data[5] = u.objectFieldOffset(classClass.getDeclaredField("sFields"))
+            data[4] = u.objectFieldOffset(Helper.Class::class.java.getDeclaredField("iFields"))
+            data[5] = u.objectFieldOffset(Helper.Class::class.java.getDeclaredField("sFields"))
         }
         return data
     }

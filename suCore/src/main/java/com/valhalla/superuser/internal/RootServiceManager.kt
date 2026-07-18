@@ -111,7 +111,7 @@ internal class RootServiceManager private constructor() : Handler.Callback {
 
         if ((flags and RECEIVER_REGISTERED) == 0) {
             val filter = IntentFilter(RECEIVER_BROADCAST)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 context.registerReceiver(
                     ServiceReceiver(), filter,
                     Manifest.permission.BROADCAST_PACKAGE_REMOVED, null,
