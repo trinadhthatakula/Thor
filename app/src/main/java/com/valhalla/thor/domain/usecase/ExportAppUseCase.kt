@@ -5,6 +5,7 @@ import androidx.core.content.contentValuesOf
 import android.content.Context
 import android.net.Uri
 import android.os.Build
+import androidx.annotation.RequiresApi
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.core.net.toUri
@@ -76,6 +77,7 @@ class ExportAppUseCase(
         } catch (_: Exception) { false }
     }
 
+    @RequiresApi(Build.VERSION_CODES.Q)
     private fun writeToDownloads(source: File, mime: String): String {
         val resolver = context.contentResolver
         val relativePath = Environment.DIRECTORY_DOWNLOADS + "/Thor/"
