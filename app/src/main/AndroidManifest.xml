@@ -59,6 +59,11 @@
             </intent-filter>
         </activity>
 
+        <service
+            android:name="com.valhalla.superuser.ipc.ThorRootService"
+            android:process=":root"
+            android:exported="false" />
+
         <activity
             android:name=".presentation.installer.PortableInstallerActivity"
             android:exported="true"

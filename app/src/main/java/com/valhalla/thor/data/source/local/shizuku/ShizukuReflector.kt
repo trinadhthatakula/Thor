@@ -14,6 +14,7 @@ import android.os.Build
 import com.valhalla.bypass.Bypass
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.util.Logger
+import androidx.core.net.toUri
 import org.koin.core.annotation.Single
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -172,7 +173,7 @@ class ShizukuReflector(
 
         val launched = runCatching {
             val intent = Intent(Intent.ACTION_DELETE).apply {
-                data = android.net.Uri.parse("package:$packageName")
+                data = "package:$packageName".toUri()
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)

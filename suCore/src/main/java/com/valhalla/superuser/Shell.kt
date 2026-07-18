@@ -149,7 +149,7 @@ abstract class Shell : Closeable {
      * Do not subclass this class! Use [.create] to get a new Builder object.
      */
     abstract class Builder {
-        var utils: Utils? = null
+        internal var utils: Utils? = null
 
         /**
          * Set the desired [Initializer]s.
@@ -607,7 +607,7 @@ abstract class Shell : Closeable {
              * This method will not block the calling thread; results will be returned immediately.
              * @return whether the application has access to root, or `null` when undetermined.
              */
-            get() = Utils.isAppGrantedRoot
+            get() = Utils.isAppGrantedRoot()
 
         /* ************
     * Static APIs

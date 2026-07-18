@@ -1,9 +1,11 @@
 package com.valhalla.thor.domain.usecase
 
 import android.content.ContentValues
+import androidx.core.content.contentValuesOf
 import android.content.Context
 import android.net.Uri
 import android.os.Build
+import androidx.annotation.RequiresApi
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.core.net.toUri
@@ -75,6 +77,7 @@ class ExportAppUseCase(
         } catch (_: Exception) { false }
     }
 
+    @RequiresApi(Build.VERSION_CODES.Q)
     private fun writeToDownloads(source: File, mime: String): String {
         val resolver = context.contentResolver
         val relativePath = Environment.DIRECTORY_DOWNLOADS + "/Thor/"
@@ -86,12 +89,12 @@ class ExportAppUseCase(
         try {
             resolver.delete(MediaStore.Downloads.EXTERNAL_CONTENT_URI, selection, selectionArgs)
         } catch (_: Exception) { /* best-effort overwrite; fall through to insert */ }
-        val values = ContentValues().apply {
-            put(MediaStore.Downloads.DISPLAY_NAME, source.name)
-            put(MediaStore.Downloads.MIME_TYPE, mime)
-            put(MediaStore.Downloads.RELATIVE_PATH, relativePath)
-            put(MediaStore.Downloads.IS_PENDING, 1)
-        }
+        val values = contentValuesOf(
+            MediaStore.Downloads.DISPLAY_NAME to source.name,
+            MediaStore.Downloads.MIME_TYPE to mime,
+            MediaStore.Downloads.RELATIVE_PATH to relativePath,
+            MediaStore.Downloads.IS_PENDING to 1
+        )
         val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
             ?: throw IOException("MediaStore insert failed")
         try {

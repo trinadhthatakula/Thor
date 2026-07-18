@@ -1,11 +1,13 @@
 package com.valhalla.thor.presentation.extension
 
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,58 +18,54 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
-import kotlin.random.Random
-import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.isSystemInDarkTheme
-import com.valhalla.thor.domain.model.ThemeMode
-import com.valhalla.thor.domain.model.UserPreferences
-import com.valhalla.thor.presentation.settings.SettingsViewModel
-import org.koin.compose.koinInject
-import com.valhalla.thor.data.manager.ExtensionManager
-import com.valhalla.thor.presentation.theme.firaMonoFontFamily
-import org.koin.androidx.compose.koinViewModel
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import android.content.Intent
-import android.net.Uri
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material3.IconButtonDefaults
+import com.valhalla.thor.data.manager.ExtensionManager
+import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.presentation.settings.SettingsViewModel
+import com.valhalla.thor.presentation.theme.firaMonoFontFamily
+import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
+import kotlin.random.Random
 
 @Composable
 fun ExtensionManagerScreen(
@@ -125,7 +123,7 @@ fun ExtensionManagerScreen(
                 Button(
                     onClick = {
                         val intent = Intent(Intent.ACTION_DELETE).apply {
-                            data = Uri.parse("package:$legacyPackageName")
+                            data = "package:$legacyPackageName".toUri()
                         }
                         runCatching { context.startActivity(intent) }
                         showMigrationDialog = false
@@ -224,7 +222,7 @@ fun ExtensionManagerScreen(
                                 },
                                 onUninstall = {
                                     val intent = Intent(Intent.ACTION_DELETE).apply {
-                                        data = Uri.parse("package:${item.packageName}")
+                                        data = "package:${item.packageName}".toUri()
                                     }
                                     runCatching { context.startActivity(intent) }
                                 }
@@ -258,7 +256,10 @@ private fun ExtensionConsentSheet(
     val b = rememberSaveable { Random.nextInt(2, 9) }
     var answer by rememberSaveable { mutableStateOf("") }
     val solved = answer.trim().toIntOrNull() == a + b
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
+    )
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,

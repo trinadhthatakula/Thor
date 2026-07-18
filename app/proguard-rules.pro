@@ -39,10 +39,4 @@
 -keep class com.valhalla.thor.extension.api.** { *; }
 -keep interface com.valhalla.thor.extension.api.** { *; }
 
-# --- Root helper launched by name via app_process ---------------------------
-# RootSystemGateway runs `app_process … com.valhalla.thor.data.source.local.root.RootMain <task>`
-# with the class name as a HARDCODED string (RootSystemGateway.kt:384). R8 renaming/removing RootMain
-# (or the reflection helpers it drives) makes app_process fail with
-# `ClassNotFoundException: …RootMain`, breaking release root operations — notably `suspend`. Keep the
-# whole root-helper package (names + members) so the app_process entry point resolves.
--keep class com.valhalla.thor.data.source.local.root.** { *; }
+

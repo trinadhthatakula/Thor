@@ -2,16 +2,21 @@
   <dictionary name="project">
     <words>
       <w>Appfile</w>
+      <w>Defs</w>
+      <w>Uleb</w>
       <w>apkm</w>
       <w>chown</w>
+      <w>clinit</w>
       <w>dcim</w>
       <w>fastlane</w>
       <w>fira</w>
       <w>hmmss</w>
+      <w>initargs</w>
       <w>libsu</w>
       <w>readlines</w>
       <w>shellout</w>
       <w>shizuku</w>
+      <w>ushr</w>
       <w>xapk</w>
       <w>zulu</w>
     </words>
