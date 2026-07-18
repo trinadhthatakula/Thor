@@ -68,7 +68,7 @@ object Helper {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return -1L
         val pm = context.packageManager
         return try {
-            val moduleInfo = pm.getModuleInfo("com.android.art", 1)
+            val moduleInfo = pm.getModuleInfo("com.android.art", 0)
             val name = moduleInfo.packageName ?: return -2L
             val info = pm.getPackageInfo(name, PackageManager.MATCH_APEX)
             info.longVersionCode
