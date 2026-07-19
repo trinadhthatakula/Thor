@@ -157,6 +157,16 @@ class ExtensionBrowseViewModel(
         return true
     }
 
+    /**
+     * Clear the tracking flag when a store-initiated install ends without success (`Error`) or the
+     * installer resets to `Idle`. Without this the flag would stay `true` after a failed/cancelled
+     * install, so a later replayed/stale `InstallState.Success` from the app-scoped bus would fire a
+     * spurious catalog refresh on the next screen open.
+     */
+    fun resetInstallTracking() {
+        awaitingInstallResult = false
+    }
+
     private fun setStatus(entryId: String, status: InstallStatus) {
         _uiState.update { state ->
             state.copy(installStatuses = state.installStatuses + (entryId to status))

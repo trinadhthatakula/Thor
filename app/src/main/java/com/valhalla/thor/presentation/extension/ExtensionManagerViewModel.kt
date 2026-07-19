@@ -4,13 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.data.manager.ExtensionManager
 import com.valhalla.thor.extension.api.ThorExtension
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.KoinViewModel
+import org.koin.core.annotation.Named
 
 data class ExtensionUiItem(
     val extension: ThorExtension,
@@ -28,7 +29,8 @@ data class ExtensionUiState(
 
 @KoinViewModel
 class ExtensionManagerViewModel(
-    private val extensionManager: ExtensionManager
+    private val extensionManager: ExtensionManager,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ExtensionUiState())
@@ -40,7 +42,7 @@ class ExtensionManagerViewModel(
 
     fun loadExtensions() {
         _uiState.update { it.copy(isLoading = true, error = null) }
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             // Loading enumerates installed apps via PackageManager (GET_META_DATA), which can throw
             // TransactionTooLargeException/DeadObjectException on large package sets or a dead binder.
             // Guard it so the Extensions screen surfaces an error + retry instead of crashing/spinning.

@@ -79,8 +79,14 @@ fun ExtensionBrowseScreen(
     // genuine store-initiated install, so merely opening the store never fires a network refresh.
     val installState by installerViewModel.installState.collectAsStateWithLifecycle(initialValue = InstallState.Idle)
     LaunchedEffect(installState) {
-        if (installState is InstallState.Success && viewModel.consumeInstallResult()) {
-            viewModel.refresh()
+        when (installState) {
+            is InstallState.Success ->
+                if (viewModel.consumeInstallResult()) viewModel.refresh()
+            // A terminal failure or a reset to Idle ends the store-initiated install without a
+            // Success, so clear the tracking flag; otherwise it stays true and a later replayed/
+            // stale Success would trigger a spurious refresh on the next store open.
+            is InstallState.Error, InstallState.Idle -> viewModel.resetInstallTracking()
+            else -> {}
         }
     }
 

@@ -90,7 +90,10 @@ class FreezerTileService : TileService() {
                 )
             }
             Toast.makeText(applicationContext, msg, Toast.LENGTH_SHORT).show()
-            refreshTile()
+            // appScope outlives this service: if the QS shade collapsed mid-freeze the service is no
+            // longer listening (onStopListening set scope = null) and touching qsTile.updateTile()
+            // can throw inside the framework (its binder is gone), so only refresh while still bound.
+            if (scope != null) refreshTile()
         }
     }
 
