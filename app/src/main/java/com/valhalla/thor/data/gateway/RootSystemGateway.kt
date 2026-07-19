@@ -19,12 +19,17 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.core.annotation.Single
 import java.io.File
 import kotlin.coroutines.resume
 
 private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
 private val USER_ID_REGEX = Regex("^\\d+$")
+
+// Upper bound for the RootService bind handshake. A null binder or a callback that never
+// arrives must not pin connectionMutex forever and deadlock every later privileged op (H2).
+private const val ROOT_SERVICE_BIND_TIMEOUT_MS = 10_000L
 
 /**
  * Modern implementation of SystemGateway using the reactive ShellRepository.
@@ -71,40 +76,63 @@ class RootSystemGateway(
             activeConnection = null
         }
 
-        withContext(Dispatchers.Main) {
-            suspendCancellableCoroutine { continuation ->
-                val intent = Intent(context, com.valhalla.superuser.ipc.ThorRootService::class.java)
-                val conn = object : ServiceConnection {
-                    override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-                        val binder = IThorRootService.Stub.asInterface(service)
-                        rootService = binder
-                        if (continuation.isActive) {
-                            continuation.resume(binder)
+        // Bind under a timeout so a null binder or a callback that never arrives can't hold
+        // connectionMutex forever (H2). withTimeoutOrNull RETURNS null on timeout — it does not
+        // throw — so on every path (success, null-binding, or timeout) withLock unwinds and the
+        // mutex is released. On timeout the child coroutine is cancelled, which fires
+        // invokeOnCancellation below to unbind the stale connection; the caller then falls back.
+        withTimeoutOrNull(ROOT_SERVICE_BIND_TIMEOUT_MS) {
+            withContext(Dispatchers.Main) {
+                suspendCancellableCoroutine { continuation ->
+                    val intent = Intent(context, com.valhalla.superuser.ipc.ThorRootService::class.java)
+                    val conn = object : ServiceConnection {
+                        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+                            val binder = IThorRootService.Stub.asInterface(service)
+                            rootService = binder
+                            if (continuation.isActive) {
+                                continuation.resume(binder)
+                            }
+                        }
+
+                        override fun onServiceDisconnected(name: ComponentName?) {
+                            rootService = null
+                            // A dead service can no longer answer '--user <id>'; drop the cached
+                            // user id so a reconnect re-reads the (possibly switched) user (#34).
+                            cachedUserId = null
+                            if (activeConnection === this) {
+                                activeConnection = null
+                            }
+                        }
+
+                        // The root process returned a null binder — the service refused to bind.
+                        // Resume with null (and unbind) instead of hanging until the timeout fires.
+                        override fun onNullBinding(name: ComponentName?) {
+                            rootService = null
+                            runCatching { RootService.unbind(this) }
+                            if (activeConnection === this) {
+                                activeConnection = null
+                            }
+                            if (continuation.isActive) {
+                                continuation.resume(null)
+                            }
                         }
                     }
 
-                    override fun onServiceDisconnected(name: ComponentName?) {
-                        rootService = null
-                        if (activeConnection === this) {
-                            activeConnection = null
+                    activeConnection = conn
+
+                    continuation.invokeOnCancellation {
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            runCatching {
+                                RootService.unbind(conn)
+                            }
+                            if (activeConnection === conn) {
+                                activeConnection = null
+                            }
                         }
                     }
+
+                    RootService.bind(intent, conn)
                 }
-
-                activeConnection = conn
-
-                continuation.invokeOnCancellation {
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        runCatching {
-                            RootService.unbind(conn)
-                        }
-                        if (activeConnection === conn) {
-                            activeConnection = null
-                        }
-                    }
-                }
-
-                RootService.bind(intent, conn)
             }
         }
     }
@@ -555,18 +583,26 @@ class RootSystemGateway(
         }
     }.getOrNull()
 
+    // @Volatile guarantees safe publication across threads: getCurrentUserId() runs on the IO
+    // dispatcher while onServiceDisconnected() invalidates the cache on the main thread, so a
+    // '--user <id>' read always sees a consistent value and a foreground-user switch is picked up
+    // after the next reconnect (#34).
+    @Volatile
     private var cachedUserId: String? = null
 
     private suspend fun getCurrentUserId(): String {
         cachedUserId?.let { return it }
         val userResult = shellRepository.runCommand("am get-current-user")
         val currentUser = userResult.getOrNull()?.firstOrNull()?.trim()
-        val userId = if (currentUser != null && currentUser.matches(USER_ID_REGEX)) {
-            currentUser
+        return if (currentUser != null && currentUser.matches(USER_ID_REGEX)) {
+            // Only cache a *successfully* resolved id. Caching the "0" fallback would let a
+            // transient shell/daemon blip (right after onServiceDisconnected clears the cache)
+            // persist the wrong user, so later '--user' commands would target user 0 on
+            // multi-user devices. On failure we return "0" for this call WITHOUT caching it, so
+            // the next call retries the lookup once the shell recovers (#34).
+            currentUser.also { cachedUserId = it }
         } else {
             "0"
         }
-        cachedUserId = userId
-        return userId
     }
 }

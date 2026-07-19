@@ -159,6 +159,39 @@ fun ExtensionManagerScreen(
                     ) {
                         androidx.compose.material3.CircularProgressIndicator()
                     }
+                } else if (state.extensions.isEmpty() && state.error != null) {
+                    val errorMessage = state.error
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.extension_store_error),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            if (!errorMessage.isNullOrBlank()) {
+                                Text(
+                                    text = errorMessage,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Button(
+                                onClick = { viewModel.loadExtensions() },
+                                shape = RoundedCornerShape(20.dp)
+                            ) {
+                                Text(text = stringResource(R.string.extension_retry))
+                            }
+                        }
+                    }
                 } else if (state.extensions.isEmpty()) {
                     EmptyExtensionState(
                         onGetExtensions = onBrowse

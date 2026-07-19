@@ -28,11 +28,18 @@ object MainShell {
                 throw NoShellException("The main shell died during initialization")
             }
             isInitMain = true
-            if (mainBuilder == null) mainBuilder = BuilderImpl()
-            shell = mainBuilder!!.build()
-            isInitMain = false
+            try {
+                if (mainBuilder == null) mainBuilder = BuilderImpl()
+                shell = mainBuilder!!.build()
+            } finally {
+                // Always clear the init flag, even if build() throws. Otherwise a single
+                // transient build failure would leave isInitMain = true forever, and every
+                // subsequent Shell.getShell()/Shell.cmd() would permanently throw
+                // "The main shell died during initialization".
+                isInitMain = false
+            }
         }
-        return shell
+        return shell!!
     }
 
     private fun returnShell(s: Shell, e: Executor?, cb: GetShellCallback) {
@@ -50,7 +57,18 @@ object MainShell {
             Shell.EXECUTOR.execute {
                 try {
                     returnShell(get(), executor, callback)
-                } catch (e: NoShellException) {
+                } catch (e: Exception) {
+                    // Shell creation failed. Log it and keep the worker thread from dying
+                    // uncaught (catch all Exceptions, not just NoShellException).
+                    //
+                    // NOTE: GetShellCallback.onShell(Shell) only accepts a NON-null Shell, so
+                    // there is no in-file way to hand a terminal failure back to callers here.
+                    // Awaiting coroutines that rely on the callback (e.g. getShellAwait() ->
+                    // isRootGranted()) will still suspend forever on a hard failure. Fully
+                    // unblocking them requires an API-level change outside this file: add an
+                    // onFailure()/onShellDied() channel to Shell.GetShellCallback, or have
+                    // getShellAwait() resume its continuation with an exception / apply a
+                    // timeout. See needsFollowUp.
                     Utils.ex(e)
                 }
             }

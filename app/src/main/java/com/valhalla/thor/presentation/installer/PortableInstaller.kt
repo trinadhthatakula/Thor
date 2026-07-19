@@ -50,7 +50,6 @@ import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -88,7 +87,7 @@ fun PortableInstaller(
     onDismiss: () -> Unit,
     viewModel: InstallerViewModel = koinViewModel()
 ) {
-    val state by viewModel.installState.collectAsState(initial = InstallState.Idle)
+    val state by viewModel.installState.collectAsStateWithLifecycle(initialValue = InstallState.Idle)
     val availableModes by viewModel.availableModes.collectAsStateWithLifecycle()
     val installerMode by viewModel.installMode.collectAsStateWithLifecycle()
 
@@ -129,7 +128,12 @@ fun PortableInstaller(
 
     // Launch Button Logic
     var launchIntent by remember { mutableStateOf<Intent?>(null) }
-    val currentPackageName = viewModel.currentPackageName
+    // Derive the target package name from the collected install state via `lastMeta`
+    // (populated from ReadyToInstall.meta and retained through Installing/Success).
+    // viewModel.currentPackageName is a plain, non-observable var, so keying the
+    // DisposableEffect below on it would never re-run when the package changes. This
+    // Compose-observable value makes the install-result receiver re-register deterministically.
+    val currentPackageName = lastMeta?.packageName
 
     fun refreshLaunchState() {
         if (currentPackageName != null) {

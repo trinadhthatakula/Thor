@@ -133,6 +133,30 @@ class ExtensionBrowseViewModel(
         setStatus(entryId, InstallStatus.Idle)
     }
 
+    /**
+     * True while THIS screen has handed a verified Uri to the shared, app-scoped installer and is
+     * still awaiting that install's completion. The installer's `InstallState` flow has replay = 1,
+     * so a stale `InstallState.Success` from any prior install elsewhere is replayed the moment the
+     * store opens; this flag lets us tell a genuine store-initiated completion from that replay and
+     * skip the otherwise-spurious catalog refresh. Only touched on the main thread.
+     */
+    private var awaitingInstallResult = false
+
+    /** Mark that the store just handed a verified Uri to the installer for an actual install. */
+    fun markInstallRequested() {
+        awaitingInstallResult = true
+    }
+
+    /**
+     * Returns true exactly once for a store-initiated install completion, clearing the flag so a
+     * later replayed/stale `InstallState.Success` can't trigger a second refresh.
+     */
+    fun consumeInstallResult(): Boolean {
+        if (!awaitingInstallResult) return false
+        awaitingInstallResult = false
+        return true
+    }
+
     private fun setStatus(entryId: String, status: InstallStatus) {
         _uiState.update { state ->
             state.copy(installStatuses = state.installStatuses + (entryId to status))

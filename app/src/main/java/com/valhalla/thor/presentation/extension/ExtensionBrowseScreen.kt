@@ -65,15 +65,21 @@ fun ExtensionBrowseScreen(
     val ready = state.installStatuses.entries.firstOrNull { it.value is InstallStatus.ReadyToInstall }
     LaunchedEffect(ready?.key) {
         val uri = (ready?.value as? InstallStatus.ReadyToInstall)?.uri ?: return@LaunchedEffect
+        // Mark that this store completion is genuine before starting the install, so the stale
+        // app-scoped Success replayed on open (below) can't be mistaken for it.
+        viewModel.markInstallRequested()
         installerViewModel.parsePackage(uri)
         showInstallerSheet = true
         viewModel.consumeReady(ready.key)
     }
 
-    // Refresh installed badges once the installer reports a completed install.
+    // Refresh installed badges once THIS screen's install actually completes. The installer's
+    // InstallState flow is app-scoped with replay = 1, so a stale Success from a prior install
+    // elsewhere is replayed when the store opens; consumeInstallResult() gates the refresh on a
+    // genuine store-initiated install, so merely opening the store never fires a network refresh.
     val installState by installerViewModel.installState.collectAsStateWithLifecycle(initialValue = InstallState.Idle)
     LaunchedEffect(installState) {
-        if (installState is InstallState.Success) {
+        if (installState is InstallState.Success && viewModel.consumeInstallResult()) {
             viewModel.refresh()
         }
     }

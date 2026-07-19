@@ -26,8 +26,9 @@ import com.valhalla.thor.R
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.getDisplayName
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Single
@@ -505,11 +506,23 @@ class InstallerRepositoryImpl(
             packageInstaller.openSession(sessionId)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
+            // createSession() succeeded but the session could not be opened — abandon it
+            // so the failed session isn't leaked in PackageInstaller (both paths below).
+            try {
+                packageInstaller.abandonSession(sessionId)
+            } catch (_: Exception) {
+            }
             if (emitErrors) {
                 eventBus.emit(InstallState.Error(UiText.DynamicString("Failed to open session: ${e.message}")))
                 return
             } else throw e
         }
+
+        // Whole-percent progress ticks are handed off (non-blocking) through this
+        // conflated channel and emitted by a child of the install coroutine below, so a
+        // late tick can never land after a terminal state and cancelling the install
+        // cancels the emission too.
+        val progressChannel = Channel<Float>(Channel.CONFLATED)
 
         // Helper to track progress across different streams
         fun getTrackedStream(baseStream: InputStream): InputStream {
@@ -537,9 +550,9 @@ class InstallerRepositoryImpl(
                             ((bytesProcessed.toDouble() / totalBytes) * 100).toInt()
                         if (currentProgress > lastProgressEmitted) {
                             lastProgressEmitted = currentProgress
-                            CoroutineScope(Dispatchers.IO).launch {
-                                eventBus.emit(InstallState.Installing(bytesProcessed.toFloat() / totalBytes))
-                            }
+                            // Non-blocking hand-off; conflated so only the latest tick
+                            // survives if the drainer is momentarily behind.
+                            progressChannel.trySend(bytesProcessed.toFloat() / totalBytes)
                         }
                     }
                 }
@@ -552,12 +565,27 @@ class InstallerRepositoryImpl(
             // STORED-with-data-descriptor entries and derails on the first one.
             val bundleFile = File(context.cacheDir, "install_bundle_${UUID.randomUUID()}")
             try {
-                val copied = context.contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(bundleFile).use { output ->
-                        getTrackedStream(input).copyTo(output)
+                val copied = coroutineScope {
+                    // Drain progress ticks on a child coroutine so emissions are bound to
+                    // the install job (cancellation stops them) and can never outlive the
+                    // copy phase — the channel is closed and joined before we continue.
+                    val progressJob = launch {
+                        for (fraction in progressChannel) {
+                            eventBus.emit(InstallState.Installing(fraction))
+                        }
                     }
-                    true
-                } ?: false
+                    try {
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            FileOutputStream(bundleFile).use { output ->
+                                getTrackedStream(input).copyTo(output)
+                            }
+                            true
+                        } ?: false
+                    } finally {
+                        progressChannel.close()
+                        progressJob.join()
+                    }
+                }
 
                 if (!copied) {
                     session.abandon()
