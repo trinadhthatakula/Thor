@@ -4,8 +4,10 @@ package com.valhalla.thor.data.source.local.shizuku
 
 import android.annotation.SuppressLint
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ApplicationInfo
 import android.content.pm.IPackageInstaller
 import android.content.pm.PackageInstaller
@@ -14,7 +16,10 @@ import android.os.Build
 import com.valhalla.bypass.Bypass
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.util.Logger
+import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.core.annotation.Single
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -129,22 +134,48 @@ class ShizukuReflector(
                 (packageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
 
             val shouldReset = resetToFactory && isSystem && hasUpdates
-            val broadcastIntent = Intent("${context.packageName}.UNINSTALL_RESULT_ACTION").apply {
+            // Namespace the result action + PendingIntent requestCode by the TARGET package so that
+            // concurrent uninstalls of different packages (e.g. a multi-select bulk uninstall) each
+            // register their own receiver / IntentSender and can't cross-deliver another package's
+            // status (a shared constant action + requestCode 0 let the first result complete every
+            // pending await, misreporting success/failure).
+            val action = "${context.packageName}.UNINSTALL_RESULT_ACTION.$packageName"
+            val broadcastIntent = Intent(action).apply {
                 setPackage(context.packageName)
+            }
+            // The status receiver PendingIntent must be MUTABLE so PackageInstaller can fill in
+            // EXTRA_STATUS at send time; an immutable PendingIntent drops those fill-in extras and
+            // every uninstall would look like a failure. Pre-API 31 PendingIntents are mutable by
+            // default, so no explicit flag is needed there.
+            val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
             }
             val intent = PendingIntent.getBroadcast(
                 context,
-                0,
+                packageName.hashCode(),
                 broadcastIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                pendingIntentFlags
             )
             val packageInstaller = getPackageInstaller()
 
-            // 0x00000004 = PackageManager.DELETE_SYSTEM_APP
-            // 0x00000002 = PackageManager.DELETE_ALL_USERS
-            val flags = if (isSystem) 0x00000004 else 0x00000002
+            // PackageManager delete flags:
+            //   0x00000002 = DELETE_ALL_USERS
+            //   0x00000004 = DELETE_SYSTEM_APP (removes the pre-installed system version itself,
+            //                not just its installed updates)
+            // Reset-to-factory means rolling a system app back to its shipped version, which is a
+            // plain removal of the installed updates, so DELETE_SYSTEM_APP must NOT be set there.
+            val flags = when {
+                shouldReset -> 0x00000002
+                isSystem -> 0x00000004
+                else -> 0x00000002
+            }
 
-            if (shouldReset) {
+            // Fire exactly one async uninstall (previously this ran twice for the reset path) and
+            // observe its real outcome via the IntentSender broadcast instead of assuming success,
+            // so a refusal (device policy / protected package) is no longer reported as success.
+            awaitInstallerResult(action) {
                 Bypass.invoke<Any?>(
                     PackageInstaller::class.java,
                     packageInstaller,
@@ -154,16 +185,6 @@ class ShizukuReflector(
                     intent.intentSender
                 )
             }
-
-            Bypass.invoke<Any?>(
-                PackageInstaller::class.java,
-                packageInstaller,
-                "uninstall",
-                packageName,
-                flags,
-                intent.intentSender
-            )
-            true
         }.getOrDefault(false)
 
         if (reflectionResult) return true
@@ -190,6 +211,47 @@ class ShizukuReflector(
             }
         }
         return false
+    }
+
+    /**
+     * Registers a one-shot broadcast receiver for [action], runs [fire] (which must trigger an
+     * async PackageInstaller/IPackageInstaller operation that reports back through the matching
+     * IntentSender), then suspends until the result broadcast arrives or [timeoutMillis] elapses.
+     * The receiver is always registered before [fire] runs so the async result can never be missed.
+     *
+     * @return true only when the operation reports [PackageInstaller.STATUS_SUCCESS]; false on
+     * failure, refusal (e.g. device policy / protected package), pending user action, or timeout.
+     */
+    private suspend fun awaitInstallerResult(
+        action: String,
+        timeoutMillis: Long = 15_000L,
+        fire: () -> Unit
+    ): Boolean {
+        val resultDeferred = CompletableDeferred<Int>()
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(receiverContext: Context, resultIntent: Intent) {
+                resultDeferred.complete(
+                    resultIntent.getIntExtra(
+                        PackageInstaller.EXTRA_STATUS,
+                        PackageInstaller.STATUS_FAILURE
+                    )
+                )
+            }
+        }
+        // The action is app-private (explicit package + custom action), hence RECEIVER_NOT_EXPORTED.
+        ContextCompat.registerReceiver(
+            context,
+            receiver,
+            IntentFilter(action),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        return try {
+            fire()
+            withTimeoutOrNull(timeoutMillis.milliseconds) { resultDeferred.await() } ==
+                PackageInstaller.STATUS_SUCCESS
+        } finally {
+            runCatching { context.unregisterReceiver(receiver) }
+        }
     }
 
     /**
@@ -259,7 +321,13 @@ class ShizukuReflector(
                 0,
                 null
             )
-            true
+            // installExistingPackage reports its real outcome asynchronously via the IntentSender
+            // above, but this function is not `suspend`, so awaiting that broadcast would require a
+            // signature change that ripples to callers (ShizukuSystemGateway). Instead of assuming
+            // success, observe the post-state directly: for an already-present package this call
+            // flips the installed-for-user flag synchronously, so re-querying PackageManager
+            // reflects whether the reinstall actually took effect.
+            !isAppUninstalled(packageName)
         } catch (e: Exception) {
             e.printStackTrace()
             false

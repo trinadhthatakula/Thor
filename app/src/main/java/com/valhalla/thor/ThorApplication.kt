@@ -70,6 +70,10 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
         Bypass.setLogger { message, throwable ->
             Logger.e("Bypass", message, throwable)
         }
+        // Install the on-disk offset cache BEFORE the first bypass use (prepareThor below). This
+        // lets the expensive core-oj dex scan be persisted on first launch and reloaded on every
+        // later cold start, instead of re-running the mmap + dex parse each time.
+        Bypass.init(this)
         Bypass.prepareThor()
         ThorShellConfig.init()
 

@@ -14,6 +14,25 @@ class ExtensionManager(private val context: Context) {
     private val pm = context.packageManager
     private val EXTENSION_PACKAGE_PREFIX = "com.valhalla.thor.ext."
 
+    /**
+     * A verified, already-instantiated extension bound to the exact APK it was loaded from. The
+     * cache entry is only reused while BOTH the installed [versionCode] and the on-disk [sourceDir]
+     * still match the package manager — either changing (update, reinstall, downgrade) invalidates
+     * the entry so a stale instance is never returned, and dropping the entry releases its
+     * [classLoader] (and the class metadata it pins) for GC.
+     */
+    private class CachedExtension(
+        val versionCode: Long,
+        val sourceDir: String?,
+        val classLoader: ClassLoader,
+        val extension: ThorExtension,
+    )
+
+    private val cacheLock = Any()
+
+    /** Guarded by [cacheLock]: packageName -> its currently-loaded [CachedExtension]. */
+    private val extensionCache = HashMap<String, CachedExtension>()
+
     companion object {
         /**
          * Action for an extension's optional configuration Activity. Extensions render config UI in
@@ -37,28 +56,58 @@ class ExtensionManager(private val context: Context) {
     }
 
     /**
-     * Finds and loads all valid installed extensions.
+     * Finds and returns all valid installed extensions, reusing cached instances where possible.
+     *
+     * A single [PackageManager.getInstalledPackages] scan (with GET_META_DATA) yields everything we
+     * need per package — packageName, `longVersionCode`, and the [android.content.pm.ApplicationInfo]
+     * carrying `sourceDir` + `metaData` — so there is no per-extension follow-up lookup. Each
+     * extension is only class-loaded and instantiated once: subsequent calls reuse the cached
+     * instance while both its installed versionCode and APK path are unchanged. An updated,
+     * reinstalled, or removed extension invalidates its cache entry (so users never get a stale
+     * instance after an update), and stale entries' [PathClassLoader]s are dropped so their class
+     * metadata can be reclaimed instead of accumulating on every screen resume.
      */
     fun loadExtensions(): List<ThorExtension> {
-        val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-        return installedApps.filter { app ->
-            app.packageName.startsWith(EXTENSION_PACKAGE_PREFIX)
-        }.mapNotNull { app ->
-            // 1. Signature Verification
-            if (!verifySignature(app.packageName)) {
-                return@mapNotNull null
-            }
+        // One package-manager scan for the whole extension set.
+        val installedExtensions = pm.getInstalledPackages(PackageManager.GET_META_DATA)
+            .filter { it.packageName.startsWith(EXTENSION_PACKAGE_PREFIX) }
 
-            val className = app.metaData?.getString("thor.extension.class") ?: return@mapNotNull null
-            try {
-                // Load class dynamically using PathClassLoader
-                val classLoader = PathClassLoader(app.sourceDir, context.classLoader)
-                val clazz = classLoader.loadClass(className)
-                val extension = clazz.getDeclaredConstructor().newInstance() as ThorExtension
-                extension
-            } catch (e: Exception) {
-                com.valhalla.thor.util.Logger.e("ExtensionManager", "Failed to load extension $className", e)
-                null
+        return synchronized(cacheLock) {
+            // Drop cached entries (and their ClassLoaders) for extensions no longer installed.
+            val installedNames = installedExtensions.mapTo(HashSet()) { it.packageName }
+            extensionCache.keys.retainAll(installedNames)
+
+            installedExtensions.mapNotNull { pkgInfo ->
+                val packageName = pkgInfo.packageName
+                val versionCode = pkgInfo.longVersionCode
+                val appInfo = pkgInfo.applicationInfo ?: return@mapNotNull null
+                val sourceDir = appInfo.sourceDir
+
+                // Fast path: a previously loaded instance is still valid iff both the installed
+                // versionCode AND the on-disk APK path match what's currently installed.
+                extensionCache[packageName]?.let { cached ->
+                    if (cached.versionCode == versionCode && cached.sourceDir == sourceDir) {
+                        return@mapNotNull cached.extension
+                    }
+                }
+
+                // (Re)load: drop any stale entry first so a failed reload can't leave a stale
+                // instance behind, then verify signature and instantiate from a fresh ClassLoader.
+                extensionCache.remove(packageName)
+                if (!verifySignature(packageName)) return@mapNotNull null
+                val className =
+                    appInfo.metaData?.getString("thor.extension.class") ?: return@mapNotNull null
+                try {
+                    val classLoader = PathClassLoader(sourceDir, context.classLoader)
+                    val clazz = classLoader.loadClass(className)
+                    val extension = clazz.getDeclaredConstructor().newInstance() as ThorExtension
+                    extensionCache[packageName] =
+                        CachedExtension(versionCode, sourceDir, classLoader, extension)
+                    extension
+                } catch (e: Exception) {
+                    com.valhalla.thor.util.Logger.e("ExtensionManager", "Failed to load extension $className", e)
+                    null
+                }
             }
         }
     }

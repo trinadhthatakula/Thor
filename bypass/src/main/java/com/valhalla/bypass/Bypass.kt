@@ -35,6 +35,15 @@ object Bypass {
 
     private var isUnsafeBypassReady = false
 
+    // Guards lazy, one-shot initialization of the Unsafe (HiddenApiBypass) offsets. The heavy
+    // core-oj dex scan is deferred out of the object's init block so it never runs on the main
+    // thread during class init, and so the on-disk offset cache (installed by init(context)) is
+    // ready before the scan runs and can therefore persist the result.
+    private val unsafeInitLock = Any()
+
+    @Volatile
+    private var unsafeInitAttempted = false
+
     // Property bypass (LSPass) state
     private val methodsProperty: Property<Class<*>, Array<Method>> by lazy {
         @Suppress("UNCHECKED_CAST")
@@ -54,7 +63,7 @@ object Bypass {
     private var isPropertyBypassReady = false
 
     init {
-        // Initialize LSPass (Property-based)
+        // Initialize LSPass (Property-based). This is cheap and safe to run eagerly here.
         try {
             methodsProperty
             constructorsProperty
@@ -64,41 +73,74 @@ object Bypass {
             logger?.invoke("Property bypass (LSPass) initialization failed", e)
         }
 
-        // Initialize HiddenApiBypass (Unsafe-based)
-        try {
-            val theUnsafeField = Unsafe::class.java.getDeclaredField("theUnsafe")
-            theUnsafeField.isAccessible = true
-            unsafe = theUnsafeField.get(null) as Unsafe
-            val u = unsafe!!
-            var data = Helper.getCachedOffsetData()
-            if (data == null) {
-                data = readOffsetDataIO()
-                Helper.setCachedOffsetData(data)
-            }
-            methodOffset = data[0]
-            classOffset = data[1]
-            artOffset = data[2]
-            methodsOffset = data[3]
-            iFieldOffset = data[4]
-            sFieldOffset = data[5]
-
-            val dataRT = readOffsetDataRT()
-            artMethodSize = dataRT[0]
-            artMethodBias = dataRT[1]
-            artFieldSize = dataRT[2]
-            artFieldBias = dataRT[3]
-
-            isUnsafeBypassReady = true
-        } catch (e: Throwable) {
-            logger?.invoke("Unsafe bypass initialization failed", e)
-        }
+        // NOTE: The Unsafe (HiddenApiBypass) offsets are intentionally NOT computed here.
+        // Resolving them can require an mmap + dex parse of the boot-classpath core-oj jar
+        // (readOffsetDataDex), which is far too expensive to run on the main thread during
+        // class initialization (startup latency / ANR risk on slow storage). It is deferred to
+        // ensureUnsafeBypassReady(), invoked lazily on first actual use. Deferring it also lets
+        // init(context) install the on-disk offset cache first, so a successful scan is persisted
+        // and every later cold start reloads it and skips the scan entirely.
     }
 
     /**
-     * Initializes the dynamic offset cache. Should be called early in Application.onCreate().
+     * Installs the on-disk offset cache used by the Unsafe bypass layer. Call this once, early in
+     * Application.onCreate() and BEFORE the first bypass use (e.g. before [prepareThor]). Doing so
+     * lets the first cold start persist the computed ART offsets and lets every later cold start
+     * reload them, skipping the expensive core-oj dex scan. Safe to omit — the offsets are then
+     * simply recomputed in-memory once per process.
      */
     fun init(context: Context) {
         Helper.enableOffsetCache(context)
+    }
+
+    /**
+     * Lazily and idempotently initializes the Unsafe (HiddenApiBypass) layer: acquires the
+     * [Unsafe] instance and resolves the ART field/method offsets, reusing the on-disk cache
+     * installed via [init] when available (otherwise scanning core-oj once and persisting the
+     * result). Returns whether the Unsafe bypass is usable.
+     *
+     * Thread-safe: the first caller performs the work under a lock and publishes the result via
+     * the volatile [unsafeInitAttempted] flag; later callers observe it without locking. Note the
+     * FIRST call still runs synchronously on its caller's thread: on a disk-cache MISS (fresh
+     * install, cache cleared, or an OS/ART update invalidated it) ThorApplication triggers this
+     * from prepareThor() during onCreate, so the one-time core-oj scan happens on the MAIN thread
+     * for that launch. Subsequent launches read the persisted cache and skip the scan entirely.
+     */
+    private fun ensureUnsafeBypassReady(): Boolean {
+        if (unsafeInitAttempted) return isUnsafeBypassReady
+        synchronized(unsafeInitLock) {
+            if (unsafeInitAttempted) return isUnsafeBypassReady
+            try {
+                val theUnsafeField = Unsafe::class.java.getDeclaredField("theUnsafe")
+                theUnsafeField.isAccessible = true
+                unsafe = theUnsafeField.get(null) as Unsafe
+
+                var data = Helper.getCachedOffsetData()
+                if (data == null) {
+                    data = readOffsetDataIO()
+                    Helper.setCachedOffsetData(data)
+                }
+                methodOffset = data[0]
+                classOffset = data[1]
+                artOffset = data[2]
+                methodsOffset = data[3]
+                iFieldOffset = data[4]
+                sFieldOffset = data[5]
+
+                val dataRT = readOffsetDataRT()
+                artMethodSize = dataRT[0]
+                artMethodBias = dataRT[1]
+                artFieldSize = dataRT[2]
+                artFieldBias = dataRT[3]
+
+                isUnsafeBypassReady = true
+            } catch (e: Throwable) {
+                logger?.invoke("Unsafe bypass initialization failed", e)
+                isUnsafeBypassReady = false
+            }
+            unsafeInitAttempted = true
+            return isUnsafeBypassReady
+        }
     }
 
     /**
@@ -144,7 +186,7 @@ object Bypass {
      */
     fun setHiddenApiExemptions(vararg signaturePrefixes: String): Boolean {
         // 1. Try Unsafe-based bypass first
-        if (isUnsafeBypassReady) {
+        if (ensureUnsafeBypassReady()) {
             try {
                 val runtimeObj = unsafeInvoke<Any>(VMRuntime::class.java, null, "getRuntime")
                 unsafeInvoke<Any>(VMRuntime::class.java, runtimeObj, "setHiddenApiExemptions", signaturePrefixes)
@@ -455,7 +497,7 @@ object Bypass {
         }
 
         // 2. Fallback to Unsafe-based invoke
-        if (isUnsafeBypassReady) {
+        if (ensureUnsafeBypassReady()) {
             val unsafeResult = runCatching {
                 unsafeInvoke<T>(clazz, instance, methodName, *args)
             }
@@ -500,7 +542,7 @@ object Bypass {
         }
 
         // 2. Try Unsafe fallback
-        if (isUnsafeBypassReady) {
+        if (ensureUnsafeBypassReady()) {
             val unsafeResult = runCatching {
                 unsafeNewInstance<T>(clazz, *args)
             }
@@ -626,7 +668,7 @@ object Bypass {
         }
 
         // 2. Try Unsafe fallback
-        if (isUnsafeBypassReady) {
+        if (ensureUnsafeBypassReady()) {
             val unsafeResult = runCatching {
                 var current = clazz
                 while (current != null) {
