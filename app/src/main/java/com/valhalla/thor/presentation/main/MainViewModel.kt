@@ -18,8 +18,10 @@ import com.valhalla.thor.domain.usecase.ShareAppUseCase
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.presentation.home.AppDestinations
+import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.UiTextException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -193,8 +195,18 @@ class MainViewModel(
         viewModelScope.launch {
             startLogger(UiText.StringResource(R.string.log_preparing_cache))
 
-            // 1. Fetch current list
-            val (userApps, systemApps) = getInstalledAppsUseCase().first()
+            // 1. Fetch current list — getInstalledAppsUseCase() reads PackageManager and can
+            // throw (e.g. DeadObjectException). Guard it so a failure can't crash the app or
+            // leave the logger dialog stuck spinning.
+            val (userApps, systemApps) = try {
+                getInstalledAppsUseCase().first()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e // preserve structured-concurrency cancellation
+                Logger.e("MainViewModel", "clearAllCache: failed to load apps", e)
+                addLog(UiText.StringResource(R.string.log_error, e.message ?: ""))
+                finishLogger()
+                return@launch
+            }
             val targetList = if (type == AppListType.USER) userApps else systemApps
 
             // 2. Filter out self and Play Store to be safe
@@ -334,7 +346,18 @@ class MainViewModel(
                 // 6. REINSTALL ALL (Batch Logic Triggered via Single Action Enum)
                 AppClickAction.ReinstallAll -> {
                     startLogger(UiText.StringResource(R.string.log_scanning_apps))
-                    val (userApps, _) = getInstalledAppsUseCase().first()
+                    // getInstalledAppsUseCase() reads PackageManager and can throw
+                    // (e.g. DeadObjectException). Guard it so a failure can't crash the app or
+                    // leave the logger dialog stuck spinning.
+                    val (userApps, _) = try {
+                        getInstalledAppsUseCase().first()
+                    } catch (e: Exception) {
+                        if (e is CancellationException) throw e // preserve structured-concurrency cancellation
+                        Logger.e("MainViewModel", "reinstallAll: failed to load apps", e)
+                        addLog(UiText.StringResource(R.string.log_error, e.message ?: ""))
+                        finishLogger()
+                        return@launch
+                    }
 
                     val targets = userApps.filter {
                         it.installerPackageName != "com.android.vending" &&

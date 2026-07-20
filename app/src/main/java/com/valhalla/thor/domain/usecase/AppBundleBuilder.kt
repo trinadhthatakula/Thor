@@ -7,8 +7,9 @@ import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.formattedAppName
 import com.valhalla.thor.domain.repository.SystemRepository
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
+import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
@@ -27,9 +28,10 @@ import java.util.zip.ZipOutputStream
 class AppBundleBuilder(
     private val context: Context,
     private val systemRepository: SystemRepository,
-    private val apksMetadataGenerator: ApksMetadataGenerator
+    private val apksMetadataGenerator: ApksMetadataGenerator,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) {
-    suspend fun build(appInfo: AppInfo, cacheSubDir: String = "share_temp"): Result<File> = withContext(Dispatchers.IO) {
+    suspend fun build(appInfo: AppInfo, cacheSubDir: String = "share_temp"): Result<File> = withContext(ioDispatcher) {
         try {
             // Per-package subdir. Bulk share builds each selected app sequentially into
             // the same cacheSubDir and hands all the resulting content:// URIs to

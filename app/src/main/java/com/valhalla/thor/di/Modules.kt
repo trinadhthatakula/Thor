@@ -9,15 +9,32 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.room.AppDao
 import com.valhalla.thor.data.source.local.room.AppDatabase
 import com.valhalla.thor.data.source.local.room.FreezerDao
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import org.koin.core.annotation.ComponentScan
 import org.koin.core.annotation.Configuration
 import org.koin.core.annotation.Module
+import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 
 @Module
 @ComponentScan("com.valhalla.thor")
 @Configuration
 class AppModule {
+
+    // Named CoroutineDispatcher bindings so IO/CPU-bound work can inject a dispatcher
+    // instead of hardcoding Dispatchers.*, keeping call sites testable and swappable.
+    @Single
+    @Named("io")
+    fun ioDispatcher(): CoroutineDispatcher = Dispatchers.IO
+
+    @Single
+    @Named("default")
+    fun defaultDispatcher(): CoroutineDispatcher = Dispatchers.Default
+
+    @Single
+    @Named("main")
+    fun mainDispatcher(): CoroutineDispatcher = Dispatchers.Main
 
     @Single
     fun packageManager(context: Context): PackageManager = context.packageManager

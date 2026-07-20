@@ -14,7 +14,9 @@ import com.valhalla.thor.domain.model.isAuthorizedExtensionCaller
 import com.valhalla.thor.domain.model.opTargets
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.Logger
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -34,6 +36,11 @@ class ExtensionOpsProvider : ContentProvider(), KoinComponent {
     private val extensionManager: ExtensionManager by inject()
 
     private enum class Op { FREEZE, UNFREEZE, TOGGLE }
+
+    private companion object {
+        /** Upper bound for the whole batch of privileged shell ops on the binder thread. */
+        const val OP_TIMEOUT_MS = 30_000L
+    }
 
     override fun onCreate() = true
 
@@ -61,8 +68,11 @@ class ExtensionOpsProvider : ContentProvider(), KoinComponent {
 
         val token = Binder.clearCallingIdentity()
         val count = try {
-            runCatching {
-                runBlocking {
+            runBlocking {
+                // Bound the privileged shell work: this runs on a binder-pool thread, so a hung
+                // root/Shizuku shell would otherwise pin the thread forever and can exhaust the pool.
+                // On timeout we fail closed (count stays 0 → ok=false), same as any other failure.
+                withTimeout(OP_TIMEOUT_MS) {
                     // Extensions freeze via disable/enable ONLY — never suspend. The suspend path
                     // (setAppSuspended → RootMain reflection) is broken on release by R8's class-init
                     // optimization, and suspend adds nothing for cluster automation. So we ignore the
@@ -79,7 +89,13 @@ class ExtensionOpsProvider : ContentProvider(), KoinComponent {
                         }.isSuccess
                     }
                 }
-            }.getOrElse { Logger.e("ExtensionOps", "op '$method' failed", it); 0 }
+            }
+        } catch (e: TimeoutCancellationException) {
+            Logger.e("ExtensionOps", "op '$method' timed out after ${OP_TIMEOUT_MS}ms", e)
+            0
+        } catch (e: Throwable) {
+            Logger.e("ExtensionOps", "op '$method' failed", e)
+            0
         } finally {
             Binder.restoreCallingIdentity(token)
         }

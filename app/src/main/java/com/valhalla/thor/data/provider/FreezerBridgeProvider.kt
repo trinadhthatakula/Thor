@@ -12,7 +12,9 @@ import com.valhalla.thor.domain.model.mayRestore
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.Logger
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -31,6 +33,11 @@ class FreezerBridgeProvider : ContentProvider(), KoinComponent {
     private val freezerRepository: FreezerRepository by inject()
     private val manageAppUseCase: ManageAppUseCase by inject()
 
+    private companion object {
+        /** Tight bound: this restore runs synchronously on the launcher's launch hot path. */
+        const val RESTORE_TIMEOUT_MS = 10_000L
+    }
+
     override fun onCreate() = true
 
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle {
@@ -47,8 +54,10 @@ class FreezerBridgeProvider : ContentProvider(), KoinComponent {
         // launcher's) so any downstream permission checks attribute to Thor. Restore in finally.
         val token = Binder.clearCallingIdentity()
         val ok = try {
-            runCatching {
-                runBlocking {
+            runBlocking {
+                // On the launcher's launch hot path, so keep the bound tight: a hung root shell must
+                // not pin this binder thread. On timeout we fail closed (ok=false).
+                withTimeout(RESTORE_TIMEOUT_MS) {
                     val inFreezer = freezerRepository.getAllPackageNames().toSet()
                     if (!mayRestore(pkg, inFreezer)) {
                         Logger.d("FreezerBridge", "restore refused (not in freezer): $pkg")
@@ -57,10 +66,13 @@ class FreezerBridgeProvider : ContentProvider(), KoinComponent {
                         manageAppUseCase.forceUnfreeze(pkg).isSuccess
                     }
                 }
-            }.getOrElse {
-                Logger.e("FreezerBridge", "restore failed for $pkg", it)
-                false
             }
+        } catch (e: TimeoutCancellationException) {
+            Logger.e("FreezerBridge", "restore timed out for $pkg after ${RESTORE_TIMEOUT_MS}ms", e)
+            false
+        } catch (e: Throwable) {
+            Logger.e("FreezerBridge", "restore failed for $pkg", e)
+            false
         } finally {
             Binder.restoreCallingIdentity(token)
         }

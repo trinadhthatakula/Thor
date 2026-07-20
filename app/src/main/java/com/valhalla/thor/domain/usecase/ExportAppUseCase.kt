@@ -17,10 +17,11 @@ import com.valhalla.thor.domain.model.ExportTargetChoice
 import com.valhalla.thor.domain.model.resolveExportTarget
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Factory
+import org.koin.core.annotation.Named
 import java.io.File
 import java.io.IOException
 
@@ -28,10 +29,11 @@ import java.io.IOException
 class ExportAppUseCase(
     private val context: Context,
     private val bundleBuilder: AppBundleBuilder,
-    private val preferenceRepository: PreferenceRepository
+    private val preferenceRepository: PreferenceRepository,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) {
     /** Build the bundle and write it to the resolved target. Returns a location label. */
-    suspend operator fun invoke(appInfo: AppInfo): Result<String> = withContext(Dispatchers.IO) {
+    suspend operator fun invoke(appInfo: AppInfo): Result<String> = withContext(ioDispatcher) {
         try {
             val file = bundleBuilder.build(appInfo, cacheSubDir = "export_temp").getOrElse { return@withContext Result.failure(it) }
             val mime = mimeFor(file)
@@ -56,7 +58,7 @@ class ExportAppUseCase(
     }
 
     /** The label shown in the export sheet ("Downloads/Thor" or the saved folder name). */
-    suspend fun currentTargetLabel(): String = withContext(Dispatchers.IO) {
+    suspend fun currentTargetLabel(): String = withContext(ioDispatcher) {
         // SAF validity checks hit the content resolver / disk — keep them off the main thread.
         val savedUri = preferenceRepository.userPreferences.first().exportDirUri
         if (savedUri != null && isTreeWritable(savedUri)) {

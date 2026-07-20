@@ -5,7 +5,9 @@ import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.widget.Toast
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import kotlinx.coroutines.CoroutineScope
@@ -14,8 +16,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.android.ext.android.inject
 
 class FreezerTileService : TileService() {
@@ -23,9 +27,9 @@ class FreezerTileService : TileService() {
     private val freezerRepository: FreezerRepository by inject()
     private val manageAppUseCase: ManageAppUseCase by inject()
     private val systemRepository: SystemRepository by inject()
+    private val preferenceRepository: PreferenceRepository by inject()
 
     private var scope: CoroutineScope? = null
-    private val longRunningScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onStartListening() {
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -37,13 +41,11 @@ class FreezerTileService : TileService() {
         scope = null
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        longRunningScope.cancel()
-    }
-
     override fun onClick() {
-        longRunningScope.launch {
+        // appScope (not a service-lifetime scope): collapsing the QS shade destroys this service, so
+        // a bulk freeze pinned to onDestroy()-cancelled work would leave a PARTIAL freeze and skip the
+        // result toast + tile refresh. The process-scoped runner lets the loop finish either way.
+        appScope.launch {
             val hasPrivilege = withContext(Dispatchers.IO) {
                 systemRepository.isRootAvailable() ||
                         systemRepository.isShizukuAvailable() ||
@@ -66,12 +68,22 @@ class FreezerTileService : TileService() {
                 ).show()
                 return@launch
             }
-            val results = pkgs.map { pkg ->
-                async(Dispatchers.IO) {
-                    manageAppUseCase.setAppDisabled(pkg, true)
-                }
-            }.awaitAll()
-            val failures = results.count { it.isFailure }
+            // Honor the persisted Freezer mode so the tile stays consistent with the in-app freezer:
+            // Suspend mode suspends, Freeze mode disables (mirrors FreezerViewModel.freezeSingleApp).
+            val suspendMode = withContext(Dispatchers.IO) {
+                preferenceRepository.userPreferences.first().freezerMode == FreezerMode.SUSPEND
+            }
+            // appScope is process-scoped and never cancelled; bound the batch so a wedged/hung shell
+            // can't hang this coroutine forever and leak the FreezerTileService instance + captures.
+            val results = withTimeoutOrNull(30_000L) {
+                pkgs.map { pkg ->
+                    async(Dispatchers.IO) {
+                        if (suspendMode) manageAppUseCase.setAppSuspended(pkg, true)
+                        else manageAppUseCase.setAppDisabled(pkg, true)
+                    }
+                }.awaitAll()
+            }
+            val failures = results?.count { it.isFailure } ?: pkgs.size
             val msg = if (failures == 0) {
                 getString(R.string.tile_freeze_success, pkgs.size)
             } else {
@@ -83,7 +95,10 @@ class FreezerTileService : TileService() {
                 )
             }
             Toast.makeText(applicationContext, msg, Toast.LENGTH_SHORT).show()
-            refreshTile()
+            // appScope outlives this service: if the QS shade collapsed mid-freeze the service is no
+            // longer listening (onStopListening set scope = null) and touching qsTile.updateTile()
+            // can throw inside the framework (its binder is gone), so only refresh while still bound.
+            if (scope != null) refreshTile()
         }
     }
 
@@ -112,5 +127,12 @@ class FreezerTileService : TileService() {
             }
         }
         tile.updateTile()
+    }
+
+    private companion object {
+        // Process-scoped (static) so a bulk freeze outlives any single service instance: the QS shade
+        // collapse destroys the tile service, so this must NOT be tied to a service-lifetime scope and
+        // is intentionally never cancelled. SupervisorJob keeps one failed freeze from cancelling the rest.
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     }
 }

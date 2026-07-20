@@ -8,10 +8,13 @@ import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
+import com.valhalla.thor.util.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -95,7 +98,15 @@ class HomeViewModel(
 
         dashboardJob = viewModelScope.launch(Dispatchers.IO) {
             _internalState.update { it.copy(isLoading = true) }
-            getInstalledAppsUseCase().collect { (userApps, systemApps) ->
+            getInstalledAppsUseCase().catch { e ->
+                // getInstalledAppsUseCase() is a callbackFlow that registers package receivers
+                // and reads PackageManager; it can throw (e.g. DeadObjectException). Guard the
+                // collection so an upstream throw can't propagate out of the collector and crash
+                // the app, and clear the loader so the dashboard doesn't spin forever.
+                if (e is CancellationException) throw e // preserve structured-concurrency cancellation
+                Logger.e("HomeViewModel", "loadDashboardData failed", e)
+                _internalState.update { it.copy(isLoading = false) }
+            }.collect { (userApps, systemApps) ->
                 lastUserApps = userApps
                 lastSystemApps = systemApps
                 processData(userApps, systemApps, _internalState.value.selectedType)

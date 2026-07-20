@@ -20,12 +20,15 @@ import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
+import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
@@ -132,6 +135,19 @@ class AppListViewModel(
                 privilegeManager.state
             ) { (user, system), priv ->
                 Triple(user, system, priv)
+            }.catch { e ->
+                // getInstalledAppsUseCase() is a callbackFlow that registers package receivers
+                // and reads PackageManager; it can throw (e.g. DeadObjectException). Guard the
+                // collection so an upstream throw can't propagate out of the collector and crash
+                // the app, and clear the loader so the UI doesn't spin forever.
+                if (e is CancellationException) throw e // preserve structured-concurrency cancellation
+                Logger.e("AppListViewModel", "loadApps failed", e)
+                _rawState.update {
+                    it.copy(
+                        isLoading = false,
+                        actionMessage = UiText.StringResource(R.string.failed_to_load_apps)
+                    )
+                }
             }.collect { (user, system, priv) ->
                 _rawState.update {
                     it.copy(

@@ -14,6 +14,7 @@ import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.Logger
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -43,18 +44,34 @@ class AutoFreezeManager(
     @Volatile
     private var currentMode: FreezerMode = FreezerMode.FREEZE
 
+    // Guards against overlapping auto-freeze batches. A rapid screen on/off would otherwise
+    // stack multiple SCREEN_OFF batches that all contend the privileged shell. While a batch
+    // is running, further SCREEN_OFF events are ignored (the running batch already re-reads the
+    // current Freezer list, so nothing is missed).
+    private val isFreezing = AtomicBoolean(false)
+
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context, intent: Intent) {
             if (intent.action != Intent.ACTION_SCREEN_OFF) return
 
             Logger.d("AutoFreezeManager", "Screen off event received")
-            val pendingResult = goAsync()
 
+            // Skip if a previous batch is still running so overlapping SCREEN_OFF events
+            // (rapid screen on/off) don't stack and contend the shell.
+            if (!isFreezing.compareAndSet(false, true)) {
+                Logger.d("AutoFreezeManager", "Auto-freeze already in progress. Skipping.")
+                return
+            }
+
+            // Hand the batch to the app-scoped `scope` and return immediately. This receiver is
+            // context-registered from a live process (held by AutoFreezeManager for the app's
+            // lifetime), so there is no need for goAsync()/PendingResult — avoiding it keeps a
+            // large freeze batch from blowing the ~10s registered-receiver dispatch budget (ANR).
             scope.launch {
                 try {
                     // Check if the device is locked (Keyguard active)
                     val keyguardManager =
-                        ctx.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+                        context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
                     if (!keyguardManager.isDeviceLocked) {
                         Logger.d(
                             "AutoFreezeManager",
@@ -82,7 +99,7 @@ class AutoFreezeManager(
                         return@launch
                     }
 
-                    val pm = ctx.packageManager
+                    val pm = context.packageManager
                     val semaphore = Semaphore(5)
 
                     val jobs = pkgs.map { pkg ->
@@ -143,7 +160,7 @@ class AutoFreezeManager(
                 } catch (e: Exception) {
                     Logger.e("AutoFreezeManager", "Error in auto-freeze process", e)
                 } finally {
-                    pendingResult.finish()
+                    isFreezing.set(false)
                 }
             }
         }
