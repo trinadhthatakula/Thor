@@ -274,7 +274,10 @@ fun HomeScreen(
 
             // 4. Social Links
             Spacer(Modifier.height(8.dp))
-            SupportCommunitySection(onSupportClick = { showSupportSheet = true })
+            SupportCommunitySection(
+                modifier = Modifier.padding(horizontal = 24.dp),
+                onSupportClick = { showSupportSheet = true }
+            )
         }
         Spacer(Modifier.height(32.dp))
         }
