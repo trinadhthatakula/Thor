@@ -22,7 +22,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
@@ -103,22 +102,6 @@ class SettingsViewModel(
             SettingsUiState()
         )
 
-    val preferences = preferenceRepository.userPreferences
-        .stateIn(
-            viewModelScope,
-            SharingStarted.WhileSubscribed(5000),
-            UserPreferences()
-        )
-
-    /**
-     * Extension-consent as a TRI-STATE: `null` while prefs are still being read from DataStore, then
-     * the real `true`/`false`. Screens gate the first-open consent sheet on `== false` (not on the
-     * default-seeded `preferences`), so an already-accepted user never sees a first-frame flash.
-     */
-    val extensionConsentAccepted: StateFlow<Boolean?> = preferenceRepository.userPreferences
-        .map { it.extensionConsentAccepted }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-
     /** True only if the device has enrolled biometrics or a device credential. */
     val canUseBiometric: Boolean get() = biometricHelper.canAuthenticate()
 
@@ -151,10 +134,6 @@ class SettingsViewModel(
 
     fun setAutoReinstallEnabled(enabled: Boolean) {
         viewModelScope.launch { preferenceRepository.setAutoReinstallEnabled(enabled) }
-    }
-
-    fun setExtensionConsentAccepted(accepted: Boolean) {
-        viewModelScope.launch { preferenceRepository.setExtensionConsentAccepted(accepted) }
     }
 
     fun setLanguage(language: String?) {
