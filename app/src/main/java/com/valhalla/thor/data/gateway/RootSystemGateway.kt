@@ -1,5 +1,6 @@
 package com.valhalla.thor.data.gateway
 
+import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -19,12 +20,17 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.core.annotation.Single
 import java.io.File
 import kotlin.coroutines.resume
 
 private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
 private val USER_ID_REGEX = Regex("^\\d+$")
+
+// Upper bound for the RootService bind handshake. A null binder or a callback that never
+// arrives must not pin connectionMutex forever and deadlock every later privileged op (H2).
+private const val ROOT_SERVICE_BIND_TIMEOUT_MS = 10_000L
 
 /**
  * Modern implementation of SystemGateway using the reactive ShellRepository.
@@ -71,40 +77,69 @@ class RootSystemGateway(
             activeConnection = null
         }
 
-        withContext(Dispatchers.Main) {
-            suspendCancellableCoroutine { continuation ->
-                val intent = Intent(context, com.valhalla.superuser.ipc.ThorRootService::class.java)
-                val conn = object : ServiceConnection {
-                    override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-                        val binder = IThorRootService.Stub.asInterface(service)
-                        rootService = binder
-                        if (continuation.isActive) {
-                            continuation.resume(binder)
+        // Bind under a timeout so a null binder or a callback that never arrives can't hold
+        // connectionMutex forever (H2). withTimeoutOrNull RETURNS null on timeout — it does not
+        // throw — so on every path (success, null-binding, or timeout) withLock unwinds and the
+        // mutex is released. On timeout the child coroutine is cancelled, which fires
+        // invokeOnCancellation below to unbind the stale connection; the caller then falls back.
+        withTimeoutOrNull(ROOT_SERVICE_BIND_TIMEOUT_MS) {
+            withContext(Dispatchers.Main) {
+                suspendCancellableCoroutine { continuation ->
+                    val intent = Intent(context, com.valhalla.superuser.ipc.ThorRootService::class.java)
+                    val conn = object : ServiceConnection {
+                        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+                            val binder = IThorRootService.Stub.asInterface(service)
+                            // Publish/resume only if the bind hasn't already timed out. A late
+                            // connect (continuation cancelled by withTimeoutOrNull) would otherwise
+                            // cache a service whose ServiceConnection is about to be unbound by
+                            // invokeOnCancellation, leaving rootService dangling (-> intermittent
+                            // DeadObjectException on the next call).
+                            if (continuation.isActive) {
+                                rootService = binder
+                                continuation.resume(binder)
+                            }
+                        }
+
+                        override fun onServiceDisconnected(name: ComponentName?) {
+                            rootService = null
+                            // A dead service can no longer answer '--user <id>'; drop the cached
+                            // user id so a reconnect re-reads the (possibly switched) user (#34).
+                            cachedUserId = null
+                            userIdGeneration++
+                            if (activeConnection === this) {
+                                activeConnection = null
+                            }
+                        }
+
+                        // The root process returned a null binder — the service refused to bind.
+                        // Resume with null (and unbind) instead of hanging until the timeout fires.
+                        override fun onNullBinding(name: ComponentName?) {
+                            rootService = null
+                            runCatching { RootService.unbind(this) }
+                            if (activeConnection === this) {
+                                activeConnection = null
+                            }
+                            if (continuation.isActive) {
+                                continuation.resume(null)
+                            }
                         }
                     }
 
-                    override fun onServiceDisconnected(name: ComponentName?) {
-                        rootService = null
-                        if (activeConnection === this) {
-                            activeConnection = null
+                    activeConnection = conn
+
+                    continuation.invokeOnCancellation {
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            runCatching {
+                                RootService.unbind(conn)
+                            }
+                            if (activeConnection === conn) {
+                                activeConnection = null
+                            }
                         }
                     }
+
+                    RootService.bind(intent, conn)
                 }
-
-                activeConnection = conn
-
-                continuation.invokeOnCancellation {
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        runCatching {
-                            RootService.unbind(conn)
-                        }
-                        if (activeConnection === conn) {
-                            activeConnection = null
-                        }
-                    }
-                }
-
-                RootService.bind(intent, conn)
             }
         }
     }
@@ -117,6 +152,9 @@ class RootSystemGateway(
     override suspend fun isShizukuAvailable(): Boolean = false
     override suspend fun isDhizukuAvailable(): Boolean = false
 
+    // killBackgroundProcesses' KILL_BACKGROUND_PROCESSES is satisfied via elevated privilege
+    // (root shell) rather than a manifest grant.
+    @SuppressLint("MissingPermission")
     override suspend fun forceStopApp(packageName: String): Result<Unit> {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
@@ -555,18 +593,32 @@ class RootSystemGateway(
         }
     }.getOrNull()
 
+    // @Volatile guarantees safe publication across threads: getCurrentUserId() runs on the IO
+    // dispatcher while onServiceDisconnected() invalidates the cache on the main thread, so a
+    // '--user <id>' read always sees a consistent value and a foreground-user switch is picked up
+    // after the next reconnect (#34).
+    @Volatile
     private var cachedUserId: String? = null
+
+    // Bumped on every cache invalidation (onServiceDisconnected). getCurrentUserId() captures it
+    // before the shell read and only commits the result if it is unchanged, so an invalidation that
+    // races an in-flight lookup can't be silently overwritten by the stale value the lookup read.
+    @Volatile
+    private var userIdGeneration = 0
 
     private suspend fun getCurrentUserId(): String {
         cachedUserId?.let { return it }
+        val gen = userIdGeneration
         val userResult = shellRepository.runCommand("am get-current-user")
         val currentUser = userResult.getOrNull()?.firstOrNull()?.trim()
-        val userId = if (currentUser != null && currentUser.matches(USER_ID_REGEX)) {
-            currentUser
+        return if (currentUser != null && currentUser.matches(USER_ID_REGEX)) {
+            // Only cache a *successfully* resolved id (caching the "0" fallback would let a transient
+            // shell/daemon blip persist the wrong user, so later '--user' commands would target user
+            // 0 on multi-user devices), AND only if no invalidation raced this lookup — a user switch
+            // that fired onServiceDisconnected mid-read must not re-cache the stale value.
+            currentUser.also { if (userIdGeneration == gen) cachedUserId = it }
         } else {
             "0"
         }
-        cachedUserId = userId
-        return userId
     }
 }

@@ -3,7 +3,6 @@ package com.valhalla.thor.presentation.appList
 import android.content.Context
 import android.icu.text.DateFormat
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
@@ -22,7 +21,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -82,6 +83,7 @@ import com.valhalla.thor.domain.model.PermissionDetail
 import com.valhalla.thor.presentation.theme.bodyFontFamily
 import com.valhalla.thor.presentation.theme.firaMonoFontFamily
 import com.valhalla.thor.presentation.utils.AppIconModel
+import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 import com.valhalla.thor.presentation.widgets.AnimateLottieRaw
 import kotlinx.coroutines.launch
@@ -110,11 +112,8 @@ fun AppInfoDetailsScreen(
         viewModel.loadAppDetails(packageName)
     }
 
-    LaunchedEffect(state.actionMessage) {
-        state.actionMessage?.let { msg ->
-            Toast.makeText(context, msg.asString(context), Toast.LENGTH_SHORT).show()
-            viewModel.dismissMessage()
-        }
+    ObserveAsEvents(viewModel.events) { msg ->
+        Toast.makeText(context, msg.asString(context), Toast.LENGTH_SHORT).show()
     }
 
     var showClearDataConfirmation by remember { mutableStateOf(false) }
@@ -208,15 +207,16 @@ fun AppInfoDetailsScreen(
                                     onAppAction(AppClickAction.AppInfoSettings(details.appInfo))
                                 },
                                 onFreezeToggle = { shouldFreeze ->
-                                    // Honor the requested target: unfreeze immediately,
-                                    // only show the warning dialog when freezing.
-                                    if (shouldFreeze) {
+                                    // Unfreeze immediately. When freezing, only SYSTEM apps get the
+                                    // safety-warning dialog (instability / reboot-loop risk); user
+                                    // apps are safe to freeze directly (mirrors AppInfoDialog gating).
+                                    if (shouldFreeze && details.appInfo.isSystem) {
                                         showFreezeConfirmation = true
                                     } else {
                                         viewModel.toggleFreezerState(
                                             packageName,
                                             details.appInfo.appName,
-                                            false
+                                            shouldFreeze
                                         )
                                     }
                                 },
@@ -246,7 +246,8 @@ fun AppInfoDetailsScreen(
                         }
 
                         if (!showOnlyHeaderAndActions) {
-                            var selectedTab by remember { mutableIntStateOf(0) }
+                            // rememberSaveable so the active tab survives rotation / config change.
+                            var selectedTab by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(0) }
                             val tabs = listOf(
                                 stringResource(R.string.tab_overview_title),
                                 stringResource(R.string.tab_components),
@@ -929,7 +930,8 @@ private fun GeneralTabScreen(details: DetailedAppInfo) {
 
 @Composable
 private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
-    var searchQuery by remember { mutableStateOf("") }
+    // rememberSaveable so the search query survives rotation / config change.
+    var searchQuery by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     val filteredPermissions = remember(searchQuery, permissions) {
         permissions.filter {
             it.name.contains(searchQuery, ignoreCase = true) ||
@@ -1041,7 +1043,8 @@ private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
 
 @Composable
 private fun ComponentsTabScreen(details: DetailedAppInfo) {
-    var searchQuery by remember { mutableStateOf("") }
+    // rememberSaveable so the search query survives rotation / config change.
+    var searchQuery by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
 
     Column(modifier = Modifier.fillMaxSize()) {
         OutlinedTextField(
@@ -1080,55 +1083,108 @@ private fun ComponentsTabScreen(details: DetailedAppInfo) {
                 )
             }
 
+        // rememberSaveable so the expanded/collapsed sections survive rotation / config changes.
+        var activitiesExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+        var servicesExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+        var receiversExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+        var providersExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+
+        val clipboard = LocalClipboard.current
+        val context = LocalContext.current
+        val coroutineScope = rememberCoroutineScope()
+        val classNameLabel = stringResource(R.string.class_name_label)
+        val onCopyClassName: (String) -> Unit = { className ->
+            coroutineScope.launch {
+                clipboard.setClipEntry(
+                    ClipEntry(
+                        android.content.ClipData.newPlainText(classNameLabel, className)
+                    )
+                )
+            }
+            Toast.makeText(
+                context,
+                (R.string.toast_copied_class_name),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+
+        val activitiesTitle =
+            stringResource(R.string.section_activities_title, filteredActivities.size)
+        val servicesTitle =
+            stringResource(R.string.section_services_title, filteredServices.size)
+        val receiversTitle =
+            stringResource(R.string.section_receivers_title, filteredReceivers.size)
+        val providersTitle =
+            stringResource(R.string.section_providers_title, filteredProviders.size)
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(horizontal = 16.dp)
         ) {
-            item {
-                CollapsibleSection(
-                    title = stringResource(R.string.section_activities_title, filteredActivities.size),
-                    items = filteredActivities
-                )
-            }
-            item {
-                CollapsibleSection(
-                    title = stringResource(R.string.section_services_title, filteredServices.size),
-                    items = filteredServices
-                )
-            }
-            item {
-                CollapsibleSection(
-                    title = stringResource(R.string.section_receivers_title, filteredReceivers.size),
-                    items = filteredReceivers
-                )
-            }
-            item {
-                CollapsibleSection(
-                    title = stringResource(R.string.section_providers_title, filteredProviders.size),
-                    items = filteredProviders
-                )
-            }
+            componentSection(
+                keyPrefix = "activities",
+                title = activitiesTitle,
+                items = filteredActivities,
+                expanded = activitiesExpanded,
+                onToggle = { activitiesExpanded = !activitiesExpanded },
+                onCopy = onCopyClassName
+            )
+            componentSection(
+                keyPrefix = "services",
+                title = servicesTitle,
+                items = filteredServices,
+                expanded = servicesExpanded,
+                onToggle = { servicesExpanded = !servicesExpanded },
+                onCopy = onCopyClassName
+            )
+            componentSection(
+                keyPrefix = "receivers",
+                title = receiversTitle,
+                items = filteredReceivers,
+                expanded = receiversExpanded,
+                onToggle = { receiversExpanded = !receiversExpanded },
+                onCopy = onCopyClassName
+            )
+            componentSection(
+                keyPrefix = "providers",
+                title = providersTitle,
+                items = filteredProviders,
+                expanded = providersExpanded,
+                onToggle = { providersExpanded = !providersExpanded },
+                onCopy = onCopyClassName
+            )
         }
     }
 }
 
-@Composable
-private fun CollapsibleSection(title: String, items: List<String>) {
-    var expanded by remember { mutableStateOf(false) }
-    val coroutineScope = rememberCoroutineScope()
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .clickable { expanded = !expanded }
-            .padding(16.dp)
-    ) {
+/**
+ * Emits a collapsible component section (activities / services / receivers / providers) directly
+ * into the parent [LazyColumn]. The header is a single lazy item and, when expanded, every
+ * component row is emitted as its own lazy item via [itemsIndexed] so only the on-screen rows are
+ * composed and measured. Previously each section was one LazyColumn item whose expanded body
+ * iterated the whole list inside a [Column], composing/measuring every row eagerly on the main
+ * thread (visible jank / potential OOM for very large system apps).
+ */
+private fun LazyListScope.componentSection(
+    keyPrefix: String,
+    title: String,
+    items: List<String>,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onCopy: (String) -> Unit
+) {
+    item(key = "$keyPrefix-header", contentType = "component_header") {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(
+                    if (expanded) RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+                    else RoundedCornerShape(20.dp)
+                )
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .clickable { onToggle() }
+                .padding(16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1146,54 +1202,72 @@ private fun CollapsibleSection(title: String, items: List<String>) {
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
 
-        AnimatedVisibility(visible = expanded) {
-            Column(modifier = Modifier.padding(top = 12.dp)) {
-                if (items.isEmpty()) {
+    if (expanded) {
+        if (items.isEmpty()) {
+            item(key = "$keyPrefix-empty", contentType = "component_empty") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 16.dp)
+                ) {
                     Text(
                         text = stringResource(R.string.components_none_declared),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 4.dp)
                     )
-                } else {
-                    val clipboard = LocalClipboard.current
-                    val context = LocalContext.current
-                    val classNameLabel = stringResource(R.string.class_name_label)
-                    items.forEach { className ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable {
-                                    coroutineScope.launch {
-                                        clipboard.setClipEntry(
-                                            ClipEntry(
-                                                android.content.ClipData.newPlainText(classNameLabel, className)
-                                            )
-                                        )
-                                    }
-                                    Toast.makeText(
-                                        context,
-                                        (R.string.toast_copied_class_name),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                                .padding(vertical = 6.dp, horizontal = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = className,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontFamily = firaMonoFontFamily,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
+                }
+            }
+        } else {
+            itemsIndexed(
+                items = items,
+                // Index is part of the key: a package's component list can contain duplicate class
+                // names (PackageManager returns them un-deduped), and a duplicate LazyColumn key
+                // throws IllegalArgumentException and crashes the screen.
+                key = { index, className -> "$keyPrefix-$index-$className" },
+                contentType = { _, _ -> "component" }
+            ) { index, className ->
+                val isLast = index == items.lastIndex
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (isLast) Modifier.clip(
+                                RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp)
+                            ) else Modifier
+                        )
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = if (isLast) 12.dp else 0.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onCopy(className) }
+                            .padding(vertical = 6.dp, horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = className,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontFamily = firaMonoFontFamily,
+                            modifier = Modifier.weight(1f)
+                        )
                     }
                 }
             }
         }
+    }
+
+    item(key = "$keyPrefix-spacer") {
+        Spacer(modifier = Modifier.height(12.dp))
     }
 }
 

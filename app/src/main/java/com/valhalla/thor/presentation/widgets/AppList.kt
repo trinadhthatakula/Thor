@@ -51,7 +51,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -122,11 +121,14 @@ fun AppList(
 ) {
     // 1. Local State
     var showFilterSheet by rememberSaveable { mutableStateOf(false) }
-    var multiSelection by rememberSaveable { mutableStateOf(emptyList<AppInfo>()) }
+    // Not rememberSaveable: AppInfo is not Parcelable/Serializable, so saving a non-empty
+    // selection would throw NotSerializableException on rotation/process death. The selection is
+    // intentionally transient — it is cleared on appListType change and via BackHandler.
+    var multiSelection by remember { mutableStateOf(emptyList<AppInfo>()) }
 
     // Optimization: Use a Set for O(1) lookups
-    val selectedPackageNames by remember(multiSelection) {
-        derivedStateOf { multiSelection.map { it.packageName }.toSet() }
+    val selectedPackageNames = remember(multiSelection) {
+        multiSelection.mapTo(HashSet()) { it.packageName }
     }
     val isMultiSelectMode = multiSelection.isNotEmpty()
 

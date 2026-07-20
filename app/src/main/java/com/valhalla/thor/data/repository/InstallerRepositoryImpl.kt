@@ -26,8 +26,9 @@ import com.valhalla.thor.R
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.getDisplayName
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Single
@@ -332,7 +333,7 @@ class InstallerRepositoryImpl(
         val tempDir = File(context.cacheDir, "install_root_${UUID.randomUUID()}")
         val tempFiles = copyUriToTempFiles(uri, tempDir)
 
-        if (tempFiles == null || tempFiles.isEmpty()) {
+        if (tempFiles.isNullOrEmpty()) {
             eventBus.emit(InstallState.Error(UiText.DynamicString("Failed to extract or copy installation files")))
             tempDir.deleteRecursively()
             return
@@ -371,7 +372,7 @@ class InstallerRepositoryImpl(
         val tempDir = File(baseDir, "install_shizuku_${UUID.randomUUID()}")
         val tempFiles = copyUriToTempFiles(uri, tempDir)
 
-        if (tempFiles == null || tempFiles.isEmpty()) {
+        if (tempFiles.isNullOrEmpty()) {
             tempDir.deleteRecursively()
             return false
         }
@@ -419,7 +420,7 @@ class InstallerRepositoryImpl(
         val tempDir = File(baseDir, "install_dhizuku_${UUID.randomUUID()}")
         val tempFiles = copyUriToTempFiles(uri, tempDir)
 
-        if (tempFiles == null || tempFiles.isEmpty()) {
+        if (tempFiles.isNullOrEmpty()) {
             tempDir.deleteRecursively()
             return false
         }
@@ -505,11 +506,23 @@ class InstallerRepositoryImpl(
             packageInstaller.openSession(sessionId)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
+            // createSession() succeeded but the session could not be opened — abandon it
+            // so the failed session isn't leaked in PackageInstaller (both paths below).
+            try {
+                packageInstaller.abandonSession(sessionId)
+            } catch (_: Exception) {
+            }
             if (emitErrors) {
                 eventBus.emit(InstallState.Error(UiText.DynamicString("Failed to open session: ${e.message}")))
                 return
             } else throw e
         }
+
+        // Whole-percent progress ticks are handed off (non-blocking) through this
+        // conflated channel and emitted by a child of the install coroutine below, so a
+        // late tick can never land after a terminal state and cancelling the install
+        // cancels the emission too.
+        val progressChannel = Channel<Float>(Channel.CONFLATED)
 
         // Helper to track progress across different streams
         fun getTrackedStream(baseStream: InputStream): InputStream {
@@ -537,9 +550,9 @@ class InstallerRepositoryImpl(
                             ((bytesProcessed.toDouble() / totalBytes) * 100).toInt()
                         if (currentProgress > lastProgressEmitted) {
                             lastProgressEmitted = currentProgress
-                            CoroutineScope(Dispatchers.IO).launch {
-                                eventBus.emit(InstallState.Installing(bytesProcessed.toFloat() / totalBytes))
-                            }
+                            // Non-blocking hand-off; conflated so only the latest tick
+                            // survives if the drainer is momentarily behind.
+                            progressChannel.trySend(bytesProcessed.toFloat() / totalBytes)
                         }
                     }
                 }
@@ -552,12 +565,29 @@ class InstallerRepositoryImpl(
             // STORED-with-data-descriptor entries and derails on the first one.
             val bundleFile = File(context.cacheDir, "install_bundle_${UUID.randomUUID()}")
             try {
-                val copied = context.contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(bundleFile).use { output ->
-                        getTrackedStream(input).copyTo(output)
+                val copied = coroutineScope {
+                    // Drain progress ticks on a child coroutine so emissions are bound to the
+                    // install job (cancellation stops them) and can never outlive the copy phase.
+                    // Closing the channel ends the drain loop; coroutineScope then awaits this child
+                    // before returning, so the final tick is flushed before we continue. No explicit
+                    // join(): it is redundant here, and a suspending join() in a finally could mask
+                    // the real failure (e.g. an IOException from openInputStream) under cancellation.
+                    launch {
+                        for (fraction in progressChannel) {
+                            eventBus.emit(InstallState.Installing(fraction))
+                        }
                     }
-                    true
-                } ?: false
+                    try {
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            FileOutputStream(bundleFile).use { output ->
+                                getTrackedStream(input).copyTo(output)
+                            }
+                            true
+                        } ?: false
+                    } finally {
+                        progressChannel.close()
+                    }
+                }
 
                 if (!copied) {
                     session.abandon()

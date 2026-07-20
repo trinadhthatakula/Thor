@@ -15,19 +15,31 @@ import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.KoinViewModel
 
 // packageName + appName of an app frozen outside the freezer list — drives the "Add to Freezer" snackbar
 data class FreezerPrompt(val packageName: String, val appName: String?)
+
+// One-off UI feedback that must fire exactly once — kept off the UiState StateFlow so it isn't
+// re-delivered on recomposition/config change. Collected in FreezerScreen via ObserveAsEvents.
+sealed interface FreezerEvent {
+    data class ShowToast(val message: UiText) : FreezerEvent
+    data class ShowFreezerPrompt(val packageName: String, val appName: String?) : FreezerEvent
+}
 
 data class FreezerUiState(
     val isLoading: Boolean = true,
@@ -39,8 +51,6 @@ data class FreezerUiState(
     val multiSelection: Set<String> = emptySet(),
     val searchQuery: String = "",
     val manageSheetSearchQuery: String = "",
-    val actionMessage: UiText? = null,
-    val freezerPrompt: FreezerPrompt? = null,
     val autoFreezeEnabled: Boolean = false,
     val freezerMode: FreezerMode = FreezerMode.FREEZE,
     val isDhizuku: Boolean = false,
@@ -63,6 +73,13 @@ class FreezerViewModel(
     private val _uiState = MutableStateFlow(FreezerUiState())
     val uiState: StateFlow<FreezerUiState> = _uiState.asStateFlow()
 
+    // Buffered Channel (not a replay=0 SharedFlow) so a one-off event emitted while no collector is
+    // subscribed — e.g. the load-failure toast from observeApps() in init(), fired before the screen's
+    // ObserveAsEvents reaches STARTED (FreezerViewModel is created eagerly by MainScreen) — is retained
+    // and delivered when the screen subscribes rather than silently dropped. Matches MainViewModel.
+    private val _events = Channel<FreezerEvent>(Channel.BUFFERED)
+    val events: Flow<FreezerEvent> = _events.receiveAsFlow()
+
     init {
         observeApps()
         observePreferences()
@@ -80,6 +97,16 @@ class FreezerViewModel(
                     val allApps = userApps + systemApps
                     Triple(pkgSet, allApps.filter { it.packageName in pkgSet }, allApps) to priv
                 }
+                    .retryWhen { cause, attempt ->
+                        // transient PM/binder failures self-heal; never retry cancellation; bounded so a hard
+                        // failure still falls through to the catch (which shows the load-failure toast).
+                        if (cause is CancellationException || attempt >= 2) {
+                            false
+                        } else {
+                            delay(500)
+                            true
+                        }
+                    }
                     .flowOn(Dispatchers.Default)
                     .collect { (appsData, priv) ->
                         val (pkgSet, freezerApps, allApps) = appsData
@@ -100,12 +127,8 @@ class FreezerViewModel(
                     }
             } catch (e: Exception) {
                 Logger.e("FreezeViewModel", "observe apps failed", e)
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        actionMessage = UiText.StringResource(R.string.failed_to_load_apps)
-                    )
-                }
+                _uiState.update { it.copy(isLoading = false) }
+                emitToast(UiText.StringResource(R.string.failed_to_load_apps))
             }
         }
     }
@@ -147,15 +170,13 @@ class FreezerViewModel(
                 else manageAppUseCase.forceUnfreeze(pkg)
                 freezerShortcutManager.disableAppShortcut(pkg)
             }
-            _uiState.update {
-                it.copy(
-                    multiSelection = emptySet(),
-                    actionMessage = UiText.StringResource(
-                        R.string.removed_from_freezer_success,
-                        packageNames.size
-                    )
+            _uiState.update { it.copy(multiSelection = emptySet()) }
+            emitToast(
+                UiText.StringResource(
+                    R.string.removed_from_freezer_success,
+                    packageNames.size
                 )
-            }
+            )
         }
     }
 
@@ -172,14 +193,7 @@ class FreezerViewModel(
                         freezerRepository.add(packageName)
                     }
                     .onFailure { e ->
-                        _uiState.update {
-                            it.copy(
-                                actionMessage = UiText.StringResource(
-                                    R.string.error_format,
-                                    e.message ?: ""
-                                )
-                            )
-                        }
+                        emitToast(UiText.StringResource(R.string.error_format, e.message ?: ""))
                     }
             } else {
                 freezerRepository.remove(packageName)
@@ -189,14 +203,7 @@ class FreezerViewModel(
                 (if (app != null) manageAppUseCase.restoreApp(packageName, app.enabled, app.isSuspended)
                 else manageAppUseCase.forceUnfreeze(packageName))
                     .onFailure { e ->
-                        _uiState.update {
-                            it.copy(
-                                actionMessage = UiText.StringResource(
-                                    R.string.error_format,
-                                    e.message ?: ""
-                                )
-                            )
-                        }
+                        emitToast(UiText.StringResource(R.string.error_format, e.message ?: ""))
                     }
             }
         }
@@ -215,21 +222,14 @@ class FreezerViewModel(
     fun addToFreezer(packageName: String) {
         viewModelScope.launch(Dispatchers.IO) {
             freezerRepository.add(packageName)
-            _uiState.update {
-                it.copy(
-                    freezerPrompt = null,
-                    actionMessage = UiText.StringResource(R.string.added_to_freezer_success)
-                )
-            }
+            emitToast(UiText.StringResource(R.string.added_to_freezer_success))
         }
     }
 
     fun showFreezerPrompt(packageName: String, appName: String?) {
-        _uiState.update { it.copy(freezerPrompt = FreezerPrompt(packageName, appName)) }
-    }
-
-    fun dismissFreezerPrompt() {
-        _uiState.update { it.copy(freezerPrompt = null) }
+        viewModelScope.launch {
+            _events.send(FreezerEvent.ShowFreezerPrompt(packageName, appName))
+        }
     }
 
     // --- Single-app freeze/unfreeze (called from AppInfoDialog in FreezerScreen) ---
@@ -243,34 +243,15 @@ class FreezerViewModel(
                 .onSuccess {
                     freezerShortcutManager.refreshAppShortcut(packageName)
                     if (!inFreezer) {
-                        _uiState.update {
-                            it.copy(
-                                freezerPrompt = FreezerPrompt(
-                                    packageName,
-                                    appName
-                                )
-                            )
-                        }
+                        _events.send(FreezerEvent.ShowFreezerPrompt(packageName, appName))
                     } else {
-                        _uiState.update {
-                            it.copy(
-                                actionMessage = UiText.StringResource(
-                                    R.string.frozen_success,
-                                    appName ?: packageName
-                                )
-                            )
-                        }
+                        emitToast(
+                            UiText.StringResource(R.string.frozen_success, appName ?: packageName)
+                        )
                     }
                 }
                 .onFailure { e ->
-                    _uiState.update {
-                        it.copy(
-                            actionMessage = UiText.StringResource(
-                                R.string.error_format,
-                                e.message ?: ""
-                            )
-                        )
-                    }
+                    emitToast(UiText.StringResource(R.string.error_format, e.message ?: ""))
                 }
         }
     }
@@ -288,33 +269,19 @@ class FreezerViewModel(
             restoreResult
                 .onSuccess {
                     freezerShortcutManager.refreshAppShortcut(packageName)
-                    _uiState.update {
-                        it.copy(
-                            actionMessage = UiText.StringResource(
-                                R.string.unfrozen_success,
-                                appName ?: packageName
-                            )
-                        )
-                    }
+                    emitToast(
+                        UiText.StringResource(R.string.unfrozen_success, appName ?: packageName)
+                    )
                 }
                 .onFailure { e ->
-                    _uiState.update {
-                        it.copy(
-                            actionMessage = UiText.StringResource(
-                                R.string.error_format,
-                                e.message ?: ""
-                            )
-                        )
-                    }
+                    emitToast(UiText.StringResource(R.string.error_format, e.message ?: ""))
                 }
         }
     }
 
     // --- Feedback ---
 
-    fun dismissMessage() {
-        _uiState.update { it.copy(actionMessage = null) }
-    }
+    private suspend fun emitToast(text: UiText) = _events.send(FreezerEvent.ShowToast(text))
 
     private fun observePreferences() {
         viewModelScope.launch {
@@ -361,14 +328,12 @@ class FreezerViewModel(
             packageNames.forEach { pkg ->
                 freezerRepository.add(pkg)
             }
-            _uiState.update {
-                it.copy(
-                    actionMessage = UiText.StringResource(
-                        R.string.added_to_freezer_count_success,
-                        packageNames.size
-                    )
+            emitToast(
+                UiText.StringResource(
+                    R.string.added_to_freezer_count_success,
+                    packageNames.size
                 )
-            }
+            )
         }
     }
 
@@ -399,9 +364,13 @@ class FreezerViewModel(
     }
 
     fun pinBulkShortcut(freeze: Boolean) {
-        freezerShortcutManager.pinBulkShortcut(
-            if (freeze) FreezerShortcutContract.ACTION_FREEZE_ALL
-            else FreezerShortcutContract.ACTION_UNFREEZE_ALL
-        )
+        // Rasterizes a 216x216 tile bitmap + issues a binder pin request; keep it off Main
+        // to avoid click-time jank, matching pinAppToLauncher / pinAllToLauncher.
+        viewModelScope.launch(Dispatchers.Default) {
+            freezerShortcutManager.pinBulkShortcut(
+                if (freeze) FreezerShortcutContract.ACTION_FREEZE_ALL
+                else FreezerShortcutContract.ACTION_UNFREEZE_ALL
+            )
+        }
     }
 }

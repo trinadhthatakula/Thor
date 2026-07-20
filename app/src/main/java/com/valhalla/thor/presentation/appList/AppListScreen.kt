@@ -48,6 +48,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
 import com.valhalla.asgard.components.ConnectedButtonGroup
 import com.valhalla.asgard.components.ConnectedButtonGroupItem
+import com.valhalla.thor.presentation.freezer.FreezerPrompt
+import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.presentation.widgets.AppList
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
 import com.valhalla.thor.data.manager.UsageAccessManager
@@ -71,6 +73,14 @@ fun AppListScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var selectedAppForDialog by remember { mutableStateOf<AppInfo?>(null) }
+    // One-off freezer prompt is driven by a transient event; the screen holds its own visibility
+    // state so it isn't replayed on recomposition/config change.
+    var freezerPrompt by remember { mutableStateOf<FreezerPrompt?>(null) }
+
+    // Resolve installer identifiers to display strings here (keeps the ViewModel Context-free).
+    val installerNameMap = remember(state.installerNameMap, context) {
+        state.installerNameMap.mapValues { (_, label) -> label.asString(context) }
+    }
 
     LaunchedEffect(Unit) {
         if (state.allUserApps.isEmpty() && state.allSystemApps.isEmpty() && state.isLoading) {
@@ -78,15 +88,16 @@ fun AppListScreen(
         }
     }
 
-    // Handle Feedback (Toasts)
-    LaunchedEffect(state.actionMessage) {
-        state.actionMessage?.let { message ->
-            Toast.makeText(context, message.asString(context), Toast.LENGTH_SHORT).show()
-            viewModel.dismissMessage()
+    // Handle one-off feedback (toasts + freezer prompt) delivered exactly once.
+    ObserveAsEvents(viewModel.events) { event ->
+        when (event) {
+            is AppListEvent.ShowMessage ->
+                Toast.makeText(context, event.message.asString(context), Toast.LENGTH_SHORT).show()
+
+            is AppListEvent.ShowFreezerPrompt ->
+                freezerPrompt = event.prompt
         }
     }
-
-
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -170,7 +181,7 @@ fun AppListScreen(
                     isDhizuku = state.isDhizuku,
                     isGrid = state.isGrid,
                     onToggleView = viewModel::toggleGridMode,
-                    installerNameMap = state.installerNameMap,
+                    installerNameMap = installerNameMap,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
                     // Actions forwarded to ViewModel
@@ -202,12 +213,13 @@ fun AppListScreen(
             }
         }
         FreezerPromptSnackbar(
-            visible = state.freezerPrompt != null,
-            appName = state.freezerPrompt?.appName,
+            visible = freezerPrompt != null,
+            appName = freezerPrompt?.appName,
             onAddToFreezer = {
-                state.freezerPrompt?.let { viewModel.addToFreezer(it.packageName) }
+                freezerPrompt?.let { viewModel.addToFreezer(it.packageName) }
+                freezerPrompt = null
             },
-            onDismiss = viewModel::dismissFreezerPrompt,
+            onDismiss = { freezerPrompt = null },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 16.dp)

@@ -10,6 +10,8 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.valhalla.thor.domain.model.ThemeMode
+import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.presentation.common.ShizukuPermissionHandler
 import com.valhalla.thor.presentation.home.HomeViewModel
@@ -17,7 +19,6 @@ import com.valhalla.thor.presentation.main.MainScreen
 import com.valhalla.thor.presentation.security.AuthState
 import com.valhalla.thor.presentation.security.BiometricScreen
 import com.valhalla.thor.presentation.security.SecurityViewModel
-import com.valhalla.thor.presentation.settings.SettingsViewModel
 import com.valhalla.thor.presentation.theme.ThorTheme
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.launch
@@ -29,7 +30,7 @@ class HomeActivity : ComponentActivity() {
     private val systemRepository: SystemRepository by inject()
     private val homeViewModel: HomeViewModel by viewModel()
     private val securityViewModel: SecurityViewModel by viewModel()
-    private val settingsViewModel: SettingsViewModel by viewModel()
+    private val preferenceRepository: PreferenceRepository by inject()
 
     private val requestCode = 1001
     private var hasRequestedShizuku = false
@@ -54,7 +55,7 @@ class HomeActivity : ComponentActivity() {
         shizukuHandler.register()
 
         setContent {
-            val prefs by settingsViewModel.preferences.collectAsStateWithLifecycle()
+            val prefs by preferenceRepository.userPreferences.collectAsStateWithLifecycle(initialValue = UserPreferences())
 
             val systemDark = isSystemInDarkTheme()
             val darkTheme = when (prefs.themeMode) {

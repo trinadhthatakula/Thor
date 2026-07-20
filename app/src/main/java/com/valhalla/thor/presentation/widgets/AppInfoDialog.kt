@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -96,6 +97,7 @@ fun AppInfoDialog(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(bottom = 32.dp), // Add bottom padding for nav bar
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -219,12 +221,12 @@ fun AppInfoDialog(
                         )
                     } else if (isUnsafe) {
                         Text(
-                            text = "This system app is classified as UNSAFE. Removing it has an extremely high risk of bootlooping your device, so uninstallation is blocked.",
+                            text = stringResource(R.string.warning_unsafe_uninstall),
                             textAlign = TextAlign.Center
                         )
                     } else if (isExpert) {
                         Text(
-                            text = "This system app is classified as EXPERT. Removing it breaks important functionality. Are you sure you want to proceed?",
+                            text = stringResource(R.string.warning_expert_uninstall),
                             textAlign = TextAlign.Center
                         )
                     } else {
@@ -243,7 +245,7 @@ fun AppInfoDialog(
                         onDismiss()
                     }) {
                         Text(
-                            text = if (isExpert) "Uninstall Anyway" else stringResource(R.string.yes),
+                            text = if (isExpert) stringResource(R.string.uninstall_anyway) else stringResource(R.string.yes),
                             color = if (isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                         )
                     }

@@ -1,6 +1,4 @@
 <resources>
-    <string name="title_activity_script_runner">ScriptRunner</string>
-    <string name="title_activity_home">HomeActivity</string>
 
     <!-- Navigation -->
     <string name="home">الرئيسية</string>
@@ -67,6 +65,8 @@
     <string name="reinstall_all_subtitle">%1$d تطبيق %2$s ليس من متجر Play. هل تريد إصلاحها؟</string>
     <string name="install_from_file">تثبيت من ملف</string>
     <string name="install_from_file_subtitle">تثبيت APK أو XAPK أو APKS أو حزم مقسمة</string>
+    <string name="home_extensions_title">الإضافات</string>
+    <string name="home_extensions_subtitle">إدارة وفتح</string>
     <string name="app_distribution">توزيع التطبيقات</string>
     <string name="total_apps">الإجمالي: %1$d</string>
     <string name="others">أخرى</string>
@@ -119,8 +119,6 @@
     <string name="freeze_anyway">التجميد على أي حال</string>
     <string name="risk_warning_title">تحذير من المخاطر</string>
     <string name="risk_warning_desc">هذا يجبر سجل المثبت على \'Google Play Store\'.\n\nقد تفشل التحديثات إذا لم يتطابق التوقيع مع نسخة المتجر الرسمية.</string>
-    <string name="reinstall_play_store_title">إعادة التثبيت باستخدام متجر Play؟</string>
-    <string name="reinstall_play_store_desc">سيحاول هذا إعادة تثبيت %1$s باستخدام متجر Google Play.</string>
     <string name="fix_store">إصلاح المتجر</string>
 
     <!-- App Status -->
@@ -157,14 +155,12 @@
     <string name="cd_uninstalled">تم إلغاء التثبيت</string>
     <string name="cd_suspended">معلق</string>
     <string name="cd_selected">مختار</string>
-    <string name="cd_search">بحث</string>
     <string name="cd_clear">مسح</string>
     <string name="cd_settings">الإعدادات</string>
     <string name="select_app_details">اختر تطبيقاً لعرض التفاصيل</string>
 
     <!-- Permission Manager -->
     <string name="action_permissions">الأذونات</string>
-    <string name="permissions_title">الأذونات</string>
     <string name="permissions_search">بحث في الأذونات&#8230;</string>
     <string name="permissions_read_only_title">وضع القراءة فقط</string>
     <string name="permissions_read_only_desc">مطلوب وصول مرتفع (Root أو Shizuku أو Dhizuku) لتبديل الأذونات. أنت تشاهد الأذونات حالياً في وضع القراءة فقط.</string>
@@ -233,7 +229,6 @@
     <string name="unsuspended_success">تم إلغاء تعليق %1$s</string>
     <string name="unfreezing_app">جاري إلغاء تجميد %1$s…</string>
     <string name="uninstall_success">تم إلغاء تثبيت %1$s</string>
-    <string name="batch_share_not_supported">المشاركة الجماعية غير مدعومة بعد</string>
     <string name="error_app_info_missing">خطأ: معلومات التطبيق مفقودة للإجراء</string>
     <string name="failed_to_load_app_details">فشل في تحميل تفاصيل التطبيق</string>
 
@@ -283,12 +278,10 @@
     <string name="no_native_libs_found">لم يتم العثور على مكتبات أصلية</string>
     <string name="section_req_features_title">الميزات المطلوبة</string>
     <string name="no_req_features_found">لم يتم طلب أي ميزات مطلوبة</string>
-    <string name="share_via">مشاركة عبر</string>
     <string name="version_format">v%1$s</string>
 
     <!-- Hardcoded string replacements -->
     <string name="manage_freezer">إدارة المجمد</string>
-    <string name="freeze_all">تجميد الكل</string>
     <string name="add">إضافة</string>
     <string name="unlock_to_continue">فتح القفل للمتابعة</string>
     <string name="auth_failed">فشل المصادقة</string>
@@ -306,17 +299,11 @@
         <item quantity="many">تطلب هذه الحزمة %1$d إذنًا. %2$s</item>
         <item quantity="other">تطلب هذه الحزمة %1$d إذن. %2$s</item>
     </plurals>
-    <string name="install_options_title">خيارات التثبيت: </string>
     <string name="install_mode_normal">عادي</string>
     <string name="install_mode_shizuku">Shizuku</string>
     <string name="install_mode_dhizuku">Dhizuku</string>
     <string name="install_mode_root">Root</string>
     <string name="install_mode_external_short">خارجي</string>
-    <string name="install_mode_normal_format">تثبيت عادي (%1$s)</string>
-    <string name="install_mode_shizuku_format">%1$s عبر Shizuku</string>
-    <string name="install_mode_dhizuku_format">%1$s عبر Dhizuku</string>
-    <string name="install_mode_root_format">%1$s باستخدام روت (Root)</string>
-    <string name="install_mode_external">فتح باستخدام…</string>
     <string name="install_assembling_progress">تجميع: %1$d%%</string>
     <string name="install_confirm_system_dialog">يرجى تأكيد التثبيت في نافذة النظام الحوارية.</string>
     <string name="install_success">تم التثبيت بنجاح</string>
@@ -328,12 +315,6 @@
     <string name="install_word_install">تثبيت</string>
     <string name="install_warning_downgrade">تحذير: قد يؤدي تثبيت إصدار أقدم إلى حدوث مشكلات.</string>
     <string name="sensitive">حساس</string>
-    <string name="protection_normal">عادي</string>
-    <string name="protection_dangerous">خطير</string>
-    <string name="protection_signature">توقيع</string>
-    <string name="protection_signature_system">توقيع/نظام</string>
-    <string name="expanded">موسع</string>
-    <string name="collapsed">مطوي</string>
 
     <!-- Terminal Logs -->
     <string name="log_initializing">جارٍ التهيئة…</string>
@@ -400,7 +381,6 @@
     <string name="explore_other_apps_desc">ألقِ نظرة على لوحة تحكم المطور وجرب تطبيقات أخرى</string>
     <string name="donate_paypal_title">التبرع عبر PayPal</string>
     <string name="donate_paypal_desc">أرسل تبرعًا لمرة واحدة مباشرة</string>
-    <string name="choose_subscription_tier">اختر مستوى الدعم</string>
     <string name="billing_error">خطأ في الدفع</string>
 
     <!-- Support & Community Dashboard Section -->
@@ -430,4 +410,75 @@
     <string name="animation_intensity_high">عالية</string>    <string name="suspended_app_dialog_title">Thor</string>
     <string name="suspended_app_dialog_message">تم تعليق هذا التطبيق بواسطة Thor.</string>
 
+    
+    <!-- Missing Translations -->
+    <string name="auto_reinstall">إعادة التثبيت التلقائي للتطبيقات</string>
+    <string name="auto_reinstall_desc">الحفاظ تلقائيًا على متجر Google Play كمثبت رئيسي لتمكين التحديثات في الخلفية</string>
+    <string name="legacy_extension_title">تم اكتشاف امتداد قديم</string>
+    <string name="legacy_extension_desc">تم تثبيت إصدار قديم من امتداد Stormbringer (باسم خاطئ \"Strombringer\") الملحق. يرجى إلغاء تثبيته لتجنب التعارض وتثبيت امتداد Stormbringer المحدث.</string>
+    <string name="action_export">تصدير</string>
+    <string name="export_explain_apk">يقوم Thor بحفظ هذا التطبيق كملف تثبيت فردي (.apk) في المجلد أدناه. استخدمه لنسخ التطبيق احتياطيًا أو إعادة تثبيته لاحقًا.</string>
+    <string name="export_explain_apks">يأتي هذا التطبيق في أجزاء متعددة ومقسمة، لذا يقوم Thor بحزمها في حزمة واحدة (.apks) في المجلد أدناه. يمكنك إعادة تثبيتها في أي وقت باستخدام مثبت Thor.</string>
+    <string name="export_save_to">حفظ في</string>
+    <string name="export_change">تغيير</string>
+    <string name="export_in_progress">جاري التصدير…</string>
+    <string name="export_saved">تم الحفظ في %1$s</string>
+    <string name="export_failed">فشل التصدير: %1$s</string>
+    <string name="export_failed_unknown">خطأ غير معروف</string>
+    <string name="export_dest_downloads">التنزيلات/Thor</string>
+    <string name="export_dest_selected">المجلد المحدد</string>
+    <string name="failed_to_load_permissions">فشل تحميل الأذونات</string>
+    <string name="permission_status_updated">تم تحديث حالة الإذن</string>
+    <string name="failed_to_modify_permission">فشل تعديل الإذن</string>
+    <string name="permissions">الأذونات</string>
+    <string name="usage_access">الوصول إلى بيانات الاستخدام</string>
+    <string name="usage_access_granted_subtitle">تم المنح — يتيح فرز التطبيقات حسب الحجم</string>
+    <string name="usage_access_needed_subtitle">مطلوب لقراءة أحجام التطبيقات للفرز حسب الحجم</string>
+    <string name="usage_access_needed_title">الوصول إلى بيانات الاستخدام مطلوب</string>
+    <string name="usage_access_prompt_body">يحتاج Thor إلى إذن الوصول إلى بيانات الاستخدام لقراءة أحجام التطبيقات. يرجى تفعيله لـ Thor، ثم اختر \"الحجم\" مجددًا. يمكنك أيضًا إدارة هذا تحت الإعدادات ← الأذونات.</string>
+    <string name="open_settings">فتح الإعدادات</string>
+    <string name="freeze_mode">وضع التجميد</string>
+    <string name="suspend_instead_of_freeze">التعليق بدلاً من التجميد</string>
+    <string name="suspend_instead_of_freeze_desc">عند التجميد (بما في ذلك التجميد التلقائي)، قم بتتعليق التطبيقات بدلاً من تعطيلها. تظل التطبيقات المعلقة مرئية ولكن متوقفة مؤقتًا.</string>
+    <string name="add_freezer_to_launcher">إضافة المجمد إلى شاشة التشغيل</string>
+    <string name="add_freezer_to_launcher_desc">إظهار التطبيقات المجمدة كاختصارات على الشاشة الرئيسية يمكنك النقر عليها لتشغيلها</string>
+    <string name="add_to_home_screen">إضافة إلى الشاشة الرئيسية</string>
+    <string name="freeze_all_apps">تجميد الكل</string>
+    <string name="shortcuts">الاختصارات</string>
+    <string name="shortcut_add_all">إضافة جميع التطبيقات</string>
+    <string name="shortcut_added_named">تم إضافة %1$s إلى الشاشة الرئيسية</string>
+    <string name="shortcut_added">تم إضافة الاختصار إلى الشاشة الرئيسية</string>
+    <string name="pin_all_confirm_title">إضافة جميع التطبيقات إلى الشاشة الرئيسية؟</string>
+    <string name="pin_all_confirm_desc">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لكل تطبيق من تطبيقاتك المجمدة الـ %1$d وقد يملأ شاشتك الرئيسية. ستطلب منك شاشة التشغيل تأكيد كل منها.</string>
+    <string name="freezer_launch_failed">تعذر تشغيل هذا التطبيق</string>
+    <string name="shortcut_no_longer_frozen">لم يعد مجمدًا</string>
+    <string name="easter_egg_promoted">🎉 تم ترويج هذه الميزة المخفية بالفعل — انتظر الميزة التالية!</string>
+    <string name="support_tab_play_store">متجر Play</string>
+    <string name="support_tab_direct">مباشر</string>
+    <string name="run_extension">تشغيل</string>
+    <string name="installer_play_store">متجر PLAY</string>
+    <string name="installer_fdroid">F-DROID</string>
+    <string name="installer_sideloaded">تثبيت خارجي</string>
+    <string name="permission_protection_level">الحماية: %1$s</string>
+    <string name="extension_consent_title">قبل المتابعة</string>
+    <string name="extension_consent_body">الامتدادات هي إضافات قوية يمكنها تغيير سلوك التطبيقات والنظام على جهازك. ليست جميعها من صنعنا — يمكن لأي شخص بناء امتداد. نقوم بالتحقق من الامتدادات التي نوزعها وتوقيعها، ولكن هذا يظل مجالاً محفوفًا بالمخاطر بطبيعته.\n\nبالمتابعة، فإنك توافق على أنك وحدك المسؤول عما تقوم بتثبيته وتفعيله هنا، وأن Thor ومطوريه ليسوا مسؤولين عن أي فقدان للبيانات، أو عطل، أو تلف ناتج عن أي امتداد أو أي تغيير تجريه من خلاله.</string>
+    <string name="extension_consent_math_prompt">لتأكيد قراءتك لهذا، يرجى حل: %1$d + %2$d = ؟</string>
+    <string name="extension_consent_accept">أفهم ذلك — متابعة</string>
+    <string name="extension_store">متجر الامتدادات</string>
+    <string name="extension_store_desc">قم بتنزيل امتدادات Thor المعتمدة والموقعة بالمفتاح الرسمي.</string>
+    <string name="extension_browse_store">تصفح المتجر</string>
+    <string name="extension_install">تثبيت</string>
+    <string name="extension_update">تحديث</string>
+    <string name="extension_installed">تم التثبيت</string>
+    <string name="extension_source_only">المصدر فقط — قم ببنائه بنفسك</string>
+    <string name="extension_requires_lsposed">يتطلب LSPosed</string>
+    <string name="extension_requires_thor">يتطلب إصدارًا أحدث من Thor</string>
+    <string name="extension_store_empty">لا توجد امتدادات متاحة بعد</string>
+    <string name="extension_store_empty_desc">يرجى التحقق لاحقًا — يتم تحديث الكتالوج عند نشر امتدادات جديدة.</string>
+    <string name="extension_store_error">تعذر تحميل المتجر</string>
+    <string name="extension_store_error_desc">يرجى التحقق من الاتصال وإعادة المحاولة.</string>
+    <string name="extension_retry">إعادة المحاولة</string>
+    <string name="extension_install_failed">فشل التحقق: %1$s</string>
+    <string name="info_app_size">الحجم</string>
+    
 </resources>

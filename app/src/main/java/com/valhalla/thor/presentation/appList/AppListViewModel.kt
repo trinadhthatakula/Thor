@@ -20,21 +20,26 @@ import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
+import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import android.content.Context
 import org.koin.core.annotation.KoinViewModel
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -58,22 +63,29 @@ data class AppListUiState(
     // Display Data
     val displayedApps: List<AppInfo> = emptyList(),
     val availableInstallers: List<String> = listOf("All"),
-    val installerNameMap: Map<String, String> = emptyMap(),
+    // Installer identifiers -> display label. Resolved to a String in the screen so the
+    // ViewModel stays free of a Context dependency.
+    val installerNameMap: Map<String, UiText> = emptyMap(),
     // Detail View State
     val selectedAppDetails: AppInfo? = null,
     val isLoadingDetails: Boolean = false,
-    // Action Feedback
-    val actionMessage: UiText? = null,
-    val freezerPrompt: FreezerPrompt? = null,
     val useDetailedView: Boolean = true,
     val isGrid: Boolean = true,
     val isComputingSizes: Boolean = false,
     val needsUsageAccessPrompt: Boolean = false
 )
 
+/**
+ * One-off UI events surfaced to [AppListScreen] via a buffered `Channel`, kept out of [AppListUiState]
+ * so transient feedback is delivered exactly once and never replayed on recomposition/config change.
+ */
+sealed interface AppListEvent {
+    data class ShowMessage(val message: UiText) : AppListEvent
+    data class ShowFreezerPrompt(val prompt: FreezerPrompt) : AppListEvent
+}
+
 @KoinViewModel
 class AppListViewModel(
-    private val context: Context,
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val getAppDetailsUseCase: GetAppDetailsUseCase,
     private val privilegeManager: PrivilegeManager,
@@ -88,6 +100,14 @@ class AppListViewModel(
     private var appsJob: Job? = null
     private var sizeJob: Job? = null
     private val _rawState = MutableStateFlow(AppListUiState())
+
+    // One-off UI feedback (toasts, freezer prompt). A buffered Channel fires each event exactly
+    // once (no replay on recomposition/config change) and, unlike a replay = 0 SharedFlow, retains
+    // events emitted while no collector is active — e.g. a load-failure event from loadApps() in
+    // init() before the screen's collector reaches STARTED, or during a rotation collector gap — so
+    // they are delivered when the screen (re)subscribes rather than silently dropped.
+    private val _events = Channel<AppListEvent>(Channel.BUFFERED)
+    val events: Flow<AppListEvent> = _events.receiveAsFlow()
 
     // Combine raw app data with user preferences from DataStore
     // OPTIMIZATION: flowOn(Dispatchers.Default) ensures sorting/filtering happens on background thread
@@ -132,6 +152,15 @@ class AppListViewModel(
                 privilegeManager.state
             ) { (user, system), priv ->
                 Triple(user, system, priv)
+            }.catch { e ->
+                // getInstalledAppsUseCase() is a callbackFlow that registers package receivers
+                // and reads PackageManager; it can throw (e.g. DeadObjectException). Guard the
+                // collection so an upstream throw can't propagate out of the collector and crash
+                // the app, and clear the loader so the UI doesn't spin forever.
+                if (e is CancellationException) throw e // preserve structured-concurrency cancellation
+                Logger.e("AppListViewModel", "loadApps failed", e)
+                _rawState.update { it.copy(isLoading = false) }
+                _events.send(AppListEvent.ShowMessage(UiText.StringResource(R.string.failed_to_load_apps)))
             }.collect { (user, system, priv) ->
                 _rawState.update {
                     it.copy(
@@ -228,65 +257,49 @@ class AppListViewModel(
                         freezerRepository.contains(packageName)
                     }
                     if (!inFreezer) {
-                        _rawState.update {
-                            it.copy(
-                                freezerPrompt = FreezerPrompt(
-                                    packageName,
-                                    appName
-                                )
-                            )
-                        }
+                        _events.send(
+                            AppListEvent.ShowFreezerPrompt(FreezerPrompt(packageName, appName))
+                        )
                     } else {
-                        _rawState.update {
-                            it.copy(
-                                actionMessage = UiText.StringResource(
+                        _events.send(
+                            AppListEvent.ShowMessage(
+                                UiText.StringResource(
                                     R.string.frozen_success,
                                     appName ?: packageName
                                 )
                             )
-                        }
+                        )
                     }
                 } else {
-                    _rawState.update {
-                        it.copy(
-                            actionMessage = UiText.StringResource(
+                    _events.send(
+                        AppListEvent.ShowMessage(
+                            UiText.StringResource(
                                 R.string.unfrozen_success,
                                 appName ?: packageName
                             )
                         )
-                    }
+                    )
                 }
             }.onFailure { e ->
-                _rawState.update {
-                    it.copy(
-                        actionMessage = UiText.StringResource(
+                _events.send(
+                    AppListEvent.ShowMessage(
+                        UiText.StringResource(
                             R.string.error_format,
                             e.message ?: ""
                         )
                     )
-                }
-            }
-        }
-    }
-
-    fun dismissFreezerPrompt() {
-        _rawState.update { it.copy(freezerPrompt = null) }
-    }
-
-    fun addToFreezer(packageName: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            freezerRepository.add(packageName)
-            _rawState.update {
-                it.copy(
-                    freezerPrompt = null,
-                    actionMessage = UiText.StringResource(R.string.added_to_freezer_success)
                 )
             }
         }
     }
 
-    fun dismissMessage() {
-        _rawState.update { it.copy(actionMessage = null) }
+    fun addToFreezer(packageName: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            freezerRepository.add(packageName)
+            _events.send(
+                AppListEvent.ShowMessage(UiText.StringResource(R.string.added_to_freezer_success))
+            )
+        }
     }
 
     fun performMultiAction(action: MultiAppAction) {
@@ -319,8 +332,12 @@ class AppListViewModel(
                             },
                             allSystemApps = state.allSystemApps.map {
                                 if (it.packageName in succeededPackages) it.copy(enabled = false) else it
-                            },
-                            actionMessage = if (failures == 0) {
+                            }
+                        )
+                    }
+                    _events.send(
+                        AppListEvent.ShowMessage(
+                            if (failures == 0) {
                                 UiText.StringResource(
                                     R.string.tile_freeze_success,
                                     action.appList.size
@@ -334,7 +351,7 @@ class AppListViewModel(
                                 )
                             }
                         )
-                    }
+                    )
                 }
 
                 is MultiAppAction.UnFreeze -> {
@@ -349,13 +366,17 @@ class AppListViewModel(
                             },
                             allSystemApps = state.allSystemApps.map {
                                 if (it.packageName in packageNames) it.copy(enabled = true) else it
-                            },
-                            actionMessage = UiText.StringResource(
+                            }
+                        )
+                    }
+                    _events.send(
+                        AppListEvent.ShowMessage(
+                            UiText.StringResource(
                                 R.string.unfrozen_count_success,
                                 action.appList.size
                             )
                         )
-                    }
+                    )
                 }
 
                 else -> {
@@ -474,15 +495,17 @@ class AppListViewModel(
 
         // Fast lookup map for app names to avoid O(N^2) associative logic
         val nameMap = rawList.associateBy({ it.packageName }, { it.appName })
-        val installerNames = installers.associateWith { pkg ->
+        // Emit UiText identifiers instead of resolved strings so the ViewModel needs no Context;
+        // AppListScreen resolves them via UiText.asString(context).
+        val installerNames: Map<String, UiText> = installers.associateWith { pkg ->
             when (pkg) {
-                "com.android.vending" -> context.getString(R.string.installer_play_store)
-                "org.fdroid.fdroid" -> context.getString(R.string.installer_fdroid)
+                "com.android.vending" -> UiText.StringResource(R.string.installer_play_store)
+                "org.fdroid.fdroid" -> UiText.StringResource(R.string.installer_fdroid)
                 // Sideloaded via the system package-installer UI: Google ships
                 // com.google.android.packageinstaller, AOSP uses com.android.packageinstaller.
                 "com.google.android.packageinstaller",
-                "com.android.packageinstaller" -> context.getString(R.string.installer_sideloaded)
-                else -> nameMap[pkg] ?: pkg
+                "com.android.packageinstaller" -> UiText.StringResource(R.string.installer_sideloaded)
+                else -> UiText.DynamicString(nameMap[pkg] ?: pkg)
             }
         }
 

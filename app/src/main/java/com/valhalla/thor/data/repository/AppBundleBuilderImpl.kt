@@ -1,14 +1,16 @@
-package com.valhalla.thor.domain.usecase
+package com.valhalla.thor.data.repository
 
 import com.valhalla.thor.BuildConfig
 import android.content.Context
 import com.valhalla.thor.data.util.ApksMetadataGenerator
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.formattedAppName
+import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.SystemRepository
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
+import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
@@ -23,13 +25,14 @@ import java.util.zip.ZipOutputStream
  * apps with no splits, an `.apks` (base + splits + metadata.json + manifest.json)
  * for split apps. Copies with a root fallback for protected/system apps.
  */
-@Single
-class AppBundleBuilder(
+@Single(binds = [AppBundleBuilder::class])
+class AppBundleBuilderImpl(
     private val context: Context,
     private val systemRepository: SystemRepository,
-    private val apksMetadataGenerator: ApksMetadataGenerator
-) {
-    suspend fun build(appInfo: AppInfo, cacheSubDir: String = "share_temp"): Result<File> = withContext(Dispatchers.IO) {
+    private val apksMetadataGenerator: ApksMetadataGenerator,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher
+) : AppBundleBuilder {
+    override suspend fun build(appInfo: AppInfo, cacheSubDir: String): Result<File> = withContext(ioDispatcher) {
         try {
             // Per-package subdir. Bulk share builds each selected app sequentially into
             // the same cacheSubDir and hands all the resulting content:// URIs to

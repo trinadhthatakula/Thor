@@ -62,6 +62,7 @@ internal class RootServiceManager private constructor() : Handler.Callback {
         private var mInstance: RootServiceManager? = null
 
         @JvmStatic
+        @Synchronized
         fun getInstance(): RootServiceManager {
             if (mInstance == null) {
                 mInstance = RootServiceManager()

@@ -1,5 +1,6 @@
 package com.valhalla.thor.data.source.local.shizuku
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
@@ -50,6 +51,9 @@ object Shizuku {
             false
         }
 
+    // killBackgroundProcesses' KILL_BACKGROUND_PROCESSES permission is satisfied via the elevated
+    // Shizuku privilege (root shell / Shizuku), not a manifest grant.
+    @SuppressLint("MissingPermission")
     fun forceStopApp(context: Context, packageName: String): Boolean {
         val pkgs = Packages(context)
         val userId = pkgs.myUserId
@@ -145,6 +149,9 @@ object Shizuku {
         return pkgs.isAppDisabled(packageName) == disabled
     }
 
+    // Hidden-API reflection (SuspendDialogInfo) is intentional: it is the core privilege mechanism,
+    // guarded by the :bypass VMRuntime unseal.
+    @SuppressLint("PrivateApi")
     fun setAppSuspended(context: Context, packageName: String, suspended: Boolean): Boolean {
         val pkgs = Packages(context)
         pkgs.getApplicationInfoOrNull(packageName) ?: return false
@@ -245,6 +252,11 @@ object Shizuku {
         return currentSuspended == suspended
     }
 
+    // PrivateApi: hidden-API reflection (IPackageDataObserver) is intentional — the core privilege
+    // mechanism, guarded by the :bypass VMRuntime unseal.
+    // SdCardPath: the absolute /data and /sdcard paths are intentional for privileged/root file ops,
+    // not app-scoped storage.
+    @SuppressLint("PrivateApi", "SdCardPath")
     fun clearCache(packageName: String): Boolean {
         // 1. Try shell first
         val userId = android.os.Process.myUserHandle().hashCode()
@@ -288,6 +300,9 @@ object Shizuku {
         return reflectionResult
     }
 
+    // Hidden-API reflection (IPackageDataObserver) is intentional: it is the core privilege
+    // mechanism, guarded by the :bypass VMRuntime unseal.
+    @SuppressLint("PrivateApi")
     fun clearAppData(packageName: String): Boolean {
         // 1. Try shell first
         val result = execute("pm clear $packageName")
@@ -365,6 +380,11 @@ object Shizuku {
         }.getOrElse { false }
     }
 
+    // @Volatile guarantees safe publication across threads: getCurrentUserId() may be invoked from
+    // arbitrary threads, and only a *successfully* resolved id is ever cached (the read throws
+    // before the assignment on failure), so a transient shell blip can't persist a wrong user (#41,
+    // mirrors the RootSystemGateway #34 pattern).
+    @Volatile
     private var cachedUserId: String? = null
 
     fun getCurrentUserId(): String {
@@ -379,13 +399,16 @@ object Shizuku {
     }
 
     fun uninstallApp(context: Context, packageName: String): Boolean {
+        // Escape the package identifier before interpolating it into the shell command, mirroring
+        // the Dhizuku helper (#40). currentUser is regex-validated numeric, so it needs no escaping.
+        val escapedPackage = com.valhalla.superuser.ShellUtils.escapedString(packageName)
         val normally = Packages(context).canUninstallNormally(packageName)
         if (normally) {
-            return execute("pm uninstall $packageName").first == 0
+            return execute("pm uninstall $escapedPackage").first == 0
         }
         return try {
             val currentUser = getCurrentUserId()
-            execute("pm uninstall --user $currentUser $packageName").first == 0
+            execute("pm uninstall --user $currentUser $escapedPackage").first == 0
         } catch (_: Exception) {
             false
         }
@@ -394,7 +417,9 @@ object Shizuku {
     fun reinstallApp(packageName: String): Boolean {
         return try {
             val currentUser = getCurrentUserId()
-            execute("pm install-existing --user $currentUser $packageName").first == 0
+            // Escape the package identifier before interpolating it (#40).
+            val escapedPackage = com.valhalla.superuser.ShellUtils.escapedString(packageName)
+            execute("pm install-existing --user $currentUser $escapedPackage").first == 0
         } catch (_: Exception) {
             false
         }

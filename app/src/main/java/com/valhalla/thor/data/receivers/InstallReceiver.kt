@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.os.Build
 import com.valhalla.thor.data.ACTION_INSTALL_STATUS
+import com.valhalla.thor.data.manager.PendingInstallIntent
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.util.UiText
@@ -22,6 +23,7 @@ import org.koin.core.component.inject
 class InstallReceiver : BroadcastReceiver(), KoinComponent {
 
     private val eventBus: InstallerEventBus by inject()
+    private val pendingInstallIntent: PendingInstallIntent by inject()
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION_INSTALL_STATUS) return
@@ -48,7 +50,8 @@ class InstallReceiver : BroadcastReceiver(), KoinComponent {
                                 intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
                             }
                         if (confirmIntent != null) {
-                            eventBus.emit(InstallState.UserConfirmationRequired(confirmIntent))
+                            pendingInstallIntent.set(confirmIntent)
+                            eventBus.emit(InstallState.UserConfirmationRequired)
                         }
                     }
 

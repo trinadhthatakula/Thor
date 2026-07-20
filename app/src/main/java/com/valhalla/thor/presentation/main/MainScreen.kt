@@ -250,15 +250,16 @@ fun MainScreen(
                         }
                         context.startActivity(intent)
                     }
+
+                    is MainSideEffect.Message -> {
+                        Toast.makeText(
+                            context,
+                            effect.text.asString(context),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
                 }
             }
-        }
-    }
-
-    LaunchedEffect(state.actionMessage) {
-        state.actionMessage?.let { msg ->
-            Toast.makeText(context, msg.asString(context), Toast.LENGTH_SHORT).show()
-            mainViewModel.consumeMessage()
         }
     }
 
@@ -331,7 +332,10 @@ fun MainScreen(
                                 { mainViewModel.onAppAction(it) }
                             )
                         },
-                        onClearAllCache = { type -> mainViewModel.clearAllCache(type) }
+                        onClearAllCache = { type -> mainViewModel.clearAllCache(type) },
+                        onNavigateToExtensionManager = {
+                            homeBackStack.add(ThorRoute.ExtensionManager)
+                        }
                     )
                 }
 
@@ -459,12 +463,12 @@ fun MainScreen(
                 ) {
                     ExtensionManagerScreen(
                         onBack = {
-                            if (settingsBackStack.size > 1) {
-                                settingsBackStack.removeLastOrNull()
+                            if (currentBackStack.size > 1) {
+                                currentBackStack.removeLastOrNull()
                             }
                         },
                         onBrowse = {
-                            settingsBackStack.add(ThorRoute.ExtensionBrowse)
+                            currentBackStack.add(ThorRoute.ExtensionBrowse)
                         }
                     )
                 }
@@ -474,8 +478,8 @@ fun MainScreen(
                 ) {
                     ExtensionBrowseScreen(
                         onBack = {
-                            if (settingsBackStack.size > 1) {
-                                settingsBackStack.removeLastOrNull()
+                            if (currentBackStack.size > 1) {
+                                currentBackStack.removeLastOrNull()
                             }
                         }
                     )

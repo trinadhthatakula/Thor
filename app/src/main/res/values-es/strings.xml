@@ -1,6 +1,4 @@
 <resources>
-    <string name="title_activity_script_runner">ScriptRunner</string>
-    <string name="title_activity_home">HomeActivity</string>
 
     <!-- Navigation -->
     <string name="home">Inicio</string>
@@ -67,6 +65,8 @@
     <string name="reinstall_all_subtitle">%1$d aplicaciones %2$s no son de Play Store. ¿Repararlas?</string>
     <string name="install_from_file">Instalar desde archivo</string>
     <string name="install_from_file_subtitle">Instalar APK, XAPK, APKS o paquetes divididos</string>
+    <string name="home_extensions_title">Extensiones</string>
+    <string name="home_extensions_subtitle">Administrar y abrir</string>
     <string name="app_distribution">Distribución de aplicaciones</string>
     <string name="total_apps">TOTAL: %1$d</string>
     <string name="others">Otros</string>
@@ -119,8 +119,6 @@
     <string name="freeze_anyway">Congelar de todos modos</string>
     <string name="risk_warning_title">Advertencia de riesgo</string>
     <string name="risk_warning_desc">Esto fuerza el registro del instalador a \'Google Play Store\'.\n\nLas actualizaciones pueden fallar si la firma no coincide con la versión oficial de la tienda.</string>
-    <string name="reinstall_play_store_title">¿Reinstalar con Play Store?</string>
-    <string name="reinstall_play_store_desc">Esto intentará reinstalar %1$s usando Google Play Store.</string>
     <string name="fix_store">Reparar tienda</string>
 
     <!-- App Status -->
@@ -157,14 +155,12 @@
     <string name="cd_uninstalled">Desinstalado</string>
     <string name="cd_suspended">Suspendido</string>
     <string name="cd_selected">Seleccionado</string>
-    <string name="cd_search">Buscar</string>
     <string name="cd_clear">Limpiar</string>
     <string name="cd_settings">Ajustes</string>
     <string name="select_app_details">Selecciona una aplicación para ver detalles</string>
 
     <!-- Permission Manager -->
     <string name="action_permissions">Permisos</string>
-    <string name="permissions_title">Permisos</string>
     <string name="permissions_search">Buscar permisos&#8230;</string>
     <string name="permissions_read_only_title">Modo de solo lectura</string>
     <string name="permissions_read_only_desc">Se requiere acceso elevado (Root, Shizuku o Dhizuku) para alternar los permisos. Actualmente estás viendo los permisos en modo de solo lectura.</string>
@@ -233,7 +229,6 @@
     <string name="unsuspended_success">%1$s reanudado</string>
     <string name="unfreezing_app">Descongelando %1$s…</string>
     <string name="uninstall_success">Se desinstaló %1$s</string>
-    <string name="batch_share_not_supported">El uso compartido por lotes aún no es compatible</string>
     <string name="error_app_info_missing">Error: Falta la información de la aplicación para la acción</string>
     <string name="failed_to_load_app_details">Error al cargar los detalles de la aplicación</string>
 
@@ -283,12 +278,10 @@
     <string name="no_native_libs_found">No se encontraron librerías nativas</string>
     <string name="section_req_features_title">Características requeridas</string>
     <string name="no_req_features_found">No se solicitaron características requeridas</string>
-    <string name="share_via">Compartir con</string>
     <string name="version_format">v%1$s</string>
 
     <!-- Hardcoded string replacements -->
     <string name="manage_freezer">Gestionar Congelador</string>
-    <string name="freeze_all">Congelar todo</string>
     <string name="add">Añadir</string>
     <string name="unlock_to_continue">Desbloquear para continuar</string>
     <string name="auth_failed">Error de autenticación</string>
@@ -302,17 +295,11 @@
         <item quantity="one">Este paquete solicita %1$d permiso. %2$s</item>
         <item quantity="other">Este paquete solicita %1$d permisos. %2$s</item>
     </plurals>
-    <string name="install_options_title">Opciones de instalación: </string>
     <string name="install_mode_normal">Normal</string>
     <string name="install_mode_shizuku">Shizuku</string>
     <string name="install_mode_dhizuku">Dhizuku</string>
     <string name="install_mode_root">Root</string>
     <string name="install_mode_external_short">Externo</string>
-    <string name="install_mode_normal_format">%1$s normal</string>
-    <string name="install_mode_shizuku_format">%1$s mediante Shizuku</string>
-    <string name="install_mode_dhizuku_format">%1$s mediante Dhizuku</string>
-    <string name="install_mode_root_format">%1$s con Root</string>
-    <string name="install_mode_external">Abrir con…</string>
     <string name="install_assembling_progress">Ensamblando: %1$d%%</string>
     <string name="install_confirm_system_dialog">Por favor, confirme la instalación en el diálogo del sistema.</string>
     <string name="install_success">Instalado correctamente</string>
@@ -324,12 +311,6 @@
     <string name="install_word_install">instalar</string>
     <string name="install_warning_downgrade">Advertencia: Instalar una versión anterior puede causar problemas.</string>
     <string name="sensitive">Sensible</string>
-    <string name="protection_normal">Normal</string>
-    <string name="protection_dangerous">Peligroso</string>
-    <string name="protection_signature">Firma</string>
-    <string name="protection_signature_system">Firma/Sistema</string>
-    <string name="expanded">Expandido</string>
-    <string name="collapsed">Contraído</string>
 
     <!-- Terminal Logs -->
     <string name="log_initializing">Inicializando…</string>
@@ -396,7 +377,6 @@
     <string name="explore_other_apps_desc">Echa un vistazo a mi consola de desarrollador y prueba otras aplicaciones</string>
     <string name="donate_paypal_title">Donar a través de PayPal</string>
     <string name="donate_paypal_desc">Envía una donación única directamente</string>
-    <string name="choose_subscription_tier">Elige un nivel de soporte</string>
     <string name="billing_error">Error de facturación</string>
 
     <!-- Support & Community Dashboard Section -->
@@ -426,4 +406,75 @@
     <string name="animation_intensity_high">Alta</string>    <string name="suspended_app_dialog_title">Thor</string>
     <string name="suspended_app_dialog_message">Esta aplicación ha sido suspendida por Thor.</string>
 
+    
+    <!-- Missing Translations -->
+    <string name="auto_reinstall">Reinstalación automática de apps</string>
+    <string name="auto_reinstall_desc">Mantener automáticamente Google Play Store como el instalador registrado para permitir actualizaciones en segundo plano</string>
+    <string name="legacy_extension_title">Extensión heredada detectada</string>
+    <string name="legacy_extension_desc">Se ha detectado una versión heredada de la extensión Stormbringer (escrita incorrectamente como \"Strombringer\"). Por favor, desinstálala para evitar conflictos e instala la versión actualizada.</string>
+    <string name="action_export">Exportar</string>
+    <string name="export_explain_apk">Thor guarda esta aplicación como un único archivo de instalación (.apk) en la carpeta de abajo. Úsala para hacer una copia de seguridad o reinstalarla más tarde.</string>
+    <string name="export_explain_apks">Esta aplicación consta de varias partes divididas, por lo que Thor las empaqueta en un único archivo compilado (.apks) en la carpeta de abajo. Reinstálala en cualquier momento con el instalador de Thor.</string>
+    <string name="export_save_to">Guardar en</string>
+    <string name="export_change">Cambiar</string>
+    <string name="export_in_progress">Exportando…</string>
+    <string name="export_saved">Guardado en %1$s</string>
+    <string name="export_failed">Error de exportación: %1$s</string>
+    <string name="export_failed_unknown">error desconocido</string>
+    <string name="export_dest_downloads">Descargas/Thor</string>
+    <string name="export_dest_selected">Carpeta seleccionada</string>
+    <string name="failed_to_load_permissions">Error al cargar los permisos</string>
+    <string name="permission_status_updated">Estado de permiso actualizado</string>
+    <string name="failed_to_modify_permission">Error al modificar el permiso</string>
+    <string name="permissions">PERMISOS</string>
+    <string name="usage_access">Acceso de uso</string>
+    <string name="usage_access_granted_subtitle">Concedido — permite ordenar por tamaño de app</string>
+    <string name="usage_access_needed_subtitle">Necesario para leer el tamaño de las apps al ordenar por tamaño</string>
+    <string name="usage_access_needed_title">Acceso de uso necesario</string>
+    <string name="usage_access_prompt_body">Thor necesita Acceso de uso para leer el tamaño de las aplicaciones. Actívalo para Thor y luego vuelve a seleccionar \"Tamaño\". También puedes gestionarlo en Ajustes → Permisos.</string>
+    <string name="open_settings">Abrir ajustes</string>
+    <string name="freeze_mode">Modo de congelación</string>
+    <string name="suspend_instead_of_freeze">Suspender en lugar de congelar</string>
+    <string name="suspend_instead_of_freeze_desc">Al congelar (incluyendo el autocongelado), suspende las aplicaciones en lugar de desactivarlas. Las aplicaciones suspendidas siguen siendo visibles pero pausadas.</string>
+    <string name="add_freezer_to_launcher">Añadir Congelador al lanzador</string>
+    <string name="add_freezer_to_launcher_desc">Mostrar las aplicaciones congeladas como accesos directos en la pantalla de inicio para abrirlas con un toque</string>
+    <string name="add_to_home_screen">Añadir a la pantalla de inicio</string>
+    <string name="freeze_all_apps">Congelar todo</string>
+    <string name="shortcuts">Accesos directos</string>
+    <string name="shortcut_add_all">Añadir todas las apps</string>
+    <string name="shortcut_added_named">%1$s añadido a la pantalla de inicio</string>
+    <string name="shortcut_added">Acceso directo añadido a la pantalla de inicio</string>
+    <string name="pin_all_confirm_title">¿Añadir todas las apps a la pantalla de inicio?</string>
+    <string name="pin_all_confirm_desc">Esto añadirá un acceso directo en la pantalla de inicio para cada una de tus %1$d aplicaciones congeladas, lo que podría llenar tu pantalla de inicio. Tu lanzador te pedirá que confirmes cada una.</string>
+    <string name="freezer_launch_failed">No se pudo abrir esta aplicación</string>
+    <string name="shortcut_no_longer_frozen">Ya no está congelada</string>
+    <string name="easter_egg_promoted">🎉 ¡Esta función oculta ya ha sido promocionada! Mantente al tanto para la próxima.</string>
+    <string name="support_tab_play_store">Play Store</string>
+    <string name="support_tab_direct">Directo</string>
+    <string name="run_extension">Ejecutar</string>
+    <string name="installer_play_store">PLAY STORE</string>
+    <string name="installer_fdroid">F-DROID</string>
+    <string name="installer_sideloaded">INSTALADA EXTERNAMENTE</string>
+    <string name="permission_protection_level">Protección: %1$s</string>
+    <string name="extension_consent_title">Antes de continuar</string>
+    <string name="extension_consent_body">Las extensiones son complementos potentes que pueden cambiar el comportamiento de las aplicaciones y del sistema en tu dispositivo. No siempre son creadas por nosotros; cualquiera puede desarrollar una. Verificamos y firmamos las extensiones que distribuimos, pero este sigue siendo un territorio intrínsecamente riesgoso.\n\nAl continuar, aceptas que eres el único responsable de lo que instalas y habilitas aquí, y que Thor y sus desarrolladores NO se hacen responsables de ninguna pérdida de datos, mal funcionamiento o daño causado por una extensión o por cualquier cambio que realices a través de ella.</string>
+    <string name="extension_consent_math_prompt">Para confirmar que has leído esto, resuelve: %1$d + %2$d = ?</string>
+    <string name="extension_consent_accept">Entiendo — continuar</string>
+    <string name="extension_store">Tienda de extensiones</string>
+    <string name="extension_store_desc">Descarga extensiones verificadas de Thor firmadas con la clave oficial.</string>
+    <string name="extension_browse_store">Explorar tienda</string>
+    <string name="extension_install">Instalar</string>
+    <string name="extension_update">Actualizar</string>
+    <string name="extension_installed">Instalada</string>
+    <string name="extension_source_only">Solo código fuente — compílala tú mismo</string>
+    <string name="extension_requires_lsposed">Requiere LSPosed</string>
+    <string name="extension_requires_thor">Requiere una versión más nueva de Thor</string>
+    <string name="extension_store_empty">No hay extensiones disponibles todavía</string>
+    <string name="extension_store_empty_desc">Vuelve a consultar más tarde: el catálogo se actualiza a medida que se publican nuevas extensiones.</string>
+    <string name="extension_store_error">No se pudo cargar la tienda</string>
+    <string name="extension_store_error_desc">Comprueba tu conexión e inténtalo de nuevo.</string>
+    <string name="extension_retry">Reintentar</string>
+    <string name="extension_install_failed">Error de verificación: %1$s</string>
+    <string name="info_app_size">Tamaño</string>
+    
 </resources>

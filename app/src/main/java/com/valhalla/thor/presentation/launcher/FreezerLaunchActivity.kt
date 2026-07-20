@@ -1,5 +1,6 @@
 package com.valhalla.thor.presentation.launcher
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -24,6 +25,9 @@ import org.koin.android.ext.android.inject
  * Theme.NoDisplay — because it does async work (enable-then-launch) and NoDisplay requires
  * finish() before onResume completes.
  */
+// Not a splash screen: this is a translucent trampoline activity that does async
+// enable-then-launch work; it shows no UI and has no branded splash.
+@SuppressLint("CustomSplashScreen")
 class FreezerLaunchActivity : Activity() {
 
     private val systemRepository: SystemRepository by inject()

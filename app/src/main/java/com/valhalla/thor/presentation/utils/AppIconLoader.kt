@@ -8,6 +8,8 @@ import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.Build
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.drawable.toDrawable
 import coil3.ImageLoader
 import coil3.asImage
 import coil3.decode.DataSource
@@ -64,7 +66,7 @@ class AppIconFetcher(
                 }
                 val bitmap = BitmapFactory.decodeFile(iconFile.absolutePath, decodeOptions)
                 if (bitmap != null) {
-                    val drawable = BitmapDrawable(context.resources, bitmap)
+                    val drawable = bitmap.toDrawable(context.resources)
                     // Report sampled only when actually smaller than the source, so a full-size
                     // decode stays reusable for larger targets.
                     val sampled = bitmap.width < boundsOptions.outWidth ||
@@ -118,7 +120,7 @@ class AppIconFetcher(
             val sampled = bitmap.width < drawable.intrinsicWidth ||
                 bitmap.height < drawable.intrinsicHeight
             ImageFetchResult(
-                image = BitmapDrawable(context.resources, bitmap).asImage(),
+                image = bitmap.toDrawable(context.resources).asImage(),
                 isSampled = sampled,
                 dataSource = DataSource.DISK
             )
@@ -132,10 +134,9 @@ class AppIconFetcher(
     /** Renders the drawable at its full intrinsic size, for persisting to the disk cache. */
     private fun Drawable.toFullBitmap(): Bitmap {
         if (this is BitmapDrawable) return this.bitmap
-        val bitmap = Bitmap.createBitmap(
+        val bitmap = createBitmap(
             intrinsicWidth.coerceAtLeast(1),
-            intrinsicHeight.coerceAtLeast(1),
-            Bitmap.Config.ARGB_8888
+            intrinsicHeight.coerceAtLeast(1)
         )
         val canvas = Canvas(bitmap)
         val oldBounds = copyBounds()
@@ -167,7 +168,7 @@ class AppIconFetcher(
         } else {
             options.bitmapConfig
         }
-        val bitmap = Bitmap.createBitmap(targetWidth, targetHeight, config)
+        val bitmap = createBitmap(targetWidth, targetHeight, config)
         val canvas = Canvas(bitmap)
         val oldBounds = copyBounds()
         setBounds(0, 0, canvas.width, canvas.height)

@@ -45,12 +45,30 @@ class InstallerViewModel(
     private var isUpdateOperation: Boolean = false
     private var isDowngrade: Boolean = false
 
+    // True once THIS ViewModel has driven a parse/install on the shared @Single bus. Only an
+    // owning VM may reset the bus in onCleared(), so tearing down a non-owning installer screen
+    // (e.g. one that merely observed the bus) can't clobber a terminal Success / ReadyToInstall
+    // that a different, still-alive InstallerViewModel is displaying.
+    private var ownsInstall = false
+
     fun resetState() {
         viewModelScope.launch { eventBus.emit(InstallState.Idle) }
     }
 
+    override fun onCleared() {
+        // The event bus is app-scoped (@Single) and holds replay = 1. Without a reset it would
+        // retain the last emitted state past this ViewModel's lifetime — e.g. a ReadyToInstall
+        // carrying a decoded Bitmap, or a terminal Success — leaking it for the rest of the
+        // process and replaying stale state onto a future installer screen. Only reset when THIS
+        // VM owns the flow, so we don't wipe a state another live InstallerViewModel (sharing this
+        // @Single bus) is still showing. The viewModelScope is already cancelled here, so use the
+        // synchronous reset() rather than resetState().
+        if (ownsInstall) eventBus.reset()
+    }
+
     fun parsePackage(uri: Uri) {
         pendingUri = uri
+        ownsInstall = true
         viewModelScope.launch {
             eventBus.emit(InstallState.Parsing)
             val result = analyzer.analyze(uri)
@@ -75,8 +93,6 @@ class InstallerViewModel(
 
                     isUpdateOperation = existing != null
                     isDowngrade = if (existing != null) {
-                        // meta.versionCode is a Long; compare against the full long version
-                        // code so large version codes aren't truncated by the deprecated Int field.
                         meta.versionCode < PackageInfoCompat.getLongVersionCode(existing)
                     } else false
 
@@ -119,6 +135,7 @@ class InstallerViewModel(
 
     fun startInstallation() {
         val uri = pendingUri ?: return
+        ownsInstall = true
         val mode = _installMode.value
 
         if (isDowngrade && mode == InstallMode.NORMAL) {

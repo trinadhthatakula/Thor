@@ -61,8 +61,9 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.data.manager.ExtensionManager
 import com.valhalla.thor.domain.model.UserPreferences
-import com.valhalla.thor.presentation.settings.SettingsViewModel
+import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.presentation.theme.firaMonoFontFamily
+import kotlinx.coroutines.flow.map
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import kotlin.random.Random
@@ -75,8 +76,8 @@ fun ExtensionManagerScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val settingsViewModel: SettingsViewModel = koinViewModel()
-    val prefs by settingsViewModel.preferences.collectAsStateWithLifecycle()
+    val preferenceRepository = koinInject<PreferenceRepository>()
+    val prefs by preferenceRepository.userPreferences.collectAsStateWithLifecycle(initialValue = UserPreferences())
     val extensionManager: ExtensionManager = koinInject()
 
     // Reload when returning to this screen (e.g. after installing from the store) so a freshly
@@ -92,24 +93,23 @@ fun ExtensionManagerScreen(
     // an explicit consent (disclaimer + a small math check) before it can be used. Persisted, so it
     // shows only once; dismissing without solving leaves the screen. Gate on the TRI-STATE flow
     // (null = prefs still loading) so an already-accepted user never gets a first-frame sheet flash.
-    val consentAccepted by settingsViewModel.extensionConsentAccepted.collectAsStateWithLifecycle()
+    val consentAccepted by remember(preferenceRepository) {
+        preferenceRepository.userPreferences.map { it.extensionConsentAccepted }
+    }.collectAsStateWithLifecycle(initialValue = null)
     if (consentAccepted == false) {
         ExtensionConsentSheet(
-            onConsent = { settingsViewModel.setExtensionConsentAccepted(true) },
+            onConsent = { viewModel.acceptExtensionConsent() },
             onDismiss = onBack,
         )
     }
 
     var showMigrationDialog by rememberSaveable { mutableStateOf(false) }
     val legacyPackageName = ExtensionManager.LEGACY_EXTENSION_PACKAGE
-    val isLegacyInstalled = remember {
-        runCatching {
-            context.packageManager.getPackageInfo(legacyPackageName, 0)
-            true
-        }.getOrDefault(false)
-    }
-    androidx.compose.runtime.LaunchedEffect(isLegacyInstalled) {
-        if (isLegacyInstalled) {
+    // The legacy-package probe is a PackageManager binder IPC; it runs off the main thread in the
+    // ViewModel and is surfaced here via state instead of a synchronous getPackageInfo() during
+    // composition. Keyed on the flag so the migration prompt fires once when it flips to true.
+    androidx.compose.runtime.LaunchedEffect(state.isLegacyInstalled) {
+        if (state.isLegacyInstalled) {
             showMigrationDialog = true
         }
     }
@@ -159,6 +159,39 @@ fun ExtensionManagerScreen(
                     ) {
                         androidx.compose.material3.CircularProgressIndicator()
                     }
+                } else if (state.extensions.isEmpty() && state.error != null) {
+                    val errorMessage = state.error
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.extension_store_error),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            if (!errorMessage.isNullOrBlank()) {
+                                Text(
+                                    text = errorMessage,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Button(
+                                onClick = { viewModel.loadExtensions() },
+                                shape = RoundedCornerShape(20.dp)
+                            ) {
+                                Text(text = stringResource(R.string.extension_retry))
+                            }
+                        }
+                    }
                 } else if (state.extensions.isEmpty()) {
                     EmptyExtensionState(
                         onGetExtensions = onBrowse
@@ -170,6 +203,34 @@ fun ExtensionManagerScreen(
                             .padding(horizontal = 24.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
+                        // A reload can fail while a list is already shown (the VM keeps the old list
+                        // and sets error). Surface it inline with Retry so it isn't silently dropped.
+                        val reloadError = state.error.orEmpty()
+                        if (reloadError.isNotBlank()) {
+                            item(key = "reload-error") {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 16.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(MaterialTheme.colorScheme.errorContainer)
+                                        .padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = reloadError,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                    Button(
+                                        onClick = { viewModel.loadExtensions() },
+                                        shape = RoundedCornerShape(20.dp)
+                                    ) {
+                                        Text(text = stringResource(R.string.extension_retry))
+                                    }
+                                }
+                            }
+                        }
                         item {
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(

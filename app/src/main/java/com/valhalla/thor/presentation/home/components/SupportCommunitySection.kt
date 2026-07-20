@@ -2,6 +2,7 @@ package com.valhalla.thor.presentation.home.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -22,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -62,10 +64,11 @@ fun SupportCommunitySection(
         )
     }
 
+    // Horizontal margin is caller-controlled (via `modifier`) so this card lines up with the
+    // distribution chart card in every layout — phone passes 24.dp, the wide two-pane passes none.
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp)
             .clip(RoundedCornerShape(48.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .padding(24.dp)
@@ -103,30 +106,48 @@ fun SupportCommunitySection(
 
         Spacer(Modifier.height(12.dp))
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            links.forEach { link ->
-                OutlinedButton(
-                    onClick = { uriHandler.openUri(link.url) },
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
-                ) {
-                    Icon(
-                        painter = painterResource(link.iconRes),
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        text = stringResource(link.titleRes),
-                        style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+        // Three-across when the pane is wide enough; stacks vertically in a narrow pane
+        // (landscape phone, foldable-open, medium tablet) so the brand labels never crop.
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            if (maxWidth < 320.dp) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    links.forEach { link ->
+                        CommunityLinkButton(link, uriHandler, Modifier.fillMaxWidth())
+                    }
+                }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    links.forEach { link ->
+                        CommunityLinkButton(link, uriHandler, Modifier.weight(1f))
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CommunityLinkButton(
+    link: CommunityLink,
+    uriHandler: UriHandler,
+    modifier: Modifier = Modifier
+) {
+    OutlinedButton(
+        onClick = { uriHandler.openUri(link.url) },
+        modifier = modifier,
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+    ) {
+        Icon(
+            painter = painterResource(link.iconRes),
+            contentDescription = null,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = stringResource(link.titleRes),
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }

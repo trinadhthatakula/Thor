@@ -1,7 +1,5 @@
 package com.valhalla.thor.presentation.main
 
-import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
@@ -18,9 +16,11 @@ import com.valhalla.thor.domain.usecase.ShareAppUseCase
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.presentation.home.AppDestinations
+import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.UiTextException
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
+import org.koin.core.annotation.Named
 
 /**
  * Side Effects: One-time events that the UI must handle (Navigation, Intents).
@@ -41,6 +42,9 @@ sealed interface MainSideEffect {
     data class ShareApp(val uri: android.net.Uri) : MainSideEffect
     data class ShareApps(val uris: List<android.net.Uri>) : MainSideEffect
     data class NormalUninstall(val packageName: String) : MainSideEffect
+
+    /** Transient user feedback (Toast). Consumed once by the screen, never re-shown on recomposition. */
+    data class Message(val text: UiText) : MainSideEffect
 }
 
 /**
@@ -71,7 +75,6 @@ data class FreezeLoggerState(
  * Main UI State holding global feedback.
  */
 data class MainUiState(
-    val actionMessage: UiText? = null, // For transient Toasts
     val loggerState: LoggerState = LoggerState(), // For persistent Logs
     val freezeLoggerState: FreezeLoggerState = FreezeLoggerState(), // Compact freeze/unfreeze progress
     val selectedDestination: AppDestinations = AppDestinations.HOME, // For Bottom Nav
@@ -85,9 +88,9 @@ class MainViewModel(
     private val manageAppUseCase: ManageAppUseCase,
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val shareAppUseCase: ShareAppUseCase,
-    private val packageManager: PackageManager,
     private val preferenceRepository: PreferenceRepository,
-    private val freezerRepository: FreezerRepository
+    private val freezerRepository: FreezerRepository,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MainUiState())
@@ -117,7 +120,7 @@ class MainViewModel(
     }
 
     fun markSupportDeveloperPromptShown() {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             preferenceRepository.setHasShownSupportDeveloperPrompt(true)
         }
         _uiState.update {
@@ -146,10 +149,6 @@ class MainViewModel(
     val effect = _effect.receiveAsFlow()
 
     // --- State Management Helpers ---
-
-    fun consumeMessage() {
-        _uiState.update { it.copy(actionMessage = null) }
-    }
 
     fun dismissLogger() {
         _uiState.update { it.copy(loggerState = LoggerState(isVisible = false)) }
@@ -193,8 +192,18 @@ class MainViewModel(
         viewModelScope.launch {
             startLogger(UiText.StringResource(R.string.log_preparing_cache))
 
-            // 1. Fetch current list
-            val (userApps, systemApps) = getInstalledAppsUseCase().first()
+            // 1. Fetch current list — getInstalledAppsUseCase() reads PackageManager and can
+            // throw (e.g. DeadObjectException). Guard it so a failure can't crash the app or
+            // leave the logger dialog stuck spinning.
+            val (userApps, systemApps) = try {
+                getInstalledAppsUseCase().first()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e // preserve structured-concurrency cancellation
+                Logger.e("MainViewModel", "clearAllCache: failed to load apps", e)
+                addLog(UiText.StringResource(R.string.log_error, e.message ?: ""))
+                finishLogger()
+                return@launch
+            }
             val targetList = if (type == AppListType.USER) userApps else systemApps
 
             // 2. Filter out self and Play Store to be safe
@@ -226,27 +235,27 @@ class MainViewModel(
                     // and/or unsuspend) before launching — otherwise a suspended app just opens the
                     // system "app paused" dialog instead of the app.
                     if (app.isFrozen) {
-                        _uiState.update {
-                            it.copy(
-                                actionMessage = UiText.StringResource(
+                        _effect.send(
+                            MainSideEffect.Message(
+                                UiText.StringResource(
                                     R.string.unfreezing_app,
                                     app.appName ?: app.packageName
                                 )
                             )
-                        }
+                        )
 
                         val result = manageAppUseCase.restoreApp(app.packageName, app.enabled, app.isSuspended)
                         if (result.isSuccess) {
                             _effect.send(MainSideEffect.LaunchApp(app.packageName))
                         } else {
-                            _uiState.update {
-                                it.copy(
-                                    actionMessage = UiText.StringResource(
+                            _effect.send(
+                                MainSideEffect.Message(
+                                    UiText.StringResource(
                                         R.string.error_format,
                                         result.exceptionOrNull()?.message ?: ""
                                     )
                                 )
-                            }
+                            )
                         }
                     } else {
                         _effect.send(MainSideEffect.LaunchApp(app.packageName))
@@ -280,7 +289,7 @@ class MainViewModel(
                     startLogger(UiText.StringResource(R.string.log_reinstalling_app, action.appInfo.appName ?: ""))
                     addLog(UiText.StringResource(R.string.log_applying_play_store_sig))
 
-                    withContext(Dispatchers.IO) {
+                    withContext(ioDispatcher) {
                         val result =
                             manageAppUseCase.reinstallAppWithGoogle(action.appInfo.packageName)
                         if (result.isSuccess) {
@@ -298,7 +307,7 @@ class MainViewModel(
                     if (action.appInfo.isSystem) {
                         startLogger(UiText.StringResource(R.string.log_uninstalling_system_app))
                         addLog(UiText.StringResource(R.string.log_target_app, action.appInfo.appName ?: ""))
-                        withContext(Dispatchers.IO) {
+                        withContext(ioDispatcher) {
                             val result = manageAppUseCase.uninstallApp(action.appInfo.packageName)
                             if (result.isSuccess) {
                                 addLog(UiText.StringResource(R.string.log_uninstall_success))
@@ -312,17 +321,17 @@ class MainViewModel(
                         }
                         finishLogger()
                     } else {
-                        viewModelScope.launch(Dispatchers.IO) {
+                        viewModelScope.launch(ioDispatcher) {
                             val result = manageAppUseCase.uninstallApp(action.appInfo.packageName)
                             if (result.isSuccess) {
-                                _uiState.update {
-                                    it.copy(
-                                        actionMessage = UiText.StringResource(
+                                _effect.send(
+                                    MainSideEffect.Message(
+                                        UiText.StringResource(
                                             R.string.uninstall_success,
                                             action.appInfo.appName ?: action.appInfo.packageName
                                         )
                                     )
-                                }
+                                )
                                 triggerSupportPromptIfNeeded()
                             } else {
                                 _effect.send(MainSideEffect.NormalUninstall(action.appInfo.packageName))
@@ -334,7 +343,18 @@ class MainViewModel(
                 // 6. REINSTALL ALL (Batch Logic Triggered via Single Action Enum)
                 AppClickAction.ReinstallAll -> {
                     startLogger(UiText.StringResource(R.string.log_scanning_apps))
-                    val (userApps, _) = getInstalledAppsUseCase().first()
+                    // getInstalledAppsUseCase() reads PackageManager and can throw
+                    // (e.g. DeadObjectException). Guard it so a failure can't crash the app or
+                    // leave the logger dialog stuck spinning.
+                    val (userApps, _) = try {
+                        getInstalledAppsUseCase().first()
+                    } catch (e: Exception) {
+                        if (e is CancellationException) throw e // preserve structured-concurrency cancellation
+                        Logger.e("MainViewModel", "reinstallAll: failed to load apps", e)
+                        addLog(UiText.StringResource(R.string.log_error, e.message ?: ""))
+                        finishLogger()
+                        return@launch
+                    }
 
                     val targets = userApps.filter {
                         it.installerPackageName != "com.android.vending" &&
@@ -380,16 +400,11 @@ class MainViewModel(
                     if (result.isSuccess) {
                         result
                     } else {
-                        try {
-                            packageManager.getPackageInfo(appInfo.packageName, 0).applicationInfo?.let { info ->
-                                val isDebuggable = (info.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
-                                if (isDebuggable) {
-                                    Result.failure(UiTextException(UiText.StringResource(R.string.error_debuggable_app)))
-                                } else {
-                                    result
-                                }
-                            } ?: result
-                        } catch (_: Exception) {
+                        // appInfo.isDebuggable is already resolved on the domain model (from the
+                        // installed-app scan), so no PackageManager lookup is needed here.
+                        if (appInfo.isDebuggable) {
+                            Result.failure(UiTextException(UiText.StringResource(R.string.error_debuggable_app)))
+                        } else {
                             result
                         }
                     }
@@ -457,7 +472,7 @@ class MainViewModel(
                         startLogger(UiText.StringResource(R.string.log_sharing_batch))
                         val uris = mutableListOf<android.net.Uri>()
 
-                        withContext(Dispatchers.IO) {
+                        withContext(ioDispatcher) {
                             action.appList.forEachIndexed { index, app ->
                                 addLog(UiText.StringResource(R.string.log_batch_preparing, index + 1, action.appList.size, app.appName ?: ""))
                                 val result = shareAppUseCase(app)
@@ -518,7 +533,7 @@ class MainViewModel(
 
         var processed = 0
         var failed = 0
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             targets.forEach { app ->
                 val result = if (isFreeze) {
                     if (useSuspend) manageAppUseCase.setAppSuspended(app.packageName, true)
@@ -557,7 +572,7 @@ class MainViewModel(
         startLogger(title)
         var hasAtLeastOneSuccess = false
 
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             apps.forEachIndexed { index, app ->
                 addLog(UiText.StringResource(R.string.log_batch_step, index + 1, apps.size, app.appName ?: ""))
                 val result = block(app)
@@ -590,29 +605,29 @@ class MainViewModel(
         if (app != null)
             block(app)
                 .onSuccess {
-                    _uiState.update {
-                        it.copy(
-                            actionMessage = getSuccessMessage(
+                    _effect.send(
+                        MainSideEffect.Message(
+                            getSuccessMessage(
                                 action,
                                 app.appName ?: app.packageName
                             )
                         )
-                    }
+                    )
                     triggerSupportPromptIfNeeded()
                 }
                 .onFailure { e ->
                     val errorText = if (e is UiTextException) e.uiText else UiText.DynamicString(e.message ?: "")
-                    _uiState.update {
-                        it.copy(
-                            actionMessage = UiText.StringResource(
+                    _effect.send(
+                        MainSideEffect.Message(
+                            UiText.StringResource(
                                 R.string.error_format,
                                 errorText
                             )
                         )
-                    }
+                    )
                 }
         else {
-            _uiState.update { it.copy(actionMessage = UiText.StringResource(R.string.error_app_info_missing)) }
+            _effect.send(MainSideEffect.Message(UiText.StringResource(R.string.error_app_info_missing)))
         }
     }
 

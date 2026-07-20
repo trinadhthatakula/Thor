@@ -29,8 +29,8 @@
 * Jetpack Compose
 * Room DB App Caching
 * Custom Hidden API Bypass
-* PlayStore Download Size (around 2.0 MB)
-* Smallest APK size (less than 4 MB)
+* PlayStore Download Size (around 3.0 MB)
+* Smallest APK size (less than 6 MB)
 * FOSS - GPL-3.0
 * Fully Offline
 * No Ads/Trackers

@@ -1,5 +1,6 @@
 package com.valhalla.thor.presentation.permission
 
+import android.annotation.SuppressLint
 import android.graphics.drawable.Drawable
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
@@ -64,10 +65,13 @@ import coil3.compose.AsyncImage
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppPermission
 import com.valhalla.thor.presentation.utils.AppIconModel
+import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.koin.androidx.compose.koinViewModel
 
+// PROTECTION_INTERNAL is inlined at compile time; its value is a stable bitmask constant across API levels (safe on minSdk 28).
+@SuppressLint("InlinedApi")
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun PermissionManagerScreen(
@@ -84,15 +88,8 @@ fun PermissionManagerScreen(
         viewModel.loadPermissions(packageName, appName)
     }
 
-    LaunchedEffect(state.errorMessage, state.successMessage) {
-        state.errorMessage?.let {
-            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
-            viewModel.clearMessages()
-        }
-        state.successMessage?.let {
-            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
-            viewModel.clearMessages()
-        }
+    ObserveAsEvents(viewModel.events) { event ->
+        Toast.makeText(context, event.asString(context), Toast.LENGTH_SHORT).show()
     }
 
     val animatedVisibilityScope = LocalNavAnimatedContentScope.current

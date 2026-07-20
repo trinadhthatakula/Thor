@@ -1,6 +1,5 @@
 package com.valhalla.thor.domain
 
-import android.content.Intent
 import com.valhalla.thor.domain.model.AppMetadata
 
 /**
@@ -62,5 +61,7 @@ sealed interface InstallState {
     data class Error(val message: com.valhalla.thor.util.UiText) : InstallState
 
     // Critical: The OS has paused the session to ask the user for permission.
-    data class UserConfirmationRequired(val intent: Intent) : InstallState
+    // The Android confirm Intent lives in the data layer (PendingInstallIntent) to keep
+    // this domain state free of Android types; the presentation layer consumes it.
+    data object UserConfirmationRequired : InstallState
 }

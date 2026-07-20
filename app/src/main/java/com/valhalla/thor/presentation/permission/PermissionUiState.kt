@@ -8,7 +8,5 @@ data class PermissionUiState(
     val permissions: List<AppPermission> = emptyList(),
     val isLoading: Boolean = true,
     val searchQuery: String = "",
-    val isPrivilegeMode: Boolean = false,
-    val errorMessage: String? = null,
-    val successMessage: String? = null
+    val isPrivilegeMode: Boolean = false
 )
