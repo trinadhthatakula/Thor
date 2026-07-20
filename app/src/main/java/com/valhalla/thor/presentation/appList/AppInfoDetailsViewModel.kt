@@ -113,17 +113,18 @@ class AppInfoDetailsViewModel(
      * [loadAppDetails]) and never flips [AppInfoDetailsUiState.isLoading], so the screen doesn't
      * flash the loader after every freeze / suspend / force-stop / clear action.
      */
-    private fun refreshDetails(packageName: String) {
-        viewModelScope.launch {
-            val inFreezer = withContext(Dispatchers.IO) { freezerRepository.contains(packageName) }
-            val details = appRepository.getDetailedAppInfo(packageName)
-            if (details != null) {
-                _uiState.update {
-                    it.copy(
-                        detailedInfo = details,
-                        isInFreezer = inFreezer
-                    )
-                }
+    // suspend (not a nested viewModelScope.launch): every caller already runs inside a
+    // viewModelScope coroutine, so launching again was redundant and could let concurrent refreshes
+    // complete out of order. Called directly => it serializes within the caller's coroutine.
+    private suspend fun refreshDetails(packageName: String) {
+        val inFreezer = withContext(Dispatchers.IO) { freezerRepository.contains(packageName) }
+        val details = appRepository.getDetailedAppInfo(packageName)
+        if (details != null) {
+            _uiState.update {
+                it.copy(
+                    detailedInfo = details,
+                    isInFreezer = inFreezer
+                )
             }
         }
     }

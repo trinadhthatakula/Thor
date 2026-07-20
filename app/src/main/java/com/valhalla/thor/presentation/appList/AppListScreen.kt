@@ -217,6 +217,7 @@ fun AppListScreen(
             appName = freezerPrompt?.appName,
             onAddToFreezer = {
                 freezerPrompt?.let { viewModel.addToFreezer(it.packageName) }
+                freezerPrompt = null
             },
             onDismiss = { freezerPrompt = null },
             modifier = Modifier

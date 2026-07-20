@@ -2,6 +2,8 @@ package com.valhalla.thor.presentation.utils
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
@@ -22,9 +24,12 @@ import kotlinx.coroutines.flow.Flow
 @Composable
 fun <T> ObserveAsEvents(flow: Flow<T>, key1: Any? = null, onEvent: (T) -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
+    // rememberUpdatedState: the LaunchedEffect keys on flow/lifecycleOwner (stable), so without this
+    // a handler that closes over changing state (context, snackbar host, ...) would go stale.
+    val currentOnEvent by rememberUpdatedState(onEvent)
     LaunchedEffect(flow, lifecycleOwner, key1) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            flow.collect(onEvent)
+            flow.collect { currentOnEvent(it) }
         }
     }
 }
