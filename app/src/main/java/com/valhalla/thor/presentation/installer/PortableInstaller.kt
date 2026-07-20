@@ -13,7 +13,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.FastOutSlowInEasing
 import com.valhalla.thor.domain.model.AppMetadata
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -58,7 +57,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -73,12 +71,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
 import com.valhalla.thor.R
+import com.valhalla.thor.data.manager.PendingInstallIntent
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.domain.repository.InstallMode
 import kotlinx.coroutines.delay
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
+import java.io.File
 import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -105,6 +107,7 @@ fun PortableInstaller(
         )
     )
     val context = LocalContext.current
+    val pendingInstallIntent = koinInject<PendingInstallIntent>()
 
     // Auto-start installation process if intent is present
     LaunchedEffect(Unit) {
@@ -120,9 +123,19 @@ fun PortableInstaller(
     // Handle System Dialogs
     LaunchedEffect(state) {
         if (state is InstallState.UserConfirmationRequired) {
-            val intent = (state as InstallState.UserConfirmationRequired).intent
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
+            // Consume-once: a replayed UserConfirmationRequired (the event bus replays the
+            // latest value) can't re-launch the dialog because the slot is cleared on read.
+            pendingInstallIntent.consume()?.let { intent ->
+                // A system-supplied confirmation Intent can throw ActivityNotFoundException /
+                // SecurityException on some ROMs — don't crash; reset to Idle so the user can retry.
+                try {
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                } catch (e: Exception) {
+                    if (e is kotlin.coroutines.cancellation.CancellationException) throw e
+                    viewModel.resetState()
+                }
+            }
         }
     }
 
@@ -234,9 +247,9 @@ fun PortableInstaller(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        if (meta.icon != null) {
-                            Image(
-                                bitmap = meta.icon.asImageBitmap(),
+                        if (meta.iconPath != null) {
+                            AsyncImage(
+                                model = File(meta.iconPath),
                                 contentDescription = null,
                                 modifier = Modifier
                                     .size(64.dp)
@@ -545,10 +558,10 @@ fun PortableInstaller(
                             )
                             
                             // App Icon container
-                            val iconBitmap = lastMeta?.icon
-                            if (iconBitmap != null) {
-                                Image(
-                                    bitmap = iconBitmap.asImageBitmap(),
+                            val iconPath = lastMeta?.iconPath
+                            if (iconPath != null) {
+                                AsyncImage(
+                                    model = File(iconPath),
                                     contentDescription = null,
                                     modifier = Modifier
                                         .size(72.dp)

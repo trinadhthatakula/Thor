@@ -1,14 +1,7 @@
 package com.valhalla.thor.domain.model
 
-import android.content.pm.ApplicationInfo
-import android.content.pm.PackageInfo
-import android.content.pm.PackageManager
-import android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
-import android.os.Build
-import android.os.Environment
 import androidx.compose.runtime.Immutable
 import kotlinx.serialization.Serializable
-import java.io.File
 
 @Serializable
 @Immutable
@@ -24,7 +17,9 @@ data class AppInfo(
     val publicSourceDir: String? = null,
     val splitPublicSourceDirs: List<String> = emptyList(),
     val enabled: Boolean = true,
-    val enabledState: Int = COMPONENT_ENABLED_STATE_DEFAULT,
+    // Value of PackageManager.COMPONENT_ENABLED_STATE_DEFAULT (0); inlined to
+    // keep this domain model free of android.* imports.
+    val enabledState: Int = 0,
     val dataDir: String? = null,
     val nativeLibraryDir: String? = null,
     val deviceProtectedDataDir: String? = null,
@@ -42,85 +37,6 @@ data class AppInfo(
     val isUadLoadFailed: Boolean = false,
     /** Total install size in bytes (app + data + cache). null = not yet computed. */
     val installSize: Long? = null,
-) {
-    companion object {
-
-        fun mapToAppInfo(
-            packInfo: PackageInfo,
-            appInfo: ApplicationInfo,
-            pm: PackageManager,
-            isLightweight: Boolean = false
-        ): AppInfo {
-            val isDebuggable = (appInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
-
-            val sharedLibraryFiles = if (!isLightweight) {
-                appInfo.sharedLibraryFiles?.toList() ?: emptyList()
-            } else {
-                emptyList()
-            }
-
-            val obbFilePath = if (!isLightweight) {
-                val obbFile = File(
-                    Environment.getExternalStorageDirectory(),
-                    "Android/obb/${appInfo.packageName}"
-                )
-                if (obbFile.exists()) obbFile.absolutePath else null
-            } else {
-                null
-            }
-
-            val sharedDataDir = if (!isLightweight) {
-                val dataFile = File(
-                    Environment.getExternalStorageDirectory(),
-                    "Android/data/${appInfo.packageName}"
-                )
-                dataFile.absolutePath
-            } else {
-                ""
-            }
-
-            @Suppress("DEPRECATION")
-            return AppInfo(
-                appName = appInfo.loadLabel(pm).toString(),
-                packageName = packInfo.packageName,
-                versionName = packInfo.versionName,
-                versionCode = packInfo.longVersionCode.toInt(),
-                minSdk = appInfo.minSdkVersion,
-                targetSdk = appInfo.targetSdkVersion,
-                isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0,
-                installerPackageName = getInstallerPackageName(packInfo.packageName, pm),
-                publicSourceDir = appInfo.publicSourceDir,
-                splitPublicSourceDirs = appInfo.splitPublicSourceDirs?.toList() ?: emptyList(),
-                enabled = appInfo.enabled && (appInfo.flags and ApplicationInfo.FLAG_INSTALLED) != 0,
-                dataDir = appInfo.dataDir,
-                nativeLibraryDir = appInfo.nativeLibraryDir,
-                deviceProtectedDataDir = appInfo.deviceProtectedDataDir,
-                sharedLibraryFiles = sharedLibraryFiles,
-                obbFilePath = obbFilePath,
-                sourceDir = appInfo.sourceDir,
-                sharedDataDir = sharedDataDir,
-                lastUpdateTime = packInfo.lastUpdateTime,
-                firstInstallTime = packInfo.firstInstallTime,
-                isDebuggable = isDebuggable,
-                isSuspended = (appInfo.flags and ApplicationInfo.FLAG_SUSPENDED) != 0,
-                isInstalled = (appInfo.flags and ApplicationInfo.FLAG_INSTALLED) != 0
-            )
-        }
-
-        fun getInstallerPackageName(packageName: String, pm: PackageManager): String? {
-            return try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    pm.getInstallSourceInfo(packageName).installingPackageName
-                } else {
-                    @Suppress("DEPRECATION")
-                    pm.getInstallerPackageName(packageName)
-                }
-            } catch (_: Exception) {
-                null
-            }
-        }
-
-    }
-}
+)
 
 fun AppInfo.formattedAppName() = appName?.replace(" ", "_") ?: packageName

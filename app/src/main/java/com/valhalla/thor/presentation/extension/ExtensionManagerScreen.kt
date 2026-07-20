@@ -38,6 +38,7 @@ import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -60,8 +61,9 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.data.manager.ExtensionManager
 import com.valhalla.thor.domain.model.UserPreferences
-import com.valhalla.thor.presentation.settings.SettingsViewModel
+import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.presentation.theme.firaMonoFontFamily
+import kotlinx.coroutines.flow.map
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import kotlin.random.Random
@@ -74,8 +76,8 @@ fun ExtensionManagerScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val settingsViewModel: SettingsViewModel = koinViewModel()
-    val prefs by settingsViewModel.preferences.collectAsStateWithLifecycle()
+    val preferenceRepository = koinInject<PreferenceRepository>()
+    val prefs by preferenceRepository.userPreferences.collectAsStateWithLifecycle(initialValue = UserPreferences())
     val extensionManager: ExtensionManager = koinInject()
 
     // Reload when returning to this screen (e.g. after installing from the store) so a freshly
@@ -91,10 +93,12 @@ fun ExtensionManagerScreen(
     // an explicit consent (disclaimer + a small math check) before it can be used. Persisted, so it
     // shows only once; dismissing without solving leaves the screen. Gate on the TRI-STATE flow
     // (null = prefs still loading) so an already-accepted user never gets a first-frame sheet flash.
-    val consentAccepted by settingsViewModel.extensionConsentAccepted.collectAsStateWithLifecycle()
+    val consentAccepted by remember(preferenceRepository) {
+        preferenceRepository.userPreferences.map { it.extensionConsentAccepted }
+    }.collectAsStateWithLifecycle(initialValue = null)
     if (consentAccepted == false) {
         ExtensionConsentSheet(
-            onConsent = { settingsViewModel.setExtensionConsentAccepted(true) },
+            onConsent = { viewModel.acceptExtensionConsent() },
             onDismiss = onBack,
         )
     }
