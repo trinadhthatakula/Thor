@@ -207,15 +207,16 @@ fun AppInfoDetailsScreen(
                                     onAppAction(AppClickAction.AppInfoSettings(details.appInfo))
                                 },
                                 onFreezeToggle = { shouldFreeze ->
-                                    // Honor the requested target: unfreeze immediately,
-                                    // only show the warning dialog when freezing.
-                                    if (shouldFreeze) {
+                                    // Unfreeze immediately. When freezing, only SYSTEM apps get the
+                                    // safety-warning dialog (instability / reboot-loop risk); user
+                                    // apps are safe to freeze directly (mirrors AppInfoDialog gating).
+                                    if (shouldFreeze && details.appInfo.isSystem) {
                                         showFreezeConfirmation = true
                                     } else {
                                         viewModel.toggleFreezerState(
                                             packageName,
                                             details.appInfo.appName,
-                                            false
+                                            shouldFreeze
                                         )
                                     }
                                 },
