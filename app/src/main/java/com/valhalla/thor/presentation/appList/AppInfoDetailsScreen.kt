@@ -83,6 +83,7 @@ import com.valhalla.thor.domain.model.PermissionDetail
 import com.valhalla.thor.presentation.theme.bodyFontFamily
 import com.valhalla.thor.presentation.theme.firaMonoFontFamily
 import com.valhalla.thor.presentation.utils.AppIconModel
+import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 import com.valhalla.thor.presentation.widgets.AnimateLottieRaw
 import kotlinx.coroutines.launch
@@ -111,11 +112,8 @@ fun AppInfoDetailsScreen(
         viewModel.loadAppDetails(packageName)
     }
 
-    LaunchedEffect(state.actionMessage) {
-        state.actionMessage?.let { msg ->
-            Toast.makeText(context, msg.asString(context), Toast.LENGTH_SHORT).show()
-            viewModel.dismissMessage()
-        }
+    ObserveAsEvents(viewModel.events) { msg ->
+        Toast.makeText(context, msg.asString(context), Toast.LENGTH_SHORT).show()
     }
 
     var showClearDataConfirmation by remember { mutableStateOf(false) }

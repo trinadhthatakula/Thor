@@ -10,7 +10,7 @@ import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.KoinViewModel
+import org.koin.core.annotation.Named
 
 data class HomeUiState(
     val isLoading: Boolean = true,
@@ -48,7 +49,8 @@ data class HomeUiState(
 class HomeViewModel(
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val privilegeManager: PrivilegeManager,
-    private val preferenceRepository: PreferenceRepository // Injected
+    private val preferenceRepository: PreferenceRepository, // Injected
+    @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
     private var dashboardJob: Job? = null
@@ -96,7 +98,7 @@ class HomeViewModel(
         // Cancel any existing job to ensure we restart with fresh system status
         dashboardJob?.cancel()
 
-        dashboardJob = viewModelScope.launch(Dispatchers.IO) {
+        dashboardJob = viewModelScope.launch(ioDispatcher) {
             _internalState.update { it.copy(isLoading = true) }
             getInstalledAppsUseCase().catch { e ->
                 // getInstalledAppsUseCase() is a callbackFlow that registers package receivers
@@ -117,7 +119,7 @@ class HomeViewModel(
     fun onTypeChanged(type: AppListType) {
         _internalState.update { it.copy(selectedType = type) }
         typeChangeJob?.cancel()
-        typeChangeJob = viewModelScope.launch(Dispatchers.IO) {
+        typeChangeJob = viewModelScope.launch(ioDispatcher) {
             processData(lastUserApps, lastSystemApps, type)
         }
     }

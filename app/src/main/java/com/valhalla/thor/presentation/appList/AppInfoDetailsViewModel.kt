@@ -13,7 +13,10 @@ import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -27,7 +30,6 @@ data class AppInfoDetailsUiState(
     val isDhizuku: Boolean = false,
     val detailedInfo: DetailedAppInfo? = null,
     val isInFreezer: Boolean = false,
-    val actionMessage: UiText? = null,
     val freezerPrompt: FreezerPrompt? = null,
     val errorMessage: UiText? = null
 )
@@ -43,6 +45,11 @@ class AppInfoDetailsViewModel(
 
     private val _uiState = MutableStateFlow(AppInfoDetailsUiState())
     val uiState = _uiState.asStateFlow()
+
+    // One-off toast feedback lives here (not in UiState) so it fires exactly once and is never
+    // replayed on recomposition or config change.
+    private val _events = MutableSharedFlow<UiText>(replay = 0)
+    val events: SharedFlow<UiText> = _events.asSharedFlow()
 
     fun loadAppDetails(packageName: String) {
         _uiState.update {
@@ -103,24 +110,13 @@ class AppInfoDetailsViewModel(
                     _uiState.update { it.copy(freezerPrompt = FreezerPrompt(packageName, appName)) }
                 } else {
                     val msgRes = if (freeze) R.string.frozen_success else R.string.unfrozen_success
-                    _uiState.update {
-                        it.copy(
-                            actionMessage = UiText.StringResource(msgRes, appName ?: packageName),
-                            isInFreezer = inFreezer
-                        )
-                    }
+                    _uiState.update { it.copy(isInFreezer = inFreezer) }
+                    _events.emit(UiText.StringResource(msgRes, appName ?: packageName))
                 }
                 // Reload state
                 loadAppDetails(packageName)
             }.onFailure { e ->
-                _uiState.update {
-                    it.copy(
-                        actionMessage = UiText.StringResource(
-                            R.string.error_format,
-                            e.message ?: ""
-                        )
-                    )
-                }
+                _events.emit(UiText.StringResource(R.string.error_format, e.message ?: ""))
             }
         }
     }
@@ -132,14 +128,7 @@ class AppInfoDetailsViewModel(
                 // Reload state
                 loadAppDetails(packageName)
             }.onFailure { e ->
-                _uiState.update {
-                    it.copy(
-                        actionMessage = UiText.StringResource(
-                            R.string.error_format,
-                            e.message ?: ""
-                        )
-                    )
-                }
+                _events.emit(UiText.StringResource(R.string.error_format, e.message ?: ""))
             }
         }
     }
@@ -149,19 +138,10 @@ class AppInfoDetailsViewModel(
             val result = manageAppUseCase.forceStop(packageName)
             result.onSuccess {
                 val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
-                _uiState.update {
-                    it.copy(actionMessage = UiText.StringResource(R.string.killed_success, appName))
-                }
+                _events.emit(UiText.StringResource(R.string.killed_success, appName))
                 loadAppDetails(packageName)
             }.onFailure { e ->
-                _uiState.update {
-                    it.copy(
-                        actionMessage = UiText.StringResource(
-                            R.string.error_format,
-                            e.message ?: ""
-                        )
-                    )
-                }
+                _events.emit(UiText.StringResource(R.string.error_format, e.message ?: ""))
             }
         }
     }
@@ -171,24 +151,10 @@ class AppInfoDetailsViewModel(
             val result = manageAppUseCase.clearCache(packageName)
             result.onSuccess {
                 val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
-                _uiState.update {
-                    it.copy(
-                        actionMessage = UiText.StringResource(
-                            R.string.cache_cleared_success,
-                            appName
-                        )
-                    )
-                }
+                _events.emit(UiText.StringResource(R.string.cache_cleared_success, appName))
                 loadAppDetails(packageName)
             }.onFailure { e ->
-                _uiState.update {
-                    it.copy(
-                        actionMessage = UiText.StringResource(
-                            R.string.error_format,
-                            e.message ?: ""
-                        )
-                    )
-                }
+                _events.emit(UiText.StringResource(R.string.error_format, e.message ?: ""))
             }
         }
     }
@@ -198,24 +164,10 @@ class AppInfoDetailsViewModel(
             val result = manageAppUseCase.clearAppData(packageName)
             result.onSuccess {
                 val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
-                _uiState.update {
-                    it.copy(
-                        actionMessage = UiText.StringResource(
-                            R.string.data_cleared_success,
-                            appName
-                        )
-                    )
-                }
+                _events.emit(UiText.StringResource(R.string.data_cleared_success, appName))
                 loadAppDetails(packageName)
             }.onFailure { e ->
-                _uiState.update {
-                    it.copy(
-                        actionMessage = UiText.StringResource(
-                            R.string.error_format,
-                            e.message ?: ""
-                        )
-                    )
-                }
+                _events.emit(UiText.StringResource(R.string.error_format, e.message ?: ""))
             }
         }
     }
@@ -238,28 +190,13 @@ class AppInfoDetailsViewModel(
             if (currentlyIn) {
                 freezerRepository.remove(packageName)
                 freezerShortcutManager.disableAppShortcut(packageName)
-                _uiState.update {
-                    it.copy(
-                        isInFreezer = false,
-                        actionMessage = UiText.StringResource(
-                            R.string.removed_from_freezer_success,
-                            1
-                        )
-                    )
-                }
+                _uiState.update { it.copy(isInFreezer = false) }
+                _events.emit(UiText.StringResource(R.string.removed_from_freezer_success, 1))
             } else {
                 freezerRepository.add(packageName)
-                _uiState.update {
-                    it.copy(
-                        isInFreezer = true,
-                        actionMessage = UiText.StringResource(R.string.added_to_freezer_success)
-                    )
-                }
+                _uiState.update { it.copy(isInFreezer = true) }
+                _events.emit(UiText.StringResource(R.string.added_to_freezer_success))
             }
         }
-    }
-
-    fun dismissMessage() {
-        _uiState.update { it.copy(actionMessage = null) }
     }
 }

@@ -250,15 +250,16 @@ fun MainScreen(
                         }
                         context.startActivity(intent)
                     }
+
+                    is MainSideEffect.Message -> {
+                        Toast.makeText(
+                            context,
+                            effect.text.asString(context),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
                 }
             }
-        }
-    }
-
-    LaunchedEffect(state.actionMessage) {
-        state.actionMessage?.let { msg ->
-            Toast.makeText(context, msg.asString(context), Toast.LENGTH_SHORT).show()
-            mainViewModel.consumeMessage()
         }
     }
 

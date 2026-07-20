@@ -15,12 +15,14 @@ import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.LocaleManager
 import com.valhalla.thor.util.UiText
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
@@ -29,6 +31,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
+import org.koin.core.annotation.Named
 
 @KoinViewModel
 class SettingsViewModel(
@@ -39,6 +42,7 @@ class SettingsViewModel(
     private val freezerRepository: FreezerRepository,
     private val manageAppUseCase: ManageAppUseCase,
     private val freezerShortcutManager: com.valhalla.thor.data.launcher.FreezerShortcutManager,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
     data class SettingsUiState(
@@ -47,8 +51,7 @@ class SettingsViewModel(
         val isShizukuAvailable: Boolean = false,
         val isDhizukuAvailable: Boolean = false,
         val canUseBiometric: Boolean = false,
-        val hasBiometricHardware: Boolean = false,
-        val actionMessage: UiText? = null
+        val hasBiometricHardware: Boolean = false
     )
 
     /** Off-main-thread snapshot of the available privilege engines. */
@@ -58,13 +61,17 @@ class SettingsViewModel(
         val dhizuku: Boolean
     )
 
-    private val _actionMessage = MutableStateFlow<UiText?>(null)
+    /**
+     * One-off UI feedback (Toasts) that must fire exactly once — kept off the UiState StateFlow so it
+     * isn't re-delivered on recomposition/config change. Collected in SettingsScreen via ObserveAsEvents.
+     */
+    private val _events = MutableSharedFlow<UiText>(replay = 0)
+    val events: SharedFlow<UiText> = _events.asSharedFlow()
 
     private val _systemStatus = combine(
         preferenceRepository.userPreferences,
-        _actionMessage,
         flow {
-            // Availability probes hit binder IPC (Shizuku.pingBinder / DhizukuAPI). flowOn(IO) below
+            // Availability probes hit binder IPC (Shizuku.pingBinder / DhizukuAPI). flowOn(io) below
             // keeps them off the Main thread to avoid janking the first subscription / every
             // WhileSubscribed restart.
             emit(
@@ -74,16 +81,15 @@ class SettingsViewModel(
                     dhizuku = systemRepository.isDhizukuAvailable()
                 )
             )
-        }.flowOn(Dispatchers.IO)
-    ) { prefs, message, status ->
+        }.flowOn(ioDispatcher)
+    ) { prefs, status ->
         SettingsUiState(
             prefs = prefs,
             isRootAvailable = status.root,
             isShizukuAvailable = status.shizuku,
             isDhizukuAvailable = status.dhizuku,
             canUseBiometric = biometricHelper.canAuthenticate(),
-            hasBiometricHardware = biometricHelper.hasHardware(),
-            actionMessage = message
+            hasBiometricHardware = biometricHelper.hasHardware()
         )
     }
 
@@ -155,10 +161,6 @@ class SettingsViewModel(
         }
     }
 
-    fun consumeMessage() {
-        _actionMessage.value = null
-    }
-
     fun setAutoFreezeEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferenceRepository.setAutoFreezeEnabled(enabled)
@@ -182,10 +184,10 @@ class SettingsViewModel(
         viewModelScope.launch {
             val pkgs = freezerRepository.getAllPackageNames()
             if (pkgs.isEmpty()) {
-                _actionMessage.value = UiText.StringResource(R.string.tile_no_apps_toast)
+                _events.emit(UiText.StringResource(R.string.tile_no_apps_toast))
                 return@launch
             }
-            val results = withContext(Dispatchers.IO) {
+            val results = withContext(ioDispatcher) {
                 pkgs.map { pkg ->
                     // forceUnfreeze restores BOTH disabled and suspended apps (not just enable).
                     async { manageAppUseCase.forceUnfreeze(pkg) }
@@ -202,7 +204,7 @@ class SettingsViewModel(
                     failures
                 )
             }
-            _actionMessage.value = uiText
+            _events.emit(uiText)
         }
     }
 

@@ -5,7 +5,11 @@ import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.usecase.GetAppPermissionsUseCase
 import com.valhalla.thor.domain.usecase.TogglePermissionUseCase
+import com.valhalla.thor.util.UiText
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -21,13 +25,15 @@ class PermissionManagerViewModel(
     private val _uiState = MutableStateFlow(PermissionUiState())
     val uiState = _uiState.asStateFlow()
 
+    private val _events = MutableSharedFlow<UiText>(replay = 0)
+    val events: SharedFlow<UiText> = _events.asSharedFlow()
+
     fun loadPermissions(packageName: String, appName: String) {
         _uiState.update {
             it.copy(
                 packageName = packageName,
                 appName = appName,
-                isLoading = true,
-                errorMessage = null
+                isLoading = true
             )
         }
         viewModelScope.launch {
@@ -46,10 +52,12 @@ class PermissionManagerViewModel(
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            isPrivilegeMode = isPrivilege,
-                            errorMessage = error.message ?: "Failed to load permissions"
+                            isPrivilegeMode = isPrivilege
                         )
                     }
+                    _events.emit(
+                        UiText.DynamicString(error.message ?: "Failed to load permissions")
+                    )
                 }
         }
     }
@@ -68,21 +76,16 @@ class PermissionManagerViewModel(
                         val updated = state.permissions.map {
                             if (it.name == permissionName) it.copy(isGranted = grant) else it
                         }
-                        state.copy(
-                            permissions = updated,
-                            successMessage = "Permission status updated"
-                        )
+                        state.copy(permissions = updated)
                     }
+                    _events.emit(UiText.DynamicString("Permission status updated"))
                 }
                 .onFailure { error ->
-                    _uiState.update {
-                        it.copy(errorMessage = error.message ?: "Failed to modify permission")
-                    }
+                    _events.emit(
+                        UiText.DynamicString(error.message ?: "Failed to modify permission")
+                    )
                 }
         }
     }
 
-    fun clearMessages() {
-        _uiState.update { it.copy(errorMessage = null, successMessage = null) }
-    }
 }
