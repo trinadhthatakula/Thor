@@ -332,7 +332,10 @@ fun MainScreen(
                                 { mainViewModel.onAppAction(it) }
                             )
                         },
-                        onClearAllCache = { type -> mainViewModel.clearAllCache(type) }
+                        onClearAllCache = { type -> mainViewModel.clearAllCache(type) },
+                        onNavigateToExtensionManager = {
+                            homeBackStack.add(ThorRoute.ExtensionManager)
+                        }
                     )
                 }
 
@@ -460,12 +463,12 @@ fun MainScreen(
                 ) {
                     ExtensionManagerScreen(
                         onBack = {
-                            if (settingsBackStack.size > 1) {
-                                settingsBackStack.removeLastOrNull()
+                            if (currentBackStack.size > 1) {
+                                currentBackStack.removeLastOrNull()
                             }
                         },
                         onBrowse = {
-                            settingsBackStack.add(ThorRoute.ExtensionBrowse)
+                            currentBackStack.add(ThorRoute.ExtensionBrowse)
                         }
                     )
                 }
@@ -475,8 +478,8 @@ fun MainScreen(
                 ) {
                     ExtensionBrowseScreen(
                         onBack = {
-                            if (settingsBackStack.size > 1) {
-                                settingsBackStack.removeLastOrNull()
+                            if (currentBackStack.size > 1) {
+                                currentBackStack.removeLastOrNull()
                             }
                         }
                     )

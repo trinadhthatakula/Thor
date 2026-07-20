@@ -4,7 +4,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,14 +13,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -33,8 +31,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -48,6 +44,7 @@ import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.presentation.home.components.AppDistributionChart
 import com.valhalla.thor.presentation.home.components.DashboardHeader
+import com.valhalla.thor.presentation.home.components.HomeActionsBento
 import com.valhalla.thor.presentation.home.components.SupportCommunitySection
 import com.valhalla.thor.presentation.home.components.SummaryStatRow
 import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
@@ -62,6 +59,7 @@ fun HomeScreen(
     onNavigateToFreezer: () -> Unit,
     onReinstallAll: () -> Unit,
     onClearAllCache: (AppListType) -> Unit,
+    onNavigateToExtensionManager: () -> Unit,
     viewModel: HomeViewModel = koinViewModel(),
     installerViewModel: InstallerViewModel = koinViewModel()
 ) {
@@ -84,17 +82,28 @@ fun HomeScreen(
 
     val adaptiveInfo = currentWindowAdaptiveInfoV2()
     val isWideScreen = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
+    val isExpanded = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND)
+    val hasPrivilege = state.activePrivilegeMode != null
+    val isRoot = state.activePrivilegeMode == PrivilegeMode.ROOT
+    val reinstallVisible = state.activePrivilegeMode != null &&
+        state.unknownInstallerCount > 0 && state.showReinstallCard
 
     // The bottom inset (nav-bar height + system navigation-bar insets) is already applied by
     // MainScreen, which hosts this screen inside Scaffold's Box(Modifier.padding(innerPadding)).
     // Adding another 80.dp + navigationBars here double-counted it and left a large empty gap
     // at the bottom of the scroll content, so this screen owns no bottom inset of its own.
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
     ) {
+        Column(
+            modifier = Modifier
+                .then(if (isExpanded) Modifier.widthIn(max = 1200.dp) else Modifier)
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+        ) {
         // 1. Header (full width always)
         DashboardHeader(
             isRoot = state.isRootAvailable,
@@ -134,45 +143,18 @@ fun HomeScreen(
 
                     Spacer(Modifier.height(16.dp))
 
-                    AnimatedVisibility(state.activePrivilegeMode != null && state.unknownInstallerCount > 0 && state.showReinstallCard) {
-                        Column {
-                            ActionCard(
-                                title = stringResource(R.string.reinstall_all),
-                                subtitle = stringResource(
-                                    R.string.reinstall_all_subtitle,
-                                    state.unknownInstallerCount,
-                                    state.selectedType.name.lowercase()
-                                ),
-                                icon = R.drawable.apk_install,
-                                isWarning = true,
-                                onClick = onReinstallAll,
-                                onClose = { viewModel.dismissReinstallCard() }
-                            )
-                            Spacer(Modifier.height(12.dp))
-                        }
-                    }
-
-                    ActionCard(
-                        title = stringResource(R.string.install_from_file),
-                        subtitle = stringResource(R.string.install_from_file_subtitle),
-                        icon = R.drawable.apk_install,
-                        isPrimary = true,
-                        onClick = {
-                            filePickerLauncher.launch(arrayOf("*/*"))
-                        }
+                    HomeActionsBento(
+                        reinstallVisible = reinstallVisible,
+                        isRoot = isRoot,
+                        hasPrivilege = hasPrivilege,
+                        unknownInstallerCount = state.unknownInstallerCount,
+                        selectedTypeName = state.selectedType.name.lowercase(),
+                        onReinstall = onReinstallAll,
+                        onDismissReinstall = { viewModel.dismissReinstallCard() },
+                        onInstall = { filePickerLauncher.launch(arrayOf("*/*")) },
+                        onClearCache = { showCacheDialog = true },
+                        onNavigateToExtensionManager = onNavigateToExtensionManager,
                     )
-
-                    AnimatedVisibility(state.activePrivilegeMode == PrivilegeMode.ROOT) {
-                        Column {
-                            Spacer(Modifier.height(12.dp))
-                            ActionCard(
-                                title = stringResource(R.string.clear_all_cache),
-                                subtitle = stringResource(R.string.clear_all_cache_subtitle),
-                                icon = R.drawable.clear_all,
-                                onClick = { showCacheDialog = true }
-                            )
-                        }
-                    }
                 }
 
                 // Right Column: Distribution & Support
@@ -234,48 +216,19 @@ fun HomeScreen(
             Spacer(Modifier.height(12.dp))
 
             // --- ACTIONS ---
-            AnimatedVisibility(state.activePrivilegeMode != null && state.unknownInstallerCount > 0 && state.showReinstallCard) {
-                Column {
-                    ActionCard(
-                        title = stringResource(R.string.reinstall_all),
-                        subtitle = stringResource(
-                            R.string.reinstall_all_subtitle,
-                            state.unknownInstallerCount,
-                            state.selectedType.name.lowercase()
-                        ),
-                        icon = R.drawable.apk_install,
-                        modifier = Modifier.padding(horizontal = 24.dp),
-                        isWarning = true,
-                        onClick = onReinstallAll,
-                        onClose = { viewModel.dismissReinstallCard() }
-                    )
-                    Spacer(Modifier.height(12.dp))
-                }
-            }
-
-            ActionCard(
-                title = stringResource(R.string.install_from_file),
-                subtitle = stringResource(R.string.install_from_file_subtitle),
-                icon = R.drawable.apk_install,
+            HomeActionsBento(
+                reinstallVisible = reinstallVisible,
+                isRoot = isRoot,
+                hasPrivilege = hasPrivilege,
+                unknownInstallerCount = state.unknownInstallerCount,
+                selectedTypeName = state.selectedType.name.lowercase(),
+                onReinstall = onReinstallAll,
+                onDismissReinstall = { viewModel.dismissReinstallCard() },
+                onInstall = { filePickerLauncher.launch(arrayOf("*/*")) },
+                onClearCache = { showCacheDialog = true },
+                onNavigateToExtensionManager = onNavigateToExtensionManager,
                 modifier = Modifier.padding(horizontal = 24.dp),
-                isPrimary = true,
-                onClick = {
-                    filePickerLauncher.launch(arrayOf("*/*"))
-                }
             )
-
-            AnimatedVisibility(state.activePrivilegeMode == PrivilegeMode.ROOT) {
-                Column {
-                    Spacer(Modifier.height(12.dp))
-                    ActionCard(
-                        title = stringResource(R.string.clear_all_cache),
-                        subtitle = stringResource(R.string.clear_all_cache_subtitle),
-                        icon = R.drawable.clear_all,
-                        modifier = Modifier.padding(horizontal = 24.dp),
-                        onClick = { showCacheDialog = true }
-                    )
-                }
-            }
 
             Spacer(Modifier.height(24.dp))
 
@@ -321,9 +274,13 @@ fun HomeScreen(
 
             // 4. Social Links
             Spacer(Modifier.height(8.dp))
-            SupportCommunitySection(onSupportClick = { showSupportSheet = true })
+            SupportCommunitySection(
+                modifier = Modifier.padding(horizontal = 24.dp),
+                onSupportClick = { showSupportSheet = true }
+            )
         }
         Spacer(Modifier.height(32.dp))
+        }
     }
 
     // --- Dialogs ---
@@ -403,102 +360,5 @@ fun HomeScreen(
         SupportDeveloperHelper(
             onDismiss = { showSupportSheet = false }
         )
-    }
-}
-
-@Composable
-private fun ActionCard(
-    title: String,
-    subtitle: String,
-    icon: Int,
-    modifier: Modifier = Modifier,
-    isPrimary: Boolean = false,
-    isWarning: Boolean = false,
-    onClick: () -> Unit,
-    onClose: (() -> Unit)? = null
-) {
-    val containerColor = when {
-        isPrimary -> MaterialTheme.colorScheme.primaryContainer
-        isWarning -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.1f)
-        else -> MaterialTheme.colorScheme.surfaceContainerHigh
-    }
-
-    val contentColor = when {
-        isPrimary -> MaterialTheme.colorScheme.onPrimaryContainer
-        isWarning -> MaterialTheme.colorScheme.tertiary
-        else -> MaterialTheme.colorScheme.onSurface
-    }
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(32.dp))
-            .background(containerColor)
-            .then(
-                if (isWarning) {
-                    Modifier.background(
-                        Brush.linearGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.tertiary.copy(alpha = 0.05f),
-                                Color.Transparent
-                            )
-                        )
-                    )
-                } else Modifier
-            )
-            .clickable(onClick = onClick)
-            .padding(if (isPrimary) 24.dp else 20.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(
-                        if (isPrimary) MaterialTheme.colorScheme.onPrimaryContainer
-                        else MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f)
-                    )
-                    .padding(if (isPrimary) 16.dp else 12.dp)
-            ) {
-                Icon(
-                    painter = painterResource(icon),
-                    contentDescription = null,
-                    modifier = Modifier.size(if (isPrimary) 24.dp else 20.dp),
-                    tint = if (isPrimary) MaterialTheme.colorScheme.primaryContainer else contentColor
-                )
-            }
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = if (isPrimary) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = contentColor
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (isPrimary) contentColor.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            if (onClose != null) {
-                IconButton(onClick = onClose) {
-                    Icon(
-                        painter = painterResource(R.drawable.round_close),
-                        contentDescription = stringResource(R.string.dismiss),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            } else if (isPrimary) {
-                Icon(
-                    painter = painterResource(R.drawable.open_in_new), // Arrow forward fallback
-                    contentDescription = null,
-                    tint = contentColor.copy(alpha = 0.4f)
-                )
-            }
-        }
     }
 }

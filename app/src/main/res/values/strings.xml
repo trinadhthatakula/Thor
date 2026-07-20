@@ -67,6 +67,8 @@
     <string name="reinstall_all_subtitle">%1$d %2$s apps not from Play Store. Fix them?</string>
     <string name="install_from_file">Install from File</string>
     <string name="install_from_file_subtitle">Install APK, XAPK, APKS or Split bundles</string>
+    <string name="home_extensions_title">Extensions</string>
+    <string name="home_extensions_subtitle">Manage &amp; open</string>
     <string name="app_distribution">App Distribution</string>
     <string name="total_apps">TOTAL: %1$d</string>
     <string name="others">Others</string>
