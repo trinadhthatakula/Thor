@@ -73,11 +73,13 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.valhalla.thor.R
+import com.valhalla.thor.data.manager.PendingInstallIntent
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.domain.repository.InstallMode
 import kotlinx.coroutines.delay
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 import java.io.File
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -105,6 +107,7 @@ fun PortableInstaller(
         )
     )
     val context = LocalContext.current
+    val pendingInstallIntent = koinInject<PendingInstallIntent>()
 
     // Auto-start installation process if intent is present
     LaunchedEffect(Unit) {
@@ -120,9 +123,12 @@ fun PortableInstaller(
     // Handle System Dialogs
     LaunchedEffect(state) {
         if (state is InstallState.UserConfirmationRequired) {
-            val intent = (state as InstallState.UserConfirmationRequired).intent
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
+            // Consume-once: a replayed UserConfirmationRequired (the event bus replays the
+            // latest value) can't re-launch the dialog because the slot is cleared on read.
+            pendingInstallIntent.consume()?.let { intent ->
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(intent)
+            }
         }
     }
 
