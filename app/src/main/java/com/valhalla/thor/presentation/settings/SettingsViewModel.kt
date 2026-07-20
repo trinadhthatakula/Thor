@@ -18,6 +18,7 @@ import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -65,7 +66,13 @@ class SettingsViewModel(
      * One-off UI feedback (Toasts) that must fire exactly once — kept off the UiState StateFlow so it
      * isn't re-delivered on recomposition/config change. Collected in SettingsScreen via ObserveAsEvents.
      */
-    private val _events = MutableSharedFlow<UiText>(replay = 0)
+    // 1-slot DROP_OLDEST buffer so an event emitted just before the screen's collector reaches
+    // STARTED (early lifecycle / config change) is delivered rather than silently dropped.
+    private val _events = MutableSharedFlow<UiText>(
+        replay = 0,
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     val events: SharedFlow<UiText> = _events.asSharedFlow()
 
     private val _systemStatus = combine(

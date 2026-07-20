@@ -13,6 +13,7 @@ import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -48,7 +49,13 @@ class AppInfoDetailsViewModel(
 
     // One-off toast feedback lives here (not in UiState) so it fires exactly once and is never
     // replayed on recomposition or config change.
-    private val _events = MutableSharedFlow<UiText>(replay = 0)
+    // 1-slot DROP_OLDEST buffer so an event emitted just before the screen's collector reaches
+    // STARTED (early lifecycle / config change) is delivered rather than silently dropped.
+    private val _events = MutableSharedFlow<UiText>(
+        replay = 0,
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     val events: SharedFlow<UiText> = _events.asSharedFlow()
 
     fun loadAppDetails(packageName: String) {

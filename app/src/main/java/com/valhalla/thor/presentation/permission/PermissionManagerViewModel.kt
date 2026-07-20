@@ -6,6 +6,7 @@ import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.usecase.GetAppPermissionsUseCase
 import com.valhalla.thor.domain.usecase.TogglePermissionUseCase
 import com.valhalla.thor.util.UiText
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -25,7 +26,13 @@ class PermissionManagerViewModel(
     private val _uiState = MutableStateFlow(PermissionUiState())
     val uiState = _uiState.asStateFlow()
 
-    private val _events = MutableSharedFlow<UiText>(replay = 0)
+    // 1-slot DROP_OLDEST buffer so an event emitted just before the screen's collector reaches
+    // STARTED (early lifecycle / config change) is delivered rather than silently dropped.
+    private val _events = MutableSharedFlow<UiText>(
+        replay = 0,
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     val events: SharedFlow<UiText> = _events.asSharedFlow()
 
     fun loadPermissions(packageName: String, appName: String) {
