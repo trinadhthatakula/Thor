@@ -88,8 +88,13 @@ class RootSystemGateway(
                     val conn = object : ServiceConnection {
                         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
                             val binder = IThorRootService.Stub.asInterface(service)
-                            rootService = binder
+                            // Publish/resume only if the bind hasn't already timed out. A late
+                            // connect (continuation cancelled by withTimeoutOrNull) would otherwise
+                            // cache a service whose ServiceConnection is about to be unbound by
+                            // invokeOnCancellation, leaving rootService dangling (-> intermittent
+                            // DeadObjectException on the next call).
                             if (continuation.isActive) {
+                                rootService = binder
                                 continuation.resume(binder)
                             }
                         }
@@ -99,6 +104,7 @@ class RootSystemGateway(
                             // A dead service can no longer answer '--user <id>'; drop the cached
                             // user id so a reconnect re-reads the (possibly switched) user (#34).
                             cachedUserId = null
+                            userIdGeneration++
                             if (activeConnection === this) {
                                 activeConnection = null
                             }
@@ -590,17 +596,23 @@ class RootSystemGateway(
     @Volatile
     private var cachedUserId: String? = null
 
+    // Bumped on every cache invalidation (onServiceDisconnected). getCurrentUserId() captures it
+    // before the shell read and only commits the result if it is unchanged, so an invalidation that
+    // races an in-flight lookup can't be silently overwritten by the stale value the lookup read.
+    @Volatile
+    private var userIdGeneration = 0
+
     private suspend fun getCurrentUserId(): String {
         cachedUserId?.let { return it }
+        val gen = userIdGeneration
         val userResult = shellRepository.runCommand("am get-current-user")
         val currentUser = userResult.getOrNull()?.firstOrNull()?.trim()
         return if (currentUser != null && currentUser.matches(USER_ID_REGEX)) {
-            // Only cache a *successfully* resolved id. Caching the "0" fallback would let a
-            // transient shell/daemon blip (right after onServiceDisconnected clears the cache)
-            // persist the wrong user, so later '--user' commands would target user 0 on
-            // multi-user devices. On failure we return "0" for this call WITHOUT caching it, so
-            // the next call retries the lookup once the shell recovers (#34).
-            currentUser.also { cachedUserId = it }
+            // Only cache a *successfully* resolved id (caching the "0" fallback would let a transient
+            // shell/daemon blip persist the wrong user, so later '--user' commands would target user
+            // 0 on multi-user devices), AND only if no invalidation raced this lookup — a user switch
+            // that fired onServiceDisconnected mid-read must not re-cache the stale value.
+            currentUser.also { if (userIdGeneration == gen) cachedUserId = it }
         } else {
             "0"
         }

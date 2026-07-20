@@ -203,6 +203,34 @@ fun ExtensionManagerScreen(
                             .padding(horizontal = 24.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
+                        // A reload can fail while a list is already shown (the VM keeps the old list
+                        // and sets error). Surface it inline with Retry so it isn't silently dropped.
+                        val reloadError = state.error.orEmpty()
+                        if (reloadError.isNotBlank()) {
+                            item(key = "reload-error") {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 16.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(MaterialTheme.colorScheme.errorContainer)
+                                        .padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = reloadError,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                    Button(
+                                        onClick = { viewModel.loadExtensions() },
+                                        shape = RoundedCornerShape(20.dp)
+                                    ) {
+                                        Text(text = stringResource(R.string.extension_retry))
+                                    }
+                                }
+                            }
+                        }
                         item {
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(

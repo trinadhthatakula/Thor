@@ -16,6 +16,7 @@ import com.valhalla.thor.presentation.utils.AppIconKeyer
 import com.valhalla.thor.util.LocaleManager
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.koinLogLevel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -93,6 +94,9 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
                     localeManager.applyLocale(prefs.language)
                 }
             }.onFailure { throwable ->
+                // runCatching also catches CancellationException; rethrow it so appScope.cancel()
+                // (onTerminate) isn't logged as a failure and cooperative cancellation is preserved.
+                if (throwable is CancellationException) throw throwable
                 Logger.e("ThorApp", "Startup preference sync failed", throwable)
             }
         }

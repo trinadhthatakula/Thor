@@ -18,6 +18,7 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.util.Logger
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.core.annotation.Single
@@ -185,7 +186,13 @@ class ShizukuReflector(
                     intent.intentSender
                 )
             }
-        }.getOrDefault(false)
+        }.getOrElse {
+            // Don't let runCatching swallow coroutine cancellation (e.g. the ViewModel scope was
+            // cancelled while awaiting the async uninstall result) and fall through to the
+            // unprivileged ACTION_DELETE dialog — propagate it so the operation unwinds cleanly.
+            if (it is CancellationException) throw it
+            false
+        }
 
         if (reflectionResult) return true
 
@@ -337,6 +344,8 @@ class ShizukuReflector(
                 )
             }
         } catch (e: Exception) {
+            // Never swallow coroutine cancellation — it breaks cooperative cancellation of the caller.
+            if (e is CancellationException) throw e
             e.printStackTrace()
             false
         }
