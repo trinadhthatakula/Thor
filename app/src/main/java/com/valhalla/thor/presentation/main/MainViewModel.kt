@@ -1,7 +1,5 @@
 package com.valhalla.thor.presentation.main
 
-import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
@@ -90,7 +88,6 @@ class MainViewModel(
     private val manageAppUseCase: ManageAppUseCase,
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val shareAppUseCase: ShareAppUseCase,
-    private val packageManager: PackageManager,
     private val preferenceRepository: PreferenceRepository,
     private val freezerRepository: FreezerRepository,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
@@ -403,16 +400,11 @@ class MainViewModel(
                     if (result.isSuccess) {
                         result
                     } else {
-                        try {
-                            packageManager.getPackageInfo(appInfo.packageName, 0).applicationInfo?.let { info ->
-                                val isDebuggable = (info.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
-                                if (isDebuggable) {
-                                    Result.failure(UiTextException(UiText.StringResource(R.string.error_debuggable_app)))
-                                } else {
-                                    result
-                                }
-                            } ?: result
-                        } catch (_: Exception) {
+                        // appInfo.isDebuggable is already resolved on the domain model (from the
+                        // installed-app scan), so no PackageManager lookup is needed here.
+                        if (appInfo.isDebuggable) {
+                            Result.failure(UiTextException(UiText.StringResource(R.string.error_debuggable_app)))
+                        } else {
                             result
                         }
                     }
