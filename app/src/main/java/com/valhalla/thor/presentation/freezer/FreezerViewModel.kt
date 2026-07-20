@@ -356,9 +356,13 @@ class FreezerViewModel(
     }
 
     fun pinBulkShortcut(freeze: Boolean) {
-        freezerShortcutManager.pinBulkShortcut(
-            if (freeze) FreezerShortcutContract.ACTION_FREEZE_ALL
-            else FreezerShortcutContract.ACTION_UNFREEZE_ALL
-        )
+        // Rasterizes a 216x216 tile bitmap + issues a binder pin request; keep it off Main
+        // to avoid click-time jank, matching pinAppToLauncher / pinAllToLauncher.
+        viewModelScope.launch(Dispatchers.Default) {
+            freezerShortcutManager.pinBulkShortcut(
+                if (freeze) FreezerShortcutContract.ACTION_FREEZE_ALL
+                else FreezerShortcutContract.ACTION_UNFREEZE_ALL
+            )
+        }
     }
 }

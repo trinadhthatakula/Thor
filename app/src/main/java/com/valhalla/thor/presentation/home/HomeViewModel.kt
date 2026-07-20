@@ -16,8 +16,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
@@ -54,19 +54,34 @@ class HomeViewModel(
 ) : ViewModel() {
 
     private var dashboardJob: Job? = null
-    private var typeChangeJob: Job? = null
-    private val _internalState = MutableStateFlow(HomeUiState())
 
-    private var lastUserApps: List<AppInfo> = emptyList()
-    private var lastSystemApps: List<AppInfo> = emptyList()
+    // Raw app data + view selectors are held as StateFlows so the write from the
+    // loadDashboardData collector and the read from the stats derivation share a
+    // happens-before edge. The previous plain vars (lastUserApps/lastSystemApps) were
+    // written on the collect coroutine and read on the onTypeChanged coroutine — different
+    // threads with no synchronization — so a stale read could render zero stats. Deriving
+    // the type-filtered stats reactively from these flows removes the race entirely.
+    private val _rawAppData = MutableStateFlow<Pair<List<AppInfo>, List<AppInfo>>?>(null)
+    private val _selectedType = MutableStateFlow(AppListType.USER)
+    private val _isLoading = MutableStateFlow(true)
 
-    // Combine internal data processing with user preferences
+    // Combine the reactively-derived dashboard stats with user preferences and privilege state.
     val state = combine(
-        _internalState,
+        _rawAppData,
+        _selectedType,
+        _isLoading,
         preferenceRepository.userPreferences,
         privilegeManager.state
-    ) { internal, prefs, priv ->
-        internal.copy(
+    ) { rawData, selectedType, isLoading, prefs, priv ->
+        val stats = computeStats(rawData, selectedType)
+        HomeUiState(
+            isLoading = isLoading,
+            selectedType = selectedType,
+            activeAppCount = stats.activeCount,
+            frozenAppCount = stats.frozenCount,
+            suspendedAppCount = stats.suspendedCount,
+            unknownInstallerCount = stats.unknownCount,
+            distributionData = stats.distribution,
             showReinstallCard = prefs.showReinstallAllCard,
             isRootAvailable = priv.root,
             isShizukuAvailable = priv.shizuku,
@@ -84,7 +99,7 @@ class HomeViewModel(
             },
             extensionsUnlocked = prefs.extensionsUnlocked
         )
-    }.stateIn(
+    }.flowOn(ioDispatcher).stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
         HomeUiState()
@@ -99,7 +114,7 @@ class HomeViewModel(
         dashboardJob?.cancel()
 
         dashboardJob = viewModelScope.launch(ioDispatcher) {
-            _internalState.update { it.copy(isLoading = true) }
+            _isLoading.value = true
             getInstalledAppsUseCase().catch { e ->
                 // getInstalledAppsUseCase() is a callbackFlow that registers package receivers
                 // and reads PackageManager; it can throw (e.g. DeadObjectException). Guard the
@@ -107,21 +122,20 @@ class HomeViewModel(
                 // the app, and clear the loader so the dashboard doesn't spin forever.
                 if (e is CancellationException) throw e // preserve structured-concurrency cancellation
                 Logger.e("HomeViewModel", "loadDashboardData failed", e)
-                _internalState.update { it.copy(isLoading = false) }
+                _isLoading.value = false
             }.collect { (userApps, systemApps) ->
-                lastUserApps = userApps
-                lastSystemApps = systemApps
-                processData(userApps, systemApps, _internalState.value.selectedType)
+                // StateFlow assignment publishes with volatile semantics, so the stats
+                // derivation reading _rawAppData observes this write without a data race.
+                _rawAppData.value = userApps to systemApps
+                _isLoading.value = false
             }
         }
     }
 
     fun onTypeChanged(type: AppListType) {
-        _internalState.update { it.copy(selectedType = type) }
-        typeChangeJob?.cancel()
-        typeChangeJob = viewModelScope.launch(ioDispatcher) {
-            processData(lastUserApps, lastSystemApps, type)
-        }
+        // The stats derivation (combine over _rawAppData + _selectedType) recomputes reactively;
+        // no manual re-processing needed.
+        _selectedType.value = type
     }
 
     fun onPrivilegeModeChanged(mode: PrivilegeMode) {
@@ -149,11 +163,26 @@ class HomeViewModel(
         }
     }
 
-    private fun processData(
-        userApps: List<AppInfo>,
-        systemApps: List<AppInfo>,
+    private data class DashboardStats(
+        val activeCount: Int = 0,
+        val frozenCount: Int = 0,
+        val suspendedCount: Int = 0,
+        val unknownCount: Int = 0,
+        val distribution: Map<String, Int> = emptyMap()
+    )
+
+    /**
+     * Pure computation of the type-filtered dashboard stats. Derived reactively from
+     * [_rawAppData] + [_selectedType] inside the [state] combine (runs on [ioDispatcher]).
+     * Returns empty stats until the first app list has loaded.
+     */
+    private fun computeStats(
+        rawData: Pair<List<AppInfo>, List<AppInfo>>?,
         selectedType: AppListType
-    ) {
+    ): DashboardStats {
+        if (rawData == null) return DashboardStats()
+        val (userApps, systemApps) = rawData
+
         val filteredApps = if (selectedType == AppListType.USER) userApps else systemApps
 
         val activeCount = filteredApps.count { it.enabled && !it.isSuspended }
@@ -199,17 +228,12 @@ class HomeViewModel(
             result
         }
 
-        _internalState.update {
-            it.copy(
-                isLoading = false,
-                selectedType = selectedType,
-                activeAppCount = activeCount,
-                frozenAppCount = frozenCount,
-                suspendedAppCount = suspendedCount,
-                unknownInstallerCount = unknownCount,
-                distributionData = distribution
-                // Privilege fields are populated by the state combine from PrivilegeManager.
-            )
-        }
+        return DashboardStats(
+            activeCount = activeCount,
+            frozenCount = frozenCount,
+            suspendedCount = suspendedCount,
+            unknownCount = unknownCount,
+            distribution = distribution
+        )
     }
 }

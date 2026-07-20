@@ -99,6 +99,28 @@ class AppInfoDetailsViewModel(
         }
     }
 
+    /**
+     * Lighter reload used after a mutating action succeeds. Re-reads the detailed info and freezer
+     * membership so the UI reflects the new state, but deliberately skips the Root / Shizuku /
+     * Dhizuku availability probes (privilege mode doesn't change mid-session — it's probed once by
+     * [loadAppDetails]) and never flips [AppInfoDetailsUiState.isLoading], so the screen doesn't
+     * flash the loader after every freeze / suspend / force-stop / clear action.
+     */
+    private fun refreshDetails(packageName: String) {
+        viewModelScope.launch {
+            val inFreezer = withContext(Dispatchers.IO) { freezerRepository.contains(packageName) }
+            val details = appRepository.getDetailedAppInfo(packageName)
+            if (details != null) {
+                _uiState.update {
+                    it.copy(
+                        detailedInfo = details,
+                        isInFreezer = inFreezer
+                    )
+                }
+            }
+        }
+    }
+
     fun toggleFreezerState(packageName: String, appName: String?, freeze: Boolean) {
         viewModelScope.launch {
             val result = manageAppUseCase.setAppDisabled(packageName, freeze)
@@ -113,8 +135,8 @@ class AppInfoDetailsViewModel(
                     _uiState.update { it.copy(isInFreezer = inFreezer) }
                     _events.emit(UiText.StringResource(msgRes, appName ?: packageName))
                 }
-                // Reload state
-                loadAppDetails(packageName)
+                // Refresh detail only — no privilege re-probe, no loader flash.
+                refreshDetails(packageName)
             }.onFailure { e ->
                 _events.emit(UiText.StringResource(R.string.error_format, e.message ?: ""))
             }
@@ -125,8 +147,8 @@ class AppInfoDetailsViewModel(
         viewModelScope.launch {
             val result = manageAppUseCase.setAppSuspended(packageName, suspend)
             result.onSuccess {
-                // Reload state
-                loadAppDetails(packageName)
+                // Refresh detail only — no privilege re-probe, no loader flash.
+                refreshDetails(packageName)
             }.onFailure { e ->
                 _events.emit(UiText.StringResource(R.string.error_format, e.message ?: ""))
             }
@@ -139,7 +161,7 @@ class AppInfoDetailsViewModel(
             result.onSuccess {
                 val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
                 _events.emit(UiText.StringResource(R.string.killed_success, appName))
-                loadAppDetails(packageName)
+                refreshDetails(packageName)
             }.onFailure { e ->
                 _events.emit(UiText.StringResource(R.string.error_format, e.message ?: ""))
             }
@@ -152,7 +174,7 @@ class AppInfoDetailsViewModel(
             result.onSuccess {
                 val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
                 _events.emit(UiText.StringResource(R.string.cache_cleared_success, appName))
-                loadAppDetails(packageName)
+                refreshDetails(packageName)
             }.onFailure { e ->
                 _events.emit(UiText.StringResource(R.string.error_format, e.message ?: ""))
             }
@@ -165,7 +187,7 @@ class AppInfoDetailsViewModel(
             result.onSuccess {
                 val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
                 _events.emit(UiText.StringResource(R.string.data_cleared_success, appName))
-                loadAppDetails(packageName)
+                refreshDetails(packageName)
             }.onFailure { e ->
                 _events.emit(UiText.StringResource(R.string.error_format, e.message ?: ""))
             }
@@ -176,7 +198,7 @@ class AppInfoDetailsViewModel(
         viewModelScope.launch {
             withContext(Dispatchers.IO) { freezerRepository.add(packageName) }
             _uiState.update { it.copy(freezerPrompt = null, isInFreezer = true) }
-            loadAppDetails(packageName)
+            refreshDetails(packageName)
         }
     }
 

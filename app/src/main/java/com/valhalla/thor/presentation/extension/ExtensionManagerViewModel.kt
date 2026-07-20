@@ -25,7 +25,13 @@ data class ExtensionUiItem(
 data class ExtensionUiState(
     val isLoading: Boolean = true,
     val extensions: List<ExtensionUiItem> = emptyList(),
-    val error: String? = null
+    val error: String? = null,
+    /**
+     * True when the deprecated legacy extension package is still installed, so the UI can prompt a
+     * one-time migration. Probed off the main thread here instead of via a synchronous binder IPC in
+     * a Composable.
+     */
+    val isLegacyInstalled: Boolean = false
 )
 
 @KoinViewModel
@@ -44,6 +50,16 @@ class ExtensionManagerViewModel(
     fun loadExtensions() {
         _uiState.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch(ioDispatcher) {
+            // Probe whether the deprecated legacy extension package is still installed. This is a
+            // PackageManager scan (binder IPC), done here on the io dispatcher rather than
+            // synchronously during composition. A failed scan just defaults to "not installed" (no
+            // migration prompt); it never produces an error state. This is a non-suspending call, so
+            // it can't surface a CancellationException from coroutine cancellation.
+            val legacyInstalled = runCatching {
+                extensionManager.getInstalledExtensionVersionCodes()
+                    .containsKey(ExtensionManager.LEGACY_EXTENSION_PACKAGE)
+            }.getOrDefault(false)
+            _uiState.update { it.copy(isLegacyInstalled = legacyInstalled) }
             // Loading enumerates installed apps via PackageManager (GET_META_DATA), which can throw
             // TransactionTooLargeException/DeadObjectException on large package sets or a dead binder.
             // Guard it so the Extensions screen surfaces an error + retry instead of crashing/spinning.

@@ -38,7 +38,6 @@ import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -102,14 +101,11 @@ fun ExtensionManagerScreen(
 
     var showMigrationDialog by rememberSaveable { mutableStateOf(false) }
     val legacyPackageName = ExtensionManager.LEGACY_EXTENSION_PACKAGE
-    val isLegacyInstalled = remember {
-        runCatching {
-            context.packageManager.getPackageInfo(legacyPackageName, 0)
-            true
-        }.getOrDefault(false)
-    }
-    androidx.compose.runtime.LaunchedEffect(isLegacyInstalled) {
-        if (isLegacyInstalled) {
+    // The legacy-package probe is a PackageManager binder IPC; it runs off the main thread in the
+    // ViewModel and is surfaced here via state instead of a synchronous getPackageInfo() during
+    // composition. Keyed on the flag so the migration prompt fires once when it flips to true.
+    androidx.compose.runtime.LaunchedEffect(state.isLegacyInstalled) {
+        if (state.isLegacyInstalled) {
             showMigrationDialog = true
         }
     }

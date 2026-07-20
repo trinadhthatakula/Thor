@@ -245,7 +245,8 @@ fun AppInfoDetailsScreen(
                         }
 
                         if (!showOnlyHeaderAndActions) {
-                            var selectedTab by remember { mutableIntStateOf(0) }
+                            // rememberSaveable so the active tab survives rotation / config change.
+                            var selectedTab by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(0) }
                             val tabs = listOf(
                                 stringResource(R.string.tab_overview_title),
                                 stringResource(R.string.tab_components),
@@ -928,7 +929,8 @@ private fun GeneralTabScreen(details: DetailedAppInfo) {
 
 @Composable
 private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
-    var searchQuery by remember { mutableStateOf("") }
+    // rememberSaveable so the search query survives rotation / config change.
+    var searchQuery by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     val filteredPermissions = remember(searchQuery, permissions) {
         permissions.filter {
             it.name.contains(searchQuery, ignoreCase = true) ||
@@ -1040,7 +1042,8 @@ private fun PermissionsTabScreen(permissions: List<PermissionDetail>) {
 
 @Composable
 private fun ComponentsTabScreen(details: DetailedAppInfo) {
-    var searchQuery by remember { mutableStateOf("") }
+    // rememberSaveable so the search query survives rotation / config change.
+    var searchQuery by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
 
     Column(modifier = Modifier.fillMaxSize()) {
         OutlinedTextField(

@@ -32,27 +32,29 @@ class SystemRepositoryImpl(
 
     // Dynamic Resolution Strategy: Respect user preference if available, else auto-detect.
     // Must be suspend because checking root and reading preferences are suspend operations.
+    //
+    // Probes are evaluated lazily and short-circuit in Root -> Shizuku -> Dhizuku order so a
+    // privileged action only pays for the probes it actually needs (a root user hits one probe,
+    // not three). The root probe in particular can spawn a shell, so avoiding the eager
+    // "probe all three every call" pattern removes redundant IPC on every batched app action.
+    // Selection semantics are identical to probing all three up front.
     private suspend fun getActiveGateway(): Result<SystemGateway> {
         val prefs = preferenceRepository.userPreferences.first()
-        val isRootAvail = rootGateway.isRootAvailable()
-        val isShizukuAvail = shizukuGateway.isShizukuAvailable()
-        val isDhizukuAvail = dhizukuGateway.isDhizukuAvailable()
 
-        // 1. Try User Preference
-        prefs.preferredPrivilegeMode?.let { mode ->
-            when (mode) {
-                PrivilegeMode.ROOT -> if (isRootAvail) return Result.success(rootGateway)
-                PrivilegeMode.SHIZUKU -> if (isShizukuAvail) return Result.success(shizukuGateway)
-                PrivilegeMode.DHIZUKU -> if (isDhizukuAvail) return Result.success(dhizukuGateway)
-                PrivilegeMode.NONE -> Unit // never persisted as a preference; fall through to auto-detection
-            }
+        // 1. Try User Preference — probe only the preferred source.
+        when (prefs.preferredPrivilegeMode) {
+            PrivilegeMode.ROOT -> if (rootGateway.isRootAvailable()) return Result.success(rootGateway)
+            PrivilegeMode.SHIZUKU -> if (shizukuGateway.isShizukuAvailable()) return Result.success(shizukuGateway)
+            PrivilegeMode.DHIZUKU -> if (dhizukuGateway.isDhizukuAvailable()) return Result.success(dhizukuGateway)
+            // NONE is never persisted as a preference; null means "auto". Both fall through.
+            PrivilegeMode.NONE, null -> Unit
         }
 
-        // 2. Fallback to Auto-Detection
+        // 2. Fallback to Auto-Detection — stop at the first available source.
         return when {
-            isRootAvail -> Result.success(rootGateway)
-            isShizukuAvail -> Result.success(shizukuGateway)
-            isDhizukuAvail -> Result.success(dhizukuGateway)
+            rootGateway.isRootAvailable() -> Result.success(rootGateway)
+            shizukuGateway.isShizukuAvailable() -> Result.success(shizukuGateway)
+            dhizukuGateway.isDhizukuAvailable() -> Result.success(dhizukuGateway)
             else -> Result.failure(IllegalStateException("No privileged gateway available (Root, Shizuku or Dhizuku required)"))
         }
     }

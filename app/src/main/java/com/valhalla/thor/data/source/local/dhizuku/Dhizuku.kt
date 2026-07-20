@@ -168,6 +168,10 @@ object DhizukuHelper {
         return pkgs.isAppDisabled(packageName) == disabled
     }
 
+    // @Volatile for safe cross-thread publication (getCurrentUserId() may be called from IO
+    // coroutines); only a successfully-resolved id is ever cached (it throws before assigning
+    // on failure), matching the Shizuku/RootSystemGateway pattern (#41/#34).
+    @Volatile
     private var cachedUserId: String? = null
 
     fun getCurrentUserId(): String {

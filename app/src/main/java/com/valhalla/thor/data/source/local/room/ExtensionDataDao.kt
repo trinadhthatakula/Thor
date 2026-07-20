@@ -8,14 +8,14 @@ import androidx.room.Query
 @Dao
 interface ExtensionDataDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun insert(entity: ExtensionDataEntity)
+    suspend fun insert(entity: ExtensionDataEntity)
 
     @Query("SELECT value FROM extension_data WHERE extensionPackageName = :packageName AND `key` = :key")
-    fun getValue(packageName: String, key: String): String?
+    suspend fun getValue(packageName: String, key: String): String?
 
     @Query("DELETE FROM extension_data WHERE extensionPackageName = :packageName AND `key` = :key")
-    fun delete(packageName: String, key: String)
+    suspend fun delete(packageName: String, key: String)
 
     @Query("SELECT `key` FROM extension_data WHERE extensionPackageName = :packageName")
-    fun getAllKeys(packageName: String): List<String>
+    suspend fun getAllKeys(packageName: String): List<String>
 }

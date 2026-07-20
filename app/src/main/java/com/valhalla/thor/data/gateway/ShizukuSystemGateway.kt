@@ -186,11 +186,15 @@ class ShizukuSystemGateway(
 
     /**
      * Standardizes error handling for reflection and shell actions.
+     *
+     * Availability is already resolved by SystemRepositoryImpl.getActiveGateway() before this
+     * gateway is dispatched to, so we do NOT re-probe Shizuku here (#35) — the old per-action
+     * isShizukuAvailable() gate added two binder IPC (checkSelfPermission + pingBinder) to every
+     * action, multiplied across every item of a batch op. If Shizuku became unavailable after
+     * resolution, the action's own shell/reflection path fails (Shizuku.execute returns a
+     * null-binder error → false), so the not-available case still surfaces as a Result.failure.
      */
     private suspend inline fun runAction(action: suspend () -> Boolean): Result<Unit> {
-        if (!isShizukuAvailable()) {
-            return Result.failure(Exception("Shizuku is not available or permission denied."))
-        }
         return try {
             if (action()) Result.success(Unit)
             else Result.failure(Exception("Action failed. This may happen if reflection is blocked or shell lacks permissions."))
