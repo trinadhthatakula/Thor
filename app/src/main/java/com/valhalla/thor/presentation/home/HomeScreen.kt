@@ -100,9 +100,9 @@ fun HomeScreen(
     ) {
         Column(
             modifier = Modifier
+                .then(if (isExpanded) Modifier.widthIn(max = 1200.dp) else Modifier)
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
-                .then(if (isExpanded) Modifier.widthIn(max = 1200.dp) else Modifier)
         ) {
         // 1. Header (full width always)
         DashboardHeader(
