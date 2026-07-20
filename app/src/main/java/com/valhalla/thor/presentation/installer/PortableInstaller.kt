@@ -126,8 +126,15 @@ fun PortableInstaller(
             // Consume-once: a replayed UserConfirmationRequired (the event bus replays the
             // latest value) can't re-launch the dialog because the slot is cleared on read.
             pendingInstallIntent.consume()?.let { intent ->
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(intent)
+                // A system-supplied confirmation Intent can throw ActivityNotFoundException /
+                // SecurityException on some ROMs — don't crash; reset to Idle so the user can retry.
+                try {
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                } catch (e: Exception) {
+                    if (e is kotlin.coroutines.cancellation.CancellationException) throw e
+                    viewModel.resetState()
+                }
             }
         }
     }

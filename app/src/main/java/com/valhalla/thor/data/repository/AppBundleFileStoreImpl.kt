@@ -12,6 +12,9 @@ import androidx.documentfile.provider.DocumentFile
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.repository.AppBundleFileStore
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.withContext
+import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import java.io.File
 import java.io.IOException
@@ -24,44 +27,52 @@ import java.io.IOException
  */
 @Single(binds = [AppBundleFileStore::class])
 class AppBundleFileStoreImpl(
-    private val context: Context
+    private val context: Context,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : AppBundleFileStore {
 
+    // All suspend members are main-safe: the blocking MediaStore/SAF/disk I/O runs on the
+    // injected IO dispatcher so callers can invoke them from any context without risking an ANR.
     override suspend fun writeToDownloads(file: File, mime: String): String =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) writeToDownloadsMediaStore(file, mime)
-        else writeToDownloadsLegacy(file)
-
-    override suspend fun writeToTree(file: File, treeUriStr: String, mime: String): String {
-        val treeUri = treeUriStr.toUri()
-        val tree = DocumentFile.fromTreeUri(context, treeUri) ?: throw IOException("Invalid folder")
-        tree.findFile(file.name)?.delete() // overwrite
-        val doc = tree.createFile(mime, file.name) ?: throw IOException("Could not create file")
-        try {
-            context.contentResolver.openOutputStream(doc.uri)?.use { out ->
-                file.inputStream().use { it.copyTo(out) }
-            } ?: throw IOException("openOutputStream failed")
-        } catch (e: Exception) {
-            doc.delete() // don't leave a partial/corrupted file behind
-            throw e
+        withContext(ioDispatcher) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) writeToDownloadsMediaStore(file, mime)
+            else writeToDownloadsLegacy(file)
         }
-        return tree.name ?: context.getString(R.string.export_dest_selected)
-    }
 
-    override suspend fun isTreeWritable(treeUriStr: String?): Boolean {
-        if (treeUriStr == null) return false
-        return try {
-            val doc = DocumentFile.fromTreeUri(context, treeUriStr.toUri())
-            doc != null && doc.exists() && doc.canWrite()
-        } catch (_: Exception) { false }
-    }
+    override suspend fun writeToTree(file: File, treeUriStr: String, mime: String): String =
+        withContext(ioDispatcher) {
+            val treeUri = treeUriStr.toUri()
+            val tree = DocumentFile.fromTreeUri(context, treeUri) ?: throw IOException("Invalid folder")
+            tree.findFile(file.name)?.delete() // overwrite
+            val doc = tree.createFile(mime, file.name) ?: throw IOException("Could not create file")
+            try {
+                context.contentResolver.openOutputStream(doc.uri)?.use { out ->
+                    file.inputStream().use { it.copyTo(out) }
+                } ?: throw IOException("openOutputStream failed")
+            } catch (e: Exception) {
+                doc.delete() // don't leave a partial/corrupted file behind
+                throw e
+            }
+            tree.name ?: context.getString(R.string.export_dest_selected)
+        }
 
-    override suspend fun currentTargetLabel(savedTreeUriStr: String?): String {
-        // SAF validity checks hit the content resolver / disk — keep them off the main thread.
-        return if (savedTreeUriStr != null && isTreeWritable(savedTreeUriStr)) {
-            DocumentFile.fromTreeUri(context, savedTreeUriStr.toUri())?.name
-                ?: context.getString(R.string.export_dest_selected)
-        } else context.getString(R.string.export_dest_downloads)
-    }
+    override suspend fun isTreeWritable(treeUriStr: String?): Boolean =
+        withContext(ioDispatcher) {
+            if (treeUriStr == null) return@withContext false
+            try {
+                val doc = DocumentFile.fromTreeUri(context, treeUriStr.toUri())
+                doc != null && doc.exists() && doc.canWrite()
+            } catch (_: Exception) { false }
+        }
+
+    override suspend fun currentTargetLabel(savedTreeUriStr: String?): String =
+        withContext(ioDispatcher) {
+            // SAF validity checks hit the content resolver / disk — keep them off the main thread.
+            if (savedTreeUriStr != null && isTreeWritable(savedTreeUriStr)) {
+                DocumentFile.fromTreeUri(context, savedTreeUriStr.toUri())?.name
+                    ?: context.getString(R.string.export_dest_selected)
+            } else context.getString(R.string.export_dest_downloads)
+        }
 
     override fun shareUri(file: File): String =
         FileProvider.getUriForFile(context, "${BuildConfig.APPLICATION_ID}.provider", file).toString()

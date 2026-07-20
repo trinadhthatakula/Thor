@@ -243,12 +243,17 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
             val iconDir = File(context.cacheDir, "installer_icons").apply { mkdirs() }
             val dest = File(iconDir, "${packageName}_$versionCode.png")
             val tmp = File(iconDir, "${packageName}_$versionCode.${java.util.UUID.randomUUID()}.png.tmp")
-            FileOutputStream(tmp).use { out ->
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-            }
-            if (!tmp.renameTo(dest)) {
-                tmp.copyTo(dest, overwrite = true)
-                tmp.delete()
+            try {
+                FileOutputStream(tmp).use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                }
+                if (!tmp.renameTo(dest)) {
+                    tmp.copyTo(dest, overwrite = true)
+                }
+            } finally {
+                // renameTo consumes tmp on success; on the copyTo fallback (or any failure
+                // mid-write) delete it so we never leak a .tmp in the cache dir.
+                if (tmp.exists()) tmp.delete()
             }
             dest.absolutePath
         }.getOrNull()
