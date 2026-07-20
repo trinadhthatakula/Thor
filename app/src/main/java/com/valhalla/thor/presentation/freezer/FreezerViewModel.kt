@@ -17,15 +17,14 @@ import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.KoinViewModel
@@ -72,15 +71,12 @@ class FreezerViewModel(
     private val _uiState = MutableStateFlow(FreezerUiState())
     val uiState: StateFlow<FreezerUiState> = _uiState.asStateFlow()
 
-    // Small DROP_OLDEST buffer so a load-failure event emitted from observeApps() in init() (before
-    // the screen's collector reaches STARTED) is delivered once the screen subscribes rather than
-    // silently dropped; emit() also never suspends off a collector.
-    private val _events = MutableSharedFlow<FreezerEvent>(
-        replay = 0,
-        extraBufferCapacity = 1,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
-    )
-    val events: SharedFlow<FreezerEvent> = _events.asSharedFlow()
+    // Buffered Channel (not a replay=0 SharedFlow) so a one-off event emitted while no collector is
+    // subscribed — e.g. the load-failure toast from observeApps() in init(), fired before the screen's
+    // ObserveAsEvents reaches STARTED (FreezerViewModel is created eagerly by MainScreen) — is retained
+    // and delivered when the screen subscribes rather than silently dropped. Matches MainViewModel.
+    private val _events = Channel<FreezerEvent>(Channel.BUFFERED)
+    val events: Flow<FreezerEvent> = _events.receiveAsFlow()
 
     init {
         observeApps()
@@ -220,7 +216,7 @@ class FreezerViewModel(
 
     fun showFreezerPrompt(packageName: String, appName: String?) {
         viewModelScope.launch {
-            _events.emit(FreezerEvent.ShowFreezerPrompt(packageName, appName))
+            _events.send(FreezerEvent.ShowFreezerPrompt(packageName, appName))
         }
     }
 
@@ -235,7 +231,7 @@ class FreezerViewModel(
                 .onSuccess {
                     freezerShortcutManager.refreshAppShortcut(packageName)
                     if (!inFreezer) {
-                        _events.emit(FreezerEvent.ShowFreezerPrompt(packageName, appName))
+                        _events.send(FreezerEvent.ShowFreezerPrompt(packageName, appName))
                     } else {
                         emitToast(
                             UiText.StringResource(R.string.frozen_success, appName ?: packageName)
@@ -273,7 +269,7 @@ class FreezerViewModel(
 
     // --- Feedback ---
 
-    private suspend fun emitToast(text: UiText) = _events.emit(FreezerEvent.ShowToast(text))
+    private suspend fun emitToast(text: UiText) = _events.send(FreezerEvent.ShowToast(text))
 
     private fun observePreferences() {
         viewModelScope.launch {

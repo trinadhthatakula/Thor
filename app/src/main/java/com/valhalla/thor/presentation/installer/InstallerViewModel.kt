@@ -1,12 +1,13 @@
 package com.valhalla.thor.presentation.installer
 
+import android.content.pm.PackageManager
 import android.net.Uri
+import androidx.core.content.pm.PackageInfoCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
 import com.valhalla.thor.domain.repository.AppAnalyzer
-import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
 import com.valhalla.thor.domain.repository.SystemRepository
@@ -25,7 +26,7 @@ class InstallerViewModel(
     private val repository: InstallerRepository,
     private val analyzer: AppAnalyzer,
     private val eventBus: InstallerEventBus,
-    private val appRepository: AppRepository,
+    private val packageManager: PackageManager,
     private val systemRepository: SystemRepository,
 ) : ViewModel() {
 
@@ -87,15 +88,13 @@ class InstallerViewModel(
                         // parsing still proceeds to getPackageInfo so the user can install.
                         runCatching { checkPrivilegeAndModes(meta.packageName) }
                         runCatching {
-                            appRepository.getAppDetails(meta.packageName)
+                            packageManager.getPackageInfo(meta.packageName, 0)
                         }.getOrNull()
                     }
 
                     isUpdateOperation = existing != null
                     isDowngrade = if (existing != null) {
-                        // existing is now a domain AppInfo (versionCode: Int) via AppRepository,
-                        // consistent with how the rest of the app models version codes.
-                        meta.versionCode < existing.versionCode.toLong()
+                        meta.versionCode < PackageInfoCompat.getLongVersionCode(existing)
                     } else false
 
                     eventBus.emit(

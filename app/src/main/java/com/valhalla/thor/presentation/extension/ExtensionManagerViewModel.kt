@@ -51,15 +51,18 @@ class ExtensionManagerViewModel(
         _uiState.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch(ioDispatcher) {
             // Probe whether the deprecated legacy extension package is still installed. This is a
-            // PackageManager scan (binder IPC), done here on the io dispatcher rather than
-            // synchronously during composition. A failed scan just defaults to "not installed" (no
-            // migration prompt); it never produces an error state. This is a non-suspending call, so
-            // it can't surface a CancellationException from coroutine cancellation.
+            // single-package PackageManager lookup (binder IPC) rather than a full installed-package
+            // enumeration, done here on the io dispatcher rather than synchronously during
+            // composition. isLegacyInstalled is one-shot / non-flapping: once true it is never reset
+            // to false within this VM instance, so a transient PM failure or a negative reload probe
+            // (both default to false) can't flip true->false->true across reloads and re-trigger the
+            // one-time migration dialog the user already dismissed. It never produces an error state.
+            // This is a non-suspending call, so it can't surface a CancellationException from
+            // coroutine cancellation.
             val legacyInstalled = runCatching {
-                extensionManager.getInstalledExtensionVersionCodes()
-                    .containsKey(ExtensionManager.LEGACY_EXTENSION_PACKAGE)
+                extensionManager.isPackageInstalled(ExtensionManager.LEGACY_EXTENSION_PACKAGE)
             }.getOrDefault(false)
-            _uiState.update { it.copy(isLegacyInstalled = legacyInstalled) }
+            _uiState.update { it.copy(isLegacyInstalled = it.isLegacyInstalled || legacyInstalled) }
             // Loading enumerates installed apps via PackageManager (GET_META_DATA), which can throw
             // TransactionTooLargeException/DeadObjectException on large package sets or a dead binder.
             // Guard it so the Extensions screen surfaces an error + retry instead of crashing/spinning.

@@ -6,12 +6,11 @@ import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.usecase.GetAppPermissionsUseCase
 import com.valhalla.thor.domain.usecase.TogglePermissionUseCase
 import com.valhalla.thor.util.UiText
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.KoinViewModel
@@ -26,14 +25,8 @@ class PermissionManagerViewModel(
     private val _uiState = MutableStateFlow(PermissionUiState())
     val uiState = _uiState.asStateFlow()
 
-    // 1-slot DROP_OLDEST buffer so an event emitted just before the screen's collector reaches
-    // STARTED (early lifecycle / config change) is delivered rather than silently dropped.
-    private val _events = MutableSharedFlow<UiText>(
-        replay = 0,
-        extraBufferCapacity = 1,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
-    )
-    val events: SharedFlow<UiText> = _events.asSharedFlow()
+    private val _events = Channel<UiText>(Channel.BUFFERED)
+    val events: Flow<UiText> = _events.receiveAsFlow()
 
     fun loadPermissions(packageName: String, appName: String) {
         _uiState.update {
@@ -62,7 +55,7 @@ class PermissionManagerViewModel(
                             isPrivilegeMode = isPrivilege
                         )
                     }
-                    _events.emit(
+                    _events.send(
                         UiText.DynamicString(error.message ?: "Failed to load permissions")
                     )
                 }
@@ -85,10 +78,10 @@ class PermissionManagerViewModel(
                         }
                         state.copy(permissions = updated)
                     }
-                    _events.emit(UiText.DynamicString("Permission status updated"))
+                    _events.send(UiText.DynamicString("Permission status updated"))
                 }
                 .onFailure { error ->
-                    _events.emit(
+                    _events.send(
                         UiText.DynamicString(error.message ?: "Failed to modify permission")
                     )
                 }

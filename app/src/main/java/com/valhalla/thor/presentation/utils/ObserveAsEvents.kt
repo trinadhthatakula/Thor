@@ -14,9 +14,12 @@ import kotlinx.coroutines.flow.Flow
  * (toasts, snackbars, navigation, prompts) are delivered exactly once and are never re-triggered by
  * recomposition or replayed across a configuration change.
  *
- * Back a ViewModel's one-off events with a `MutableSharedFlow<T>(replay = 0)` (or a
- * `Channel(...).receiveAsFlow()`) exposed as a read-only [Flow]/`SharedFlow`, and collect them here
- * from the screen — keeping the screen's durable state in its single `StateFlow<UiState>`.
+ * Back a ViewModel's one-off events with a `Channel<T>(Channel.BUFFERED).receiveAsFlow()` (NOT a
+ * `MutableSharedFlow(replay = 0)` — that silently DROPS any event emitted while no collector is
+ * subscribed, e.g. before this collector reaches STARTED or during a rotation gap; `extraBufferCapacity`
+ * only relieves back-pressure for already-subscribed collectors, it does not retain for a late one).
+ * A buffered Channel buffers regardless of subscribers and delivers to the collector when it
+ * (re)subscribes. Expose it as a read-only [Flow] and keep durable state in the single `StateFlow<UiState>`.
  *
  * @param key1 optional extra restart key if the [onEvent] handler closes over state that must stay
  *   current (e.g. a freshly created SnackbarHostState); usually unnecessary.

@@ -18,13 +18,12 @@ import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
@@ -66,14 +65,11 @@ class SettingsViewModel(
      * One-off UI feedback (Toasts) that must fire exactly once — kept off the UiState StateFlow so it
      * isn't re-delivered on recomposition/config change. Collected in SettingsScreen via ObserveAsEvents.
      */
-    // 1-slot DROP_OLDEST buffer so an event emitted just before the screen's collector reaches
-    // STARTED (early lifecycle / config change) is delivered rather than silently dropped.
-    private val _events = MutableSharedFlow<UiText>(
-        replay = 0,
-        extraBufferCapacity = 1,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
-    )
-    val events: SharedFlow<UiText> = _events.asSharedFlow()
+    // Buffered Channel (not a replay=0 SharedFlow): an event emitted before the screen's collector
+    // reaches STARTED (early lifecycle / config change) is buffered and delivered on (re)subscribe
+    // instead of being silently dropped.
+    private val _events = Channel<UiText>(Channel.BUFFERED)
+    val events: Flow<UiText> = _events.receiveAsFlow()
 
     private val _systemStatus = combine(
         preferenceRepository.userPreferences,
@@ -191,7 +187,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             val pkgs = freezerRepository.getAllPackageNames()
             if (pkgs.isEmpty()) {
-                _events.emit(UiText.StringResource(R.string.tile_no_apps_toast))
+                _events.send(UiText.StringResource(R.string.tile_no_apps_toast))
                 return@launch
             }
             val results = withContext(ioDispatcher) {
@@ -211,7 +207,7 @@ class SettingsViewModel(
                     failures
                 )
             }
-            _events.emit(uiText)
+            _events.send(uiText)
         }
     }
 

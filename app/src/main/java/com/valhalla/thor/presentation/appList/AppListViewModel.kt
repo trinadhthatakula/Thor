@@ -26,17 +26,16 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -77,7 +76,7 @@ data class AppListUiState(
 )
 
 /**
- * One-off UI events surfaced to [AppListScreen] via a `SharedFlow`, kept out of [AppListUiState]
+ * One-off UI events surfaced to [AppListScreen] via a buffered `Channel`, kept out of [AppListUiState]
  * so transient feedback is delivered exactly once and never replayed on recomposition/config change.
  */
 sealed interface AppListEvent {
@@ -102,17 +101,13 @@ class AppListViewModel(
     private var sizeJob: Job? = null
     private val _rawState = MutableStateFlow(AppListUiState())
 
-    // One-off UI feedback (toasts, freezer prompt). replay = 0 so events fire exactly once and
-    // are not re-delivered on recomposition or configuration change.
-    // Small DROP_OLDEST buffer so a load-failure event emitted from loadApps() in init() (before the
-    // screen's collector reaches STARTED) is delivered once the screen subscribes rather than
-    // silently dropped; emit() also never suspends off a collector.
-    private val _events = MutableSharedFlow<AppListEvent>(
-        replay = 0,
-        extraBufferCapacity = 1,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
-    )
-    val events: SharedFlow<AppListEvent> = _events.asSharedFlow()
+    // One-off UI feedback (toasts, freezer prompt). A buffered Channel fires each event exactly
+    // once (no replay on recomposition/config change) and, unlike a replay = 0 SharedFlow, retains
+    // events emitted while no collector is active — e.g. a load-failure event from loadApps() in
+    // init() before the screen's collector reaches STARTED, or during a rotation collector gap — so
+    // they are delivered when the screen (re)subscribes rather than silently dropped.
+    private val _events = Channel<AppListEvent>(Channel.BUFFERED)
+    val events: Flow<AppListEvent> = _events.receiveAsFlow()
 
     // Combine raw app data with user preferences from DataStore
     // OPTIMIZATION: flowOn(Dispatchers.Default) ensures sorting/filtering happens on background thread
@@ -165,7 +160,7 @@ class AppListViewModel(
                 if (e is CancellationException) throw e // preserve structured-concurrency cancellation
                 Logger.e("AppListViewModel", "loadApps failed", e)
                 _rawState.update { it.copy(isLoading = false) }
-                _events.emit(AppListEvent.ShowMessage(UiText.StringResource(R.string.failed_to_load_apps)))
+                _events.send(AppListEvent.ShowMessage(UiText.StringResource(R.string.failed_to_load_apps)))
             }.collect { (user, system, priv) ->
                 _rawState.update {
                     it.copy(
@@ -262,11 +257,11 @@ class AppListViewModel(
                         freezerRepository.contains(packageName)
                     }
                     if (!inFreezer) {
-                        _events.emit(
+                        _events.send(
                             AppListEvent.ShowFreezerPrompt(FreezerPrompt(packageName, appName))
                         )
                     } else {
-                        _events.emit(
+                        _events.send(
                             AppListEvent.ShowMessage(
                                 UiText.StringResource(
                                     R.string.frozen_success,
@@ -276,7 +271,7 @@ class AppListViewModel(
                         )
                     }
                 } else {
-                    _events.emit(
+                    _events.send(
                         AppListEvent.ShowMessage(
                             UiText.StringResource(
                                 R.string.unfrozen_success,
@@ -286,7 +281,7 @@ class AppListViewModel(
                     )
                 }
             }.onFailure { e ->
-                _events.emit(
+                _events.send(
                     AppListEvent.ShowMessage(
                         UiText.StringResource(
                             R.string.error_format,
@@ -301,7 +296,7 @@ class AppListViewModel(
     fun addToFreezer(packageName: String) {
         viewModelScope.launch(Dispatchers.IO) {
             freezerRepository.add(packageName)
-            _events.emit(
+            _events.send(
                 AppListEvent.ShowMessage(UiText.StringResource(R.string.added_to_freezer_success))
             )
         }
@@ -340,7 +335,7 @@ class AppListViewModel(
                             }
                         )
                     }
-                    _events.emit(
+                    _events.send(
                         AppListEvent.ShowMessage(
                             if (failures == 0) {
                                 UiText.StringResource(
@@ -374,7 +369,7 @@ class AppListViewModel(
                             }
                         )
                     }
-                    _events.emit(
+                    _events.send(
                         AppListEvent.ShowMessage(
                             UiText.StringResource(
                                 R.string.unfrozen_count_success,
