@@ -402,4 +402,75 @@
     <string name="animation_intensity_high">高</string>    <string name="suspended_app_dialog_title">Thor</string>
     <string name="suspended_app_dialog_message">此应用已被 Thor 暂停。</string>
 
+    
+    <!-- Missing Translations -->
+    <string name="auto_reinstall">自动重新安装应用</string>
+    <string name="auto_reinstall_desc">自动保留 Google Play 商店作为主安装程序，以启用后台更新</string>
+    <string name="legacy_extension_title">检测到旧版扩展</string>
+    <string name="legacy_extension_desc">已安装旧版 Stormbringer 扩展（拼写错误为 \"Strombringer\"）。请将其卸载以避免冲突，并安装更新的 Stormbringer 扩展。</string>
+    <string name="action_export">导出</string>
+    <string name="export_explain_apk">Thor 将此应用保存为单个安装文件 (.apk) 到下方文件夹中。您可以使用它备份应用或在以后重新安装。</string>
+    <string name="export_explain_apks">此应用包含多个拆分部分，因此 Thor 将它们打包为一个捆绑包 (.apks) 并保存到下方文件夹中。可随时使用 Thor 安装程序重新安装。</string>
+    <string name="export_save_to">保存至</string>
+    <string name="export_change">更改</string>
+    <string name="export_in_progress">正在导出…</string>
+    <string name="export_saved">已保存至 %1$s</string>
+    <string name="export_failed">导出失败：%1$s</string>
+    <string name="export_failed_unknown">未知错误</string>
+    <string name="export_dest_downloads">下载/Thor</string>
+    <string name="export_dest_selected">选定文件夹</string>
+    <string name="failed_to_load_permissions">加载权限失败</string>
+    <string name="permission_status_updated">权限状态已更新</string>
+    <string name="failed_to_modify_permission">修改权限失败</string>
+    <string name="permissions">权限</string>
+    <string name="usage_access">使用情况访问权限</string>
+    <string name="usage_access_granted_subtitle">已授予 — 启用应用大小排序</string>
+    <string name="usage_access_needed_subtitle">读取应用大小以进行按大小排序所需</string>
+    <string name="usage_access_needed_title">需要使用情况访问权限</string>
+    <string name="usage_access_prompt_body">Thor 需要使用情况访问权限才能读取应用大小。请为 Thor 启用该权限，然后再次选择\"大小\"。您也可以在\"设置 → 权限\"中进行管理。</string>
+    <string name="open_settings">打开设置</string>
+    <string name="freeze_mode">冻结模式</string>
+    <string name="suspend_instead_of_freeze">挂起代替冻结</string>
+    <string name="suspend_instead_of_freeze_desc">冻结（包括自动冻结）时挂起应用，而不是禁用它们。挂起的应用仍然可见但处于暂停状态。</string>
+    <string name="add_freezer_to_launcher">添加冻结室到启动器</string>
+    <string name="add_freezer_to_launcher_desc">将冻结的应用显示为桌面快捷方式，点击即可启动</string>
+    <string name="add_to_home_screen">添加到主屏幕</string>
+    <string name="freeze_all_apps">全部冻结</string>
+    <string name="shortcuts">快捷方式</string>
+    <string name="shortcut_add_all">添加所有应用</string>
+    <string name="shortcut_added_named">已将 %1$s 添加到主屏幕</string>
+    <string name="shortcut_added">快捷方式已添加到主屏幕</string>
+    <string name="pin_all_confirm_title">将所有应用添加到主屏幕？</string>
+    <string name="pin_all_confirm_desc">这将为您所有 %1$d 个已冻结的应用添加桌面快捷方式，可能会填满您的桌面。您的启动器将要求您确认每一个。</string>
+    <string name="freezer_launch_failed">无法启动此应用</string>
+    <string name="shortcut_no_longer_frozen">已不再冻结</string>
+    <string name="easter_egg_promoted">🎉 此隐藏功能已被推广 — 敬请期待下一个！</string>
+    <string name="support_tab_play_store">Play 商店</string>
+    <string name="support_tab_direct">直接</string>
+    <string name="run_extension">运行</string>
+    <string name="installer_play_store">PLAY 商店</string>
+    <string name="installer_fdroid">F-DROID</string>
+    <string name="installer_sideloaded">侧载</string>
+    <string name="permission_protection_level">保护级别：%1$s</string>
+    <string name="extension_consent_title">在您继续之前</string>
+    <string name="extension_consent_body">扩展是功能强大的附加组件，可以改变应用和系统在设备上的行为。它们并不总是由我们制作 — 任何人都可以构建扩展。我们会验证并签名我们分发的扩展，但这本质上是一个高风险领域。\n\n继续操作即表示您同意：您对在此处安装和启用的内容承担全部责任，并且 Thor 及其开发人员对由于扩展或您通过其所做的任何更改而造成的任何数据丢失、故障或损坏概不负责。</string>
+    <string name="extension_consent_math_prompt">为了确认您已阅读此内容，请计算：%1$d + %2$d = ?</string>
+    <string name="extension_consent_accept">我理解 — 继续</string>
+    <string name="extension_store">扩展商店</string>
+    <string name="extension_store_desc">下载通过官方密钥签名的已验证的 Thor 扩展。</string>
+    <string name="extension_browse_store">浏览商店</string>
+    <string name="extension_install">安装</string>
+    <string name="extension_update">更新</string>
+    <string name="extension_installed">已安装</string>
+    <string name="extension_source_only">仅源码 — 自行构建</string>
+    <string name="extension_requires_lsposed">需要 LSPosed</string>
+    <string name="extension_requires_thor">需要更高版本的 Thor</string>
+    <string name="extension_store_empty">暂无可用扩展</string>
+    <string name="extension_store_empty_desc">请稍后再试 — 目录会随着新扩展的发布而更新。</string>
+    <string name="extension_store_error">无法加载商店</string>
+    <string name="extension_store_error_desc">请检查您的网络连接并重试。</string>
+    <string name="extension_retry">重试</string>
+    <string name="extension_install_failed">验证失败：%1$s</string>
+    <string name="info_app_size">大小</string>
+    
 </resources>

@@ -404,4 +404,75 @@
     <string name="animation_intensity_high">Élevée</string>    <string name="suspended_app_dialog_title">Thor</string>
     <string name="suspended_app_dialog_message">Cette application a été suspendue par Thor.</string>
 
+    
+    <!-- Missing Translations -->
+    <string name="auto_reinstall">Réinstallation automatique d\'applications</string>
+    <string name="auto_reinstall_desc">Conserver automatiquement Google Play Store comme installateur enregistré pour activer les mises à jour en arrière-plan</string>
+    <string name="legacy_extension_title">Extension obsolète détectée</string>
+    <string name="legacy_extension_desc">Une version obsolète de l\'extension Stormbringer (orthographiée par erreur \"Strombringer\") est installée. Veuillez la désinstaller pour éviter les conflits et installer la version mise à jour.</string>
+    <string name="action_export">Exporter</string>
+    <string name="export_explain_apk">Thor enregistre cette application sous forme d\'un fichier d\'installation unique (.apk) dans le dossier ci-dessous. Utilisez-le pour sauvegarder l\'application ou la réinstaller plus tard.</string>
+    <string name="export_explain_apks">Cette application est composée de plusieurs parties distinctes, Thor les regroupe donc dans un seul paquet (.apks) dans le dossier ci-dessous. Réinstallez-la à tout moment avec l\'installateur de Thor.</string>
+    <string name="export_save_to">Enregistrer sous</string>
+    <string name="export_change">Modifier</string>
+    <string name="export_in_progress">Exportation en cours…</string>
+    <string name="export_saved">Enregistré dans %1$s</string>
+    <string name="export_failed">Échec de l\'exportation : %1$s</string>
+    <string name="export_failed_unknown">erreur inconnue</string>
+    <string name="export_dest_downloads">Téléchargements/Thor</string>
+    <string name="export_dest_selected">Dossier sélectionné</string>
+    <string name="failed_to_load_permissions">Échec du chargement des autorisations</string>
+    <string name="permission_status_updated">Statut de l\'autorisation mis à jour</string>
+    <string name="failed_to_modify_permission">Échec de la modification de l\'autorisation</string>
+    <string name="permissions">AUTORISATIONS</string>
+    <string name="usage_access">Accès aux données d\'utilisation</string>
+    <string name="usage_access_granted_subtitle">Accordé — permet le tri par taille d\'application</string>
+    <string name="usage_access_needed_subtitle">Nécessaire pour lire la taille des applications pour le tri par Taille</string>
+    <string name="usage_access_needed_title">Accès aux données d\'utilisation requis</string>
+    <string name="usage_access_prompt_body">Thor a besoin de l\'accès aux données d\'utilisation pour lire la taille des applications. Activez-le pour Thor, puis choisissez de nouveau \"Taille\". Vous pouvez également gérer cela dans Paramètres → Autorisations.</string>
+    <string name="open_settings">Ouvrir les paramètres</string>
+    <string name="freeze_mode">Mode de congélation</string>
+    <string name="suspend_instead_of_freeze">Suspendre au lieu de congeler</string>
+    <string name="suspend_instead_of_freeze_desc">Lors de la congélation (y compris la congélation automatique), suspendez les applications au lieu de les désactiver. Les applications suspendues restent visibles mais en pause.</string>
+    <string name="add_freezer_to_launcher">Ajouter le Congélateur au lanceur</string>
+    <string name="add_freezer_to_launcher_desc">Afficher les applications congelées comme raccourcis d\'écran d\'accueil pour les lancer d\'un simple geste</string>
+    <string name="add_to_home_screen">Ajouter à l\'écran d\'accueil</string>
+    <string name="freeze_all_apps">Tout congeler</string>
+    <string name="shortcuts">Raccourcis</string>
+    <string name="shortcut_add_all">Ajouter toutes les applications</string>
+    <string name="shortcut_added_named">%1$s ajouté à l\'écran d\'accueil</string>
+    <string name="shortcut_added">Raccourci ajouté à l\'écran d\'accueil</string>
+    <string name="pin_all_confirm_title">Ajouter toutes les applications à l\'écran d\'accueil ?</string>
+    <string name="pin_all_confirm_desc">Cela ajoutera un raccourci d\'écran d\'accueil pour chacune de vos %1$d applications congelées, ce qui risque de remplir votre écran d\'accueil. Votre lanceur vous demandera de confirmer chaque raccourci.</string>
+    <string name="freezer_launch_failed">Impossible de lancer cette application</string>
+    <string name="shortcut_no_longer_frozen">N\'est plus congelée</string>
+    <string name="easter_egg_promoted">🎉 Cette fonctionnalité cachée a déjà été promue — restez à l\'écoute pour la prochaine !</string>
+    <string name="support_tab_play_store">Play Store</string>
+    <string name="support_tab_direct">Direct</string>
+    <string name="run_extension">Exécuter</string>
+    <string name="installer_play_store">PLAY STORE</string>
+    <string name="installer_fdroid">F-DROID</string>
+    <string name="installer_sideloaded">INSTALLATION INDIRECTE</string>
+    <string name="permission_protection_level">Protection : %1$s</string>
+    <string name="extension_consent_title">Avant de continuer</string>
+    <string name="extension_consent_body">Les extensions sont des modules puissants qui peuvent modifier le comportement des applications et du système sur votre appareil. Elles ne sont pas toujours conçues par nous — n\'importe qui peut en créer. Nous vérifions et signons les extensions que nous distribuons, mais cela comporte des risques inhérents.\n\nEn continuant, vous acceptez d\'être seul responsable de ce que vous installez et activez ici, et que Thor et ses développeurs ne sont PAS responsables de toute perte de données, dysfonctionnement ou dommage causé par une extension ou par toute modification effectuée par son intermédiaire.</string>
+    <string name="extension_consent_math_prompt">Pour confirmer que vous avez lu ceci, résolvez : %1$d + %2$d = ?</string>
+    <string name="extension_consent_accept">Je comprends — continuer</string>
+    <string name="extension_store">Boutique d\'extensions</string>
+    <string name="extension_store_desc">Télécharger des extensions Thor vérifiées et signées avec la clé officielle.</string>
+    <string name="extension_browse_store">Parcourir la boutique</string>
+    <string name="extension_install">Installer</string>
+    <string name="extension_update">Mettre à jour</string>
+    <string name="extension_installed">Installée</string>
+    <string name="extension_source_only">Code source uniquement — à compiler vous-même</string>
+    <string name="extension_requires_lsposed">Nécessite LSPosed</string>
+    <string name="extension_requires_thor">Nécessite une version plus récente de Thor</string>
+    <string name="extension_store_empty">Aucune extension disponible pour le moment</string>
+    <string name="extension_store_empty_desc">Revenez plus tard — le catalogue est mis à jour à mesure que de nouvelles extensions sont publiées.</string>
+    <string name="extension_store_error">Impossible de charger la boutique</string>
+    <string name="extension_store_error_desc">Veuillez vérifier votre connexion et réessayer.</string>
+    <string name="extension_retry">Réessayer</string>
+    <string name="extension_install_failed">Échec de la vérification : %1$s</string>
+    <string name="info_app_size">Taille</string>
+    
 </resources>
