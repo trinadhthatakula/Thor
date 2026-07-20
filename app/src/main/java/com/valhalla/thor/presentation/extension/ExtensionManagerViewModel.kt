@@ -7,6 +7,7 @@ import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.extension.api.ThorExtension
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,6 +46,10 @@ class ExtensionManagerViewModel(
     private val _uiState = MutableStateFlow(ExtensionUiState())
     val uiState: StateFlow<ExtensionUiState> = _uiState.asStateFlow()
 
+    // Tracks the in-flight load so a rapid resume/pause can't leave a slower, stale load finish
+    // after a newer one and overwrite fresher state — starting a new load cancels the previous one.
+    private var loadJob: Job? = null
+
     /**
      * Persist the extension-manager consent on the durable viewModelScope so the DataStore write
      * survives a configuration change / composition teardown right after the user taps Accept
@@ -59,8 +64,9 @@ class ExtensionManagerViewModel(
     }
 
     fun loadExtensions() {
+        loadJob?.cancel()
         _uiState.update { it.copy(isLoading = true, error = null) }
-        viewModelScope.launch(ioDispatcher) {
+        loadJob = viewModelScope.launch(ioDispatcher) {
             // Probe whether the deprecated legacy extension package is still installed. This is a
             // single-package PackageManager lookup (binder IPC) rather than a full installed-package
             // enumeration, done here on the io dispatcher rather than synchronously during
