@@ -188,6 +188,11 @@ fun PortableInstaller(
         }
     }
 
+    // Reset the sheet's scroll position whenever the install state changes, so a scrolled
+    // ReadyToInstall view doesn't carry over into Installing / Success / Error.
+    val scrollState = rememberScrollState()
+    LaunchedEffect(state) { scrollState.scrollTo(0) }
+
     // The Bottom Sheet
     ModalBottomSheet(
         onDismissRequest = {
@@ -201,7 +206,7 @@ fun PortableInstaller(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(24.dp)
                 .padding(bottom = 24.dp), // Extra padding for nav bar
             horizontalAlignment = Alignment.CenterHorizontally,
