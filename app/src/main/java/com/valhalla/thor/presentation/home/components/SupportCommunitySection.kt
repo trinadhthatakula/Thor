@@ -109,7 +109,7 @@ fun SupportCommunitySection(
         // Three-across when the pane is wide enough; stacks vertically in a narrow pane
         // (landscape phone, foldable-open, medium tablet) so the brand labels never crop.
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            if (maxWidth < 250.dp) {
+            if (maxWidth < 320.dp) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     links.forEach { link ->
                         CommunityLinkButton(link, uriHandler, Modifier.fillMaxWidth())

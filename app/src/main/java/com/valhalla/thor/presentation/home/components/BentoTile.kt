@@ -62,7 +62,7 @@ fun BentoTile(
         if (onClose != null) {
             IconButton(
                 onClick = onClose,
-                modifier = Modifier.align(Alignment.TopEnd).size(28.dp)
+                modifier = Modifier.align(Alignment.TopEnd)
             ) {
                 Icon(
                     painter = painterResource(R.drawable.round_close),
