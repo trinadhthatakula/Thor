@@ -2,6 +2,7 @@ package com.valhalla.thor.domain.usecase
 
 import android.net.Uri
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.AppBundleFileStore
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext

@@ -4,6 +4,7 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.ExportTargetChoice
 import com.valhalla.thor.domain.model.resolveExportTarget
+import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.AppBundleFileStore
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import kotlinx.coroutines.CancellationException
