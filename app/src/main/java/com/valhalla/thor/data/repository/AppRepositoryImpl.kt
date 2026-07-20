@@ -123,7 +123,7 @@ class AppRepositoryImpl(
                             ))
                         } else {
                             val mapped =
-                                AppInfo.mapToAppInfo(packInfo, appInfo, pm, isLightweight = true)
+                                mapToAppInfo(packInfo, appInfo, pm, isLightweight = true)
                             val bloat = uadMap[mapped.packageName]
                             val mappedWithBloat = mapped.copy(
                                 bloatRecommendation = bloat?.removal,
@@ -210,7 +210,7 @@ class AppRepositoryImpl(
                 }
                 val appInfo = packInfo.applicationInfo ?: return@withContext null
 
-                val mapped = AppInfo.mapToAppInfo(packInfo, appInfo, pm, isLightweight = false)
+                val mapped = mapToAppInfo(packInfo, appInfo, pm, isLightweight = false)
                 val bloat = uadHelper.uadMap[packageName]
                 mapped.copy(
                     bloatRecommendation = bloat?.removal,
@@ -365,7 +365,7 @@ class AppRepositoryImpl(
             publicSourceDir = apkPath
         } ?: return@withContext null
 
-        AppInfo.mapToAppInfo(packInfo, appInfo, pm, isLightweight = false).copy(
+        mapToAppInfo(packInfo, appInfo, pm, isLightweight = false).copy(
             appName = pm.getApplicationLabel(appInfo).toString()
         )
     }
