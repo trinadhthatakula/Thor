@@ -56,7 +56,7 @@ class AppRepositoryImpl(
                 entities.associateBy { it.packageName }.toMutableMap()
             } catch (e: Exception) {
                 if (BuildConfig.DEBUG) e.printStackTrace()
-                mutableMapOf<String, AppEntity>()
+                mutableMapOf()
             }
 
             var lastLocale = context.resources.configuration.locales[0].toString()
@@ -314,7 +314,7 @@ class AppRepositoryImpl(
 
                 val signatureSha256 = try {
                     val signatures = packInfo.signingInfo?.signingCertificateHistory
-                    if (signatures != null && signatures.isNotEmpty()) {
+                    if (!signatures.isNullOrEmpty()) {
                         val cert = signatures[0].toByteArray()
                         val md = java.security.MessageDigest.getInstance("SHA-256")
                         val digest = md.digest(cert)
