@@ -1081,10 +1081,11 @@ private fun ComponentsTabScreen(details: DetailedAppInfo) {
                 )
             }
 
-        var activitiesExpanded by remember { mutableStateOf(false) }
-        var servicesExpanded by remember { mutableStateOf(false) }
-        var receiversExpanded by remember { mutableStateOf(false) }
-        var providersExpanded by remember { mutableStateOf(false) }
+        // rememberSaveable so the expanded/collapsed sections survive rotation / config changes.
+        var activitiesExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+        var servicesExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+        var receiversExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+        var providersExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
 
         val clipboard = LocalClipboard.current
         val context = LocalContext.current

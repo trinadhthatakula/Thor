@@ -19,6 +19,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.android.ext.android.inject
 
 class FreezerTileService : TileService() {
@@ -72,13 +73,17 @@ class FreezerTileService : TileService() {
             val suspendMode = withContext(Dispatchers.IO) {
                 preferenceRepository.userPreferences.first().freezerMode == FreezerMode.SUSPEND
             }
-            val results = pkgs.map { pkg ->
-                async(Dispatchers.IO) {
-                    if (suspendMode) manageAppUseCase.setAppSuspended(pkg, true)
-                    else manageAppUseCase.setAppDisabled(pkg, true)
-                }
-            }.awaitAll()
-            val failures = results.count { it.isFailure }
+            // appScope is process-scoped and never cancelled; bound the batch so a wedged/hung shell
+            // can't hang this coroutine forever and leak the FreezerTileService instance + captures.
+            val results = withTimeoutOrNull(30_000L) {
+                pkgs.map { pkg ->
+                    async(Dispatchers.IO) {
+                        if (suspendMode) manageAppUseCase.setAppSuspended(pkg, true)
+                        else manageAppUseCase.setAppDisabled(pkg, true)
+                    }
+                }.awaitAll()
+            }
+            val failures = results?.count { it.isFailure } ?: pkgs.size
             val msg = if (failures == 0) {
                 getString(R.string.tile_freeze_success, pkgs.size)
             } else {

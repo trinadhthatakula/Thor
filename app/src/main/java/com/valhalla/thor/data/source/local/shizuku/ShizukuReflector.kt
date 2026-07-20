@@ -275,7 +275,7 @@ class ShizukuReflector(
         }
     }
 
-    fun reinstallExistingApp(packageName: String): Boolean {
+    suspend fun reinstallExistingApp(packageName: String): Boolean {
         // 1. Try shell first
         if (Shizuku.reinstallApp(packageName)) return true
 
@@ -292,42 +292,50 @@ class ShizukuReflector(
      * href="https://cs.android.com/android/platform/superproject/main/+/main:frameworks/base/services/core/java/com/android/server/pm/PackageManagerShellCommand.java;drc=bcb2b436bde55ee40050400783a9c083e77ce2fe;l=1408>PackageManagerShellCommand.java</a>
      * @param packageName package name of the app to reinstall (must pre-install on the phone)
      */
-    fun reinstallApp(packageName: String): Boolean {
-        val broadcastIntent = Intent("${context.packageName}.INSTALL_RESULT_ACTION").apply {
+    suspend fun reinstallApp(packageName: String): Boolean {
+        // Namespace the result action + PendingIntent requestCode by the target package so
+        // concurrent reinstalls don't cross-deliver each other's status (same as uninstallApp).
+        val action = "${context.packageName}.INSTALL_RESULT_ACTION.$packageName"
+        val broadcastIntent = Intent(action).apply {
             setPackage(context.packageName)
         }
-        val intent =
-            PendingIntent.getBroadcast(
-                context,
-                0,
-                broadcastIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-
+        // MUTABLE so PackageInstaller can fill in EXTRA_STATUS at send time; an immutable
+        // PendingIntent drops those fill-in extras, so the awaited result would always look failed.
+        val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        val intent = PendingIntent.getBroadcast(
+            context,
+            packageName.hashCode(),
+            broadcastIntent,
+            pendingIntentFlags
+        )
 
         // PackageManager.INSTALL_ALL_WHITELIST_RESTRICTED_PERMISSIONS
         val installFlags = 0x00400000
+        val installReason = PackageManager.INSTALL_REASON_UNKNOWN
 
         return try {
-            val installReason = PackageManager.INSTALL_REASON_UNKNOWN
-            Bypass.invoke<Any?>(
-                IPackageInstaller::class.java,
-                ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller(),
-                "installExistingPackage",
-                packageName,
-                installFlags,
-                installReason,
-                intent.intentSender,
-                0,
-                null
-            )
-            // installExistingPackage reports its real outcome asynchronously via the IntentSender
-            // above, but this function is not `suspend`, so awaiting that broadcast would require a
-            // signature change that ripples to callers (ShizukuSystemGateway). Instead of assuming
-            // success, observe the post-state directly: for an already-present package this call
-            // flips the installed-for-user flag synchronously, so re-querying PackageManager
-            // reflects whether the reinstall actually took effect.
-            !isAppUninstalled(packageName)
+            // Observe the REAL async outcome via the IntentSender instead of an immediate
+            // isAppUninstalled() re-query: installExistingPackageAsUser runs on PackageManager-
+            // Service's handler thread, so an immediate re-query races the state update and could
+            // report a genuine success as a failure. awaitInstallerResult returns true only on
+            // STATUS_SUCCESS (false on failure / refusal / timeout).
+            awaitInstallerResult(action) {
+                Bypass.invoke<Any?>(
+                    IPackageInstaller::class.java,
+                    ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller(),
+                    "installExistingPackage",
+                    packageName,
+                    installFlags,
+                    installReason,
+                    intent.intentSender,
+                    0,
+                    null
+                )
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             false

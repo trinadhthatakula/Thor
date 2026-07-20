@@ -82,7 +82,8 @@ class ExtensionManager(private val context: Context) {
                 val packageName = pkgInfo.packageName
                 val versionCode = pkgInfo.longVersionCode
                 val appInfo = pkgInfo.applicationInfo ?: return@mapNotNull null
-                val sourceDir = appInfo.sourceDir
+                // sourceDir can be null; PathClassLoader(null, ...) would NPE, so skip this one.
+                val sourceDir = appInfo.sourceDir ?: return@mapNotNull null
 
                 // Fast path: a previously loaded instance is still valid iff both the installed
                 // versionCode AND the on-disk APK path match what's currently installed.
@@ -227,12 +228,18 @@ class ExtensionManager(private val context: Context) {
             .associate { it.packageName to it.longVersionCode }
 
     fun getExtensionPackageName(extension: ThorExtension): String? {
+        // Fast path: the extension was just returned by loadExtensions(), so its packageName is in
+        // the cache — a reverse lookup avoids a full getInstalledApplications() PM scan PER extension
+        // (an N+1 across the list that risked TransactionTooLargeException / UI lag on big devices).
+        synchronized(cacheLock) {
+            extensionCache.entries.firstOrNull { it.value.extension === extension }?.let { return it.key }
+        }
         val className = extension.javaClass.name
-        // Match on the declared `thor.extension.class` metadata rather than assuming the
-        // implementation class lives under the app's packageName. The code package and the
-        // applicationId can differ, and a class-name prefix match would namespace the
-        // extension's datastore against the wrong package.
-        return pm.getInstalledApplications(PackageManager.GET_META_DATA)
+        // Fallback (a not-yet-cached instance): match on the declared `thor.extension.class`
+        // metadata rather than assuming the implementation class lives under the app's packageName.
+        // The code package and the applicationId can differ, and a class-name prefix match would
+        // namespace the extension's datastore against the wrong package.
+        return (pm.getInstalledApplications(PackageManager.GET_META_DATA) ?: emptyList())
             .firstOrNull { app ->
                 app.packageName.startsWith(EXTENSION_PACKAGE_PREFIX) &&
                         app.metaData?.getString("thor.extension.class") == className
