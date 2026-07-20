@@ -69,7 +69,8 @@ class ExtensionManager(private val context: Context) {
      */
     fun loadExtensions(): List<ThorExtension> {
         // One package-manager scan for the whole extension set.
-        val installedExtensions = pm.getInstalledPackages(PackageManager.GET_META_DATA)
+        // getInstalledPackages can return null on some ROMs / under system pressure; guard the .filter.
+        val installedExtensions = (pm.getInstalledPackages(PackageManager.GET_META_DATA) ?: emptyList())
             .filter { it.packageName.startsWith(EXTENSION_PACKAGE_PREFIX) }
 
         return synchronized(cacheLock) {
@@ -221,7 +222,7 @@ class ExtensionManager(private val context: Context) {
      * minSdk), so no compat shim is needed.
      */
     fun getInstalledExtensionVersionCodes(): Map<String, Long> =
-        pm.getInstalledPackages(0)
+        (pm.getInstalledPackages(0) ?: emptyList())
             .filter { it.packageName.startsWith(EXTENSION_PACKAGE_PREFIX) }
             .associate { it.packageName to it.longVersionCode }
 

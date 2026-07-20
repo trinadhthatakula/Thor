@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.data.manager.ExtensionManager
 import com.valhalla.thor.extension.api.ThorExtension
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -69,6 +70,9 @@ class ExtensionManagerViewModel(
                     )
                 }
             }.onFailure { throwable ->
+                // runCatching also catches CancellationException; rethrow it so a cancelled
+                // viewModelScope isn't turned into a spurious error state (structured concurrency).
+                if (throwable is CancellationException) throw throwable
                 // Preserve any previously loaded list; just stop the spinner and expose the error.
                 _uiState.update {
                     it.copy(

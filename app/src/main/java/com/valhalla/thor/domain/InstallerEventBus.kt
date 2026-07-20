@@ -13,15 +13,15 @@ import org.koin.core.annotation.Single
  */
 @Single
 class InstallerEventBus {
-    val events: SharedFlow<InstallState>
-        field = MutableSharedFlow<InstallState>(
-            replay = 1,
-            extraBufferCapacity = 1,
-            onBufferOverflow = BufferOverflow.DROP_OLDEST
-        )
+    private val _events = MutableSharedFlow<InstallState>(
+        replay = 1,
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val events: SharedFlow<InstallState> = _events
 
     suspend fun emit(state: InstallState) {
-        events.emit(state)
+        _events.emit(state)
     }
 
     /**
@@ -31,6 +31,6 @@ class InstallerEventBus {
      * already cancelled.
      */
     fun reset() {
-        events.tryEmit(InstallState.Idle)
+        _events.tryEmit(InstallState.Idle)
     }
 }
