@@ -65,6 +65,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
 import com.valhalla.asgard.components.ConnectedButtonGroup
 import com.valhalla.asgard.components.ConnectedButtonGroupItem
+import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.presentation.widgets.AppInfoDialog
 import com.valhalla.thor.presentation.widgets.AppItemGrid
 import com.valhalla.thor.presentation.widgets.AppItemList
@@ -93,6 +94,11 @@ fun FreezerScreen(
 
     var showImportDialog by rememberSaveable { mutableStateOf(false) }
     var hasCheckedAutoPrompt by rememberSaveable { mutableStateOf(false) }
+
+    // Transient "Add to Freezer" prompt — driven by one-off events, not durable UiState, so it is
+    // never replayed on recomposition. Deliberately not rememberSaveable: a one-off shouldn't
+    // survive a config change.
+    var freezerPrompt by remember { mutableStateOf<FreezerPrompt?>(null) }
 
     val disabledAppsNotInFreezer = remember(state.allInstalledApps, state.freezerPackageNames) {
         state.allInstalledApps.filter {
@@ -131,10 +137,13 @@ fun FreezerScreen(
     val hasDisabled = appsToUnfreeze.isNotEmpty()
 
 
-    LaunchedEffect(state.actionMessage) {
-        state.actionMessage?.let {
-            Toast.makeText(context, it.asString(context), Toast.LENGTH_SHORT).show()
-            viewModel.dismissMessage()
+    ObserveAsEvents(viewModel.events) { event ->
+        when (event) {
+            is FreezerEvent.ShowToast ->
+                Toast.makeText(context, event.message.asString(context), Toast.LENGTH_SHORT).show()
+
+            is FreezerEvent.ShowFreezerPrompt ->
+                freezerPrompt = FreezerPrompt(event.packageName, event.appName)
         }
     }
 
@@ -320,12 +329,13 @@ fun FreezerScreen(
 
             // Frozen prompt snackbar
             FreezerPromptSnackbar(
-                visible = state.freezerPrompt != null,
-                appName = state.freezerPrompt?.appName,
+                visible = freezerPrompt != null,
+                appName = freezerPrompt?.appName,
                 onAddToFreezer = {
-                    state.freezerPrompt?.let { viewModel.addToFreezer(it.packageName) }
+                    freezerPrompt?.let { viewModel.addToFreezer(it.packageName) }
+                    freezerPrompt = null
                 },
-                onDismiss = viewModel::dismissFreezerPrompt,
+                onDismiss = { freezerPrompt = null },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 16.dp)

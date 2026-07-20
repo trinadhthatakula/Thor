@@ -219,12 +219,12 @@ fun AppInfoDialog(
                         )
                     } else if (isUnsafe) {
                         Text(
-                            text = "This system app is classified as UNSAFE. Removing it has an extremely high risk of bootlooping your device, so uninstallation is blocked.",
+                            text = stringResource(R.string.warning_unsafe_uninstall),
                             textAlign = TextAlign.Center
                         )
                     } else if (isExpert) {
                         Text(
-                            text = "This system app is classified as EXPERT. Removing it breaks important functionality. Are you sure you want to proceed?",
+                            text = stringResource(R.string.warning_expert_uninstall),
                             textAlign = TextAlign.Center
                         )
                     } else {
@@ -243,7 +243,7 @@ fun AppInfoDialog(
                         onDismiss()
                     }) {
                         Text(
-                            text = if (isExpert) "Uninstall Anyway" else stringResource(R.string.yes),
+                            text = if (isExpert) stringResource(R.string.uninstall_anyway) else stringResource(R.string.yes),
                             color = if (isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                         )
                     }

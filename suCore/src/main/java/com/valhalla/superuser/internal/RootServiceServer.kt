@@ -23,9 +23,11 @@ internal class RootServiceServer private constructor(context: Context) : IRootSe
 
     companion object {
         @SuppressLint("StaticFieldLeak")
+        @Volatile
         private var mInstance: RootServiceServer? = null
 
         @JvmStatic
+        @Synchronized
         fun getInstance(context: Context): RootServiceServer {
             if (mInstance == null) {
                 mInstance = RootServiceServer(context)

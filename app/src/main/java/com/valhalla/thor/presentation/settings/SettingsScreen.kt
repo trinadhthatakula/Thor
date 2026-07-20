@@ -32,7 +32,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,6 +59,7 @@ import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
+import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.asgard.components.ConnectedButtonGroup
 import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import org.koin.androidx.compose.koinViewModel
@@ -79,15 +79,12 @@ fun SettingsScreen(
     var showUnfreezeConfirmation by remember { mutableStateOf(false) }
     var showSupportSheet by remember { mutableStateOf(false) }
 
-    LaunchedEffect(state.actionMessage) {
-        state.actionMessage?.let {
-            android.widget.Toast.makeText(
-                context,
-                it.asString(context),
-                android.widget.Toast.LENGTH_SHORT
-            ).show()
-            viewModel.consumeMessage()
-        }
+    ObserveAsEvents(viewModel.events) { event ->
+        android.widget.Toast.makeText(
+            context,
+            event.asString(context),
+            android.widget.Toast.LENGTH_SHORT
+        ).show()
     }
 
     if (showUnfreezeConfirmation) {

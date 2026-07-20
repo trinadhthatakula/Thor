@@ -277,7 +277,7 @@ class ShizukuReflector(
             val result = Shizuku.execute(command)
             result.first == 0
         } catch (e: Exception) {
-            e.printStackTrace()
+            Logger.e("ShizukuReflector", "installPackage failed for $apkPath", e)
             false
         }
     }
@@ -346,7 +346,7 @@ class ShizukuReflector(
         } catch (e: Exception) {
             // Never swallow coroutine cancellation — it breaks cooperative cancellation of the caller.
             if (e is CancellationException) throw e
-            e.printStackTrace()
+            Logger.e("ShizukuReflector", "reinstallApp failed for $packageName", e)
             false
         }
     }

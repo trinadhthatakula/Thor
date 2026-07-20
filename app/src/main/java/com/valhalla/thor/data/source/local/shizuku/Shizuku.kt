@@ -365,6 +365,11 @@ object Shizuku {
         }.getOrElse { false }
     }
 
+    // @Volatile guarantees safe publication across threads: getCurrentUserId() may be invoked from
+    // arbitrary threads, and only a *successfully* resolved id is ever cached (the read throws
+    // before the assignment on failure), so a transient shell blip can't persist a wrong user (#41,
+    // mirrors the RootSystemGateway #34 pattern).
+    @Volatile
     private var cachedUserId: String? = null
 
     fun getCurrentUserId(): String {
@@ -379,13 +384,16 @@ object Shizuku {
     }
 
     fun uninstallApp(context: Context, packageName: String): Boolean {
+        // Escape the package identifier before interpolating it into the shell command, mirroring
+        // the Dhizuku helper (#40). currentUser is regex-validated numeric, so it needs no escaping.
+        val escapedPackage = com.valhalla.superuser.ShellUtils.escapedString(packageName)
         val normally = Packages(context).canUninstallNormally(packageName)
         if (normally) {
-            return execute("pm uninstall $packageName").first == 0
+            return execute("pm uninstall $escapedPackage").first == 0
         }
         return try {
             val currentUser = getCurrentUserId()
-            execute("pm uninstall --user $currentUser $packageName").first == 0
+            execute("pm uninstall --user $currentUser $escapedPackage").first == 0
         } catch (_: Exception) {
             false
         }
@@ -394,7 +402,9 @@ object Shizuku {
     fun reinstallApp(packageName: String): Boolean {
         return try {
             val currentUser = getCurrentUserId()
-            execute("pm install-existing --user $currentUser $packageName").first == 0
+            // Escape the package identifier before interpolating it (#40).
+            val escapedPackage = com.valhalla.superuser.ShellUtils.escapedString(packageName)
+            execute("pm install-existing --user $currentUser $escapedPackage").first == 0
         } catch (_: Exception) {
             false
         }

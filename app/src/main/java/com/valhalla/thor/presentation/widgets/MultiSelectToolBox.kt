@@ -18,11 +18,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,17 +42,13 @@ fun MultiSelectToolBox(
     onCancel: () -> Unit = {},
     onMultiAppAction: (MultiAppAction) -> Unit = {}
 ) {
-    var hasFrozen by remember { mutableStateOf(selected.any { !it.enabled }) }
-    var hasUnFrozen by remember { mutableStateOf(selected.any { it.enabled }) }
-    var hasSuspended by remember { mutableStateOf(selected.any { it.isSuspended }) }
-    var hasUnSuspended by remember { mutableStateOf(selected.any { !it.isSuspended }) }
-
-    LaunchedEffect(selected) {
-        hasFrozen = selected.any { !it.enabled }
-        hasUnFrozen = selected.any { it.enabled }
-        hasSuspended = selected.any { it.isSuspended }
-        hasUnSuspended = selected.any { !it.isSuspended }
-    }
+    // Pure derivations of `selected`; computed directly in composition so the
+    // buttons never lag a frame behind the selection (no stale-state flicker).
+    // Memoized on `selected` so the linear scans only re-run when it changes.
+    val hasFrozen = remember(selected) { selected.any { !it.enabled } }
+    val hasUnFrozen = remember(selected) { selected.any { it.enabled } }
+    val hasSuspended = remember(selected) { selected.any { it.isSuspended } }
+    val hasUnSuspended = remember(selected) { selected.any { !it.isSuspended } }
 
     Card(
         modifier = modifier,

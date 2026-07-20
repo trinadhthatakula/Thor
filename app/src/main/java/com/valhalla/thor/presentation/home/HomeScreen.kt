@@ -14,9 +14,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -88,19 +85,15 @@ fun HomeScreen(
     val adaptiveInfo = currentWindowAdaptiveInfoV2()
     val isWideScreen = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
 
-    val navigationBarsPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val bottomPadding = if (isWideScreen) {
-        16.dp + navigationBarsPadding
-    } else {
-        80.dp + navigationBarsPadding
-    }
-
+    // The bottom inset (nav-bar height + system navigation-bar insets) is already applied by
+    // MainScreen, which hosts this screen inside Scaffold's Box(Modifier.padding(innerPadding)).
+    // Adding another 80.dp + navigationBars here double-counted it and left a large empty gap
+    // at the bottom of the scroll content, so this screen owns no bottom inset of its own.
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
-            .padding(bottom = bottomPadding)
     ) {
         // 1. Header (full width always)
         DashboardHeader(

@@ -94,8 +94,6 @@ class InstallerViewModel(
 
                     isUpdateOperation = existing != null
                     isDowngrade = if (existing != null) {
-                        // meta.versionCode is a Long; compare against the full long version
-                        // code so large version codes aren't truncated by the deprecated Int field.
                         meta.versionCode < PackageInfoCompat.getLongVersionCode(existing)
                     } else false
 

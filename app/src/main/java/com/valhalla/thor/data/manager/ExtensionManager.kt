@@ -232,6 +232,15 @@ class ExtensionManager(private val context: Context) {
             .filter { it.packageName.startsWith(EXTENSION_PACKAGE_PREFIX) }
             .associate { it.packageName to it.longVersionCode }
 
+    /**
+     * True iff [packageName] is installed, via a single-package [PackageManager.getPackageInfo]
+     * lookup — NOT a full [PackageManager.getInstalledPackages] enumeration. Used to cheaply probe
+     * for the deprecated [LEGACY_EXTENSION_PACKAGE] without marshalling every installed package
+     * across the binder just to test for one. No signature/trust check is implied by this call.
+     */
+    fun isPackageInstalled(packageName: String): Boolean =
+        runCatching { pm.getPackageInfo(packageName, 0) }.isSuccess
+
     fun getExtensionPackageName(extension: ThorExtension): String? {
         // Fast path: the extension was just returned by loadExtensions(), so its packageName is in
         // the cache — a reverse lookup avoids a full getInstalledApplications() PM scan PER extension

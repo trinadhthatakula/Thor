@@ -191,6 +191,9 @@
     <string name="permissions_no_found">No permissions requested by this app</string>
     <string name="permission_state_granted">Granted</string>
     <string name="permission_state_denied">Denied</string>
+    <string name="failed_to_load_permissions">Failed to load permissions</string>
+    <string name="permission_status_updated">Permission status updated</string>
+    <string name="failed_to_modify_permission">Failed to modify permission</string>
 
     <!-- Usage Access / Size sort -->
     <string name="permissions">PERMISSIONS</string>

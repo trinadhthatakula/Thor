@@ -64,6 +64,7 @@ import coil3.compose.AsyncImage
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppPermission
 import com.valhalla.thor.presentation.utils.AppIconModel
+import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.koin.androidx.compose.koinViewModel
@@ -84,15 +85,8 @@ fun PermissionManagerScreen(
         viewModel.loadPermissions(packageName, appName)
     }
 
-    LaunchedEffect(state.errorMessage, state.successMessage) {
-        state.errorMessage?.let {
-            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
-            viewModel.clearMessages()
-        }
-        state.successMessage?.let {
-            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
-            viewModel.clearMessages()
-        }
+    ObserveAsEvents(viewModel.events) { event ->
+        Toast.makeText(context, event.asString(context), Toast.LENGTH_SHORT).show()
     }
 
     val animatedVisibilityScope = LocalNavAnimatedContentScope.current

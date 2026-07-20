@@ -13,8 +13,11 @@ import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -27,7 +30,6 @@ data class AppInfoDetailsUiState(
     val isDhizuku: Boolean = false,
     val detailedInfo: DetailedAppInfo? = null,
     val isInFreezer: Boolean = false,
-    val actionMessage: UiText? = null,
     val freezerPrompt: FreezerPrompt? = null,
     val errorMessage: UiText? = null
 )
@@ -43,6 +45,13 @@ class AppInfoDetailsViewModel(
 
     private val _uiState = MutableStateFlow(AppInfoDetailsUiState())
     val uiState = _uiState.asStateFlow()
+
+    // One-off toast feedback lives here (not in UiState) so it fires exactly once and is never
+    // replayed on recomposition or config change. A buffered Channel (not a replay=0 SharedFlow)
+    // retains events emitted before/between collectors so a value fired while the screen's collector
+    // is not yet STARTED (early lifecycle / config change) is delivered rather than silently dropped.
+    private val _events = Channel<UiText>(Channel.BUFFERED)
+    val events: Flow<UiText> = _events.receiveAsFlow()
 
     fun loadAppDetails(packageName: String) {
         _uiState.update {
@@ -92,6 +101,29 @@ class AppInfoDetailsViewModel(
         }
     }
 
+    /**
+     * Lighter reload used after a mutating action succeeds. Re-reads the detailed info and freezer
+     * membership so the UI reflects the new state, but deliberately skips the Root / Shizuku /
+     * Dhizuku availability probes (privilege mode doesn't change mid-session — it's probed once by
+     * [loadAppDetails]) and never flips [AppInfoDetailsUiState.isLoading], so the screen doesn't
+     * flash the loader after every freeze / suspend / force-stop / clear action.
+     */
+    // suspend (not a nested viewModelScope.launch): every caller already runs inside a
+    // viewModelScope coroutine, so launching again was redundant and could let concurrent refreshes
+    // complete out of order. Called directly => it serializes within the caller's coroutine.
+    private suspend fun refreshDetails(packageName: String) {
+        val inFreezer = withContext(Dispatchers.IO) { freezerRepository.contains(packageName) }
+        val details = appRepository.getDetailedAppInfo(packageName)
+        if (details != null) {
+            _uiState.update {
+                it.copy(
+                    detailedInfo = details,
+                    isInFreezer = inFreezer
+                )
+            }
+        }
+    }
+
     fun toggleFreezerState(packageName: String, appName: String?, freeze: Boolean) {
         viewModelScope.launch {
             val result = manageAppUseCase.setAppDisabled(packageName, freeze)
@@ -103,24 +135,13 @@ class AppInfoDetailsViewModel(
                     _uiState.update { it.copy(freezerPrompt = FreezerPrompt(packageName, appName)) }
                 } else {
                     val msgRes = if (freeze) R.string.frozen_success else R.string.unfrozen_success
-                    _uiState.update {
-                        it.copy(
-                            actionMessage = UiText.StringResource(msgRes, appName ?: packageName),
-                            isInFreezer = inFreezer
-                        )
-                    }
+                    _uiState.update { it.copy(isInFreezer = inFreezer) }
+                    _events.send(UiText.StringResource(msgRes, appName ?: packageName))
                 }
-                // Reload state
-                loadAppDetails(packageName)
+                // Refresh detail only — no privilege re-probe, no loader flash.
+                refreshDetails(packageName)
             }.onFailure { e ->
-                _uiState.update {
-                    it.copy(
-                        actionMessage = UiText.StringResource(
-                            R.string.error_format,
-                            e.message ?: ""
-                        )
-                    )
-                }
+                _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
             }
         }
     }
@@ -129,17 +150,10 @@ class AppInfoDetailsViewModel(
         viewModelScope.launch {
             val result = manageAppUseCase.setAppSuspended(packageName, suspend)
             result.onSuccess {
-                // Reload state
-                loadAppDetails(packageName)
+                // Refresh detail only — no privilege re-probe, no loader flash.
+                refreshDetails(packageName)
             }.onFailure { e ->
-                _uiState.update {
-                    it.copy(
-                        actionMessage = UiText.StringResource(
-                            R.string.error_format,
-                            e.message ?: ""
-                        )
-                    )
-                }
+                _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
             }
         }
     }
@@ -149,19 +163,10 @@ class AppInfoDetailsViewModel(
             val result = manageAppUseCase.forceStop(packageName)
             result.onSuccess {
                 val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
-                _uiState.update {
-                    it.copy(actionMessage = UiText.StringResource(R.string.killed_success, appName))
-                }
-                loadAppDetails(packageName)
+                _events.send(UiText.StringResource(R.string.killed_success, appName))
+                refreshDetails(packageName)
             }.onFailure { e ->
-                _uiState.update {
-                    it.copy(
-                        actionMessage = UiText.StringResource(
-                            R.string.error_format,
-                            e.message ?: ""
-                        )
-                    )
-                }
+                _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
             }
         }
     }
@@ -171,24 +176,10 @@ class AppInfoDetailsViewModel(
             val result = manageAppUseCase.clearCache(packageName)
             result.onSuccess {
                 val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
-                _uiState.update {
-                    it.copy(
-                        actionMessage = UiText.StringResource(
-                            R.string.cache_cleared_success,
-                            appName
-                        )
-                    )
-                }
-                loadAppDetails(packageName)
+                _events.send(UiText.StringResource(R.string.cache_cleared_success, appName))
+                refreshDetails(packageName)
             }.onFailure { e ->
-                _uiState.update {
-                    it.copy(
-                        actionMessage = UiText.StringResource(
-                            R.string.error_format,
-                            e.message ?: ""
-                        )
-                    )
-                }
+                _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
             }
         }
     }
@@ -198,24 +189,10 @@ class AppInfoDetailsViewModel(
             val result = manageAppUseCase.clearAppData(packageName)
             result.onSuccess {
                 val appName = _uiState.value.detailedInfo?.appInfo?.appName ?: packageName
-                _uiState.update {
-                    it.copy(
-                        actionMessage = UiText.StringResource(
-                            R.string.data_cleared_success,
-                            appName
-                        )
-                    )
-                }
-                loadAppDetails(packageName)
+                _events.send(UiText.StringResource(R.string.data_cleared_success, appName))
+                refreshDetails(packageName)
             }.onFailure { e ->
-                _uiState.update {
-                    it.copy(
-                        actionMessage = UiText.StringResource(
-                            R.string.error_format,
-                            e.message ?: ""
-                        )
-                    )
-                }
+                _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
             }
         }
     }
@@ -224,7 +201,7 @@ class AppInfoDetailsViewModel(
         viewModelScope.launch {
             withContext(Dispatchers.IO) { freezerRepository.add(packageName) }
             _uiState.update { it.copy(freezerPrompt = null, isInFreezer = true) }
-            loadAppDetails(packageName)
+            refreshDetails(packageName)
         }
     }
 
@@ -238,28 +215,13 @@ class AppInfoDetailsViewModel(
             if (currentlyIn) {
                 freezerRepository.remove(packageName)
                 freezerShortcutManager.disableAppShortcut(packageName)
-                _uiState.update {
-                    it.copy(
-                        isInFreezer = false,
-                        actionMessage = UiText.StringResource(
-                            R.string.removed_from_freezer_success,
-                            1
-                        )
-                    )
-                }
+                _uiState.update { it.copy(isInFreezer = false) }
+                _events.send(UiText.StringResource(R.string.removed_from_freezer_success, 1))
             } else {
                 freezerRepository.add(packageName)
-                _uiState.update {
-                    it.copy(
-                        isInFreezer = true,
-                        actionMessage = UiText.StringResource(R.string.added_to_freezer_success)
-                    )
-                }
+                _uiState.update { it.copy(isInFreezer = true) }
+                _events.send(UiText.StringResource(R.string.added_to_freezer_success))
             }
         }
-    }
-
-    fun dismissMessage() {
-        _uiState.update { it.copy(actionMessage = null) }
     }
 }
