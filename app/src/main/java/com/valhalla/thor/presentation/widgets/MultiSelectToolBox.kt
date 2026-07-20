@@ -18,6 +18,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,10 +44,11 @@ fun MultiSelectToolBox(
 ) {
     // Pure derivations of `selected`; computed directly in composition so the
     // buttons never lag a frame behind the selection (no stale-state flicker).
-    val hasFrozen = selected.any { !it.enabled }
-    val hasUnFrozen = selected.any { it.enabled }
-    val hasSuspended = selected.any { it.isSuspended }
-    val hasUnSuspended = selected.any { !it.isSuspended }
+    // Memoized on `selected` so the linear scans only re-run when it changes.
+    val hasFrozen = remember(selected) { selected.any { !it.enabled } }
+    val hasUnFrozen = remember(selected) { selected.any { it.enabled } }
+    val hasSuspended = remember(selected) { selected.any { it.isSuspended } }
+    val hasUnSuspended = remember(selected) { selected.any { !it.isSuspended } }
 
     Card(
         modifier = modifier,

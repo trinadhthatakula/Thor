@@ -15,6 +15,7 @@ import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.Channel
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.KoinViewModel
@@ -95,6 +97,16 @@ class FreezerViewModel(
                     val allApps = userApps + systemApps
                     Triple(pkgSet, allApps.filter { it.packageName in pkgSet }, allApps) to priv
                 }
+                    .retryWhen { cause, attempt ->
+                        // transient PM/binder failures self-heal; never retry cancellation; bounded so a hard
+                        // failure still falls through to the catch (which shows the load-failure toast).
+                        if (cause is CancellationException || attempt >= 2) {
+                            false
+                        } else {
+                            delay(500)
+                            true
+                        }
+                    }
                     .flowOn(Dispatchers.Default)
                     .collect { (appsData, priv) ->
                         val (pkgSet, freezerApps, allApps) = appsData

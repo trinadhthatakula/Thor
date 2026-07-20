@@ -1,5 +1,6 @@
 package com.valhalla.thor.data.repository
 
+import android.os.SystemClock
 import com.valhalla.thor.data.gateway.DhizukuSystemGateway
 import com.valhalla.thor.data.gateway.RootSystemGateway
 import com.valhalla.thor.data.gateway.ShizukuSystemGateway
@@ -30,6 +31,37 @@ class SystemRepositoryImpl(
 
     override suspend fun isDhizukuAvailable(): Boolean = dhizukuGateway.isDhizukuAvailable()
 
+    // Short-lived cache of the resolved gateway. Batch operations (bulk freeze/unfreeze) call
+    // getActiveGateway() once per app, and every resolution does a DataStore read plus one or
+    // more availability binder-IPC probes. Caching the resolved gateway for a few seconds lets a
+    // whole batch reuse a single resolution instead of re-probing for each app. The short TTL
+    // keeps staleness bounded: a privilege-mode change is picked up within the TTL, and a gateway
+    // that dies mid-batch still fails its individual action gracefully.
+    @Volatile
+    private var cachedGateway: SystemGateway? = null
+
+    @Volatile
+    private var cachedGatewayExpiryMs: Long = 0L
+
+    // Cached entry point. Returns the cached gateway while fresh, otherwise resolves and (on
+    // success) refreshes the cache. Resolution semantics live in resolveActiveGateway().
+    private suspend fun getActiveGateway(): Result<SystemGateway> {
+        val now = SystemClock.elapsedRealtime()
+        cachedGateway?.let { cached ->
+            if (now < cachedGatewayExpiryMs) return Result.success(cached)
+        }
+
+        val result = resolveActiveGateway()
+        result.fold(
+            onSuccess = {
+                cachedGateway = it
+                cachedGatewayExpiryMs = now + GATEWAY_CACHE_TTL_MS
+            },
+            onFailure = { cachedGateway = null }
+        )
+        return result
+    }
+
     // Dynamic Resolution Strategy: Respect user preference if available, else auto-detect.
     // Must be suspend because checking root and reading preferences are suspend operations.
     //
@@ -38,7 +70,7 @@ class SystemRepositoryImpl(
     // not three). The root probe in particular can spawn a shell, so avoiding the eager
     // "probe all three every call" pattern removes redundant IPC on every batched app action.
     // Selection semantics are identical to probing all three up front.
-    private suspend fun getActiveGateway(): Result<SystemGateway> {
+    private suspend fun resolveActiveGateway(): Result<SystemGateway> {
         val prefs = preferenceRepository.userPreferences.first()
 
         // 1. Try User Preference — probe only the preferred source.
@@ -175,4 +207,10 @@ class SystemRepositoryImpl(
         withContext(Dispatchers.IO) {
             runGatewayAction { it.executeShellCommand(command) }
         }
+
+    private companion object {
+        // TTL for the resolved-gateway cache; ~3s comfortably covers a single batch operation
+        // while keeping privilege/availability staleness bounded.
+        private const val GATEWAY_CACHE_TTL_MS = 3_000L
+    }
 }

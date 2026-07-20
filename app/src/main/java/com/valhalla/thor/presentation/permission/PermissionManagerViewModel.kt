@@ -2,6 +2,7 @@ package com.valhalla.thor.presentation.permission
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.valhalla.thor.R
 import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.usecase.GetAppPermissionsUseCase
 import com.valhalla.thor.domain.usecase.TogglePermissionUseCase
@@ -56,7 +57,8 @@ class PermissionManagerViewModel(
                         )
                     }
                     _events.send(
-                        UiText.DynamicString(error.message ?: "Failed to load permissions")
+                        error.message?.let { UiText.DynamicString(it) }
+                            ?: UiText.StringResource(R.string.failed_to_load_permissions)
                     )
                 }
         }
@@ -78,11 +80,12 @@ class PermissionManagerViewModel(
                         }
                         state.copy(permissions = updated)
                     }
-                    _events.send(UiText.DynamicString("Permission status updated"))
+                    _events.send(UiText.StringResource(R.string.permission_status_updated))
                 }
                 .onFailure { error ->
                     _events.send(
-                        UiText.DynamicString(error.message ?: "Failed to modify permission")
+                        error.message?.let { UiText.DynamicString(it) }
+                            ?: UiText.StringResource(R.string.failed_to_modify_permission)
                     )
                 }
         }
