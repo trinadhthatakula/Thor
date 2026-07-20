@@ -1,0 +1,9 @@
+• 🎨 Redesigned Home with a new adaptive "bento" action grid and one-tap access to the Extension Manager.
+
+• 📱 Better on tablets, foldables & landscape — bottom sheets now scroll, so actions are never cut off.
+
+• 🧊 Freezer fix: no more false "system app" warning when freezing your own apps.
+
+• 🌍 Now translated into Arabic, Spanish, French & Chinese.
+
+• 🛡️ Major stability pass: fewer crashes, no background ANRs, plus memory-leak and installer fixes.
