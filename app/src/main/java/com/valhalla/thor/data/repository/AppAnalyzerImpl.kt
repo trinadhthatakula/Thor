@@ -181,7 +181,7 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
             packageName = pkg,
             version = versionName,
             versionCode = versionCode,
-            iconPath = persistIcon(icon, pkg),
+            iconPath = persistIcon(icon, pkg, versionCode),
             permissions = manifest?.permissions ?: emptyList()
         )
     }
@@ -217,31 +217,40 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
             packageName = archiveInfo.packageName,
             version = archiveInfo.versionName ?: "Unknown",
             versionCode = archiveInfo.longVersionCode,
-            iconPath = persistIcon(iconBitmap, archiveInfo.packageName),
+            iconPath = persistIcon(iconBitmap, archiveInfo.packageName, archiveInfo.longVersionCode),
             permissions = archiveInfo.requestedPermissions?.toList() ?: emptyList()
         )
     }
 
     /**
-     * Persist a decoded icon [bitmap] to a stable per-package PNG in a dedicated installer
-     * icon cache, returning its absolute path (or null when there is no icon). The domain
-     * [AppMetadata] carries only this path — Bitmap decoding stays in the data layer, only
-     * the destination changes (a cache file instead of a framework type on the model).
+     * Persist a decoded icon [bitmap] to a PNG in a dedicated installer icon cache, returning its
+     * absolute path (or null when there is no icon). The domain [AppMetadata] carries only this
+     * path — Bitmap decoding stays in the data layer, only the destination changes.
      *
-     * Best-effort: any decode/IO failure yields a null path (never crashes parsing). The
-     * file is keyed to the package name and overwrites any prior icon for that package.
-     * Unlike the transient analysis bundle/apk temp files, this cache file is intentionally
-     * NOT deleted in analyze()'s finally block — the UI reads it after analyze() returns.
+     * Keyed by packageName AND [versionCode]: Coil keys its File memory cache by the path only
+     * (addLastModifiedToFileCacheKey defaults false), so a fixed per-package path would serve a
+     * STALE icon after a version bump — a distinct path per version busts that. Written to a unique
+     * temp file then atomically renamed, so two concurrent same-(pkg,version) analyses can never
+     * expose a partial/corrupt PNG to Coil (either the old complete file or the new one).
+     *
+     * Best-effort: any decode/IO failure yields a null path (never crashes parsing). This cache
+     * file is intentionally NOT deleted in analyze()'s finally — the UI reads it after analyze()
+     * returns; it lives in cacheDir so the OS can reclaim it.
      */
-    private fun persistIcon(bitmap: Bitmap?, packageName: String): String? {
+    private fun persistIcon(bitmap: Bitmap?, packageName: String, versionCode: Long): String? {
         if (bitmap == null) return null
         return runCatching {
             val iconDir = File(context.cacheDir, "installer_icons").apply { mkdirs() }
-            val iconFile = File(iconDir, "$packageName.png")
-            FileOutputStream(iconFile).use { out ->
+            val dest = File(iconDir, "${packageName}_$versionCode.png")
+            val tmp = File(iconDir, "${packageName}_$versionCode.${java.util.UUID.randomUUID()}.png.tmp")
+            FileOutputStream(tmp).use { out ->
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
             }
-            iconFile.absolutePath
+            if (!tmp.renameTo(dest)) {
+                tmp.copyTo(dest, overwrite = true)
+                tmp.delete()
+            }
+            dest.absolutePath
         }.getOrNull()
     }
 

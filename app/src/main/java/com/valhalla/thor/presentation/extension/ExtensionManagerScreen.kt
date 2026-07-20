@@ -39,7 +39,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -65,7 +64,6 @@ import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.presentation.theme.firaMonoFontFamily
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import kotlin.random.Random
@@ -81,7 +79,6 @@ fun ExtensionManagerScreen(
     val preferenceRepository = koinInject<PreferenceRepository>()
     val prefs by preferenceRepository.userPreferences.collectAsStateWithLifecycle(initialValue = UserPreferences())
     val extensionManager: ExtensionManager = koinInject()
-    val scope = rememberCoroutineScope()
 
     // Reload when returning to this screen (e.g. after installing from the store) so a freshly
     // installed extension appears with its post-install cert gate. Skip the first resume, which
@@ -101,7 +98,7 @@ fun ExtensionManagerScreen(
     }.collectAsStateWithLifecycle(initialValue = null)
     if (consentAccepted == false) {
         ExtensionConsentSheet(
-            onConsent = { scope.launch { preferenceRepository.setExtensionConsentAccepted(true) } },
+            onConsent = { viewModel.acceptExtensionConsent() },
             onDismiss = onBack,
         )
     }

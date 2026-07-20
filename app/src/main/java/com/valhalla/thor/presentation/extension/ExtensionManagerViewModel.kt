@@ -3,6 +3,7 @@ package com.valhalla.thor.presentation.extension
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.data.manager.ExtensionManager
+import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.extension.api.ThorExtension
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -37,11 +38,21 @@ data class ExtensionUiState(
 @KoinViewModel
 class ExtensionManagerViewModel(
     private val extensionManager: ExtensionManager,
+    private val preferenceRepository: PreferenceRepository,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ExtensionUiState())
     val uiState: StateFlow<ExtensionUiState> = _uiState.asStateFlow()
+
+    /**
+     * Persist the extension-manager consent on the durable viewModelScope so the DataStore write
+     * survives a configuration change / composition teardown right after the user taps Accept
+     * (a composition-scoped write could be cancelled mid-edit, leaving the gate un-consented).
+     */
+    fun acceptExtensionConsent() {
+        viewModelScope.launch { preferenceRepository.setExtensionConsentAccepted(true) }
+    }
 
     init {
         loadExtensions()
