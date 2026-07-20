@@ -1,6 +1,4 @@
 <resources>
-    <string name="title_activity_script_runner">ScriptRunner</string>
-    <string name="title_activity_home">HomeActivity</string>
 
     <!-- Navigation -->
     <string name="home">Accueil</string>
@@ -119,8 +117,6 @@
     <string name="freeze_anyway">Geler quand même</string>
     <string name="risk_warning_title">Avertissement de risque</string>
     <string name="risk_warning_desc">Ceci force l\'enregistrement de l\'installateur sur \'Google Play Store\'.\n\nLes mises à jour peuvent échouer si la signature ne correspond pas à la version officielle du store.</string>
-    <string name="reinstall_play_store_title">Réinstaller avec Play Store ?</string>
-    <string name="reinstall_play_store_desc">Cela tentera de réinstaller %1$s en utilisant le Google Play Store.</string>
     <string name="fix_store">Réparer Store</string>
 
     <!-- App Status -->
@@ -157,14 +153,12 @@
     <string name="cd_uninstalled">Désinstallé</string>
     <string name="cd_suspended">Suspendu</string>
     <string name="cd_selected">Sélectionné</string>
-    <string name="cd_search">Rechercher</string>
     <string name="cd_clear">Effacer</string>
     <string name="cd_settings">Paramètres</string>
     <string name="select_app_details">Sélectionnez une application pour voir les détails</string>
 
     <!-- Permission Manager -->
     <string name="action_permissions">Autorisations</string>
-    <string name="permissions_title">Autorisations</string>
     <string name="permissions_search">Rechercher des autorisations&#8230;</string>
     <string name="permissions_read_only_title">Mode lecture seule</string>
     <string name="permissions_read_only_desc">Un accès élevé (Root, Shizuku ou Dhizuku) est requis pour modifier les autorisations. Vous visualisez actuellement les autorisations en mode lecture seule.</string>
@@ -233,7 +227,6 @@
     <string name="unsuspended_success">%1$s réactivé</string>
     <string name="unfreezing_app">Dégel de %1$s…</string>
     <string name="uninstall_success">%1$s désinstallé</string>
-    <string name="batch_share_not_supported">Partage groupé non supporté pour le moment</string>
     <string name="error_app_info_missing">Erreur : informations de l\'application manquantes pour l\'action</string>
     <string name="failed_to_load_app_details">Échec du chargement des détails de l\'application</string>
 
@@ -283,12 +276,10 @@
     <string name="no_native_libs_found">Aucune bibliothèque native trouvée</string>
     <string name="section_req_features_title">Fonctionnalités requises</string>
     <string name="no_req_features_found">Aucune fonctionnalité requise demandée</string>
-    <string name="share_via">Partager via</string>
     <string name="version_format">v%1$s</string>
 
     <!-- Hardcoded string replacements -->
     <string name="manage_freezer">Gérer le Congélateur</string>
-    <string name="freeze_all">Tout geler</string>
     <string name="add">Ajouter</string>
     <string name="unlock_to_continue">Déverrouiller pour continuer</string>
     <string name="auth_failed">Échec de l\'authentification</string>
@@ -302,17 +293,11 @@
         <item quantity="one">Ce paquet demande %1$d autorisation. %2$s</item>
         <item quantity="other">Ce paquet demande %1$d autorisations. %2$s</item>
     </plurals>
-    <string name="install_options_title">Options d\'installation : </string>
     <string name="install_mode_normal">Normal</string>
     <string name="install_mode_shizuku">Shizuku</string>
     <string name="install_mode_dhizuku">Dhizuku</string>
     <string name="install_mode_root">Root</string>
     <string name="install_mode_external_short">Externe</string>
-    <string name="install_mode_normal_format">%1$s normal</string>
-    <string name="install_mode_shizuku_format">%1$s via Shizuku</string>
-    <string name="install_mode_dhizuku_format">%1$s via Dhizuku</string>
-    <string name="install_mode_root_format">%1$s avec Root</string>
-    <string name="install_mode_external">Ouvrir avec…</string>
     <string name="install_assembling_progress">Assemblage : %1$d%%</string>
     <string name="install_confirm_system_dialog">Veuillez confirmer l\'installation dans la boîte de dialogue système.</string>
     <string name="install_success">Installé avec succès</string>
@@ -324,12 +309,6 @@
     <string name="install_word_install">installer</string>
     <string name="install_warning_downgrade">Avertissement : L\'installation d\'une version antérieure peut causer des problèmes.</string>
     <string name="sensitive">Sensible</string>
-    <string name="protection_normal">Normal</string>
-    <string name="protection_dangerous">Dangereux</string>
-    <string name="protection_signature">Signature</string>
-    <string name="protection_signature_system">Signature/Système</string>
-    <string name="expanded">Développé</string>
-    <string name="collapsed">Réduit</string>
 
     <!-- Terminal Logs -->
     <string name="log_initializing">Initialisation…</string>
@@ -396,7 +375,6 @@
     <string name="explore_other_apps_desc">Découvrez ma console développeur et essayez d\'autres applications</string>
     <string name="donate_paypal_title">Faire un don via PayPal</string>
     <string name="donate_paypal_desc">Envoyer un don unique directement</string>
-    <string name="choose_subscription_tier">Choisir un niveau de soutien</string>
     <string name="billing_error">Erreur de facturation</string>
 
     <!-- Support & Community Dashboard Section -->

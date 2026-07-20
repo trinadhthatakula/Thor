@@ -1,7 +1,4 @@
 <resources>
-    <string name="title_activity_script_runner">脚本运行器</string>
-    <string name="title_activity_home">主页</string>
-
     <!-- Navigation -->
     <string name="home">主页</string>
     <string name="home_desc">主页</string>
@@ -119,8 +116,6 @@
     <string name="freeze_anyway">仍然冻结</string>
     <string name="risk_warning_title">风险警告</string>
     <string name="risk_warning_desc">这会强制将安装程序记录更改为“Google Play 商店”。\n\n如果签名与官方商店版本不匹配，更新可能会失败。</string>
-    <string name="reinstall_play_store_title">使用 Play 商店重新安装？</string>
-    <string name="reinstall_play_store_desc">这将尝试使用 Google Play 商店重新安装 %1$s。</string>
     <string name="fix_store">修复商店</string>
 
     <!-- App Status -->
@@ -157,14 +152,12 @@
     <string name="cd_uninstalled">已卸载</string>
     <string name="cd_suspended">已暂停</string>
     <string name="cd_selected">已选择</string>
-    <string name="cd_search">搜索</string>
     <string name="cd_clear">清除</string>
     <string name="cd_settings">设置</string>
     <string name="select_app_details">选择一个应用以查看详情</string>
 
     <!-- Permission Manager -->
     <string name="action_permissions">权限管理</string>
-    <string name="permissions_title">权限</string>
     <string name="permissions_search">搜索权限&#8230;</string>
     <string name="permissions_read_only_title">只读模式</string>
     <string name="permissions_read_only_desc">切换权限需要高级访问权限（Root、Shizuku 或 Dhizuku）。您当前正在以只读模式查看权限。</string>
@@ -233,7 +226,6 @@
     <string name="unsuspended_success">已恢复 %1$s</string>
     <string name="unfreezing_app">正在解冻 %1$s…</string>
     <string name="uninstall_success">已卸载 %1$s</string>
-    <string name="batch_share_not_supported">暂不支持批量分享</string>
     <string name="error_app_info_missing">错误：缺少操作所需的应用信息</string>
     <string name="failed_to_load_app_details">加载应用详细信息失败</string>
 
@@ -283,12 +275,10 @@
     <string name="no_native_libs_found">未找到原生库</string>
     <string name="section_req_features_title">所需功能</string>
     <string name="no_req_features_found">未请求所需功能</string>
-    <string name="share_via">分享方式</string>
     <string name="version_format">v%1$s</string>
 
     <!-- Hardcoded string replacements -->
     <string name="manage_freezer">管理冻结室</string>
-    <string name="freeze_all">冻结全部</string>
     <string name="add">添加</string>
     <string name="unlock_to_continue">解锁以继续</string>
     <string name="auth_failed">身份验证失败</string>
@@ -301,17 +291,11 @@
     <plurals name="install_permissions">
         <item quantity="other">此包请求 %1$d 个权限。%2$s</item>
     </plurals>
-    <string name="install_options_title">安装选项：</string>
     <string name="install_mode_normal">普通</string>
     <string name="install_mode_shizuku">Shizuku</string>
     <string name="install_mode_dhizuku">Dhizuku</string>
     <string name="install_mode_root">Root</string>
     <string name="install_mode_external_short">外部</string>
-    <string name="install_mode_normal_format">普通 %1$s</string>
-    <string name="install_mode_shizuku_format">通过 Shizuku %1$s</string>
-    <string name="install_mode_dhizuku_format">通过 Dhizuku %1$s</string>
-    <string name="install_mode_root_format">使用 Root 权限 %1$s</string>
-    <string name="install_mode_external">打开方式…</string>
     <string name="install_assembling_progress">正在组装：%1$d%%</string>
     <string name="install_confirm_system_dialog">请在系统对话框中确认安装。</string>
     <string name="install_success">安装成功</string>
@@ -323,12 +307,6 @@
     <string name="install_word_install">安装</string>
     <string name="install_warning_downgrade">警告：安装较旧版本可能会导致问题。</string>
     <string name="sensitive">敏感</string>
-    <string name="protection_normal">普通</string>
-    <string name="protection_dangerous">危险</string>
-    <string name="protection_signature">签名</string>
-    <string name="protection_signature_system">签名/系统</string>
-    <string name="expanded">已展开</string>
-    <string name="collapsed">已折叠</string>
 
     <!-- Terminal Logs -->
     <string name="log_initializing">正在初始化…</string>
@@ -395,7 +373,6 @@
     <string name="explore_other_apps_desc">查看我的开发者控制台并体验其他应用</string>
     <string name="donate_paypal_title">通过 PayPal 捐赠</string>
     <string name="donate_paypal_desc">直接发送一次性捐赠</string>
-    <string name="choose_subscription_tier">选择支持层级</string>
     <string name="billing_error">支付出错</string>
 
     <!-- Support & Community Dashboard Section -->

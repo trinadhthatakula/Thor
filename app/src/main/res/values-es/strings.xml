@@ -1,6 +1,4 @@
 <resources>
-    <string name="title_activity_script_runner">ScriptRunner</string>
-    <string name="title_activity_home">HomeActivity</string>
 
     <!-- Navigation -->
     <string name="home">Inicio</string>
@@ -119,8 +117,6 @@
     <string name="freeze_anyway">Congelar de todos modos</string>
     <string name="risk_warning_title">Advertencia de riesgo</string>
     <string name="risk_warning_desc">Esto fuerza el registro del instalador a \'Google Play Store\'.\n\nLas actualizaciones pueden fallar si la firma no coincide con la versión oficial de la tienda.</string>
-    <string name="reinstall_play_store_title">¿Reinstalar con Play Store?</string>
-    <string name="reinstall_play_store_desc">Esto intentará reinstalar %1$s usando Google Play Store.</string>
     <string name="fix_store">Reparar tienda</string>
 
     <!-- App Status -->
@@ -157,14 +153,12 @@
     <string name="cd_uninstalled">Desinstalado</string>
     <string name="cd_suspended">Suspendido</string>
     <string name="cd_selected">Seleccionado</string>
-    <string name="cd_search">Buscar</string>
     <string name="cd_clear">Limpiar</string>
     <string name="cd_settings">Ajustes</string>
     <string name="select_app_details">Selecciona una aplicación para ver detalles</string>
 
     <!-- Permission Manager -->
     <string name="action_permissions">Permisos</string>
-    <string name="permissions_title">Permisos</string>
     <string name="permissions_search">Buscar permisos&#8230;</string>
     <string name="permissions_read_only_title">Modo de solo lectura</string>
     <string name="permissions_read_only_desc">Se requiere acceso elevado (Root, Shizuku o Dhizuku) para alternar los permisos. Actualmente estás viendo los permisos en modo de solo lectura.</string>
@@ -233,7 +227,6 @@
     <string name="unsuspended_success">%1$s reanudado</string>
     <string name="unfreezing_app">Descongelando %1$s…</string>
     <string name="uninstall_success">Se desinstaló %1$s</string>
-    <string name="batch_share_not_supported">El uso compartido por lotes aún no es compatible</string>
     <string name="error_app_info_missing">Error: Falta la información de la aplicación para la acción</string>
     <string name="failed_to_load_app_details">Error al cargar los detalles de la aplicación</string>
 
@@ -283,12 +276,10 @@
     <string name="no_native_libs_found">No se encontraron librerías nativas</string>
     <string name="section_req_features_title">Características requeridas</string>
     <string name="no_req_features_found">No se solicitaron características requeridas</string>
-    <string name="share_via">Compartir con</string>
     <string name="version_format">v%1$s</string>
 
     <!-- Hardcoded string replacements -->
     <string name="manage_freezer">Gestionar Congelador</string>
-    <string name="freeze_all">Congelar todo</string>
     <string name="add">Añadir</string>
     <string name="unlock_to_continue">Desbloquear para continuar</string>
     <string name="auth_failed">Error de autenticación</string>
@@ -302,17 +293,11 @@
         <item quantity="one">Este paquete solicita %1$d permiso. %2$s</item>
         <item quantity="other">Este paquete solicita %1$d permisos. %2$s</item>
     </plurals>
-    <string name="install_options_title">Opciones de instalación: </string>
     <string name="install_mode_normal">Normal</string>
     <string name="install_mode_shizuku">Shizuku</string>
     <string name="install_mode_dhizuku">Dhizuku</string>
     <string name="install_mode_root">Root</string>
     <string name="install_mode_external_short">Externo</string>
-    <string name="install_mode_normal_format">%1$s normal</string>
-    <string name="install_mode_shizuku_format">%1$s mediante Shizuku</string>
-    <string name="install_mode_dhizuku_format">%1$s mediante Dhizuku</string>
-    <string name="install_mode_root_format">%1$s con Root</string>
-    <string name="install_mode_external">Abrir con…</string>
     <string name="install_assembling_progress">Ensamblando: %1$d%%</string>
     <string name="install_confirm_system_dialog">Por favor, confirme la instalación en el diálogo del sistema.</string>
     <string name="install_success">Instalado correctamente</string>
@@ -324,12 +309,6 @@
     <string name="install_word_install">instalar</string>
     <string name="install_warning_downgrade">Advertencia: Instalar una versión anterior puede causar problemas.</string>
     <string name="sensitive">Sensible</string>
-    <string name="protection_normal">Normal</string>
-    <string name="protection_dangerous">Peligroso</string>
-    <string name="protection_signature">Firma</string>
-    <string name="protection_signature_system">Firma/Sistema</string>
-    <string name="expanded">Expandido</string>
-    <string name="collapsed">Contraído</string>
 
     <!-- Terminal Logs -->
     <string name="log_initializing">Inicializando…</string>
@@ -396,7 +375,6 @@
     <string name="explore_other_apps_desc">Echa un vistazo a mi consola de desarrollador y prueba otras aplicaciones</string>
     <string name="donate_paypal_title">Donar a través de PayPal</string>
     <string name="donate_paypal_desc">Envía una donación única directamente</string>
-    <string name="choose_subscription_tier">Elige un nivel de soporte</string>
     <string name="billing_error">Error de facturación</string>
 
     <!-- Support & Community Dashboard Section -->

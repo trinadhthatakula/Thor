@@ -1,6 +1,4 @@
 <resources>
-    <string name="title_activity_script_runner">ScriptRunner</string>
-    <string name="title_activity_home">HomeActivity</string>
 
     <!-- Navigation -->
     <string name="home">الرئيسية</string>
@@ -119,8 +117,6 @@
     <string name="freeze_anyway">التجميد على أي حال</string>
     <string name="risk_warning_title">تحذير من المخاطر</string>
     <string name="risk_warning_desc">هذا يجبر سجل المثبت على \'Google Play Store\'.\n\nقد تفشل التحديثات إذا لم يتطابق التوقيع مع نسخة المتجر الرسمية.</string>
-    <string name="reinstall_play_store_title">إعادة التثبيت باستخدام متجر Play؟</string>
-    <string name="reinstall_play_store_desc">سيحاول هذا إعادة تثبيت %1$s باستخدام متجر Google Play.</string>
     <string name="fix_store">إصلاح المتجر</string>
 
     <!-- App Status -->
@@ -157,14 +153,12 @@
     <string name="cd_uninstalled">تم إلغاء التثبيت</string>
     <string name="cd_suspended">معلق</string>
     <string name="cd_selected">مختار</string>
-    <string name="cd_search">بحث</string>
     <string name="cd_clear">مسح</string>
     <string name="cd_settings">الإعدادات</string>
     <string name="select_app_details">اختر تطبيقاً لعرض التفاصيل</string>
 
     <!-- Permission Manager -->
     <string name="action_permissions">الأذونات</string>
-    <string name="permissions_title">الأذونات</string>
     <string name="permissions_search">بحث في الأذونات&#8230;</string>
     <string name="permissions_read_only_title">وضع القراءة فقط</string>
     <string name="permissions_read_only_desc">مطلوب وصول مرتفع (Root أو Shizuku أو Dhizuku) لتبديل الأذونات. أنت تشاهد الأذونات حالياً في وضع القراءة فقط.</string>
@@ -233,7 +227,6 @@
     <string name="unsuspended_success">تم إلغاء تعليق %1$s</string>
     <string name="unfreezing_app">جاري إلغاء تجميد %1$s…</string>
     <string name="uninstall_success">تم إلغاء تثبيت %1$s</string>
-    <string name="batch_share_not_supported">المشاركة الجماعية غير مدعومة بعد</string>
     <string name="error_app_info_missing">خطأ: معلومات التطبيق مفقودة للإجراء</string>
     <string name="failed_to_load_app_details">فشل في تحميل تفاصيل التطبيق</string>
 
@@ -283,12 +276,10 @@
     <string name="no_native_libs_found">لم يتم العثور على مكتبات أصلية</string>
     <string name="section_req_features_title">الميزات المطلوبة</string>
     <string name="no_req_features_found">لم يتم طلب أي ميزات مطلوبة</string>
-    <string name="share_via">مشاركة عبر</string>
     <string name="version_format">v%1$s</string>
 
     <!-- Hardcoded string replacements -->
     <string name="manage_freezer">إدارة المجمد</string>
-    <string name="freeze_all">تجميد الكل</string>
     <string name="add">إضافة</string>
     <string name="unlock_to_continue">فتح القفل للمتابعة</string>
     <string name="auth_failed">فشل المصادقة</string>
@@ -306,17 +297,11 @@
         <item quantity="many">تطلب هذه الحزمة %1$d إذنًا. %2$s</item>
         <item quantity="other">تطلب هذه الحزمة %1$d إذن. %2$s</item>
     </plurals>
-    <string name="install_options_title">خيارات التثبيت: </string>
     <string name="install_mode_normal">عادي</string>
     <string name="install_mode_shizuku">Shizuku</string>
     <string name="install_mode_dhizuku">Dhizuku</string>
     <string name="install_mode_root">Root</string>
     <string name="install_mode_external_short">خارجي</string>
-    <string name="install_mode_normal_format">تثبيت عادي (%1$s)</string>
-    <string name="install_mode_shizuku_format">%1$s عبر Shizuku</string>
-    <string name="install_mode_dhizuku_format">%1$s عبر Dhizuku</string>
-    <string name="install_mode_root_format">%1$s باستخدام روت (Root)</string>
-    <string name="install_mode_external">فتح باستخدام…</string>
     <string name="install_assembling_progress">تجميع: %1$d%%</string>
     <string name="install_confirm_system_dialog">يرجى تأكيد التثبيت في نافذة النظام الحوارية.</string>
     <string name="install_success">تم التثبيت بنجاح</string>
@@ -328,12 +313,6 @@
     <string name="install_word_install">تثبيت</string>
     <string name="install_warning_downgrade">تحذير: قد يؤدي تثبيت إصدار أقدم إلى حدوث مشكلات.</string>
     <string name="sensitive">حساس</string>
-    <string name="protection_normal">عادي</string>
-    <string name="protection_dangerous">خطير</string>
-    <string name="protection_signature">توقيع</string>
-    <string name="protection_signature_system">توقيع/نظام</string>
-    <string name="expanded">موسع</string>
-    <string name="collapsed">مطوي</string>
 
     <!-- Terminal Logs -->
     <string name="log_initializing">جارٍ التهيئة…</string>
@@ -400,7 +379,6 @@
     <string name="explore_other_apps_desc">ألقِ نظرة على لوحة تحكم المطور وجرب تطبيقات أخرى</string>
     <string name="donate_paypal_title">التبرع عبر PayPal</string>
     <string name="donate_paypal_desc">أرسل تبرعًا لمرة واحدة مباشرة</string>
-    <string name="choose_subscription_tier">اختر مستوى الدعم</string>
     <string name="billing_error">خطأ في الدفع</string>
 
     <!-- Support & Community Dashboard Section -->
