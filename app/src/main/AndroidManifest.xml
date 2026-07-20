@@ -329,12 +329,14 @@
         <provider
             android:name=".data.provider.FreezerBridgeProvider"
             android:authorities="${applicationId}.freezerbridge"
-            android:exported="true" />
+            android:exported="true"
+            tools:ignore="ExportedContentProvider" />
 
         <provider
             android:name=".data.provider.ExtensionOpsProvider"
             android:authorities="${applicationId}.extensionops"
-            android:exported="true" />
+            android:exported="true"
+            tools:ignore="ExportedContentProvider" />
 
     </application>
 

@@ -52,11 +52,7 @@ class PermissionRepositoryImpl(
                     val label =
                         permInfo?.loadLabel(pm)?.toString() ?: permName.substringAfterLast('.')
                     val description = permInfo?.loadDescription(pm)?.toString() ?: ""
-                    val protectionLevel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                        permInfo?.protectionLevel ?: 0
-                    } else {
-                        (permInfo?.protection ?: 0) or (permInfo?.protectionFlags ?: 0)
-                    }
+                    val protectionLevel = permInfo?.protectionLevel ?: 0
                     val isRuntime =
                         (protectionLevel and PermissionInfo.PROTECTION_MASK_BASE) == PermissionInfo.PROTECTION_DANGEROUS
 

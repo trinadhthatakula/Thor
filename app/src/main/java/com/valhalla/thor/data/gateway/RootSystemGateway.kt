@@ -1,5 +1,6 @@
 package com.valhalla.thor.data.gateway
 
+import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -151,6 +152,9 @@ class RootSystemGateway(
     override suspend fun isShizukuAvailable(): Boolean = false
     override suspend fun isDhizukuAvailable(): Boolean = false
 
+    // killBackgroundProcesses' KILL_BACKGROUND_PROCESSES is satisfied via elevated privilege
+    // (root shell) rather than a manifest grant.
+    @SuppressLint("MissingPermission")
     override suspend fun forceStopApp(packageName: String): Result<Unit> {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))

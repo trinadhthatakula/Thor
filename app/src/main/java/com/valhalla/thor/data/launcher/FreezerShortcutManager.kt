@@ -14,6 +14,7 @@ import android.graphics.Paint
 import androidx.core.content.ContextCompat
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
+import androidx.core.graphics.createBitmap
 import androidx.core.graphics.drawable.IconCompat
 import androidx.core.graphics.drawable.toBitmap
 import com.valhalla.thor.R
@@ -172,7 +173,7 @@ class FreezerShortcutManager(
     // to createWithResource renders an invisible/white blob on the launcher — hence this composed bitmap.
     private fun bulkIcon(iconRes: Int, backgroundColor: Int): IconCompat {
         val size = 216
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val bitmap = createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(backgroundColor)
         try {
@@ -256,7 +257,7 @@ class FreezerShortcutManager(
         return try {
             val src = context.packageManager.getApplicationIcon(packageName).toBitmap()
             val out = if (grayscale) {
-                Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888).also { gray ->
+                createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888).also { gray ->
                     Canvas(gray).drawBitmap(
                         src, 0f, 0f,
                         Paint().apply {

@@ -1,5 +1,6 @@
 package com.valhalla.thor.data.source.local.shizuku
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
@@ -50,6 +51,9 @@ object Shizuku {
             false
         }
 
+    // killBackgroundProcesses' KILL_BACKGROUND_PROCESSES permission is satisfied via the elevated
+    // Shizuku privilege (root shell / Shizuku), not a manifest grant.
+    @SuppressLint("MissingPermission")
     fun forceStopApp(context: Context, packageName: String): Boolean {
         val pkgs = Packages(context)
         val userId = pkgs.myUserId
@@ -145,6 +149,9 @@ object Shizuku {
         return pkgs.isAppDisabled(packageName) == disabled
     }
 
+    // Hidden-API reflection (SuspendDialogInfo) is intentional: it is the core privilege mechanism,
+    // guarded by the :bypass VMRuntime unseal.
+    @SuppressLint("PrivateApi")
     fun setAppSuspended(context: Context, packageName: String, suspended: Boolean): Boolean {
         val pkgs = Packages(context)
         pkgs.getApplicationInfoOrNull(packageName) ?: return false
@@ -245,6 +252,11 @@ object Shizuku {
         return currentSuspended == suspended
     }
 
+    // PrivateApi: hidden-API reflection (IPackageDataObserver) is intentional — the core privilege
+    // mechanism, guarded by the :bypass VMRuntime unseal.
+    // SdCardPath: the absolute /data and /sdcard paths are intentional for privileged/root file ops,
+    // not app-scoped storage.
+    @SuppressLint("PrivateApi", "SdCardPath")
     fun clearCache(packageName: String): Boolean {
         // 1. Try shell first
         val userId = android.os.Process.myUserHandle().hashCode()
@@ -288,6 +300,9 @@ object Shizuku {
         return reflectionResult
     }
 
+    // Hidden-API reflection (IPackageDataObserver) is intentional: it is the core privilege
+    // mechanism, guarded by the :bypass VMRuntime unseal.
+    @SuppressLint("PrivateApi")
     fun clearAppData(packageName: String): Boolean {
         // 1. Try shell first
         val result = execute("pm clear $packageName")

@@ -281,11 +281,7 @@ class AppRepositoryImpl(
                         val permInfo = pm.getPermissionInfo(permName, 0)
                         label = permInfo.loadLabel(pm).toString()
                         description = permInfo.loadDescription(pm)?.toString()
-                        val base = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                            permInfo.protectionLevel and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE
-                        } else {
-                            permInfo.protection and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE
-                        }
+                        val base = permInfo.protectionLevel and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE
                         when (base) {
                             android.content.pm.PermissionInfo.PROTECTION_NORMAL -> "Normal"
                             android.content.pm.PermissionInfo.PROTECTION_DANGEROUS -> "Dangerous"
@@ -317,12 +313,7 @@ class AppRepositoryImpl(
                 } else emptyList()
 
                 val signatureSha256 = try {
-                    val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                        packInfo.signingInfo?.signingCertificateHistory
-                    } else {
-                        @Suppress("DEPRECATION")
-                        packInfo.signatures
-                    }
+                    val signatures = packInfo.signingInfo?.signingCertificateHistory
                     if (signatures != null && signatures.isNotEmpty()) {
                         val cert = signatures[0].toByteArray()
                         val md = java.security.MessageDigest.getInstance("SHA-256")

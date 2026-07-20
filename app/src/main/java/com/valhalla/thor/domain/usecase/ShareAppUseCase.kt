@@ -1,6 +1,7 @@
 package com.valhalla.thor.domain.usecase
 
 import android.net.Uri
+import androidx.core.net.toUri
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.AppBundleFileStore
@@ -19,7 +20,7 @@ class ShareAppUseCase(
         bundleBuilder.build(appInfo).mapCatching { file ->
             // The FileProvider content-uri bulk lives in the data layer; the use case keeps only
             // a thin android.net.Uri residual for its return type (MainViewModel's stable contract).
-            Uri.parse(fileStore.shareUri(file))
+            fileStore.shareUri(file).toUri()
         }
     }
 }

@@ -16,12 +16,17 @@ fun SupportDeveloperHelper(
 ) {
     val context = LocalContext.current
 
-    val actions = remember {
+    val patreonTitle = stringResource(R.string.become_patreon_title)
+    val patreonDesc = stringResource(R.string.become_patreon_desc)
+    val paypalTitle = stringResource(R.string.donate_paypal_title)
+    val paypalDesc = stringResource(R.string.donate_paypal_desc)
+
+    val actions = remember(patreonTitle, patreonDesc, paypalTitle, paypalDesc) {
         listOf(
             SupportAction(
                 iconRes = R.drawable.brand_patreon,
-                title = context.getString(R.string.become_patreon_title),
-                description = context.getString(R.string.become_patreon_desc),
+                title = patreonTitle,
+                description = patreonDesc,
                 onClick = {
                     val intent = Intent(Intent.ACTION_VIEW, "https://www.patreon.com/trinadh".toUri())
                     runCatching { context.startActivity(intent) }
@@ -30,8 +35,8 @@ fun SupportDeveloperHelper(
             ),
             SupportAction(
                 iconRes = R.drawable.shield_with_heart,
-                title = context.getString(R.string.donate_paypal_title),
-                description = context.getString(R.string.donate_paypal_desc),
+                title = paypalTitle,
+                description = paypalDesc,
                 onClick = {
                     val intent = Intent(Intent.ACTION_VIEW, "https://www.paypal.me/trinadhthatakula".toUri())
                     runCatching { context.startActivity(intent) }

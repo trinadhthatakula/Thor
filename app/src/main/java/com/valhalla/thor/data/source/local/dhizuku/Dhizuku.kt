@@ -63,6 +63,9 @@ object DhizukuHelper {
         return asInterface(className, binder)
     }
 
+    // KILL_BACKGROUND_PROCESSES is satisfied via elevated privilege (Dhizuku device-owner /
+    // shell), not a manifest grant, so the framework permission check is not applicable here.
+    @SuppressLint("MissingPermission")
     fun forceStopApp(context: Context, packageName: String): Boolean {
         val pkgs = Packages(context)
         val userId = pkgs.myUserId
@@ -300,7 +303,10 @@ object DhizukuHelper {
         -1 to err.stackTraceToString()
     }
 
-    @SuppressLint("PrivateApi")
+    // SdCardPath: absolute system paths are intentional for privileged/root file ops on app data
+    // dirs (not app-scoped storage). PrivateApi: hidden-API reflection is the core privilege
+    // mechanism, guarded by the :bypass VMRuntime unseal.
+    @SuppressLint("PrivateApi", "SdCardPath")
     fun clearCache(packageName: String): Boolean {
         // 1. Try shell first
         val userId = android.os.Process.myUserHandle().hashCode()
@@ -344,6 +350,9 @@ object DhizukuHelper {
         return reflectionResult
     }
 
+    // PrivateApi: hidden-API reflection is intentional — the core privilege mechanism, guarded by
+    // the :bypass VMRuntime unseal.
+    @SuppressLint("PrivateApi")
     fun clearAppData(packageName: String): Boolean {
         // 1. Try shell first
         val result = execute("pm clear $packageName")
@@ -366,6 +375,9 @@ object DhizukuHelper {
         }.getOrElse { false }
     }
 
+    // PrivateApi: hidden-API reflection is intentional — the core privilege mechanism, guarded by
+    // the :bypass VMRuntime unseal.
+    @SuppressLint("PrivateApi")
     fun setAppSuspended(context: Context, packageName: String, suspended: Boolean): Boolean {
         val pkgs = Packages(context)
         pkgs.getApplicationInfoOrNull(packageName) ?: return false

@@ -85,6 +85,7 @@ fun FreezerScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val hasPrivilege = state.isRoot || state.isShizuku || state.isDhizuku
+    val noDisabledAppsFoundMessage = stringResource(R.string.no_disabled_apps_found)
 
     var selectedPackageName by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedAppInfo =
@@ -498,7 +499,7 @@ fun FreezerScreen(
                 } else {
                     Toast.makeText(
                         context,
-                        context.getString(R.string.no_disabled_apps_found),
+                        noDisabledAppsFoundMessage,
                         Toast.LENGTH_SHORT
                     ).show()
                 }
