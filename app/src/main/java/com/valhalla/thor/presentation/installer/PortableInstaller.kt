@@ -18,6 +18,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -187,6 +188,11 @@ fun PortableInstaller(
         }
     }
 
+    // Reset the sheet's scroll position whenever the install state changes, so a scrolled
+    // ReadyToInstall view doesn't carry over into Installing / Success / Error.
+    val scrollState = rememberScrollState()
+    LaunchedEffect(state) { scrollState.scrollTo(0) }
+
     // The Bottom Sheet
     ModalBottomSheet(
         onDismissRequest = {
@@ -200,6 +206,7 @@ fun PortableInstaller(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(scrollState)
                 .padding(24.dp)
                 .padding(bottom = 24.dp), // Extra padding for nav bar
             horizontalAlignment = Alignment.CenterHorizontally,
