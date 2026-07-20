@@ -65,6 +65,8 @@
     <string name="reinstall_all_subtitle">%1$d applications %2$s ne provenant pas du Play Store. Voulez-vous les réparer ?</string>
     <string name="install_from_file">Installer depuis un fichier</string>
     <string name="install_from_file_subtitle">Installer APK, XAPK, APKS ou lots de fichiers</string>
+    <string name="home_extensions_title">Extensions</string>
+    <string name="home_extensions_subtitle">Gérer et ouvrir</string>
     <string name="app_distribution">Distribution des applis</string>
     <string name="total_apps">TOTAL : %1$d</string>
     <string name="others">Autres</string>

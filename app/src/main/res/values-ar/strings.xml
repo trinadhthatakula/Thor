@@ -65,6 +65,8 @@
     <string name="reinstall_all_subtitle">%1$d تطبيق %2$s ليس من متجر Play. هل تريد إصلاحها؟</string>
     <string name="install_from_file">تثبيت من ملف</string>
     <string name="install_from_file_subtitle">تثبيت APK أو XAPK أو APKS أو حزم مقسمة</string>
+    <string name="home_extensions_title">الإضافات</string>
+    <string name="home_extensions_subtitle">إدارة وفتح</string>
     <string name="app_distribution">توزيع التطبيقات</string>
     <string name="total_apps">الإجمالي: %1$d</string>
     <string name="others">أخرى</string>

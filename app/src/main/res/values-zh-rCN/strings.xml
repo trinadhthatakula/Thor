@@ -64,6 +64,8 @@
     <string name="reinstall_all_subtitle">%1$d 个非来自 Play 商店的 %2$s 应用。要修复它们吗？</string>
     <string name="install_from_file">从文件安装</string>
     <string name="install_from_file_subtitle">安装 APK、XAPK、APKS 或分割包</string>
+    <string name="home_extensions_title">扩展</string>
+    <string name="home_extensions_subtitle">管理和打开</string>
     <string name="app_distribution">应用分布</string>
     <string name="total_apps">总计: %1$d</string>
     <string name="others">其他</string>
