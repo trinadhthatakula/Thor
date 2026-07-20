@@ -58,20 +58,25 @@ class ExtensionManager(private val context: Context) {
     /**
      * Finds and returns all valid installed extensions, reusing cached instances where possible.
      *
-     * A single [PackageManager.getInstalledPackages] scan (with GET_META_DATA) yields everything we
-     * need per package — packageName, `longVersionCode`, and the [android.content.pm.ApplicationInfo]
-     * carrying `sourceDir` + `metaData` — so there is no per-extension follow-up lookup. Each
-     * extension is only class-loaded and instantiated once: subsequent calls reuse the cached
-     * instance while both its installed versionCode and APK path are unchanged. An updated,
-     * reinstalled, or removed extension invalidates its cache entry (so users never get a stale
-     * instance after an update), and stale entries' [PathClassLoader]s are dropped so their class
-     * metadata can be reclaimed instead of accumulating on every screen resume.
+     * Enumeration is cheap: a lightweight [PackageManager.getInstalledPackages] scan with `0` flags
+     * is filtered to the extension prefix, then GET_META_DATA is fetched individually only for those
+     * few matching packages. A single GET_META_DATA scan over ALL installed apps would marshal every
+     * app's metadata across the binder in one transaction and can throw TransactionTooLargeException
+     * (or lag) on devices with many apps. Each extension is only class-loaded and instantiated once:
+     * subsequent calls reuse the cached instance while both its installed versionCode and APK path
+     * are unchanged. An updated, reinstalled, or removed extension invalidates its cache entry (so
+     * users never get a stale instance after an update), and stale entries' [PathClassLoader]s are
+     * dropped so their class metadata can be reclaimed instead of accumulating on every screen resume.
      */
     fun loadExtensions(): List<ThorExtension> {
-        // One package-manager scan for the whole extension set.
-        // getInstalledPackages can return null on some ROMs / under system pressure; guard the .filter.
-        val installedExtensions = (pm.getInstalledPackages(PackageManager.GET_META_DATA) ?: emptyList())
+        // Enumerate cheaply (0 flags), filter to extensions, then fetch GET_META_DATA only for those
+        // few packages — a GET_META_DATA scan over ALL apps can exceed the binder buffer
+        // (TransactionTooLargeException). getInstalledPackages can return null on some ROMs; guard it.
+        val installedExtensions = (pm.getInstalledPackages(0) ?: emptyList())
             .filter { it.packageName.startsWith(EXTENSION_PACKAGE_PREFIX) }
+            .mapNotNull { pkg ->
+                runCatching { pm.getPackageInfo(pkg.packageName, PackageManager.GET_META_DATA) }.getOrNull()
+            }
 
         return synchronized(cacheLock) {
             // Drop cached entries (and their ClassLoaders) for extensions no longer installed.
