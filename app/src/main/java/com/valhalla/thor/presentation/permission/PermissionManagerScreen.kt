@@ -1,5 +1,6 @@
 package com.valhalla.thor.presentation.permission
 
+import android.annotation.SuppressLint
 import android.graphics.drawable.Drawable
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
@@ -69,6 +70,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.koin.androidx.compose.koinViewModel
 
+// PROTECTION_INTERNAL is inlined at compile time; its value is a stable bitmask constant across API levels (safe on minSdk 28).
+@SuppressLint("InlinedApi")
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun PermissionManagerScreen(

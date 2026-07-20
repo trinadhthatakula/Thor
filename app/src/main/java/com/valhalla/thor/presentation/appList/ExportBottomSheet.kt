@@ -70,7 +70,15 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
 
     val isSplit = appInfo.splitPublicSourceDirs.isNotEmpty()
 
-    var targetLabel by remember { mutableStateOf(context.getString(R.string.export_dest_downloads)) }
+    // Resource values hoisted to composable scope so they can be read inside the
+    // non-composable lambdas below (remember/coroutine/onClick) where stringResource
+    // cannot be called.
+    val defaultDestLabel = stringResource(R.string.export_dest_downloads)
+    val exportSavedFormat = stringResource(R.string.export_saved)
+    val exportFailedFormat = stringResource(R.string.export_failed)
+    val exportFailedUnknown = stringResource(R.string.export_failed_unknown)
+
+    var targetLabel by remember { mutableStateOf(defaultDestLabel) }
     var exporting by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { targetLabel = exportUseCase.currentTargetLabel() }
@@ -84,7 +92,7 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                 .onSuccess {
                     Toast.makeText(
                         context,
-                        context.getString(R.string.export_saved, it),
+                        exportSavedFormat.format(it),
                         Toast.LENGTH_LONG
                     ).show()
                     onDismiss()
@@ -92,10 +100,7 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                 .onFailure {
                     Toast.makeText(
                         context,
-                        context.getString(
-                            R.string.export_failed,
-                            it.message ?: context.getString(R.string.export_failed_unknown)
-                        ),
+                        exportFailedFormat.format(it.message ?: exportFailedUnknown),
                         Toast.LENGTH_LONG
                     ).show()
                 }
@@ -274,8 +279,7 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                     onClick = {
                         // A custom SAF folder writes via DocumentFile and needs no
                         // WRITE_EXTERNAL_STORAGE — only the legacy Downloads path (API <= 28) does.
-                        val usingCustomFolder =
-                            targetLabel != context.getString(R.string.export_dest_downloads)
+                        val usingCustomFolder = targetLabel != defaultDestLabel
                         if (!usingCustomFolder &&
                             Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
                             ContextCompat.checkSelfPermission(

@@ -1,6 +1,4 @@
 <resources>
-    <string name="title_activity_script_runner">ScriptRunner</string>
-    <string name="title_activity_home">HomeActivity</string>
 
     <!-- Navigation -->
     <string name="home">Home</string>
@@ -123,8 +121,6 @@
     <string name="freeze_anyway">Freeze Anyway</string>
     <string name="risk_warning_title">Risk Warning</string>
     <string name="risk_warning_desc">This forces the installer record to \'Google Play Store\'.\n\nUpdates may fail if the signature doesn\'t match the official store version.</string>
-    <string name="reinstall_play_store_title">Reinstall with Play Store?</string>
-    <string name="reinstall_play_store_desc">This will attempt to reinstall %1$s using the Google Play Store.</string>
     <string name="fix_store">Fix Store</string>
 
     <!-- App Status -->
@@ -174,14 +170,12 @@
     <string name="cd_uninstalled">Uninstalled</string>
     <string name="cd_suspended">Suspended</string>
     <string name="cd_selected">Selected</string>
-    <string name="cd_search">Search</string>
     <string name="cd_clear">Clear</string>
     <string name="cd_settings">Settings</string>
     <string name="select_app_details">Select an app to view details</string>
 
     <!-- Permission Manager -->
     <string name="action_permissions">Permissions</string>
-    <string name="permissions_title">Permissions</string>
     <string name="permissions_search">Search permissions&#8230;</string>
     <string name="permissions_read_only_title">Read-Only Mode</string>
     <string name="permissions_read_only_desc">Elevated access (Root, Shizuku, or Dhizuku) is required to toggle permissions. You are currently viewing permissions in read-only mode.</string>
@@ -226,7 +220,6 @@
     <string name="add_freezer_to_launcher">Add Freezer to launcher</string>
     <string name="add_freezer_to_launcher_desc">Show frozen apps as home-screen shortcuts you can tap to launch</string>
     <string name="add_to_home_screen">Add to Home screen</string>
-    <string name="pin_all_to_home_screen">Pin all to Home screen</string>
     <string name="freeze_all_apps">Freeze all</string>
     <string name="shortcuts">Shortcuts</string>
     <string name="shortcut_add_all">Add all apps</string>
@@ -250,11 +243,9 @@
     <string name="extensions">Extensions</string>
     <string name="manage_extensions">Manage Extensions</string>
     <string name="manage_extensions_desc">View and configure installed APK plugins</string>
-    <string name="extensions_unlocked">Extensions unlocked 🔓</string>
     <string name="easter_egg_promoted">🎉 This hidden feature has already been promoted — stay tuned for the next one!</string>
     <string name="support_tab_play_store">Play Store</string>
     <string name="support_tab_direct">Direct</string>
-    <string name="log_trigger_executed">Trigger executed: %1$s</string>
     <string name="run_extension">Run</string>
     <string name="installer_play_store">PLAY STORE</string>
     <string name="installer_fdroid">F-DROID</string>
@@ -281,7 +272,6 @@
     <string name="extension_install">Install</string>
     <string name="extension_update">Update</string>
     <string name="extension_installed">Installed</string>
-    <string name="extension_installing">Verifying…</string>
     <string name="extension_source_only">Source only — build it yourself</string>
     <string name="extension_requires_lsposed">Requires LSPosed</string>
     <string name="extension_requires_thor">Requires a newer Thor</string>
@@ -310,7 +300,6 @@
     <string name="unsuspended_success">Unsuspended %1$s</string>
     <string name="unfreezing_app">Unfreezing %1$s…</string>
     <string name="uninstall_success">Uninstalled %1$s</string>
-    <string name="batch_share_not_supported">Batch Share not supported yet</string>
     <string name="error_app_info_missing">Error: App info missing for action</string>
     <string name="failed_to_load_app_details">Failed to load application details</string>
 
@@ -361,12 +350,10 @@
     <string name="no_native_libs_found">No native libraries found</string>
     <string name="section_req_features_title">Required Features</string>
     <string name="no_req_features_found">No required features requested</string>
-    <string name="share_via">Share via</string>
     <string name="version_format">v%1$s</string>
 
     <!-- Hardcoded string replacements -->
     <string name="manage_freezer">Manage Freezer</string>
-    <string name="freeze_all">Freeze All</string>
     <string name="add">Add</string>
     <string name="unlock_to_continue">Unlock to continue</string>
     <string name="auth_failed">Authentication Failed</string>
@@ -380,17 +367,11 @@
         <item quantity="one">This package requests %1$d permission. %2$s</item>
         <item quantity="other">This package requests %1$d permissions. %2$s</item>
     </plurals>
-    <string name="install_options_title">Install Options: </string>
     <string name="install_mode_normal">Normal</string>
     <string name="install_mode_shizuku">Shizuku</string>
     <string name="install_mode_dhizuku">Dhizuku</string>
     <string name="install_mode_root">Root</string>
     <string name="install_mode_external_short">External</string>
-    <string name="install_mode_normal_format">Normal %1$s</string>
-    <string name="install_mode_shizuku_format">%1$s via Shizuku</string>
-    <string name="install_mode_dhizuku_format">%1$s via Dhizuku</string>
-    <string name="install_mode_root_format">%1$s with Root</string>
-    <string name="install_mode_external">Open with&#8230;</string>
     <string name="install_assembling_progress">Assembling: %1$d%%</string>
     <string name="install_confirm_system_dialog">Please confirm installation in the system dialog.</string>
     <string name="install_success">Installed Successfully</string>
@@ -402,12 +383,6 @@
     <string name="install_word_install">install</string>
     <string name="install_warning_downgrade">Warning: Installing an older version may cause issues.</string>
     <string name="sensitive">Sensitive</string>
-    <string name="protection_normal">Normal</string>
-    <string name="protection_dangerous">Dangerous</string>
-    <string name="protection_signature">Signature</string>
-    <string name="protection_signature_system">Signature/System</string>
-    <string name="expanded">Expanded</string>
-    <string name="collapsed">Collapsed</string>
 
     <!-- Terminal Logs -->
     <string name="log_initializing">Initializing…</string>
@@ -474,7 +449,6 @@
     <string name="explore_other_apps_desc">Check out my developer console and try other apps</string>
     <string name="donate_paypal_title">Donate via PayPal</string>
     <string name="donate_paypal_desc">Send a one-time donation directly</string>
-    <string name="choose_subscription_tier">Choose a Support Tier</string>
     <string name="billing_error">Billing Error</string>
 
     <!-- Support & Community Dashboard Section -->

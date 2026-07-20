@@ -333,7 +333,7 @@ class InstallerRepositoryImpl(
         val tempDir = File(context.cacheDir, "install_root_${UUID.randomUUID()}")
         val tempFiles = copyUriToTempFiles(uri, tempDir)
 
-        if (tempFiles == null || tempFiles.isEmpty()) {
+        if (tempFiles.isNullOrEmpty()) {
             eventBus.emit(InstallState.Error(UiText.DynamicString("Failed to extract or copy installation files")))
             tempDir.deleteRecursively()
             return
@@ -372,7 +372,7 @@ class InstallerRepositoryImpl(
         val tempDir = File(baseDir, "install_shizuku_${UUID.randomUUID()}")
         val tempFiles = copyUriToTempFiles(uri, tempDir)
 
-        if (tempFiles == null || tempFiles.isEmpty()) {
+        if (tempFiles.isNullOrEmpty()) {
             tempDir.deleteRecursively()
             return false
         }
@@ -420,7 +420,7 @@ class InstallerRepositoryImpl(
         val tempDir = File(baseDir, "install_dhizuku_${UUID.randomUUID()}")
         val tempFiles = copyUriToTempFiles(uri, tempDir)
 
-        if (tempFiles == null || tempFiles.isEmpty()) {
+        if (tempFiles.isNullOrEmpty()) {
             tempDir.deleteRecursively()
             return false
         }

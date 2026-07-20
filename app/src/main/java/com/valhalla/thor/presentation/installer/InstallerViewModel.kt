@@ -56,7 +56,6 @@ class InstallerViewModel(
     }
 
     override fun onCleared() {
-        super.onCleared()
         // The event bus is app-scoped (@Single) and holds replay = 1. Without a reset it would
         // retain the last emitted state past this ViewModel's lifetime — e.g. a ReadyToInstall
         // carrying a decoded Bitmap, or a terminal Success — leaking it for the rest of the

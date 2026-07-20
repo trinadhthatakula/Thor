@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
@@ -32,8 +33,9 @@ fun AnimateLottieRaw(
     // mode, so overriding the context here yields the correct day/night variant.
     val darkTheme = LocalDarkTheme.current
     val baseContext = LocalContext.current
-    val themedContext = remember(darkTheme, baseContext) {
-        val config = Configuration(baseContext.resources.configuration).apply {
+    val configuration = LocalConfiguration.current
+    val themedContext = remember(darkTheme, baseContext, configuration) {
+        val config = Configuration(configuration).apply {
             uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
                 (if (darkTheme) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO)
         }

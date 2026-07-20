@@ -56,7 +56,7 @@ class AppRepositoryImpl(
                 entities.associateBy { it.packageName }.toMutableMap()
             } catch (e: Exception) {
                 if (BuildConfig.DEBUG) e.printStackTrace()
-                mutableMapOf<String, AppEntity>()
+                mutableMapOf()
             }
 
             var lastLocale = context.resources.configuration.locales[0].toString()
@@ -281,11 +281,7 @@ class AppRepositoryImpl(
                         val permInfo = pm.getPermissionInfo(permName, 0)
                         label = permInfo.loadLabel(pm).toString()
                         description = permInfo.loadDescription(pm)?.toString()
-                        val base = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                            permInfo.protectionLevel and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE
-                        } else {
-                            permInfo.protection and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE
-                        }
+                        val base = permInfo.protectionLevel and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE
                         when (base) {
                             android.content.pm.PermissionInfo.PROTECTION_NORMAL -> "Normal"
                             android.content.pm.PermissionInfo.PROTECTION_DANGEROUS -> "Dangerous"
@@ -317,13 +313,8 @@ class AppRepositoryImpl(
                 } else emptyList()
 
                 val signatureSha256 = try {
-                    val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                        packInfo.signingInfo?.signingCertificateHistory
-                    } else {
-                        @Suppress("DEPRECATION")
-                        packInfo.signatures
-                    }
-                    if (signatures != null && signatures.isNotEmpty()) {
+                    val signatures = packInfo.signingInfo?.signingCertificateHistory
+                    if (!signatures.isNullOrEmpty()) {
                         val cert = signatures[0].toByteArray()
                         val md = java.security.MessageDigest.getInstance("SHA-256")
                         val digest = md.digest(cert)

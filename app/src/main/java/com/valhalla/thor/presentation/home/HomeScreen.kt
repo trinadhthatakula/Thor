@@ -227,7 +227,8 @@ fun HomeScreen(
                 suspendedCount = state.suspendedAppCount,
                 onActiveClick = onNavigateToApps,
                 onFrozenClick = onNavigateToFreezer,
-                onSuspendedClick = onNavigateToFreezer
+                onSuspendedClick = onNavigateToFreezer,
+                modifier = Modifier.padding(horizontal = 24.dp)
             )
 
             Spacer(Modifier.height(12.dp))

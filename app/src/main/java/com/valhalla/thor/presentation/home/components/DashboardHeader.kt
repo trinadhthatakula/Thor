@@ -34,6 +34,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.valhalla.thor.R
@@ -125,6 +126,8 @@ private fun BrandBlock(
 ) {
     val context = LocalContext.current
     val title = stringResource(R.string.app_name)
+    // Hoisted for the non-composable onTap lambda (stringResource can't be called there).
+    val easterEggPromotedText = stringResource(R.string.easter_egg_promoted)
     var tapCount by remember { mutableIntStateOf(0) }
     val interactionSource = remember { MutableInteractionSource() }
 
@@ -169,7 +172,7 @@ private fun BrandBlock(
                 onCrack()
                 android.widget.Toast.makeText(
                     context,
-                    context.getString(R.string.easter_egg_promoted),
+                    easterEggPromotedText,
                     android.widget.Toast.LENGTH_LONG
                 ).show()
             } else {
@@ -193,7 +196,7 @@ private fun BrandBlock(
             contentDescription = null,
             modifier = Modifier
                 .size(24.dp)
-                .offset(x = shakeOffset.value.dp),
+                .offset { IntOffset(x = shakeOffset.value.dp.roundToPx(), y = 0) },
             tint = MaterialTheme.colorScheme.primary
         )
         Text(
