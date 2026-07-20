@@ -181,7 +181,7 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
             packageName = pkg,
             version = versionName,
             versionCode = versionCode,
-            icon = icon,
+            iconPath = persistIcon(icon, pkg),
             permissions = manifest?.permissions ?: emptyList()
         )
     }
@@ -217,9 +217,32 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
             packageName = archiveInfo.packageName,
             version = archiveInfo.versionName ?: "Unknown",
             versionCode = archiveInfo.longVersionCode,
-            icon = iconBitmap,
+            iconPath = persistIcon(iconBitmap, archiveInfo.packageName),
             permissions = archiveInfo.requestedPermissions?.toList() ?: emptyList()
         )
+    }
+
+    /**
+     * Persist a decoded icon [bitmap] to a stable per-package PNG in a dedicated installer
+     * icon cache, returning its absolute path (or null when there is no icon). The domain
+     * [AppMetadata] carries only this path — Bitmap decoding stays in the data layer, only
+     * the destination changes (a cache file instead of a framework type on the model).
+     *
+     * Best-effort: any decode/IO failure yields a null path (never crashes parsing). The
+     * file is keyed to the package name and overwrites any prior icon for that package.
+     * Unlike the transient analysis bundle/apk temp files, this cache file is intentionally
+     * NOT deleted in analyze()'s finally block — the UI reads it after analyze() returns.
+     */
+    private fun persistIcon(bitmap: Bitmap?, packageName: String): String? {
+        if (bitmap == null) return null
+        return runCatching {
+            val iconDir = File(context.cacheDir, "installer_icons").apply { mkdirs() }
+            val iconFile = File(iconDir, "$packageName.png")
+            FileOutputStream(iconFile).use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+            iconFile.absolutePath
+        }.getOrNull()
     }
 
     private fun Drawable.toBitmap(): Bitmap {

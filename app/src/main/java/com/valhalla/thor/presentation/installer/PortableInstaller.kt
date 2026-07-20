@@ -13,7 +13,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.FastOutSlowInEasing
 import com.valhalla.thor.domain.model.AppMetadata
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -58,7 +57,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -73,12 +71,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.domain.repository.InstallMode
 import kotlinx.coroutines.delay
 import org.koin.androidx.compose.koinViewModel
+import java.io.File
 import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -234,9 +234,9 @@ fun PortableInstaller(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        if (meta.icon != null) {
-                            Image(
-                                bitmap = meta.icon.asImageBitmap(),
+                        if (meta.iconPath != null) {
+                            AsyncImage(
+                                model = File(meta.iconPath),
                                 contentDescription = null,
                                 modifier = Modifier
                                     .size(64.dp)
@@ -545,10 +545,10 @@ fun PortableInstaller(
                             )
                             
                             // App Icon container
-                            val iconBitmap = lastMeta?.icon
-                            if (iconBitmap != null) {
-                                Image(
-                                    bitmap = iconBitmap.asImageBitmap(),
+                            val iconPath = lastMeta?.iconPath
+                            if (iconPath != null) {
+                                AsyncImage(
+                                    model = File(iconPath),
                                     contentDescription = null,
                                     modifier = Modifier
                                         .size(72.dp)
