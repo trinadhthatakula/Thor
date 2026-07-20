@@ -566,10 +566,13 @@ class InstallerRepositoryImpl(
             val bundleFile = File(context.cacheDir, "install_bundle_${UUID.randomUUID()}")
             try {
                 val copied = coroutineScope {
-                    // Drain progress ticks on a child coroutine so emissions are bound to
-                    // the install job (cancellation stops them) and can never outlive the
-                    // copy phase — the channel is closed and joined before we continue.
-                    val progressJob = launch {
+                    // Drain progress ticks on a child coroutine so emissions are bound to the
+                    // install job (cancellation stops them) and can never outlive the copy phase.
+                    // Closing the channel ends the drain loop; coroutineScope then awaits this child
+                    // before returning, so the final tick is flushed before we continue. No explicit
+                    // join(): it is redundant here, and a suspending join() in a finally could mask
+                    // the real failure (e.g. an IOException from openInputStream) under cancellation.
+                    launch {
                         for (fraction in progressChannel) {
                             eventBus.emit(InstallState.Installing(fraction))
                         }
@@ -583,7 +586,6 @@ class InstallerRepositoryImpl(
                         } ?: false
                     } finally {
                         progressChannel.close()
-                        progressJob.join()
                     }
                 }
 
