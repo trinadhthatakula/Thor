@@ -8,7 +8,7 @@ import android.content.ServiceConnection
 import android.os.IBinder
 import com.valhalla.superuser.ipc.RootService
 import com.valhalla.superuser.ShellUtils
-import com.valhalla.superuser.ipc.IThorRootService
+import com.valhalla.thor.rootservice.IThorRootService
 import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.domain.gateway.SystemGateway
@@ -85,7 +85,7 @@ class RootSystemGateway(
         withTimeoutOrNull(ROOT_SERVICE_BIND_TIMEOUT_MS) {
             withContext(Dispatchers.Main) {
                 suspendCancellableCoroutine { continuation ->
-                    val intent = Intent(context, com.valhalla.superuser.ipc.ThorRootService::class.java)
+                    val intent = Intent(context, com.valhalla.thor.rootservice.ThorRootService::class.java)
                     val conn = object : ServiceConnection {
                         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
                             val binder = IThorRootService.Stub.asInterface(service)

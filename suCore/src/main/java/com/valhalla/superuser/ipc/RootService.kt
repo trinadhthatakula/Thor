@@ -115,4 +115,18 @@ abstract class RootService : ContextWrapper(null) {
     fun stopSelf() {
         RootServiceServer.getInstance(this).selfStop(getComponentName())
     }
+
+    /**
+     * Enforce that the current Binder transaction comes from an authorized caller: root (0),
+     * the system server (1000), or the UID that started this RootService. Call from inside your
+     * AIDL stub methods. Throws [SecurityException] otherwise.
+     */
+    protected fun enforceCaller() {
+        val callingUid = android.os.Binder.getCallingUid()
+        val authorizedUid =
+            com.valhalla.superuser.internal.RootServiceServer.getInstanceOrNull()?.authorizedUid ?: -1
+        if (callingUid != 0 && callingUid != 1000 && callingUid != authorizedUid) {
+            throw SecurityException("Access denied: UID $callingUid is not authorized.")
+        }
+    }
 }

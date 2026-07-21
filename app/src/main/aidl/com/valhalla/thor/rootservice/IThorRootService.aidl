@@ -1,4 +1,4 @@
-package com.valhalla.superuser.ipc;
+package com.valhalla.thor.rootservice;
 
 interface IThorRootService {
     void setAppSuspended(String packageName, boolean suspended);
