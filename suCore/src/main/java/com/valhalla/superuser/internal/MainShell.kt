@@ -5,6 +5,7 @@ import androidx.annotation.RestrictTo
 import com.valhalla.superuser.NoShellException
 import com.valhalla.superuser.Shell
 import com.valhalla.superuser.Shell.GetShellCallback
+import kotlinx.coroutines.CancellationException
 import java.io.InputStream
 import java.util.concurrent.Executor
 
@@ -58,18 +59,13 @@ object MainShell {
                 try {
                     returnShell(get(), executor, callback)
                 } catch (e: Exception) {
-                    // Shell creation failed. Log it and keep the worker thread from dying
-                    // uncaught (catch all Exceptions, not just NoShellException).
-                    //
-                    // NOTE: GetShellCallback.onShell(Shell) only accepts a NON-null Shell, so
-                    // there is no in-file way to hand a terminal failure back to callers here.
-                    // Awaiting coroutines that rely on the callback (e.g. getShellAwait() ->
-                    // isRootGranted()) will still suspend forever on a hard failure. Fully
-                    // unblocking them requires an API-level change outside this file: add an
-                    // onFailure()/onShellDied() channel to Shell.GetShellCallback, or have
-                    // getShellAwait() resume its continuation with an exception / apply a
-                    // timeout. See needsFollowUp.
+                    // Shell creation failed. Log it, keep the worker thread alive (catch-all), AND
+                    // signal the terminal failure to the callback via the same executor path
+                    // returnShell uses — so awaiting callers fail fast instead of suspending forever.
                     Utils.ex(e)
+                    if (e is CancellationException) throw e
+                    if (executor == null) callback.onShellDied(e)
+                    else executor.execute { callback.onShellDied(e) }
                 }
             }
         }

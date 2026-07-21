@@ -1,11 +1,13 @@
 package com.valhalla.superuser.ktx
 
+import com.valhalla.superuser.NoShellException
 import com.valhalla.superuser.Shell
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * Suspends until the Shell Job is complete and returns the result.
@@ -62,6 +64,14 @@ suspend fun getShellAwait(): Shell = suspendCancellableCoroutine { cont ->
         override fun onShell(shell: Shell) {
             if (cont.isActive) {
                 cont.resume(shell)
+            }
+        }
+
+        override fun onShellDied(error: Throwable?) {
+            if (cont.isActive) {
+                cont.resumeWithException(
+                    error ?: NoShellException("Root shell initialization failed")
+                )
             }
         }
     })
