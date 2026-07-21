@@ -23,8 +23,14 @@ class RealShellRepository : ShellRepository {
     // Either way this UI-gating probe resolves to false instead of suspending indefinitely.
     override suspend fun isRootGranted(): Boolean = withContext(Dispatchers.IO) {
         withTimeoutOrNull(SHELL_INIT_TIMEOUT_MS) {
-            runCatching { getShellAwait().isRoot }
-                .getOrElse { if (it is kotlin.coroutines.cancellation.CancellationException) throw it else false }
+            try {
+                getShellAwait().isRoot
+            } catch (e: Exception) {
+                // Rethrow cancellation so withTimeoutOrNull handles the timeout (and structured
+                // concurrency is preserved); any other failure resolves the probe to false.
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                false
+            }
         } ?: false
     }
 

@@ -6,7 +6,6 @@ import android.os.IBinder
 import android.os.PersistableBundle
 import com.valhalla.superuser.ipc.RootService
 import com.valhalla.superuser.utils.Logger
-import com.valhalla.thor.BuildConfig
 import java.lang.reflect.InvocationTargetException
 
 /**
@@ -50,7 +49,6 @@ class ThorRootService : RootService() {
             // Prioritize Thor's own package name so that the OS displays "Managed by Thor" on clicking a suspended app.
             val callers = listOf(
                 this@ThorRootService.packageName,
-                BuildConfig.APPLICATION_ID,
                 "com.android.shell",
                 "android"
             )
