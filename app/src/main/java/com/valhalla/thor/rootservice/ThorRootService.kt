@@ -1,6 +1,5 @@
 package com.valhalla.thor.rootservice
 
-import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
@@ -9,7 +8,6 @@ import com.valhalla.superuser.ipc.RootService
 import com.valhalla.superuser.utils.Logger
 import com.valhalla.thor.BuildConfig
 import java.lang.reflect.InvocationTargetException
-import java.lang.reflect.Method
 
 /**
  * A highly-stable, persistent root-level daemon service implementing privileged actions.
