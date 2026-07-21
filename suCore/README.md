@@ -68,4 +68,4 @@ Odin's design principles and IPC daemon architecture are adapted from the except
 
 ### License Compatibility
 - The original design from `libsu` is licensed under the Apache License 2.0. All modifications and structural enhancements comply with Apache-2.0 requirements.
-- Odin, as part of the Thor project, is licensed under the **GNU General Public License v3.0 (GPL-3.0)**.
+- Odin is licensed under the **Apache License 2.0** (see [`LICENSE`](LICENSE)), inspired by [`libsu`](https://github.com/topjohnwu/libsu) (also Apache-2.0); credit to the original authors.

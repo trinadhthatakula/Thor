@@ -7,6 +7,7 @@ agp = "9.4.0-alpha05"
 biometric = "1.4.0-alpha02"
 datastorePreferences = "1.2.1"
 kotlin = "2.4.10"
+kotlinxCoroutines = "1.10.2"
 coreKtx = "1.19.0"
 junit = "4.13.2"
 room = "2.8.4"
@@ -69,6 +70,7 @@ room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 #Kotlin
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }
 #Lottie
 lottie-compose = { module = "com.airbnb.android:lottie-compose", version.ref = "lottieCompose" }
 #Shizuku

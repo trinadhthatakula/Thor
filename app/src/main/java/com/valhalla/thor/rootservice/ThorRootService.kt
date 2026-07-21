@@ -1,6 +1,5 @@
-package com.valhalla.superuser.ipc
+package com.valhalla.thor.rootservice
 
-import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
@@ -8,7 +7,6 @@ import android.os.PersistableBundle
 import com.valhalla.superuser.ipc.RootService
 import com.valhalla.superuser.utils.Logger
 import java.lang.reflect.InvocationTargetException
-import java.lang.reflect.Method
 
 /**
  * A highly-stable, persistent root-level daemon service implementing privileged actions.
@@ -17,22 +15,13 @@ class ThorRootService : RootService() {
 
     override fun onBind(intent: Intent): IBinder {
         return object : IThorRootService.Stub() {
-            private fun enforceCaller() {
-                val callingUid = getCallingUid()
-                val authorizedUid = com.valhalla.superuser.internal.RootServiceServer.getInstanceOrNull()?.authorizedUid ?: -1
-                Logger.i("Odin", "enforceCaller: callingUid=$callingUid, authorizedUid=$authorizedUid")
-                if (callingUid != 0 && callingUid != 1000 && callingUid != authorizedUid) {
-                    throw SecurityException("Access denied: UID $callingUid is not authorized.")
-                }
-            }
-
             override fun setAppSuspended(packageName: String, suspended: Boolean) {
-                enforceCaller()
+                this@ThorRootService.enforceCaller()
                 this@ThorRootService.setAppSuspended(packageName, suspended)
             }
 
             override fun clearAppData(packageName: String) {
-                enforceCaller()
+                this@ThorRootService.enforceCaller()
                 this@ThorRootService.clearAppData(packageName)
             }
         }
@@ -60,8 +49,6 @@ class ThorRootService : RootService() {
             // Prioritize Thor's own package name so that the OS displays "Managed by Thor" on clicking a suspended app.
             val callers = listOf(
                 this@ThorRootService.packageName,
-                "com.valhalla.thor.debug",
-                "com.valhalla.thor",
                 "com.android.shell",
                 "android"
             )

@@ -438,6 +438,13 @@ abstract class Shell : Closeable {
          * @param shell the `Shell` obtained in the asynchronous operation.
          */
         fun onShell(shell: Shell)
+
+        /**
+         * Called when the shell could NOT be created (hard init failure). Default no-op keeps this
+         * source- and binary-compatible; callers that await a shell (e.g. getShellAwait) should
+         * override it to fail fast instead of suspending forever.
+         */
+        fun onShellDied(error: Throwable?) {}
     }
 
     /**
