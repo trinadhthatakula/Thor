@@ -1,0 +1,11 @@
+• 🔄 New: Auto Reinstall — sync and reinstall your apps with custom install options.
+
+• 🎨 Redesigned Home: an adaptive bento grid with one-tap Extension Manager.
+
+• 🔧 Rebuilt root engine (Odin) — faster, hang-proof and more reliable; app suspend fixed on release builds.
+
+• 📦 Much smaller download, plus a big stability & memory-leak cleanup for a smoother app.
+
+• 📱 Landscape & foldable layout fixes.
+
+• 🌍 Now translated into Arabic, Spanish, French and Chinese.
