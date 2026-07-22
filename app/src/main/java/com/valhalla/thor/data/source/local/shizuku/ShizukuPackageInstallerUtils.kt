@@ -1,6 +1,5 @@
 package com.valhalla.thor.data.source.local.shizuku
 
-import android.content.pm.IPackageInstaller
 import android.content.pm.PackageInstaller
 import android.os.Build
 import android.os.IBinder
@@ -25,7 +24,15 @@ object ShizukuPackageInstallerUtils {
         )
     }
 
-    fun getPrivilegedPackageInstaller(): IPackageInstaller {
+    // Returns the privileged IPackageInstaller as an opaque android.os.IInterface handle rather
+    // than the framework's hidden android.content.pm.IPackageInstaller type. The concrete
+    // interface is never called directly here — the handle is only passed on to reflective
+    // (Bypass) calls — so referencing it by a bundled compile-time shadow is unnecessary and, in
+    // release builds, actively harmful: R8 renames the shadow and rewrites `IPackageInstaller`
+    // type/`::class` references to it, but at runtime the real bootclasspath class wins parent-first
+    // → reflection against the renamed shadow fails (NoSuchMethod/NoSuchField). Using IInterface +
+    // Class.forName strings keeps every reference resolving to the genuine framework class.
+    fun getPrivilegedPackageInstaller(): IInterface {
         val pmBinder = SystemServiceHelper.getSystemService("package")
         val pm = asInterface("android.content.pm.IPackageManager", pmBinder)
 
@@ -36,7 +43,7 @@ object ShizukuPackageInstallerUtils {
         )
 
         val binder = (packageInstallerProxy as IInterface).asBinder()
-        return asInterface("android.content.pm.IPackageInstaller", binder) as IPackageInstaller
+        return asInterface("android.content.pm.IPackageInstaller", binder) as IInterface
     }
 
     /**
@@ -44,7 +51,7 @@ object ShizukuPackageInstallerUtils {
      * @author RikkaW
      */
     fun createPackageInstaller(
-        installer: IPackageInstaller?,
+        installer: IInterface?,
         installerPackageName: String?,
         userId: Int
     ): PackageInstaller {

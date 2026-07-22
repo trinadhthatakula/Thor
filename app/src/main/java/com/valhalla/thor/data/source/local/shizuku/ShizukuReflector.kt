@@ -9,7 +9,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ApplicationInfo
-import android.content.pm.IPackageInstaller
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.os.Build
@@ -332,7 +331,11 @@ class ShizukuReflector(
             // STATUS_SUCCESS (false on failure / refusal / timeout).
             awaitInstallerResult(action) {
                 Bypass.invoke<Any?>(
-                    IPackageInstaller::class.java,
+                    // Resolve the real bootclasspath IPackageInstaller by name (not a bundled
+                    // shadow type): R8 would rename a shadow `::class.java` ref in release, but the
+                    // runtime uses the genuine framework class parent-first, so the reflected
+                    // installExistingPackage lookup must target that same class.
+                    Class.forName("android.content.pm.IPackageInstaller"),
                     ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller(),
                     "installExistingPackage",
                     packageName,
