@@ -1,0 +1,7 @@
+• 🛠️ Fixed: suspending & unsuspending apps now works reliably on release builds.
+
+• ⚡ More reliable root — the app no longer hangs while checking for root access.
+
+• 🔧 Rebuilt on our new open-source root engine (Odin) for more accurate results.
+
+• 🧹 A leaner, optimized build with lint cleanup and smaller app assets.
