@@ -31,10 +31,12 @@ play-billing = "9.1.0"
 androidx-adaptive = "1.3.0-rc01"
 thorExtensionApi = "3.0.0"
 asgardUi = "2.0.0"
+odin = "1.0.0"
 
 [libraries]
 thor-extension-api = { module = "com.trinadhthatakula:thor-extension-api", version.ref = "thorExtensionApi" }
 asgard = { module = "com.trinadhthatakula:asgard", version.ref = "asgardUi" }
+odin = { module = "com.trinadhthatakula:odin", version.ref = "odin" }
 accompanist-drawablepainter = { module = "com.google.accompanist:accompanist-drawablepainter", version.ref = "accompanistDrawablepainter" }
 #Core
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }

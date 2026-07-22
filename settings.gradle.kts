@@ -68,8 +68,23 @@ if (asgardDir != null) {
     }
 }
 
+// Local cross-repo development against the Odin root-shell library (the former in-tree :suCore).
+// Set `odinDir` to a local Odin checkout (via -PodinDir=... or a Gradle properties file —
+// local.properties is NOT consulted) to build against its source without publishing; unset to use
+// the pinned published `com.trinadhthatakula:odin` version. Odin's Gradle project is `:odin` and it
+// publishes the `odin` artifact, so we map it explicitly via dependencySubstitution (same pattern as
+// thor-extension-api / asgard above).
+val odinDir = providers.gradleProperty("odinDir").orNull
+if (odinDir != null) {
+    includeBuild(odinDir) {
+        dependencySubstitution {
+            substitute(module("com.trinadhthatakula:odin"))
+                .using(project(":odin"))
+        }
+    }
+}
+
 rootProject.name = "Thor"
 include(":app")
-include(":suCore")
 include(":bypass")
 include(":vm-runtime")

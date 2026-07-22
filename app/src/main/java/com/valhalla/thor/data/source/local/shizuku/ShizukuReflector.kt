@@ -13,6 +13,7 @@ import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.os.Build
 import com.valhalla.bypass.Bypass
+import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.util.Logger
 import androidx.core.content.ContextCompat
@@ -271,7 +272,7 @@ class ShizukuReflector(
     fun installPackage(apkPath: String, canDowngrade: Boolean = false): Boolean {
         return try {
             val command = "pm install -r -g${if (canDowngrade) " -d" else ""} ${
-                com.valhalla.superuser.ShellUtils.escapedString(apkPath)
+                apkPath.escapeForShell()
             }"
             val result = Shizuku.execute(command)
             result.first == 0

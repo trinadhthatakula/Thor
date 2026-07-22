@@ -5,13 +5,22 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PersistableBundle
 import com.valhalla.superuser.ipc.RootService
-import com.valhalla.superuser.utils.Logger
+import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.util.Logger
 import java.lang.reflect.InvocationTargetException
 
 /**
  * A highly-stable, persistent root-level daemon service implementing privileged actions.
  */
 class ThorRootService : RootService() {
+
+    init {
+        // This daemon runs in a separate :root (app_process) process where ThorApplication.onCreate
+        // never executes, so Logger.isDebug — a runtime flag set there for the main process — would
+        // stay false and silently drop this daemon's logs. Mirror it so root-side diagnostics are
+        // visible in debug builds (Logger is Thor's own, gated on this flag; safe in release).
+        Logger.isDebug = BuildConfig.DEBUG
+    }
 
     override fun onBind(intent: Intent): IBinder {
         return object : IThorRootService.Stub() {

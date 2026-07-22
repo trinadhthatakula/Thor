@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.IBinder
 import com.valhalla.bypass.Bypass
+import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.shizuku.Packages
 import rikka.shizuku.ShizukuBinderWrapper
@@ -193,9 +194,7 @@ object DhizukuHelper {
             val currentUser = getCurrentUserId()
             execute(
                 "pm uninstall --user $currentUser ${
-                    com.valhalla.superuser.ShellUtils.escapedString(
-                        packageName
-                    )
+                    packageName.escapeForShell()
                 }"
             ).first == 0
         } catch (_: Exception) {
@@ -208,9 +207,7 @@ object DhizukuHelper {
             val currentUser = getCurrentUserId()
             execute(
                 "pm install-existing --user $currentUser ${
-                    com.valhalla.superuser.ShellUtils.escapedString(
-                        packageName
-                    )
+                    packageName.escapeForShell()
                 }"
             ).first == 0
         } catch (_: Exception) {

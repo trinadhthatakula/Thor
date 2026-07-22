@@ -202,7 +202,7 @@ androidComponents {
 }
 
 dependencies {
-    implementation(project(":suCore"))
+    implementation(libs.odin) // published com.trinadhthatakula:odin (was project(":suCore"))
     implementation(project(":bypass"))
     implementation(libs.thor.extension.api)
     implementation(libs.asgard)

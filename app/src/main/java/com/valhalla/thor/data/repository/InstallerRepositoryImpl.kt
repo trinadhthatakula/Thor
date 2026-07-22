@@ -25,6 +25,7 @@ import com.valhalla.thor.util.UiText
 import com.valhalla.thor.R
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.getDisplayName
+import com.valhalla.superuser.utils.escapeForShell
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -385,12 +386,12 @@ class InstallerRepositoryImpl(
             val apkPaths = tempFiles.map { it.absolutePath }
             val result = if (apkPaths.size == 1) {
                 val command = "pm install -r -g${if (canDowngrade) " -d" else ""}$installerArg ${
-                    com.valhalla.superuser.ShellUtils.escapedString(apkPaths[0])
+                    apkPaths[0].escapeForShell()
                 }"
                 ShizukuHelper.execute(command)
             } else {
                 val escapedPaths = apkPaths.joinToString(" ") {
-                    com.valhalla.superuser.ShellUtils.escapedString(it)
+                    it.escapeForShell()
                 }
                 val command = "pm install-multiple -r -g${if (canDowngrade) " -d" else ""}$installerArg $escapedPaths"
                 ShizukuHelper.execute(command)
@@ -433,12 +434,12 @@ class InstallerRepositoryImpl(
             val apkPaths = tempFiles.map { it.absolutePath }
             val result = if (apkPaths.size == 1) {
                 val command = "pm install -r -g${if (canDowngrade) " -d" else ""}$installerArg ${
-                    com.valhalla.superuser.ShellUtils.escapedString(apkPaths[0])
+                    apkPaths[0].escapeForShell()
                 }"
                 DhizukuHelper.execute(command)
             } else {
                 val escapedPaths = apkPaths.joinToString(" ") {
-                    com.valhalla.superuser.ShellUtils.escapedString(it)
+                    it.escapeForShell()
                 }
                 val command = "pm install-multiple -r -g${if (canDowngrade) " -d" else ""}$installerArg $escapedPaths"
                 DhizukuHelper.execute(command)
