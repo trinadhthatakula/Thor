@@ -12,6 +12,8 @@ Our entire recent dev cycle, consolidated into one big update.
 
 • 🛠️ **Suspend fixed** on release / Play builds.
 
+• 🎨 **Themed installer** — opening an APK from Files or another app now respects your dark mode, dynamic color & AMOLED settings.
+
 • 📦 **~48% smaller** direct-download APK (6.23 MB → 3.24 MB).
 
 • 🛡️ **Rock-solid** — a 66-finding stability, memory-leak & architecture audit means fewer crashes and no background ANRs.
