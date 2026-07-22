@@ -1,0 +1,14 @@
+<resources>
+
+    <!-- Store-only strings: Play Store billing / support UI (store source set). -->
+    <string name="support_tab_play_store">متجر Play</string>
+    <string name="support_tab_direct">مباشر</string>
+    <string name="rate_play_store_title">التقييم على متجر Play</string>
+    <string name="rate_play_store_desc">اترك تقييمًا بـ 5 نجوم لمساعدة الآخرين في اكتشاف Thor</string>
+    <string name="explore_other_apps_title">استكشاف تطبيقات أخرى</string>
+    <string name="explore_other_apps_desc">ألقِ نظرة على لوحة تحكم المطور وجرب تطبيقات أخرى</string>
+    <string name="billing_error">خطأ في الدفع</string>
+    <string name="change_support_plan_title">هل تريد تغيير خطة الدعم؟</string>
+    <string name="change_support_plan_desc">أنت تدعم المطور بالفعل بخطة نشطة. سيؤدي ترقية خطتك أو تغييرها إلى إلغاء اشتراكك القديم واستبداله بالاشتراك الجديد. هل تريد الاستمرار؟</string>
+    <string name="active_plan">الخطة النشطة</string>
+</resources>

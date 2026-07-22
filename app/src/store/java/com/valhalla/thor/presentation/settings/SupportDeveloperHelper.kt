@@ -41,12 +41,18 @@ fun SupportDeveloperHelper(
     var pendingChangeProductId by remember { mutableStateOf<String?>(null) }
 
     // "Direct" tab — Patreon + PayPal. Always available, including in the store build.
-    val directActions = remember {
+    // Resolve strings via stringResource (configuration-aware) in composable scope, then pass them
+    // into remember as keys so the list recomputes on locale/config change.
+    val patreonTitle = stringResource(R.string.become_patreon_title)
+    val patreonDesc = stringResource(R.string.become_patreon_desc)
+    val paypalTitle = stringResource(R.string.donate_paypal_title)
+    val paypalDesc = stringResource(R.string.donate_paypal_desc)
+    val directActions = remember(patreonTitle, patreonDesc, paypalTitle, paypalDesc) {
         listOf(
             SupportAction(
                 iconRes = R.drawable.brand_patreon,
-                title = context.getString(R.string.become_patreon_title),
-                description = context.getString(R.string.become_patreon_desc),
+                title = patreonTitle,
+                description = patreonDesc,
                 onClick = {
                     val intent = Intent(Intent.ACTION_VIEW, "https://www.patreon.com/trinadh".toUri())
                     runCatching { context.startActivity(intent) }
@@ -55,8 +61,8 @@ fun SupportDeveloperHelper(
             ),
             SupportAction(
                 iconRes = R.drawable.shield_with_heart,
-                title = context.getString(R.string.donate_paypal_title),
-                description = context.getString(R.string.donate_paypal_desc),
+                title = paypalTitle,
+                description = paypalDesc,
                 onClick = {
                     val intent = Intent(Intent.ACTION_VIEW, "https://www.paypal.me/trinadhthatakula".toUri())
                     runCatching { context.startActivity(intent) }
@@ -67,8 +73,17 @@ fun SupportDeveloperHelper(
     }
 
     // "Play Store" tab — subscription tiers when billing is available, otherwise rate/explore so
-    // the tab is never empty.
-    val playStoreActions = remember(products, isBillingAvailable, activeSubscription) {
+    // the tab is never empty. Strings resolved in composable scope (configuration-aware) and passed
+    // as remember keys.
+    val activePlanText = stringResource(R.string.active_plan)
+    val rateTitle = stringResource(R.string.rate_play_store_title)
+    val rateDesc = stringResource(R.string.rate_play_store_desc)
+    val exploreTitle = stringResource(R.string.explore_other_apps_title)
+    val exploreDesc = stringResource(R.string.explore_other_apps_desc)
+    val playStoreActions = remember(
+        products, isBillingAvailable, activeSubscription,
+        activePlanText, rateTitle, rateDesc, exploreTitle, exploreDesc
+    ) {
         if (isBillingAvailable && products.isNotEmpty()) {
             val sortedProducts = products.sortedBy { product ->
                 when (product.id) {
@@ -83,7 +98,7 @@ fun SupportDeveloperHelper(
             sortedProducts.map { product ->
                 val isActive = activeSubscription?.productId == product.id
                 val descriptionText = if (isActive) {
-                    context.getString(R.string.active_plan)
+                    activePlanText
                 } else if (product.formattedPrice.isNotEmpty()) {
                     "${product.formattedPrice} / month"
                 } else {
@@ -114,8 +129,8 @@ fun SupportDeveloperHelper(
             listOf(
                 SupportAction(
                     iconRes = R.drawable.open_in_new,
-                    title = context.getString(R.string.rate_play_store_title),
-                    description = context.getString(R.string.rate_play_store_desc),
+                    title = rateTitle,
+                    description = rateDesc,
                     onClick = {
                         val intent = Intent(Intent.ACTION_VIEW, "market://details?id=com.valhalla.thor".toUri()).apply {
                             addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY or Intent.FLAG_ACTIVITY_NEW_DOCUMENT or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
@@ -129,8 +144,8 @@ fun SupportDeveloperHelper(
                 ),
                 SupportAction(
                     iconRes = R.drawable.apps,
-                    title = context.getString(R.string.explore_other_apps_title),
-                    description = context.getString(R.string.explore_other_apps_desc),
+                    title = exploreTitle,
+                    description = exploreDesc,
                     onClick = {
                         val intent = Intent(Intent.ACTION_VIEW, "https://play.google.com/store/apps/developer?id=Spectra+Apps".toUri())
                         runCatching { context.startActivity(intent) }
@@ -141,10 +156,12 @@ fun SupportDeveloperHelper(
         }
     }
 
-    val tabs = remember(playStoreActions, directActions) {
+    val playStoreTabLabel = stringResource(R.string.support_tab_play_store)
+    val directTabLabel = stringResource(R.string.support_tab_direct)
+    val tabs = remember(playStoreActions, directActions, playStoreTabLabel, directTabLabel) {
         listOf(
-            SupportTab(context.getString(R.string.support_tab_play_store), playStoreActions),
-            SupportTab(context.getString(R.string.support_tab_direct), directActions)
+            SupportTab(playStoreTabLabel, playStoreActions),
+            SupportTab(directTabLabel, directActions)
         )
     }
 

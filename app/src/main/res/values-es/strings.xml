@@ -174,10 +174,16 @@
     <!-- Quick Settings Tile -->
     <string name="tile_no_privilege">No se otorgó el privilegio</string>
     <string name="tile_no_apps">No hay aplicaciones</string>
-    <string name="tile_subtitle_format">%1$d aplicaciones · toca para congelar</string>
+    <plurals name="tile_subtitle_format">
+        <item quantity="one">%1$d aplicación · toca para congelar</item>
+        <item quantity="other">%1$d aplicaciones · toca para congelar</item>
+    </plurals>
     <string name="tile_grant_privilege_toast">Concede Root / Shizuku / Dhizuku primero</string>
     <string name="tile_no_apps_toast">No hay aplicaciones en el Congelador</string>
-    <string name="tile_freeze_success">Se congelaron %1$d aplicaciones</string>
+    <plurals name="tile_freeze_success">
+        <item quantity="one">Se congeló %1$d aplicación</item>
+        <item quantity="other">Se congelaron %1$d aplicaciones</item>
+    </plurals>
     <string name="tile_freeze_partial_failure">Se congelaron %1$d/%2$d aplicaciones (%3$d fallaron)</string>
 
     <!-- Freezer Settings & Actions -->
@@ -191,10 +197,16 @@
     <string name="unfreeze_all_confirmation_title">¿Descongelar todas las aplicaciones?</string>
     <string name="unfreeze_all_confirmation_desc">Esto descongelará (habilitará) todas las aplicaciones actualmente en la lista del Congelador. ¿Estás seguro de que quieres continuar?</string>
     <string name="import_disabled_apps_title">Importar aplicaciones desactivadas</string>
-    <string name="import_disabled_apps_desc">Hay %1$d aplicaciones desactivadas que no están en tu Congelador. ¿Te gustaría añadirlas al Congelador?</string>
+    <plurals name="import_disabled_apps_desc">
+        <item quantity="one">Hay %1$d aplicación desactivada que no está en tu Congelador. ¿Te gustaría añadirla al Congelador?</item>
+        <item quantity="other">Hay %1$d aplicaciones desactivadas que no están en tu Congelador. ¿Te gustaría añadirlas al Congelador?</item>
+    </plurals>
     <string name="import_disabled_apps_button">Importar aplicaciones desactivadas</string>
     <string name="no_disabled_apps_found">No se encontraron otras aplicaciones desactivadas.</string>
-    <string name="added_to_freezer_count_success">Se añadieron %1$d aplicaciones al Congelador</string>
+    <plurals name="added_to_freezer_count_success">
+        <item quantity="one">Se añadió %1$d aplicación al Congelador</item>
+        <item quantity="other">Se añadieron %1$d aplicaciones al Congelador</item>
+    </plurals>
     <string name="add_to_freezer">Añadir al congelador</string>
 
     <!-- Extensions -->
@@ -217,11 +229,17 @@
     <string name="frozen_success">Se congeló %1$s</string>
     <string name="unfrozen_success">Se descongeló %1$s</string>
     <string name="added_to_freezer_success">Añadido al congelador</string>
-    <string name="unfrozen_count_success">Se descongelaron %1$d aplicaciones</string>
+    <plurals name="unfrozen_count_success">
+        <item quantity="one">Se descongeló %1$d aplicación</item>
+        <item quantity="other">Se descongelaron %1$d aplicaciones</item>
+    </plurals>
     <string name="tile_unfreeze_partial_failure">Se descongelaron %1$d/%2$d aplicaciones (%3$d fallaron)</string>
     <string name="error_format">Error: %1$s</string>
     <string name="failed_to_load_apps">Error al cargar las aplicaciones</string>
-    <string name="removed_from_freezer_success">Se eliminaron %1$d aplicaciones del Congelador</string>
+    <plurals name="removed_from_freezer_success">
+        <item quantity="one">Se eliminó %1$d aplicación del Congelador</item>
+        <item quantity="other">Se eliminaron %1$d aplicaciones del Congelador</item>
+    </plurals>
     <string name="killed_success">Se detuvo %1$s</string>
     <string name="cache_cleared_success">Caché de %1$s borrada</string>
     <string name="data_cleared_success">Datos de %1$s borrados</string>
@@ -371,13 +389,8 @@
     <string name="support_developer_desc_detailed">Thor es de código abierto y completamente libre de anuncios. Si te ha sido útil, considera apoyar mi trabajo:</string>
     <string name="become_patreon_title">Hacerse Patreon</string>
     <string name="become_patreon_desc">Apoya el desarrollo continuo con una suscripción mensual</string>
-    <string name="rate_play_store_title">Calificar en Play Store</string>
-    <string name="rate_play_store_desc">Deja una reseña de 5 estrellas para ayudar a otros a descubrir Thor</string>
-    <string name="explore_other_apps_title">Explorar otras aplicaciones</string>
-    <string name="explore_other_apps_desc">Echa un vistazo a mi consola de desarrollador y prueba otras aplicaciones</string>
     <string name="donate_paypal_title">Donar a través de PayPal</string>
     <string name="donate_paypal_desc">Envía una donación única directamente</string>
-    <string name="billing_error">Error de facturación</string>
 
     <!-- Support & Community Dashboard Section -->
     <string name="support_community_title">Soporte y comunidad</string>
@@ -391,9 +404,6 @@
     <string name="biometric_unlock_subtitle">Autentícate para continuar</string>
     <string name="unlock">Desbloquear</string>
     <string name="thank_you_support_desc">Tu suscripción está activa. ¡Gracias por ayudar a apoyar el desarrollo de Thor!</string>
-    <string name="change_support_plan_title">¿Cambiar plan de soporte?</string>
-    <string name="change_support_plan_desc">Ya estás apoyando al desarrollador con un plan activo. Actualizar o cambiar tu plan cancelará tu suscripción anterior y la reemplazará por la nueva. ¿Quieres continuar?</string>
-    <string name="active_plan">Plan activo</string>
     
     <!-- Detailed View & Animation Intensity -->
     <string name="action_details">Detalles</string>
@@ -445,12 +455,13 @@
     <string name="shortcut_added_named">%1$s añadido a la pantalla de inicio</string>
     <string name="shortcut_added">Acceso directo añadido a la pantalla de inicio</string>
     <string name="pin_all_confirm_title">¿Añadir todas las apps a la pantalla de inicio?</string>
-    <string name="pin_all_confirm_desc">Esto añadirá un acceso directo en la pantalla de inicio para cada una de tus %1$d aplicaciones congeladas, lo que podría llenar tu pantalla de inicio. Tu lanzador te pedirá que confirmes cada una.</string>
+    <plurals name="pin_all_confirm_desc">
+        <item quantity="one">Esto añadirá un acceso directo en la pantalla de inicio para tu %1$d aplicación congelada, lo que podría llenar tu pantalla de inicio. Tu lanzador te pedirá que la confirmes.</item>
+        <item quantity="other">Esto añadirá un acceso directo en la pantalla de inicio para cada una de tus %1$d aplicaciones congeladas, lo que podría llenar tu pantalla de inicio. Tu lanzador te pedirá que confirmes cada una.</item>
+    </plurals>
     <string name="freezer_launch_failed">No se pudo abrir esta aplicación</string>
     <string name="shortcut_no_longer_frozen">Ya no está congelada</string>
     <string name="easter_egg_promoted">🎉 ¡Esta función oculta ya ha sido promocionada! Mantente al tanto para la próxima.</string>
-    <string name="support_tab_play_store">Play Store</string>
-    <string name="support_tab_direct">Directo</string>
     <string name="run_extension">Ejecutar</string>
     <string name="installer_play_store">PLAY STORE</string>
     <string name="installer_fdroid">F-DROID</string>

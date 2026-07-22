@@ -1,0 +1,14 @@
+<resources>
+
+    <!-- Store-only strings: Play Store billing / support UI (store source set). -->
+    <string name="support_tab_play_store">Play 商店</string>
+    <string name="support_tab_direct">直接</string>
+    <string name="rate_play_store_title">在 Play 商店评分</string>
+    <string name="rate_play_store_desc">留下 5 星好评，帮助其他人发现 Thor</string>
+    <string name="explore_other_apps_title">探索其他应用</string>
+    <string name="explore_other_apps_desc">查看我的开发者控制台并体验其他应用</string>
+    <string name="billing_error">支付出错</string>
+    <string name="change_support_plan_title">更改支持计划？</string>
+    <string name="change_support_plan_desc">您已拥有有效的支持计划。升级或更改计划将取消您以前的订阅，并由新订阅替代。您要继续吗？</string>
+    <string name="active_plan">当前生效计划</string>
+</resources>

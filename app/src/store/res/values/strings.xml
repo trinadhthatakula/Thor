@@ -1,0 +1,16 @@
+<resources>
+
+    <!-- Store-only strings: Play Store billing / support UI. Referenced only from src/store
+         (SupportDeveloperHelper, BillingProcessorImpl), so they live in the store source set
+         and are excluded from the foss build. -->
+    <string name="support_tab_play_store">Play Store</string>
+    <string name="support_tab_direct">Direct</string>
+    <string name="rate_play_store_title">Rate on Play Store</string>
+    <string name="rate_play_store_desc">Leave a 5-star review to help others discover Thor</string>
+    <string name="explore_other_apps_title">Explore Other Apps</string>
+    <string name="explore_other_apps_desc">Check out my developer console and try other apps</string>
+    <string name="billing_error">Billing Error</string>
+    <string name="change_support_plan_title">Change Support Plan?</string>
+    <string name="change_support_plan_desc">You are already supporting the developer with an active plan. Upgrading or changing your plan will cancel your old subscription and replace it with the new one. Do you want to proceed?</string>
+    <string name="active_plan">Active Plan</string>
+</resources>

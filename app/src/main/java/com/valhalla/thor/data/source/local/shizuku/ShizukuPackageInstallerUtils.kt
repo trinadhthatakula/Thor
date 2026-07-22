@@ -1,5 +1,6 @@
 package com.valhalla.thor.data.source.local.shizuku
 
+import android.annotation.SuppressLint
 import android.content.pm.PackageInstaller
 import android.os.Build
 import android.os.IBinder
@@ -10,7 +11,12 @@ import rikka.shizuku.SystemServiceHelper
 
 /**
  * Taken from <a href="https://github.com/depau/fdroid_shizuku_privileged_extension/blob/main/app/src/main/java/org/fdroid/fdroid/privileged/ShizukuPackageInstallerUtils.kt">FDroid Priv</a>.
+ *
+ * Intentionally resolves hidden framework classes (IPackageManager / IPackageInstaller) via
+ * Class.forName so it can drive the privileged installer through Shizuku — PrivateApi is suppressed
+ * object-wide as this reflection is the whole purpose of the helper.
  */
+@SuppressLint("PrivateApi")
 object ShizukuPackageInstallerUtils {
 
     private fun asInterface(className: String, binder: IBinder): Any {

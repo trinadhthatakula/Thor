@@ -1,0 +1,6 @@
+version: "1.0"
+# Community JVM linter — runs the recommended Kotlin/JVM IDE inspections.
+# Android-specific checks are covered separately by Android Lint (./gradlew lint).
+linter: qodana-jvm-community
+profile:
+  name: qodana.recommended
