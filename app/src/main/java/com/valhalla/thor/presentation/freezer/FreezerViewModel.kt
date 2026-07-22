@@ -172,8 +172,8 @@ class FreezerViewModel(
             }
             _uiState.update { it.copy(multiSelection = emptySet()) }
             emitToast(
-                UiText.StringResource(
-                    R.string.removed_from_freezer_success,
+                UiText.PluralsResource(
+                    R.plurals.removed_from_freezer_success,
                     packageNames.size
                 )
             )
@@ -329,8 +329,8 @@ class FreezerViewModel(
                 freezerRepository.add(pkg)
             }
             emitToast(
-                UiText.StringResource(
-                    R.string.added_to_freezer_count_success,
+                UiText.PluralsResource(
+                    R.plurals.added_to_freezer_count_success,
                     packageNames.size
                 )
             )

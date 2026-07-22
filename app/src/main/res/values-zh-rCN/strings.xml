@@ -173,10 +173,14 @@
     <!-- Quick Settings Tile -->
     <string name="tile_no_privilege">未授予权限</string>
     <string name="tile_no_apps">无应用</string>
-    <string name="tile_subtitle_format">%1$d 个应用 · 点击冻结</string>
+    <plurals name="tile_subtitle_format">
+        <item quantity="other">%1$d 个应用 · 点击冻结</item>
+    </plurals>
     <string name="tile_grant_privilege_toast">请先授予 Root / Shizuku / Dhizuku 权限</string>
     <string name="tile_no_apps_toast">应用冻结中无应用</string>
-    <string name="tile_freeze_success">已冻结 %1$d 个应用</string>
+    <plurals name="tile_freeze_success">
+        <item quantity="other">已冻结 %1$d 个应用</item>
+    </plurals>
     <string name="tile_freeze_partial_failure">已冻结 %1$d/%2$d 个应用（%3$d 个失败）</string>
 
     <!-- Freezer Settings & Actions -->
@@ -190,10 +194,14 @@
     <string name="unfreeze_all_confirmation_title">解冻所有应用？</string>
     <string name="unfreeze_all_confirmation_desc">这将解冻（启用）目前在冻结列表中的所有应用。确定要继续吗？</string>
     <string name="import_disabled_apps_title">导入已禁用的应用</string>
-    <string name="import_disabled_apps_desc">有 %1$d 个已禁用的应用不在您的冻结列表中。要将它们添加到冻结列表吗？</string>
+    <plurals name="import_disabled_apps_desc">
+        <item quantity="other">有 %1$d 个已禁用的应用不在您的冻结列表中。要将它们添加到冻结列表吗？</item>
+    </plurals>
     <string name="import_disabled_apps_button">导入已禁用的应用</string>
     <string name="no_disabled_apps_found">未发现其他已禁用的应用。</string>
-    <string name="added_to_freezer_count_success">已将 %1$d 个应用添加到冻结列表</string>
+    <plurals name="added_to_freezer_count_success">
+        <item quantity="other">已将 %1$d 个应用添加到冻结列表</item>
+    </plurals>
 
     <!-- Extensions -->
     <string name="extensions">扩展</string>
@@ -216,11 +224,15 @@
     <string name="unfrozen_success">已解冻 %1$s</string>
     <string name="added_to_freezer_success">已添加到冻结列表</string>
     <string name="add_to_freezer">添加至冻结室</string>
-    <string name="unfrozen_count_success">已解冻 %1$d 个应用</string>
+    <plurals name="unfrozen_count_success">
+        <item quantity="other">已解冻 %1$d 个应用</item>
+    </plurals>
     <string name="tile_unfreeze_partial_failure">已解冻 %1$d/%2$d 个应用（%3$d 个失败）</string>
     <string name="error_format">错误: %1$s</string>
     <string name="failed_to_load_apps">加载应用失败</string>
-    <string name="removed_from_freezer_success">已从冻结列表中移除 %1$d 个应用</string>
+    <plurals name="removed_from_freezer_success">
+        <item quantity="other">已从冻结列表中移除 %1$d 个应用</item>
+    </plurals>
     <string name="killed_success">已强行停止 %1$s</string>
     <string name="cache_cleared_success">已清除 %1$s 的缓存</string>
     <string name="data_cleared_success">已清除 %1$s 的数据</string>
@@ -369,13 +381,8 @@
     <string name="support_developer_desc_detailed">Thor 是开源且完全无广告的。如果它对您有所帮助，请考虑支持我的工作：</string>
     <string name="become_patreon_title">成为 Patreon 赞助者</string>
     <string name="become_patreon_desc">通过按月订阅支持持续开发</string>
-    <string name="rate_play_store_title">在 Play 商店评分</string>
-    <string name="rate_play_store_desc">留下 5 星好评，帮助其他人发现 Thor</string>
-    <string name="explore_other_apps_title">探索其他应用</string>
-    <string name="explore_other_apps_desc">查看我的开发者控制台并体验其他应用</string>
     <string name="donate_paypal_title">通过 PayPal 捐赠</string>
     <string name="donate_paypal_desc">直接发送一次性捐赠</string>
-    <string name="billing_error">支付出错</string>
 
     <!-- Support & Community Dashboard Section -->
     <string name="support_community_title">支持与社区</string>
@@ -389,9 +396,6 @@
     <string name="biometric_unlock_subtitle">进行身份验证以继续</string>
     <string name="unlock">解锁</string>
     <string name="thank_you_support_desc">您的订阅已生效。感谢您支持 Thor 的开发！</string>
-    <string name="change_support_plan_title">更改支持计划？</string>
-    <string name="change_support_plan_desc">您已拥有有效的支持计划。升级或更改计划将取消您以前的订阅，并由新订阅替代。您要继续吗？</string>
-    <string name="active_plan">当前生效计划</string>
     
     <!-- Detailed View & Animation Intensity -->
     <string name="action_details">详情</string>
@@ -443,12 +447,12 @@
     <string name="shortcut_added_named">已将 %1$s 添加到主屏幕</string>
     <string name="shortcut_added">快捷方式已添加到主屏幕</string>
     <string name="pin_all_confirm_title">将所有应用添加到主屏幕？</string>
-    <string name="pin_all_confirm_desc">这将为您所有 %1$d 个已冻结的应用添加桌面快捷方式，可能会填满您的桌面。您的启动器将要求您确认每一个。</string>
+    <plurals name="pin_all_confirm_desc">
+        <item quantity="other">这将为您所有 %1$d 个已冻结的应用添加桌面快捷方式，可能会填满您的桌面。您的启动器将要求您确认每一个。</item>
+    </plurals>
     <string name="freezer_launch_failed">无法启动此应用</string>
     <string name="shortcut_no_longer_frozen">已不再冻结</string>
     <string name="easter_egg_promoted">🎉 此隐藏功能已被推广 — 敬请期待下一个！</string>
-    <string name="support_tab_play_store">Play 商店</string>
-    <string name="support_tab_direct">直接</string>
     <string name="run_extension">运行</string>
     <string name="installer_play_store">PLAY 商店</string>
     <string name="installer_fdroid">F-DROID</string>

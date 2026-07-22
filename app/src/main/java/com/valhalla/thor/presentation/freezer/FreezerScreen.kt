@@ -48,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -524,8 +525,9 @@ fun FreezerScreen(
             title = { Text(stringResource(R.string.import_disabled_apps_title)) },
             text = {
                 Text(
-                    stringResource(
-                        R.string.import_disabled_apps_desc,
+                    pluralStringResource(
+                        R.plurals.import_disabled_apps_desc,
+                        disabledAppsNotInFreezer.size,
                         disabledAppsNotInFreezer.size
                     )
                 )

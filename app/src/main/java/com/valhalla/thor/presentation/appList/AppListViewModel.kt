@@ -338,8 +338,8 @@ class AppListViewModel(
                     _events.send(
                         AppListEvent.ShowMessage(
                             if (failures == 0) {
-                                UiText.StringResource(
-                                    R.string.tile_freeze_success,
+                                UiText.PluralsResource(
+                                    R.plurals.tile_freeze_success,
                                     action.appList.size
                                 )
                             } else {
@@ -371,8 +371,8 @@ class AppListViewModel(
                     }
                     _events.send(
                         AppListEvent.ShowMessage(
-                            UiText.StringResource(
-                                R.string.unfrozen_count_success,
+                            UiText.PluralsResource(
+                                R.plurals.unfrozen_count_success,
                                 action.appList.size
                             )
                         )

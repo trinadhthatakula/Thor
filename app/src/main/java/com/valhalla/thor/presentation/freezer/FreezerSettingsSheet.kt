@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -112,7 +113,15 @@ fun FreezerSettingsSheet(
                 )
             },
             title = { Text(stringResource(R.string.pin_all_confirm_title)) },
-            text = { Text(stringResource(R.string.pin_all_confirm_desc, pinAllCount)) },
+            text = {
+                Text(
+                    pluralStringResource(
+                        R.plurals.pin_all_confirm_desc,
+                        pinAllCount,
+                        pinAllCount
+                    )
+                )
+            },
             confirmButton = {
                 TextButton(
                     onClick = {

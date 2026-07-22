@@ -216,7 +216,7 @@ class AppInfoDetailsViewModel(
                 freezerRepository.remove(packageName)
                 freezerShortcutManager.disableAppShortcut(packageName)
                 _uiState.update { it.copy(isInFreezer = false) }
-                _events.send(UiText.StringResource(R.string.removed_from_freezer_success, 1))
+                _events.send(UiText.PluralsResource(R.plurals.removed_from_freezer_success, 1))
             } else {
                 freezerRepository.add(packageName)
                 _uiState.update { it.copy(isInFreezer = true) }

@@ -1,5 +1,6 @@
 package com.valhalla.thor.rootservice
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
@@ -11,7 +12,12 @@ import java.lang.reflect.InvocationTargetException
 
 /**
  * A highly-stable, persistent root-level daemon service implementing privileged actions.
+ *
+ * The whole daemon deliberately reaches hidden framework APIs (IPackageManager, ServiceManager,
+ * SuspendDialogInfo) via reflection — that is the entire point of running in the privileged :root
+ * process — so PrivateApi is suppressed class-wide rather than method-by-method.
  */
+@SuppressLint("PrivateApi")
 class ThorRootService : RootService() {
 
     init {
