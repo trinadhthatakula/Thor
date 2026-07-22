@@ -204,12 +204,12 @@ class RootSystemGateway(
         // Fallback to ThorRootService AIDL daemon
         val service = getRootService()
         if (service != null) {
-            val aidlResult = runCatching {
+            val aidlCleared = runCatching {
                 service.clearAppData(packageName)
             }.onFailure { e ->
                 Logger.e("RootSystemGateway", "AIDL clearAppData failed", e)
-            }
-            if (aidlResult.isSuccess) {
+            }.getOrDefault(false)
+            if (aidlCleared) {
                 return@withContext Result.success(Unit)
             }
         }
@@ -301,7 +301,6 @@ class RootSystemGateway(
                 if (service != null) {
                     val taskResult = runCatching {
                         service.setAppSuspended(packageName, true)
-                        true
                     }.onFailure { e ->
                         Logger.e("RootSystemGateway", "AIDL suspend failed", e)
                     }.getOrDefault(false)
@@ -326,7 +325,6 @@ class RootSystemGateway(
             if (service != null) {
                 cleared = runCatching {
                     service.setAppSuspended(packageName, false)
-                    true
                 }.onFailure { e ->
                     Logger.e("RootSystemGateway", "AIDL unsuspend failed", e)
                 }.getOrDefault(false)

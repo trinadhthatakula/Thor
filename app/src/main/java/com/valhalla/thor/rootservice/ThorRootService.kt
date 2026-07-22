@@ -30,21 +30,21 @@ class ThorRootService : RootService() {
 
     override fun onBind(intent: Intent): IBinder {
         return object : IThorRootService.Stub() {
-            override fun setAppSuspended(packageName: String, suspended: Boolean) {
+            override fun setAppSuspended(packageName: String, suspended: Boolean): Boolean {
                 this@ThorRootService.enforceCaller()
-                this@ThorRootService.setAppSuspended(packageName, suspended)
+                return this@ThorRootService.setAppSuspended(packageName, suspended)
             }
 
-            override fun clearAppData(packageName: String) {
+            override fun clearAppData(packageName: String): Boolean {
                 this@ThorRootService.enforceCaller()
-                this@ThorRootService.clearAppData(packageName)
+                return this@ThorRootService.clearAppData(packageName)
             }
         }
     }
 
-    private fun setAppSuspended(packageName: String, suspended: Boolean) {
+    private fun setAppSuspended(packageName: String, suspended: Boolean): Boolean {
         Logger.i("Odin", "setAppSuspended: packageName=$packageName, suspended=$suspended")
-        runCatching {
+        return runCatching {
             val binder = Class.forName("android.os.ServiceManager")
                 .getMethod("getService", String::class.java)
                 .invoke(null, "package") as IBinder
@@ -89,7 +89,7 @@ class ThorRootService : RootService() {
             }
         }.onFailure { e ->
             Logger.e("Odin", "Failed to set app suspended for $packageName", e)
-        }
+        }.isSuccess
     }
 
     private fun callSetSuspended(
@@ -179,8 +179,8 @@ class ThorRootService : RootService() {
         null
     }
 
-    private fun clearAppData(packageName: String) {
-        runCatching {
+    private fun clearAppData(packageName: String): Boolean {
+        return runCatching {
             val pmStub = Class.forName("android.content.pm.IPackageManager\$Stub")
             val serviceManager = Class.forName("android.os.ServiceManager")
             val getService = serviceManager.getMethod("getService", String::class.java)
@@ -195,9 +195,14 @@ class ThorRootService : RootService() {
                 Class.forName("android.content.pm.IPackageDataObserver"),
                 Int::class.javaPrimitiveType
             )
+            // clearApplicationUserData returns void — the real success/failure is delivered
+            // asynchronously via IPackageDataObserver.onRemoveCompleted, which we deliberately do
+            // not wire up. So a clean reflective invocation is the strongest signal available: a
+            // thrown SecurityException / missing-package / bad-signature error propagates as
+            // failure (via runCatching below), while a successfully dispatched wipe reports success.
             method.invoke(pm, packageName, null, 0)
         }.onFailure { e ->
             Logger.e("Odin", "Failed to clear app data for $packageName", e)
-        }
+        }.isSuccess
     }
 }
