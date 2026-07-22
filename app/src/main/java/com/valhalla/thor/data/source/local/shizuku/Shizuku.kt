@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import com.valhalla.bypass.Bypass
+import com.valhalla.superuser.utils.escapeForShell
 import moe.shizuku.server.IShizukuService
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuBinderWrapper
@@ -401,7 +402,7 @@ object Shizuku {
     fun uninstallApp(context: Context, packageName: String): Boolean {
         // Escape the package identifier before interpolating it into the shell command, mirroring
         // the Dhizuku helper (#40). currentUser is regex-validated numeric, so it needs no escaping.
-        val escapedPackage = com.valhalla.superuser.ShellUtils.escapedString(packageName)
+        val escapedPackage = packageName.escapeForShell()
         val normally = Packages(context).canUninstallNormally(packageName)
         if (normally) {
             return execute("pm uninstall $escapedPackage").first == 0
@@ -418,7 +419,7 @@ object Shizuku {
         return try {
             val currentUser = getCurrentUserId()
             // Escape the package identifier before interpolating it (#40).
-            val escapedPackage = com.valhalla.superuser.ShellUtils.escapedString(packageName)
+            val escapedPackage = packageName.escapeForShell()
             execute("pm install-existing --user $currentUser $escapedPackage").first == 0
         } catch (_: Exception) {
             false

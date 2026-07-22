@@ -7,7 +7,7 @@ import android.os.Build
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.Logger
-import com.valhalla.superuser.ShellUtils
+import com.valhalla.superuser.utils.escapeForShell
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -52,7 +52,7 @@ class AutoReinstallReceiver : BroadcastReceiver(), KoinComponent {
                 Logger.d(TAG, "Package $packageName has installer '$currentInstaller'. Overriding to Google Play Store...")
 
                 // 3. Overwrite Installer of Record using Thor System Executor
-                val escapedPackage = ShellUtils.escapedString(packageName)
+                val escapedPackage = packageName.escapeForShell()
                 val command = "pm set-installer $escapedPackage $GOOGLE_PLAY_STORE"
                 
                 val result = systemRepository.executeShellCommand(command)

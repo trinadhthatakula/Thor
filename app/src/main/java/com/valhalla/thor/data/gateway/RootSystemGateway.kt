@@ -7,9 +7,10 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
 import com.valhalla.superuser.ipc.RootService
-import com.valhalla.superuser.ShellUtils
+import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.rootservice.IThorRootService
 import com.valhalla.superuser.ktx.ShellRepository
+import com.valhalla.superuser.ktx.ShellResult
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.repository.PreferenceRepository
@@ -53,7 +54,7 @@ class RootSystemGateway(
             isDaemonReset = true
             // Kill any old daemon to make sure the newly compiled suCore is loaded and executed
             runCatching {
-                shellRepository.runCommand("pkill -f ${context.packageName}:root")
+                shellRepository.exec("pkill -f ${context.packageName}:root")
             }
         }
 
@@ -159,7 +160,7 @@ class RootSystemGateway(
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
-        val escapedPackage = ShellUtils.escapedString(packageName)
+        val escapedPackage = packageName.escapeForShell()
         val shellResult = runCommand("am force-stop $escapedPackage")
         if (shellResult.isSuccess) return shellResult
 
@@ -187,7 +188,7 @@ class RootSystemGateway(
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
-        val escapedPackage = ShellUtils.escapedString(packageName)
+        val escapedPackage = packageName.escapeForShell()
         val command = "rm -rf /data/data/$escapedPackage/cache /sdcard/Android/data/$escapedPackage/cache"
         return runCommand(command)
     }
@@ -196,7 +197,7 @@ class RootSystemGateway(
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return@withContext Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
-        val escapedPackage = ShellUtils.escapedString(packageName)
+        val escapedPackage = packageName.escapeForShell()
         val shellResult = runCommand("pm clear $escapedPackage")
         if (shellResult.isSuccess) return@withContext shellResult
 
@@ -222,7 +223,7 @@ class RootSystemGateway(
         }
         val appInfo = getApplicationInfoCompat(packageName)
         val isSystem = appInfo != null && (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
-        val escapedPackage = ShellUtils.escapedString(packageName)
+        val escapedPackage = packageName.escapeForShell()
         val currentUser = getCurrentUserId()
 
         val shellResult = if (isSystem) {
@@ -283,7 +284,7 @@ class RootSystemGateway(
             return@withContext Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val hasReflection = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q
-        val escapedPackage = ShellUtils.escapedString(packageName)
+        val escapedPackage = packageName.escapeForShell()
 
         fun isCurrentlySuspended() = getApplicationInfoCompat(packageName)?.run {
             (flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED) != 0
@@ -344,13 +345,13 @@ class RootSystemGateway(
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
-        val escapedPackage = ShellUtils.escapedString(packageName)
+        val escapedPackage = packageName.escapeForShell()
         val state = if (isRestricted) "ignore" else "allow"
         return runCommand("appops set $escapedPackage RUN_ANY_IN_BACKGROUND $state")
     }
 
     override suspend fun rebootDevice(reason: String): Result<Unit> {
-        val escapedReason = ShellUtils.escapedString(reason)
+        val escapedReason = reason.escapeForShell()
         // executeResult returns success if ANY of the commands succeed in the chain logic
         return runCommand("svc power reboot $escapedReason || reboot $escapedReason")
     }
@@ -360,7 +361,7 @@ class RootSystemGateway(
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val currentUser = getCurrentUserId()
-        val escapedPackage = ShellUtils.escapedString(packageName)
+        val escapedPackage = packageName.escapeForShell()
         return runCommand("pm uninstall --user $currentUser $escapedPackage")
     }
 
@@ -421,8 +422,8 @@ class RootSystemGateway(
         // Stream each APK's bytes into the session via stdin.
         for (path in apkPaths) {
             val size = File(path).length()
-            val escPath = ShellUtils.escapedString(path)
-            val escName = ShellUtils.escapedString(File(path).name)
+            val escPath = path.escapeForShell()
+            val escName = File(path).name.escapeForShell()
             sb.append("WERR=\$(cat ").append(escPath)
                 .append(" | pm install-write -S ").append(size)
                 .append(" \"\$SID\" ").append(escName).append(" - 2>&1 1>/dev/null)")
@@ -445,9 +446,9 @@ class RootSystemGateway(
             return 0L
         }
         return try {
-            val escapedPackage = ShellUtils.escapedString(packageName)
-            val result = shellRepository.runCommand("du -s /data/data/$escapedPackage/cache")
-            val outputLine = result.getOrNull()?.firstOrNull() ?: return 0L
+            val escapedPackage = packageName.escapeForShell()
+            val result = shellRepository.exec("du -s /data/data/$escapedPackage/cache")
+            val outputLine = (if (result.isSuccess) result.stdout.firstOrNull() else null) ?: return 0L
 
             // Output format is usually "12345   /path/to/file"
             // We parse this in Kotlin, not using brittle 'awk' or 'cut'
@@ -481,7 +482,7 @@ class RootSystemGateway(
                     return@withContext Result.failure(Exception("Could not find APK path for $packageName"))
                 }
 
-                val combinedPath = paths.joinToString(" ") { ShellUtils.escapedString(it) }
+                val combinedPath = paths.joinToString(" ") { it.escapeForShell() }
 
                 // 2. Get Current User ID
                 val currentUser = getCurrentUserId()
@@ -501,8 +502,8 @@ class RootSystemGateway(
      * Copies a file using Root privileges.
      */
     suspend fun copyFile(source: String, destination: String) {
-        val escapedSource = ShellUtils.escapedString(source)
-        val escapedDest = ShellUtils.escapedString(destination)
+        val escapedSource = source.escapeForShell()
+        val escapedDest = destination.escapeForShell()
         val command = "cp $escapedSource $escapedDest"
         val result = runCommand(command)
 
@@ -518,9 +519,9 @@ class RootSystemGateway(
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return emptyList()
         }
-        val escapedPackage = ShellUtils.escapedString(packageName)
-        val result = shellRepository.runCommand("pm path $escapedPackage")
-        val lines = result.getOrNull() ?: emptyList()
+        val escapedPackage = packageName.escapeForShell()
+        val result = shellRepository.exec("pm path $escapedPackage")
+        val lines = if (result.isSuccess) result.stdout else emptyList()
 
         return lines
             .filter { it.isNotBlank() }
@@ -535,8 +536,8 @@ class RootSystemGateway(
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
-        val escapedPackage = ShellUtils.escapedString(packageName)
-        val escapedPerm = ShellUtils.escapedString(permissionName)
+        val escapedPackage = packageName.escapeForShell()
+        val escapedPerm = permissionName.escapeForShell()
         return runCommand("pm grant $escapedPackage $escapedPerm")
     }
 
@@ -547,8 +548,8 @@ class RootSystemGateway(
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
-        val escapedPackage = ShellUtils.escapedString(packageName)
-        val escapedPerm = ShellUtils.escapedString(permissionName)
+        val escapedPackage = packageName.escapeForShell()
+        val escapedPerm = permissionName.escapeForShell()
         return runCommand("pm revoke $escapedPackage $escapedPerm")
     }
 
@@ -556,24 +557,32 @@ class RootSystemGateway(
      * Raw shell execution for extensions, via the root shell.
      */
     override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> {
-        // Result.failure means the shell could not execute at all (lost root/session).
-        // Surface that as a real failure so callers (e.g. ThorShellExecutor) map it to -1,
-        // rather than masquerading as a normal command that exited with code 1.
-        return shellRepository.runCommand(command).fold(
-            onSuccess = { output -> Result.success(0 to output.joinToString("\n")) },
-            onFailure = { error -> Result.failure(error) }
-        )
+        val result = shellRepository.exec(command)
+        // JOB_NOT_EXECUTED (-1) means the shell could not run at all (lost root/session). Surface
+        // that as a real failure so callers (e.g. ThorShellExecutor) map it to (-1, msg), rather
+        // than masquerading as a command that ran. Any command that DID run returns its real exit
+        // code (0 or non-zero) — matching the Shizuku/Dhizuku gateways which already pass the real
+        // code through — so extensions can finally see it (this path used to hard-code 0).
+        if (result.code == ShellResult.JOB_NOT_EXECUTED) {
+            return Result.failure(
+                java.io.IOException(result.stderr.joinToString("\n").ifBlank { "Root shell unavailable" })
+            )
+        }
+        val output = result.stdout.joinToString("\n").ifBlank { result.stderr.joinToString("\n") }
+        return Result.success(result.code to output)
     }
 
     /**
      * Helper to bridge ShellRepository's Result<List<String>> to Result<Unit>
      */
     private suspend fun runCommand(cmd: String): Result<Unit> {
-        val result = shellRepository.runCommand(cmd)
+        val result = shellRepository.exec(cmd)
         return if (result.isSuccess) {
             Result.success(Unit)
         } else {
-            val exception = result.exceptionOrNull() ?: Exception("Shell command failed: $cmd")
+            val message = result.stderr.joinToString("\n")
+                .ifBlank { "Shell command failed with code ${result.code}: $cmd" }
+            val exception = java.io.IOException(message)
             Logger.e("RootSystemGateway", "Command execution failed: $cmd", exception)
             Result.failure(exception)
         }
@@ -609,8 +618,8 @@ class RootSystemGateway(
     private suspend fun getCurrentUserId(): String {
         cachedUserId?.let { return it }
         val gen = userIdGeneration
-        val userResult = shellRepository.runCommand("am get-current-user")
-        val currentUser = userResult.getOrNull()?.firstOrNull()?.trim()
+        val userResult = shellRepository.exec("am get-current-user")
+        val currentUser = if (userResult.isSuccess) userResult.stdout.firstOrNull()?.trim() else null
         return if (currentUser != null && currentUser.matches(USER_ID_REGEX)) {
             // Only cache a *successfully* resolved id (caching the "0" fallback would let a transient
             // shell/daemon blip persist the wrong user, so later '--user' commands would target user
