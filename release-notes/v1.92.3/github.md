@@ -22,7 +22,7 @@ A lean-and-reliable release. The direct-download APK is **nearly half the size**
 
 ### 🧹 Polish — Lint, Qodana & Leaner Vectors (#268, #269)
 * Resolved the outstanding **Android lint + Qodana** findings: correct `<plurals>` handling, unused-resource cleanup, `mipmap-anydpi` rename, and coroutines bumped to 1.11.0 (`979f937`).
-* **Losslessly compacted** the three largest vector drawables (`thor_mono`, `thor_drawn_foreground`) — **−6.8 KB** with **pixel-identical** rendering, verified by render-diff (`AE == 0`) at multiple sizes (`7055d50`, `7903a07`).
+* **Losslessly compacted** the two largest vector drawables (`thor_mono`, `thor_drawn_foreground`) — **−6.8 KB** with **pixel-identical** rendering, verified by render-diff (`AE == 0`) at multiple sizes (`7055d50`, `7903a07`).
 
 ---
 
