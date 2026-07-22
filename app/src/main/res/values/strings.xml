@@ -1,4 +1,4 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Navigation -->
     <string name="home">Home</string>
@@ -87,7 +87,8 @@
 
     <!-- App List / Freezer -->
     <string name="system_apps_warning">⚠ System Apps</string>
-    <string name="selected_count">%1$d Selected</string>
+    <!-- No plural noun ("Selected" is invariant), so one/other would be identical — not a plural. -->
+    <string name="selected_count" tools:ignore="PluralsCandidate">%1$d Selected</string>
     <string name="no_matching_apps">No matching apps found</string>
     <string name="no_apps_display">No apps to display</string>
     <string name="adjust_filters_hint">Try adjusting your search or filters</string>
@@ -203,11 +204,18 @@
     <!-- Quick Settings Tile -->
     <string name="tile_no_privilege">No privilege granted</string>
     <string name="tile_no_apps">No apps</string>
-    <string name="tile_subtitle_format">%1$d apps · tap to freeze</string>
+    <plurals name="tile_subtitle_format">
+        <item quantity="one">%1$d app · tap to freeze</item>
+        <item quantity="other">%1$d apps · tap to freeze</item>
+    </plurals>
     <string name="tile_grant_privilege_toast">Grant Root / Shizuku / Dhizuku first</string>
     <string name="tile_no_apps_toast">No apps in Freezer</string>
-    <string name="tile_freeze_success">Froze %1$d apps</string>
-    <string name="tile_freeze_partial_failure">Froze %1$d/%2$d apps (%3$d failed)</string>
+    <plurals name="tile_freeze_success">
+        <item quantity="one">Froze %1$d app</item>
+        <item quantity="other">Froze %1$d apps</item>
+    </plurals>
+    <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
+    <string name="tile_freeze_partial_failure" tools:ignore="PluralsCandidate">Froze %1$d/%2$d apps (%3$d failed)</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Freezer Settings</string>
@@ -228,17 +236,26 @@
     <string name="shortcut_added_named">%1$s added to Home screen</string>
     <string name="shortcut_added">Shortcut added to Home screen</string>
     <string name="pin_all_confirm_title">Add all apps to Home screen?</string>
-    <string name="pin_all_confirm_desc">This adds a home-screen shortcut for each of your %1$d frozen apps and may fill up your home screen. Your launcher will ask you to confirm each one.</string>
+    <plurals name="pin_all_confirm_desc">
+        <item quantity="one">This adds a home-screen shortcut for your %1$d frozen app and may fill up your home screen. Your launcher will ask you to confirm it.</item>
+        <item quantity="other">This adds a home-screen shortcut for each of your %1$d frozen apps and may fill up your home screen. Your launcher will ask you to confirm each one.</item>
+    </plurals>
     <string name="freezer_launch_failed">Couldn\'t launch this app</string>
     <string name="shortcut_no_longer_frozen">No longer frozen</string>
     <string name="privilege_required_warning">Privilege required (Root, Shizuku or Dhizuku)</string>
     <string name="unfreeze_all_confirmation_title">Unfreeze All Apps?</string>
     <string name="unfreeze_all_confirmation_desc">This will unfreeze (enable) all apps currently in the Freezer list. Are you sure you want to proceed?</string>
     <string name="import_disabled_apps_title">Import Disabled Apps</string>
-    <string name="import_disabled_apps_desc">There are %1$d disabled apps that are not in your Freezer. Would you like to add them to the Freezer?</string>
+    <plurals name="import_disabled_apps_desc">
+        <item quantity="one">There is %1$d disabled app that is not in your Freezer. Would you like to add it to the Freezer?</item>
+        <item quantity="other">There are %1$d disabled apps that are not in your Freezer. Would you like to add them to the Freezer?</item>
+    </plurals>
     <string name="import_disabled_apps_button">Import disabled apps</string>
     <string name="no_disabled_apps_found">No other disabled apps found.</string>
-    <string name="added_to_freezer_count_success">Added %1$d apps to Freezer</string>
+    <plurals name="added_to_freezer_count_success">
+        <item quantity="one">Added %1$d app to Freezer</item>
+        <item quantity="other">Added %1$d apps to Freezer</item>
+    </plurals>
     <string name="add_to_freezer">Add to Freezer</string>
 
     <!-- Extensions -->
@@ -246,8 +263,6 @@
     <string name="manage_extensions">Manage Extensions</string>
     <string name="manage_extensions_desc">View and configure installed APK plugins</string>
     <string name="easter_egg_promoted">🎉 This hidden feature has already been promoted — stay tuned for the next one!</string>
-    <string name="support_tab_play_store">Play Store</string>
-    <string name="support_tab_direct">Direct</string>
     <string name="run_extension">Run</string>
     <string name="installer_play_store">PLAY STORE</string>
     <string name="installer_fdroid">F-DROID</string>
@@ -290,11 +305,18 @@
     <string name="frozen_success">Frozen %1$s</string>
     <string name="unfrozen_success">Unfrozen %1$s</string>
     <string name="added_to_freezer_success">Added to Freezer</string>
-    <string name="unfrozen_count_success">Unfrozen %1$d apps</string>
-    <string name="tile_unfreeze_partial_failure">Unfroze %1$d/%2$d apps (%3$d failed)</string>
+    <plurals name="unfrozen_count_success">
+        <item quantity="one">Unfrozen %1$d app</item>
+        <item quantity="other">Unfrozen %1$d apps</item>
+    </plurals>
+    <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
+    <string name="tile_unfreeze_partial_failure" tools:ignore="PluralsCandidate">Unfroze %1$d/%2$d apps (%3$d failed)</string>
     <string name="error_format">Error: %1$s</string>
     <string name="failed_to_load_apps">Failed to load apps</string>
-    <string name="removed_from_freezer_success">Removed %1$d app(s) from Freezer</string>
+    <plurals name="removed_from_freezer_success">
+        <item quantity="one">Removed %1$d app from Freezer</item>
+        <item quantity="other">Removed %1$d apps from Freezer</item>
+    </plurals>
     <string name="killed_success">Killed %1$s</string>
     <string name="cache_cleared_success">Cleared cache of %1$s</string>
     <string name="data_cleared_success">Cleared data of %1$s</string>
@@ -406,7 +428,8 @@
     <string name="log_attempting_system_uninstall">Attempting system uninstall…</string>
     <string name="log_scanning_apps">Scanning Apps…</string>
     <string name="log_no_apps_to_fix">No apps found that require fixing.</string>
-    <string name="log_found_apps_to_fix">Found %1$d apps to fix.</string>
+    <!-- Developer log line, not grammar-sensitive UI — plural form intentionally not used. -->
+    <string name="log_found_apps_to_fix" tools:ignore="PluralsCandidate">Found %1$d apps to fix.</string>
     <string name="log_reinstalling_batch">Reinstalling Apps</string>
     <string name="log_freezing_batch">Freezing Apps</string>
     <string name="log_unfreezing_batch">Unfreezing Apps</string>
@@ -445,13 +468,8 @@
     <string name="support_developer_desc_detailed">Thor is open source and completely ad-free. If it has been helpful to you, please consider supporting my work:</string>
     <string name="become_patreon_title">Become a Patreon</string>
     <string name="become_patreon_desc">Support ongoing development with a monthly subscription</string>
-    <string name="rate_play_store_title">Rate on Play Store</string>
-    <string name="rate_play_store_desc">Leave a 5-star review to help others discover Thor</string>
-    <string name="explore_other_apps_title">Explore Other Apps</string>
-    <string name="explore_other_apps_desc">Check out my developer console and try other apps</string>
     <string name="donate_paypal_title">Donate via PayPal</string>
     <string name="donate_paypal_desc">Send a one-time donation directly</string>
-    <string name="billing_error">Billing Error</string>
 
     <!-- Support & Community Dashboard Section -->
     <string name="support_community_title">Support &amp; Community</string>
@@ -465,10 +483,7 @@
     <string name="biometric_unlock_subtitle">Authenticate to continue</string>
     <string name="unlock">Unlock</string>
     <string name="thank_you_support_desc">Your subscription is active. Thank you for helping support the development of Thor!</string>
-    <string name="change_support_plan_title">Change Support Plan?</string>
-    <string name="change_support_plan_desc">You are already supporting the developer with an active plan. Upgrading or changing your plan will cancel your old subscription and replace it with the new one. Do you want to proceed?</string>
-    <string name="active_plan">Active Plan</string>
-    
+
     <!-- Detailed View & Animation Intensity -->
     <string name="action_details">Details</string>
     <string name="detailed_view">Detailed View</string>

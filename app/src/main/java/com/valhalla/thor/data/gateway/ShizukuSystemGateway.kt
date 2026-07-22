@@ -10,7 +10,7 @@ import org.koin.core.annotation.Single
 import rikka.shizuku.Shizuku
 import com.valhalla.thor.data.source.local.shizuku.Shizuku as ShizukuHelper
 import com.valhalla.thor.util.Logger
-import com.valhalla.superuser.ShellUtils
+import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import kotlinx.coroutines.flow.first
 
@@ -100,7 +100,7 @@ class ShizukuSystemGateway(
         val installerArg = preferenceRepository.getInstallerArg()
         
         val command = "pm install -r -g${if (canDowngrade) " -d" else ""}$installerArg ${
-            ShellUtils.escapedString(apkPath)
+            apkPath.escapeForShell()
         }"
         
         val result = ShizukuHelper.execute(command)
@@ -120,7 +120,7 @@ class ShizukuSystemGateway(
             return Result.failure(Exception("Cannot reinstall Thor"))
 
         return try {
-            val escapedPackageName = ShellUtils.escapedString(packageName)
+            val escapedPackageName = packageName.escapeForShell()
             // 1. Get the APK path(s)
             val pathResult = ShizukuHelper.execute("pm path $escapedPackageName")
             val paths = pathResult.second?.lines()
@@ -131,7 +131,7 @@ class ShizukuSystemGateway(
                 return Result.failure(Exception("Could not find APK path for $packageName"))
             }
 
-            val combinedPath = paths.joinToString(" ") { ShellUtils.escapedString(it) }
+            val combinedPath = paths.joinToString(" ") { it.escapeForShell() }
 
             // 2. Get Current User ID
             val currentUser = ShizukuHelper.getCurrentUserId()
@@ -155,8 +155,8 @@ class ShizukuSystemGateway(
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
-        val escapedPackageName = ShellUtils.escapedString(packageName)
-        val escapedPermissionName = ShellUtils.escapedString(permissionName)
+        val escapedPackageName = packageName.escapeForShell()
+        val escapedPermissionName = permissionName.escapeForShell()
         return try {
             val result = ShizukuHelper.execute("pm grant $escapedPackageName $escapedPermissionName")
             if (result.first == 0) Result.success(Unit)
@@ -173,8 +173,8 @@ class ShizukuSystemGateway(
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
-        val escapedPackageName = ShellUtils.escapedString(packageName)
-        val escapedPermissionName = ShellUtils.escapedString(permissionName)
+        val escapedPackageName = packageName.escapeForShell()
+        val escapedPermissionName = permissionName.escapeForShell()
         return try {
             val result = ShizukuHelper.execute("pm revoke $escapedPackageName $escapedPermissionName")
             if (result.first == 0) Result.success(Unit)

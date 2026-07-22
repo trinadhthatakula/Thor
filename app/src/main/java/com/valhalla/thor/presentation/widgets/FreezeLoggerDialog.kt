@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -129,9 +130,10 @@ fun FreezeLoggerDialog(
                                 succeeded, total, failed
                             )
                         } else {
-                            stringResource(
-                                if (isFreeze) R.string.tile_freeze_success
-                                else R.string.unfrozen_count_success,
+                            pluralStringResource(
+                                if (isFreeze) R.plurals.tile_freeze_success
+                                else R.plurals.unfrozen_count_success,
+                                succeeded,
                                 succeeded
                             )
                         },

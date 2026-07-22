@@ -156,6 +156,13 @@ android {
     }
 
     packaging {
+        dex {
+            // Compress dex in generated APKs. dex is otherwise STORED uncompressed (~76% of the
+            // foss-release APK), so this roughly halves the direct-download size. By AGP design this
+            // flag does NOT affect App Bundles — Play still delivers uncompressed, run-from-APK dex
+            // to the store AAB, so only APK generation (foss + store sideload) is affected.
+            useLegacyPackaging = true
+        }
         resources {
             excludes += "/specs/**"
             excludes += "**/*.dll"
@@ -174,6 +181,14 @@ android {
 androidComponents {
     // 1. Existing FOSS Copy Task
     onVariants(selector().withFlavor("distribution", "foss")) { variant ->
+        // foss ships as a single universal APK (GitHub direct download), so every locale lands in
+        // one file. Restrict to the locales we actually translate, trimming library-provided strings
+        // (Material/AndroidX) for ~75 unused languages out of resources.arsc.
+        // Deliberately NOT applied to the store flavor: its AAB is delivered by Play as per-locale
+        // splits, so keeping all locales there lets Play serve each device its own library
+        // translations without bloating any single download.
+        variant.androidResources.localeFilters.set(setOf("en", "ar", "es", "fr", "zh-rCN"))
+
         if (variant.buildType == "release") {
             val apkDir = variant.artifacts.get(SingleArtifact.APK)
             tasks.register<Copy>("copyFossReleaseApk") {
@@ -202,14 +217,14 @@ androidComponents {
 }
 
 dependencies {
-    implementation(project(":suCore"))
+    implementation(libs.odin) // published com.trinadhthatakula:odin (was project(":suCore"))
     implementation(project(":bypass"))
     implementation(libs.thor.extension.api)
     implementation(libs.asgard)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.splashscreen)
     implementation(libs.androidx.core.ktx)
-    implementation("androidx.documentfile:documentfile:1.1.0")
+    implementation(libs.androidx.documentfile)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.biometric)
     implementation(platform(libs.androidx.compose.bom))

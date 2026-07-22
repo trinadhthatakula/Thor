@@ -39,4 +39,15 @@
 -keep class com.valhalla.thor.extension.api.** { *; }
 -keep interface com.valhalla.thor.extension.api.** { *; }
 
+# --- Odin RootService daemon (Binder/AIDL, reflectively instantiated in the root process) --------
+# ThorRootService is loaded BY CLASS NAME in a separate root (app_process) process via Odin's
+# RootService bootstrap (RootServiceServer/RootServerMain: loadClass(name.className).newInstance()),
+# and IThorRootService is dispatched over Binder. R8 must NOT shrink/optimize/rename these, or the
+# daemon's suspend transaction breaks in release (works in debug only because debug isn't minified):
+# suspend is the one root op with no shell fallback — it MUST use this AIDL path (GH#239: a shell
+# `pm suspend` records the suspender as "root" and crashes SuspendedAppActivity on tap).
+# Restores the full-keep that com.valhalla.superuser.ipc.** provided before ThorRootService moved
+# out of :suCore into :app.
+-keep class com.valhalla.thor.rootservice.** { *; }
+-keep interface com.valhalla.thor.rootservice.** { *; }
 

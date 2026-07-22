@@ -24,8 +24,10 @@
 -dontwarn javax.annotation.processing.Processor
 -dontwarn javax.annotation.Nullable
 
--dontobfuscate
-
+# Obfuscation is ENABLED for the foss flavor to shrink the dex (the dominant cost in
+# the direct-download APK). SourceFile + LineNumberTable are kept so crash stack traces
+# still resolve to real line numbers; SourceFile is intentionally NOT renamed, keeping
+# original file names readable for FOSS transparency.
 -keepattributes SourceFile,LineNumberTable
 
 #-keep class com.valhalla.thor.** { *; }

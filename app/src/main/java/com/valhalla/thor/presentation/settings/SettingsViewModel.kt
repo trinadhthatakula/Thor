@@ -177,7 +177,7 @@ class SettingsViewModel(
             }
             val failures = results.count { it.isFailure }
             val uiText = if (failures == 0) {
-                UiText.StringResource(R.string.unfrozen_count_success, pkgs.size)
+                UiText.PluralsResource(R.plurals.unfrozen_count_success, pkgs.size)
             } else {
                 UiText.StringResource(
                     R.string.tile_unfreeze_partial_failure,

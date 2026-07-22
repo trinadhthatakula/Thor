@@ -174,10 +174,26 @@
     <!-- Quick Settings Tile -->
     <string name="tile_no_privilege">لم يتم منح الصلاحية</string>
     <string name="tile_no_apps">لا توجد تطبيقات</string>
-    <string name="tile_subtitle_format">%1$d تطبيقات · اضغط للتجميد</string>
+    <!-- ar plural forms seeded from the base translation; pending native review -->
+    <plurals name="tile_subtitle_format">
+        <item quantity="zero">%1$d تطبيقات · اضغط للتجميد</item>
+        <item quantity="one">%1$d تطبيقات · اضغط للتجميد</item>
+        <item quantity="two">%1$d تطبيقات · اضغط للتجميد</item>
+        <item quantity="few">%1$d تطبيقات · اضغط للتجميد</item>
+        <item quantity="many">%1$d تطبيقات · اضغط للتجميد</item>
+        <item quantity="other">%1$d تطبيقات · اضغط للتجميد</item>
+    </plurals>
     <string name="tile_grant_privilege_toast">امنح صلاحية Root / Shizuku / Dhizuku أولاً</string>
     <string name="tile_no_apps_toast">لا توجد تطبيقات في المجمد</string>
-    <string name="tile_freeze_success">تم تجميد %1$d تطبيقات</string>
+    <!-- ar plural forms seeded from the base translation; pending native review -->
+    <plurals name="tile_freeze_success">
+        <item quantity="zero">تم تجميد %1$d تطبيقات</item>
+        <item quantity="one">تم تجميد %1$d تطبيقات</item>
+        <item quantity="two">تم تجميد %1$d تطبيقات</item>
+        <item quantity="few">تم تجميد %1$d تطبيقات</item>
+        <item quantity="many">تم تجميد %1$d تطبيقات</item>
+        <item quantity="other">تم تجميد %1$d تطبيقات</item>
+    </plurals>
     <string name="tile_freeze_partial_failure">تم تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
 
     <!-- Freezer Settings & Actions -->
@@ -191,10 +207,26 @@
     <string name="unfreeze_all_confirmation_title">إلغاء تجميد جميع التطبيقات؟</string>
     <string name="unfreeze_all_confirmation_desc">سيؤدي هذا إلى إلغاء تجميد (تمكين) جميع التطبيقات الموجودة حالياً في قائمة المجمد. هل أنت متأكد أنك تريد المتابعة؟</string>
     <string name="import_disabled_apps_title">استيراد التطبيقات المعطلة</string>
-    <string name="import_disabled_apps_desc">هناك %1$d تطبيق معطل غير موجود في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</string>
+    <!-- ar plural forms seeded from the base translation; pending native review -->
+    <plurals name="import_disabled_apps_desc">
+        <item quantity="zero">هناك %1$d تطبيق معطل غير موجود في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</item>
+        <item quantity="one">هناك %1$d تطبيق معطل غير موجود في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</item>
+        <item quantity="two">هناك %1$d تطبيق معطل غير موجود في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</item>
+        <item quantity="few">هناك %1$d تطبيق معطل غير موجود في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</item>
+        <item quantity="many">هناك %1$d تطبيق معطل غير موجود في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</item>
+        <item quantity="other">هناك %1$d تطبيق معطل غير موجود في قائمة المجمد. هل ترغب في إضافتها إلى المجمد؟</item>
+    </plurals>
     <string name="import_disabled_apps_button">استيراد التطبيقات المعطلة</string>
     <string name="no_disabled_apps_found">لم يتم العثور على تطبيقات معطلة أخرى.</string>
-    <string name="added_to_freezer_count_success">تمت إضافة %1$d تطبيقات إلى المجمد</string>
+    <!-- ar plural forms seeded from the base translation; pending native review -->
+    <plurals name="added_to_freezer_count_success">
+        <item quantity="zero">تمت إضافة %1$d تطبيقات إلى المجمد</item>
+        <item quantity="one">تمت إضافة %1$d تطبيقات إلى المجمد</item>
+        <item quantity="two">تمت إضافة %1$d تطبيقات إلى المجمد</item>
+        <item quantity="few">تمت إضافة %1$d تطبيقات إلى المجمد</item>
+        <item quantity="many">تمت إضافة %1$d تطبيقات إلى المجمد</item>
+        <item quantity="other">تمت إضافة %1$d تطبيقات إلى المجمد</item>
+    </plurals>
     <string name="add_to_freezer">إضافة للمجمد</string>
 
     <!-- Extensions -->
@@ -217,11 +249,27 @@
     <string name="frozen_success">تم تجميد %1$s</string>
     <string name="unfrozen_success">تم إلغاء تجميد %1$s</string>
     <string name="added_to_freezer_success">تمت الإضافة إلى المجمد</string>
-    <string name="unfrozen_count_success">تم إلغاء تجميد %1$d تطبيقات</string>
+    <!-- ar plural forms seeded from the base translation; pending native review -->
+    <plurals name="unfrozen_count_success">
+        <item quantity="zero">تم إلغاء تجميد %1$d تطبيقات</item>
+        <item quantity="one">تم إلغاء تجميد %1$d تطبيقات</item>
+        <item quantity="two">تم إلغاء تجميد %1$d تطبيقات</item>
+        <item quantity="few">تم إلغاء تجميد %1$d تطبيقات</item>
+        <item quantity="many">تم إلغاء تجميد %1$d تطبيقات</item>
+        <item quantity="other">تم إلغاء تجميد %1$d تطبيقات</item>
+    </plurals>
     <string name="tile_unfreeze_partial_failure">تم إلغاء تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
     <string name="error_format">خطأ: %1$s</string>
     <string name="failed_to_load_apps">فشل في تحميل التطبيقات</string>
-    <string name="removed_from_freezer_success">تمت إزالة %1$d تطبيقات من المجمد</string>
+    <!-- ar plural forms seeded from the base translation; pending native review -->
+    <plurals name="removed_from_freezer_success">
+        <item quantity="zero">تمت إزالة %1$d تطبيقات من المجمد</item>
+        <item quantity="one">تمت إزالة %1$d تطبيقات من المجمد</item>
+        <item quantity="two">تمت إزالة %1$d تطبيقات من المجمد</item>
+        <item quantity="few">تمت إزالة %1$d تطبيقات من المجمد</item>
+        <item quantity="many">تمت إزالة %1$d تطبيقات من المجمد</item>
+        <item quantity="other">تمت إزالة %1$d تطبيقات من المجمد</item>
+    </plurals>
     <string name="killed_success">تم إنهاء %1$s</string>
     <string name="cache_cleared_success">تم مسح ذاكرة التخزين المؤقت لـ %1$s</string>
     <string name="data_cleared_success">تم مسح بيانات %1$s</string>
@@ -375,13 +423,8 @@
     <string name="support_developer_desc_detailed">Thor مفتوح المصدر وخالٍ تمامًا من الإعلانات. إذا كان مفيدًا لك، يرجى التفكير في دعم عملي:</string>
     <string name="become_patreon_title">كن داعمًا على Patreon</string>
     <string name="become_patreon_desc">دعم التطوير المستمر باشتراك شهري</string>
-    <string name="rate_play_store_title">التقييم على متجر Play</string>
-    <string name="rate_play_store_desc">اترك تقييمًا بـ 5 نجوم لمساعدة الآخرين في اكتشاف Thor</string>
-    <string name="explore_other_apps_title">استكشاف تطبيقات أخرى</string>
-    <string name="explore_other_apps_desc">ألقِ نظرة على لوحة تحكم المطور وجرب تطبيقات أخرى</string>
     <string name="donate_paypal_title">التبرع عبر PayPal</string>
     <string name="donate_paypal_desc">أرسل تبرعًا لمرة واحدة مباشرة</string>
-    <string name="billing_error">خطأ في الدفع</string>
 
     <!-- Support & Community Dashboard Section -->
     <string name="support_community_title">الدعم والمجتمع</string>
@@ -395,9 +438,6 @@
     <string name="biometric_unlock_subtitle">قم بالمصادقة للمتابعة</string>
     <string name="unlock">إلغاء القفل</string>
     <string name="thank_you_support_desc">اشتراكك نشط الآن. شكرًا لك على المساعدة في دعم تطوير Thor!</string>
-    <string name="change_support_plan_title">هل تريد تغيير خطة الدعم؟</string>
-    <string name="change_support_plan_desc">أنت تدعم المطور بالفعل بخطة نشطة. سيؤدي ترقية خطتك أو تغييرها إلى إلغاء اشتراكك القديم واستبداله بالاشتراك الجديد. هل تريد الاستمرار؟</string>
-    <string name="active_plan">الخطة النشطة</string>
     
     <!-- Detailed View & Animation Intensity -->
     <string name="action_details">التفاصيل</string>
@@ -449,12 +489,18 @@
     <string name="shortcut_added_named">تم إضافة %1$s إلى الشاشة الرئيسية</string>
     <string name="shortcut_added">تم إضافة الاختصار إلى الشاشة الرئيسية</string>
     <string name="pin_all_confirm_title">إضافة جميع التطبيقات إلى الشاشة الرئيسية؟</string>
-    <string name="pin_all_confirm_desc">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لكل تطبيق من تطبيقاتك المجمدة الـ %1$d وقد يملأ شاشتك الرئيسية. ستطلب منك شاشة التشغيل تأكيد كل منها.</string>
+    <!-- ar plural forms seeded from the base translation; pending native review -->
+    <plurals name="pin_all_confirm_desc">
+        <item quantity="zero">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لكل تطبيق من تطبيقاتك المجمدة الـ %1$d وقد يملأ شاشتك الرئيسية. ستطلب منك شاشة التشغيل تأكيد كل منها.</item>
+        <item quantity="one">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لكل تطبيق من تطبيقاتك المجمدة الـ %1$d وقد يملأ شاشتك الرئيسية. ستطلب منك شاشة التشغيل تأكيد كل منها.</item>
+        <item quantity="two">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لكل تطبيق من تطبيقاتك المجمدة الـ %1$d وقد يملأ شاشتك الرئيسية. ستطلب منك شاشة التشغيل تأكيد كل منها.</item>
+        <item quantity="few">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لكل تطبيق من تطبيقاتك المجمدة الـ %1$d وقد يملأ شاشتك الرئيسية. ستطلب منك شاشة التشغيل تأكيد كل منها.</item>
+        <item quantity="many">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لكل تطبيق من تطبيقاتك المجمدة الـ %1$d وقد يملأ شاشتك الرئيسية. ستطلب منك شاشة التشغيل تأكيد كل منها.</item>
+        <item quantity="other">سيؤدي هذا إلى إضافة اختصار على الشاشة الرئيسية لكل تطبيق من تطبيقاتك المجمدة الـ %1$d وقد يملأ شاشتك الرئيسية. ستطلب منك شاشة التشغيل تأكيد كل منها.</item>
+    </plurals>
     <string name="freezer_launch_failed">تعذر تشغيل هذا التطبيق</string>
     <string name="shortcut_no_longer_frozen">لم يعد مجمدًا</string>
     <string name="easter_egg_promoted">🎉 تم ترويج هذه الميزة المخفية بالفعل — انتظر الميزة التالية!</string>
-    <string name="support_tab_play_store">متجر Play</string>
-    <string name="support_tab_direct">مباشر</string>
     <string name="run_extension">تشغيل</string>
     <string name="installer_play_store">متجر PLAY</string>
     <string name="installer_fdroid">F-DROID</string>

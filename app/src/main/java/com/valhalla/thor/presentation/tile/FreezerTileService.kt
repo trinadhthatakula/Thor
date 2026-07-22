@@ -85,7 +85,7 @@ class FreezerTileService : TileService() {
             }
             val failures = results?.count { it.isFailure } ?: pkgs.size
             val msg = if (failures == 0) {
-                getString(R.string.tile_freeze_success, pkgs.size)
+                resources.getQuantityString(R.plurals.tile_freeze_success, pkgs.size, pkgs.size)
             } else {
                 getString(
                     R.string.tile_freeze_partial_failure,
@@ -123,7 +123,7 @@ class FreezerTileService : TileService() {
             tile.subtitle = if (pkgs.isEmpty()) {
                 getString(R.string.tile_no_apps)
             } else {
-                getString(R.string.tile_subtitle_format, pkgs.size)
+                resources.getQuantityString(R.plurals.tile_subtitle_format, pkgs.size, pkgs.size)
             }
         }
         tile.updateTile()

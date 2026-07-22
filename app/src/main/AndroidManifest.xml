@@ -60,7 +60,7 @@
         </activity>
 
         <service
-            android:name="com.valhalla.superuser.ipc.ThorRootService"
+            android:name="com.valhalla.thor.rootservice.ThorRootService"
             android:process=":root"
             android:exported="false"
             tools:ignore="Instantiatable" />

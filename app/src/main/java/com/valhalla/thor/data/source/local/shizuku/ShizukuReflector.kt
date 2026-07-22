@@ -9,11 +9,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ApplicationInfo
-import android.content.pm.IPackageInstaller
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.os.Build
 import com.valhalla.bypass.Bypass
+import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.util.Logger
 import androidx.core.content.ContextCompat
@@ -272,7 +272,7 @@ class ShizukuReflector(
     fun installPackage(apkPath: String, canDowngrade: Boolean = false): Boolean {
         return try {
             val command = "pm install -r -g${if (canDowngrade) " -d" else ""} ${
-                com.valhalla.superuser.ShellUtils.escapedString(apkPath)
+                apkPath.escapeForShell()
             }"
             val result = Shizuku.execute(command)
             result.first == 0
@@ -332,7 +332,11 @@ class ShizukuReflector(
             // STATUS_SUCCESS (false on failure / refusal / timeout).
             awaitInstallerResult(action) {
                 Bypass.invoke<Any?>(
-                    IPackageInstaller::class.java,
+                    // Resolve the real bootclasspath IPackageInstaller by name (not a bundled
+                    // shadow type): R8 would rename a shadow `::class.java` ref in release, but the
+                    // runtime uses the genuine framework class parent-first, so the reflected
+                    // installExistingPackage lookup must target that same class.
+                    Class.forName("android.content.pm.IPackageInstaller"),
                     ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller(),
                     "installExistingPackage",
                     packageName,

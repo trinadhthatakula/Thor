@@ -174,10 +174,16 @@
     <!-- Quick Settings Tile -->
     <string name="tile_no_privilege">Aucun privilège accordé</string>
     <string name="tile_no_apps">Aucune application</string>
-    <string name="tile_subtitle_format">%1$d applis · appuyer pour geler</string>
+    <plurals name="tile_subtitle_format">
+        <item quantity="one">%1$d appli · appuyer pour geler</item>
+        <item quantity="other">%1$d applis · appuyer pour geler</item>
+    </plurals>
     <string name="tile_grant_privilege_toast">Accordez Root / Shizuku / Dhizuku d\'abord</string>
     <string name="tile_no_apps_toast">Aucune application dans le Congélateur</string>
-    <string name="tile_freeze_success">%1$d applications gelées</string>
+    <plurals name="tile_freeze_success">
+        <item quantity="one">%1$d application gelée</item>
+        <item quantity="other">%1$d applications gelées</item>
+    </plurals>
     <string name="tile_freeze_partial_failure">%1$d/%2$d applications gelées (%3$d échouées)</string>
 
     <!-- Freezer Settings & Actions -->
@@ -191,10 +197,16 @@
     <string name="unfreeze_all_confirmation_title">Dégeler toutes les applications ?</string>
     <string name="unfreeze_all_confirmation_desc">Cela va dégeler (activer) toutes les applications actuellement dans le congélateur. Voulez-vous vraiment continuer ?</string>
     <string name="import_disabled_apps_title">Importer les applications désactivées</string>
-    <string name="import_disabled_apps_desc">Il y a %1$d applications désactivées qui ne sont pas dans votre Congélateur. Souhaitez-vous les ajouter au Congélateur ?</string>
+    <plurals name="import_disabled_apps_desc">
+        <item quantity="one">Il y a %1$d application désactivée qui n\'est pas dans votre Congélateur. Souhaitez-vous l\'ajouter au Congélateur ?</item>
+        <item quantity="other">Il y a %1$d applications désactivées qui ne sont pas dans votre Congélateur. Souhaitez-vous les ajouter au Congélateur ?</item>
+    </plurals>
     <string name="import_disabled_apps_button">Importer les applications désactivées</string>
     <string name="no_disabled_apps_found">Aucune autre application désactivée trouvée.</string>
-    <string name="added_to_freezer_count_success">%1$d applications ajoutées au Congélateur</string>
+    <plurals name="added_to_freezer_count_success">
+        <item quantity="one">%1$d application ajoutée au Congélateur</item>
+        <item quantity="other">%1$d applications ajoutées au Congélateur</item>
+    </plurals>
     <string name="add_to_freezer">Ajouter au congélateur</string>
 
     <!-- Extensions -->
@@ -217,11 +229,17 @@
     <string name="frozen_success">%1$s gelé</string>
     <string name="unfrozen_success">%1$s dégelé</string>
     <string name="added_to_freezer_success">Ajouté au congélateur</string>
-    <string name="unfrozen_count_success">%1$d applications dégelées</string>
+    <plurals name="unfrozen_count_success">
+        <item quantity="one">%1$d application dégelée</item>
+        <item quantity="other">%1$d applications dégelées</item>
+    </plurals>
     <string name="tile_unfreeze_partial_failure">%1$d/%2$d applications dégelées (%3$d échouées)</string>
     <string name="error_format">Erreur : %1$s</string>
     <string name="failed_to_load_apps">Échec du chargement des applications</string>
-    <string name="removed_from_freezer_success">%1$d application(s) retirée(s) du congélateur</string>
+    <plurals name="removed_from_freezer_success">
+        <item quantity="one">%1$d application retirée du congélateur</item>
+        <item quantity="other">%1$d applications retirées du congélateur</item>
+    </plurals>
     <string name="killed_success">%1$s arrêté</string>
     <string name="cache_cleared_success">Cache de %1$s vidé</string>
     <string name="data_cleared_success">Données de %1$s effacées</string>
@@ -371,13 +389,8 @@
     <string name="support_developer_desc_detailed">Thor est open source et complètement sans publicité. S\'il vous a été utile, merci de considérer de soutenir mon travail :</string>
     <string name="become_patreon_title">Devenir Patreon</string>
     <string name="become_patreon_desc">Soutenir le développement continu avec un abonnement mensuel</string>
-    <string name="rate_play_store_title">Évaluer sur le Play Store</string>
-    <string name="rate_play_store_desc">Laissez un avis 5 étoiles pour aider d\'autres à découvrir Thor</string>
-    <string name="explore_other_apps_title">Explorer d\'autres applications</string>
-    <string name="explore_other_apps_desc">Découvrez ma console développeur et essayez d\'autres applications</string>
     <string name="donate_paypal_title">Faire un don via PayPal</string>
     <string name="donate_paypal_desc">Envoyer un don unique directement</string>
-    <string name="billing_error">Erreur de facturation</string>
 
     <!-- Support & Community Dashboard Section -->
     <string name="support_community_title">Support &amp; Communauté</string>
@@ -391,9 +404,6 @@
     <string name="biometric_unlock_subtitle">Authentifiez-vous pour continuer</string>
     <string name="unlock">Déverrouiller</string>
     <string name="thank_you_support_desc">Votre abonnement est actif. Merci d\'aider à soutenir le développement de Thor !</string>
-    <string name="change_support_plan_title">Modifier le plan de soutien ?</string>
-    <string name="change_support_plan_desc">Vous soutenez déjà le développeur avec un plan actif. Mettre à niveau ou modifier votre plan annulera votre ancien abonnement et le remplacera par le nouveau. Voulez-vous continuer ?</string>
-    <string name="active_plan">Plan actif</string>
     
     <!-- Detailed View & Animation Intensity -->
     <string name="action_details">Détails</string>
@@ -445,12 +455,13 @@
     <string name="shortcut_added_named">%1$s ajouté à l\'écran d\'accueil</string>
     <string name="shortcut_added">Raccourci ajouté à l\'écran d\'accueil</string>
     <string name="pin_all_confirm_title">Ajouter toutes les applications à l\'écran d\'accueil ?</string>
-    <string name="pin_all_confirm_desc">Cela ajoutera un raccourci d\'écran d\'accueil pour chacune de vos %1$d applications congelées, ce qui risque de remplir votre écran d\'accueil. Votre lanceur vous demandera de confirmer chaque raccourci.</string>
+    <plurals name="pin_all_confirm_desc">
+        <item quantity="one">Cela ajoutera un raccourci d\'écran d\'accueil pour votre %1$d application congelée, ce qui risque de remplir votre écran d\'accueil. Votre lanceur vous demandera de confirmer ce raccourci.</item>
+        <item quantity="other">Cela ajoutera un raccourci d\'écran d\'accueil pour chacune de vos %1$d applications congelées, ce qui risque de remplir votre écran d\'accueil. Votre lanceur vous demandera de confirmer chaque raccourci.</item>
+    </plurals>
     <string name="freezer_launch_failed">Impossible de lancer cette application</string>
     <string name="shortcut_no_longer_frozen">N\'est plus congelée</string>
     <string name="easter_egg_promoted">🎉 Cette fonctionnalité cachée a déjà été promue — restez à l\'écoute pour la prochaine !</string>
-    <string name="support_tab_play_store">Play Store</string>
-    <string name="support_tab_direct">Direct</string>
     <string name="run_extension">Exécuter</string>
     <string name="installer_play_store">PLAY STORE</string>
     <string name="installer_fdroid">F-DROID</string>

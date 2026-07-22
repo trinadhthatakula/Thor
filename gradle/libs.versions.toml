@@ -6,7 +6,9 @@ accompanistDrawablepainter = "0.37.3"
 agp = "9.4.0-alpha05"
 biometric = "1.4.0-alpha02"
 datastorePreferences = "1.2.1"
+documentfile = "1.1.0"
 kotlin = "2.4.10"
+kotlinxCoroutines = "1.11.0"
 coreKtx = "1.19.0"
 junit = "4.13.2"
 room = "2.8.4"
@@ -30,14 +32,17 @@ play-billing = "9.1.0"
 androidx-adaptive = "1.3.0-rc01"
 thorExtensionApi = "3.0.0"
 asgardUi = "2.0.0"
+odin = "1.0.0"
 
 [libraries]
 thor-extension-api = { module = "com.trinadhthatakula:thor-extension-api", version.ref = "thorExtensionApi" }
 asgard = { module = "com.trinadhthatakula:asgard", version.ref = "asgardUi" }
+odin = { module = "com.trinadhthatakula:odin", version.ref = "odin" }
 accompanist-drawablepainter = { module = "com.google.accompanist:accompanist-drawablepainter", version.ref = "accompanistDrawablepainter" }
 #Core
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastorePreferences" }
+androidx-documentfile = { module = "androidx.documentfile:documentfile", version.ref = "documentfile" }
 androidx-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "splashscreen" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
@@ -69,6 +74,7 @@ room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 #Kotlin
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }
 #Lottie
 lottie-compose = { module = "com.airbnb.android:lottie-compose", version.ref = "lottieCompose" }
 #Shizuku

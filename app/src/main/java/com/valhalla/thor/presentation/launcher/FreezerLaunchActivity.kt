@@ -6,6 +6,7 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.Toast
+import androidx.core.content.pm.ShortcutManagerCompat
 import com.valhalla.thor.R
 import com.valhalla.thor.data.launcher.FreezerShortcutContract
 import com.valhalla.thor.data.launcher.FreezerShortcutManager
@@ -38,15 +39,31 @@ class FreezerLaunchActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         when (FreezerShortcutContract.parseAction(intent?.getStringExtra(FreezerShortcutContract.EXTRA_ACTION))) {
-            FreezerShortcutContract.ACTION_FREEZE_ALL -> guardThenBulk(disable = true)
-            FreezerShortcutContract.ACTION_UNFREEZE_ALL -> guardThenBulk(disable = false)
+            FreezerShortcutContract.ACTION_FREEZE_ALL -> {
+                reportShortcutUsed(FreezerShortcutContract.SHORTCUT_FREEZE_ALL)
+                guardThenBulk(disable = true)
+            }
+            FreezerShortcutContract.ACTION_UNFREEZE_ALL -> {
+                reportShortcutUsed(FreezerShortcutContract.SHORTCUT_UNFREEZE_ALL)
+                guardThenBulk(disable = false)
+            }
             FreezerShortcutContract.ACTION_LAUNCH -> {
                 val pkg = intent?.getStringExtra(FreezerShortcutContract.EXTRA_PACKAGE)
-                if (pkg.isNullOrEmpty()) finish() else launchApp(pkg)
+                if (pkg.isNullOrEmpty()) {
+                    finish()
+                } else {
+                    reportShortcutUsed(FreezerShortcutContract.appShortcutId(pkg))
+                    launchApp(pkg)
+                }
             }
             else -> finish()
         }
     }
+
+    // Tell the launcher a shortcut was activated so it can rank frequently-used shortcuts
+    // (and, for pinned/dynamic shortcuts, keep usage history). Lightweight single binder call.
+    private fun reportShortcutUsed(shortcutId: String) =
+        ShortcutManagerCompat.reportShortcutUsed(this, shortcutId)
 
     // Bulk: privilege-guard, hand off to the app-scoped manager, finish immediately.
     private fun guardThenBulk(disable: Boolean) {
