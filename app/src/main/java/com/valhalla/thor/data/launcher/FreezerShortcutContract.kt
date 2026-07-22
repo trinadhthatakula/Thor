@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025-2026 Trinadh Thatakula <github.com/trinadhthatakula/Thor>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package com.valhalla.thor.data.launcher
 
 /** Pure contract shared between the shortcut publisher and the launch trampoline. */
