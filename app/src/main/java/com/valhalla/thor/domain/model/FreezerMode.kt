@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025-2026 Trinadh Thatakula <github.com/trinadhthatakula/Thor>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package com.valhalla.thor.domain.model
 
 /** What the Freezer does when it "freezes" an app. GH#239. */

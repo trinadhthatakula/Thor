@@ -113,9 +113,29 @@ contributions help keep the project alive and free for everyone.
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0 (GPL-3.0).
+**Copyright © 2025–2026 Trinadh Thatakula.**
 
-- `libsu` is licensed under the Apache License 2.0. All modifications and usage in this project
-  comply with the Apache-2.0 requirements.
-- This project as a whole is distributed under the GNU General Public License v3.0 (GPL-3.0).
-- See the [LICENSE](LICENSE) file for full license text.
+Thor is free software: you can redistribute it and/or modify it under the terms of the **GNU
+General Public License as published by the Free Software Foundation — either version 3 of the
+License, or (at your option) any later version** (`GPL-3.0-or-later`). See the [LICENSE](LICENSE)
+file for the full text.
+
+- The project as a whole is distributed under the GNU General Public License v3.0 or later.
+- Portions derive from [`libsu`](https://github.com/topjohnwu/libsu) (Apache-2.0); all such use
+  complies with the Apache-2.0 requirements.
+- The **Thor name, logo, and icon are trademarks** of Trinadh Thatakula and are **not** licensed
+  under the GPL. See [TRADEMARK.md](TRADEMARK.md).
+
+### ⚠️ Official builds & unofficial forks
+
+Thor is **100% FOSS with no ads and no trackers**. Official, ad-free builds come **only** from
+[Google Play](https://play.google.com/store/apps/details?id=com.valhalla.thor),
+[IzzyOnDroid](https://apt.izzysoft.de/fdroid/index/apk/com.valhalla.thor),
+[Indus App Store](https://www.indusappstore.com/apps/productivity/thor/com.valhalla.thor/), and
+[GitHub Releases](https://github.com/trinadhthatakula/Thor/releases).
+
+The GPL guarantees your right to fork and modify Thor. However, an unofficial build that **injects
+ads or trackers, or bundles a proprietary ad SDK** (e.g. AdMob) is **not** the official Thor, is
+not endorsed, and — because it combines GPL-licensed code with proprietary components — is likely
+in violation of the GPL. Such builds must also **rename the app and change the icon** per
+[TRADEMARK.md](TRADEMARK.md). Please report them.
