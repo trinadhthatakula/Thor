@@ -6,6 +6,6 @@
 
 • 📦 Much smaller download, plus a big stability & memory-leak cleanup for a smoother app.
 
-• 📱 Landscape & foldable layout fixes.
+• 📱 Landscape & foldable fixes; installer now follows your app theme.
 
 • 🌍 Now translated into Arabic, Spanish, French and Chinese.

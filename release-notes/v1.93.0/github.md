@@ -35,6 +35,9 @@ Thor's privileged core was completely re-engineered and then extracted into its 
 ### 🐛 App Suspend Fixed on Release Builds (#265)
 * Suspending / unsuspending apps silently failed on **release / Play** builds: R8 renamed bundled framework shadow classes, so the runtime calls hit the real framework classes and threw. The shadows were removed and the root-service daemon is kept intact, so **suspend works again on shipped builds** (`77ec023`).
 
+### 🎨 Portable Installer Follows Your Theme (#273)
+* Opening an APK from Files or another app now renders the installer in **your** chosen theme — dark / light mode, Material You dynamic color and AMOLED — instead of only the device night setting. `PortableInstallerActivity` was themed with defaults; it now reads your preferences like the rest of the app (`6bfb6ea`).
+
 ### 🔄 Auto Reinstall Apps (#251)
 * **One-click reinstall**: sync app metadata automatically and trigger install-time overrides directly from your app-manager view (`6e689e8`).
 * **Idempotency guarantee**: removed a redundant processing cache so reinstallations are seamless and idempotent (`df642fa`).
@@ -91,6 +94,7 @@ A full-codebase audit surfaced 66 issues; this release resolves them:
 ## 🛠 Commits Log (`v1.92.0...HEAD`)
 
 **Merged pull requests**
+* `663eaac` — #273 fix portable-installer theming (honor user theme / dynamic color / AMOLED)
 * `9f424ae` — #270 promote v1.92.3 to stable (dev → master)
 * `9b1e1f3` — #269 losslessly compact the long `VectorPath` drawables
 * `fbc8a8e` — #268 resolve Android lint + Qodana findings
@@ -111,6 +115,7 @@ A full-codebase audit surfaced 66 issues; this release resolves them:
 * `295aa79` (#253) / `ca6da96` (#252) / `fbd3d3c` (#250) / `eb83a4a` (#249) — Dependabot dependency bumps
 
 **Key commits**
+* `6bfb6ea` fix(installer): honor user theme, dynamic color & AMOLED in portable installer
 * `28fef5c` fix(root): propagate privileged-op failures across the `ThorRootService` Binder
 * `aacc18e` feat(odin): consume published Odin 1.0.0; delete `:suCore`; real shell exit codes
 * `77ec023` fix(app): fix release-only app suspend broken by R8
