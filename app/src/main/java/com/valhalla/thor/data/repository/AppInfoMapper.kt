@@ -53,12 +53,16 @@ fun mapToAppInfo(
         ""
     }
 
-    @Suppress("DEPRECATION")
+    // No @Suppress("DEPRECATION") here: nothing in this expression is deprecated any more. It was
+    // a leftover from the deprecated Int `packInfo.versionCode` this mapper used to read, and
+    // keeping it would silently swallow the next real deprecation on one of these calls.
     return AppInfo(
         appName = appInfo.loadLabel(pm).toString(),
         packageName = packInfo.packageName,
         versionName = packInfo.versionName,
-        versionCode = packInfo.longVersionCode.toInt(),
+        // No .toInt(): longVersionCode is (versionCodeMajor shl 32) or versionCode, so truncating
+        // discarded versionCodeMajor entirely and reinterpreted the low 32 bits as signed.
+        versionCode = packInfo.longVersionCode,
         minSdk = appInfo.minSdkVersion,
         targetSdk = appInfo.targetSdkVersion,
         isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0,
