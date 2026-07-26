@@ -87,7 +87,8 @@ fun AppListScreen(
 
     LaunchedEffect(Unit) {
         if (state.allUserApps.isEmpty() && state.allSystemApps.isEmpty() && state.isLoading) {
-            viewModel.loadApps()
+            // Screen entry: let the navigation transition settle before the scan starts.
+            viewModel.loadApps(deferForTransition = true)
         }
     }
 
@@ -163,6 +164,8 @@ fun AppListScreen(
                 // isComputingSizes runs on a populated list, so surface it via the
                 // pull-refresh spinner (the empty-state loader wouldn't show).
                 isRefreshing = state.isLoading || state.isComputingSizes,
+                // No deferForTransition: the user already made a deliberate gesture and nothing is
+                // animating in, so the settle delay would just be dead spinner time.
                 onRefresh = { viewModel.loadApps() },
                 state = refreshState,
                 modifier = Modifier.weight(1f) // Fill remaining space

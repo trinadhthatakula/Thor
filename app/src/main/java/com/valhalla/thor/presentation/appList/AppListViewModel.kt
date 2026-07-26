@@ -133,11 +133,15 @@ class AppListViewModel(
         )
 
     init {
-        loadApps()
+        loadApps(deferForTransition = true)
         observeSizeSort()
     }
 
-    fun loadApps() {
+    /**
+     * @param deferForTransition hold the scan back until the screen-entry animation has had time to
+     * settle. Only the navigation-entry paths want this; see [TRANSITION_SETTLE_DELAY].
+     */
+    fun loadApps(deferForTransition: Boolean = false) {
         // Cancel any existing collector so the prior (infinite) getInstalledAppsUseCase()
         // callbackFlow tears down (awaitClose -> unregister receivers) before we relaunch.
         appsJob?.cancel()
@@ -145,8 +149,11 @@ class AppListViewModel(
         appsJob = viewModelScope.launch {
             _rawState.update { it.copy(isLoading = true) }
 
-            // Allow navigation/bottom bar animations to finish fluidly
-            delay(800.milliseconds)
+            // Allow navigation/bottom bar animations to finish fluidly.
+            // Opt-in, because this runs BEFORE the (cold) flow below is collected, so it is dead
+            // time prepended to the scan rather than overlapped with it. A deliberate
+            // pull-to-refresh has no transition to protect and must not pay for it.
+            if (deferForTransition) delay(TRANSITION_SETTLE_DELAY)
 
             // Privilege availability now comes from the shared reactive PrivilegeManager,
             // so a Shizuku grant reflects here without reloading the list.
@@ -526,4 +533,13 @@ class AppListViewModel(
         sortBy: SortBy,
         order: SortOrder
     ): List<AppInfo> = sortApps(list, sortBy, order)
+
+    private companion object {
+        /**
+         * Head start given to the screen-entry animation before the package scan begins. Scanning
+         * every installed package while the navigation/bottom-bar transition is still running
+         * contends for CPU and commits a large list update mid-animation, which drops frames.
+         */
+        val TRANSITION_SETTLE_DELAY = 800.milliseconds
+    }
 }
