@@ -335,11 +335,12 @@ fun PortableInstaller(
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
                                 )
-                                // 0 means the analyzer could not read a version code out of the
-                                // file (see isVersionDowngrade) — showing "(0)" would be a lie.
-                                if (meta.versionCode > 0L) {
+                                // Null means the analyzer could not read a version code out of the
+                                // file (see isVersionDowngrade) — there is no number to show. A
+                                // real code of 0 is NOT that case and is shown like any other.
+                                meta.versionCode?.let { code ->
                                     Text(
-                                        text = "(${meta.versionCode})",
+                                        text = "($code)",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -362,11 +363,9 @@ fun PortableInstaller(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = if (meta.versionCode > 0L) {
-                                    "${meta.version} (${meta.versionCode})"
-                                } else {
-                                    meta.version
-                                },
+                                text = meta.versionCode
+                                    ?.let { "${meta.version} ($it)" }
+                                    ?: meta.version,
                                 // Appending the code made this line ~10 characters longer. Both
                                 // children of this Row are unweighted, so at a large font scale on
                                 // a narrow screen it would wrap mid-token beside a centred prefix.
@@ -408,11 +407,15 @@ fun PortableInstaller(
                                 // two numbers out; otherwise a correct verdict reads as a Thor
                                 // bug — which is exactly how this got reported. Passed as strings
                                 // on purpose: see the comment on install_downgrade_code_explainer.
-                                s.oldVersionCode?.let { installedCode ->
+                                // Both codes are non-null whenever isDowngrade is true; the checks
+                                // are here so the branch can never render the word "null".
+                                val newCode = meta.versionCode
+                                val installedCode = s.oldVersionCode
+                                if (newCode != null && installedCode != null) {
                                     Text(
                                         text = stringResource(
                                             R.string.install_downgrade_code_explainer,
-                                            meta.versionCode.toString(),
+                                            newCode.toString(),
                                             installedCode.toString()
                                         ),
                                         style = MaterialTheme.typography.labelSmall,

@@ -106,15 +106,19 @@ fun parseApkmInfo(jsonText: String): ApkmInfo? = try {
  * a junk `manifest.json` value can never shadow a good `info.json` one; the sibling version *name*
  * resolution already works this way. Surrounding whitespace is tolerated.
  *
- * Returns `0` for "unknown" — the same convention `CatalogEntry.versionCode` uses. Callers must
- * never treat `0` as authoritative; in particular it must not be compared against an installed
- * app's version code, because `0` loses every such comparison and would report a downgrade for
- * any installed app no matter how new the picked file is.
+ * Returns null for "unknown", which callers must never compare against an installed app's version
+ * code: any number we substituted would lose that comparison and report a downgrade for every
+ * installed app, no matter how new the picked file is. See `isVersionDowngrade`.
+ *
+ * A sidecar `0` is treated as unknown too, unlike a `0` parsed out of a real APK manifest (which is
+ * a legal, authoritative version code). These fields are free text written by third-party
+ * repackers, where `0` is indistinguishable from an unset placeholder — and treating it as known
+ * would let a junk `manifest.json` value shadow a good `info.json` one, which the per-source
+ * fallthrough below exists to prevent.
  */
-fun resolveSidecarVersionCode(manifest: XapkManifestInfo?, apkmInfo: ApkmInfo?): Long =
+fun resolveSidecarVersionCode(manifest: XapkManifestInfo?, apkmInfo: ApkmInfo?): Long? =
     sidecarVersionCode(manifest?.versionCode)
         ?: sidecarVersionCode(apkmInfo?.versionCode)
-        ?: 0L
 
 /** One sidecar field as a usable version code, or null when blank, non-numeric or non-positive. */
 private fun sidecarVersionCode(raw: String?): Long? =

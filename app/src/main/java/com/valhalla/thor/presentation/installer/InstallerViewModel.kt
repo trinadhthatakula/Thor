@@ -106,11 +106,12 @@ class InstallerViewModel(
                         existing?.let { PackageInfoCompat.getLongVersionCode(it) }
 
                     isUpdateOperation = existing != null
-                    // Gated on a KNOWN version code: the analyzer yields 0 when it could not read
-                    // one out of the file, and 0 would otherwise lose against every installed app.
+                    // isVersionDowngrade itself gates on a KNOWN version code: the analyzer yields
+                    // null when it could not read one out of the file, and any number we
+                    // substituted would lose against every installed app.
                     isDowngrade = installedVersionCode != null &&
                         isVersionDowngrade(meta.versionCode, installedVersionCode)
-                    versionCodeUnknown = installedVersionCode != null && meta.versionCode <= 0L
+                    versionCodeUnknown = installedVersionCode != null && meta.versionCode == null
 
                     eventBus.emit(
                         InstallState.ReadyToInstall(

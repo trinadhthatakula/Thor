@@ -177,8 +177,9 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
         val versionName = manifest?.versionName?.takeIf { it.isNotBlank() }
             ?: apkmInfo?.versionName?.takeIf { it.isNotBlank() }
             ?: "Unknown"
-        // 0 when neither sidecar declares a usable code. Consumers must gate on that (see
-        // isVersionDowngrade) — a bundle whose sidecar carries a version *name* in version_code
+        // Null when neither sidecar declares a usable code. This is the ONLY path that can produce
+        // an unknown version code — there is no APK to parse here — and consumers must gate on it
+        // (see isVersionDowngrade): a bundle whose sidecar carries a version *name* in version_code
         // used to land here as 0 and read as a downgrade against every installed app.
         val versionCode = resolveSidecarVersionCode(manifest, apkmInfo)
         val icon = iconBytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
@@ -235,20 +236,23 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
      *
      * Keyed by packageName AND [versionCode]: Coil keys its File memory cache by the path only
      * (addLastModifiedToFileCacheKey defaults false), so a fixed per-package path would serve a
-     * STALE icon after a version bump — a distinct path per version busts that. Written to a unique
-     * temp file then atomically renamed, so two concurrent same-(pkg,version) analyses can never
-     * expose a partial/corrupt PNG to Coil (either the old complete file or the new one).
+     * STALE icon after a version bump — a distinct path per version busts that. A null (unknown)
+     * version code gets its own `_unknown` key rather than sharing the `_0` slot with a real APK
+     * that legitimately declares version code 0. Written to a unique temp file then atomically
+     * renamed, so two concurrent same-(pkg,version) analyses can never expose a partial/corrupt
+     * PNG to Coil (either the old complete file or the new one).
      *
      * Best-effort: any decode/IO failure yields a null path (never crashes parsing). This cache
      * file is intentionally NOT deleted in analyze()'s finally — the UI reads it after analyze()
      * returns; it lives in cacheDir so the OS can reclaim it.
      */
-    private fun persistIcon(bitmap: Bitmap?, packageName: String, versionCode: Long): String? {
+    private fun persistIcon(bitmap: Bitmap?, packageName: String, versionCode: Long?): String? {
         if (bitmap == null) return null
         return runCatching {
             val iconDir = File(context.cacheDir, "installer_icons").apply { mkdirs() }
-            val dest = File(iconDir, "${packageName}_$versionCode.png")
-            val tmp = File(iconDir, "${packageName}_$versionCode.${java.util.UUID.randomUUID()}.png.tmp")
+            val key = "${packageName}_${versionCode ?: "unknown"}"
+            val dest = File(iconDir, "$key.png")
+            val tmp = File(iconDir, "$key.${java.util.UUID.randomUUID()}.png.tmp")
             try {
                 FileOutputStream(tmp).use { out ->
                     bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)

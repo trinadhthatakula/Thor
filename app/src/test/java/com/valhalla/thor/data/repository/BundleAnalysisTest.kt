@@ -442,28 +442,39 @@ class BundleAnalysisTest {
 
     @Test
     fun sidecarVersionCode_absentInBothSidecarsIsUnknown() {
-        // 0 = unknown. isVersionDowngrade() gates on this; it is NOT an authoritative version code.
-        assertEquals(0L, resolveSidecarVersionCode(parseXapkManifest("""{"package_name":"x"}"""), null))
-        assertEquals(0L, resolveSidecarVersionCode(null, null))
+        // null = unknown, NOT 0: `0` is a legal version code that a real APK manifest can declare,
+        // and isVersionDowngrade() compares it like any other number. Unknown has to be its own
+        // value so an unreadable sidecar can't masquerade as "version zero" and lose every compare.
+        assertNull(resolveSidecarVersionCode(parseXapkManifest("""{"package_name":"x"}"""), null))
+        assertNull(resolveSidecarVersionCode(null, null))
     }
 
     @Test
     fun sidecarVersionCode_nonPositiveValuesAreUnknown() {
-        // A lone negative value, so the `> 0` filter is what is under test. With a "0" in the
-        // manifest slot the chain would already answer 0 for the wrong reason and the filter could
-        // be deleted without failing anything.
-        assertEquals(
-            0L,
+        // Sidecar fields are free text from third-party repackers, so `0` there is treated as an
+        // unset placeholder — deliberately unlike a `0` parsed out of a real APK manifest. A lone
+        // negative value pins the `> 0` filter itself: with a "0" in the manifest slot the chain
+        // would answer null for the wrong reason and the filter could be deleted for free.
+        assertNull(
             resolveSidecarVersionCode(
                 parseXapkManifest("""{"package_name":"x","version_code":"-7"}"""),
                 null
             )
         )
-        assertEquals(0L, resolveSidecarVersionCode(null, parseApkmInfo("""{"pname":"x","versioncode":"-7"}""")))
+        assertNull(resolveSidecarVersionCode(null, parseApkmInfo("""{"pname":"x","versioncode":"-7"}""")))
         // Both slots non-positive: neither may win.
         val manifest = parseXapkManifest("""{"package_name":"x","version_code":"0"}""")
         val apkm = parseApkmInfo("""{"pname":"x","versioncode":"-7"}""")
-        assertEquals(0L, resolveSidecarVersionCode(manifest, apkm))
+        assertNull(resolveSidecarVersionCode(manifest, apkm))
+    }
+
+    @Test
+    fun sidecarVersionCode_zeroDoesNotShadowAGoodSiblingValue() {
+        // The per-source `> 0` filter is what makes the fallthrough work: a "0" in manifest.json
+        // must not win the chain when info.json carries a real code alongside it.
+        val manifest = parseXapkManifest("""{"package_name":"x","version_code":"0"}""")
+        val apkm = parseApkmInfo("""{"pname":"x","versioncode":"30271"}""")
+        assertEquals(30271L, resolveSidecarVersionCode(manifest, apkm))
     }
 
     @Test

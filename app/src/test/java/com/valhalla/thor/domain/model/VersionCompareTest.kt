@@ -12,29 +12,40 @@ import org.junit.Test
  *
  * Context: a community report of "the Portable Installer treats an upgrade as a downgrade". The
  * comparison itself was already versionCode-based and correct; what was missing was the
- * "unknown version code" gate — the analyzer yields 0 when it cannot read a code out of the picked
- * file, and 0 loses against every installed app, so an unreadable file read as a downgrade of
- * whatever was installed.
+ * "unknown version code" gate — the analyzer yields null when it cannot read a code out of the
+ * picked file, and any number substituted for it loses against every installed app, so an
+ * unreadable file read as a downgrade of whatever was installed.
  */
 class VersionCompareTest {
 
     @Test
     fun unknownVersionCodeIsNeverADowngrade() {
-        // The regression this guards: 0 is "analyzer could not read a code", not "version zero".
-        // Ungated, `0 < 4210` is true and EVERY installed app looks downgraded.
-        assertFalse(isVersionDowngrade(newVersionCode = 0L, installedVersionCode = 4210L))
+        // The regression this guards: "analyzer could not read a code" is null, and ungated it
+        // would have to be some number — whereupon EVERY installed app looks downgraded.
+        assertFalse(isVersionDowngrade(newVersionCode = null, installedVersionCode = 4210L))
     }
 
     @Test
-    fun negativeVersionCodeIsTreatedAsUnknown() {
-        assertFalse(isVersionDowngrade(newVersionCode = -1L, installedVersionCode = 4210L))
+    fun realVersionCodeZeroIsStillCompared() {
+        // The counterpart to the test above, and the reason unknown is null rather than 0: the
+        // platform's APK parser defaults a manifest with no `android:versionCode` to zero, and
+        // Android sequences that value numerically like any other. Installing it over 4210 is a
+        // genuine downgrade the OS will refuse, so Thor has to warn instead of silently passing it
+        // off as "unknown, probably fine".
+        assertTrue(isVersionDowngrade(newVersionCode = 0L, installedVersionCode = 4210L))
     }
 
     @Test
-    fun unknownOnBothSidesIsNotADowngrade() {
+    fun unknownAgainstAZeroInstallIsNotADowngrade() {
         // Not the fresh-install case — the caller short-circuits on `existing == null` before it
-        // ever gets here. This is "installed app also reports 0", e.g. an APK that never declared
-        // a version code at all.
+        // ever gets here. This is "unreadable file over an installed app that declared no version
+        // code at all", where there is nothing to compare and nothing to warn about.
+        assertFalse(isVersionDowngrade(newVersionCode = null, installedVersionCode = 0L))
+    }
+
+    @Test
+    fun zeroOverZeroIsNotADowngrade() {
+        // Two version-code-less APKs: equal, so a reinstall rather than a downgrade.
         assertFalse(isVersionDowngrade(newVersionCode = 0L, installedVersionCode = 0L))
     }
 
