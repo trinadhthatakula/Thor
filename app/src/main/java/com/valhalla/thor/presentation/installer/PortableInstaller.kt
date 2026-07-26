@@ -367,6 +367,11 @@ fun PortableInstaller(
                                 } else {
                                     meta.version
                                 },
+                                // Appending the code made this line ~10 characters longer. Both
+                                // children of this Row are unweighted, so at a large font scale on
+                                // a narrow screen it would wrap mid-token beside a centred prefix.
+                                // fill = false keeps the Row centred while bounding this child.
+                                modifier = Modifier.weight(1f, fill = false),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
@@ -396,16 +401,19 @@ fun PortableInstaller(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
-                                // Apps whose versionCode scheme drops a component (e.g. name
-                                // 1.2.4.7 -> code 1002007, name 1.2.5.1 -> code 1002001) look like
-                                // an upgrade by name while genuinely downgrading by code. Spell the
-                                // numbers out, or this reads as a Thor bug.
+                                // A version NAME can move forward while the version CODE moves
+                                // back: an app only has to hand-maintain its code and slip (Omni
+                                // Browser shipped name 1.2.4.7 as code 27, then name 1.2.5.1 as
+                                // code 25). Android sequences updates by code alone, so spell the
+                                // two numbers out; otherwise a correct verdict reads as a Thor
+                                // bug — which is exactly how this got reported. Passed as strings
+                                // on purpose: see the comment on install_downgrade_code_explainer.
                                 s.oldVersionCode?.let { installedCode ->
                                     Text(
                                         text = stringResource(
                                             R.string.install_downgrade_code_explainer,
-                                            meta.versionCode,
-                                            installedCode
+                                            meta.versionCode.toString(),
+                                            installedCode.toString()
                                         ),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant

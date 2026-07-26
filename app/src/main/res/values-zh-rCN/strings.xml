@@ -301,7 +301,7 @@
     <string name="title_thor_installer">Thor 安装器</string>
     <string name="install_analyzing">正在解析包…</string>
     <string name="install_downgrade_warning">这将降级该应用。</string>
-    <string name="install_downgrade_code_explainer">版本号 %1$d 低于已安装的 %2$d。Android 按版本号（versionCode）而非版本名称排序更新，因此应用看起来较新仍可能是降级。</string>
+    <string name="install_downgrade_code_explainer">版本号 %1$s 低于已安装的 %2$s。Android 按版本号（versionCode）而非版本名称排序更新，因此应用看起来较新仍可能是降级。</string>
     <string name="install_update_warning">这将更新现有应用。</string>
     <plurals name="install_permissions">
         <item quantity="other">此包请求 %1$d 个权限。%2$s</item>

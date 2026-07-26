@@ -31,7 +31,10 @@ class VersionCompareTest {
     }
 
     @Test
-    fun unknownVersionCodeIsNotADowngradeEvenAgainstAFreshInstall() {
+    fun unknownOnBothSidesIsNotADowngrade() {
+        // Not the fresh-install case — the caller short-circuits on `existing == null` before it
+        // ever gets here. This is "installed app also reports 0", e.g. an APK that never declared
+        // a version code at all.
         assertFalse(isVersionDowngrade(newVersionCode = 0L, installedVersionCode = 0L))
     }
 
@@ -53,20 +56,39 @@ class VersionCompareTest {
 
     @Test
     fun versionCodeMajorIsRespected() {
-        // longVersionCode packs versionCodeMajor into the high 32 bits. Both operands must stay
-        // Long: truncating to Int here is what made an earlier revision mis-detect downgrades.
-        val installed = (1L shl 32) or 1L
-        val newer = (1L shl 32) or 5L
-        assertFalse(isVersionDowngrade(newVersionCode = newer, installedVersionCode = installed))
-        assertTrue(isVersionDowngrade(newVersionCode = installed, installedVersionCode = newer))
+        // longVersionCode packs versionCodeMajor into the HIGH 32 bits, so both operands must stay
+        // Long. The operands are picked so an Int-truncating implementation INVERTS the verdict:
+        // (1L shl 32) truncates to 0, so a truncating compare asks "5 < 0" and answers false where
+        // the truth is "5 < 4294967296" — a downgrade. Operands that survive truncation (e.g.
+        // 0x1_00000001 vs 0x1_00000005, which truncate to 1 and 5 and keep their order) would pin
+        // nothing at all.
+        val installedWithMajor = 1L shl 32 // versionCodeMajor = 1, versionCode = 0
+        assertTrue(
+            isVersionDowngrade(newVersionCode = 5L, installedVersionCode = installedWithMajor)
+        )
+        // Converse: bumping versionCodeMajor is an upgrade, not a downgrade.
+        assertFalse(
+            isVersionDowngrade(newVersionCode = installedWithMajor, installedVersionCode = 5L)
+        )
     }
 
     @Test
     fun newerLookingVersionNameWithLowerCodeIsStillADowngrade() {
-        // The com.rebelroot.omni report. Its scheme encodes major/minor/build and DROPS the third
-        // component: 1.2.4.7 -> 1002007, 1.2.5.1 -> 1002001. The name reads as an upgrade while the
-        // code goes backwards, and Android sequences updates by code alone — so Thor is right to
-        // call this a downgrade. Pinned so nobody "fixes" it by comparing version names.
-        assertTrue(isVersionDowngrade(newVersionCode = 1002001L, installedVersionCode = 1002007L))
+        // Pinned so nobody "fixes" the com.rebelroot.omni report by comparing version NAMES.
+        //
+        // Real numbers, read out of github.com/REBEL-ROOT/omni-browser at the two release tags the
+        // reporter named — this is not reverse-engineered:
+        //
+        //   v1.2.4.6  versionName "1.2.4.6"  versionCode 26
+        //   v1.2.4.7  versionName "1.2.4.7"  versionCode 27   <- installed
+        //   v1.2.5.1  versionName "1.2.5.1"  versionCode 25   <- picked
+        //   1.2.6.0   versionName "1.2.6"    versionCode 25
+        //
+        // Their versionCode is hand-maintained and simply went backwards. Android sequences
+        // updates by code alone, so 25 over 27 is a downgrade and the platform installer refuses
+        // it too — Thor is not wrong here, the upstream app is. (Their v1.2.3.4 also shipped
+        // versionCode 1002004 from a scheme they abandoned, which is why a 1002005-style code
+        // shows up in old listings of this app.)
+        assertTrue(isVersionDowngrade(newVersionCode = 25L, installedVersionCode = 27L))
     }
 }

@@ -49,6 +49,13 @@ class InstallerViewModel(
     private var isUpdateOperation: Boolean = false
     private var isDowngrade: Boolean = false
 
+    // True when there IS something installed but we could not read a version code out of the
+    // picked file, so we can neither prove nor rule out a downgrade. Distinct from isDowngrade:
+    // that one is a verdict (it drives the warning and the NORMAL-mode veto) and must only be
+    // true when we can prove one. This one only ever widens the install *permission* — see
+    // startInstallation().
+    private var versionCodeUnknown: Boolean = false
+
     // True once THIS ViewModel has driven a parse/install on the shared @Single bus. Only an
     // owning VM may reset the bus in onCleared(), so tearing down a non-owning installer screen
     // (e.g. one that merely observed the bus) can't clobber a terminal Success / ReadyToInstall
@@ -103,6 +110,7 @@ class InstallerViewModel(
                     // one out of the file, and 0 would otherwise lose against every installed app.
                     isDowngrade = installedVersionCode != null &&
                         isVersionDowngrade(meta.versionCode, installedVersionCode)
+                    versionCodeUnknown = installedVersionCode != null && meta.versionCode <= 0L
 
                     eventBus.emit(
                         InstallState.ReadyToInstall(
@@ -154,8 +162,18 @@ class InstallerViewModel(
             return
         }
 
+        // The downgrade *permission* is deliberately wider than the downgrade *verdict*. It ends up
+        // as `pm install -d` / setRequestDowngrade(true), which is permissive-only — a no-op when
+        // the install turns out not to be a downgrade — so it is also the right flag when we could
+        // not read a version code at all: withholding it would let the OS reject the install with
+        // an opaque INSTALL_FAILED_VERSION_DOWNGRADE the user cannot override. Widened only on a
+        // privileged path; in NORMAL mode the flag needs a privilege we do not have, so it would
+        // buy nothing and merely put a reflective setRequestDowngrade call on the unprivileged
+        // happy path for the first time.
+        val allowDowngrade = isDowngrade || (versionCodeUnknown && mode != InstallMode.NORMAL)
+
         viewModelScope.launch {
-            repository.installPackage(uri, mode, isDowngrade)
+            repository.installPackage(uri, mode, allowDowngrade)
         }
     }
 }

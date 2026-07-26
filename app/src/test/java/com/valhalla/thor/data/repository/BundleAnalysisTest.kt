@@ -449,6 +449,18 @@ class BundleAnalysisTest {
 
     @Test
     fun sidecarVersionCode_nonPositiveValuesAreUnknown() {
+        // A lone negative value, so the `> 0` filter is what is under test. With a "0" in the
+        // manifest slot the chain would already answer 0 for the wrong reason and the filter could
+        // be deleted without failing anything.
+        assertEquals(
+            0L,
+            resolveSidecarVersionCode(
+                parseXapkManifest("""{"package_name":"x","version_code":"-7"}"""),
+                null
+            )
+        )
+        assertEquals(0L, resolveSidecarVersionCode(null, parseApkmInfo("""{"pname":"x","versioncode":"-7"}""")))
+        // Both slots non-positive: neither may win.
         val manifest = parseXapkManifest("""{"package_name":"x","version_code":"0"}""")
         val apkm = parseApkmInfo("""{"pname":"x","versioncode":"-7"}""")
         assertEquals(0L, resolveSidecarVersionCode(manifest, apkm))
