@@ -112,6 +112,14 @@ class AppRepositoryImpl(
 
                         if (!forceRefresh &&
                             cachedEntry != null &&
+                            // Also a cache miss when the cached code disagrees with the platform's.
+                            // Rows written before versionCode widened to Long hold a truncated
+                            // value, and lastUpdateTime alone never invalidates them: installing
+                            // *Thor* does not change the *target* package's timestamp. Comparing
+                            // the value we already have in hand repairs those rows on the first
+                            // scan, for one Long compare per package and a re-map of only the
+                            // packages that are actually wrong.
+                            cachedEntry.versionCode == packInfo.longVersionCode &&
                             cachedEntry.lastUpdateTime == packInfo.lastUpdateTime &&
                             cachedEntry.enabled == isEnabled &&
                             cachedEntry.isSuspended == isSuspended
