@@ -386,6 +386,7 @@
     <string name="title_thor_installer">Thor Installer</string>
     <string name="install_analyzing">Analyzing Package…</string>
     <string name="install_downgrade_warning">This will downgrade the app.</string>
+    <string name="install_downgrade_code_explainer">Version code %1$d is lower than the installed %2$d. Android orders updates by version code, not by version name — an app can look newer and still be a downgrade.</string>
     <string name="install_update_warning">This will update the existing app.</string>
     <plurals name="install_permissions">
         <item quantity="one">This package requests %1$d permission. %2$s</item>

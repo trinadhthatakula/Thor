@@ -403,6 +403,57 @@ class BundleAnalysisTest {
         assertTrue(resolveBundleInstallSet(entries, null, null).isEmpty())
     }
 
+    // --- sidecar version-code resolution ---
+
+    @Test
+    fun sidecarVersionCode_blankManifestValueDoesNotShadowApkmValue() {
+        // The elvis used to test only for null, so a present-but-blank manifest value won the
+        // chain and collapsed to 0 — even with a perfectly good info.json code alongside it.
+        val manifest = parseXapkManifest("""{"package_name":"com.example.app","version_code":""}""")
+        val apkm = parseApkmInfo("""{"pname":"com.example.app","versioncode":"30271"}""")
+        assertEquals(30271L, resolveSidecarVersionCode(manifest, apkm))
+    }
+
+    @Test
+    fun sidecarVersionCode_versionNameInCodeFieldFallsThroughToApkm() {
+        // Some producers write a version NAME into version_code. That is not a version code, so it
+        // must not win the chain — this is the one place the "we compare version names" hypothesis
+        // was literally true.
+        val manifest =
+            parseXapkManifest("""{"package_name":"com.example.app","version_code":"4.3.0"}""")
+        val apkm = parseApkmInfo("""{"pname":"com.example.app","versioncode":"4300"}""")
+        assertEquals(4300L, resolveSidecarVersionCode(manifest, apkm))
+    }
+
+    @Test
+    fun sidecarVersionCode_numericManifestValueStillWins() {
+        // Guard the GH#159 string-from-number contract end to end.
+        val manifest =
+            parseXapkManifest("""{"package_name":"com.example.app","version_code":12345}""")
+        assertEquals(12345L, resolveSidecarVersionCode(manifest, null))
+    }
+
+    @Test
+    fun sidecarVersionCode_toleratesSurroundingWhitespace() {
+        val manifest =
+            parseXapkManifest("""{"package_name":"com.example.app","version_code":" 12345 "}""")
+        assertEquals(12345L, resolveSidecarVersionCode(manifest, null))
+    }
+
+    @Test
+    fun sidecarVersionCode_absentInBothSidecarsIsUnknown() {
+        // 0 = unknown. isVersionDowngrade() gates on this; it is NOT an authoritative version code.
+        assertEquals(0L, resolveSidecarVersionCode(parseXapkManifest("""{"package_name":"x"}"""), null))
+        assertEquals(0L, resolveSidecarVersionCode(null, null))
+    }
+
+    @Test
+    fun sidecarVersionCode_nonPositiveValuesAreUnknown() {
+        val manifest = parseXapkManifest("""{"package_name":"x","version_code":"0"}""")
+        val apkm = parseApkmInfo("""{"pname":"x","versioncode":"-7"}""")
+        assertEquals(0L, resolveSidecarVersionCode(manifest, apkm))
+    }
+
     @Test
     fun resolveBundleInstallSet_doesNotAppendForeignStandaloneApk() {
         // A complete manifest plus a stray standalone top-level APK (e.g. a

@@ -306,6 +306,16 @@ fun PortableInstaller(
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium
                                 )
+                                // The version CODE is what the update/downgrade verdict is made
+                                // on; names routinely disagree with it. Without this on screen a
+                                // correct downgrade call is indistinguishable from a bug.
+                                s.oldVersionCode?.let { code ->
+                                    Text(
+                                        text = "($code)",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                             Icon(
                                 painter = painterResource(R.drawable.open_in_new),
@@ -325,6 +335,15 @@ fun PortableInstaller(
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
                                 )
+                                // 0 means the analyzer could not read a version code out of the
+                                // file (see isVersionDowngrade) — showing "(0)" would be a lie.
+                                if (meta.versionCode > 0L) {
+                                    Text(
+                                        text = "(${meta.versionCode})",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
                     } else {
@@ -343,7 +362,11 @@ fun PortableInstaller(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = "${meta.version} (${meta.versionCode})",
+                                text = if (meta.versionCode > 0L) {
+                                    "${meta.version} (${meta.versionCode})"
+                                } else {
+                                    meta.version
+                                },
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
@@ -367,11 +390,28 @@ fun PortableInstaller(
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.error
                             )
-                            Text(
-                                text = stringResource(R.string.install_downgrade_warning),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.install_downgrade_warning),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                // Apps whose versionCode scheme drops a component (e.g. name
+                                // 1.2.4.7 -> code 1002007, name 1.2.5.1 -> code 1002001) look like
+                                // an upgrade by name while genuinely downgrading by code. Spell the
+                                // numbers out, or this reads as a Thor bug.
+                                s.oldVersionCode?.let { installedCode ->
+                                    Text(
+                                        text = stringResource(
+                                            R.string.install_downgrade_code_explainer,
+                                            meta.versionCode,
+                                            installedCode
+                                        ),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
                         }
                     } else if (s.isUpdate) {
                         Row(

@@ -10,6 +10,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
+import com.valhalla.thor.domain.model.isVersionDowngrade
 import com.valhalla.thor.domain.repository.AppAnalyzer
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
@@ -94,17 +95,22 @@ class InstallerViewModel(
                         }.getOrNull()
                     }
 
+                    val installedVersionCode =
+                        existing?.let { PackageInfoCompat.getLongVersionCode(it) }
+
                     isUpdateOperation = existing != null
-                    isDowngrade = if (existing != null) {
-                        meta.versionCode < PackageInfoCompat.getLongVersionCode(existing)
-                    } else false
+                    // Gated on a KNOWN version code: the analyzer yields 0 when it could not read
+                    // one out of the file, and 0 would otherwise lose against every installed app.
+                    isDowngrade = installedVersionCode != null &&
+                        isVersionDowngrade(meta.versionCode, installedVersionCode)
 
                     eventBus.emit(
                         InstallState.ReadyToInstall(
                             meta = meta,
                             isUpdate = isUpdateOperation,
                             isDowngrade = isDowngrade,
-                            oldVersion = existing?.versionName
+                            oldVersion = existing?.versionName,
+                            oldVersionCode = installedVersionCode
                         )
                     )
                 },

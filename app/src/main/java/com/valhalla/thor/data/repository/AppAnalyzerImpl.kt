@@ -177,7 +177,10 @@ class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
         val versionName = manifest?.versionName?.takeIf { it.isNotBlank() }
             ?: apkmInfo?.versionName?.takeIf { it.isNotBlank() }
             ?: "Unknown"
-        val versionCode = (manifest?.versionCode ?: apkmInfo?.versionCode)?.toLongOrNull() ?: 0L
+        // 0 when neither sidecar declares a usable code. Consumers must gate on that (see
+        // isVersionDowngrade) — a bundle whose sidecar carries a version *name* in version_code
+        // used to land here as 0 and read as a downgrade against every installed app.
+        val versionCode = resolveSidecarVersionCode(manifest, apkmInfo)
         val icon = iconBytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
         return AppMetadata(
             label = label,

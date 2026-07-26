@@ -97,6 +97,29 @@ fun parseApkmInfo(jsonText: String): ApkmInfo? = try {
     null
 }
 
+/**
+ * Resolve a bundle's version code from its sidecar JSON, best source first.
+ *
+ * Sidecar version codes are typed `String?` because real producers write them either as a JSON
+ * number or as a string. Some also write a version *name* into the field (`"4.3.0"`), leave it
+ * blank, or omit it — none of which is a version code. Each source is therefore tried in turn, so
+ * a junk `manifest.json` value can never shadow a good `info.json` one; the sibling version *name*
+ * resolution already works this way. Surrounding whitespace is tolerated.
+ *
+ * Returns `0` for "unknown" — the same convention `CatalogEntry.versionCode` uses. Callers must
+ * never treat `0` as authoritative; in particular it must not be compared against an installed
+ * app's version code, because `0` loses every such comparison and would report a downgrade for
+ * any installed app no matter how new the picked file is.
+ */
+fun resolveSidecarVersionCode(manifest: XapkManifestInfo?, apkmInfo: ApkmInfo?): Long =
+    sidecarVersionCode(manifest?.versionCode)
+        ?: sidecarVersionCode(apkmInfo?.versionCode)
+        ?: 0L
+
+/** One sidecar field as a usable version code, or null when blank, non-numeric or non-positive. */
+private fun sidecarVersionCode(raw: String?): Long? =
+    raw?.trim()?.toLongOrNull()?.takeIf { it > 0L }
+
 /** File extensions that unambiguously denote a bundle container (never a single APK). */
 private val BUNDLE_EXTENSIONS = setOf("xapk", "apkm", "apks", "apkp")
 
