@@ -403,6 +403,80 @@ class BundleAnalysisTest {
         assertTrue(resolveBundleInstallSet(entries, null, null).isEmpty())
     }
 
+    // --- sidecar version-code resolution ---
+
+    @Test
+    fun sidecarVersionCode_blankManifestValueDoesNotShadowApkmValue() {
+        // The elvis used to test only for null, so a present-but-blank manifest value won the
+        // chain and collapsed to 0 — even with a perfectly good info.json code alongside it.
+        val manifest = parseXapkManifest("""{"package_name":"com.example.app","version_code":""}""")
+        val apkm = parseApkmInfo("""{"pname":"com.example.app","versioncode":"30271"}""")
+        assertEquals(30271L, resolveSidecarVersionCode(manifest, apkm))
+    }
+
+    @Test
+    fun sidecarVersionCode_versionNameInCodeFieldFallsThroughToApkm() {
+        // Some producers write a version NAME into version_code. That is not a version code, so it
+        // must not win the chain — this is the one place the "we compare version names" hypothesis
+        // was literally true.
+        val manifest =
+            parseXapkManifest("""{"package_name":"com.example.app","version_code":"4.3.0"}""")
+        val apkm = parseApkmInfo("""{"pname":"com.example.app","versioncode":"4300"}""")
+        assertEquals(4300L, resolveSidecarVersionCode(manifest, apkm))
+    }
+
+    @Test
+    fun sidecarVersionCode_numericManifestValueStillWins() {
+        // Guard the GH#159 string-from-number contract end to end.
+        val manifest =
+            parseXapkManifest("""{"package_name":"com.example.app","version_code":12345}""")
+        assertEquals(12345L, resolveSidecarVersionCode(manifest, null))
+    }
+
+    @Test
+    fun sidecarVersionCode_toleratesSurroundingWhitespace() {
+        val manifest =
+            parseXapkManifest("""{"package_name":"com.example.app","version_code":" 12345 "}""")
+        assertEquals(12345L, resolveSidecarVersionCode(manifest, null))
+    }
+
+    @Test
+    fun sidecarVersionCode_absentInBothSidecarsIsUnknown() {
+        // null = unknown, NOT 0: `0` is a legal version code that a real APK manifest can declare,
+        // and isVersionDowngrade() compares it like any other number. Unknown has to be its own
+        // value so an unreadable sidecar can't masquerade as "version zero" and lose every compare.
+        assertNull(resolveSidecarVersionCode(parseXapkManifest("""{"package_name":"x"}"""), null))
+        assertNull(resolveSidecarVersionCode(null, null))
+    }
+
+    @Test
+    fun sidecarVersionCode_nonPositiveValuesAreUnknown() {
+        // Sidecar fields are free text from third-party repackers, so `0` there is treated as an
+        // unset placeholder — deliberately unlike a `0` parsed out of a real APK manifest. A lone
+        // negative value pins the `> 0` filter itself: with a "0" in the manifest slot the chain
+        // would answer null for the wrong reason and the filter could be deleted for free.
+        assertNull(
+            resolveSidecarVersionCode(
+                parseXapkManifest("""{"package_name":"x","version_code":"-7"}"""),
+                null
+            )
+        )
+        assertNull(resolveSidecarVersionCode(null, parseApkmInfo("""{"pname":"x","versioncode":"-7"}""")))
+        // Both slots non-positive: neither may win.
+        val manifest = parseXapkManifest("""{"package_name":"x","version_code":"0"}""")
+        val apkm = parseApkmInfo("""{"pname":"x","versioncode":"-7"}""")
+        assertNull(resolveSidecarVersionCode(manifest, apkm))
+    }
+
+    @Test
+    fun sidecarVersionCode_zeroDoesNotShadowAGoodSiblingValue() {
+        // The per-source `> 0` filter is what makes the fallthrough work: a "0" in manifest.json
+        // must not win the chain when info.json carries a real code alongside it.
+        val manifest = parseXapkManifest("""{"package_name":"x","version_code":"0"}""")
+        val apkm = parseApkmInfo("""{"pname":"x","versioncode":"30271"}""")
+        assertEquals(30271L, resolveSidecarVersionCode(manifest, apkm))
+    }
+
     @Test
     fun resolveBundleInstallSet_doesNotAppendForeignStandaloneApk() {
         // A complete manifest plus a stray standalone top-level APK (e.g. a

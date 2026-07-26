@@ -306,6 +306,16 @@ fun PortableInstaller(
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium
                                 )
+                                // The version CODE is what the update/downgrade verdict is made
+                                // on; names routinely disagree with it. Without this on screen a
+                                // correct downgrade call is indistinguishable from a bug.
+                                s.oldVersionCode?.let { code ->
+                                    Text(
+                                        text = "($code)",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                             Icon(
                                 painter = painterResource(R.drawable.open_in_new),
@@ -325,6 +335,16 @@ fun PortableInstaller(
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
                                 )
+                                // Null means the analyzer could not read a version code out of the
+                                // file (see isVersionDowngrade) — there is no number to show. A
+                                // real code of 0 is NOT that case and is shown like any other.
+                                meta.versionCode?.let { code ->
+                                    Text(
+                                        text = "($code)",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
                     } else {
@@ -343,7 +363,14 @@ fun PortableInstaller(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = "${meta.version} (${meta.versionCode})",
+                                text = meta.versionCode
+                                    ?.let { "${meta.version} ($it)" }
+                                    ?: meta.version,
+                                // Appending the code made this line ~10 characters longer. Both
+                                // children of this Row are unweighted, so at a large font scale on
+                                // a narrow screen it would wrap mid-token beside a centred prefix.
+                                // fill = false keeps the Row centred while bounding this child.
+                                modifier = Modifier.weight(1f, fill = false),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
@@ -367,11 +394,35 @@ fun PortableInstaller(
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.error
                             )
-                            Text(
-                                text = stringResource(R.string.install_downgrade_warning),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.install_downgrade_warning),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                // A version NAME can move forward while the version CODE moves
+                                // back: an app only has to hand-maintain its code and slip (Omni
+                                // Browser shipped name 1.2.4.7 as code 27, then name 1.2.5.1 as
+                                // code 25). Android sequences updates by code alone, so spell the
+                                // two numbers out; otherwise a correct verdict reads as a Thor
+                                // bug — which is exactly how this got reported. Passed as strings
+                                // on purpose: see the comment on install_downgrade_code_explainer.
+                                // Both codes are non-null whenever isDowngrade is true; the checks
+                                // are here so the branch can never render the word "null".
+                                val newCode = meta.versionCode
+                                val installedCode = s.oldVersionCode
+                                if (newCode != null && installedCode != null) {
+                                    Text(
+                                        text = stringResource(
+                                            R.string.install_downgrade_code_explainer,
+                                            newCode.toString(),
+                                            installedCode.toString()
+                                        ),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
                         }
                     } else if (s.isUpdate) {
                         Row(
