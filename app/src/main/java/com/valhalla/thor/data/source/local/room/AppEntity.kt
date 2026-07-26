@@ -12,7 +12,14 @@ data class AppEntity(
     @PrimaryKey val packageName: String,
     val appName: String?,
     val versionName: String?,
-    val versionCode: Int,
+    // Int -> Long. No schema version bump or Migration is needed: Room maps both Kotlin Int and
+    // Long to SQLite affinity INTEGER, so the exported schema and its identityHash are unchanged
+    // (see app/schemas/.../5.json). Rows already cached with a truncated value keep it until the
+    // package's lastUpdateTime changes and AppRepositoryImpl re-maps it — acceptable, because the
+    // only values that were ever wrong belong to apps declaring versionCodeMajor or a code above
+    // Int.MAX, which are vanishingly rare, and forcing a full re-scan on every user to correct
+    // them would cost far more than it fixes.
+    val versionCode: Long,
     val minSdk: Int,
     val targetSdk: Int,
     val isSystem: Boolean,

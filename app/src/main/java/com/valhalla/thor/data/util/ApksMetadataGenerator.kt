@@ -19,7 +19,9 @@ class ApksMetadataGenerator {
         @SerialName("package_name") val packageName: String,
         @SerialName("display_name") val displayName: String,
         @SerialName("version_name") val versionName: String,
-        @SerialName("version_code") val versionCode: Int,
+        // Long, so a versionCodeMajor-carrying app's real code is written out. Widening the JSON
+        // number is backward compatible for readers; a truncated one was simply wrong.
+        @SerialName("version_code") val versionCode: Long,
         @SerialName("min_sdk") val minSdkVersion: Int,
         @SerialName("target_sdk") val targetSdkVersion: Int,
     )
