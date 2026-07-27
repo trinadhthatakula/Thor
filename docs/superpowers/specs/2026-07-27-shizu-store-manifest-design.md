@@ -368,10 +368,22 @@ in one workflow file rather than adding another. It runs the tier-1 checks plus:
 
 1. `curl` every URL in the manifest and require a 200.
 2. Follow `download_url` and confirm it still resolves to a real `foss-release.apk`.
-3. Diff `.github/shizu_store.schema.json` against upstream and flag any change.
+3. Re-validate the manifest against the **live upstream schema**, not the vendored copy.
+4. Diff `.github/shizu_store.schema.json` against upstream and flag any change.
 
 This is the only tier that catches rot originating outside the repository, which is most of the
 table above.
+
+Steps 3 and 4 are deliberately both present, because they answer different questions. The diff
+says *what* changed upstream; validating against the live schema says whether that change
+actually breaks us. Running only the diff would mean reading every upstream schema edit to work
+out whether it matters. Running only the live validation would mean a red build with no
+explanation of what moved. Together they give a verdict and its cause.
+
+This is also why the manifest is validated against two different schemas depending on tier: PR CI
+uses the vendored copy so the check is deterministic and independent of third-party uptime, while
+the weekly audit — which can afford network access and a flaky third party — asks the question
+that actually matters, *would the store accept this file today*.
 
 **On failure it opens a tracking issue** labelled `shizu-store-audit`, updating the existing open
 one instead of filing duplicates, and closes it when checks pass again. A red scheduled run is
@@ -471,7 +483,29 @@ its fastlane counterpart where one exists, but nothing detects a translation tha
 well-formed, and wrong. This is why each is produced and then reviewed by an independent pass — a
 mistranslated privacy claim is the same problem as an untrue English one.
 
-**The vendored schema is a snapshot.** If upstream loosens the schema, our copy stays stricter
-than necessary and we lose access to new fields until someone notices the audit's diff. That is
-the acceptable direction to fail in; the reverse — upstream tightening while we validate against
-a stale permissive copy — is exactly what the diff exists to catch.
+**The vendored schema is a snapshot.** It can fall out of date with upstream, and the two
+directions of drift are not equally dangerous:
+
+| Upstream change | Our copy becomes | Consequence |
+|---|---|---|
+| **Loosens** — new optional field, higher `maxLength`, dropped constraint | stricter than reality | CI rejects manifests the store would accept. We cannot use the new field until someone updates the copy. Red build, working listing. **Fails closed.** |
+| **Tightens** — new required field, lower limit, narrower pattern | more permissive than reality | CI passes a manifest the store rejects. The store falls back to bare GitHub defaults — banner, translations, screenshots and comment thread all vanish. Green build, broken listing. **Fails open.** |
+
+A concrete version of the second row, using this manifest: `tags` has `maxItems: 15` and we ship
+exactly 15. If Shizu lowers that to 10, our vendored copy still calls 15 legal, CI passes, and the
+store discards the entire file. Nothing anywhere reports an error.
+
+This is why the audit's schema diff is load-bearing rather than housekeeping: **local validation
+cannot detect the second case by construction.** It amounts to asking a stale reference whether it
+is stale, and a self-consistent reference always answers no. Comparing the vendored copy against
+upstream is the only check whose answer does not come from the thing that is out of date.
+
+The audit therefore does both: it validates the manifest against the live upstream schema, which
+answers whether we are currently rejected, and diffs the vendored copy, which explains why. The
+diff alone would leave a human to classify every upstream edit; the live check alone would report
+a failure with no indication of what moved.
+
+Residual risk: this narrows the tightening window to at most a week rather than closing it. A
+schema change landing the day after an audit run leaves the listing silently degraded until the
+next Monday. Accepted for the same reason as the other cadence trade-offs — a store listing does
+not warrant daily runs against a third-party endpoint.
