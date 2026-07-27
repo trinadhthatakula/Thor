@@ -1,0 +1,267 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/jamal2367/shizu-store-json-reference/blob/main/schema.json",
+  "title": "Shizu Store Manifest",
+  "description": "JSON Schema for validating a shizu_store.json file used by the Shizu CoreFetch Android app.",
+  "type": "object",
+  "required": [
+    "app_name",
+    "package_name",
+    "short_description",
+    "icon_url"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "description": "Schema version. Must be 1 for the current specification.",
+      "const": 1
+    },
+    "app_name": {
+      "type": "string",
+      "description": "The display name of the application.",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "package_name": {
+      "type": "string",
+      "description": "The Android package name (e.g. xyz.siwane.myapp).",
+      "pattern": "^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+$"
+    },
+    "version_name": {
+      "type": "string",
+      "description": "Human-readable version string (e.g. '1.4.2')."
+    },
+    "version_code": {
+      "type": "integer",
+      "description": "Integer version code used internally by Android.",
+      "minimum": 1
+    },
+    "min_sdk": {
+      "type": "integer",
+      "description": "Minimum Android SDK version required to install the app.",
+      "minimum": 21
+    },
+    "target_sdk": {
+      "type": "integer",
+      "description": "Target Android SDK version the app was built against.",
+      "minimum": 21
+    },
+    "min_shizuku_version": {
+      "type": "integer",
+      "description": "Minimum Shizuku version code required.",
+      "minimum": 1
+    },
+    "short_description": {
+      "type": "string",
+      "description": "A brief one-line description of the app (displayed in listings).",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "detailed_description": {
+      "type": "string",
+      "description": "A detailed description of the app. Supports \\n for newlines and **bold** for emphasis.",
+      "minLength": 1
+    },
+    "developer_message": {
+      "type": "string",
+      "description": "A personal message to your users displayed in a dedicated card."
+    },
+    "icon_url": {
+      "type": "string",
+      "description": "Absolute URL to the app icon image.",
+      "format": "uri",
+      "pattern": "^https?://"
+    },
+    "banner_url": {
+      "type": "string",
+      "description": "Absolute URL to a banner/feature graphic.",
+      "format": "uri",
+      "pattern": "^https?://"
+    },
+    "screenshots": {
+      "type": "array",
+      "description": "Array of absolute URLs to screenshot images.",
+      "items": {
+        "type": "string",
+        "format": "uri",
+        "pattern": "^https?://"
+      },
+      "minItems": 1,
+      "maxItems": 20
+    },
+    "app_website": {
+      "type": "string",
+      "description": "Official website for your app.",
+      "format": "uri",
+      "pattern": "^https?://"
+    },
+    "repo_url": {
+      "type": "string",
+      "description": "Absolute URL to the app's GitHub source code repository.",
+      "format": "uri",
+      "pattern": "^https?://"
+    },
+    "store_issue_number": {
+      "type": "integer",
+      "description": "The GitHub Issue number used to fetch and display user comments natively.",
+      "minimum": 1
+    },
+    "ad": {
+      "type": "boolean",
+      "description": "Set to true to enable custom ad banners in your app details."
+    },
+    "ads": {
+      "type": "array",
+      "description": "Array of custom ad configurations.",
+      "items": {
+        "type": "object",
+        "required": ["position", "image_url", "target_url"],
+        "additionalProperties": false,
+        "properties": {
+          "position": {
+            "type": "string",
+            "enum": ["top", "bottom"],
+            "description": "The placement of the ad."
+          },
+          "image_url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https?://"
+          },
+          "target_url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https?://"
+          }
+        }
+      }
+    },
+    "category": {
+      "type": "string",
+      "description": "App category for store browsing."
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 30
+      },
+      "maxItems": 15,
+      "uniqueItems": true
+    },
+    "license": {
+      "type": "string"
+    },
+    "download_url": {
+      "type": "string",
+      "description": "Absolute URL to the APK download.",
+      "format": "uri",
+      "pattern": "^https?://.*\\.apk$"
+    },
+    "changelog": {
+      "type": "string"
+    },
+    "requires_shizuku": {
+      "type": "boolean",
+      "default": true
+    },
+    "open_source": {
+      "type": "boolean"
+    },
+    "donate_url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https?://"
+    },
+    "developer": {
+      "type": "object",
+      "description": "Information about the developer or maintainer of the app.",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "username": {
+          "type": "string"
+        },
+        "banner_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https?://"
+        },
+        "account_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https?://"
+        },
+        "email": {
+          "type": "string",
+          "format": "email"
+        },
+        "website": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https?://"
+        },
+        "portfolio": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https?://"
+        },
+        "socials": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "github": { "type": "string", "format": "uri" },
+            "x": { "type": "string", "format": "uri" },
+            "telegram": { "type": "string", "format": "uri" },
+            "youtube": { "type": "string", "format": "uri" },
+            "facebook": { "type": "string", "format": "uri" },
+            "instagram": { "type": "string", "format": "uri" }
+          }
+        }
+      }
+    },
+    "locales": {
+      "type": "object",
+      "description": "Localized strings for supported languages (ar, en, fr, es, pt, ru, hi, zh, ja).",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "app_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "short_description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "detailed_description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "developer_message": {
+            "type": "string"
+          },
+          "developer_name": {
+            "type": "string"
+          },
+          "banner_url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https?://"
+          },
+          "changelog": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

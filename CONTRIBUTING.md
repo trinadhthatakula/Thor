@@ -49,12 +49,14 @@ fastlane/metadata/android/
 Thor is built using modern Android development practices. Please read the architecture and build guidelines before writing code.
 
 ### Tech Stack & Architecture
-* **Language**: 100% Kotlin codebase.
+* **Language**: Kotlin — every module except `vm-runtime`, which is intentionally pure Java so its
+  stubs shadow the platform classes correctly.
 * **UI**: Jetpack Compose with Material 3.
 * **Architecture**: Clean Architecture (Domain, Data, Presentation layers).
 * **Dependency Injection**: Koin.
 * **Database**: Room DB (app list cache).
-* **Root Operations**: Custom Kotlin fork of libsu (`suCore` module).
+* **Root Operations**: [Odin](https://github.com/trinadhthatakula/Odin), an in-house Kotlin fork of
+  libsu, consumed as `com.trinadhthatakula:odin` from Maven Central.
 * **Hidden API Bypass**: Custom internal `:bypass` module.
 
 ### Useful Build Commands

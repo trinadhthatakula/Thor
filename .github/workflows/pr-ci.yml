@@ -39,3 +39,24 @@ jobs:
       - name: Android Lint (advisory)
         continue-on-error: true
         run: ./gradlew lintFossDebug
+
+  # Runs on every PR rather than being path-filtered. on.pull_request.paths
+  # filters the whole workflow, which would also gate build-and-test — the
+  # required status check — leaving unrelated PRs pending forever.
+  shizu-manifest:
+    name: shizu-manifest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install check-jsonschema
+        run: pipx install check-jsonschema
+
+      - name: Check the Shizu store manifest
+        run: |
+          if [ ! -f shizu_store.json ]; then
+            echo "No shizu_store.json on this branch — nothing to check."
+            exit 0
+          fi
+          .github/scripts/check-shizu-manifest.sh
