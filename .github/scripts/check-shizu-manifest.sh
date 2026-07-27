@@ -5,7 +5,7 @@
 # silently falls back to default GitHub repository data. Nothing reports the
 # failure, so every assertion here exists to make one silent failure loud.
 #
-# Usage: .github/scripts/check-shizu-manifest.sh
+# Usage: .github/scripts/check-shizu-manifest.sh [--network]
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -16,6 +16,13 @@ SCHEMA=".github/shizu_store.schema.json"
 FASTLANE="fastlane/metadata/android"
 SHOTS="$FASTLANE/en-US/images/phoneScreenshots"
 RAW_BASE="https://raw.githubusercontent.com/trinadhthatakula/Thor/master"
+
+NETWORK=0
+case "${1:-}" in
+  --network) NETWORK=1 ;;
+  "")        ;;
+  *)         printf 'usage: %s [--network]\n' "$0" >&2; exit 2 ;;
+esac
 
 failures=0
 fail()    { printf '  FAIL %s\n' "$*" >&2; failures=$((failures + 1)); }
@@ -31,6 +38,7 @@ need() {
 }
 need jq
 need check-jsonschema
+[ "$NETWORK" -eq 1 ] && need curl
 
 # hi lives in fastlane as hi-IN; the other manifest locales have no fastlane
 # counterpart and are checked for length and presence only.
@@ -88,21 +96,48 @@ while read -r label len; do
 done < <(jq -r '["en", (.short_description|length)], (if has("locales") then (.locales|to_entries[]|[.key, (.value.short_description|length)]) else empty end) | @tsv' "$MANIFEST")
 
 section "screenshots match the directory"
-manifest_shots="$(jq -r '.screenshots[]' "$MANIFEST" | sed 's#.*/##' | sort)"
+# (.screenshots // [])[] suppresses jq errors when screenshots is null/missing
+# (fix: was '.screenshots[]' which emits "Cannot iterate over null" to stderr).
+manifest_shots="$(jq -r '(.screenshots // [])[]' "$MANIFEST" | sed 's#.*/##' | sort)"
 actual_shots="$(ls "$SHOTS" | sort)"
-if [ "$manifest_shots" = "$actual_shots" ]; then
-  ok "$(printf '%s' "$actual_shots" | wc -l | tr -d ' ') screenshots listed, matching $SHOTS"
-else
+# Guard against vacuous pass: if both sets are empty all three assertions below
+# would pass silently.  An empty screenshot set is always a failure.
+[ -n "$actual_shots" ] || fail "screenshots: $SHOTS is empty — at least one screenshot is required"
+if [ "$manifest_shots" = "$actual_shots" ] && [ -n "$actual_shots" ]; then
+  # printf '%s\n' adds a trailing newline so wc -l counts all N lines, not N-1
+  # (fix: was 'printf %s' which yielded N-1 for a clean 10-screenshot tree).
+  ok "$(printf '%s\n' "$actual_shots" | wc -l | tr -d ' ') screenshots listed, matching $SHOTS"
+elif [ -n "$actual_shots" ]; then
   fail "screenshots array does not match $SHOTS"
   diff <(printf '%s\n' "$actual_shots") <(printf '%s\n' "$manifest_shots") >&2 || true
 fi
 
-bad_prefix="$(jq -r --arg b "$RAW_BASE" '.screenshots[] | select(startswith($b) | not)' "$MANIFEST")"
-if [ -z "$bad_prefix" ]; then
-  ok "every screenshot URL is pinned to master"
+if [ -n "$actual_shots" ]; then
+  bad_prefix="$(jq -r --arg b "$RAW_BASE" '(.screenshots // [])[] | select(startswith($b) | not)' "$MANIFEST")"
+  if [ -z "$bad_prefix" ]; then
+    ok "every screenshot URL is pinned to master"
+  else
+    fail "screenshot URLs not pinned to $RAW_BASE:"
+    printf '    %s\n' $bad_prefix >&2
+  fi
+fi
+
+section "locale keys"
+# The schema has no propertyNames constraint on locales, so an unrecognised
+# locale code (e.g. "zh-rCN", "hi-IN") would pass schema validation while the
+# store silently ignores the whole manifest.  Also, "en" must not appear under
+# locales — it is the top-level base, not a locale override.  These are the
+# two distinct failures and get distinct messages.
+if jq -e '((.locales // {} | keys) - ["ar","en","fr","es","pt","ru","hi","zh","ja"]) == []' "$MANIFEST" >/dev/null 2>&1; then
+  ok "locale keys are all in the permitted set (ar en fr es pt ru hi zh ja)"
 else
-  fail "screenshot URLs not pinned to $RAW_BASE:"
-  printf '    %s\n' $bad_prefix >&2
+  fail "locales contains unrecognised locale keys (valid: ar en fr es pt ru hi zh ja)"
+  jq -r '((.locales // {} | keys) - ["ar","en","fr","es","pt","ru","hi","zh","ja"])[]' "$MANIFEST" >&2
+fi
+if jq -e '.locales // {} | has("en") | not' "$MANIFEST" >/dev/null 2>&1; then
+  ok "locales does not duplicate the top-level en base"
+else
+  fail "locales must not contain \"en\" — en is the top-level base, not a locale override"
 fi
 
 section "sdk versions"
@@ -132,6 +167,69 @@ else
   else
     compare_text "changelog" '.changelog' "$notes"
     printf '       (versionCode %s -> v%s)\n' "$version_code" "$version_name"
+  fi
+fi
+
+if [ "$NETWORK" -eq 1 ]; then
+  UPSTREAM_SCHEMA_URL="https://docshizu.siwane.xyz/schema.json"
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' EXIT
+
+  section "image urls"
+  # Images must be exactly 200. These are raw.githubusercontent.com URLs with
+  # no redirects and no bot protection, so anything else is a real failure.
+  # A `for` loop, not a pipe into `while`: a pipeline runs its body in a
+  # subshell, where every fail() would increment a copy of $failures that dies
+  # with the subshell. URLs contain no whitespace, so word splitting is safe.
+  for u in $(jq -r '[.icon_url, .banner_url, (.screenshots[])] | .[]' "$MANIFEST"); do
+    code="$(curl -sSL --max-time 25 -o /dev/null -w '%{http_code}' "$u" 2>/dev/null)"
+    if [ "$code" = "200" ]; then ok "$code  ${u##*/}"; else fail "image not served: $code $u"; fi
+  done
+
+  section "link urls"
+  # A 403 or 429 from a site with bot protection is not a dead link, and
+  # failing on it would make the weekly audit cry wolf until nobody reads it —
+  # which is the exact failure this audit exists to prevent.
+  for u in $(jq -r '[.repo_url, .donate_url, .developer.account_url, (.developer.socials // {} | .[])] | map(select(. != null)) | unique | .[]' "$MANIFEST"); do
+    code="$(curl -sSL --max-time 25 -A 'thor-shizu-audit/1' -o /dev/null -w '%{http_code}' "$u" 2>/dev/null)"
+    case "$code" in
+      403|429) ok   "$code  $u  (bot protection, treated as reachable)" ;;
+      2??|3??) ok   "$code  $u" ;;
+      *)       fail "$code  $u" ;;
+    esac
+  done
+
+  section "download_url"
+  dl="$(jq -r .download_url "$MANIFEST")"
+  final="$(curl -sIL --max-time 40 -o /dev/null -w '%{http_code} %{url_effective}' "$dl" 2>/dev/null)"
+  dl_code="${final%% *}"
+  dl_url="${final#* }"
+  if [ "$dl_code" = "200" ]; then
+    ok "download_url resolves ($dl_code)"
+  else
+    fail "download_url returned $dl_code"
+  fi
+  case "$dl_url" in
+    *foss-release.apk*) ok "resolves to the foss artifact" ;;
+    *) fail "resolves to something other than foss-release.apk: $dl_url" ;;
+  esac
+
+  section "upstream schema"
+  if curl -fsSL --max-time 25 "$UPSTREAM_SCHEMA_URL" -o "$tmp/upstream.json"; then
+    if check-jsonschema --schemafile "$tmp/upstream.json" "$MANIFEST" >/dev/null 2>&1; then
+      ok "manifest validates against the LIVE schema"
+    else
+      fail "manifest does NOT validate against the live schema — the store is rejecting this file right now"
+      check-jsonschema --schemafile "$tmp/upstream.json" "$MANIFEST" >&2
+    fi
+    if diff -u "$SCHEMA" "$tmp/upstream.json" > "$tmp/schema.diff"; then
+      ok "vendored schema is identical to upstream"
+    else
+      fail "vendored schema differs from upstream — review and re-vendor:"
+      cat "$tmp/schema.diff" >&2
+    fi
+  else
+    fail "could not fetch $UPSTREAM_SCHEMA_URL"
   fi
 fi
 
