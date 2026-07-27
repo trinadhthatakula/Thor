@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "app_name": "Thor - App Manager",
+  "package_name": "com.valhalla.thor",
+  "min_sdk": 28,
+  "target_sdk": 37,
+  "short_description": "Freeze, debloat & install apps via Shizuku, Root & Dhizuku. Ad-free & FOSS",
+  "detailed_description": "Thor App Manager is a lightweight, open-source Android app manager and installer designed for power users who want complete control over their devices. Built 100% in Kotlin using Jetpack Compose and Material 3, Thor delivers advanced package management without trackers, ads, or telemetry.\n\n⚡ MULTIPLE PRIVILEGE MODES\nThor works seamlessly across different privilege engines with an automatic fallback system. Manually choose your active backend:\n• Root (su)\n• Shizuku\n• Dhizuku (Device Owner)\n\n📦 ADVANCED APP INSTALLER\nEasily install, reinstall, or repair installer records.\n• Redesigned app installer for root, Shizuku, or standard package manager.\n• Full support for split APK formats: .apkm, .apks, and .xapk files.\n• Auto Reinstall: sync and reinstall your apps with custom install-time options.\n• Fix Store: Reassign the installer record to Google Play Store in any privilege mode.\n\n🚫 UNIVERSAL SYSTEM APP DEBLOATING\nSafely debloat your device with integrated Universal Android Debloater (UAD) guidelines.\n• Dynamic safety recommendation chips: Recommended, Advanced, Expert, Unsafe.\n• Safety Gating: Automatically blocks freezing of \"Unsafe\" system packages to prevent bootloops and warns on \"Expert\" apps.\n• Clean Uninstalls: Uninstalls system apps for the current user (pm uninstall --user) and restores them (pm install-existing) with ease.\n• Local icon caching and danger badges for uninstalled system packages.\n\n🛠️ BATCH OPERATIONS & POWER TOOLS\nPerform actions on multiple apps simultaneously with a real-time terminal logger dialog.\n• Batch freeze, unfreeze, reinstall, uninstall, suspend, and clear cache or data.\n• Force stop, restrict background activity, or clear app cache/data in any mode.\n• Suspend & unsuspend apps with a custom Thor-branded system dialog.\n\n🧩 EXTENSION MANAGER\nExtend Thor with optional add-ons, browsed and installed from an in-app catalog.\n• Every extension is signature-verified and SHA-256 checked before it installs.\n• Entirely opt-in: install no extensions and Thor never touches the network.\n\n📱 ADAPTIVE UI & LAYOUT PERSISTENCE\nEnjoy a beautiful Material 3 interface that adapts to your device.\n• Redesigned home screen: an adaptive bento grid with one-tap access to the Extension Manager.\n• Multi-pane layouts and vertical navigation rail optimized for tablets and foldables.\n• Persistent layout preferences: Grid and list view settings are preserved across restarts.\n• True AMOLED black mode, Light/Dark themes, and Material You dynamic color support.\n• Fingerprint / biometric lock to protect app access.\n• Built-in language switcher supporting English, Spanish, French, Arabic, and Chinese.\n\n🔒 PRIVACY-FIRST & LIGHTWEIGHT\n• No analytics, no crash reporters, no ads, no trackers — ever.\n• The only network access is the optional Extensions store, which fetches its catalog and verified extension APKs over HTTPS with a pinned signer and SHA-256 check. Every other feature works fully offline.\n• Open Source: Licensed under GNU GPL v3.0-or-later (libre software).\n• Ultra-lightweight: the direct-download APK is about 3 MB.\n\nTECHNICAL HIGHLIGHTS (AI Agent Optimized)\n• Target Platform: Android (Root, Shizuku, Dhizuku)\n• Architecture & Stack: Kotlin, Clean Architecture, MVVM, Room DB (caching metadata), Jetpack Compose\n• Hidden API bypass: Custom in-house bypass module (no external library dependency)\n• Shell Execution: Odin, an in-house Kotlin root-shell engine published on Maven Central\n\nNo bloat. No trackers. No nonsense. Take control of your apps with Thor.",
+  "developer_message": "Thor is built and maintained in the open by one developer, and it will always be free. If it saved you some time, a star on GitHub or a comment below genuinely helps.",
+  "icon_url": "https://raw.githubusercontent.com/trinadhthatakula/Thor/master/fastlane/metadata/android/en-US/images/icon.png",
+  "banner_url": "https://raw.githubusercontent.com/trinadhthatakula/Thor/master/fastlane/metadata/android/en-US/images/featureGraphic.png",
+  "screenshots": [
+    "https://raw.githubusercontent.com/trinadhthatakula/Thor/master/fastlane/metadata/android/en-US/images/phoneScreenshots/0.png",
+    "https://raw.githubusercontent.com/trinadhthatakula/Thor/master/fastlane/metadata/android/en-US/images/phoneScreenshots/1.jpg",
+    "https://raw.githubusercontent.com/trinadhthatakula/Thor/master/fastlane/metadata/android/en-US/images/phoneScreenshots/2.jpg",
+    "https://raw.githubusercontent.com/trinadhthatakula/Thor/master/fastlane/metadata/android/en-US/images/phoneScreenshots/3.jpg",
+    "https://raw.githubusercontent.com/trinadhthatakula/Thor/master/fastlane/metadata/android/en-US/images/phoneScreenshots/4.jpg",
+    "https://raw.githubusercontent.com/trinadhthatakula/Thor/master/fastlane/metadata/android/en-US/images/phoneScreenshots/5.jpg",
+    "https://raw.githubusercontent.com/trinadhthatakula/Thor/master/fastlane/metadata/android/en-US/images/phoneScreenshots/6.jpg",
+    "https://raw.githubusercontent.com/trinadhthatakula/Thor/master/fastlane/metadata/android/en-US/images/phoneScreenshots/7.jpg",
+    "https://raw.githubusercontent.com/trinadhthatakula/Thor/master/fastlane/metadata/android/en-US/images/phoneScreenshots/8.jpg",
+    "https://raw.githubusercontent.com/trinadhthatakula/Thor/master/fastlane/metadata/android/en-US/images/phoneScreenshots/9.jpg"
+  ],
+  "repo_url": "https://github.com/trinadhthatakula/Thor",
+  "download_url": "https://github.com/trinadhthatakula/Thor/releases/latest/download/foss-release.apk",
+  "changelog": "• 🔄 New: Auto Reinstall — sync and reinstall your apps with custom install options.\n\n• 🎨 Redesigned Home: an adaptive bento grid with one-tap Extension Manager.\n\n• 🔧 Rebuilt root engine (Odin) — faster, hang-proof and more reliable; app suspend fixed on release builds.\n\n• 📦 Much smaller download, plus a big stability & memory-leak cleanup for a smoother app.\n\n• 📱 Landscape & foldable fixes; installer now follows your app theme.\n\n• 🌍 Now translated into Arabic, Spanish, French and Chinese.",
+  "store_issue_number": 279,
+  "category": "Tools",
+  "license": "GPL-3.0-or-later",
+  "open_source": true,
+  "requires_shizuku": true,
+  "ad": false,
+  "donate_url": "https://www.patreon.com/trinadh",
+  "tags": [
+    "shizuku",
+    "root",
+    "dhizuku",
+    "app-manager",
+    "debloat",
+    "freeze",
+    "uninstall",
+    "apk-installer",
+    "split-apk",
+    "package-manager",
+    "foss",
+    "material-you",
+    "jetpack-compose",
+    "kotlin",
+    "device-owner"
+  ],
+  "developer": {
+    "name": "Trinadh Thatakula",
+    "username": "trinadhthatakula",
+    "account_url": "https://github.com/trinadhthatakula",
+    "socials": {
+      "github": "https://github.com/trinadhthatakula",
+      "telegram": "https://t.me/thorAppDev"
+    }
+  }
+}
