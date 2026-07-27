@@ -26,7 +26,7 @@
 - File creation and modification must use the native Write/Edit tools, never `ctx_execute` or Bash heredocs.
 - Unit tests must be run with `--rerun-tasks`. Gradle reports `UP-TO-DATE` and silently skips them otherwise.
 - minSdk 28, targetSdk/compileSdk 37. Guard `Tile.setSubtitle` behind `SDK_INT >= Q` (29) and `setStateDescription` behind `SDK_INT >= R` (30).
-- Injected dispatchers only — `@Named("io")` / `@Named("default")` / `@Named("main")` `CoroutineDispatcher`. Never hardcode `Dispatchers.*` in new code.
+- Injected dispatchers only **in Koin-constructed classes** — `@Named("io")` / `@Named("default")` / `@Named("main")` `CoroutineDispatcher`. This binds `BulkFreezeRunner` (Task 5). It does **not** bind `FreezerTileService` (Task 7): a `TileService` is constructed by the framework, is not unit-tested, and must paint on the main thread, so the literal `Dispatchers.Main` is correct there and matches the file it replaces.
 - New pure functions in `domain/model` must not import any `android.*` type.
 - Do NOT self-grant `POST_NOTIFICATIONS`. Do NOT add a foreground service, WorkManager, or a ContentProvider.
 - The tile is freeze-only. Never make it `TOGGLEABLE_TILE` and never add `ACTIVE_TILE` meta-data.
@@ -691,7 +691,9 @@ know when the deadline fires."
 
 ### Task 4: `AppFreezeStateReader`
 
-A thin `@Single` wrapper turning a package name into a `FreezeState`. It replaces `FreezerShortcutManager.isFrozen`, which re-implemented the domain predicate inline. Deliberately untested — it is three lines of PackageManager call plus the already-tested `isFrozen`.
+A thin `@Single` wrapper turning a package name into a `FreezeState`. It replaces `FreezerShortcutManager.isFrozen`, which re-implemented the domain predicate inline.
+
+**This task has no unit test, deliberately.** The class is one `PackageManager` call feeding the already-tested `isFrozen` predicate. Testing it needs a fake `PackageManager`, and `app/build.gradle.kts` carries only `testImplementation(libs.junit)` — no mocking library and no Robolectric. The spec (§5) fixes "zero new dependencies" as a constraint, so adding one to cover a three-line adapter is the wrong trade. The decision logic it feeds is covered by `FreezeStateTest` (Task 1); the branch that is genuinely this class's own — `NameNotFoundException` → `ABSENT` — is covered by device verification (Task 10). Do not add a test dependency to close this gap.
 
 **Files:**
 - Create: `app/src/main/java/com/valhalla/thor/data/freezer/AppFreezeStateReader.kt`
@@ -806,6 +808,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -815,6 +818,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
@@ -881,7 +885,16 @@ class BulkFreezeRunner(
                 _isRunning.value = false
                 // The sweep re-derives real state, so a killed or truncated batch self-heals:
                 // whatever is left simply shows up as the next count.
-                runCatching { refreshCandidates(op) }
+                //
+                // NOT runCatching: CancellationException is an Exception in Kotlin, and this
+                // runs in a finally where cancellation is exactly what we may be unwinding
+                // from. withContext(NonCancellable) lets the sweep finish even then, and the
+                // narrow catch keeps a PackageManager failure from masking the real outcome.
+                try {
+                    withContext(NonCancellable) { refreshCandidates(op) }
+                } catch (e: Exception) {
+                    Logger.e("BulkFreezeRunner", "post-run candidate sweep failed", e)
+                }
             }
         }
         activeJob = job
