@@ -1,7 +1,7 @@
 # Thor App Manager - Project Context
 
-Thor is a modern, lightweight, and privacy-focused Android App Manager. It is designed to be 100%
-offline, free, and open-source (FOSS), providing advanced app management capabilities through
+Thor is a modern, lightweight, and privacy-focused Android App Manager. It is free and open-source
+(FOSS), with no ads, trackers, or telemetry, providing advanced app management capabilities through
 Shizuku, Dhizuku, and Root access.
 
 ## 🏗 Architecture
@@ -20,8 +20,11 @@ for the presentation layer.
       `Shizuku`/`Dhizuku` APIs, and `DataStore` for persistence.
     - **DI**: Dependency Injection using **Koin**, organized into `commonModule`, `installerModule`,
       `preferenceModule`, `coreModule`, and `roomModule`.
-- **`suCore/`**: A specialized module for root shell management. It's a Kotlin-refactored version of
-  the `libsu` core module by `topjohnwu`, optimized for modern Kotlin idioms and memory safety.
+- **Odin** (`com.trinadhthatakula:odin`): Root shell management, consumed from Maven Central rather
+  than built in-tree. A Kotlin-refactored version of the `libsu` core module by `topjohnwu`,
+  optimized for modern Kotlin idioms and memory safety, now maintained as a
+  [standalone library](https://github.com/trinadhthatakula/Odin). It replaced the former `suCore/`
+  module; `settings.gradle.kts` can substitute a local checkout via `-PodinDir` for cross-repo work.
 - **`bypass/`**: A core utility module for bypassing Android's hidden API restrictions using
   `VMRuntime` exemptions and enhanced reflection.
 - **`vm-runtime/`**: Compile-only **Java** stubs required for the `bypass` module to interface with
@@ -47,7 +50,7 @@ for the presentation layer.
 - **Security**: Android Biometrics via `BiometricPrompt` API directly (no `androidx.biometric`
   dependency). `HomeActivity` extends `ComponentActivity`.
 - **Elevated Privileges**:
-    - **Root (su)**: Via `suCore` module (Kotlin-refactored fork of `libsu`).
+    - **Root (su)**: Via the Odin library (Kotlin-refactored fork of `libsu`).
     - **Shizuku**: Shell-command-first (`am`, `pm`, `appops`) with reflection fallback via
       `:bypass`.
     - **Dhizuku**: Device Owner API with reflection fallback via `:bypass`.
@@ -88,7 +91,9 @@ for the presentation layer.
 - **Multi-language**: Supports English, Spanish, French, Arabic, and Chinese. Runtime locale
   switching via `LocaleManager` (`util/LocaleManager.kt`); language preference stored in
   `UserPreferences.language` (null = system default).
-- **Privacy**: Fully offline, no ads, no trackers, FOSS (GPL-3.0).
+- **Privacy**: No ads, no trackers, no analytics, FOSS (GPL-3.0). The app declares
+  `android.permission.INTERNET`; the only network access is the optional Extensions store, which
+  fetches its catalog and verified extension APKs over HTTPS. Every other feature works offline.
 
 ## ⚠️ Limitations
 
@@ -97,7 +102,7 @@ for the presentation layer.
   availability.
 - **Suspension Compatibility**: `setAppSuspended` uses reflection against internal APIs; behaviour
   may vary across Android 10–14+ due to API signature changes.
-- **Offline Only**: No cloud backup or remote synchronization (by design, for privacy).
+- **No Cloud Sync**: No cloud backup or remote synchronization (by design, for privacy).
 - **Android Constraints**: Subject to evolving Android security restrictions (hidden API policy,
   target SDK requirements).
 - **Feature Gap**: App data backup is not yet implemented.
@@ -118,4 +123,4 @@ for the presentation layer.
 - **Android OS Changes**: Future Android updates might further restrict Shizuku or root-level access
   methods.
 - **Competition**: Several established open-source app managers exist; maintaining a niche in "
-  lightweight & offline" is key.
+  lightweight & privacy-first" is key.

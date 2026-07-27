@@ -1,4 +1,4 @@
-Thor App Manager is a lightweight, open-source Android app manager and installer designed for power users who want complete control over their devices. Built 100% in Kotlin using Jetpack Compose and Material 3, Thor delivers advanced package management without trackers, ads, or internet permissions.
+Thor App Manager is a lightweight, open-source Android app manager and installer designed for power users who want complete control over their devices. Built in Kotlin with Jetpack Compose and Material 3, Thor delivers advanced package management without trackers, ads, or telemetry.
 
 ⚡ MULTIPLE PRIVILEGE MODES
 Thor works seamlessly across different privilege engines with an automatic fallback system. Manually choose your active backend:
@@ -10,6 +10,7 @@ Thor works seamlessly across different privilege engines with an automatic fallb
 Easily install, reinstall, or repair installer records.
 • Redesigned app installer for root, Shizuku, or standard package manager.
 • Full support for split APK formats: .apkm, .apks, and .xapk files.
+• Auto Reinstall: sync and reinstall your apps with custom install-time options.
 • Fix Store: Reassign the installer record to Google Play Store in any privilege mode.
 
 🚫 UNIVERSAL SYSTEM APP DEBLOATING
@@ -25,8 +26,14 @@ Perform actions on multiple apps simultaneously with a real-time terminal logger
 • Force stop, restrict background activity, or clear app cache/data in any mode.
 • Suspend & unsuspend apps with a custom Thor-branded system dialog.
 
+🧩 EXTENSION MANAGER
+Extend Thor with optional add-ons, browsed and installed from an in-app catalog.
+• Every extension is signature-verified and SHA-256 checked before it installs.
+• Entirely opt-in: never open the Extension Manager and Thor never touches the network.
+
 📱 ADAPTIVE UI & LAYOUT PERSISTENCE
 Enjoy a beautiful Material 3 interface that adapts to your device.
+• Redesigned home screen: an adaptive bento grid with one-tap access to the Extension Manager.
 • Multi-pane layouts and vertical navigation rail optimized for tablets and foldables.
 • Persistent layout preferences: Grid and list view settings are preserved across restarts.
 • True AMOLED black mode, Light/Dark themes, and Material You dynamic color support.
@@ -34,15 +41,15 @@ Enjoy a beautiful Material 3 interface that adapts to your device.
 • Built-in language switcher supporting English, Spanish, French, Arabic, and Chinese.
 
 🔒 PRIVACY-FIRST & LIGHTWEIGHT
-• 100% Offline: Zero internet permissions required.
-• Complete privacy: No analytics, no crash reporters, and no trackers.
-• Open Source: Licensed under GNU GPL v3.0 (libre software).
-• Ultra-lightweight: ~2 MB download size, less than 4 MB installed.
+• No analytics, no crash reporters, no ads, no trackers — ever.
+• The only network access is the optional Extensions store, which fetches its catalog and verified extension APKs over HTTPS with a pinned signer and SHA-256 check. Every other feature works fully offline.
+• Open Source: Licensed under GNU GPL v3.0-or-later (libre software).
+• Ultra-lightweight: the direct-download APK is about 3 MB.
 
 TECHNICAL HIGHLIGHTS (AI Agent Optimized)
 • Target Platform: Android (Root, Shizuku, Dhizuku)
 • Architecture & Stack: Kotlin, Clean Architecture, MVVM, Room DB (caching metadata), Jetpack Compose
 • Hidden API bypass: Custom in-house bypass module (no external library dependency)
-• Shell Execution: Custom fork of libsu (suCore) fully converted to Kotlin
+• Shell Execution: Odin, an in-house Kotlin root-shell engine published on Maven Central
 
 No bloat. No trackers. No nonsense. Take control of your apps with Thor.
