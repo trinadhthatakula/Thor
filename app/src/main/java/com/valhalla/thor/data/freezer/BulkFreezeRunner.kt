@@ -17,6 +17,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -91,15 +92,30 @@ class BulkFreezeRunner(
      * Returning the job rather than making callers watch [isRunning] is deliberate: a fast run
      * can flip isRunning back to false before an observer starts collecting, and `join()` has
      * no such window.
+     *
+     * Same-op coalescing: a second tap for the same op returns the existing job.
+     * Conflicting-op replacement: the new job cancels and joins the previous before running,
+     * so at most one batch is ever touching packages concurrently.
      */
     @Synchronized
     fun launch(op: BulkOp): Job {
-        // B-1: coalesce only when the in-flight op matches; a mismatched request must start its
-        // own job rather than silently piggy-backing on someone else's.
+        // Same-op coalescing: return the in-flight job unchanged.
         activeJob?.takeIf { it.isActive && activeOp == op }?.let { return it }
+
+        // Conflicting-op replacement: capture the previous job BEFORE overwriting the slot.
+        // The new job's first act is cancelAndJoin(), so it will not touch any package until
+        // the previous one has fully unwound (run body AND finally sweep). _isRunning stays
+        // true across the handoff because the replaced job's finally guards the clear with an
+        // identity check (see finally block).
+        val previous = activeJob
+
         _isRunning.value = true
         val job = scope.launch {
             try {
+                // Wait for any replaced job to fully settle (including its NonCancellable sweep)
+                // before we start. cancel() alone would not be enough — it returns immediately
+                // and puts us back in a two-jobs-in-flight state.
+                previous?.cancelAndJoin()
                 // B-8: run() returns null for no-op cases (no privilege, empty target list);
                 // do not publish BulkResult(0,0,0) because the tile already communicates
                 // "nothing to freeze" — a false "Froze 0 apps" message is worse than silence.
@@ -117,8 +133,7 @@ class BulkFreezeRunner(
                 Logger.e("BulkFreezeRunner", "bulk $op run failed unexpectedly", e)
                 _lastResult.value = null
             } finally {
-                // B-3 / B-6 comment: the sweep must finish before isRunning flips so consumers
-                // see one stable (isRunning=false, count=N) transition rather than two emissions.
+                // B-6: sweep before clearing isRunning for a stable combined emission.
                 // NOT runCatching: CancellationException is an Exception in Kotlin, and this
                 // runs in a finally where cancellation is exactly what we may be unwinding
                 // from. withContext(NonCancellable) lets the sweep finish even then, and the
@@ -128,9 +143,14 @@ class BulkFreezeRunner(
                 } catch (e: Exception) {
                     Logger.e("BulkFreezeRunner", "post-run candidate sweep failed", e)
                 }
-                // B-6: publish after the sweep so the tile's combine() sees one stable
-                // (isRunning=false, freezableCount=N) emission, not two.
-                _isRunning.value = false
+                // R1/R2: clear isRunning only if this is still the active job. A replacement
+                // job has overwritten activeJob and is already running; it must keep
+                // _isRunning = true across the handoff. Identity check under the monitor for
+                // the same reason as the launch guard: the slot must be read atomically.
+                val thisJob = coroutineContext[Job]
+                synchronized(this@BulkFreezeRunner) {
+                    if (activeJob === thisJob) _isRunning.value = false
+                }
             }
         }
         activeJob = job
@@ -198,13 +218,20 @@ class BulkFreezeRunner(
             }
         }
 
-        val finished = withTimeoutOrNull(DEADLINE_MS) { job.join() } != null
-        if (!finished) {
-            // Best-effort. Any op already blocked in the shell runs to completion in the
-            // background; freezing is idempotent, so that is harmless and the next sweep
-            // shows the truth.
+        try {
+            val finished = withTimeoutOrNull(DEADLINE_MS) { job.join() } != null
+            if (!finished) {
+                Logger.d("BulkFreezeRunner", "bulk $op hit the ${DEADLINE_MS}ms deadline")
+            }
+        } finally {
+            // R3: cancel the sibling batch job on every exit — timeout, normal completion
+            // (harmless no-op on an already-finished job), or outer cancellation of run()'s
+            // caller. Without this, cancelling the outer job (e.g. cancelAndJoin() from a
+            // replacement launch) leaves up to MAX_CONCURRENT workers mutating packages
+            // unsupervised because the sibling relationship means they are not automatically
+            // cancelled with the caller. Do not add job.join() here — that re-introduces an
+            // unbounded wait (deferred B-11).
             job.cancel()
-            Logger.d("BulkFreezeRunner", "bulk $op hit the ${DEADLINE_MS}ms deadline")
         }
 
         return BulkResult(
