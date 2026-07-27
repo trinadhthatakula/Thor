@@ -162,9 +162,13 @@ class BulkFreezeRunner(
         return job
     }
 
-    /** Clear [lastResult] after it has been shown, so a later shade-open does not replay it. */
-    fun consumeResult() {
-        _lastResult.value = null
+    /**
+     * Clear [lastResult] after it has been shown, consuming only the exact result that was
+     * displayed. Compare-and-set means a new result published between the caller's read and
+     * this call is not silently dropped.
+     */
+    fun consumeResult(shown: BulkResult) {
+        _lastResult.compareAndSet(shown, null)
     }
 
     // B-8: returns null when there is nothing to act on, so the caller can skip publishing a

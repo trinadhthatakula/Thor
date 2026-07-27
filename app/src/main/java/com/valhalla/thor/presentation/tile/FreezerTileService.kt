@@ -10,11 +10,13 @@ import com.valhalla.thor.R
 import com.valhalla.thor.data.freezer.BulkFreezeRunner
 import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.BulkOp
+import com.valhalla.thor.domain.model.BulkResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 
@@ -32,6 +34,9 @@ class FreezerTileService : TileService() {
     private val privilegeManager: PrivilegeManager by inject()
 
     private var scope: CoroutineScope? = null
+
+    /** The [BulkResult] currently displayed in the subtitle; consumed in [onStopListening]. */
+    private var shownResult: BulkResult? = null
 
     override fun onStartListening() {
         val listenScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -60,20 +65,35 @@ class FreezerTileService : TileService() {
     override fun onStopListening() {
         scope?.cancel()
         scope = null
+        // Consume only the result that was actually displayed. Deferred to onStopListening so
+        // the message holds for the full shade-open window and no observer sees the write.
+        shownResult?.let { runner.consumeResult(it) }
+        shownResult = null
     }
 
     override fun onClick() {
-        // AOSP's CustomTile.handleClick early-returns on STATE_UNAVAILABLE, so this branch is
-        // only reachable when the tile was painted CHECKING and the probe then resolved to
-        // "no privilege" — a real race, not dead code.
-        if (!privilegeManager.state.value.hasAnyPrivilege) {
-            paint()
-            return
+        // The privilege state may not be resolved at tap time: PrivilegeManager probes on IO
+        // and the first DataStore emission may not have landed. Checking the current (possibly
+        // unresolved) snapshot would silently drop the tap with no feedback. Await the first
+        // ready snapshot on the listen scope instead. The await is cancelled with the scope if
+        // the shade closes before the probe resolves — acceptable, the user navigated away.
+        val currentScope = scope ?: return
+        currentScope.launch {
+            val resolved = privilegeManager.state.first { it.isReady }
+            if (!resolved.hasAnyPrivilege) {
+                paint()
+                return@launch
+            }
+            runner.launch(BulkOp.FREEZE)
         }
-        runner.launch(BulkOp.FREEZE)
     }
 
-    /** Push the current state onto the tile. Safe to call when unbound — [qsTile] is null then. */
+    /**
+     * Push the current state onto the tile. The [qsTile] null-check is belt-and-suspenders;
+     * the real protection against post-collapse [android.service.quicksettings.Tile.updateTile]
+     * calls is that [scope] is cancelled in [onStopListening] on the same Main looper, so a
+     * cancelled continuation in the collector can never run its body afterwards.
+     */
     private fun paint() {
         val tile = qsTile ?: return
         val visual = tileVisualFor(
@@ -94,11 +114,12 @@ class FreezerTileService : TileService() {
             TileVisual.READY -> Tile.STATE_ACTIVE
         }
 
-        // A finished run's message wins the subtitle once, then is consumed so a later
-        // shade-open shows the live count again rather than replaying a stale result.
+        // A finished run's message wins the subtitle for the whole shade-open window.
+        // Record it in shownResult so onStopListening can consume exactly what was displayed.
+        // Writing to shownResult (a plain field, not a flow) does not re-trigger the collector.
         val result = runner.lastResult.value
         val subtitle = if (result != null && !runner.isRunning.value) {
-            runner.consumeResult()
+            shownResult = result
             bulkResultMessage(result).asString(this)
         } else {
             when (visual) {
