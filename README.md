@@ -29,11 +29,10 @@
 * Jetpack Compose
 * Room DB App Caching
 * Custom Hidden API Bypass
-* PlayStore Download Size (around 3.0 MB)
-* Smallest APK size (less than 6 MB)
+* Direct-download APK around 3 MB
 * FOSS - GPL-3.0
-* Fully Offline
 * No Ads/Trackers
+* No network access except the optional Extensions store
 
 ## Working Features
 
@@ -41,6 +40,9 @@
 - Fingerprint Lock
 - Themes (dark, light, system) + AMOLED + Asgardian static theme
 - **Redesigned App Installer** — install packages with root, shizuku, or normal, featuring detailed UI states and associations for split formats (`.apkm`, `.apks`, and `.xapk`)
+- **Auto Reinstall** — sync and reinstall apps with custom install-time options
+- **Extension Manager** — an in-app catalog of optional add-ons, each signature-verified and SHA-256 checked before install
+- **Redesigned Home** — an adaptive bento grid with one-tap access to the Extension Manager
 - **Universal Android Debloater (UAD) Integration** — safety recommendation chips (Recommended, Advanced, Expert, Unsafe) dynamically shown for system packages
 - **Safe System App Debloating & Freezing** — uninstalls system apps for the current user (`pm uninstall --user`) and restores them (`pm install-existing`) to support modern Android versions safely
 - **Adaptive UI Layouts** — vertical navigation rail for tablets/foldables, optimized viewport layouts, and split landscape detail screens
@@ -84,7 +86,7 @@
 
 ## 💖 Support Development
 
-Thor is a labor of love, built to be **100% offline, ad-free, and tracker-free**. If this tool has
+Thor is a labor of love, built to be **ad-free and tracker-free**. If this tool has
 made your Android management easier, consider supporting its continued development. Your
 contributions help keep the project alive and free for everyone.
 
@@ -96,20 +98,23 @@ contributions help keep the project alive and free for everyone.
 
 ## Credits
 
-- Built the **Odin** root-service binding framework inside the [
-  `suCore`](https://github.com/trinadhthatakula/Thor/tree/master/suCore) module under package `com.valhalla.superuser`. Odin was adapted from the architectural design of [`libsu`](https://github.com/topjohnwu/libsu) by [topjohnwu](https://github.com/topjohnwu/) and completely rewritten to eliminate all `com.topjohnwu` package namespaces.
+- Built the **Odin** root-service binding framework, now a standalone library at
+  [`trinadhthatakula/Odin`](https://github.com/trinadhthatakula/Odin) and published to Maven
+  Central as `com.trinadhthatakula:odin`. Odin was adapted from the architectural design of
+  [`libsu`](https://github.com/topjohnwu/libsu) by [topjohnwu](https://github.com/topjohnwu/) and
+  completely rewritten to eliminate all `com.topjohnwu` package namespaces.
 - Replaced [`AndroidHiddenApiBypass`](https://github.com/LSPosed/AndroidHiddenApiBypass) with an
   internal Kotlin implementation in the [
   `bypass`](https://github.com/trinadhthatakula/Thor/tree/master/bypass) module, backed by Java
   stubs in the [`vm-runtime`](https://github.com/trinadhthatakula/Thor/tree/master/vm-runtime)
   module for maximum compatibility when shadowing system classes.
 
-### Architectural Advances in Odin (suCore)
+### Architectural Advances in Odin
 
 - **Pure Kotlin**: Fully converted the original Java-based design of `libsu` into a high-performance, modern, reactive Kotlin library.
 - **Zero Raw Binaries**: Completely eliminated precompiled binary dependencies (such as `main.jar`), bypassing external file extractions.
 - **Direct APK Classpath Invocations**: Dynamically mounts the app's main APK (`base.apk`) on `app_process`'s execution `CLASSPATH`, bootstrapping directly using a custom Kotlin classloader trampoline (`com.valhalla.superuser.internal.RootServerMain`).
-- Refer to the SuCore [README](https://github.com/trinadhthatakula/Thor/blob/master/suCore/README.md) for more details.
+- Refer to the [Odin README](https://github.com/trinadhthatakula/Odin#readme) for more details.
 
 ## License
 
