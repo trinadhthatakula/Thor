@@ -957,8 +957,8 @@ Each must be ≤ 80 characters, counted in Unicode codepoints. The English base 
 | Locale | Text | Chars |
 |---|---|---|
 | `ar` | `تجميد وإزالة وتثبيت التطبيقات عبر Shizuku وRoot وDhizuku. بلا إعلانات، FOSS` | 75 |
-| `es` | `Congela, depura e instala apps con Shizuku, Root y Dhizuku. Sin anuncios, FOSS` | 77 |
-| `fr` | `Gelez, allégez et installez vos apps via Shizuku, Root, Dhizuku. Sans pub, FOSS` | 78 |
+| `es` | `Congela, depura e instala apps con Shizuku, Root y Dhizuku. Sin anuncios, FOSS` | 78 |
+| `fr` | `Gelez, allégez et installez vos apps via Shizuku, Root, Dhizuku. Sans pub, FOSS` | 79 |
 | `zh` | `通过 Shizuku、Root、Dhizuku 冻结、精简并安装应用。无广告，开源免费` | 43 |
 | `hi` | copied verbatim from `fastlane/metadata/android/hi-IN/short_description.txt` | — |
 
@@ -1901,7 +1901,7 @@ fastlane/metadata/android/en-US/full_description.txt
 fastlane/metadata/android/en-US/short_description.txt
 fastlane/metadata/android/hi-IN/full_description.txt
 fastlane/metadata/android/hi-IN/short_description.txt
-fastlane/metadata/android/images/featureGraphic.png
+fastlane/metadata/android/en-US/images/featureGraphic.png
 shizu_store.json
 ```
 
