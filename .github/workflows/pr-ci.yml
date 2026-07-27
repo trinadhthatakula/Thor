@@ -40,6 +40,9 @@ jobs:
         continue-on-error: true
         run: ./gradlew lintFossDebug
 
+  # Runs on every PR rather than being path-filtered. on.pull_request.paths
+  # filters the whole workflow, which would also gate build-and-test — the
+  # required status check — leaving unrelated PRs pending forever.
   shizu-manifest:
     name: shizu-manifest
     runs-on: ubuntu-latest
@@ -47,9 +50,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      # Runs on every PR rather than being path-filtered. on.pull_request.paths
-      # filters the whole workflow, which would also gate build-and-test — the
-      # required status check — leaving unrelated PRs pending forever.
       - name: Install check-jsonschema
         run: pipx install check-jsonschema
 

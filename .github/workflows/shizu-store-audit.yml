@@ -59,7 +59,13 @@ jobs:
             echo "Run: $RUN_URL"
             echo
             echo '```'
-            cat audit.log
+            if [ "$(wc -c < audit.log)" -gt 50000 ]; then
+              head -c 50000 audit.log
+              echo
+              echo "(truncated — see the full log in the Actions run above)"
+            else
+              cat audit.log
+            fi
             echo '```'
           } > issue-body.md
 
@@ -85,3 +91,9 @@ jobs:
           if [ -n "$existing" ]; then
             gh issue close "$existing" --comment "Audit passed. Run: $RUN_URL"
           fi
+
+      # Covers exit 1 (findings) and exit 2 (missing tooling) — either way
+      # the run must be red so the Actions history is truthful.
+      - name: Fail the run if the audit failed
+        if: steps.audit.outputs.status != '0'
+        run: exit 1

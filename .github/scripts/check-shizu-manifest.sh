@@ -163,8 +163,8 @@ check_int target_sdk "$toml_target" "gradle/libs.versions.toml"
 
 section "changelog matches the current release notes"
 # Anchored on purpose: an unanchored 'versionCode' also matches
-# initialVersionCode=1921, which is the bug that made release-manager.yml
-# unusable — two lines fed into arithmetic.
+# initialVersionCode=1921, feeding two lines into arithmetic — the bug that
+# made the old release-manager workflow unusable (deleted 2026-07-27).
 # LOCKSTEP: this block (versionCode grep, version arithmetic, notes fallback path) is
 # kept in lockstep with sync-shizu-changelog.sh — update both scripts together.
 version_code="$(grep -E '^versionCode=' gradle.properties | cut -d= -f2 | tr -dc '0-9')"

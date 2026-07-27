@@ -18,8 +18,8 @@ MANIFEST="shizu_store.json"
 command -v jq >/dev/null 2>&1 || { printf 'missing required tool: jq\n' >&2; exit 2; }
 
 # Anchored on purpose: an unanchored 'versionCode' also matches
-# initialVersionCode=1921, yielding two lines that then feed into arithmetic.
-# That is the bug that made release-manager.yml unusable.
+# initialVersionCode=1921, feeding two lines into arithmetic — the bug that
+# made the old release-manager workflow unusable (deleted 2026-07-27).
 # || true: with set -e, a pipeline failure (grep finds nothing) kills the script
 # before the guard below can print an actionable message. || true lets the guard run.
 # LOCKSTEP: this block (versionCode grep, version arithmetic, notes fallback path) is
