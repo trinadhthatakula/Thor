@@ -104,8 +104,8 @@ contributions help keep the project alive and free for everyone.
   [`libsu`](https://github.com/topjohnwu/libsu) by [topjohnwu](https://github.com/topjohnwu/) and
   completely rewritten to eliminate all `com.topjohnwu` package namespaces.
 - Replaced [`AndroidHiddenApiBypass`](https://github.com/LSPosed/AndroidHiddenApiBypass) with an
-  internal Kotlin implementation in the [
-  `bypass`](https://github.com/trinadhthatakula/Thor/tree/master/bypass) module, backed by Java
+  internal Kotlin implementation in the
+  [`bypass`](https://github.com/trinadhthatakula/Thor/tree/master/bypass) module, backed by Java
   stubs in the [`vm-runtime`](https://github.com/trinadhthatakula/Thor/tree/master/vm-runtime)
   module for maximum compatibility when shadowing system classes.
 
