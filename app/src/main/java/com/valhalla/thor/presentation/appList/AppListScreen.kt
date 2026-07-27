@@ -163,7 +163,9 @@ fun AppListScreen(
             PullToRefreshBox(
                 // isComputingSizes runs on a populated list, so surface it via the
                 // pull-refresh spinner (the empty-state loader wouldn't show).
-                isRefreshing = state.isLoading || state.isComputingSizes,
+                // isManualRefreshing keeps the indicator readable: isLoading clears on the Room
+                // cache emission, which lands long before the package rescan finishes.
+                isRefreshing = state.isLoading || state.isComputingSizes || state.isManualRefreshing,
                 // No deferForTransition: the user already made a deliberate gesture and nothing is
                 // animating in, so the settle delay would just be dead spinner time.
                 onRefresh = { viewModel.loadApps() },

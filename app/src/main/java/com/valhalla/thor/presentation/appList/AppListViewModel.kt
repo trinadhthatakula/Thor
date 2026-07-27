@@ -76,6 +76,10 @@ data class AppListUiState(
     val useDetailedView: Boolean = true,
     val isGrid: Boolean = true,
     val isComputingSizes: Boolean = false,
+    // Holds the pull-to-refresh indicator up for a readable minimum. isLoading cannot do this job:
+    // getAllApps() emits the Room cache before it starts the package rescan, so isLoading clears
+    // after one DAO read and the indicator would blink out while the real scan is still running.
+    val isManualRefreshing: Boolean = false,
     val needsUsageAccessPrompt: Boolean = false
 )
 
@@ -103,6 +107,7 @@ class AppListViewModel(
 
     private var appsJob: Job? = null
     private var sizeJob: Job? = null
+    private var refreshIndicatorJob: Job? = null
     private val _rawState = MutableStateFlow(AppListUiState())
 
     // One-off UI feedback (toasts, freezer prompt). A buffered Channel fires each event exactly
@@ -146,6 +151,8 @@ class AppListViewModel(
         // Cancel any existing collector so the prior (infinite) getInstalledAppsUseCase()
         // callbackFlow tears down (awaitClose -> unregister receivers) before we relaunch.
         appsJob?.cancel()
+
+        if (!deferForTransition) holdRefreshIndicator()
 
         appsJob = viewModelScope.launch {
             _rawState.update { it.copy(isLoading = true) }
@@ -202,6 +209,35 @@ class AppListViewModel(
                     launch { usageAccessManager.maybeAutoGrant() }
                 }
             }
+        }
+    }
+
+    /**
+     * Keeps the pull-to-refresh indicator on screen for a readable minimum, without holding the
+     * scan back.
+     *
+     * `isLoading` alone cannot drive the indicator on this path: `getAllApps()` sends the Room
+     * cache before it triggers the `pm.getInstalledPackages` rescan, and `priv.isReady` has long
+     * since latched true, so the first emission — one DAO read later — clears `isLoading` while
+     * the real scan is still running. The indicator would blink out immediately and the list would
+     * then mutate under the user with nothing to explain it.
+     *
+     * The old unconditional 800 ms delay masked this by keeping `isLoading` true, but it did so by
+     * postponing the work. This holds only the *indicator*, so the scan still starts at once. It
+     * also restores the re-entrancy guard that fell out of that delay: `PullToRefreshBox` ignores
+     * pulls while it is refreshing, so a user cannot stack overlapping package scans by pulling
+     * repeatedly.
+     */
+    private fun holdRefreshIndicator() {
+        refreshIndicatorJob?.cancel()
+        // Raised here rather than inside the coroutine, and lowered only by a timer that ran to
+        // completion. A cancelled hold must never lower the flag: the only thing that cancels one
+        // is a newer hold, which has already raised it again, so clearing from the old job's
+        // teardown would hide the indicator for the refresh that just started.
+        _rawState.update { it.copy(isManualRefreshing = true) }
+        refreshIndicatorJob = viewModelScope.launch {
+            delay(REFRESH_INDICATOR_MIN_VISIBLE)
+            _rawState.update { it.copy(isManualRefreshing = false) }
         }
     }
 

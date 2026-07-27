@@ -37,6 +37,26 @@ class TransitionSettleDelayTest {
     }
 
     @Test
+    fun refreshIndicatorFloorIsActuallyVisible() {
+        // The whole point of the floor is that a manual refresh stays legible even though
+        // isLoading clears on the Room-cache emission. Zero would silently reinstate the flash.
+        assertTrue(
+            "the refresh indicator floor must be > 0",
+            REFRESH_INDICATOR_MIN_VISIBLE > Duration.ZERO
+        )
+    }
+
+    @Test
+    fun refreshIndicatorFloorDoesNotScaleWithIntensity() {
+        // A refresh is direct manipulation the user is waiting on; its feedback must not be tied
+        // to the decorative-motion preference the way the entry settle delay is.
+        assertTrue(
+            "the refresh floor must stay legible even at LOW, where the settle delay is zero",
+            REFRESH_INDICATOR_MIN_VISIBLE > settleDelayFor(AnimationIntensity.LOW)
+        )
+    }
+
+    @Test
     fun everyIntensityIsMappedAndNonNegative() {
         // Guards a future enum entry being added without a matching delay decision.
         AnimationIntensity.entries.forEach { intensity ->

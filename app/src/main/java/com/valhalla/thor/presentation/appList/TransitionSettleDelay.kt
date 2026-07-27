@@ -28,3 +28,13 @@ fun settleDelayFor(intensity: AnimationIntensity): Duration = when (intensity) {
     AnimationIntensity.MEDIUM -> 400.milliseconds
     AnimationIntensity.HIGH -> 800.milliseconds
 }
+
+/**
+ * Minimum time the pull-to-refresh indicator stays on screen after a manual refresh.
+ *
+ * This throttles the *indicator*, never the scan — see `AppListViewModel.holdRefreshIndicator`.
+ * It is deliberately not scaled by [AnimationIntensity]: a refresh is a direct manipulation whose
+ * result the user is waiting on, so the feedback must be legible regardless of how much motion
+ * they have asked for elsewhere.
+ */
+val REFRESH_INDICATOR_MIN_VISIBLE: Duration = 600.milliseconds
