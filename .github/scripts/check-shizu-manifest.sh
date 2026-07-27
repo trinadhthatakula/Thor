@@ -39,7 +39,10 @@ need() {
 }
 need jq
 need check-jsonschema
-[ "$NETWORK" -eq 1 ] && need curl
+# An `if`, not `[ ... ] && need curl`: the && form makes the whole line exit
+# non-zero when NETWORK is 0, which would abort the script the day someone
+# adds `set -e`.
+if [ "$NETWORK" -eq 1 ]; then need curl; fi
 
 # hi lives in fastlane as hi-IN; the other manifest locales have no fastlane
 # counterpart and are checked for length and presence only.
@@ -96,40 +99,94 @@ while read -r label len; do
   if [ "$len" -le 80 ]; then ok "$label is $len chars"; else fail "$label is $len chars, over Play's 80"; fi
 done < <(jq -r '["en", (.short_description|length)], (if has("locales") then (.locales|to_entries[]|[.key, (.value.short_description|length)]) else empty end) | @tsv' "$MANIFEST")
 
+section "full_description length"
+# Google Play hard-caps full_description at 4000 characters and rejects the
+# upload over it.  This has been a manual watch item across three tasks; the
+# Hindi copy sits ~50 characters under the cap, so an innocuous edit can breach
+# it.  Automated now.
+#
+# wc -m counts CHARACTERS only under a UTF-8 locale.  Under LC_ALL=C it counts
+# bytes — the Hindi file is 3948 characters but 8930 bytes, so an unpinned
+# locale turns this assertion into a guaranteed false failure on any runner
+# that does not happen to have a UTF-8 LC_CTYPE.  Resolve the locale here
+# rather than trusting the caller's environment.
+desc_locale=""
+for cand in C.UTF-8 en_US.UTF-8 C.utf8 en_US.utf8; do
+  if locale -a 2>/dev/null | grep -qxF "$cand"; then desc_locale="$cand"; break; fi
+done
+count_chars() {
+  if [ -n "$desc_locale" ]; then
+    LC_ALL="$desc_locale" wc -m < "$1" | tr -d ' '
+  else
+    # Fallback for a host with no UTF-8 locale at all.  jq decodes UTF-8
+    # regardless of locale and its length is codepoints, which is exactly what
+    # UTF-8 `wc -m` reports (verified identical on both files).
+    jq -Rs 'length' < "$1"
+  fi
+}
+found_desc=0
+for f in "$FASTLANE"/*/full_description.txt; do
+  [ -f "$f" ] || continue
+  found_desc=1
+  n="$(count_chars "$f")"
+  if [ "$n" -le 4000 ]; then
+    ok "$f is $n chars ($((4000 - n)) to spare)"
+  else
+    fail "$f is $n chars, over Play's 4000 by $((n - 4000))"
+  fi
+done
+[ "$found_desc" -eq 1 ] || fail "no full_description.txt found under $FASTLANE/*/ — nothing was length-checked"
+
 section "screenshots match the directory"
+# Compared as FULL URLs, not basenames.  A basename-only comparison passed a
+# manifest whose every screenshot pointed at .../hi-IN/images/phoneScreenshots/
+# — a directory that does not exist — because the file names still lined up.
+# Ten dead links would have shipped to master.  Building the expected URL from
+# $RAW_BASE/$SHOTS and comparing exactly makes a wrong branch, a wrong path and
+# a wrong filename all land in the same assertion.
+#
 # (.screenshots // [])[] suppresses jq errors when screenshots is null/missing
 # (fix: was '.screenshots[]' which emits "Cannot iterate over null" to stderr).
-manifest_shots="$(jq -r '(.screenshots // [])[]' "$MANIFEST" | sed 's#.*/##' | sort)"
+manifest_shots="$(jq -r '(.screenshots // [])[]' "$MANIFEST" | sort)"
 # Guard directory existence separately from emptiness — two distinct root causes.
 if [ ! -d "$SHOTS" ]; then
   fail "screenshots: $SHOTS does not exist"
-  actual_shots=""
+  expected_shots=""
 else
-  actual_shots="$(ls "$SHOTS" | sort)"
-  # Guard against vacuous pass: if both sets are empty all three assertions
-  # below would pass silently.  An empty screenshot set is always a failure.
-  [ -n "$actual_shots" ] || fail "screenshots: $SHOTS is empty — at least one screenshot is required"
+  expected_shots="$(ls "$SHOTS" | sed "s#^#$RAW_BASE/$SHOTS/#" | sort)"
+  # Guard against vacuous pass: if both sets are empty the assertion below
+  # would pass silently.  An empty screenshot set is always a failure.
+  [ -n "$expected_shots" ] || fail "screenshots: $SHOTS is empty — at least one screenshot is required"
 fi
-if [ "$manifest_shots" = "$actual_shots" ] && [ -n "$actual_shots" ]; then
+if [ "$manifest_shots" = "$expected_shots" ] && [ -n "$expected_shots" ]; then
   # printf '%s\n' adds a trailing newline so wc -l counts all N lines, not N-1
   # (fix: was 'printf %s' which yielded N-1 for a clean 10-screenshot tree).
-  ok "$(printf '%s\n' "$actual_shots" | wc -l | tr -d ' ') screenshots listed, matching $SHOTS"
-elif [ -n "$actual_shots" ]; then
-  fail "screenshots array does not match $SHOTS"
-  diff <(printf '%s\n' "$actual_shots") <(printf '%s\n' "$manifest_shots") >&2 || true
+  ok "$(printf '%s\n' "$expected_shots" | wc -l | tr -d ' ') screenshots listed, matching $SHOTS"
+elif [ -n "$expected_shots" ]; then
+  fail "screenshots array does not match $SHOTS (compared as full URLs)"
+  printf '    "<" = on disk but not listed in .screenshots;  ">" = listed but no such file at that URL\n' >&2
+  diff <(printf '%s\n' "$expected_shots") <(printf '%s\n' "$manifest_shots") >&2 || true
 fi
 
-# Gate URL-pinning check on the manifest array, not the directory: with files
-# on disk but screenshots:[] in the manifest, bad_prefix would be vacuously
-# empty and the check would report ok over zero URLs.
-if [ -n "$manifest_shots" ]; then
-  bad_prefix="$(jq -r --arg b "$RAW_BASE" '(.screenshots // [])[] | select(startswith($b) | not)' "$MANIFEST")"
-  if [ -z "$bad_prefix" ]; then
-    ok "every screenshot URL is pinned to master"
-  else
-    fail "screenshot URLs not pinned to $RAW_BASE:"
-    printf '    %s\n' $bad_prefix >&2
-  fi
+section "image urls are pinned to master"
+# icon_url and banner_url are schema-required, so this check is NOT gated on
+# screenshots being non-empty — it used to iterate .screenshots alone, which
+# let both of them be repointed at /dev/ while the checker printed "all checks
+# passed".  The network tier could not catch it either: those files exist on
+# dev and answer 200.
+# The // idiom stays throughout: a jq filter that aborts on null is how the
+# original "Cannot iterate over null" bug got in.  startswith() errors on null,
+# so a missing icon_url/banner_url becomes a MISSING: sentinel that fails this
+# check loudly instead of emptying $bad_prefix into a vacuous pass.  The
+# sentinels carry no spaces — $bad_prefix is word-split when printed below.
+bad_prefix="$(jq -r --arg b "$RAW_BASE" \
+  '[(.icon_url // "MISSING:icon_url"), (.banner_url // "MISSING:banner_url"), ((.screenshots // [])[])]
+   | .[] | select(startswith($b) | not)' "$MANIFEST")"
+if [ -z "$bad_prefix" ]; then
+  ok "icon_url, banner_url and every screenshot URL are pinned to master"
+else
+  fail "image URLs not pinned to $RAW_BASE:"
+  printf '    %s\n' $bad_prefix >&2
 fi
 
 section "locale keys"
