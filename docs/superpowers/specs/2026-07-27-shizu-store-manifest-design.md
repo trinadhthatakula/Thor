@@ -51,12 +51,12 @@ shipping a fresh privacy claim we know to be wrong, so it is corrected in the sa
 
 ## Scope
 
-One PR to `master` containing eleven changes, then a `master` → `dev` merge.
+One PR to `master` containing twelve changes, then a `master` → `dev` merge.
 
 | # | Change | Rationale |
 |---|--------|-----------|
 | 1 | Add `shizu_store.json` at repo root | The deliverable |
-| 2 | Add `.github/workflows/shizu-store-sync.yml` | Keep the manifest fresh; audit it weekly |
+| 2 | Add `.github/workflows/shizu-store-audit.yml` | Weekly audit that the listing is still intact |
 | 3 | Delete `.github/workflows/release-manager.yml` | Unused and broken (see below) |
 | 4 | Copy `featureGraphic.png` from `dev` to `master` | Store banner should be the current one |
 | 5 | Rewrite `fastlane/.../en-US/full_description.txt` | v1.93.0 features + offline fix + size fix |
@@ -65,7 +65,8 @@ One PR to `master` containing eleven changes, then a `master` → `dev` merge.
 | 8 | Update `README.md` | Offline fix, size fix, v1.93.0 features, 2 dead links |
 | 9 | Add `.github/shizu_store.schema.json` | Vendored schema, for deterministic validation |
 | 10 | Add `.github/scripts/check-shizu-manifest.sh` | Shared checker for PR CI and the weekly audit |
-| 11 | Add a manifest-check job to `.github/workflows/pr-ci.yml` | Catch drift in the PR that causes it |
+| 11 | Add `.github/scripts/sync-shizu-changelog.sh` | One command to refresh `changelog` at release time |
+| 12 | Add a manifest-check job to `.github/workflows/pr-ci.yml` | Catch drift in the PR that causes it |
 
 ### Out of scope
 
@@ -86,8 +87,6 @@ One PR to `master` containing eleven changes, then a `master` → `dev` merge.
   "schema_version": 1,
   "app_name": "Thor - App Manager",
   "package_name": "com.valhalla.thor",
-  "version_name": "1.93.0",
-  "version_code": 1930,
   "min_sdk": 28,
   "target_sdk": 37,
   "short_description": "<en short_description, mirrors fastlane>",
@@ -127,6 +126,25 @@ One PR to `master` containing eleven changes, then a `master` → `dev` merge.
 
 ### Field decisions
 
+**`version_name` and `version_code` are omitted.** The store already knows Thor's version: it reads
+the repository's releases, and the manifest exists to *override* those defaults, not to restate
+them. Writing them down creates a fact that must be re-synced on every release and that can
+disagree with `download_url` — which always serves the newest release regardless of what the
+manifest claims. Omitting them makes that disagreement unrepresentable.
+
+This also removes the only reason the manifest would ever need a machine to write it, which
+matters because **no machine can**. The `CodePush rules` ruleset (id 3613480, enforcement
+`active`) targets `~DEFAULT_BRANCH` with `pull_request` and a required `build-and-test` status
+check. Its bypass actors are the Admin role and one integration limited to `mode: pull_request`;
+`github-actions[bot]` is not among them, so a workflow cannot push to `master`. The obvious
+fallback is dead too: a pull request opened with `secrets.GITHUB_TOKEN` does not trigger
+`pull_request` workflows, so `build-and-test` would never run and the required check would stay
+pending forever. Only a PAT belonging to a human with the Admin role could do it, and no
+`PAT_TOKEN` secret exists.
+
+The constraint and the correct design point the same way, so no workaround is needed. The residual
+assumption is stated under *Risks*.
+
 **`download_url` → `releases/latest/download/foss-release.apk`.** GitHub 302-redirects this to the
 newest release's asset, so it never goes stale, and it still ends in `.apk` as the schema's
 `^https?://.*\.apk$` pattern demands. Omitting the field entirely would let the store guess from
@@ -137,8 +155,15 @@ screenshot on `master` updates the listing with no manifest edit.
 
 **`changelog` is top-level only, never per-locale.** The schema permits `changelog` inside
 `locales`, but translated changelogs would have to be regenerated every release or silently rot
-into showing stale notes to non-English users. One field, one source of truth, one thing for CI
-to update.
+into showing stale notes to non-English users. One field, one source of truth, one thing to
+refresh at release time.
+
+It is the one field that is kept rather than omitted despite needing a refresh. Dropping it would
+fall back to the GitHub release body, which is `release-notes/v*/github.md` — long-form Markdown
+written for a release page, not the six curated bullets of `playstore.txt`. Its staleness is also
+harmless in a way a stale version number is not: showing last release's notes is a cosmetic
+inaccuracy, whereas advertising a version that `download_url` does not serve is a functional lie.
+`sync-shizu-changelog.sh` refreshes it in one command and PR CI fails when it is stale.
 
 **`app_name` and `developer_name` are not translated.** The brand and the person's name stay
 identical in every locale; only the three prose fields vary.
@@ -232,80 +257,53 @@ Credits links to `github.com/trinadhthatakula/Thor/tree/master/suCore` and
 extracted to a standalone repository. Both links repoint to
 `https://github.com/trinadhthatakula/Odin`.
 
-## CI: `shizu-store-sync.yml`
+## CI: `shizu-store-audit.yml`
+
+Nothing in CI writes the manifest. Since `version_name` and `version_code` are omitted, the only
+field that tracks a release is `changelog`, and a developer refreshing it during release prep —
+in the same commit that bumps `versionCode` and adds `release-notes/v*/` — is both simpler and the
+only thing the branch ruleset permits. CI's job is to *verify*, and to notice when something
+outside the repository breaks.
 
 ### Trigger
 
 ```yaml
 on:
-  workflow_run:
-    workflows: ["2. Production Build & Distribute"]
-    types: [completed]
   schedule:
-    - cron: "0 6 * * 1"   # weekly audit, Mondays 06:00 UTC
+    - cron: "0 6 * * 1"   # Mondays 06:00 UTC
   workflow_dispatch:
 ```
 
-The file holds two jobs: `sync`, which runs after a release, and `audit`, which runs weekly.
-Each guards on `github.event_name` so the scheduled run never rewrites the manifest and the
-release run never files an audit issue.
+One job, `audit`, with `permissions: { contents: read, issues: write }` — it files a tracking
+issue but never commits. `runs-on: ubuntu-latest`, following `production-deploy.yml`'s shape for
+checkout and tooling setup, minus the Java, Ruby, and keystore steps it has no use for.
 
-Chaining off the release workflow rather than mirroring its `push: production` trigger is a
-correctness requirement, not a preference:
+Scheduled workflows always run the copy of the file on the default branch, which is `master` and
+where this file lives.
 
-1. **A push trigger would advertise a version that does not exist yet.** Both workflows would
-   start at once, but `production-deploy.yml` takes roughly fifteen minutes to build, sign, and
-   upload. During that window the manifest would name the new version while
-   `releases/latest/download/…` still served the previous APK — store users would be offered an
-   "update" that installs the older build.
-2. **`on: release: [published]` would never fire at all.** `production-deploy.yml` creates the
-   release with `secrets.GITHUB_TOKEN`, and GitHub deliberately does not start new workflow runs
-   from events authored by that token. `workflow_run` is explicitly exempt from that rule.
+`workflow_dispatch` is included so the audit can be run on demand — after a release, or to confirm
+a fix — without waiting for Monday.
 
-`workflow_run` workflows always execute the copy of the file on the default branch. Since the
-default branch is `master` and that is where this file lives, that behaviour is what we want.
+### Job outline — `audit`
 
-### Job outline — `sync`
+1. **Checkout** with the default `GITHUB_TOKEN`; read-only.
+2. **Run `.github/scripts/check-shizu-manifest.sh --network`**, which performs every check in
+   *Guarding against silent rot* below.
+3. **On failure, open or update the tracking issue** labelled `shizu-store-audit`, with the script's
+   output as the body. **On success, close it** if one is open.
 
-Modelled on `production-deploy.yml`: `runs-on: ubuntu-latest`, `permissions: contents: write`,
-and a `concurrency` group so two syncs cannot race on the same file.
+### Release-time changelog refresh
 
-Guard:
+`.github/scripts/sync-shizu-changelog.sh` is run by the developer, not by CI. It derives the
+version from `gradle.properties` with an anchored `grep -E '^versionCode='` — the anchor matters,
+because an unanchored `versionCode` also matches `initialVersionCode=1921`, which is exactly the
+bug that made `release-manager.yml` unusable — resolves
+`release-notes/v$VERSION/playstore.txt` with the same `v`-prefix fallback `production-deploy.yml`
+uses, and rewrites the single `changelog` field with `jq --arg`. Using `jq` rather than `sed`
+means a changelog containing quotes or newlines cannot corrupt the file.
 
-```yaml
-if: >-
-  github.event_name == 'workflow_dispatch' ||
-  (github.event.workflow_run.conclusion == 'success' &&
-   github.event.workflow_run.head_branch == 'production')
-```
-
-A `schedule` run satisfies neither clause, so the weekly audit cannot rewrite the manifest — the
-guard already expresses that without a separate exclusion. The `audit` job takes the complementary
-guard (`schedule` or `workflow_dispatch`) and needs `issues: write` rather than `contents: write`,
-since it files a tracking issue but never commits.
-
-Steps:
-
-1. **Checkout `master`** with `token: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}`.
-2. **Derive the version** from `master`'s `gradle.properties`, using an anchored
-   `grep -E '^versionCode='`. The anchor matters: an unanchored `versionCode` also matches
-   `initialVersionCode=1921`, which is exactly the bug that made `release-manager.yml` unusable.
-   Then `MAJOR=$((C/1000))`, `MINOR=$(((C%1000)/10))`, `PATCH=$((C%10))`.
-3. **Verify the release exists** — `gh release view "v$VERSION"` — and fail loudly if it does not,
-   rather than publishing a manifest pointing at a missing APK.
-4. **Resolve the changelog** from `release-notes/v$VERSION/playstore.txt`, falling back to
-   `release-notes/$VERSION/playstore.txt` the way `production-deploy.yml` does.
-5. **Rewrite three fields** with `jq --arg`: `version_name`, `version_code`, `changelog`.
-   Everything else in the manifest is hand-maintained. `jq` handles JSON escaping, so a changelog
-   containing quotes or newlines cannot corrupt the file.
-6. **Validate** — `jq empty` for syntax, plus an assertion that the four required fields
-   (`app_name`, `package_name`, `short_description`, `icon_url`) are present and non-empty.
-   An invalid manifest is silently ignored by the store, so a broken file would fail invisibly.
-7. **Commit and push to `master`** only if `git diff --quiet` reports a change, with `[skip ci]`
-   in the message.
-
-`[skip ci]` is required, not cosmetic: `dev-check.yml` triggers on `push` to `master`, so without
-it every sync would kick off an unnecessary build.
+Forgetting to run it is not a silent failure: PR CI recomputes the expected changelog and fails
+with the command to fix it.
 
 ### Deleting `release-manager.yml`
 
@@ -338,8 +336,12 @@ elsewhere — so the goal is to convert each silent failure into a loud one.
 
 ### Ownership rule
 
-> CI owns `version_name`, `version_code`, and `changelog`. Everything else is hand-written, and
-> CI fails the build when it stops matching reality.
+> Every field is hand-written. CI writes nothing and fails the build when the manifest stops
+> matching reality.
+
+Facts CI could otherwise be tempted to own are instead not stated: the version fields are omitted
+so the store reads them from the release, and `changelog` — the one field that must be refreshed —
+is refreshed by a script the developer runs, then verified.
 
 Deliberately, CI does **not** generate `detailed_description` from `full_description.txt`.
 Generating it would eliminate the drift class, but replace it with a worse footgun: someone edits
@@ -349,22 +351,30 @@ silently overwritten.
 
 ### Tier 1 — local checks, on every PR
 
-A job in the existing `pr-ci.yml`, path-filtered to `shizu_store.json`, `fastlane/**`, and
-`gradle.properties`. No network access, so it runs in seconds:
+A job in the existing `pr-ci.yml`, path-filtered to `shizu_store.json`, `fastlane/**`,
+`release-notes/**`, `gradle.properties`, and the checker script itself. No network access, so it
+runs in seconds:
 
 1. Validate against the vendored schema.
 2. `detailed_description` equals `full_description.txt`; `short_description` equals
    `short_description.txt`; the same for each locale that has a fastlane counterpart.
 3. The `screenshots` array equals the actual files in `.../images/phoneScreenshots/`.
-4. `version_code` equals `gradle.properties`, and `version_name` is its computed form.
+4. `changelog` equals `release-notes/v$VERSION/playstore.txt`, where `$VERSION` is computed from
+   `gradle.properties`.
+5. `min_sdk` and `target_sdk` equal the values in `gradle/libs.versions.toml`.
+6. `version_name` and `version_code` are **absent**. They are omitted by design, and an assertion
+   is what keeps a future edit from reintroducing a field nothing can keep current.
+
+`release-notes/**` and `gradle.properties` are in the path filter because of check 4: a version
+bump changes the expected changelog without touching the manifest, so the PR that bumps must be
+the PR that fails.
 
 This catches drift in the pull request that introduces it, which is the only cheap moment to fix
 it.
 
 ### Tier 2 — weekly network audit
 
-A second job in `shizu-store-sync.yml` under a `schedule:` trigger — weekly, keeping everything
-in one workflow file rather than adding another. It runs the tier-1 checks plus:
+`shizu-store-audit.yml`, weekly. It runs the tier-1 checks plus:
 
 1. `curl` every URL in the manifest and require a 200.
 2. Follow `download_url` and confirm it still resolves to a real `foss-release.apk`.
@@ -436,16 +446,21 @@ has a definition of done:
 4. Confirm the cherry-picked `featureGraphic.png` is byte-identical to `dev`'s blob.
 5. Check both `short_description` values are ≤ 80 characters.
 6. Re-read the finished copy for any remaining "offline"/"no internet" claim in English or Hindi.
-7. `actionlint` the new workflow.
+7. `actionlint` the new workflow. It is not installed locally; install it or accept that the first
+   CI run is the syntax check.
 8. Re-measure the published `foss-release.apk` from the v1.93.0 release rather than reusing the
    3.24 MB figure from the earlier size work, so the number in the copy describes the artifact
    users will actually download.
+9. Confirm `sync-shizu-changelog.sh` leaves the manifest unchanged.
 
 After the PR merges:
 
 1. Merge `master` → `dev`.
-2. Pin issue #279.
-3. Confirm the listing renders in the Shizu CoreFetch app.
+2. Pin issue #279 and create the `shizu-store-audit` label.
+3. Confirm the listing renders in the Shizu CoreFetch app — banner, screenshots, translations, and
+   the #279 comment thread. **Check specifically whether a version number is shown**, since the
+   manifest omits it and relies on the store reading the release.
+4. Run the audit workflow once via `workflow_dispatch` rather than waiting for Monday.
 
 ## Sequencing
 
@@ -457,16 +472,26 @@ After the PR merges:
 6. Write `.github/scripts/check-shizu-manifest.sh` and run it locally until green — it *is* the
    bulk of the verification list, so writing it before the workflows means the checks are proven
    before any CI depends on them.
-7. Add `shizu-store-sync.yml` (sync + weekly audit jobs) and the `pr-ci.yml` check job; delete
-   `release-manager.yml`.
-8. Run the remaining manual verification; open the PR.
-9. On merge: `master` → `dev`, pin #279.
+7. Write `.github/scripts/sync-shizu-changelog.sh` and confirm it is a no-op against the manifest
+   written in step 4 — if it produces a diff, one of the two is wrong.
+8. Add `shizu-store-audit.yml` and the `pr-ci.yml` check job; delete `release-manager.yml`.
+9. Run the remaining manual verification; open the PR.
+10. On merge: `master` → `dev`, pin #279, create the `shizu-store-audit` label (it does not exist
+    yet, and `gh issue create --label` fails on an unknown label).
 
 ## Risks
 
 The three rot risks originally identified here — the manifest degrading silently, schema
 violations failing invisibly, and fastlane/manifest drift — are addressed by the tiered checks in
 *Guarding against silent rot* above. What remains:
+
+**The version fields are assumed to have a fallback.** Omitting `version_name` and `version_code`
+rests on the store deriving them from the GitHub release, which the documentation implies — apps
+are listed "automatically via your GitHub repository data", with the manifest overriding those
+defaults — but never states for these two fields specifically. If instead the store renders an
+empty version, the listing looks unfinished. The cost of being wrong is cosmetic and the fix is
+one commit; the cost of the alternative is a number that goes stale on a branch no automation can
+write. The first render in the store settles it, and it is on the post-merge checklist.
 
 **Detection lags by up to a week.** External rot — a deleted release, a dead donate link — is
 caught by the weekly audit, so a listing can be broken for seven days before anyone hears. Daily
