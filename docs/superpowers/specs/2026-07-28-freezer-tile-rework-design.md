@@ -229,10 +229,13 @@ Deliberately additive. `tile_freeze_success` and `tile_freeze_partial_failure` a
 `SettingsViewModel`, `AppListViewModel` and `FreezeLoggerDialog`, so rewording them has blast radius
 outside this change. Both are reused as-is for the all-succeeded and some-failed cases. New:
 
-- `tile_freeze_incomplete` — "Froze %1$d of %2$d — %3$d didn't finish"
+- `tile_freeze_incomplete` — "Froze %1$d/%2$d apps (%3$d unfinished)" — the third result bucket
+- `tile_checking` — the unknown-window subtitle (§1)
+- `tile_freezing` — the in-flight subtitle (§4)
 - `channel_bulk_result_name` — the channel label
 
-Two new strings × ar/es/fr/zh. Nothing existing is reworded.
+Four new strings × en/ar/es/fr/zh-rCN. Nothing existing is reworded. `tile_freeze_incomplete` needs
+`tools:ignore="PluralsCandidate"`, matching its sibling `tile_freeze_partial_failure`.
 
 ### The shortcut path is fixed for free
 
@@ -358,7 +361,7 @@ rather than branched at the call site.
 `data/launcher/FreezerShortcutManager.kt` (`runBulk` delegates; `isFrozen` deleted);
 `presentation/settings/SettingsScreen.kt` + its ViewModel (permission row);
 `app/src/main/AndroidManifest.xml` (`<uses-permission>`);
-`res/values/strings.xml` + `values-{ar,es,fr,zh-rCN}/strings.xml` (two new strings).
+`res/values/strings.xml` + `values-{ar,es,fr,zh-rCN}/strings.xml` (four new strings).
 
 **Deleted:** `docs/follow-ups/freezer-tile-service-rework.md`, superseded by this spec.
 
