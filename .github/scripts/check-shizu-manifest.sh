@@ -310,8 +310,8 @@ if [ "$NETWORK" -eq 1 ]; then
     # Unreachable is not drift. Failing the weekly run on a block we cannot lift
     # would leave the tracking issue permanently open, and an alarm that is
     # always on is an alarm nobody reads.
-    warn "could not fetch $UPSTREAM_SCHEMA_URL (HTTP $up_code)"
-    warn "the live schema was NOT compared — run this checker off a CI runner to cover that"
+    warn "could not fetch $UPSTREAM_SCHEMA_URL (HTTP $up_code) — the live schema was NOT compared"
+    printf '       (run this checker off a CI runner to cover it)\n' >&2
   elif ! jq -e . "$tmp/upstream.json" >/dev/null 2>&1; then
     warn "upstream schema fetch returned non-JSON (captive portal?) — the live schema was NOT compared"
   else
