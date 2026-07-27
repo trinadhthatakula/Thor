@@ -19,6 +19,9 @@ concurrency:
 jobs:
   audit:
     runs-on: ubuntu-latest
+    # The network tier issues ~16 curls at --max-time 25/40. A hung chain would
+    # otherwise sit on the 6-hour default before anyone noticed.
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -60,7 +63,17 @@ jobs:
             echo
             echo '```'
             if [ "$(wc -c < audit.log)" -gt 50000 ]; then
-              head -c 50000 audit.log
+              # head -c cuts at a byte offset, which can land mid-codepoint —
+              # the log carries Arabic, Devanagari and Chinese from compare_text
+              # diffs. iconv -c drops the resulting partial sequence so the
+              # issue body stays valid UTF-8.
+              #
+              # `|| true` is load-bearing: iconv exits 1 on an incomplete
+              # trailing sequence, which is the exact case this pipe exists to
+              # handle. Actions runs `run:` under bash -e, so without it the
+              # step would abort mid-redirect — losing the closing fence and
+              # the truncation notice, and never filing the issue at all.
+              head -c 50000 audit.log | iconv -c -f utf-8 -t utf-8 2>/dev/null || true
               echo
               echo "(truncated — see the full log in the Actions run above)"
             else
