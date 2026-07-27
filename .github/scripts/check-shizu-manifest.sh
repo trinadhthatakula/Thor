@@ -106,7 +106,7 @@ section "full_description length"
 # it.  Automated now.
 #
 # wc -m counts CHARACTERS only under a UTF-8 locale.  Under LC_ALL=C it counts
-# bytes — the Hindi file is 3948 characters but 8930 bytes, so an unpinned
+# bytes — the Hindi file is 3947 characters but 8939 bytes, so an unpinned
 # locale turns this assertion into a guaranteed false failure on any runner
 # that does not happen to have a UTF-8 LC_CTYPE.  Resolve the locale here
 # rather than trusting the caller's environment.
@@ -169,24 +169,31 @@ elif [ -n "$expected_shots" ]; then
 fi
 
 section "image urls are pinned to master"
-# icon_url and banner_url are schema-required, so this check is NOT gated on
-# screenshots being non-empty — it used to iterate .screenshots alone, which
-# let both of them be repointed at /dev/ while the checker printed "all checks
-# passed".  The network tier could not catch it either: those files exist on
-# dev and answer 200.
+# This check is NOT gated on screenshots being non-empty — it used to iterate
+# .screenshots alone, which let icon_url and banner_url both be repointed at
+# /dev/ while the checker printed "all checks passed".  The network tier could
+# not catch it either: those files exist on dev and answer 200.
 # The // idiom stays throughout: a jq filter that aborts on null is how the
 # original "Cannot iterate over null" bug got in.  startswith() errors on null,
-# so a missing icon_url/banner_url becomes a MISSING: sentinel that fails this
-# check loudly instead of emptying $bad_prefix into a vacuous pass.  The
-# sentinels carry no spaces — $bad_prefix is word-split when printed below.
+# so an absent icon_url/banner_url becomes a MISSING: sentinel that fails this
+# check loudly instead of emptying $bad_prefix into a vacuous pass.  Only
+# icon_url is schema-required; banner_url is optional upstream, but Thor ships
+# one and a listing that silently loses its banner is exactly the sort of rot
+# this script exists to catch, so the sentinel hard-requires it here.
+# The sentinels and the URLs carry no spaces — $bad_prefix is word-split below.
 bad_prefix="$(jq -r --arg b "$RAW_BASE" \
   '[(.icon_url // "MISSING:icon_url"), (.banner_url // "MISSING:banner_url"), ((.screenshots // [])[])]
    | .[] | select(startswith($b) | not)' "$MANIFEST")"
 if [ -z "$bad_prefix" ]; then
   ok "icon_url, banner_url and every screenshot URL are pinned to master"
 else
-  fail "image URLs not pinned to $RAW_BASE:"
-  printf '    %s\n' $bad_prefix >&2
+  # Distinct diagnoses: "not pinned" misreads badly for a field that is absent.
+  for u in $bad_prefix; do
+    case "$u" in
+      MISSING:*) fail "required image field is absent: ${u#MISSING:}" ;;
+      *)         fail "image URL not pinned to $RAW_BASE: $u" ;;
+    esac
+  done
 fi
 
 section "locale keys"
