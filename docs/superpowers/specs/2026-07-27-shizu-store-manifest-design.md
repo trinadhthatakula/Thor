@@ -208,12 +208,17 @@ repo's issue list.
   verified extension APKs over HTTPS with a pinned signer and SHA-256 check. Every other
   feature works fully offline.
 • Open Source: Licensed under GNU GPL v3.0-or-later (libre software).
-• Ultra-lightweight: the direct-download APK is just 3.24 MB.
+• Ultra-lightweight: the direct-download APK is about 3 MB.
 ```
 
 The artifact is named explicitly because the same text feeds both this store and Play, and Play
-delivers smaller per-device splits from the AAB. An unqualified "3.24 MB download" would be
-wrong in one of the two places.
+delivers smaller per-device splits from the AAB. An unqualified "3 MB download" would be wrong in
+one of the two places.
+
+The figure is deliberately rounded. `foss-release.apk` is 3,239,471 bytes, which is 3.24 MB
+decimal but 3.09 MiB — and GitHub's release page, one click from this listing, renders it as the
+latter. Any two-decimal figure contradicts something a reader can see. "About 3 MB" is true under
+either convention.
 
 The opening paragraph's "without trackers, ads, or internet permissions" becomes "without
 trackers, ads, or telemetry".
@@ -230,10 +235,10 @@ The hi-IN files get the equivalent corrections; its short description currently 
 ### Size claims
 
 Current text says "~2 MB download size, less than 4 MB installed". The measured `foss-release`
-APK is **3.24 MB** (down from 6.23 MB in the v1.93.0 size work). The installed-size figure is
-dropped rather than guessed — it varies by device and ABI, and no measurement backs the old
-number. The README's "PlayStore Download Size (around 3.0 MB)" and "Smallest APK size (less than
-6 MB)" get the same treatment.
+APK is **3,239,471 bytes**, written as "about 3 MB" (down from 6.23 MB before the v1.93.0 size
+work). The installed-size figure is dropped rather than guessed — it varies by device and ABI, and
+no measurement backs the old number. The README's "PlayStore Download Size (around 3.0 MB)" and
+"Smallest APK size (less than 6 MB)" get the same treatment.
 
 ### v1.93.0 feature refresh
 
@@ -357,7 +362,10 @@ runs in seconds:
 
 1. Validate against the vendored schema.
 2. `detailed_description` equals `full_description.txt`; `short_description` equals
-   `short_description.txt`; the same for each locale that has a fastlane counterpart.
+   `short_description.txt`; the same for each locale that has a fastlane counterpart. Both sides
+   are compared with trailing newlines stripped, because the fastlane files disagree about
+   them — `en-US/short_description.txt` has none while `hi-IN/short_description.txt` does, so a
+   byte-exact comparison would fail on one of them for a reason that has nothing to do with drift.
 3. The `screenshots` array equals the actual files in `.../images/phoneScreenshots/`.
 4. `changelog` equals `release-notes/v$VERSION/playstore.txt`, where `$VERSION` is computed from
    `gradle.properties`.
