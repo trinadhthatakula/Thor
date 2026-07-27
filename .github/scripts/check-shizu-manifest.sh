@@ -17,6 +17,7 @@ FASTLANE="fastlane/metadata/android"
 SHOTS="$FASTLANE/en-US/images/phoneScreenshots"
 RAW_BASE="https://raw.githubusercontent.com/trinadhthatakula/Thor/master"
 
+[ "$#" -le 1 ] || { printf 'usage: %s [--network]\n' "$0" >&2; exit 2; }
 NETWORK=0
 case "${1:-}" in
   --network) NETWORK=1 ;;
@@ -99,10 +100,16 @@ section "screenshots match the directory"
 # (.screenshots // [])[] suppresses jq errors when screenshots is null/missing
 # (fix: was '.screenshots[]' which emits "Cannot iterate over null" to stderr).
 manifest_shots="$(jq -r '(.screenshots // [])[]' "$MANIFEST" | sed 's#.*/##' | sort)"
-actual_shots="$(ls "$SHOTS" | sort)"
-# Guard against vacuous pass: if both sets are empty all three assertions below
-# would pass silently.  An empty screenshot set is always a failure.
-[ -n "$actual_shots" ] || fail "screenshots: $SHOTS is empty — at least one screenshot is required"
+# Guard directory existence separately from emptiness — two distinct root causes.
+if [ ! -d "$SHOTS" ]; then
+  fail "screenshots: $SHOTS does not exist"
+  actual_shots=""
+else
+  actual_shots="$(ls "$SHOTS" | sort)"
+  # Guard against vacuous pass: if both sets are empty all three assertions
+  # below would pass silently.  An empty screenshot set is always a failure.
+  [ -n "$actual_shots" ] || fail "screenshots: $SHOTS is empty — at least one screenshot is required"
+fi
 if [ "$manifest_shots" = "$actual_shots" ] && [ -n "$actual_shots" ]; then
   # printf '%s\n' adds a trailing newline so wc -l counts all N lines, not N-1
   # (fix: was 'printf %s' which yielded N-1 for a clean 10-screenshot tree).
@@ -112,7 +119,10 @@ elif [ -n "$actual_shots" ]; then
   diff <(printf '%s\n' "$actual_shots") <(printf '%s\n' "$manifest_shots") >&2 || true
 fi
 
-if [ -n "$actual_shots" ]; then
+# Gate URL-pinning check on the manifest array, not the directory: with files
+# on disk but screenshots:[] in the manifest, bad_prefix would be vacuously
+# empty and the check would report ok over zero URLs.
+if [ -n "$manifest_shots" ]; then
   bad_prefix="$(jq -r --arg b "$RAW_BASE" '(.screenshots // [])[] | select(startswith($b) | not)' "$MANIFEST")"
   if [ -z "$bad_prefix" ]; then
     ok "every screenshot URL is pinned to master"
@@ -181,8 +191,8 @@ if [ "$NETWORK" -eq 1 ]; then
   # A `for` loop, not a pipe into `while`: a pipeline runs its body in a
   # subshell, where every fail() would increment a copy of $failures that dies
   # with the subshell. URLs contain no whitespace, so word splitting is safe.
-  for u in $(jq -r '[.icon_url, .banner_url, (.screenshots[])] | .[]' "$MANIFEST"); do
-    code="$(curl -sSL --max-time 25 -o /dev/null -w '%{http_code}' "$u" 2>/dev/null)"
+  for u in $(jq -r '[.icon_url, .banner_url, ((.screenshots // [])[])] | .[]' "$MANIFEST"); do
+    code="$(curl -sSL --max-time 25 -o /dev/null -w '%{http_code}' "$u")"
     if [ "$code" = "200" ]; then ok "$code  ${u##*/}"; else fail "image not served: $code $u"; fi
   done
 
@@ -191,42 +201,46 @@ if [ "$NETWORK" -eq 1 ]; then
   # failing on it would make the weekly audit cry wolf until nobody reads it —
   # which is the exact failure this audit exists to prevent.
   for u in $(jq -r '[.repo_url, .donate_url, .developer.account_url, (.developer.socials // {} | .[])] | map(select(. != null)) | unique | .[]' "$MANIFEST"); do
-    code="$(curl -sSL --max-time 25 -A 'thor-shizu-audit/1' -o /dev/null -w '%{http_code}' "$u" 2>/dev/null)"
+    code="$(curl -sSL --max-time 25 -A 'thor-shizu-audit/1' -o /dev/null -w '%{http_code}' "$u")"
     case "$code" in
       403|429) ok   "$code  $u  (bot protection, treated as reachable)" ;;
       2??|3??) ok   "$code  $u" ;;
-      *)       fail "$code  $u" ;;
+      *)       fail "link unreachable: $code $u" ;;
     esac
   done
 
   section "download_url"
   dl="$(jq -r .download_url "$MANIFEST")"
-  final="$(curl -sIL --max-time 40 -o /dev/null -w '%{http_code} %{url_effective}' "$dl" 2>/dev/null)"
+  final="$(curl -sIL --max-time 40 -o /dev/null -w '%{http_code} %{url_effective}' "$dl")"
   dl_code="${final%% *}"
   dl_url="${final#* }"
   if [ "$dl_code" = "200" ]; then
     ok "download_url resolves ($dl_code)"
+    case "$dl_url" in
+      *foss-release.apk*) ok "resolves to the foss artifact" ;;
+      *) fail "resolves to something other than foss-release.apk: $dl_url" ;;
+    esac
   else
     fail "download_url returned $dl_code"
   fi
-  case "$dl_url" in
-    *foss-release.apk*) ok "resolves to the foss artifact" ;;
-    *) fail "resolves to something other than foss-release.apk: $dl_url" ;;
-  esac
 
   section "upstream schema"
   if curl -fsSL --max-time 25 "$UPSTREAM_SCHEMA_URL" -o "$tmp/upstream.json"; then
-    if check-jsonschema --schemafile "$tmp/upstream.json" "$MANIFEST" >/dev/null 2>&1; then
-      ok "manifest validates against the LIVE schema"
+    if ! jq -e . "$tmp/upstream.json" >/dev/null 2>&1; then
+      fail "upstream schema fetch returned non-JSON (captive portal?) — treat as a fetch failure, not a manifest failure"
     else
-      fail "manifest does NOT validate against the live schema — the store is rejecting this file right now"
-      check-jsonschema --schemafile "$tmp/upstream.json" "$MANIFEST" >&2
-    fi
-    if diff -u "$SCHEMA" "$tmp/upstream.json" > "$tmp/schema.diff"; then
-      ok "vendored schema is identical to upstream"
-    else
-      fail "vendored schema differs from upstream — review and re-vendor:"
-      cat "$tmp/schema.diff" >&2
+      if check-jsonschema --schemafile "$tmp/upstream.json" "$MANIFEST" >/dev/null 2>&1; then
+        ok "manifest validates against the LIVE schema"
+      else
+        fail "manifest does NOT validate against the live schema — the store is rejecting this file right now"
+        check-jsonschema --schemafile "$tmp/upstream.json" "$MANIFEST" >&2
+      fi
+      if diff -u "$SCHEMA" "$tmp/upstream.json" > "$tmp/schema.diff"; then
+        ok "vendored schema is identical to upstream"
+      else
+        fail "vendored schema differs from upstream — review and re-vendor:"
+        cat "$tmp/schema.diff" >&2
+      fi
     fi
   else
     fail "could not fetch $UPSTREAM_SCHEMA_URL"
