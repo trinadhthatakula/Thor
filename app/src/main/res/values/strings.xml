@@ -216,6 +216,12 @@
     </plurals>
     <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
     <string name="tile_freeze_partial_failure" tools:ignore="PluralsCandidate">Froze %1$d/%2$d apps (%3$d failed)</string>
+    <!-- Third result bucket: neither confirmed success nor confirmed failure — the deadline
+         fired before these packages resolved. -->
+    <string name="tile_freeze_incomplete" tools:ignore="PluralsCandidate">Froze %1$d/%2$d apps (%3$d unfinished)</string>
+    <string name="tile_checking">Checking…</string>
+    <string name="tile_freezing">Freezing…</string>
+    <string name="channel_bulk_result_name">Bulk action results</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Freezer Settings</string>

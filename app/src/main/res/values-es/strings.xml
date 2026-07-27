@@ -185,6 +185,10 @@
         <item quantity="other">Se congelaron %1$d aplicaciones</item>
     </plurals>
     <string name="tile_freeze_partial_failure">Se congelaron %1$d/%2$d aplicaciones (%3$d fallaron)</string>
+    <string name="tile_freeze_incomplete">Se congelaron %1$d/%2$d aplicaciones (%3$d sin terminar)</string>
+    <string name="tile_checking">Comprobando…</string>
+    <string name="tile_freezing">Congelando…</string>
+    <string name="channel_bulk_result_name">Resultados de acciones masivas</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Ajustes del congelador</string>

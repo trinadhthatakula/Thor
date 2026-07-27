@@ -185,6 +185,10 @@
         <item quantity="other">%1$d applications gelées</item>
     </plurals>
     <string name="tile_freeze_partial_failure">%1$d/%2$d applications gelées (%3$d échouées)</string>
+    <string name="tile_freeze_incomplete">%1$d/%2$d applications gelées (%3$d inachevées)</string>
+    <string name="tile_checking">Vérification…</string>
+    <string name="tile_freezing">Gel en cours…</string>
+    <string name="channel_bulk_result_name">Résultats des actions groupées</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Paramètres du congélateur</string>

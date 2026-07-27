@@ -182,6 +182,10 @@
         <item quantity="other">已冻结 %1$d 个应用</item>
     </plurals>
     <string name="tile_freeze_partial_failure">已冻结 %1$d/%2$d 个应用（%3$d 个失败）</string>
+    <string name="tile_freeze_incomplete">已冻结 %1$d/%2$d 个应用（%3$d 个未完成）</string>
+    <string name="tile_checking">正在检查…</string>
+    <string name="tile_freezing">正在冻结…</string>
+    <string name="channel_bulk_result_name">批量操作结果</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">冻结设置</string>

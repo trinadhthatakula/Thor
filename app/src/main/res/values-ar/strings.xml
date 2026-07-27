@@ -195,6 +195,10 @@
         <item quantity="other">تم تجميد %1$d تطبيقات</item>
     </plurals>
     <string name="tile_freeze_partial_failure">تم تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
+    <string name="tile_freeze_incomplete">تم تجميد %1$d/%2$d تطبيقات (%3$d لم تكتمل)</string>
+    <string name="tile_checking">جارٍ التحقق…</string>
+    <string name="tile_freezing">جارٍ التجميد…</string>
+    <string name="channel_bulk_result_name">نتائج الإجراءات المجمّعة</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">إعدادات المجمد</string>
