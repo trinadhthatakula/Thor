@@ -49,6 +49,7 @@ class BulkFreezeRunner(
     private val preferenceRepository: PreferenceRepository,
     private val privilegeManager: PrivilegeManager,
     private val stateReader: AppFreezeStateReader,
+    private val notifier: BulkResultNotifier,
     @Named("io") private val io: CoroutineDispatcher,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + io)
@@ -119,7 +120,10 @@ class BulkFreezeRunner(
                 // B-8: run() returns null for no-op cases (no privilege, empty target list);
                 // do not publish BulkResult(0,0,0) because the tile already communicates
                 // "nothing to freeze" — a false "Froze 0 apps" message is worse than silence.
-                run(op)?.let { _lastResult.value = it }
+                run(op)?.let { result ->
+                    _lastResult.value = result
+                    if (result.total > 0) notifier.post(result)
+                }
             } catch (e: CancellationException) {
                 // B-2: CancellationException is an Exception in Kotlin; rethrowing here keeps
                 // structured cancellation intact and prevents the finally sweep from misreading
