@@ -17,9 +17,11 @@ import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.PermissionDetail
 import com.valhalla.thor.domain.repository.AppRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
@@ -100,6 +102,13 @@ class AppRepositoryImpl(
                     val uadLoadFailed = uadHelper.didLoadFail
 
                     for (packInfo in installedPackages) {
+                        // The loop below is plain blocking work, so cancelling this flow cannot
+                        // interrupt it on its own. Without this check a torn-down collector's scan
+                        // keeps running to completion and overlaps the scan started by whoever
+                        // replaced it (e.g. two pull-to-refreshes in a row). One volatile read per
+                        // package buys prompt teardown.
+                        ensureActive()
+
                         val appInfo = packInfo.applicationInfo ?: continue
                         val packageName = packInfo.packageName
 
@@ -165,6 +174,11 @@ class AppRepositoryImpl(
                     // Emit a single complete snapshot of all installed apps
                     producer.send(currentList.toList())
 
+                } catch (e: CancellationException) {
+                    // Kotlin's CancellationException is an Exception, so the broad catch below
+                    // would otherwise swallow it, log it in debug, and loop straight back round to
+                    // the channel — defeating ensureActive() above and the awaitClose teardown.
+                    throw e
                 } catch (e: Exception) {
                     if (BuildConfig.DEBUG) e.printStackTrace()
                 }
