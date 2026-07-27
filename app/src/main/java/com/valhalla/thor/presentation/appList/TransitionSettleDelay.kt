@@ -8,20 +8,30 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * Head start given to the screen-entry animation before the package scan begins. Scanning every
- * installed package while the navigation/bottom-bar transition is still running contends for CPU
- * and commits a large list update mid-animation, which drops frames.
+ * Head start given to the UI before the package scan begins. Scanning every installed package
+ * contends for CPU and commits a large list update, which drops frames if it lands while the app is
+ * still drawing its first screens.
  *
- * Scaled to the animation the user actually gets, per `MainScreen`'s entry/exit specs:
- * - [AnimationIntensity.LOW] uses `snap()`, i.e. no animation at all, so there is nothing to settle
- *   and the scan must start immediately.
- * - [AnimationIntensity.MEDIUM] runs the spatial/effects motion specs.
- * - [AnimationIntensity.HIGH] runs those *plus* shared-element transitions
- *   (`SharedTransitionLayout`), which animate bounds across destinations and are the most sensitive
- *   to a competing scan — hence the longest head start.
+ * What this actually protects is **app-launch frames**, not a navigation transition. `MainScreen`
+ * takes `appListViewModel` as an eager default parameter, so this ViewModel's `init` — and therefore
+ * this delay — runs during MainScreen's *first composition*, alongside the splash exit and the Home
+ * screen's first frames. No entry animation is running at that moment at any intensity:
+ * `HomeActivity` composes `MainScreen` from a plain `when` with no transition, and neither
+ * `NavDisplay`'s `AnimatedContent` nor the bottom bar's `AnimatedVisibility` animates on first
+ * composition (`initialState == targetState`). By the time the user taps the Apps tab the list is
+ * already loaded, so `AppListScreen`'s entry `LaunchedEffect` is gated off and the tab transition
+ * pays nothing.
  *
- * Only the navigation-entry paths pay this. A deliberate pull-to-refresh has no transition to
- * protect, so it must not wait at all.
+ * [AnimationIntensity] is therefore used as a **proxy for how much the user values smoothness over
+ * immediacy**, not as a literal description of which animation is in flight. Someone who turned
+ * motion down wants their data sooner; someone on HIGH has asked for polish and can afford to wait.
+ * Note the setting's own specs do not distinguish MEDIUM from HIGH for screen entry — `MainScreen`
+ * gives both the same spatial/effects specs and only adds shared-element transitions at HIGH, on the
+ * list-to-detail path, which never reaches this function. So the 400/800 split is a deliberate
+ * preference gradient, not a measured animation length.
+ *
+ * Only the navigation-entry paths pay this at all. A deliberate pull-to-refresh has nothing to
+ * protect and must not wait — see `AppListViewModel.loadApps`.
  */
 fun settleDelayFor(intensity: AnimationIntensity): Duration = when (intensity) {
     AnimationIntensity.LOW -> Duration.ZERO

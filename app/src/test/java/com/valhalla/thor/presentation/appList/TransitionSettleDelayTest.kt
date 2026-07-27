@@ -37,28 +37,18 @@ class TransitionSettleDelayTest {
     }
 
     @Test
-    fun refreshIndicatorFloorIsActuallyVisible() {
-        // The whole point of the floor is that a manual refresh stays legible even though
-        // isLoading clears on the Room-cache emission. Zero would silently reinstate the flash.
-        assertTrue(
-            "the refresh indicator floor must be > 0",
-            REFRESH_INDICATOR_MIN_VISIBLE > Duration.ZERO
-        )
+    fun refreshIndicatorFloorStaysPerceptible() {
+        // Pinned exactly, like MEDIUM/HIGH above. A `> Duration.ZERO` bound looks like it protects
+        // this value but does not: 1.milliseconds satisfies it while reinstating the very indicator
+        // flash the floor exists to prevent.
+        assertEquals(600.milliseconds, REFRESH_INDICATOR_MIN_VISIBLE)
     }
 
     @Test
-    fun refreshIndicatorFloorDoesNotScaleWithIntensity() {
-        // A refresh is direct manipulation the user is waiting on; its feedback must not be tied
-        // to the decorative-motion preference the way the entry settle delay is.
-        assertTrue(
-            "the refresh floor must stay legible even at LOW, where the settle delay is zero",
-            REFRESH_INDICATOR_MIN_VISIBLE > settleDelayFor(AnimationIntensity.LOW)
-        )
-    }
-
-    @Test
-    fun everyIntensityIsMappedAndNonNegative() {
-        // Guards a future enum entry being added without a matching delay decision.
+    fun everyIntensityMapsToANonNegativeDelay() {
+        // Note this does NOT guard against a new enum entry: settleDelayFor is an expression-body
+        // `when` with no `else`, so an unmapped entry is a compile error, not a test failure. What
+        // it does catch is a negative literal, which delay() would treat as zero and silently skip.
         AnimationIntensity.entries.forEach { intensity ->
             assertTrue("$intensity maps to a negative delay", settleDelayFor(intensity) >= Duration.ZERO)
         }
