@@ -165,6 +165,8 @@ section "changelog matches the current release notes"
 # Anchored on purpose: an unanchored 'versionCode' also matches
 # initialVersionCode=1921, which is the bug that made release-manager.yml
 # unusable — two lines fed into arithmetic.
+# LOCKSTEP: this block (versionCode grep, version arithmetic, notes fallback path) is
+# kept in lockstep with sync-shizu-changelog.sh — update both scripts together.
 version_code="$(grep -E '^versionCode=' gradle.properties | cut -d= -f2 | tr -dc '0-9')"
 if [ -z "$version_code" ]; then
   fail "could not read versionCode from gradle.properties"

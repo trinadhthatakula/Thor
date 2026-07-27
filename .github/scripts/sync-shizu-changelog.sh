@@ -20,7 +20,11 @@ command -v jq >/dev/null 2>&1 || { printf 'missing required tool: jq\n' >&2; exi
 # Anchored on purpose: an unanchored 'versionCode' also matches
 # initialVersionCode=1921, yielding two lines that then feed into arithmetic.
 # That is the bug that made release-manager.yml unusable.
-version_code="$(grep -E '^versionCode=' gradle.properties | cut -d= -f2 | tr -dc '0-9')"
+# || true: with set -e, a pipeline failure (grep finds nothing) kills the script
+# before the guard below can print an actionable message. || true lets the guard run.
+# LOCKSTEP: this block (versionCode grep, version arithmetic, notes fallback path) is
+# kept in lockstep with check-shizu-manifest.sh — update both scripts together.
+version_code="$(grep -E '^versionCode=' gradle.properties | cut -d= -f2 | tr -dc '0-9' || true)"
 if [ -z "$version_code" ]; then
   printf 'could not read versionCode from gradle.properties\n' >&2
   exit 1
@@ -36,7 +40,7 @@ if [ ! -f "$notes" ]; then
 fi
 
 notes_content="$(cat "$notes")"
-if [ -z "$notes_content" ]; then
+if [ -z "$(printf '%s' "$notes_content" | tr -d '[:space:]')" ]; then
   printf 'release-notes file is empty: %s\n' "$notes" >&2
   printf 'write the release notes before running this script\n' >&2
   exit 1
@@ -47,8 +51,11 @@ fi
 # notes cannot corrupt the manifest the way sed would.
 # Temp file lives in the same directory as the manifest so mv is atomic on
 # the same filesystem — a half-written manifest is invisible to the store.
-tmp="$(mktemp "${MANIFEST}.XXXXXX")"
+# trap is set before mktemp so a kill between the two cannot leak a stray
+# shizu_store.json.XXXXXX file into the repo root.
+tmp=""
 trap 'rm -f "$tmp"' EXIT
+tmp="$(mktemp "${MANIFEST}.XXXXXX")"
 jq --arg cl "$notes_content" '.changelog = $cl' "$MANIFEST" > "$tmp"
 
 if cmp -s "$MANIFEST" "$tmp"; then
@@ -56,6 +63,10 @@ if cmp -s "$MANIFEST" "$tmp"; then
   exit 0
 fi
 
+# chmod before mv: mktemp creates files at 0600; mv replaces the inode so the
+# manifest would inherit that mode.  cp would preserve the existing mode but
+# is not atomic.  Set 0644 explicitly to match what git tracks (100644).
+chmod 644 "$tmp"
 mv "$tmp" "$MANIFEST"
 printf 'changelog updated from %s (v%s)\n' "$notes" "$version_name"
 printf 'review the diff, then commit shizu_store.json with the version bump.\n'
