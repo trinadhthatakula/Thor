@@ -1,4 +1,4 @@
-Thor App Manager is a lightweight, open-source Android app manager and installer designed for power users who want complete control over their devices. Built 100% in Kotlin using Jetpack Compose and Material 3, Thor delivers advanced package management without trackers, ads, or telemetry.
+Thor App Manager is a lightweight, open-source Android app manager and installer designed for power users who want complete control over their devices. Built in Kotlin with Jetpack Compose and Material 3, Thor delivers advanced package management without trackers, ads, or telemetry.
 
 ⚡ MULTIPLE PRIVILEGE MODES
 Thor works seamlessly across different privilege engines with an automatic fallback system. Manually choose your active backend:
