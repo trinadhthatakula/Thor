@@ -1,0 +1,87 @@
+name: 3. Shizu Store Audit
+
+# The store ignores a manifest it cannot validate and silently falls back to
+# default GitHub data, so nothing reports a broken listing. This job is the
+# only thing that catches rot originating outside the repository.
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: shizu-store-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install check-jsonschema
+        run: pipx install check-jsonschema
+
+      # The label has to exist before `gh issue create --label` will accept it,
+      # and a failure here would land at exactly the moment it matters most.
+      - name: Ensure the tracking label exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create shizu-store-audit \
+            --description "Automated Shizu CoreFetch listing audit" \
+            --color B60205 2>/dev/null || true
+
+      - name: Run the audit
+        id: audit
+        run: |
+          set +e
+          .github/scripts/check-shizu-manifest.sh --network 2>&1 | tee audit.log
+          echo "status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the tracking issue
+        if: steps.audit.outputs.status != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "The weekly Shizu CoreFetch audit failed."
+            echo
+            echo "A manifest the store rejects is ignored silently — the listing"
+            echo "falls back to bare GitHub data and loses its banner, screenshots,"
+            echo "translations and comment thread. Nothing else reports this."
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            echo '```'
+            cat audit.log
+            echo '```'
+          } > issue-body.md
+
+          existing="$(gh issue list --label shizu-store-audit --state open \
+                        --limit 1 --json number -q '.[0].number')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file issue-body.md
+          else
+            gh issue create \
+              --title "Shizu store listing audit failed" \
+              --label shizu-store-audit \
+              --body-file issue-body.md
+          fi
+
+      - name: Close the tracking issue
+        if: steps.audit.outputs.status == '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          existing="$(gh issue list --label shizu-store-audit --state open \
+                        --limit 1 --json number -q '.[0].number')"
+          if [ -n "$existing" ]; then
+            gh issue close "$existing" --comment "Audit passed. Run: $RUN_URL"
+          fi
