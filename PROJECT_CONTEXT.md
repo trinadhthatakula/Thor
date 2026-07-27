@@ -20,8 +20,11 @@ for the presentation layer.
       `Shizuku`/`Dhizuku` APIs, and `DataStore` for persistence.
     - **DI**: Dependency Injection using **Koin**, organized into `commonModule`, `installerModule`,
       `preferenceModule`, `coreModule`, and `roomModule`.
-- **`suCore/`**: A specialized module for root shell management. It's a Kotlin-refactored version of
-  the `libsu` core module by `topjohnwu`, optimized for modern Kotlin idioms and memory safety.
+- **Odin** (`com.trinadhthatakula:odin`): Root shell management, consumed from Maven Central rather
+  than built in-tree. A Kotlin-refactored version of the `libsu` core module by `topjohnwu`,
+  optimized for modern Kotlin idioms and memory safety, now maintained as a
+  [standalone library](https://github.com/trinadhthatakula/Odin). It replaced the former `suCore/`
+  module; `settings.gradle.kts` can substitute a local checkout via `-PodinDir` for cross-repo work.
 - **`bypass/`**: A core utility module for bypassing Android's hidden API restrictions using
   `VMRuntime` exemptions and enhanced reflection.
 - **`vm-runtime/`**: Compile-only **Java** stubs required for the `bypass` module to interface with
@@ -47,7 +50,7 @@ for the presentation layer.
 - **Security**: Android Biometrics via `BiometricPrompt` API directly (no `androidx.biometric`
   dependency). `HomeActivity` extends `ComponentActivity`.
 - **Elevated Privileges**:
-    - **Root (su)**: Via `suCore` module (Kotlin-refactored fork of `libsu`).
+    - **Root (su)**: Via the Odin library (Kotlin-refactored fork of `libsu`).
     - **Shizuku**: Shell-command-first (`am`, `pm`, `appops`) with reflection fallback via
       `:bypass`.
     - **Dhizuku**: Device Owner API with reflection fallback via `:bypass`.

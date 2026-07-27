@@ -55,7 +55,8 @@ Thor is built using modern Android development practices. Please read the archit
 * **Architecture**: Clean Architecture (Domain, Data, Presentation layers).
 * **Dependency Injection**: Koin.
 * **Database**: Room DB (app list cache).
-* **Root Operations**: Custom Kotlin fork of libsu (`suCore` module).
+* **Root Operations**: [Odin](https://github.com/trinadhthatakula/Odin), an in-house Kotlin fork of
+  libsu, consumed as `com.trinadhthatakula:odin` from Maven Central.
 * **Hidden API Bypass**: Custom internal `:bypass` module.
 
 ### Useful Build Commands
