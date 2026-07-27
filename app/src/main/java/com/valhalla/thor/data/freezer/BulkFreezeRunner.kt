@@ -66,11 +66,21 @@ class BulkFreezeRunner(
     val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
 
     private var activeJob: Job? = null
+    // B-1: track op alongside job so UNFREEZE during a FREEZE run starts its own batch rather
+    // than silently returning the wrong job.
+    private var activeOp: BulkOp? = null
 
-    /** Re-derive how many apps [op] would act on and publish it to [freezableCount]. */
+    /**
+     * Re-derive how many apps [op] would act on and publish it to [freezableCount].
+     *
+     * B-4: confined to [io] so callers on the main thread (e.g. Task 7's tile) do not run
+     * N PackageManager binder calls on the UI thread.
+     */
     suspend fun refreshCandidates(op: BulkOp) {
-        val watchlist = freezerRepository.getAllPackageNames()
-        _freezableCount.value = freezableCandidates(watchlist, op, stateReader::stateOf).size
+        withContext(io) {
+            val watchlist = freezerRepository.getAllPackageNames()
+            _freezableCount.value = freezableCandidates(watchlist, op, stateReader::stateOf).size
+        }
     }
 
     /**
@@ -84,16 +94,31 @@ class BulkFreezeRunner(
      */
     @Synchronized
     fun launch(op: BulkOp): Job {
-        activeJob?.takeIf { it.isActive }?.let { return it }
+        // B-1: coalesce only when the in-flight op matches; a mismatched request must start its
+        // own job rather than silently piggy-backing on someone else's.
+        activeJob?.takeIf { it.isActive && activeOp == op }?.let { return it }
         _isRunning.value = true
         val job = scope.launch {
             try {
-                _lastResult.value = run(op)
+                // B-8: run() returns null for no-op cases (no privilege, empty target list);
+                // do not publish BulkResult(0,0,0) because the tile already communicates
+                // "nothing to freeze" — a false "Froze 0 apps" message is worse than silence.
+                run(op)?.let { _lastResult.value = it }
+            } catch (e: CancellationException) {
+                // B-2: CancellationException is an Exception in Kotlin; rethrowing here keeps
+                // structured cancellation intact and prevents the finally sweep from misreading
+                // a cancelled run as a normal completion.
+                throw e
+            } catch (e: Exception) {
+                // B-2: an escaped exception from run() (e.g. Room/DataStore IOException, binder
+                // death) would reach Android's default uncaught handler and kill the process.
+                // Log it and clear any stale result so the surface is not left showing the
+                // previous run's outcome.
+                Logger.e("BulkFreezeRunner", "bulk $op run failed unexpectedly", e)
+                _lastResult.value = null
             } finally {
-                _isRunning.value = false
-                // The sweep re-derives real state, so a killed or truncated batch self-heals:
-                // whatever is left simply shows up as the next count.
-                //
+                // B-3 / B-6 comment: the sweep must finish before isRunning flips so consumers
+                // see one stable (isRunning=false, count=N) transition rather than two emissions.
                 // NOT runCatching: CancellationException is an Exception in Kotlin, and this
                 // runs in a finally where cancellation is exactly what we may be unwinding
                 // from. withContext(NonCancellable) lets the sweep finish even then, and the
@@ -103,9 +128,13 @@ class BulkFreezeRunner(
                 } catch (e: Exception) {
                     Logger.e("BulkFreezeRunner", "post-run candidate sweep failed", e)
                 }
+                // B-6: publish after the sweep so the tile's combine() sees one stable
+                // (isRunning=false, freezableCount=N) emission, not two.
+                _isRunning.value = false
             }
         }
         activeJob = job
+        activeOp = op
         return job
     }
 
@@ -114,12 +143,14 @@ class BulkFreezeRunner(
         _lastResult.value = null
     }
 
-    private suspend fun run(op: BulkOp): BulkResult {
-        if (!privilegeManager.state.value.hasAnyPrivilege) return BulkResult(0, 0, 0)
+    // B-8: returns null when there is nothing to act on, so the caller can skip publishing a
+    // misleading BulkResult(0,0,0).
+    private suspend fun run(op: BulkOp): BulkResult? {
+        if (!privilegeManager.state.value.hasAnyPrivilege) return null
 
         val watchlist = freezerRepository.getAllPackageNames()
         val targets = freezableCandidates(watchlist, op, stateReader::stateOf)
-        if (targets.isEmpty()) return BulkResult(0, 0, 0)
+        if (targets.isEmpty()) return null
 
         val useSuspend = op == BulkOp.FREEZE &&
                 preferenceRepository.userPreferences.first().freezerMode == FreezerMode.SUSPEND
@@ -128,11 +159,12 @@ class BulkFreezeRunner(
         val failed = AtomicInteger(0)
         val semaphore = Semaphore(MAX_CONCURRENT)
 
-        // The batch is a child of `scope`, NOT of the withTimeoutOrNull block below. That is
-        // the whole trick: withTimeoutOrNull is a scoping builder, so wrapping the batch
-        // directly would cancel the children and then block until they finish — and these
-        // children are blocking shell/binder calls that never observe cancellation, i.e. it
-        // would wait for exactly the thing the timeout exists to escape. Racing a cancellable
+        // B-10: The batch is a child of `scope`, NOT of the withTimeoutOrNull block below.
+        // withTimeoutOrNull is a scoping builder, so wrapping the batch directly would cancel
+        // the children and then block until they finish. The Shizuku and Dhizuku reflection
+        // paths make blocking binder calls that do not observe cancellation; the root path
+        // (Odin exec) does unwind promptly via suspendCancellableCoroutine, but defense in
+        // depth requires the deadline to hold for the paths that do not. Racing a cancellable
         // join() instead lets us abandon and report on time.
         val job = scope.launch {
             targets.forEach { pkg ->
@@ -154,6 +186,11 @@ class BulkFreezeRunner(
                             Logger.e("BulkFreezeRunner", "bulk $op failed for $pkg", e)
                             Result.failure(e)
                         }
+                        // B-3: this split is safe only if a cancelled worker throws rather
+                        // than returning Result.failure. SystemRepositoryImpl.runGatewayAction
+                        // re-throws CancellationException, and the withContext(IO) wrappers
+                        // around each call site are cancellation-atomic, so a deadline-killed
+                        // worker unwinds before reaching this branch.
                         if (result.isSuccess) succeeded.incrementAndGet()
                         else failed.incrementAndGet()
                     }
