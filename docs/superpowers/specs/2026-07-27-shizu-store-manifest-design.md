@@ -51,18 +51,21 @@ shipping a fresh privacy claim we know to be wrong, so it is corrected in the sa
 
 ## Scope
 
-One PR to `master` containing eight changes, then a `master` → `dev` merge.
+One PR to `master` containing eleven changes, then a `master` → `dev` merge.
 
 | # | Change | Rationale |
 |---|--------|-----------|
 | 1 | Add `shizu_store.json` at repo root | The deliverable |
-| 2 | Add `.github/workflows/shizu-store-sync.yml` | Keep the manifest fresh after each release |
+| 2 | Add `.github/workflows/shizu-store-sync.yml` | Keep the manifest fresh; audit it weekly |
 | 3 | Delete `.github/workflows/release-manager.yml` | Unused and broken (see below) |
 | 4 | Copy `featureGraphic.png` from `dev` to `master` | Store banner should be the current one |
 | 5 | Rewrite `fastlane/.../en-US/full_description.txt` | v1.93.0 features + offline fix + size fix |
 | 6 | Rewrite `fastlane/.../en-US/short_description.txt` | Contains "100% offline" |
 | 7 | Rewrite `fastlane/.../hi-IN/{full,short}_description.txt` | Same claims in Hindi |
 | 8 | Update `README.md` | Offline fix, size fix, v1.93.0 features, 2 dead links |
+| 9 | Add `.github/shizu_store.schema.json` | Vendored schema, for deterministic validation |
+| 10 | Add `.github/scripts/check-shizu-manifest.sh` | Shared checker for PR CI and the weekly audit |
+| 11 | Add a manifest-check job to `.github/workflows/pr-ci.yml` | Catch drift in the PR that causes it |
 
 ### Out of scope
 
@@ -238,8 +241,14 @@ on:
   workflow_run:
     workflows: ["2. Production Build & Distribute"]
     types: [completed]
+  schedule:
+    - cron: "0 6 * * 1"   # weekly audit, Mondays 06:00 UTC
   workflow_dispatch:
 ```
+
+The file holds two jobs: `sync`, which runs after a release, and `audit`, which runs weekly.
+Each guards on `github.event_name` so the scheduled run never rewrites the manifest and the
+release run never files an audit issue.
 
 Chaining off the release workflow rather than mirroring its `push: production` trigger is a
 correctness requirement, not a preference:
@@ -256,7 +265,7 @@ correctness requirement, not a preference:
 `workflow_run` workflows always execute the copy of the file on the default branch. Since the
 default branch is `master` and that is where this file lives, that behaviour is what we want.
 
-### Job outline
+### Job outline — `sync`
 
 Modelled on `production-deploy.yml`: `runs-on: ubuntu-latest`, `permissions: contents: write`,
 and a `concurrency` group so two syncs cannot race on the same file.
@@ -269,6 +278,11 @@ if: >-
   (github.event.workflow_run.conclusion == 'success' &&
    github.event.workflow_run.head_branch == 'production')
 ```
+
+A `schedule` run satisfies neither clause, so the weekly audit cannot rewrite the manifest — the
+guard already expresses that without a separate exclusion. The `audit` job takes the complementary
+guard (`schedule` or `workflow_dispatch`) and needs `issues: write` rather than `contents: write`,
+since it files a tracking issue but never commits.
 
 Steps:
 
@@ -305,6 +319,79 @@ The owner has never used it, and it could not have worked as written:
 
 Deleting it removes a trap rather than merely removing dead weight.
 
+## Guarding against silent rot
+
+The store's response to a broken manifest is to say nothing: it ignores the file, falls back to
+default GitHub data, and reports no error to anyone. Every failure mode below therefore degrades
+the listing invisibly. Rot cannot be prevented — the manifest duplicates facts that live
+elsewhere — so the goal is to convert each silent failure into a loud one.
+
+| Rot | Detected by | Tier |
+|-----|-------------|------|
+| Screenshot, icon, or banner renamed or deleted | URL returns 404 | network |
+| Repo renamed, or default branch renamed off `master` | every raw URL dies | network |
+| Release deleted, or `foss-release.apk` renamed | `download_url` 404 | network |
+| `full_description.txt` edited, manifest not | text comparison | local |
+| Screenshot added to the directory, not to `screenshots` | directory comparison | local |
+| `donate_url`, Telegram link, or issue #279 goes away | URL 404 | network |
+| Upstream tightens the schema | vendored-schema diff | network |
+
+### Ownership rule
+
+> CI owns `version_name`, `version_code`, and `changelog`. Everything else is hand-written, and
+> CI fails the build when it stops matching reality.
+
+Deliberately, CI does **not** generate `detailed_description` from `full_description.txt`.
+Generating it would eliminate the drift class, but replace it with a worse footgun: someone edits
+the manifest, CI silently reverts them, and JSON offers nowhere to warn them — the schema's
+`additionalProperties: false` rejects even a `_comment` key. Failing loudly is better than being
+silently overwritten.
+
+### Tier 1 — local checks, on every PR
+
+A job in the existing `pr-ci.yml`, path-filtered to `shizu_store.json`, `fastlane/**`, and
+`gradle.properties`. No network access, so it runs in seconds:
+
+1. Validate against the vendored schema.
+2. `detailed_description` equals `full_description.txt`; `short_description` equals
+   `short_description.txt`; the same for each locale that has a fastlane counterpart.
+3. The `screenshots` array equals the actual files in `.../images/phoneScreenshots/`.
+4. `version_code` equals `gradle.properties`, and `version_name` is its computed form.
+
+This catches drift in the pull request that introduces it, which is the only cheap moment to fix
+it.
+
+### Tier 2 — weekly network audit
+
+A second job in `shizu-store-sync.yml` under a `schedule:` trigger — weekly, keeping everything
+in one workflow file rather than adding another. It runs the tier-1 checks plus:
+
+1. `curl` every URL in the manifest and require a 200.
+2. Follow `download_url` and confirm it still resolves to a real `foss-release.apk`.
+3. Diff `.github/shizu_store.schema.json` against upstream and flag any change.
+
+This is the only tier that catches rot originating outside the repository, which is most of the
+table above.
+
+**On failure it opens a tracking issue** labelled `shizu-store-audit`, updating the existing open
+one instead of filing duplicates, and closes it when checks pass again. A red scheduled run is
+itself easy to miss — which would make the rot guard the very thing that rots silently.
+
+### Vendoring the schema
+
+`.github/shizu_store.schema.json` is a committed copy of the upstream schema. Validating against
+the live URL would make CI depend on a third party's uptime, and — worse — would let the check
+silently change meaning whenever upstream edits the schema. With a vendored copy, validation is
+deterministic and schema changes surface as a reviewable diff from the weekly audit instead of as
+a listing that quietly stopped working.
+
+### Shared checker
+
+Tiers 1 and 2 overlap almost entirely, so the logic lives in one place:
+`.github/scripts/check-shizu-manifest.sh`, which takes a `--network` flag to enable the URL
+checks. Both jobs call it. Duplicating these assertions across two workflows would create a third
+thing that can drift.
+
 ## Translations
 
 `locales` covers `ar`, `es`, `fr`, `hi`, `zh`; `en` is the top-level base. Each carries
@@ -324,8 +411,12 @@ privacy claim is the same problem as an untrue English one.
 
 Before opening the PR:
 
-1. Validate `shizu_store.json` against `schema.json` — it must pass draft-07 validation, since
-   `additionalProperties: false` means a single stray key voids the file.
+Most of this is `check-shizu-manifest.sh --network`, run locally. Stated explicitly so the script
+has a definition of done:
+
+1. Validate `shizu_store.json` against the vendored schema — it must pass draft-07 validation,
+   since `additionalProperties: false` means a single stray key voids the file. Confirm the
+   vendored copy is identical to upstream at time of writing.
 2. `curl -sI` every URL in the manifest — 12 image URLs, `repo_url`, `download_url`, `donate_url`,
    and both developer social links — and confirm each returns 200 (or 302 for `download_url`,
    which should resolve to the v1.93.0 `foss-release.apk`).
@@ -350,21 +441,37 @@ After the PR merges:
 2. Cherry-pick `e2d5b522` (the feature graphic) — it touches only that one file.
 3. Rewrite the fastlane copy and the README.
 4. Write `shizu_store.json`, embedding the finished English copy and the translations.
-5. Add `shizu-store-sync.yml`; delete `release-manager.yml`.
-6. Run the verification list; open the PR.
-7. On merge: `master` → `dev`, pin #279.
+5. Vendor `.github/shizu_store.schema.json`.
+6. Write `.github/scripts/check-shizu-manifest.sh` and run it locally until green — it *is* the
+   bulk of the verification list, so writing it before the workflows means the checks are proven
+   before any CI depends on them.
+7. Add `shizu-store-sync.yml` (sync + weekly audit jobs) and the `pr-ci.yml` check job; delete
+   `release-manager.yml`.
+8. Run the remaining manual verification; open the PR.
+9. On merge: `master` → `dev`, pin #279.
 
 ## Risks
 
-**The manifest can rot silently.** Everything except the three CI-managed fields is
-hand-maintained. If a screenshot is renamed or the feature graphic moves, the listing degrades
-with no error anywhere — the store just falls back or shows a broken image. Accepted: the
-alternative, generating the whole manifest in CI, is far more machinery than one file justifies.
+The three rot risks originally identified here — the manifest degrading silently, schema
+violations failing invisibly, and fastlane/manifest drift — are addressed by the tiered checks in
+*Guarding against silent rot* above. What remains:
 
-**A schema violation fails invisibly.** The store ignores an invalid manifest and falls back to
-default GitHub data rather than reporting an error. This is why validation is a pre-PR gate and
-why the CI job validates after every rewrite.
+**Detection lags by up to a week.** External rot — a deleted release, a dead donate link — is
+caught by the weekly audit, so a listing can be broken for seven days before anyone hears. Daily
+runs were considered and rejected: the added flake risk from transient network failures outweighs
+shortening an already-tolerable window for a store listing.
 
-**Fastlane and the manifest can drift.** `detailed_description` is a copy of
-`full_description.txt`, not a reference to it. If someone edits one, the other goes stale. Left
-as a known limitation rather than solved with generation.
+**The audit can only check what it can reach.** It verifies that URLs resolve and that the
+manifest is internally consistent. It cannot verify that Shizu CoreFetch actually accepted the
+file, because the store exposes no API for that. The first render in the app is a manual check,
+and afterwards we are inferring health from inputs rather than observing it.
+
+**Translations are unverifiable by CI.** The checks confirm each locale's text exists and matches
+its fastlane counterpart where one exists, but nothing detects a translation that is present,
+well-formed, and wrong. This is why each is produced and then reviewed by an independent pass — a
+mistranslated privacy claim is the same problem as an untrue English one.
+
+**The vendored schema is a snapshot.** If upstream loosens the schema, our copy stays stricter
+than necessary and we lose access to new fields until someone notices the audit's diff. That is
+the acceptable direction to fail in; the reverse — upstream tightening while we validate against
+a stale permissive copy — is exactly what the diff exists to catch.
