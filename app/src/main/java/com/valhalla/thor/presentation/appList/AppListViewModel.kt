@@ -15,6 +15,7 @@ import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
+import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.model.sortApps
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
@@ -36,6 +37,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -44,7 +46,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
-import kotlin.time.Duration.Companion.milliseconds
 
 // ... AppListUiState remains same ...
 data class AppListUiState(
@@ -139,7 +140,7 @@ class AppListViewModel(
 
     /**
      * @param deferForTransition hold the scan back until the screen-entry animation has had time to
-     * settle. Only the navigation-entry paths want this; see [TRANSITION_SETTLE_DELAY].
+     * settle. Only the navigation-entry paths want this; see [settleDelayFor].
      */
     fun loadApps(deferForTransition: Boolean = false) {
         // Cancel any existing collector so the prior (infinite) getInstalledAppsUseCase()
@@ -153,7 +154,17 @@ class AppListViewModel(
             // Opt-in, because this runs BEFORE the (cold) flow below is collected, so it is dead
             // time prepended to the scan rather than overlapped with it. A deliberate
             // pull-to-refresh has no transition to protect and must not pay for it.
-            if (deferForTransition) delay(TRANSITION_SETTLE_DELAY)
+            if (deferForTransition) {
+                // catch: userPreferences is dataStore.data, which throws IOException on a failed
+                // read. Fall back to the defaults rather than letting a preference read failure
+                // take down the whole app list. (Flow.catch stays transparent to cancellation.)
+                val intensity = preferenceRepository.userPreferences
+                    .catch { emit(UserPreferences()) }
+                    .first()
+                    .animationIntensity
+                // LOW resolves to ZERO, which delay() returns from without suspending.
+                delay(settleDelayFor(intensity))
+            }
 
             // Privilege availability now comes from the shared reactive PrivilegeManager,
             // so a Shizuku grant reflects here without reloading the list.
@@ -534,12 +545,4 @@ class AppListViewModel(
         order: SortOrder
     ): List<AppInfo> = sortApps(list, sortBy, order)
 
-    private companion object {
-        /**
-         * Head start given to the screen-entry animation before the package scan begins. Scanning
-         * every installed package while the navigation/bottom-bar transition is still running
-         * contends for CPU and commits a large list update mid-animation, which drops frames.
-         */
-        val TRANSITION_SETTLE_DELAY = 800.milliseconds
-    }
 }
