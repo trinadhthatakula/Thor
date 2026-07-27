@@ -32,6 +32,21 @@ warn()    { printf '  WARN %s\n' "$*" >&2; warnings=$((warnings + 1)); }
 ok()      { printf '  ok   %s\n' "$*"; }
 section() { printf '\n== %s ==\n' "$*"; }
 
+# The manifest's twelve image URLs are fetched back to back from one address,
+# and raw.githubusercontent.com answers a burst like that with a 429 often
+# enough to have tripped this checker twice while it was being written. The
+# link check below already forgives 429; this one demands a 200, so give it one
+# retry. A transient refusal then passes on the second attempt, while a file
+# that is genuinely missing fails both and is still reported.
+image_code() {
+  _c="$(curl -sSL --max-time 25 -o /dev/null -w '%{http_code}' "$1")" || _c=000
+  if [ "$_c" != "200" ]; then
+    sleep 3
+    _c="$(curl -sSL --max-time 25 -o /dev/null -w '%{http_code}' "$1")" || _c=000
+  fi
+  printf '%s' "$_c"
+}
+
 need() {
   command -v "$1" >/dev/null 2>&1 || {
     printf 'missing required tool: %s\n' "$1" >&2
@@ -260,7 +275,7 @@ if [ "$NETWORK" -eq 1 ]; then
   # subshell, where every fail() would increment a copy of $failures that dies
   # with the subshell. URLs contain no whitespace, so word splitting is safe.
   for u in $(jq -r '[.icon_url, .banner_url, ((.screenshots // [])[])] | .[]' "$MANIFEST"); do
-    code="$(curl -sSL --max-time 25 -o /dev/null -w '%{http_code}' "$u")"
+    code="$(image_code "$u")"
     if [ "$code" = "200" ]; then ok "$code  ${u##*/}"; else fail "image not served: $code $u"; fi
   done
 
