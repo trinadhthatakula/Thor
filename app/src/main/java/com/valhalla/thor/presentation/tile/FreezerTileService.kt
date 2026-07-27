@@ -6,37 +6,55 @@ package com.valhalla.thor.presentation.tile
 import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
-import android.widget.Toast
 import com.valhalla.thor.R
-import com.valhalla.thor.domain.model.FreezerMode
-import com.valhalla.thor.domain.repository.FreezerRepository
-import com.valhalla.thor.domain.repository.PreferenceRepository
-import com.valhalla.thor.domain.repository.SystemRepository
-import com.valhalla.thor.domain.usecase.ManageAppUseCase
+import com.valhalla.thor.data.freezer.BulkFreezeRunner
+import com.valhalla.thor.data.manager.PrivilegeManager
+import com.valhalla.thor.domain.model.BulkOp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.android.ext.android.inject
 
+/**
+ * Quick Settings tile that bulk-freezes the freezer watchlist.
+ *
+ * The tile owns no work. [BulkFreezeRunner] is an app-scoped @Single that runs the batch and
+ * publishes its state, so a QS shade collapse destroying this service cannot truncate a
+ * freeze and cannot leave anything retaining the destroyed instance. This service only
+ * observes and paints.
+ */
 class FreezerTileService : TileService() {
 
-    private val freezerRepository: FreezerRepository by inject()
-    private val manageAppUseCase: ManageAppUseCase by inject()
-    private val systemRepository: SystemRepository by inject()
-    private val preferenceRepository: PreferenceRepository by inject()
+    private val runner: BulkFreezeRunner by inject()
+    private val privilegeManager: PrivilegeManager by inject()
 
     private var scope: CoroutineScope? = null
 
     override fun onStartListening() {
-        scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-        scope?.launch { refreshTile() }
+        val listenScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        scope = listenScope
+
+        // Phase 1: paint synchronously from whatever is already cached, so the tile is never
+        // blank while the sweep runs. Phase 2 is the collector below, which repaints as the
+        // real state lands.
+        paint()
+
+        listenScope.launch {
+            combine(
+                privilegeManager.state,
+                runner.freezableCount,
+                runner.isRunning,
+                runner.lastResult,
+            ) { _, _, _, _ -> Unit }.collect { paint() }
+        }
+
+        // Phase 2: re-derive from live per-app state. The watchlist alone cannot tell us
+        // whether anything is still freezable, which is why the tile used to stay lit after
+        // freezing everything.
+        listenScope.launch { runner.refreshCandidates(BulkOp.FREEZE) }
     }
 
     override fun onStopListening() {
@@ -45,97 +63,58 @@ class FreezerTileService : TileService() {
     }
 
     override fun onClick() {
-        // appScope (not a service-lifetime scope): collapsing the QS shade destroys this service, so
-        // a bulk freeze pinned to onDestroy()-cancelled work would leave a PARTIAL freeze and skip the
-        // result toast + tile refresh. The process-scoped runner lets the loop finish either way.
-        appScope.launch {
-            val hasPrivilege = withContext(Dispatchers.IO) {
-                systemRepository.isRootAvailable() ||
-                        systemRepository.isShizukuAvailable() ||
-                        systemRepository.isDhizukuAvailable()
-            }
-            if (!hasPrivilege) {
-                Toast.makeText(
-                    applicationContext,
-                    getString(R.string.tile_grant_privilege_toast),
-                    Toast.LENGTH_SHORT
-                ).show()
-                return@launch
-            }
-            val pkgs = withContext(Dispatchers.IO) { freezerRepository.getAllPackageNames() }
-            if (pkgs.isEmpty()) {
-                Toast.makeText(
-                    applicationContext,
-                    getString(R.string.tile_no_apps_toast),
-                    Toast.LENGTH_SHORT
-                ).show()
-                return@launch
-            }
-            // Honor the persisted Freezer mode so the tile stays consistent with the in-app freezer:
-            // Suspend mode suspends, Freeze mode disables (mirrors FreezerViewModel.freezeSingleApp).
-            val suspendMode = withContext(Dispatchers.IO) {
-                preferenceRepository.userPreferences.first().freezerMode == FreezerMode.SUSPEND
-            }
-            // appScope is process-scoped and never cancelled; bound the batch so a wedged/hung shell
-            // can't hang this coroutine forever and leak the FreezerTileService instance + captures.
-            val results = withTimeoutOrNull(30_000L) {
-                pkgs.map { pkg ->
-                    async(Dispatchers.IO) {
-                        if (suspendMode) manageAppUseCase.setAppSuspended(pkg, true)
-                        else manageAppUseCase.setAppDisabled(pkg, true)
-                    }
-                }.awaitAll()
-            }
-            val failures = results?.count { it.isFailure } ?: pkgs.size
-            val msg = if (failures == 0) {
-                resources.getQuantityString(R.plurals.tile_freeze_success, pkgs.size, pkgs.size)
-            } else {
-                getString(
-                    R.string.tile_freeze_partial_failure,
-                    pkgs.size - failures,
-                    pkgs.size,
-                    failures
-                )
-            }
-            Toast.makeText(applicationContext, msg, Toast.LENGTH_SHORT).show()
-            // appScope outlives this service: if the QS shade collapsed mid-freeze the service is no
-            // longer listening (onStopListening set scope = null) and touching qsTile.updateTile()
-            // can throw inside the framework (its binder is gone), so only refresh while still bound.
-            if (scope != null) refreshTile()
-        }
-    }
-
-    private suspend fun refreshTile() {
-        val tile = qsTile ?: return
-        val hasPrivilege = withContext(Dispatchers.IO) {
-            systemRepository.isRootAvailable() ||
-                    systemRepository.isShizukuAvailable() ||
-                    systemRepository.isDhizukuAvailable()
-        }
-        if (!hasPrivilege) {
-            tile.state = Tile.STATE_UNAVAILABLE
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                tile.subtitle = getString(R.string.tile_no_privilege)
-            }
-            tile.updateTile()
+        // AOSP's CustomTile.handleClick early-returns on STATE_UNAVAILABLE, so this branch is
+        // only reachable when the tile was painted CHECKING and the probe then resolved to
+        // "no privilege" — a real race, not dead code.
+        if (!privilegeManager.state.value.hasAnyPrivilege) {
+            paint()
             return
         }
-        val pkgs = withContext(Dispatchers.IO) { freezerRepository.getAllPackageNames() }
-        tile.state = if (pkgs.isEmpty()) Tile.STATE_INACTIVE else Tile.STATE_ACTIVE
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            tile.subtitle = if (pkgs.isEmpty()) {
-                getString(R.string.tile_no_apps)
-            } else {
-                resources.getQuantityString(R.plurals.tile_subtitle_format, pkgs.size, pkgs.size)
-            }
-        }
-        tile.updateTile()
+        runner.launch(BulkOp.FREEZE)
     }
 
-    private companion object {
-        // Process-scoped (static) so a bulk freeze outlives any single service instance: the QS shade
-        // collapse destroys the tile service, so this must NOT be tied to a service-lifetime scope and
-        // is intentionally never cancelled. SupervisorJob keeps one failed freeze from cancelling the rest.
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    /** Push the current state onto the tile. Safe to call when unbound — [qsTile] is null then. */
+    private fun paint() {
+        val tile = qsTile ?: return
+        val visual = tileVisualFor(
+            privilege = privilegeManager.state.value,
+            freezableCount = runner.freezableCount.value,
+            isRunning = runner.isRunning.value,
+        )
+        val count = runner.freezableCount.value ?: 0
+
+        tile.state = when (visual) {
+            TileVisual.NO_PRIVILEGE -> Tile.STATE_UNAVAILABLE
+            TileVisual.NOTHING_TO_FREEZE -> Tile.STATE_INACTIVE
+            // CHECKING stays INACTIVE (clickable) on purpose: an UNAVAILABLE tile never
+            // receives onClick, so an optimistic paint would swallow taps until the next
+            // listen.
+            TileVisual.CHECKING -> Tile.STATE_INACTIVE
+            TileVisual.WORKING -> Tile.STATE_ACTIVE
+            TileVisual.READY -> Tile.STATE_ACTIVE
+        }
+
+        // A finished run's message wins the subtitle once, then is consumed so a later
+        // shade-open shows the live count again rather than replaying a stale result.
+        val result = runner.lastResult.value
+        val subtitle = if (result != null && !runner.isRunning.value) {
+            runner.consumeResult()
+            bulkResultMessage(result).asString(this)
+        } else {
+            when (visual) {
+                TileVisual.CHECKING -> getString(R.string.tile_checking)
+                TileVisual.WORKING -> getString(R.string.tile_freezing)
+                TileVisual.NO_PRIVILEGE -> getString(R.string.tile_no_privilege)
+                TileVisual.NOTHING_TO_FREEZE -> getString(R.string.tile_no_apps)
+                TileVisual.READY ->
+                    resources.getQuantityString(R.plurals.tile_subtitle_format, count, count)
+            }
+        }
+
+        // Never setLabel: it mutates the tile's identity in the QS picker.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) tile.subtitle = subtitle
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) tile.stateDescription = subtitle
+        tile.contentDescription = "${getString(R.string.freezer)}: $subtitle"
+        tile.updateTile()
     }
 }
