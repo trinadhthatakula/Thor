@@ -1,7 +1,7 @@
 # Thor App Manager - Project Context
 
-Thor is a modern, lightweight, and privacy-focused Android App Manager. It is designed to be 100%
-offline, free, and open-source (FOSS), providing advanced app management capabilities through
+Thor is a modern, lightweight, and privacy-focused Android App Manager. It is free and open-source
+(FOSS), with no ads, trackers, or telemetry, providing advanced app management capabilities through
 Shizuku, Dhizuku, and Root access.
 
 ## 🏗 Architecture
@@ -88,7 +88,9 @@ for the presentation layer.
 - **Multi-language**: Supports English, Spanish, French, Arabic, and Chinese. Runtime locale
   switching via `LocaleManager` (`util/LocaleManager.kt`); language preference stored in
   `UserPreferences.language` (null = system default).
-- **Privacy**: Fully offline, no ads, no trackers, FOSS (GPL-3.0).
+- **Privacy**: No ads, no trackers, no analytics, FOSS (GPL-3.0). The app declares
+  `android.permission.INTERNET`; the only network access is the optional Extensions store, which
+  fetches its catalog and verified extension APKs over HTTPS. Every other feature works offline.
 
 ## ⚠️ Limitations
 
@@ -97,7 +99,7 @@ for the presentation layer.
   availability.
 - **Suspension Compatibility**: `setAppSuspended` uses reflection against internal APIs; behaviour
   may vary across Android 10–14+ due to API signature changes.
-- **Offline Only**: No cloud backup or remote synchronization (by design, for privacy).
+- **No Cloud Sync**: No cloud backup or remote synchronization (by design, for privacy).
 - **Android Constraints**: Subject to evolving Android security restrictions (hidden API policy,
   target SDK requirements).
 - **Feature Gap**: App data backup is not yet implemented.
@@ -118,4 +120,4 @@ for the presentation layer.
 - **Android OS Changes**: Future Android updates might further restrict Shizuku or root-level access
   methods.
 - **Competition**: Several established open-source app managers exist; maintaining a niche in "
-  lightweight & offline" is key.
+  lightweight & privacy-first" is key.

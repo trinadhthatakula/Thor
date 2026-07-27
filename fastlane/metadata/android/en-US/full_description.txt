@@ -29,7 +29,7 @@ Perform actions on multiple apps simultaneously with a real-time terminal logger
 🧩 EXTENSION MANAGER
 Extend Thor with optional add-ons, browsed and installed from an in-app catalog.
 • Every extension is signature-verified and SHA-256 checked before it installs.
-• Entirely opt-in: install no extensions and Thor never touches the network.
+• Entirely opt-in: never open the Extension Manager and Thor never touches the network.
 
 📱 ADAPTIVE UI & LAYOUT PERSISTENCE
 Enjoy a beautiful Material 3 interface that adapts to your device.
