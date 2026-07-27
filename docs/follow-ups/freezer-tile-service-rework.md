@@ -32,10 +32,10 @@ That is acceptable *if* the coroutine always finishes promptly. It doesn't neces
 | the freeze/suspend batch (`pkgs.map { async { … } }.awaitAll()`) | yes — `withTimeoutOrNull(30_000L)` |
 
 Only the batch is bounded. The privilege probe in particular routes into the shell, and Thor has a
-**known residual hang class** there: see [`mainshell-shell-init-hard-failure.md`](mainshell-shell-init-hard-failure.md)
-— a coroutine parked in a blocking `MainShell.get(...)` cannot be unblocked cooperatively. So a
-wedged shell holds the destroyed service (and its `Context`) indefinitely, before the timeout that
-was added for exactly this reason ever comes into scope.
+**known residual hang class** there — a coroutine parked in a blocking `MainShell.get(...)` inside
+Odin cannot be unblocked cooperatively (tracked upstream as Step F of the Odin shell-modernization
+plan, not in this repo). So a wedged shell holds the destroyed service (and its `Context`)
+indefinitely, before the timeout that was added for exactly this reason ever comes into scope.
 
 `refreshTile()` has the same unbounded probe, but it runs on the service-lifetime `scope` which
 `onStopListening()` cancels, so it is not part of this finding.
@@ -60,8 +60,8 @@ Not a decision, just the shape the rework should take:
    service members: pass the app `Context` and pre-read the plural/format strings, or emit the result
    as data and let the toast happen on the app context.
 3. **Bound the whole operation, not just the batch** — wrap the privilege probe, the package read and
-   the prefs read too, or (better) fix the underlying hang at the shell layer per
-   [`mainshell-shell-init-hard-failure.md`](mainshell-shell-init-hard-failure.md).
+   the prefs read too. Fixing the underlying hang at the shell layer belongs to Odin, not Thor, so
+   Thor must defend itself with a timeout regardless.
 4. **Keep the tile refresh guarded.** The current `if (scope != null) refreshTile()` guard is correct
    and should survive: touching `qsTile.updateTile()` after the shade collapses can throw inside the
    framework because the binder is gone. In the reworked shape the runner should publish a result
