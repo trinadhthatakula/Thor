@@ -12,7 +12,8 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.BulkResult
-import com.valhalla.thor.presentation.tile.bulkResultMessage
+import com.valhalla.thor.util.Logger
+import com.valhalla.thor.util.bulkResultMessage
 import org.koin.core.annotation.Single
 
 /**
@@ -53,6 +54,7 @@ class BulkResultNotifier(
         } catch (e: SecurityException) {
             // areNotificationsEnabled() can race a revocation; a lost result notification is
             // not worth crashing a background batch over. The tile subtitle still reports.
+            Logger.e("BulkResultNotifier", "notify() denied — permission revoked mid-post", e)
         }
     }
 

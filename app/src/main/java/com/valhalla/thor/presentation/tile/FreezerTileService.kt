@@ -11,6 +11,7 @@ import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkResult
 import com.valhalla.thor.util.Logger
+import com.valhalla.thor.util.bulkResultMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

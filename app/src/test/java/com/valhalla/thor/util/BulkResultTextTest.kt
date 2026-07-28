@@ -1,12 +1,11 @@
 // SPDX-FileCopyrightText: 2025-2026 Trinadh Thatakula <github.com/trinadhthatakula/Thor>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package com.valhalla.thor.presentation.tile
+package com.valhalla.thor.util
 
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkResult
-import com.valhalla.thor.util.UiText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test

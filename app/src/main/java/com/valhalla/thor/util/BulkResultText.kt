@@ -1,16 +1,19 @@
 // SPDX-FileCopyrightText: 2025-2026 Trinadh Thatakula <github.com/trinadhthatakula/Thor>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package com.valhalla.thor.presentation.tile
+package com.valhalla.thor.util
 
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkResult
-import com.valhalla.thor.util.UiText
 
 /**
  * Human-readable outcome of a bulk run, resolved late so the caller (tile subtitle or
  * notification) supplies the Context.
+ *
+ * Lives beside [UiText] rather than in `presentation/tile` because both the tile and
+ * `BulkResultNotifier` (in `data`) render it, and a `data -> presentation` import was the only
+ * layer inversion in the codebase.
  *
  * Wording follows [BulkResult.op]: one runner serves both directions, so hard-wiring the
  * freeze strings made every "Unfreeze all" report "Froze 5 apps". The unfreeze strings are the
