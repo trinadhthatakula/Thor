@@ -9,7 +9,9 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.domain.model.isActive
 import com.valhalla.thor.domain.model.isFrozen
 import com.valhalla.thor.domain.model.UserPreferences
@@ -516,10 +518,7 @@ class MainViewModel(
         val targets = if (isFreeze) {
             // Only freeze ACTIVE apps: skip unsafe/UAD system apps AND anything already frozen
             // (disabled or suspended) so we never stack disable+suspend into a mixed state.
-            apps.filter { app ->
-                app.isActive && !(app.isSystem && (app.isUadLoadFailed ||
-                    app.bloatRecommendation?.lowercase() == "unsafe"))
-            }
+            apps.filter { it.isActive && it.freezeTier != FreezeTier.BLOCKED }
         } else {
             apps
         }

@@ -14,6 +14,37 @@ data class UadEntry(
     val removal: String
 )
 
+/**
+ * One consistent read of [UadHelper] — the recommendation map plus whether the list behind it
+ * failed to load — taken together so a caller cannot mix a fresh map with a stale flag.
+ *
+ * That mix is not hypothetical. [UadHelper.didLoadFail] is assigned only inside the lazy load
+ * that the `uadMap` getter triggers, so on a cold instance the flag reads `false` until the map
+ * has been touched at least once. Code that consults the flag first therefore concludes "the
+ * list loaded fine" no matter what — and the safety rule it guards ("no UAD data means treat
+ * every system app as blocked") fails *open*, which is the exact direction it must never fail.
+ * [UadHelper.snapshot] reads the map first; taking the pair through this type is what stops the
+ * order being re-derived, and re-derived wrongly, at each call site.
+ */
+class UadSnapshot internal constructor(
+    private val entries: Map<String, UadEntry>,
+    val loadFailed: Boolean,
+) {
+    /** UAD's removal recommendation for [packageName] ("Unsafe", "Expert", …), or null. */
+    fun recommendationFor(packageName: String): String? = entries[packageName]?.removal
+
+    companion object {
+        /**
+         * A snapshot that classifies nothing, for paths where the tier is irrelevant by design
+         * — unfreezing, and the plain state read behind `AppFreezeStateReader.stateOf`.
+         *
+         * Deliberately NOT a default parameter value anywhere: on a freeze path this would
+         * silently disable the block, so every use has to be written out and justified.
+         */
+        val UNFILTERED = UadSnapshot(emptyMap(), loadFailed = false)
+    }
+}
+
 @Single
 class UadHelper(
     private val context: Context,
@@ -36,6 +67,19 @@ class UadHelper(
                 cachedMap ?: buildUadMap().also { cachedMap = it }
             }
         }
+
+    /**
+     * The map and [didLoadFail] as one value — see [UadSnapshot] for why they must travel
+     * together.
+     *
+     * The `uadMap` read has to come first: it is what forces the lazy load that assigns
+     * [didLoadFail], so reading the flag first would observe the pre-load default. Cheap after
+     * the first call (the map is cached), so a per-run snapshot is fine.
+     */
+    fun snapshot(): UadSnapshot {
+        val entries = uadMap
+        return UadSnapshot(entries, didLoadFail)
+    }
 
     fun invalidateCache() {
         // Lock-free by design: this is called from a main-thread BroadcastReceiver on
