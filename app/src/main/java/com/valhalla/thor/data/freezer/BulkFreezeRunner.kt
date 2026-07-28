@@ -22,9 +22,13 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -74,6 +78,44 @@ class BulkFreezeRunner(
 
     /** Outcome of the last completed run, consumed once by whoever displays it. */
     val lastResult: StateFlow<BulkResult?> = _lastResult.asStateFlow()
+
+    // replay = 1 so a completion is not lost to a subscriber that has not attached yet.
+    // extraBufferCapacity alone only buffers for an *already-subscribed but slow* collector; with
+    // zero subscribers tryEmit still returns true and discards. FreezerShortcutManager subscribes
+    // from `scope.launch` in its init, which dispatches asynchronously, so there is a window —
+    // narrow, but the correctness of the icon rebuild should not rest on it losing a race.
+    //
+    // Replaying to a late subscriber is harmless here precisely because subscribers re-read live
+    // package state instead of trusting the emitted value: a replayed completion costs one extra
+    // idempotent rebuild, never a wrong icon.
+    //
+    // extraBufferCapacity + DROP_OLDEST so tryEmit never fails and never suspends the run: a
+    // slow subscriber (the icon rebuild decodes one bitmap per pinned app) must not be able to
+    // hold a batch open, and coalescing a burst down to "rebuild once more afterwards" is
+    // correct for the same reason.
+    private val _completions = MutableSharedFlow<BulkOp>(
+        replay = 1,
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    /**
+     * Emits once per run that actually touched packages — the seam for side effects that must
+     * follow *any* bulk run, whichever surface started it.
+     *
+     * This exists because side effects bolted to one caller are unreachable from the other.
+     * The pinned-shortcut icon rebuild used to hang off `FreezerShortcutManager.runBulk`, so a
+     * freeze started from the QS tile — which calls [launch] directly, having no reason to know
+     * shortcuts exist — froze the apps and left every pinned icon in full colour. Device
+     * evidence: `dumpsys shortcut` showed the publisher's call count and stored icon bitmap
+     * unchanged across a tile freeze that did set `enabled=3`.
+     *
+     * Not emitted for a no-op run ([run] returned null: no privilege, or nothing to act on) —
+     * nothing changed, so nothing needs rebuilding. Not emitted for a cancelled run either;
+     * the conflicting op that replaced it emits its own completion, and subscribers rebuild
+     * from live state, so the later emission subsumes the lost one.
+     */
+    val completions: SharedFlow<BulkOp> = _completions.asSharedFlow()
 
     private val _runningOp = MutableStateFlow<BulkOp?>(null)
 
@@ -193,6 +235,17 @@ class BulkFreezeRunner(
                     // unfrozen, so leaving it would show "Froze N apps" on a tile that is now
                     // READY again. Stale either way — drop it.
                     _lastResult.value = if (op == BulkOp.FREEZE) result else null
+                    // Unconditional, unlike the lines around it: a completion is not a *report*
+                    // of the run, it is the fact that package state changed. It must not inherit
+                    // the tile's freeze-only rule (an unfreeze recolours icons too) nor the
+                    // notifier's permission gate (icons are not a notification).
+                    //
+                    // Ahead of notifier.post for the same reason: post() is a binder call into
+                    // NotificationManager and the outer catch would swallow anything it threw,
+                    // silently skipping the emission for a run whose packages are already
+                    // mutated. tryEmit cannot throw or suspend, so nothing is owed to ordering
+                    // the other way.
+                    _completions.tryEmit(op)
                     if (result.total > 0) notifier.post(result)
                 }
             } catch (e: CancellationException) {

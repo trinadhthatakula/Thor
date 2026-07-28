@@ -55,6 +55,29 @@ class FreezerShortcutManager(
         const val LAUNCH_ACTIVITY = "com.valhalla.thor.presentation.launcher.FreezerLaunchActivity"
     }
 
+    init {
+        // Rebuild pinned icons off the runner's completions rather than off a call site.
+        //
+        // The QS tile calls BulkFreezeRunner.launch directly — correctly: a tile has no reason
+        // to know shortcuts exist — so a rebuild hung off runBulk was reachable from the
+        // launcher Freeze-all shortcut and from nowhere else. Apps froze from the tile and
+        // their pinned icons stayed full colour.
+        //
+        // The dependency direction is forced: this class already holds the runner, so it
+        // subscribes. The runner must not hold this class back (Koin cycle), which also keeps
+        // it free of any launcher concern.
+        //
+        // Startup ordering gets this close: Koin builds this @Single as a constructor argument
+        // of AutoFreezeManager, ThorApplication.onCreate calls autoFreezeManager.startObserving()
+        // synchronously, and Application.onCreate always completes before the framework binds
+        // FreezerTileService. But `scope.launch` only *schedules* the collector, so subscription
+        // itself is not ordered against the first run — which is why `completions` carries
+        // replay = 1. A replayed completion just costs one extra rebuild from live state.
+        scope.launch {
+            bulkFreezeRunner.completions.collect { rebuildPinnedIcons() }
+        }
+    }
+
     fun isPinSupported(): Boolean =
         ShortcutManagerCompat.isRequestPinShortcutSupported(context)
 
@@ -119,67 +142,69 @@ class FreezerShortcutManager(
      * Bulk freeze/unfreeze every package in the freezer, off the finishing activity.
      *
      * Returns the run so the caller can await its [BulkResult] and report it. The icon rebuild
-     * is deliberately *not* part of that Deferred: it belongs to this manager's own
-     * process-lifetime scope, so a caller that finishes early never truncates it, and a caller
-     * that awaits does not wait on shortcut bookkeeping it does not care about.
+     * is deliberately *not* part of that Deferred: it hangs off the runner's completions (see
+     * the `init` block), so a caller that finishes early never truncates it, and a caller that
+     * awaits does not wait on shortcut bookkeeping it does not care about.
      */
-    fun runBulk(disable: Boolean): Deferred<BulkResult?> {
-        val op = if (disable) BulkOp.FREEZE else BulkOp.UNFREEZE
+    fun runBulk(disable: Boolean): Deferred<BulkResult?> =
         // Delegate so this shares the tile's candidate filter, Semaphore(5), deadline and
         // result reporting. It previously ran sequentially and discarded every Result.
-        val run = bulkFreezeRunner.launch(op)
-        scheduleIconRefresh(run)
-        return run
-    }
-
-    // The run this manager has already scheduled an icon refresh for, so repeated taps do not
-    // stack redundant rebuilds. Guarded by the instance monitor; see scheduleIconRefresh.
-    private var refreshScheduledFor: Deferred<BulkResult?>? = null
+        bulkFreezeRunner.launch(if (disable) BulkOp.FREEZE else BulkOp.UNFREEZE)
 
     /**
-     * Rebuild the pinned per-app shortcut icons once [run] settles — at most once per run.
-     *
-     * The dedupe is not cosmetic. `BulkFreezeRunner.launch` coalesces same-op taps onto one
-     * shared `Deferred`, and the bulk shortcut shows nothing for up to two seconds, so impatient
-     * re-taps are the expected case rather than the exotic one. Without the guard each tap
-     * queues another full rebuild: N concurrent icon decodes over every pinned package, for
-     * byte-identical output. That is the same hazard [pinAppShortcutSuspend] exists to avoid.
-     *
-     * Identity, not equality: a conflicting op returns a *different* Deferred and must get its
-     * own refresh, because it leaves the packages in the opposite state.
+     * Fire-and-forget rebuild of every pinned per-app icon, for a caller that runs its own
+     * batch instead of going through [BulkFreezeRunner] — currently only Settings'
+     * Unfreeze-all. Runs on this manager's process-lifetime scope, so a finishing caller
+     * cannot truncate it.
      */
-    @Synchronized
-    private fun scheduleIconRefresh(run: Deferred<BulkResult?>) {
-        if (refreshScheduledFor === run) return
-        refreshScheduledFor = run
-        scope.launch {
-            try {
-                // Icons follow app state, so wait for the run to settle before rebuilding them.
-                // join() rather than watching runningOp: a fast run can clear that before this
-                // coroutine is even dispatched, and we would then wait forever.
-                run.join()
-                val pinnedIds = pinnedShortcutIds()
-                val updated = freezerRepository.getAllPackageNames()
-                    .filter { FreezerShortcutContract.appShortcutId(it) in pinnedIds }
-                    .mapNotNull { pkg -> appLabel(pkg)?.let { buildAppShortcut(pkg, it) } }
-                if (updated.isNotEmpty()) {
-                    ShortcutManagerCompat.updateShortcuts(context, updated)
-                }
-            } catch (e: CancellationException) {
-                // Never swallow cancellation — it breaks cooperative coroutine cancellation.
-                throw e
-            } catch (e: Exception) {
-                // stateOf (called by buildAppShortcut) catches only NameNotFoundException;
-                // a binder-death RuntimeException would otherwise escape to Android's default
-                // uncaught handler and kill the process. Log and continue.
-                Logger.e("FreezerShortcut", "icon refresh after bulk run failed", e)
-            } finally {
-                // Release the slot under the same monitor, and only if it is still ours: a
-                // conflicting op may already have claimed it for its own run.
-                synchronized(this@FreezerShortcutManager) {
-                    if (refreshScheduledFor === run) refreshScheduledFor = null
-                }
+    fun refreshPinnedShortcutIcons() {
+        scope.launch { rebuildPinnedIcons() }
+    }
+
+    /**
+     * Repaint every pinned per-app shortcut from live freeze state.
+     *
+     * No dedupe needed: `BulkFreezeRunner.launch` coalesces same-op taps onto one run, one run
+     * emits one completion, and the completions buffer collapses a burst into a single trailing
+     * rebuild. So impatient re-taps — the expected case, since the bulk shortcut shows nothing
+     * for up to two seconds — cost one rebuild, not N concurrent icon decodes over every pinned
+     * package. Correctness under coalescing comes from reading live state here rather than
+     * trusting anything carried on the emission.
+     */
+    private suspend fun rebuildPinnedIcons() {
+        try {
+            val pinnedIds = pinnedShortcutIds()
+            val updated = freezerRepository.getAllPackageNames()
+                .filter { FreezerShortcutContract.appShortcutId(it) in pinnedIds }
+                .mapNotNull { pkg -> appLabel(pkg)?.let { buildAppShortcut(pkg, it) } }
+            if (updated.isNotEmpty()) {
+                pushShortcutUpdate(updated)
             }
+        } catch (e: CancellationException) {
+            // Never swallow cancellation — it breaks cooperative coroutine cancellation. This
+            // only arrives when the process-lifetime scope itself dies, so ending the
+            // completions collector with it is correct.
+            throw e
+        } catch (e: Exception) {
+            // stateOf (called by buildAppShortcut) catches only NameNotFoundException; a
+            // binder-death RuntimeException would otherwise escape to Android's default
+            // uncaught handler and kill the process — and would also terminate the collector
+            // for the rest of the process lifetime. Log and continue.
+            Logger.e("FreezerShortcut", "pinned icon rebuild failed", e)
+        }
+    }
+
+    // updateShortcuts reports failure by returning false, not by throwing. ShortcutManager
+    // rate-limits a *background* publisher (~10 accepted calls per 24h, the counter reset
+    // whenever the app has been in the foreground), and the tile path is background by
+    // definition. A dropped update is indistinguishable on screen from "we never called it",
+    // so log it rather than let the next report of this bug start from zero again.
+    private fun pushShortcutUpdate(shortcuts: List<ShortcutInfoCompat>) {
+        if (!ShortcutManagerCompat.updateShortcuts(context, shortcuts)) {
+            Logger.d(
+                "FreezerShortcut",
+                "updateShortcuts rejected ${shortcuts.size} pinned icon(s) — rate-limited?"
+            )
         }
     }
 
@@ -275,7 +300,7 @@ class FreezerShortcutManager(
     // Rebuild + push the current-state icon for a package's pinned shortcut (no-op if absent).
     private fun updateShortcutIcon(packageName: String) {
         val label = appLabel(packageName) ?: return
-        ShortcutManagerCompat.updateShortcuts(context, listOf(buildAppShortcut(packageName, label)))
+        pushShortcutUpdate(listOf(buildAppShortcut(packageName, label)))
     }
 
     private fun appLabel(packageName: String): String? = try {
