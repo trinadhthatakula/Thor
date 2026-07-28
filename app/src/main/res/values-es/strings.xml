@@ -238,6 +238,7 @@
         <item quantity="other">Se descongelaron %1$d aplicaciones</item>
     </plurals>
     <string name="tile_unfreeze_partial_failure">Se descongelaron %1$d/%2$d aplicaciones (%3$d fallaron)</string>
+    <string name="tile_unfreeze_incomplete">Se descongelaron %1$d/%2$d aplicaciones (%3$d sin terminar)</string>
     <string name="error_format">Error: %1$s</string>
     <string name="failed_to_load_apps">Error al cargar las aplicaciones</string>
     <plurals name="removed_from_freezer_success">

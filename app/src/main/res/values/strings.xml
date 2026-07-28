@@ -320,6 +320,9 @@
     </plurals>
     <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
     <string name="tile_unfreeze_partial_failure" tools:ignore="PluralsCandidate">Unfroze %1$d/%2$d apps (%3$d failed)</string>
+    <!-- Unfreeze counterpart of tile_freeze_incomplete: the deadline fired before these
+         packages resolved, so they are neither confirmed done nor confirmed failed. -->
+    <string name="tile_unfreeze_incomplete" tools:ignore="PluralsCandidate">Unfroze %1$d/%2$d apps (%3$d unfinished)</string>
     <string name="error_format">Error: %1$s</string>
     <string name="failed_to_load_apps">Failed to load apps</string>
     <plurals name="removed_from_freezer_success">

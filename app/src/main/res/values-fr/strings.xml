@@ -238,6 +238,7 @@
         <item quantity="other">%1$d applications dégelées</item>
     </plurals>
     <string name="tile_unfreeze_partial_failure">%1$d/%2$d applications dégelées (%3$d échouées)</string>
+    <string name="tile_unfreeze_incomplete">%1$d/%2$d applications dégelées (%3$d inachevées)</string>
     <string name="error_format">Erreur : %1$s</string>
     <string name="failed_to_load_apps">Échec du chargement des applications</string>
     <plurals name="removed_from_freezer_success">

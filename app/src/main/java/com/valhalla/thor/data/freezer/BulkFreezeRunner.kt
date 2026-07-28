@@ -4,9 +4,10 @@
 package com.valhalla.thor.data.freezer
 
 import com.valhalla.thor.data.manager.PrivilegeManager
+import com.valhalla.thor.domain.model.BulkAction
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkResult
-import com.valhalla.thor.domain.model.FreezerMode
+import com.valhalla.thor.domain.model.bulkActionFor
 import com.valhalla.thor.domain.model.freezableCandidates
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
@@ -17,8 +18,8 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -72,6 +73,12 @@ class BulkFreezeRunner(
     // than silently returning the wrong job.
     private var activeOp: BulkOp? = null
 
+    // Instance-scoped, NOT per run. A per-run Semaphore bounds one generation only: when a
+    // conflicting op replaces an in-flight batch, workers abandoned by that batch may still be
+    // parked in a blocking binder call, and a fresh Semaphore(5) would let five more start on
+    // top of them. Sharing it caps total in-flight workers across generations.
+    private val semaphore = Semaphore(MAX_CONCURRENT)
+
     /**
      * Re-derive how many apps [op] would act on and publish it to [freezableCount].
      *
@@ -95,8 +102,23 @@ class BulkFreezeRunner(
      * no such window.
      *
      * Same-op coalescing: a second tap for the same op returns the existing job.
-     * Conflicting-op replacement: the new job cancels and joins the previous before running,
-     * so at most one batch is ever touching packages concurrently.
+     *
+     * Conflicting-op replacement: the new job cancels the previous one and joins it before
+     * touching any package. That handoff is **bounded, not absolute**. What actually holds:
+     *
+     * - the outgoing run gets [CANCEL_GRACE_MS] to unwind, so every worker that observes
+     *   cancellation is finished before the replacement starts;
+     * - [semaphore] is an instance field, so the number of workers in flight is capped at
+     *   [MAX_CONCURRENT] **across** generations, not per run;
+     * - a worker parked in a blocking binder call still can outlive the grace period — the
+     *   Shizuku and Dhizuku reflection paths do not observe cancellation — and mutate its
+     *   package after the replacement batch has begun.
+     *
+     * So the overlap is bounded in worker count and in expected duration; it is not
+     * eliminated. This matters because FREEZE and UNFREEZE are not idempotent with respect to
+     * each other: a straggling FREEZE worker can re-disable a package that the replacing
+     * UNFREEZE batch already enabled, and that package is not in the unfreeze target list
+     * either (it was not frozen when the candidates were computed).
      */
     @Synchronized
     fun launch(op: BulkOp): Job {
@@ -121,7 +143,11 @@ class BulkFreezeRunner(
                 // do not publish BulkResult(0,0,0) because the tile already communicates
                 // "nothing to freeze" — a false "Froze 0 apps" message is worse than silence.
                 run(op)?.let { result ->
-                    _lastResult.value = result
+                    // Publish to _lastResult for FREEZE only. The tile is freeze-only (D1) and
+                    // _lastResult is process-lifetime, so parking an UNFREEZE result here would
+                    // render it in the tile subtitle the next time the shade opens — possibly
+                    // hours later. The notification still reports both ops.
+                    if (op == BulkOp.FREEZE) _lastResult.value = result
                     if (result.total > 0) notifier.post(result)
                 }
             } catch (e: CancellationException) {
@@ -153,7 +179,14 @@ class BulkFreezeRunner(
                 // the same reason as the launch guard: the slot must be read atomically.
                 val thisJob = coroutineContext[Job]
                 synchronized(this@BulkFreezeRunner) {
-                    if (activeJob === thisJob) _isRunning.value = false
+                    if (activeJob === thisJob) {
+                        _isRunning.value = false
+                        // Drop the slot too: otherwise activeJob retains a completed Job and
+                        // activeOp a stale op for the process lifetime. Only safe under the
+                        // same identity check — a replacement job owns the slot now.
+                        activeJob = null
+                        activeOp = null
+                    }
                 }
             }
         }
@@ -189,12 +222,12 @@ class BulkFreezeRunner(
         val targets = freezableCandidates(watchlist, op, stateReader::stateOf)
         if (targets.isEmpty()) return null
 
-        val useSuspend = op == BulkOp.FREEZE &&
-                preferenceRepository.userPreferences.first().freezerMode == FreezerMode.SUSPEND
+        // Resolved once per run, not per package: the mode cannot change mid-batch, and the
+        // op × mode decision is a pure function so it can be unit-tested away from binders.
+        val action = bulkActionFor(op, preferenceRepository.userPreferences.first().freezerMode)
 
         val succeeded = AtomicInteger(0)
         val failed = AtomicInteger(0)
-        val semaphore = Semaphore(MAX_CONCURRENT)
 
         // B-10: The batch is a child of `scope`, NOT of the withTimeoutOrNull block below.
         // withTimeoutOrNull is a scoping builder, so wrapping the batch directly would cancel
@@ -209,10 +242,10 @@ class BulkFreezeRunner(
                     semaphore.withPermit {
                         ensureActive()
                         val result = try {
-                            when {
-                                op == BulkOp.UNFREEZE -> manageAppUseCase.forceUnfreeze(pkg)
-                                useSuspend -> manageAppUseCase.setAppSuspended(pkg, true)
-                                else -> manageAppUseCase.setAppDisabled(pkg, true)
+                            when (action) {
+                                BulkAction.UNFREEZE -> manageAppUseCase.forceUnfreeze(pkg)
+                                BulkAction.SUSPEND -> manageAppUseCase.setAppSuspended(pkg, true)
+                                BulkAction.DISABLE -> manageAppUseCase.setAppDisabled(pkg, true)
                             }
                         } catch (e: CancellationException) {
                             // CancellationException IS an Exception in Kotlin, so it must be
@@ -246,12 +279,23 @@ class BulkFreezeRunner(
             // caller. Without this, cancelling the outer job (e.g. cancelAndJoin() from a
             // replacement launch) leaves up to MAX_CONCURRENT workers mutating packages
             // unsupervised because the sibling relationship means they are not automatically
-            // cancelled with the caller. Do not add job.join() here — that re-introduces an
-            // unbounded wait (deferred B-11).
+            // cancelled with the caller.
             job.cancel()
+            // ...then give the workers that DO observe cancellation a bounded window to
+            // actually unwind, so they are gone before a replacement batch starts. Two
+            // requirements shape this:
+            //   NonCancellable — we are usually in this finally *because* the caller was
+            //     cancelled, so a plain join() would resume-with-cancellation immediately and
+            //     wait for nothing.
+            //   withTimeoutOrNull — an unbounded join() re-introduces exactly the hang the R3
+            //     comment above warns about, because the Shizuku/Dhizuku binder calls never
+            //     observe cancellation and would hold this until they return on their own.
+            // The grace period is short: it covers unwinding, not completion.
+            withContext(NonCancellable) { withTimeoutOrNull(CANCEL_GRACE_MS) { job.join() } }
         }
 
         return BulkResult(
+            op = op,
             total = targets.size,
             succeeded = succeeded.get(),
             failed = failed.get(),
@@ -261,5 +305,10 @@ class BulkFreezeRunner(
     private companion object {
         const val MAX_CONCURRENT = 5
         const val DEADLINE_MS = 30_000L
+
+        // How long a run waits for its abandoned workers to unwind before returning. Bounded on
+        // purpose: the Shizuku/Dhizuku paths make blocking binder calls that ignore
+        // cancellation, so an unbounded join would stall the next batch behind them.
+        const val CANCEL_GRACE_MS = 2_000L
     }
 }

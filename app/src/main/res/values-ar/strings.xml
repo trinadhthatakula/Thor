@@ -263,6 +263,7 @@
         <item quantity="other">تم إلغاء تجميد %1$d تطبيقات</item>
     </plurals>
     <string name="tile_unfreeze_partial_failure">تم إلغاء تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
+    <string name="tile_unfreeze_incomplete">تم إلغاء تجميد %1$d/%2$d تطبيقات (%3$d لم تكتمل)</string>
     <string name="error_format">خطأ: %1$s</string>
     <string name="failed_to_load_apps">فشل في تحميل التطبيقات</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->

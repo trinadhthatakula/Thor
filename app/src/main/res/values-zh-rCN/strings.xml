@@ -232,6 +232,7 @@
         <item quantity="other">已解冻 %1$d 个应用</item>
     </plurals>
     <string name="tile_unfreeze_partial_failure">已解冻 %1$d/%2$d 个应用（%3$d 个失败）</string>
+    <string name="tile_unfreeze_incomplete">已解冻 %1$d/%2$d 个应用（%3$d 个未完成）</string>
     <string name="error_format">错误: %1$s</string>
     <string name="failed_to_load_apps">加载应用失败</string>
     <plurals name="removed_from_freezer_success">
