@@ -74,14 +74,17 @@ fun AppInfoDialog(
     onDismiss: () -> Unit,
     onAppAction: (AppClickAction) -> Unit = {}
 ) {
-    // FIX: skipPartiallyExpanded = true prevents the "offset not initialized" crash
-    // by avoiding ambiguous anchor calculations for dynamic content.
-    val sheetState = rememberBottomSheetState(
-        initialValue = SheetValue.Hidden,
-        enabledValues = setOf(
-            SheetValue.Expanded, SheetValue.Hidden
-        )
-    )
+    // Default enabledValues = {Hidden, PartiallyExpanded, Expanded}. The sheet now opens at the
+    // partial detent, which material3 pins at min(windowHeight / 2, contentHeight) — there is no
+    // peek parameter, so whether the action row survives above the fold is a measurement, not a
+    // setting. That measurement is the point of this change.
+    //
+    // The previous `enabledValues = {Expanded, Hidden}` carried a comment blaming
+    // `skipPartiallyExpanded` for an "offset not initialized" crash. That parameter is not in this
+    // file (it belonged to the deprecated `rememberModalBottomSheetState`, which pins the
+    // deterministic-anchor flag off); the note predates the migration and no longer describes
+    // anything here.
+    val sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden)
 
     var showUninstallConfirmation by remember { mutableStateOf(false) }
     var showReinstallWarning by remember { mutableStateOf(false) }
