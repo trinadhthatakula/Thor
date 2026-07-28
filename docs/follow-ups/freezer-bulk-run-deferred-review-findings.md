@@ -1,52 +1,21 @@
 # Follow-up: the bulk-freeze findings deferred out of PR #284
 
-**Status:** Deferred — four independent items, none blocking.
-**Severity:** Minor throughout (one wrong-paint, one cosmetic staleness, one reporting gap, one
-unmeasured cold-start cost). The Important findings from the same review were fixed on the branch.
-**Effort:** small (1), small (2), medium (3, drags i18n), medium (4, needs measurement first).
+**Status:** Deferred — two independent items, neither blocking.
+**Severity:** Minor — one cosmetic staleness, one unmeasured cold-start cost. Everything else the
+review raised was fixed on the branch.
+**Effort:** medium (1, wants the runner's concurrency tests first), medium (2, needs measurement
+before any change).
 **Raised by:** the adversarial code review of PR #284 (`fix/freezer-tile-rework`, 2026-07-28) —
-18 subagents over two workflows, 10 confirmed findings. See the PR comment for the full list and
-for the four findings that were refuted.
+18 subagents over two workflows, 10 confirmed findings — plus a second, independent review. See the
+PR comments for the full list, for the four findings that were refuted, and for what was fixed.
 
 Files: `app/src/main/java/com/valhalla/thor/data/freezer/BulkFreezeRunner.kt`,
-`app/src/main/java/com/valhalla/thor/data/freezer/BulkResultNotifier.kt`,
-`app/src/main/java/com/valhalla/thor/presentation/settings/SettingsScreen.kt`,
 `app/src/main/java/com/valhalla/thor/data/launcher/FreezerShortcutManager.kt`,
 `app/src/main/java/com/valhalla/thor/ThorApplication.kt`
 
 ---
 
-## 1. `BulkFreezeRunner`'s published state is op-agnostic
-
-`_freezableCount` and `_isRunning` describe "the last run", not "the last run of op X". Two
-consequences:
-
-- The `finally` sweep calls `refreshCandidates(op)` with the op that just ran
-  (`BulkFreezeRunner.kt`, post-run sweep). After an **UNFREEZE** — which only the launcher shortcut
-  issues — `_freezableCount` therefore holds the number of *unfreeze* candidates. The tile is
-  freeze-only, so it then paints a count that answers a question nobody asked: `NOTHING_TO_FREEZE`
-  when apps are freezable, or `READY` with a wrong number.
-- `_isRunning` is likewise shared, so an unfreeze shortcut running in the background paints the
-  freeze tile as `WORKING`.
-
-**Impact is display-only, and that was verified rather than assumed.** `NOTHING_TO_FREEZE` maps to
-`Tile.STATE_INACTIVE`, which still delivers `onClick` (only `STATE_UNAVAILABLE` is swallowed by
-AOSP's `CustomTile.handleClick()`), and `run()` recomputes its own candidate list at tap time. So
-the tile can look wrong but cannot *act* wrong.
-
-This is the item recorded during the branch's own review as **B-9**; deferring it again is
-consistent with that decision rather than a new one.
-
-**Sketch.** The narrow fix is to always sweep for `BulkOp.FREEZE` in the `finally`, since that is
-the only op the tile displays — one line, but it encodes "the tile is freeze-only" in the runner,
-which is exactly the coupling `BulkFreezeRunner` exists to avoid. The honest fix is to key the
-published state by op (`Map<BulkOp, Int?>`, or a small `RunState` per op) and have the tile observe
-the FREEZE slot. Do it together with item 2 — both are "the runner publishes one global thing where
-it should publish per-op things".
-
----
-
-## 2. `lastResult` has no owner, no expiry, and no coverage of non-runner unfreezes
+## 1. `lastResult` has no owner, no expiry, and no coverage of non-runner unfreezes
 
 Three related edges on the same field:
 
@@ -67,8 +36,8 @@ Three related edges on the same field:
    an arbitrary number.
 2. Route *every* bulk unfreeze through `BulkFreezeRunner`, so there is one writer. That is the
    architectural direction the PR already started (`BulkFreezeRunner` as "the single owner of bulk
-   freeze/unfreeze") and it makes both this and item 1 fall out. It is a bigger change than it
-   sounds: the ViewModels unfreeze single apps and small selections, not watchlists.
+   freeze/unfreeze"). It is a bigger change than it sounds: the ViewModels unfreeze single apps and
+   small selections, not watchlists.
 
 Prefer 2, but only once the runner has the tests that
 [`bulk-freeze-runner-concurrency-tests.md`](bulk-freeze-runner-concurrency-tests.md) describes —
@@ -77,36 +46,7 @@ follow-up documents got in.
 
 ---
 
-## 3. Bulk-result reporting has gaps the user cannot see or fix
-
-Two halves of one problem:
-
-- **Unfreeze has no unconditional surface.** `BulkResultNotifier.post` returns early when
-  notifications are disabled, and the runner deliberately does not park UNFREEZE results in
-  `lastResult` (a process-lifetime result would surface in the freeze tile hours later). So an
-  Unfreeze-all shortcut run with notifications off reports **nothing, anywhere**. This is now
-  documented honestly in the `BulkResultNotifier` KDoc rather than claimed away, but documenting it
-  is not fixing it.
-- **Below API 33 there is no in-app way to notice.** `SettingsScreen`'s notification row is gated on
-  `SDK_INT >= TIRAMISU`, because `POST_NOTIFICATIONS` is a 33+ runtime permission. But
-  `areNotificationsEnabled()` — the thing `BulkResultNotifier` actually checks — is meaningful and
-  user-toggleable all the way down to minSdk 28, as that class's own comment states. A user on 28–32
-  who muted Thor in system settings gets silent drops, with no row explaining it and no deep link to
-  the setting.
-
-**Sketch.** For the sub-33 half: drop the SDK gate and show the row whenever
-`areNotificationsEnabled()` is false, with the 33+ path requesting the permission and the 28–32 path
-deep-linking to `Settings.ACTION_APP_NOTIFICATION_SETTINGS`. Cheap in logic, but it needs new
-strings and therefore ar/es/fr/zh translations, which is the actual cost.
-
-For the unfreeze half: `FreezerLaunchActivity` issues the shortcut and *is* an Activity, so unlike a
-`TileService` it can legitimately show a Toast or a small confirmation. That is the natural surface
-and it is unconditional. (Do not reach for a Toast anywhere in the tile path — see the tile rework
-notes for why one can never render from a `TileService`.)
-
----
-
-## 4. `PrivilegeManager` is now pulled into the eager cold-start graph
+## 2. `PrivilegeManager` is now pulled into the eager cold-start graph
 
 `FreezerShortcutManager` gained a `BulkFreezeRunner` dependency, which depends on
 `PrivilegeManager`. `FreezerShortcutManager` is reached eagerly at startup:
@@ -127,3 +67,24 @@ before and after the branch. If and only if there is a real delta, inject `Lazy<
 into `FreezerShortcutManager` — the runner is only needed when a shortcut is actually invoked, so
 the seam is natural. Do not restructure DI on the strength of a call graph alone; an unmeasured perf
 fix is how cold starts get slower.
+
+---
+
+## Fixed after this file was first written, and why the reasoning changed
+
+- **Op-agnostic `freezableCount` / `isRunning`** — fixed on the branch. `refreshCandidates(op)`
+  became `refreshFreezableCount()`, which always sweeps for `FREEZE`, and `isRunning: Boolean`
+  became `runningOp: BulkOp?`. The original deferral called this "display-only", which was true, but
+  the fix turned out to be smaller than the write-up assumed: the field was already *named*
+  `freezableCount`, so making it mean that was a correction, not new coupling.
+- **No unfreeze reporting surface** — fixed on the branch. `BulkFreezeRunner.launch` now returns a
+  `Deferred<BulkResult?>`, and `FreezerLaunchActivity` awaits it (bounded, 2 s) and toasts the
+  outcome. Legal there and only there: it is a resumed Activity, so `checkCanEnqueueToast` does not
+  drop it.
+- **Notification row gated on API 33** — fixed on the branch. The deferral rationale here was simply
+  wrong: it claimed the fix "needs new strings and therefore ar/es/fr/zh translations". It did not.
+  `notification_access`, `notification_access_granted_subtitle`,
+  `notification_access_needed_subtitle` and `appNotificationSettingsIntent()` all already existed
+  and are all regime-neutral, so the change was a removed version gate and one branch in
+  `onCheckedChange`, at zero i18n cost. Worth remembering as a deferral-reasoning failure: the cost
+  was asserted from the shape of the change rather than checked against the strings file.
