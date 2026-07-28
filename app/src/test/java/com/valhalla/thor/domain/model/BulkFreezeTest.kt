@@ -43,17 +43,20 @@ class BulkFreezeTest {
     }
 
     @Test
-    fun `the op is carried on the result so the reporter can word it correctly`() {
-        // One runner serves both directions; without this field an UNFREEZE run was reported
-        // as "Froze n apps".
-        assertEquals(
-            BulkOp.UNFREEZE,
-            BulkResult(op = BulkOp.UNFREEZE, total = 5, succeeded = 5, failed = 0).op
-        )
+    fun `a run that resolves nothing before the deadline is entirely unresolved`() {
+        // The Shizuku/Dhizuku worst case: the 30s deadline fires before a single binder call
+        // returns. Every package must land in `unresolved`, not in `failed` — the pre-rework
+        // tile reported this as "5 failed", which is a claim we have no evidence for.
+        val result = BulkResult(op = BulkOp.FREEZE, total = 5, succeeded = 0, failed = 0)
+        assertEquals(5, result.unresolved)
+        assertEquals(0, result.failed)
     }
 
     @Test
     fun `results differing only in op are not equal`() {
+        // What actually protects the op field. Asserting `BulkResult(op = X).op == X` would
+        // only exercise a compiler-generated getter; the wording behaviour this field exists
+        // for is pinned in BulkResultTextTest.
         assertNotEquals(
             BulkResult(op = BulkOp.FREEZE, total = 5, succeeded = 5, failed = 0),
             BulkResult(op = BulkOp.UNFREEZE, total = 5, succeeded = 5, failed = 0)
