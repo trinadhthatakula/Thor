@@ -67,11 +67,12 @@ class FreezerShortcutManager(
         // subscribes. The runner must not hold this class back (Koin cycle), which also keeps
         // it free of any launcher concern.
         //
-        // Startup is not a race. Koin builds this @Single as a constructor argument of
-        // AutoFreezeManager, and ThorApplication.onCreate calls autoFreezeManager
-        // .startObserving() synchronously — so the collector is running before onCreate
-        // returns, and Application.onCreate always completes before the framework binds
-        // FreezerTileService.
+        // Startup ordering gets this close: Koin builds this @Single as a constructor argument
+        // of AutoFreezeManager, ThorApplication.onCreate calls autoFreezeManager.startObserving()
+        // synchronously, and Application.onCreate always completes before the framework binds
+        // FreezerTileService. But `scope.launch` only *schedules* the collector, so subscription
+        // itself is not ordered against the first run — which is why `completions` carries
+        // replay = 1. A replayed completion just costs one extra rebuild from live state.
         scope.launch {
             bulkFreezeRunner.completions.collect { rebuildPinnedIcons() }
         }

@@ -79,11 +79,22 @@ class BulkFreezeRunner(
     /** Outcome of the last completed run, consumed once by whoever displays it. */
     val lastResult: StateFlow<BulkResult?> = _lastResult.asStateFlow()
 
+    // replay = 1 so a completion is not lost to a subscriber that has not attached yet.
+    // extraBufferCapacity alone only buffers for an *already-subscribed but slow* collector; with
+    // zero subscribers tryEmit still returns true and discards. FreezerShortcutManager subscribes
+    // from `scope.launch` in its init, which dispatches asynchronously, so there is a window —
+    // narrow, but the correctness of the icon rebuild should not rest on it losing a race.
+    //
+    // Replaying to a late subscriber is harmless here precisely because subscribers re-read live
+    // package state instead of trusting the emitted value: a replayed completion costs one extra
+    // idempotent rebuild, never a wrong icon.
+    //
     // extraBufferCapacity + DROP_OLDEST so tryEmit never fails and never suspends the run: a
     // slow subscriber (the icon rebuild decodes one bitmap per pinned app) must not be able to
     // hold a batch open, and coalescing a burst down to "rebuild once more afterwards" is
-    // correct because every subscriber re-reads live state rather than the emitted value.
+    // correct for the same reason.
     private val _completions = MutableSharedFlow<BulkOp>(
+        replay = 1,
         extraBufferCapacity = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
@@ -224,12 +235,18 @@ class BulkFreezeRunner(
                     // unfrozen, so leaving it would show "Froze N apps" on a tile that is now
                     // READY again. Stale either way — drop it.
                     _lastResult.value = if (op == BulkOp.FREEZE) result else null
-                    if (result.total > 0) notifier.post(result)
-                    // Unconditional, unlike the two lines above: a completion is not a *report*
+                    // Unconditional, unlike the lines around it: a completion is not a *report*
                     // of the run, it is the fact that package state changed. It must not inherit
                     // the tile's freeze-only rule (an unfreeze recolours icons too) nor the
                     // notifier's permission gate (icons are not a notification).
+                    //
+                    // Ahead of notifier.post for the same reason: post() is a binder call into
+                    // NotificationManager and the outer catch would swallow anything it threw,
+                    // silently skipping the emission for a run whose packages are already
+                    // mutated. tryEmit cannot throw or suspend, so nothing is owed to ordering
+                    // the other way.
                     _completions.tryEmit(op)
+                    if (result.total > 0) notifier.post(result)
                 }
             } catch (e: CancellationException) {
                 // B-2: CancellationException is an Exception in Kotlin; rethrowing here keeps

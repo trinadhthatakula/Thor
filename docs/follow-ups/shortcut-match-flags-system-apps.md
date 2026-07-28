@@ -40,8 +40,9 @@ So every package that reaches these lookups is a user app with a pinned shortcut
 ## Fix them together, or not at all
 
 **`appLabel` currently masks `appIcon`.** `rebuildPinnedIcons` and `updateShortcutIcon` both
-short-circuit on `appLabel(pkg) ?: return`, so `appIcon` never runs for a package it would throw
-on. Patching `appLabel` alone un-masks it: `appIcon` throws, the catch returns
+short-circuit on `appLabel(pkg) ?: return`, so `appIcon` never runs for a package whose lookup
+would fail. Patching `appLabel` alone un-masks it: the `getApplicationIcon(pkg)` call inside
+`appIcon` throws, `appIcon`'s own `catch` swallows it and returns
 `IconCompat.createWithResource(context, R.drawable.frozen)`, and that vector is
 `android:tint="?attr/colorControlNormal"` — a theme attr that cannot resolve in the launcher's
 context, so it renders as the white/invisible blob `bulkIcon`'s own KDoc warns about. That turns
