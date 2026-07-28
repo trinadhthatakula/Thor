@@ -146,7 +146,9 @@ class BulkFreezeRunner(
                     // Publish to _lastResult for FREEZE only. The tile is freeze-only (D1) and
                     // _lastResult is process-lifetime, so parking an UNFREEZE result here would
                     // render it in the tile subtitle the next time the shade opens — possibly
-                    // hours later. The notification still reports both ops.
+                    // hours later. The notification reports both ops, but only when the user
+                    // permits notifications, so an unfreeze can go unreported; see the
+                    // BulkResultNotifier KDoc for why that trade is the right way round.
                     //
                     // UNFREEZE clears instead of skipping: an unconsumed FREEZE result (one the
                     // shade never opened to display) describes packages this run has just

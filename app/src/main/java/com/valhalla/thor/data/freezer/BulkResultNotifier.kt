@@ -17,11 +17,19 @@ import com.valhalla.thor.util.bulkResultMessage
 import org.koin.core.annotation.Single
 
 /**
- * Posts the outcome of a bulk run as a notification, when permitted.
+ * Posts the outcome of a bulk run as a notification, when permitted. Nothing here ever grants
+ * the permission — it is requested from Settings like any other runtime permission.
  *
- * Strictly additive: the tile's own subtitle is the unconditional surface, so a user who
- * never grants POST_NOTIFICATIONS still sees their result. Nothing here ever grants the
- * permission — it is requested from Settings like any other runtime permission.
+ * **Reporting coverage is not symmetric, and this is deliberate.** For FREEZE it is additive:
+ * the run parks its result in `BulkFreezeRunner.lastResult`, so the tile subtitle reports it
+ * on the next shade-open whether or not notifications are permitted. For UNFREEZE — which only
+ * the launcher shortcut issues, since the tile is freeze-only — the runner deliberately does
+ * *not* park the result (a process-lifetime result would surface in the freeze tile hours
+ * later, saying "Unfroze 5 apps" on a tile that is now READY again), so this notification is
+ * the only surface. A user who has notifications off gets no unfreeze report at all.
+ *
+ * That is the accepted trade: a silent unfreeze beats a tile that lies about its own state.
+ * `docs/follow-ups/` tracks giving the unfreeze shortcut a surface of its own.
  */
 @Single
 class BulkResultNotifier(
@@ -53,7 +61,8 @@ class BulkResultNotifier(
             manager.notify(NOTIFICATION_ID, notification)
         } catch (e: SecurityException) {
             // areNotificationsEnabled() can race a revocation; a lost result notification is
-            // not worth crashing a background batch over. The tile subtitle still reports.
+            // not worth crashing a background batch over. A FREEZE result is still reported by
+            // the tile subtitle; an UNFREEZE one is lost, per the class KDoc.
             Logger.e("BulkResultNotifier", "notify() denied — permission revoked mid-post", e)
         }
     }
