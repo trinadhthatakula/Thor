@@ -147,7 +147,12 @@ class BulkFreezeRunner(
                     // _lastResult is process-lifetime, so parking an UNFREEZE result here would
                     // render it in the tile subtitle the next time the shade opens — possibly
                     // hours later. The notification still reports both ops.
-                    if (op == BulkOp.FREEZE) _lastResult.value = result
+                    //
+                    // UNFREEZE clears instead of skipping: an unconsumed FREEZE result (one the
+                    // shade never opened to display) describes packages this run has just
+                    // unfrozen, so leaving it would show "Froze N apps" on a tile that is now
+                    // READY again. Stale either way — drop it.
+                    _lastResult.value = if (op == BulkOp.FREEZE) result else null
                     if (result.total > 0) notifier.post(result)
                 }
             } catch (e: CancellationException) {
