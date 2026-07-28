@@ -12,6 +12,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.nio.file.Files
 import java.util.zip.CRC32
 import java.util.zip.ZipInputStream
 
@@ -39,9 +40,12 @@ class BundleZipTest {
     private fun tempFile(name: String): File =
         File.createTempFile("bundlezip_", "_$name").also { temp.add(it) }
 
+    // Files.createTempDirectory, not a name built from temp.size: every test method gets a fresh
+    // instance, so temp.size was always the same small number and every fork of this class — and
+    // every concurrent variant task, foss and store run in the same build — collided on one
+    // directory. @After then deleted a directory another fork was mid-test in.
     private fun tempDir(): File =
-        File(System.getProperty("java.io.tmpdir"), "bundlezip_out_${temp.size}")
-            .also { it.mkdirs(); temp.add(it) }
+        Files.createTempDirectory("bundlezip_out_").toFile().also { temp.add(it) }
 
     private fun le16(v: Int) =
         byteArrayOf((v and 0xFF).toByte(), ((v ushr 8) and 0xFF).toByte())
