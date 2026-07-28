@@ -24,13 +24,14 @@ import com.valhalla.thor.data.freezer.AppFreezeStateReader
 import com.valhalla.thor.data.freezer.BulkFreezeRunner
 import com.valhalla.thor.data.receivers.FreezerShortcutPinnedReceiver
 import com.valhalla.thor.domain.model.BulkOp
+import com.valhalla.thor.domain.model.BulkResult
 import com.valhalla.thor.domain.model.FreezeState
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.Single
@@ -114,18 +115,25 @@ class FreezerShortcutManager(
         )
     }
 
-    /** Bulk freeze/unfreeze every package in the freezer, off the finishing activity. */
-    fun runBulk(disable: Boolean) {
+    /**
+     * Bulk freeze/unfreeze every package in the freezer, off the finishing activity.
+     *
+     * Returns the run so the caller can await its [BulkResult] and report it. The icon rebuild
+     * below is deliberately *not* part of that Deferred: it belongs to this manager's own
+     * process-lifetime scope, so a caller that finishes early never truncates it, and a caller
+     * that awaits does not wait on shortcut bookkeeping it does not care about.
+     */
+    fun runBulk(disable: Boolean): Deferred<BulkResult?> {
         val op = if (disable) BulkOp.FREEZE else BulkOp.UNFREEZE
         // Delegate so this shares the tile's candidate filter, Semaphore(5), deadline and
         // result reporting. It previously ran sequentially and discarded every Result.
-        val job: Job = bulkFreezeRunner.launch(op)
+        val run = bulkFreezeRunner.launch(op)
         scope.launch {
             try {
                 // Icons follow app state, so wait for the run to settle before rebuilding them.
-                // join() rather than watching isRunning: a fast run can flip that back to false
-                // before this coroutine is even dispatched, and we would then wait forever.
-                job.join()
+                // join() rather than watching runningOp: a fast run can clear that before this
+                // coroutine is even dispatched, and we would then wait forever.
+                run.join()
                 val pinnedIds = pinnedShortcutIds()
                 val updated = freezerRepository.getAllPackageNames()
                     .filter { FreezerShortcutContract.appShortcutId(it) in pinnedIds }
@@ -143,6 +151,7 @@ class FreezerShortcutManager(
                 Logger.e("FreezerShortcut", "icon refresh after bulk run failed", e)
             }
         }
+        return run
     }
 
     private fun pinnedShortcutIds(): Set<String> =

@@ -20,16 +20,17 @@ import org.koin.core.annotation.Single
  * Posts the outcome of a bulk run as a notification, when permitted. Nothing here ever grants
  * the permission — it is requested from Settings like any other runtime permission.
  *
- * **Reporting coverage is not symmetric, and this is deliberate.** For FREEZE it is additive:
- * the run parks its result in `BulkFreezeRunner.lastResult`, so the tile subtitle reports it
- * on the next shade-open whether or not notifications are permitted. For UNFREEZE — which only
- * the launcher shortcut issues, since the tile is freeze-only — the runner deliberately does
- * *not* park the result (a process-lifetime result would surface in the freeze tile hours
- * later, saying "Unfroze 5 apps" on a tile that is now READY again), so this notification is
- * the only surface. A user who has notifications off gets no unfreeze report at all.
+ * **This notification is never the only surface, and that is load-bearing** — it can be
+ * silently unavailable, so nothing may depend on it. Each op has a second, unconditional
+ * channel:
  *
- * That is the accepted trade: a silent unfreeze beats a tile that lies about its own state.
- * `docs/follow-ups/` tracks giving the unfreeze shortcut a surface of its own.
+ * - FREEZE parks its result in `BulkFreezeRunner.lastResult`, which the tile subtitle renders
+ *   on the next shade-open.
+ * - UNFREEZE deliberately does *not* park a result (a process-lifetime result would surface in
+ *   the freeze-only tile hours later, saying "Unfroze 5 apps" on a tile that is now READY
+ *   again). It is instead reported by `FreezerLaunchActivity`, which awaits the run it started
+ *   and toasts the outcome — legal there, and only there, because that trampoline is a resumed
+ *   Activity rather than a background component.
  */
 @Single
 class BulkResultNotifier(
