@@ -11,7 +11,9 @@ import com.valhalla.thor.data.launcher.FreezerShortcutManager
 import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.FreezerMode
+import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
@@ -188,6 +190,17 @@ class FreezerViewModel(
     fun toggleManaged(packageName: String, add: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             if (add) {
+                // The blocked tier, enforced here and not only in the sheet that calls this.
+                // Adding does two things — it freezes the app now, and it enlists it in every
+                // later bulk run — so a surface that forgot to ask would hand the QS tile and
+                // the launcher shortcuts a target the in-app dialog refuses to even offer a
+                // confirm button for. The sheet still asks first; this is the backstop.
+                val app = _uiState.value.allInstalledApps
+                    .firstOrNull { it.packageName == packageName }
+                if (app != null && app.freezeTier == FreezeTier.BLOCKED) {
+                    emitToast(UiText.StringResource(R.string.error_unsafe_skipped))
+                    return@launch
+                }
                 val freezeResult = if (_uiState.value.freezerMode == FreezerMode.SUSPEND)
                     manageAppUseCase.setAppSuspended(packageName, true)
                 else manageAppUseCase.setAppDisabled(packageName, true)

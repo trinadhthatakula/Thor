@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -32,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -46,15 +48,20 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.domain.model.FreezeTier
+import com.valhalla.thor.domain.model.freezeTier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
 import com.valhalla.asgard.components.ConnectedButtonGroup
 import com.valhalla.asgard.components.ConnectedButtonGroupItem
+import com.valhalla.asgard.components.StatusChip
+import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 import com.valhalla.thor.presentation.widgets.AppIcon
 import com.valhalla.thor.presentation.widgets.AppSearchBar
 import kotlinx.coroutines.launch
@@ -70,6 +77,11 @@ fun ManageFreezerSheet(
     onDismiss: () -> Unit
 ) {
     var selectedType by rememberSaveable { mutableStateOf(AppListType.USER) }
+
+    // The app awaiting a blocked/expert confirmation, or null. Plain remember rather than
+    // rememberSaveable: AppInfo is not Saveable, and a dialog that survives process death would
+    // outlive the list it was raised from anyway — losing it on rotation is the safe direction.
+    var pendingApp by remember { mutableStateOf<AppInfo?>(null) }
 
     val filtered = remember(allApps, searchQuery, selectedType) {
         val typeFiltered = allApps.filter { it.isSystem == (selectedType == AppListType.SYSTEM) }
@@ -148,11 +160,101 @@ fun ManageFreezerSheet(
                 FreezerManageItem(
                     app = app,
                     inFreezer = inFreezer,
-                    onClick = { onToggle(app.packageName, !inFreezer) }
+                    onClick = {
+                        // Ask once, here, rather than on every later freeze. A watchlist entry
+                        // is a standing instruction: the QS tile and the launcher Freeze-all
+                        // shortcut act on it with no UI at all, so add time is the last moment
+                        // a warning can reach the user. Removal is never gated — unfreezing is
+                        // the way out of a bad state.
+                        val tier = app.freezeTier
+                        if (!inFreezer && tier != FreezeTier.NORMAL) pendingApp = app
+                        else onToggle(app.packageName, !inFreezer)
+                    }
                 )
             }
         }
     }
+
+    pendingApp?.let { app ->
+        FreezeTierDialog(
+            app = app,
+            onConfirm = {
+                onToggle(app.packageName, true)
+                pendingApp = null
+            },
+            onDismiss = { pendingApp = null }
+        )
+    }
+}
+
+/**
+ * The blocked / expert confirmation for adding a system app to the Freezer.
+ *
+ * Mirrors the freeze confirmation in AppInfoDialog, and deliberately so: blocked apps get no
+ * confirm button at all, expert apps get a red "Freeze anyway". [FreezerViewModel.toggleManaged]
+ * repeats the blocked check because a dialog is advice, not enforcement.
+ */
+@Composable
+private fun FreezeTierDialog(
+    app: AppInfo,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val tier = app.freezeTier
+    val isBlocked = tier == FreezeTier.BLOCKED
+    // Blocked splits two ways for the body text only: no usable UAD data at all vs. an app the
+    // list names as unsafe. The verdict is identical either way.
+    val isUadFailed = app.isUadLoadFailed
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = stringResource(
+                    if (isBlocked) R.string.freeze_blocked else R.string.freeze_expert_warning
+                ),
+                color = MaterialTheme.colorScheme.error
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (!isUadFailed) {
+                    app.bloatRecommendation?.let { rec ->
+                        val (color, textColor) = getBloatRecommendationColors(rec)
+                        StatusChip(text = rec, containerColor = color, contentColor = textColor)
+                        Spacer(Modifier.height(12.dp))
+                    }
+                }
+                Text(
+                    text = stringResource(
+                        when {
+                            isUadFailed -> R.string.uad_load_failed_freeze_desc
+                            isBlocked -> R.string.freeze_unsafe_desc
+                            else -> R.string.freeze_expert_desc
+                        }
+                    ),
+                    textAlign = TextAlign.Center
+                )
+            }
+        },
+        confirmButton = {
+            if (!isBlocked) {
+                TextButton(onClick = onConfirm) {
+                    Text(
+                        text = stringResource(R.string.freeze_anyway),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(if (isBlocked) R.string.close else R.string.no))
+            }
+        }
+    )
 }
 
 @Composable

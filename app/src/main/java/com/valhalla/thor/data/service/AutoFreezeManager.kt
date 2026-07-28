@@ -10,7 +10,9 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.FreezerMode
+import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
@@ -110,14 +112,9 @@ class AutoFreezeManager(
                             semaphore.withPermit {
                                 try {
                                     val detailedApp = appRepository.getAppDetails(pkg)
-                                    if (detailedApp != null) {
-                                        val isSystem = detailedApp.isSystem
-                                        val isUadFailed = isSystem && detailedApp.isUadLoadFailed
-                                        val isUnsafe = isSystem && detailedApp.bloatRecommendation?.lowercase() == "unsafe"
-                                        if (isSystem && (isUadFailed || isUnsafe)) {
-                                            Logger.d("AutoFreezeManager", "Skipping auto-freeze for UNSAFE system app: $pkg")
-                                            return@launch
-                                        }
+                                    if (detailedApp != null && detailedApp.freezeTier == FreezeTier.BLOCKED) {
+                                        Logger.d("AutoFreezeManager", "Skipping auto-freeze for UNSAFE system app: $pkg")
+                                        return@launch
                                     }
                                     val appInfo = pm.getApplicationInfo(pkg, 0)
                                     val alreadySuspended = (appInfo.flags and ApplicationInfo.FLAG_SUSPENDED) != 0

@@ -4,6 +4,8 @@
 package com.valhalla.thor.data.freezer
 
 import com.valhalla.thor.data.manager.PrivilegeManager
+import com.valhalla.thor.data.source.local.UadHelper
+import com.valhalla.thor.data.source.local.UadSnapshot
 import com.valhalla.thor.domain.model.BulkAction
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkResult
@@ -56,6 +58,7 @@ class BulkFreezeRunner(
     private val preferenceRepository: PreferenceRepository,
     private val privilegeManager: PrivilegeManager,
     private val stateReader: AppFreezeStateReader,
+    private val uadHelper: UadHelper,
     private val notifier: BulkResultNotifier,
     @Named("io") private val io: CoroutineDispatcher,
 ) {
@@ -148,10 +151,32 @@ class BulkFreezeRunner(
      */
     suspend fun refreshFreezableCount() {
         withContext(io) {
-            val watchlist = freezerRepository.getAllPackageNames()
-            _freezableCount.value =
-                freezableCandidates(watchlist, BulkOp.FREEZE, stateReader::stateOf).size
+            _freezableCount.value = targetsFor(BulkOp.FREEZE).size
         }
+    }
+
+    /**
+     * The packages [op] would act on right now — the one place either surface asks that.
+     *
+     * Shared by [refreshFreezableCount] and [run] because a count derived differently from the
+     * batch it describes is a tile that lies: it would offer "Freeze 3" and then freeze two, or
+     * sit READY over a watchlist with nothing left it is allowed to touch.
+     *
+     * The [UadSnapshot] is taken once per call, not per package. FREEZE gets a real one so the
+     * blocked tier — unsafe system apps, and every system app when the UAD list will not load —
+     * is excluded exactly as `MainViewModel.performCountedFreeze`, `AutoFreezeManager` and the
+     * in-app freeze dialog exclude it; before this, the tile was the one bulk path that would
+     * happily freeze what the dialog refuses to render a confirm button for.
+     *
+     * UNFREEZE gets [UadSnapshot.UNFILTERED] on purpose. Unfreezing is how a user escapes a bad
+     * freeze, so it must never be gated on the same list: if `uad_lists.json` failed to load,
+     * a filtered unfreeze would classify every system app as blocked and strand them frozen.
+     */
+    private suspend fun targetsFor(op: BulkOp): List<String> {
+        val watchlist = freezerRepository.getAllPackageNames()
+        if (watchlist.isEmpty()) return emptyList()
+        val uad = if (op == BulkOp.FREEZE) uadHelper.snapshot() else UadSnapshot.UNFILTERED
+        return freezableCandidates(watchlist, op) { stateReader.candidateOf(it, uad) }
     }
 
     /**
@@ -335,8 +360,7 @@ class BulkFreezeRunner(
         // having awaited anything.
         if (!privilegeManager.state.first { it.isReady }.hasAnyPrivilege) return null
 
-        val watchlist = freezerRepository.getAllPackageNames()
-        val targets = freezableCandidates(watchlist, op, stateReader::stateOf)
+        val targets = targetsFor(op)
         if (targets.isEmpty()) return null
 
         // Resolved once per run, not per package: the mode cannot change mid-batch, and the

@@ -5,7 +5,11 @@ package com.valhalla.thor.data.freezer
 
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import com.valhalla.thor.data.source.local.UadSnapshot
+import com.valhalla.thor.domain.model.FreezeCandidate
 import com.valhalla.thor.domain.model.FreezeState
+import com.valhalla.thor.domain.model.FreezeTier
+import com.valhalla.thor.domain.model.freezeTierOf
 import com.valhalla.thor.domain.model.isFrozen
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
@@ -23,7 +27,19 @@ import org.koin.core.annotation.Single
 class AppFreezeStateReader(
     private val packageManager: PackageManager,
 ) {
-    fun stateOf(packageName: String): FreezeState = try {
+    /** Live freeze state only, for callers with no freeze decision to make. */
+    fun stateOf(packageName: String): FreezeState =
+        candidateOf(packageName, UadSnapshot.UNFILTERED).state
+
+    /**
+     * Live freeze state *and* the freeze-policy verdict, from one [ApplicationInfo] read.
+     *
+     * [uad] is passed in rather than resolved here so a bulk run classifies its whole watchlist
+     * against one snapshot: `UadHelper` is not injected into this class on purpose, which keeps
+     * a per-package `uadMap` touch — and the ~1.6 MB JSON parse hiding behind the first one —
+     * off a loop that already costs one binder call per entry.
+     */
+    fun candidateOf(packageName: String, uad: UadSnapshot): FreezeCandidate = try {
         val info = packageManager.getApplicationInfo(packageName, MATCH_FLAGS)
         // MATCH_UNINSTALLED_PACKAGES is not optional. Thor freezes *system* apps with
         // `pm uninstall --user N`, not `pm disable`, so a frozen system app is not installed
@@ -34,12 +50,25 @@ class AppFreezeStateReader(
         // back looking ACTIVE instead of FROZEN.
         val enabled = info.enabled && (info.flags and ApplicationInfo.FLAG_INSTALLED) != 0
         val suspended = (info.flags and ApplicationInfo.FLAG_SUSPENDED) != 0
-        if (isFrozen(enabled, suspended)) FreezeState.FROZEN else FreezeState.ACTIVE
+        // FLAG_SYSTEM alone, never OR'd with FLAG_UPDATED_SYSTEM_APP — that is what isSystem
+        // means everywhere else in Thor (AppInfoMapper, RootSystemGateway.setAppDisabled), and
+        // a tier computed from a different definition than the one the freeze itself uses would
+        // block and unblock inconsistent sets of apps.
+        val isSystem = (info.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+        val tier = freezeTierOf(
+            isSystem = isSystem,
+            bloatRecommendation = uad.recommendationFor(packageName),
+            isUadLoadFailed = uad.loadFailed,
+        )
+        FreezeCandidate(
+            state = if (isFrozen(enabled, suspended)) FreezeState.FROZEN else FreezeState.ACTIVE,
+            blockedFromFreeze = tier == FreezeTier.BLOCKED,
+        )
     } catch (_: PackageManager.NameNotFoundException) {
         // Unnamed: "no such package for this user" is the expected answer here, not an error.
-        FreezeState.ABSENT
+        ABSENT
     } catch (e: CancellationException) {
-        // CancellationException is an Exception in Kotlin. stateOf runs inside the runner's
+        // CancellationException is an Exception in Kotlin. candidateOf runs inside the runner's
         // coroutines, so the broad catch below would otherwise turn a cancelled sweep into a
         // watchlist of ABSENT packages — silently, and looking exactly like success.
         throw e
@@ -51,11 +80,17 @@ class AppFreezeStateReader(
         // :app to catch what escapes. Unreadable is treated as ABSENT: a bulk run skips the
         // package rather than acting on a state it could not confirm.
         Logger.e("AppFreezeStateReader", "could not read freeze state for $packageName", e)
-        FreezeState.ABSENT
+        ABSENT
     }
 
     private companion object {
         const val MATCH_FLAGS =
             PackageManager.MATCH_UNINSTALLED_PACKAGES or PackageManager.MATCH_DISABLED_COMPONENTS
+
+        // blockedFromFreeze = true, not the data class default: every path that produces ABSENT
+        // is one where we could not read the app at all, so we also could not have classified
+        // it. ABSENT already excludes the package from both ops, but leaving the verdict at
+        // "not blocked" would quietly re-enable freezing if the state test ever moved.
+        val ABSENT = FreezeCandidate(FreezeState.ABSENT, blockedFromFreeze = true)
     }
 }
