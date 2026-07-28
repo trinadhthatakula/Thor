@@ -127,7 +127,6 @@
     <string name="status_suspended">معلق</string>
 
     <!-- App Actions -->
-    <string name="action_launch">تشغيل</string>
     <string name="action_share">مشاركة</string>
     <string name="action_freeze">تجميد</string>
     <string name="action_unfreeze">إلغاء التجميد</string>
@@ -135,7 +134,6 @@
     <string name="action_unsuspend">إلغاء التعليق</string>
     <string name="action_kill">إنهاء</string>
     <string name="action_cache">ذاكرة مؤقتة</string>
-    <string name="action_data">بيانات</string>
     <string name="action_uninstall">إلغاء التثبيت</string>
     <string name="action_reinstall">إعادة تثبيت</string>
 
@@ -156,7 +154,6 @@
     <string name="cd_suspended">معلق</string>
     <string name="cd_selected">مختار</string>
     <string name="cd_clear">مسح</string>
-    <string name="cd_settings">الإعدادات</string>
     <string name="select_app_details">اختر تطبيقاً لعرض التفاصيل</string>
 
     <!-- Permission Manager -->

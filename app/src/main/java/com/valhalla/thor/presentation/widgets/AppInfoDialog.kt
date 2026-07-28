@@ -3,10 +3,7 @@
 
 package com.valhalla.thor.presentation.widgets
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,12 +16,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
@@ -40,16 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.vectorResource
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.valhalla.asgard.components.AsgardActionItem
 import com.valhalla.asgard.components.StatusChip as AsgardStatusChip
-import com.valhalla.thor.data.launcher.FreezerShortcutManager
-import com.valhalla.thor.domain.model.UserPreferences
-import com.valhalla.thor.domain.repository.PreferenceRepository
-import org.koin.compose.koinInject
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -108,9 +94,7 @@ fun AppInfoDialog(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // 1. Header (Icon + Title)
-            AppHeader(appInfo) {
-                onAppAction(AppClickAction.AppInfoSettings(appInfo))
-            }
+            AppHeader(appInfo)
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -120,33 +104,47 @@ fun AppInfoDialog(
                 isRoot = isRoot,
                 isShizuku = isShizuku,
                 isDhizuku = isDhizuku,
-                onExport = { showExportSheet = true },
-                onAction = { action ->
-                    // Intercept dangerous actions for local confirmation
-                    when (action) {
-                        is AppClickAction.Uninstall -> {
-                            if (appInfo.isSystem) showUninstallConfirmation = true
-                            else {
-                                onAppAction(action)
-                                onDismiss()
-                            }
-                        }
-
-                        is AppClickAction.Freeze -> {
-                            if (appInfo.isSystem) showFreezeConfirmation = true
-                            else {
-                                onAppAction(action)
-                                onDismiss()
-                            }
-                        }
-
-                        is AppClickAction.Reinstall -> showReinstallWarning = true
-                        is AppClickAction.ClearData -> showClearDataConfirmation = true
-                        else -> {
-                            onAppAction(action)
-                            if (action is AppClickAction.Launch || action is AppClickAction.OpenDetails) onDismiss()
-                        }
+                onLaunch = {
+                    onAppAction(AppClickAction.Launch(appInfo))
+                    onDismiss()
+                },
+                onSystemSettings = { onAppAction(AppClickAction.AppInfoSettings(appInfo)) },
+                onFreezeToggle = { shouldFreeze ->
+                    // Only SYSTEM apps get the safety-warning dialog; unfreezing and user apps
+                    // go straight through.
+                    if (shouldFreeze && appInfo.isSystem) {
+                        showFreezeConfirmation = true
+                    } else {
+                        onAppAction(
+                            if (shouldFreeze) AppClickAction.Freeze(appInfo)
+                            else AppClickAction.UnFreeze(appInfo)
+                        )
+                        onDismiss()
                     }
+                },
+                onSuspendToggle = { shouldSuspend ->
+                    onAppAction(
+                        if (shouldSuspend) AppClickAction.Suspend(appInfo)
+                        else AppClickAction.UnSuspend(appInfo)
+                    )
+                },
+                onForceStop = { onAppAction(AppClickAction.Kill(appInfo)) },
+                onManagePermissions = { onAppAction(AppClickAction.ManagePermissions(appInfo)) },
+                onClearCache = { onAppAction(AppClickAction.ClearCache(appInfo)) },
+                onClearData = { showClearDataConfirmation = true },
+                onFixStore = { showReinstallWarning = true },
+                onUninstall = {
+                    if (appInfo.isSystem) showUninstallConfirmation = true
+                    else {
+                        onAppAction(AppClickAction.Uninstall(appInfo))
+                        onDismiss()
+                    }
+                },
+                onShare = { onAppAction(AppClickAction.Share(appInfo)) },
+                onExport = { showExportSheet = true },
+                onOpenDetails = {
+                    onAppAction(AppClickAction.OpenDetails(appInfo))
+                    onDismiss()
                 }
             )
         }
@@ -380,39 +378,13 @@ fun AppInfoDialog(
 }
 
 @Composable
-private fun AppHeader(
-    appInfo: AppInfo,
-    onSettingsClick: () -> Unit
-) {
-    val context = LocalContext.current
-
+private fun AppHeader(appInfo: AppInfo) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 24.dp)
     ) {
-        // Top row with settings and close? Or just settings.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End
-        ) {
-            IconButton(
-                onClick = onSettingsClick,
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            ) {
-                Icon(
-                    painterResource(R.drawable.settings),
-                    stringResource(R.string.cd_settings),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
-
         // Icon with a nice background
         Box(
             modifier = Modifier
@@ -510,132 +482,3 @@ private fun StatusChip(
     AsgardStatusChip(text = text, containerColor = color, contentColor = textColor)
 }
 
-@Composable
-private fun AppActionRow(
-    appInfo: AppInfo,
-    isRoot: Boolean,
-    isShizuku: Boolean,
-    isDhizuku: Boolean,
-    onExport: () -> Unit,
-    onAction: (AppClickAction) -> Unit
-) {
-    val hasPrivilege = isRoot || isShizuku || isDhizuku
-    val isFrozen = !appInfo.enabled
-    val isSuspended = appInfo.isSuspended // Need to ensure this is in AppInfo
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.Top
-    ) {
-        // 1. Standard Actions
-        ActionItem(R.drawable.open_in_new, stringResource(R.string.action_launch)) {
-            onAction(
-                AppClickAction.Launch(appInfo)
-            )
-        }
-
-        // 2. Privileged Actions
-        if (hasPrivilege) {
-            val (freezeIcon, freezeLabel) = if (isFrozen) R.drawable.freeze_off to stringResource(R.string.action_unfreeze) else R.drawable.frozen to stringResource(
-                R.string.action_freeze
-            )
-            ActionItem(freezeIcon, freezeLabel) {
-                onAction(
-                    if (isFrozen) AppClickAction.UnFreeze(appInfo) else AppClickAction.Freeze(
-                        appInfo
-                    )
-                )
-            }
-
-            val (suspendIcon, suspendLabel) = if (isSuspended) R.drawable.bolt to stringResource(R.string.action_unsuspend) else R.drawable.warning to stringResource(
-                R.string.action_suspend
-            )
-            ActionItem(suspendIcon, suspendLabel) {
-                onAction(
-                    if (isSuspended) AppClickAction.UnSuspend(appInfo) else AppClickAction.Suspend(
-                        appInfo
-                    )
-                )
-            }
-
-            if (appInfo.enabled) {
-                ActionItem(R.drawable.danger, stringResource(R.string.action_kill)) {
-                    onAction(
-                        AppClickAction.Kill(appInfo)
-                    )
-                }
-            }
-
-            ActionItem(R.drawable.clear_all, stringResource(R.string.action_cache)) {
-                onAction(
-                    AppClickAction.ClearCache(appInfo)
-                )
-            }
-            ActionItem(R.drawable.delete, stringResource(R.string.action_data)) {
-                onAction(
-                    AppClickAction.ClearData(appInfo)
-                )
-            }
-        }
-
-        // 3. App Store Fix
-        if (hasPrivilege && !appInfo.isSystem && appInfo.installerPackageName != "com.android.vending") {
-            ActionItem(R.drawable.apk_install, stringResource(R.string.fix_store)) {
-                onAction(AppClickAction.Reinstall(appInfo))
-            }
-        }
-
-        // 4. Uninstall
-        if (appInfo.packageName != "com.valhalla.thor") {
-            ActionItem(R.drawable.delete_forever, stringResource(R.string.action_uninstall)) {
-                onAction(AppClickAction.Uninstall(appInfo))
-            }
-        }
-
-        ActionItem(R.drawable.share, stringResource(R.string.action_share)) {
-            onAction(
-                AppClickAction.Share(appInfo)
-            )
-        }
-
-        ActionItem(R.drawable.storage, stringResource(R.string.action_export)) {
-            onExport()
-        }
-
-        ActionItem(R.drawable.shield, stringResource(R.string.action_permissions)) {
-            onAction(
-                AppClickAction.ManagePermissions(appInfo)
-            )
-        }
-
-        ActionItem(R.drawable.list_alt, stringResource(R.string.action_details)) {
-            onAction(
-                AppClickAction.OpenDetails(appInfo)
-            )
-        }
-
-        // Freezer launcher shortcut — self-contained so it's available wherever this dialog shows
-        // (app list, freezer, …). Gated on the feature setting + launcher pin support + user apps.
-        val shortcutManager = koinInject<FreezerShortcutManager>()
-        val preferenceRepository = koinInject<PreferenceRepository>()
-        val prefs by preferenceRepository.userPreferences.collectAsStateWithLifecycle(UserPreferences())
-        if (prefs.addFreezerToLauncher && !appInfo.isSystem && shortcutManager.isPinSupported()) {
-            ActionItem(R.drawable.home, stringResource(R.string.add_to_home_screen)) {
-                shortcutManager.pinAppShortcut(appInfo.packageName, appInfo.appName ?: appInfo.packageName)
-            }
-        }
-    }
-}
-
-@Composable
-private fun ActionItem(icon: Int, label: String, onClick: () -> Unit) {
-    AsgardActionItem(
-        icon = ImageVector.vectorResource(icon),
-        label = label,
-        onClick = onClick,
-    )
-}

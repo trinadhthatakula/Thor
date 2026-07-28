@@ -127,7 +127,6 @@
     <string name="status_suspended">SUSPENDIDO</string>
 
     <!-- App Actions -->
-    <string name="action_launch">Abrir</string>
     <string name="action_share">Compartir</string>
     <string name="action_freeze">Congelar</string>
     <string name="action_unfreeze">Descongelar</string>
@@ -135,7 +134,6 @@
     <string name="action_unsuspend">Habilitar</string>
     <string name="action_kill">Detener</string>
     <string name="action_cache">Caché</string>
-    <string name="action_data">Datos</string>
     <string name="action_uninstall">Desinstalar</string>
     <string name="action_reinstall">Reinstalar</string>
 
@@ -156,7 +154,6 @@
     <string name="cd_suspended">Suspendido</string>
     <string name="cd_selected">Seleccionado</string>
     <string name="cd_clear">Limpiar</string>
-    <string name="cd_settings">Ajustes</string>
     <string name="select_app_details">Selecciona una aplicación para ver detalles</string>
 
     <!-- Permission Manager -->

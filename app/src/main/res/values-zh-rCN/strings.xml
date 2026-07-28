@@ -126,7 +126,6 @@
     <string name="status_suspended">已暂停</string>
 
     <!-- App Actions -->
-    <string name="action_launch">启动</string>
     <string name="action_share">分享</string>
     <string name="action_freeze">冻结</string>
     <string name="action_unfreeze">解冻</string>
@@ -134,7 +133,6 @@
     <string name="action_unsuspend">取消暂停</string>
     <string name="action_kill">结束</string>
     <string name="action_cache">缓存</string>
-    <string name="action_data">数据</string>
     <string name="action_uninstall">卸载</string>
     <string name="action_reinstall">重新安装</string>
 
@@ -155,7 +153,6 @@
     <string name="cd_suspended">已暂停</string>
     <string name="cd_selected">已选择</string>
     <string name="cd_clear">清除</string>
-    <string name="cd_settings">设置</string>
     <string name="select_app_details">选择一个应用以查看详情</string>
 
     <!-- Permission Manager -->

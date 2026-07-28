@@ -58,9 +58,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.vectorResource
-import com.valhalla.asgard.components.AsgardActionItem
 import com.valhalla.asgard.components.StatusChip as AsgardStatusChip
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
@@ -71,13 +68,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.valhalla.thor.data.launcher.FreezerShortcutManager
+import com.valhalla.thor.presentation.widgets.AppActionRow
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
-import com.valhalla.thor.domain.model.UserPreferences
-import com.valhalla.thor.domain.repository.PreferenceRepository
-import org.koin.compose.koinInject
 import coil3.compose.AsyncImage
-import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
@@ -273,6 +266,7 @@ fun AppInfoHeaderAndActions(
     var showClearDataConfirmation by remember { mutableStateOf(false) }
     var showUninstallConfirmation by remember { mutableStateOf(false) }
     var showFreezeConfirmation by remember { mutableStateOf(false) }
+    var showReinstallWarning by remember { mutableStateOf(false) }
     var showExportSheet by remember { mutableStateOf(false) }
 
     Column(modifier = modifier) {
@@ -282,7 +276,7 @@ fun AppInfoHeaderAndActions(
             animatedVisibilityScope = animatedVisibilityScope
         )
 
-        AppDetailsActionRow(
+        AppActionRow(
             appInfo = appInfo,
             isRoot = isRoot,
             isShizuku = isShizuku,
@@ -309,6 +303,7 @@ fun AppInfoHeaderAndActions(
             onToggleFreezerMembership = onToggleFreezerMembership,
             onClearCache = { onAppAction(AppClickAction.ClearCache(appInfo)) },
             onClearData = { showClearDataConfirmation = true },
+            onFixStore = { showReinstallWarning = true },
             onUninstall = { showUninstallConfirmation = true },
             onShare = { onAppAction(AppClickAction.Share(appInfo)) },
             onExport = { showExportSheet = true }
@@ -524,6 +519,35 @@ fun AppInfoHeaderAndActions(
         )
     }
 
+    if (showReinstallWarning) {
+        // Fix Store re-installs the app declaring Play as its installer. It is a real reinstall:
+        // signature mismatches and the loss of a sideloaded version are both on the table, so it
+        // never runs off a single tap.
+        AlertDialog(
+            icon = {
+                Icon(
+                    painterResource(R.drawable.warning),
+                    null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            onDismissRequest = { showReinstallWarning = false },
+            title = { Text(stringResource(R.string.risk_warning_title)) },
+            text = { Text(stringResource(R.string.risk_warning_desc)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    onAppAction(AppClickAction.Reinstall(appInfo))
+                    showReinstallWarning = false
+                }) { Text(stringResource(R.string.proceed)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showReinstallWarning = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
     if (showExportSheet) {
         ExportBottomSheet(appInfo = appInfo, onDismiss = { showExportSheet = false })
     }
@@ -728,166 +752,6 @@ private fun StatusChip(
     textColor: Color = MaterialTheme.colorScheme.onSurface
 ) {
     AsgardStatusChip(text = text, containerColor = color, contentColor = textColor)
-}
-
-@Composable
-private fun AppDetailsActionRow(
-    appInfo: AppInfo,
-    isRoot: Boolean,
-    isShizuku: Boolean,
-    isDhizuku: Boolean,
-    isInFreezer: Boolean,
-    onLaunch: () -> Unit,
-    onSystemSettings: () -> Unit,
-    onFreezeToggle: (Boolean) -> Unit,
-    onSuspendToggle: (Boolean) -> Unit,
-    onForceStop: () -> Unit,
-    onManagePermissions: () -> Unit,
-    onToggleFreezerMembership: () -> Unit,
-    onClearCache: () -> Unit,
-    onClearData: () -> Unit,
-    onUninstall: () -> Unit,
-    onShare: () -> Unit,
-    onExport: () -> Unit
-) {
-    val hasPrivilege = isRoot || isShizuku || isDhizuku
-    val isFrozen = !appInfo.enabled
-    val isSuspended = appInfo.isSuspended
-
-    // Self-contained launcher-shortcut action — gated on the feature setting + pin support + user app.
-    val shortcutManager = koinInject<FreezerShortcutManager>()
-    val preferenceRepository = koinInject<PreferenceRepository>()
-    val prefs by preferenceRepository.userPreferences.collectAsStateWithLifecycle(UserPreferences())
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.Top
-    ) {
-        ActionItem(
-            icon = R.drawable.open_in_new,
-            label = stringResource(R.string.action_open),
-            // Always tappable: Launch restores (unsuspends / enables) a frozen or suspended app
-            // before launching. Non-launchable apps fall through to a "can't launch" toast.
-            enabled = true,
-            onClick = onLaunch
-        )
-
-        ActionItem(
-            icon = R.drawable.settings,
-            label = stringResource(R.string.settings),
-            onClick = onSystemSettings
-        )
-
-        if (hasPrivilege) {
-            val freezeLabel =
-                if (isFrozen) stringResource(R.string.action_unfreeze) else stringResource(R.string.action_freeze)
-            val freezeIcon = if (isFrozen) R.drawable.freeze_off else R.drawable.frozen
-            ActionItem(
-                icon = freezeIcon,
-                label = freezeLabel,
-                onClick = { onFreezeToggle(!isFrozen) }
-            )
-
-            val suspendLabel =
-                if (isSuspended) stringResource(R.string.action_unsuspend) else stringResource(R.string.action_suspend)
-            val suspendIcon = if (isSuspended) R.drawable.bolt else R.drawable.warning
-            ActionItem(
-                icon = suspendIcon,
-                label = suspendLabel,
-                onClick = { onSuspendToggle(!isSuspended) }
-            )
-
-            if (appInfo.enabled) {
-                ActionItem(
-                    icon = R.drawable.force_close,
-                    label = stringResource(R.string.action_force_stop),
-                    onClick = onForceStop
-                )
-            }
-        }
-
-        ActionItem(
-            icon = R.drawable.shield,
-            label = stringResource(R.string.action_permissions),
-            onClick = onManagePermissions
-        )
-
-        val freezerLabel =
-            if (isInFreezer) stringResource(R.string.action_in_freezer) else stringResource(R.string.action_add_freezer)
-        ActionItem(
-            icon = R.drawable.snowflake,
-            label = freezerLabel,
-            tintColor = if (isInFreezer) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
-            onClick = onToggleFreezerMembership
-        )
-
-        if (hasPrivilege) {
-            ActionItem(
-                icon = R.drawable.clear_all,
-                label = stringResource(R.string.action_clear_cache),
-                onClick = onClearCache
-            )
-            ActionItem(
-                icon = R.drawable.delete,
-                label = stringResource(R.string.action_clear_data),
-                onClick = onClearData
-            )
-        }
-
-        ActionItem(
-            icon = R.drawable.share,
-            label = stringResource(R.string.action_share),
-            onClick = onShare
-        )
-
-        ActionItem(
-            icon = R.drawable.storage,
-            label = stringResource(R.string.action_export),
-            onClick = onExport
-        )
-
-        if (prefs.addFreezerToLauncher && !appInfo.isSystem && shortcutManager.isPinSupported()) {
-            ActionItem(
-                icon = R.drawable.home,
-                label = stringResource(R.string.add_to_home_screen),
-                onClick = {
-                    shortcutManager.pinAppShortcut(
-                        appInfo.packageName,
-                        appInfo.appName ?: appInfo.packageName
-                    )
-                }
-            )
-        }
-
-        if (appInfo.packageName != BuildConfig.APPLICATION_ID) {
-            ActionItem(
-                icon = R.drawable.delete_forever,
-                label = stringResource(R.string.action_uninstall),
-                onClick = onUninstall
-            )
-        }
-    }
-}
-
-@Composable
-private fun ActionItem(
-    icon: Int,
-    label: String,
-    enabled: Boolean = true,
-    tintColor: Color? = null,
-    onClick: () -> Unit
-) {
-    AsgardActionItem(
-        icon = ImageVector.vectorResource(icon),
-        label = label,
-        onClick = onClick,
-        enabled = enabled,
-        iconTint = tintColor ?: MaterialTheme.colorScheme.primary,
-    )
 }
 
 @Composable
