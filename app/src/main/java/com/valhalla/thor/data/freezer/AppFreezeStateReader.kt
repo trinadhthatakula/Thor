@@ -35,7 +35,8 @@ class AppFreezeStateReader(
         val enabled = info.enabled && (info.flags and ApplicationInfo.FLAG_INSTALLED) != 0
         val suspended = (info.flags and ApplicationInfo.FLAG_SUSPENDED) != 0
         if (isFrozen(enabled, suspended)) FreezeState.FROZEN else FreezeState.ACTIVE
-    } catch (e: PackageManager.NameNotFoundException) {
+    } catch (_: PackageManager.NameNotFoundException) {
+        // Unnamed: "no such package for this user" is the expected answer here, not an error.
         FreezeState.ABSENT
     } catch (e: CancellationException) {
         // CancellationException is an Exception in Kotlin. stateOf runs inside the runner's

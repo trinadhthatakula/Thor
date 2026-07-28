@@ -113,6 +113,23 @@ class BulkFreezeRunner(
     }
 
     /**
+     * [refreshFreezableCount] with its own failure handling, for the fire-and-forget sweep the
+     * post-run finally abandons on timeout. It runs on [scope], so an escaping exception would
+     * reach Android's default uncaught handler and kill the process — `SupervisorJob` stops a
+     * failing child from cancelling its siblings, not from being reported (B-2). Nothing awaits
+     * this job, so nothing else can catch it.
+     */
+    private suspend fun sweepFreezableCount() {
+        try {
+            refreshFreezableCount()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e("BulkFreezeRunner", "post-run candidate sweep failed", e)
+        }
+    }
+
+    /**
      * Start a bulk run and return it. Returns the in-flight run instead of starting a second one
      * — the pre-rework tile spawned a fresh unbounded batch over the same packages on every tap.
      *
@@ -197,10 +214,28 @@ class BulkFreezeRunner(
                 // runs in a finally where cancellation is exactly what we may be unwinding
                 // from. withContext(NonCancellable) lets the sweep finish even then, and the
                 // narrow catch keeps a PackageManager failure from masking the real outcome.
-                try {
-                    withContext(NonCancellable) { refreshFreezableCount() }
-                } catch (e: Exception) {
-                    Logger.e("BulkFreezeRunner", "post-run candidate sweep failed", e)
+                //
+                // R4: race a cancellable join() rather than wrapping refreshFreezableCount()
+                // in withTimeoutOrNull directly — for the same reason B-10 gives below. The
+                // sweep ends in freezableCandidates(), a plain non-suspending filter over one
+                // PackageManager binder call per watchlist entry, so a timeout wrapped around
+                // it has no suspension point to fire at and would wait out the loop anyway.
+                // Only join() on a separate job is actually interruptible. Without a bound
+                // this is the one unbounded wait in the class: NonCancellable means a wedged
+                // binder (PMS lock contention right after a batch of pm disable/uninstall is
+                // not exotic) pins _runningOp and activeJob for the process lifetime, leaving
+                // the tile on "Freezing…" and every later tap coalescing into the stuck job.
+                withContext(NonCancellable) {
+                    val sweep = scope.launch { sweepFreezableCount() }
+                    if (withTimeoutOrNull(SWEEP_GRACE_MS) { sweep.join() } == null) {
+                        // Abandoned, not cancelled: it still publishes when the binder returns.
+                        // The cost is that runningOp clears against the pre-run count for one
+                        // paint — the tile re-sweeps on every onStartListening, so it heals.
+                        Logger.d(
+                            "BulkFreezeRunner",
+                            "post-run candidate sweep exceeded ${SWEEP_GRACE_MS}ms; releasing the run"
+                        )
+                    }
                 }
                 // R1/R2: clear runningOp only if this is still the active job. A replacement
                 // job has overwritten activeJob and is already running; it must keep
@@ -339,5 +374,12 @@ class BulkFreezeRunner(
         // purpose: the Shizuku/Dhizuku paths make blocking binder calls that ignore
         // cancellation, so an unbounded join would stall the next batch behind them.
         const val CANCEL_GRACE_MS = 2_000L
+
+        // How long the post-run finally waits for the candidate sweep before releasing the run.
+        // Deliberately NOT CANCEL_GRACE_MS: that bounds an unwind, this bounds real work — one
+        // binder call per watchlist entry, against a PackageManager that has just been made to
+        // disable or uninstall a batch of packages. Generous enough that it is a wedge detector
+        // rather than a load limiter, because a sweep that misses only costs one stale paint.
+        const val SWEEP_GRACE_MS = 10_000L
     }
 }

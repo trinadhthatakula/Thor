@@ -98,7 +98,7 @@ class FreezerLaunchActivity : Activity() {
             val result = withTimeoutOrNull(REPORT_WINDOW_MS) {
                 try {
                     run.await()
-                } catch (e: CancellationException) {
+                } catch (_: CancellationException) {
                     // Two very different cancellations arrive here. If our own scope died
                     // (onDestroy) we must propagate; if the Deferred was cancelled because a
                     // conflicting op replaced this run, we have nothing to report but are still
@@ -167,7 +167,8 @@ class FreezerLaunchActivity : Activity() {
     private fun isSuspended(pkg: String): Boolean = try {
         val info = packageManager.getApplicationInfo(pkg, PackageManager.MATCH_DISABLED_COMPONENTS)
         (info.flags and ApplicationInfo.FLAG_SUSPENDED) != 0
-    } catch (e: Exception) {
+    } catch (_: Exception) {
+        // Unreadable package: treat as not-suspended and let the launch path fail visibly.
         false
     }
 
