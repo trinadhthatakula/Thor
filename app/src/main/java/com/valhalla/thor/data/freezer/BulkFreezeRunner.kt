@@ -22,9 +22,13 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -74,6 +78,33 @@ class BulkFreezeRunner(
 
     /** Outcome of the last completed run, consumed once by whoever displays it. */
     val lastResult: StateFlow<BulkResult?> = _lastResult.asStateFlow()
+
+    // extraBufferCapacity + DROP_OLDEST so tryEmit never fails and never suspends the run: a
+    // slow subscriber (the icon rebuild decodes one bitmap per pinned app) must not be able to
+    // hold a batch open, and coalescing a burst down to "rebuild once more afterwards" is
+    // correct because every subscriber re-reads live state rather than the emitted value.
+    private val _completions = MutableSharedFlow<BulkOp>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    /**
+     * Emits once per run that actually touched packages — the seam for side effects that must
+     * follow *any* bulk run, whichever surface started it.
+     *
+     * This exists because side effects bolted to one caller are unreachable from the other.
+     * The pinned-shortcut icon rebuild used to hang off `FreezerShortcutManager.runBulk`, so a
+     * freeze started from the QS tile — which calls [launch] directly, having no reason to know
+     * shortcuts exist — froze the apps and left every pinned icon in full colour. Device
+     * evidence: `dumpsys shortcut` showed the publisher's call count and stored icon bitmap
+     * unchanged across a tile freeze that did set `enabled=3`.
+     *
+     * Not emitted for a no-op run ([run] returned null: no privilege, or nothing to act on) —
+     * nothing changed, so nothing needs rebuilding. Not emitted for a cancelled run either;
+     * the conflicting op that replaced it emits its own completion, and subscribers rebuild
+     * from live state, so the later emission subsumes the lost one.
+     */
+    val completions: SharedFlow<BulkOp> = _completions.asSharedFlow()
 
     private val _runningOp = MutableStateFlow<BulkOp?>(null)
 
@@ -194,6 +225,11 @@ class BulkFreezeRunner(
                     // READY again. Stale either way — drop it.
                     _lastResult.value = if (op == BulkOp.FREEZE) result else null
                     if (result.total > 0) notifier.post(result)
+                    // Unconditional, unlike the two lines above: a completion is not a *report*
+                    // of the run, it is the fact that package state changed. It must not inherit
+                    // the tile's freeze-only rule (an unfreeze recolours icons too) nor the
+                    // notifier's permission gate (icons are not a notification).
+                    _completions.tryEmit(op)
                 }
             } catch (e: CancellationException) {
                 // B-2: CancellationException is an Exception in Kotlin; rethrowing here keeps

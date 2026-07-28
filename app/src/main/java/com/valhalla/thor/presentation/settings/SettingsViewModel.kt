@@ -178,6 +178,11 @@ class SettingsViewModel(
                     async { manageAppUseCase.forceUnfreeze(pkg) }
                 }.awaitAll()
             }
+            // This is the one bulk path that does not go through BulkFreezeRunner, so it does
+            // not get the icon rebuild that hangs off the runner's completions. Ask for it
+            // explicitly or pinned shortcuts stay grey for apps this just restored.
+            freezerShortcutManager.refreshPinnedShortcutIcons()
+
             val failures = results.count { it.isFailure }
             val uiText = if (failures == 0) {
                 UiText.PluralsResource(R.plurals.unfrozen_count_success, pkgs.size)
