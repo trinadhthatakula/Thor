@@ -3,11 +3,12 @@
 
 package com.valhalla.thor.presentation.tile
 
+import android.service.quicksettings.Tile
 import com.valhalla.thor.domain.model.PrivilegeState
 
 /**
- * What the QS tile should show. Deliberately framework-free — [FreezerTileService] maps
- * these onto `Tile.STATE_*` so this stays a plain JVM unit under test.
+ * What the QS tile should show. Deliberately framework-free — [tileStateFor] maps these onto
+ * `Tile.STATE_*` so the decision itself stays a plain JVM unit under test.
  */
 enum class TileVisual { CHECKING, NO_PRIVILEGE, NOTHING_TO_FREEZE, READY, WORKING }
 
@@ -32,4 +33,26 @@ fun tileVisualFor(
     freezableCount == null -> TileVisual.CHECKING
     freezableCount == 0 -> TileVisual.NOTHING_TO_FREEZE
     else -> TileVisual.READY
+}
+
+/**
+ * Map a [TileVisual] onto the `Tile.STATE_*` the framework understands.
+ *
+ * [TileVisual.CHECKING] **must** map to a clickable state. AOSP's `CustomTile.handleClick()`
+ * early-returns on `STATE_UNAVAILABLE`, so painting UNAVAILABLE while the privilege probe is
+ * still in flight makes the tile swallow every tap until the next listen — the original bug
+ * this rework exists to fix. `onClick` re-checks privilege itself, so an optimistically
+ * clickable tile is safe; an optimistically unavailable one is not.
+ *
+ * Only [TileVisual.NO_PRIVILEGE] — a *resolved* "you cannot use this" — is UNAVAILABLE.
+ *
+ * `Tile.STATE_*` are compile-time constants (`public static final int` 0/1/2), so this
+ * function is exercisable from a plain JVM unit test with no android.jar at runtime.
+ */
+fun tileStateFor(visual: TileVisual): Int = when (visual) {
+    TileVisual.NO_PRIVILEGE -> Tile.STATE_UNAVAILABLE
+    TileVisual.NOTHING_TO_FREEZE -> Tile.STATE_INACTIVE
+    TileVisual.CHECKING -> Tile.STATE_INACTIVE
+    TileVisual.WORKING -> Tile.STATE_ACTIVE
+    TileVisual.READY -> Tile.STATE_ACTIVE
 }

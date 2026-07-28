@@ -3,9 +3,11 @@
 
 package com.valhalla.thor.presentation.tile
 
+import android.service.quicksettings.Tile
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.PrivilegeState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 /** Pure QS tile state machine. No Android deps. */
@@ -84,5 +86,44 @@ class TileVisualTest {
             TileVisual.NO_PRIVILEGE,
             tileVisualFor(none, freezableCount = 3, isRunning = true)
         )
+    }
+
+    // ── TileVisual -> Tile.STATE_* ──────────────────────────────────────────
+    // Tile.STATE_* are JLS constant variables (public static final int 0/1/2), so kotlinc
+    // inlines them and these assertions load no android.jar class at runtime.
+
+    @Test
+    fun `CHECKING must stay clickable or the tile silently swallows every tap`() {
+        // This is the whole point of the rework. CustomTile.handleClick() early-returns on
+        // STATE_UNAVAILABLE, so an optimistically-unavailable tile drops taps until the next
+        // listen. If this assertion ever fails, the original bug is back.
+        assertEquals(Tile.STATE_INACTIVE, tileStateFor(TileVisual.CHECKING))
+    }
+
+    @Test
+    fun `NO_PRIVILEGE is the only unavailable state`() {
+        assertEquals(Tile.STATE_UNAVAILABLE, tileStateFor(TileVisual.NO_PRIVILEGE))
+        TileVisual.entries.filter { it != TileVisual.NO_PRIVILEGE }.forEach { visual ->
+            assertNotEquals(
+                "$visual must remain clickable",
+                Tile.STATE_UNAVAILABLE,
+                tileStateFor(visual)
+            )
+        }
+    }
+
+    @Test
+    fun `NOTHING_TO_FREEZE is inactive but still clickable`() {
+        assertEquals(Tile.STATE_INACTIVE, tileStateFor(TileVisual.NOTHING_TO_FREEZE))
+    }
+
+    @Test
+    fun `WORKING is active`() {
+        assertEquals(Tile.STATE_ACTIVE, tileStateFor(TileVisual.WORKING))
+    }
+
+    @Test
+    fun `READY is active`() {
+        assertEquals(Tile.STATE_ACTIVE, tileStateFor(TileVisual.READY))
     }
 }
