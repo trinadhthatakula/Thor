@@ -18,7 +18,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 
@@ -114,26 +113,19 @@ class FreezerTileService : TileService() {
     }
 
     override fun onClick() {
-        // The privilege state may not be resolved at tap time: PrivilegeManager probes on IO
-        // and the first DataStore emission may not have landed. Checking the current (possibly
-        // unresolved) snapshot would silently drop the tap with no feedback. Await the first
-        // ready snapshot on the listen scope instead. The await is cancelled with the scope if
-        // the shade closes before the probe resolves — acceptable, the user navigated away.
-        val currentScope = scope ?: return
-        currentScope.launch {
-            try {
-                val resolved = privilegeManager.state.first { it.isReady }
-                if (!resolved.hasAnyPrivilege) {
-                    paint()
-                    return@launch
-                }
-                runner.launch(BulkOp.FREEZE)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.e("FreezerTile", "tile click handling failed", e)
-            }
-        }
+        // Hand off immediately and synchronously. Nothing about the tap may depend on this
+        // service's scope: the privilege state is often unresolved at tap time (PrivilegeManager
+        // probes on IO and the first DataStore emission may not have landed), and awaiting it
+        // here — on a scope onStopListening cancels — meant that on a cold process, tapping and
+        // then collapsing the shade dropped the freeze silently.
+        //
+        // Nothing is lost by not pre-checking. BulkFreezeRunner.run awaits `isReady` itself and
+        // returns null when there is no privilege, precisely so it does not depend on its
+        // caller having awaited anything; and the NO_PRIVILEGE paint the pre-check used to do
+        // is already driven by the collector in onStartListening, which repaints on every
+        // PrivilegeManager emission. tileVisualFor also orders NO_PRIVILEGE ahead of WORKING,
+        // so a run that is about to no-op cannot flash "Freezing…" on an unprivileged tile.
+        runner.launch(BulkOp.FREEZE)
     }
 
     /**

@@ -20,7 +20,8 @@ enum class TileVisual { CHECKING, NO_PRIVILEGE, NOTHING_TO_FREEZE, READY, WORKIN
  * The ordering matters. CHECKING must win over NO_PRIVILEGE while the privilege probe is
  * still in flight: AOSP's `CustomTile.handleClick()` early-returns on `STATE_UNAVAILABLE`,
  * so an optimistic NO_PRIVILEGE paint would silently swallow every tap until the next
- * listen. CHECKING maps to a clickable state, and `onClick` re-checks privilege itself.
+ * listen. CHECKING maps to a clickable state, and the click path re-checks privilege itself
+ * (`BulkFreezeRunner.run` awaits `isReady` and no-ops without privilege).
  */
 fun tileVisualFor(
     privilege: PrivilegeState,
@@ -41,7 +42,7 @@ fun tileVisualFor(
  * [TileVisual.CHECKING] **must** map to a clickable state. AOSP's `CustomTile.handleClick()`
  * early-returns on `STATE_UNAVAILABLE`, so painting UNAVAILABLE while the privilege probe is
  * still in flight makes the tile swallow every tap until the next listen — the original bug
- * this rework exists to fix. `onClick` re-checks privilege itself, so an optimistically
+ * this rework exists to fix. The click path re-checks privilege itself, so an optimistically
  * clickable tile is safe; an optimistically unavailable one is not.
  *
  * Only [TileVisual.NO_PRIVILEGE] — a *resolved* "you cannot use this" — is UNAVAILABLE.
