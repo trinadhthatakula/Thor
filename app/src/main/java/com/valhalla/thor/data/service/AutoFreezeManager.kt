@@ -111,9 +111,19 @@ class AutoFreezeManager(
                         scope.launch {
                             semaphore.withPermit {
                                 try {
+                                    // Fail closed on an unresolved tier. getAppDetails swallows
+                                    // every Exception and returns null (AppRepositoryImpl.kt:245),
+                                    // so null means "could not classify" — a transient binder
+                                    // failure looks identical to an absent package. Freezing on
+                                    // an unknown tier is how an Unsafe system app reaches
+                                    // `pm uninstall --user`. Skipping costs one cycle; the next
+                                    // screen-off re-reads the whole Freezer list anyway.
                                     val detailedApp = appRepository.getAppDetails(pkg)
-                                    if (detailedApp != null && detailedApp.freezeTier == FreezeTier.BLOCKED) {
-                                        Logger.d("AutoFreezeManager", "Skipping auto-freeze for UNSAFE system app: $pkg")
+                                    if (detailedApp == null || detailedApp.freezeTier == FreezeTier.BLOCKED) {
+                                        Logger.d(
+                                            "AutoFreezeManager",
+                                            "Skipping auto-freeze, tier blocked or unresolved: $pkg"
+                                        )
                                         return@launch
                                     }
                                     val appInfo = pm.getApplicationInfo(pkg, 0)

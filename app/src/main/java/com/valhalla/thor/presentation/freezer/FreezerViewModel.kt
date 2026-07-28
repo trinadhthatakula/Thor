@@ -195,9 +195,16 @@ class FreezerViewModel(
                 // later bulk run — so a surface that forgot to ask would hand the QS tile and
                 // the launcher shortcuts a target the in-app dialog refuses to even offer a
                 // confirm button for. The sheet still asks first; this is the backstop.
+                //
+                // A miss fails closed. allInstalledApps is a snapshot of the last full rescan,
+                // so between the tap and this coroutine a refresh can drop the entry — and the
+                // very next statement freezes. Treating "not found" as "not blocked" would let
+                // an unclassified system app through on exactly the timing where we know least
+                // about it. error_unsafe_skipped covers both readings: it says UNSAFE / safety
+                // check failed.
                 val app = _uiState.value.allInstalledApps
                     .firstOrNull { it.packageName == packageName }
-                if (app != null && app.freezeTier == FreezeTier.BLOCKED) {
+                if (app == null || app.freezeTier == FreezeTier.BLOCKED) {
                     emitToast(UiText.StringResource(R.string.error_unsafe_skipped))
                     return@launch
                 }
