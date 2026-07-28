@@ -65,7 +65,7 @@ class FreezerTileService : TileService() {
                 combine(
                     privilegeManager.state,
                     runner.freezableCount,
-                    runner.isRunning,
+                    runner.runningOp,
                     runner.lastResult,
                 ) { _, _, _, _ -> Unit }.collect { paint() }
             } catch (e: CancellationException) {
@@ -82,11 +82,11 @@ class FreezerTileService : TileService() {
         // freezing everything.
         listenScope.launch {
             try {
-                runner.refreshCandidates(BulkOp.FREEZE)
+                runner.refreshFreezableCount()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                // This is the one that matters: refreshCandidates does a Room read plus N
+                // This is the one that matters: the sweep does a Room read plus N
                 // PackageManager.getApplicationInfo calls, and AppFreezeStateReader.stateOf
                 // catches only NameNotFoundException. A SQLiteException or a binder-death
                 // RuntimeException would otherwise reach Android's default uncaught handler —
@@ -136,10 +136,13 @@ class FreezerTileService : TileService() {
      */
     private fun paint() {
         val tile = qsTile ?: return
+        // FREEZE only: an Unfreeze-all shortcut running in the background is not this tile's
+        // work, and painting it as "Freezing…" was a lie about which direction it was going.
+        val freezing = runner.runningOp.value == BulkOp.FREEZE
         val visual = tileVisualFor(
             privilege = privilegeManager.state.value,
             freezableCount = runner.freezableCount.value,
-            isRunning = runner.isRunning.value,
+            isRunning = freezing,
         )
         val count = runner.freezableCount.value ?: 0
 
@@ -149,7 +152,7 @@ class FreezerTileService : TileService() {
         // Record it in shownResult so onStopListening can consume exactly what was displayed.
         // Writing to shownResult (a plain field, not a flow) does not re-trigger the collector.
         val result = runner.lastResult.value
-        val subtitle = if (result != null && !runner.isRunning.value) {
+        val subtitle = if (result != null && !freezing) {
             shownResult = result
             bulkResultMessage(result).asString(this)
         } else {
