@@ -1,10 +1,40 @@
 # FreezerTileService rework — design
 
 **Date:** 2026-07-28
-**Status:** Approved (brainstorming complete; implementation plan pending)
+**Status:** Implemented, with deltas — see [As-built deltas](#as-built-deltas). This document is the
+design as approved, kept as the record of what was decided *before* implementation and review. Read
+the source for current behaviour.
 **Supersedes:** `docs/follow-ups/freezer-tile-service-rework.md`, whose problem statement and
 acceptance criteria are written around a Toast that has never worked. That file is deleted by this
 change.
+
+## As-built deltas
+
+Everything below this section is the pre-implementation design. Three review rounds changed parts of
+it. The deltas are recorded here rather than edited into the body, because a design rewritten to
+match its outcome no longer records that the outcome differed — and each of these differences is a
+defect the design did not anticipate.
+
+| Designed | Shipped | Why it changed |
+|---|---|---|
+| `TileVisual` as a sealed type | `enum class TileVisual` | No variant carries data; an enum is `when`-exhaustive without the ceremony. |
+| `BulkResult(total, succeeded, failed)` | `+ op: BulkOp` | One runner serves both directions, so a result with no op is reported with freeze wording ("Froze 5 apps") after an unfreeze. |
+| `isRunning: StateFlow<Boolean>` | `runningOp: StateFlow<BulkOp?>` | A shared flag painted the freeze-only tile as WORKING while a background Unfreeze-all shortcut ran. |
+| `suspend fun refreshCandidates(op)` | `suspend fun refreshFreezableCount()` | An op-agnostic count published 0 ("nothing to freeze") right after Unfreeze-all, the moment everything *became* freezable. The tile is freeze-only, so the count is too. |
+| `fun consumeResult()` | `fun consumeResult(shown: BulkResult)` | Compare-and-set, so a result published between the reader's read and the clear is not silently dropped. |
+| `launch(op)` returns nothing useful | returns `Deferred<BulkResult?>` | A caller that *is* allowed to show UI needs the outcome; watching `runningOp` races a fast run that clears it before the observer subscribes. |
+| `run()` reads `privilegeManager.state.value` | awaits `state.first { it.isReady }` | The state starts `NONE`/`isReady = false`, so a cold-start run read "no privilege" and no-opped silently. |
+| Per-run `Semaphore(5)`, bare `job.cancel()` | instance-scoped semaphore + bounded cancel-and-join handoff | A fresh semaphore per generation let five new workers start on top of workers the replaced batch had abandoned in blocking binder calls. |
+| Abandoned workers "continue harmlessly" | bounded overlap, explicitly not eliminated | FREEZE and UNFREEZE are not idempotent with respect to each other: a straggling FREEZE worker can re-disable a package the replacing UNFREEZE batch already enabled. |
+| Every result published | null no-ops skipped; `_lastResult` FREEZE-only, cleared on UNFREEZE | `BulkResult(0,0,0)` renders as "Froze 0 apps"; a parked UNFREEZE result would show freeze wording on a tile that is READY again. |
+| `FreezerShortcutManager.runBulk` returns `Unit` | returns the runner's `Deferred` | `FreezerLaunchActivity` awaits it (bounded, 2 s) and toasts the outcome — a resumed Activity is the one place a bulk result can be reported unconditionally. |
+| Notification row on API 33+ only | row is unconditional; 33+ requests, 28–32 deep-links | `areNotificationsEnabled()` — what the notifier actually checks — is meaningful and user-toggleable down to minSdk 28. Gating the row left 28–32 with silently dropped notifications and nothing explaining why. |
+| Sweep in the post-run `finally` unbounded | bounded by racing a cancellable `join()` | `NonCancellable` + a non-suspending binder loop meant a wedged `PackageManager` pinned `runningOp` and `activeJob` for the process lifetime. |
+| One icon refresh per `runBulk` call | one per distinct run | Same-op taps coalesce onto one `Deferred`; each tap otherwise queued another full icon rebuild for byte-identical output. |
+
+The verification table further down predates two of these: `tileVisualFor` also takes `isRunning`
+(the WORKING case is covered by `TileVisualTest`), and item 5 covers the permission row on API 33+
+**and** its settings deep-link on 28–32.
 
 ## Problem
 
@@ -344,8 +374,8 @@ consistent with the A3 domain-purity work. This does not block on the
 |---|---|
 | `domain/model/BulkFreeze.kt` | `BulkOp`, `BulkResult` — pure, no Android types |
 | `domain/model/FreezeState.kt` | `FROZEN \| ACTIVE \| ABSENT` + `freezableCandidates(watchlist, op, stateOf)` — pure, unit-tested |
-| `presentation/tile/TileVisual.kt` | sealed `TileVisual` + `tileVisualFor(privilege, freezableCount, isRunning)` — pure, unit-tested |
-| `presentation/tile/BulkResultText.kt` | `bulkResultMessage(result): UiText` — pure, unit-tested |
+| `presentation/tile/TileVisual.kt` | `enum class TileVisual` + `tileVisualFor(privilege, freezableCount, isRunning)` — pure, unit-tested |
+| `util/BulkResultText.kt` | `bulkResultMessage(result): UiText` — pure, unit-tested |
 | `data/freezer/AppFreezeStateReader.kt` | `@Single`, wraps the injectable `PackageManager` |
 | `data/freezer/BulkFreezeRunner.kt` | `@Single`, owns the scope, semaphore, deadline, counters |
 | `data/freezer/BulkResultNotifier.kt` | `@Single`, channel creation + gated post |
@@ -359,7 +389,8 @@ rather than branched at the call site.
 
 **Modified:** `presentation/tile/FreezerTileService.kt` (rewritten around the runner);
 `data/launcher/FreezerShortcutManager.kt` (`runBulk` delegates; `isFrozen` deleted);
-`presentation/settings/SettingsScreen.kt` + its ViewModel (permission row);
+`presentation/settings/SettingsScreen.kt` (permission row — the row reads the framework directly,
+so no ViewModel change was needed);
 `app/src/main/AndroidManifest.xml` (`<uses-permission>`);
 `res/values/strings.xml` + `values-{ar,es,fr,zh-rCN}/strings.xml` (four new strings).
 

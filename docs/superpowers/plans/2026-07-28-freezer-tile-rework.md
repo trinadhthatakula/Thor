@@ -1,6 +1,46 @@
 # FreezerTileService Rework Implementation Plan
 
+> **Status: executed.** This plan was implemented on `fix/freezer-tile-rework` (PR #284) and then
+> changed in three review rounds. It is kept as the record of what was planned, not as a description
+> of what shipped — the API sketches and code recipes below are pre-review and several are now
+> wrong. The differences are listed in **[As-built deltas](#as-built-deltas)**; the spec's copy of
+> the same table carries the reasoning. For current behaviour, read the source.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+## As-built deltas
+
+Every place the shipped code differs from the recipes below. Each one is a defect a review round
+found in the plan, not a drifting implementation.
+
+- **`TileVisual` is an `enum class`,** not a sealed type (§ file inventory, and `presentation/tile`
+  in the Architecture note above). No variant carries data.
+- **`BulkResult` carries `op: BulkOp`.** Without it an UNFREEZE run reports with freeze wording.
+- **`BulkFreezeRunner.launch(op)` returns `Deferred<BulkResult?>`,** not `Job` — the trampoline
+  needs the outcome, and watching `runningOp` races a run that finishes before the observer
+  subscribes. `FreezerShortcutManager.runBulk` returns that same `Deferred` instead of `Unit`.
+- **`isRunning: StateFlow<Boolean>` → `runningOp: StateFlow<BulkOp?>`,** and `freezableCount` is
+  freeze-specific rather than "whatever op swept last". `refreshCandidates(op)` →
+  `refreshFreezableCount()`. `consumeResult()` → `consumeResult(shown)` (compare-and-set).
+- **`launch` tracks `activeOp` alongside `activeJob`.** Coalescing on *any* active job made an
+  UNFREEZE issued during a FREEZE a silent no-op; a conflicting op now cancels-and-joins the
+  previous run before touching a package.
+- **The semaphore is instance-scoped, not per run,** and cancellation goes through a bounded
+  grace/join handoff (`CANCEL_GRACE_MS`). A fresh `Semaphore(5)` per generation let five new
+  workers start on top of workers the replaced batch had abandoned in blocking binder calls. The
+  overlap is bounded, not eliminated — see the runner's KDoc.
+- **`run()` awaits `privilegeManager.state.first { it.isReady }`** instead of reading `state.value`,
+  which starts at `NONE`/`isReady = false` and turned a cold-start run into a silent no-op.
+- **Result publishing is op-aware:** `run()` returns null for no-ops (no `BulkResult(0,0,0)`),
+  `_lastResult` takes FREEZE results only and is cleared by UNFREEZE, and the notifier posts both.
+- **The post-run sweep in the `finally` is bounded** by racing a cancellable `join()`; under
+  `NonCancellable` a wedged `PackageManager` otherwise pinned `runningOp` for the process lifetime.
+- **`runBulk` schedules at most one icon refresh per distinct run,** since same-op taps coalesce.
+- **The Settings notification row is unconditional,** not API 33+ only: 33+ requests the runtime
+  permission, 28–32 deep-link to app notification settings. `areNotificationsEnabled()` — the exact
+  thing the notifier checks — is meaningful down to minSdk 28. The device-verification list must
+  therefore cover the row below API 33 too. Only `SettingsScreen.kt` changed; no ViewModel.
+- **`bulkResultMessage` lives in `util/BulkResultText.kt`,** not `presentation/tile/`.
 
 **Goal:** Make Thor's Quick Settings freezer tile show truthful state and actually report its results, by moving the bulk freeze into a shared app-scoped runner.
 

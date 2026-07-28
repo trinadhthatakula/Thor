@@ -15,9 +15,12 @@ Files: `app/src/main/java/com/valhalla/thor/data/freezer/BulkFreezeRunner.kt`,
 
 ---
 
-## 1. `lastResult` has no owner, no expiry, and no coverage of non-runner unfreezes
+## 1. `lastResult` has no expiry, and no invalidation from non-runner unfreezes
 
-Three related edges on the same field:
+`BulkFreezeRunner` does own the field — `_lastResult` is private, published read-only, and the only
+external mutator is `consumeResult`. What it lacks is a *lifecycle policy*: nothing ages the value
+out, and nothing invalidates it when the state it describes stops being true. Two edges, and why the
+last fix could not close them:
 
 - **No expiry.** `_lastResult` lives for the process lifetime. A result published by a launcher
   shortcut at 09:00 is still in the field at 17:00 and gets rendered into the tile subtitle the next
@@ -34,14 +37,14 @@ Three related edges on the same field:
 
 1. Stamp the result and ignore it past some TTL. Needs a clock injected to stay testable, and picks
    an arbitrary number.
-2. Route *every* bulk unfreeze through `BulkFreezeRunner`, so there is one writer. That is the
-   architectural direction the PR already started (`BulkFreezeRunner` as "the single owner of bulk
-   freeze/unfreeze"). It is a bigger change than it sounds: the ViewModels unfreeze single apps and
-   small selections, not watchlists.
+2. Route *every* bulk unfreeze through `BulkFreezeRunner`, so the field's owner also observes every
+   event that ought to invalidate it. That is the architectural direction the PR already started
+   (`BulkFreezeRunner` as "the single owner of bulk freeze/unfreeze"). It is a bigger change than it
+   sounds: the ViewModels unfreeze single apps and small selections, not watchlists.
 
 Prefer 2, but only once the runner has the tests that
 [`bulk-freeze-runner-concurrency-tests.md`](bulk-freeze-runner-concurrency-tests.md) describes —
-changing who writes shared mutable state in an untested concurrent class is how the two defects that
+widening what mutates shared state in an untested concurrent class is how the two defects that
 follow-up documents got in.
 
 ---
