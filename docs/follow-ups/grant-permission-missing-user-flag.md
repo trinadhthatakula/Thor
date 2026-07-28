@@ -5,13 +5,14 @@
 **Effort:** small.
 **Raised by:** research during the FreezerTileService rework (2026-07-28).
 
-Files: `app/src/main/java/com/valhalla/thor/data/gateway/RootSystemGateway.kt:533-542`,
-`ShizukuSystemGateway.kt:164`, `DhizukuSystemGateway.kt:165`
+Files: `app/src/main/java/com/valhalla/thor/data/gateway/RootSystemGateway.kt:533-543 (fun grantPermission)`,
+`ShizukuSystemGateway.kt:154 (override suspend fun grantPermission)`,
+`DhizukuSystemGateway.kt:155 (override suspend fun grantPermission)`
 
 ## Problem
 
 `SystemGateway.grantPermission` builds `pm grant <pkg> <perm>` with no `--user`. Every other
-shell command Thor issues passes one (`Shizuku.kt:63/94/162`).
+shell command Thor issues passes one (`Shizuku.kt:65/98/166`).
 `PackageManagerShellCommand.runGrantRevokePermission` initialises
 `userId = UserHandle.USER_SYSTEM` and has done so unchanged from android-9 through main, so
 the grant lands on user 0 regardless of which user Thor is running as.

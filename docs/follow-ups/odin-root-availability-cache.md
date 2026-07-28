@@ -7,10 +7,10 @@
 
 ## Problem
 
-Odin's `MainShell.cached` returns the same `ShellImpl` until its `status < 0`, and `status`
-is computed **once at construction** via an `id` → `uid=0` probe. `isRoot` is `status >=
-ROOT_SHELL`. So `isRootAvailable()` answers from a snapshot taken when the shell was first
-built.
+Odin's `MainShell.cached` (`MainShell.kt:75-79`) returns the same `ShellImpl` until its
+`status < 0`, and `status` is computed **once at construction** (`ShellImpl.kt:88`/`:98`) via
+an `id` → `uid=0` probe (`ShellImpl.kt:130-149`). `isRoot` is `status >= ROOT_SHELL`. So
+`isRootAvailable()` answers from a snapshot taken when the shell was first built.
 
 Consequence: if the user **revokes** root after granting it, Thor keeps reporting root as
 available for the rest of the process lifetime. `PrivilegeManager.refresh()` re-runs the
