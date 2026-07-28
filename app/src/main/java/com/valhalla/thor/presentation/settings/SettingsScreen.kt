@@ -4,8 +4,14 @@
 package com.valhalla.thor.presentation.settings
 
 import android.Manifest
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
@@ -52,8 +58,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
@@ -393,9 +398,34 @@ fun SettingsScreen(
             // API 33+ only: below that, notifications need no runtime permission at all, so a
             // row here would be a switch the user cannot meaningfully change.
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val activity = remember(context) { context.findActivity() }
                 val notificationPermissionLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestPermission()
-                ) { granted -> notificationsGranted = granted }
+                ) { _ ->
+                    // Re-read instead of trusting `granted`. The switch reflects
+                    // areNotificationsEnabled(), which is also false when the permission is
+                    // held but the user muted the app's notifications; trusting `granted`
+                    // flipped the switch on and the next ON_RESUME flipped it back off.
+                    val enabled =
+                        NotificationManagerCompat.from(context).areNotificationsEnabled()
+                    notificationsGranted = enabled
+                    // RequestPermission returns immediately without showing a dialog once the
+                    // user has denied twice, which would leave this row a permanent dead end.
+                    // shouldShowRequestPermissionRationale distinguishes that (and the
+                    // "granted but muted" case, both false) from a plain first denial (true,
+                    // where re-tapping the row still shows the dialog). Where the dialog can
+                    // no longer help, deep-link to system settings like the usage-access row
+                    // above. Thor never self-grants this permission.
+                    val canAskAgain = activity?.let {
+                        ActivityCompat.shouldShowRequestPermissionRationale(
+                            it,
+                            Manifest.permission.POST_NOTIFICATIONS
+                        )
+                    } ?: false
+                    if (!enabled && !canAskAgain) {
+                        runCatching { context.startActivity(appNotificationSettingsIntent(context)) }
+                    }
+                }
 
                 SettingsSwitchRow(
                     icon = R.drawable.frozen,
@@ -893,6 +923,24 @@ private fun SettingsSwitchRow(
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
     }
+}
+
+/**
+ * The system's per-app notification settings screen — the only place a user can undo a
+ * permanent POST_NOTIFICATIONS denial or re-enable app-wide notifications.
+ */
+private fun appNotificationSettingsIntent(context: Context): Intent =
+    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+
+/**
+ * Unwrap [LocalContext] to the hosting Activity. Compose hands out a ContextWrapper in some
+ * hosts, and `shouldShowRequestPermissionRationale` needs the real Activity.
+ */
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 @Composable
