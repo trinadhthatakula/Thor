@@ -119,11 +119,6 @@ fun AppInfoDetailsScreen(
         Toast.makeText(context, msg.asString(context), Toast.LENGTH_SHORT).show()
     }
 
-    var showClearDataConfirmation by remember { mutableStateOf(false) }
-    var showUninstallConfirmation by remember { mutableStateOf(false) }
-    var showFreezeConfirmation by remember { mutableStateOf(false) }
-    var showExportSheet by remember { mutableStateOf(false) }
-
     Scaffold(
         topBar = {
             if (!showOnlyHeaderAndActions && !showOnlyTabs) {
@@ -191,107 +186,37 @@ fun AppInfoDetailsScreen(
                     val details = state.detailedInfo!!
                     Column(modifier = Modifier.fillMaxSize()) {
                         if (!showOnlyTabs) {
-                            AppDetailsHeader(
-                                appInfo = details.appInfo,
-                                sharedTransitionScope = sharedTransitionScope,
-                                animatedVisibilityScope = null
-                            )
-
-                            AppDetailsActionRow(
+                            AppInfoHeaderAndActions(
                                 appInfo = details.appInfo,
                                 isRoot = state.isRoot,
                                 isShizuku = state.isShizuku,
                                 isDhizuku = state.isDhizuku,
                                 isInFreezer = state.isInFreezer,
-                                onLaunch = {
-                                    onAppAction(AppClickAction.Launch(details.appInfo))
-                                },
-                                onSystemSettings = {
-                                    onAppAction(AppClickAction.AppInfoSettings(details.appInfo))
-                                },
-                                onFreezeToggle = { shouldFreeze ->
-                                    // Unfreeze immediately. When freezing, only SYSTEM apps get the
-                                    // safety-warning dialog (instability / reboot-loop risk); user
-                                    // apps are safe to freeze directly (mirrors AppInfoDialog gating).
-                                    if (shouldFreeze && details.appInfo.isSystem) {
-                                        showFreezeConfirmation = true
-                                    } else {
-                                        viewModel.toggleFreezerState(
-                                            packageName,
-                                            details.appInfo.appName,
-                                            shouldFreeze
-                                        )
-                                    }
-                                },
-                                onSuspendToggle = { shouldSuspend ->
-                                    if (shouldSuspend) onAppAction(AppClickAction.Suspend(details.appInfo))
-                                    else onAppAction(AppClickAction.UnSuspend(details.appInfo))
-                                },
-                                onForceStop = {
-                                    onAppAction(AppClickAction.Kill(details.appInfo))
-                                },
-                                onManagePermissions = {
-                                    onNavigateToPermissionManager(packageName, details.appInfo.appName ?: "")
+                                onAppAction = onAppAction,
+                                onFreeze = { shouldFreeze ->
+                                    viewModel.toggleFreezerState(
+                                        packageName,
+                                        details.appInfo.appName,
+                                        shouldFreeze
+                                    )
                                 },
                                 onToggleFreezerMembership = {
                                     viewModel.addOrRemoveFromFreezer(packageName)
                                 },
-                                onClearCache = {
-                                    onAppAction(AppClickAction.ClearCache(details.appInfo))
+                                onClearData = { viewModel.clearData(packageName) },
+                                onManagePermissions = {
+                                    onNavigateToPermissionManager(
+                                        packageName,
+                                        details.appInfo.appName ?: ""
+                                    )
                                 },
-                                onClearData = { showClearDataConfirmation = true },
-                                onUninstall = { showUninstallConfirmation = true },
-                                onShare = {
-                                    onAppAction(AppClickAction.Share(details.appInfo))
-                                },
-                                onExport = { showExportSheet = true }
+                                onUninstallTriggered = onBack,
+                                sharedTransitionScope = sharedTransitionScope
                             )
                         }
 
                         if (!showOnlyHeaderAndActions) {
-                            // rememberSaveable so the active tab survives rotation / config change.
-                            var selectedTab by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(0) }
-                            val tabs = listOf(
-                                stringResource(R.string.tab_overview_title),
-                                stringResource(R.string.tab_components),
-                                stringResource(R.string.tab_libs_features),
-                                stringResource(R.string.action_permissions)
-                            )
-
-                            SecondaryScrollableTabRow(
-                                selectedTabIndex = selectedTab,
-                                containerColor = Color.Transparent,
-                                contentColor = MaterialTheme.colorScheme.primary,
-                                edgePadding = 0.dp,
-                                indicator = {
-                                    TabRowDefaults.SecondaryIndicator(
-                                        modifier = Modifier.tabIndicatorOffset(selectedTab),
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                },
-                                divider = {}
-                            ) {
-                                tabs.forEachIndexed { index, title ->
-                                    Tab(
-                                        selected = selectedTab == index,
-                                        onClick = { selectedTab = index },
-                                        text = {
-                                            Text(
-                                                text = title,
-                                                style = MaterialTheme.typography.titleSmall,
-                                                fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Medium
-                                            )
-                                        }
-                                    )
-                                }
-                            }
-
-                            when (selectedTab) {
-                                0 -> GeneralTabScreen(details)
-                                1 -> ComponentsTabScreen(details)
-                                2 -> LibsAndFeaturesTabScreen(details)
-                                3 -> PermissionsTabScreen(details.permissions)
-                            }
+                            AppInfoDetailBody(details)
                         }
                     }
                 }
@@ -311,6 +236,85 @@ fun AppInfoDetailsScreen(
         }
     }
 
+}
+
+/**
+ * The app identity block and its action row, plus every confirmation those actions raise.
+ *
+ * Self-contained on purpose. A host supplies the state and the handful of callbacks that actually
+ * mutate something, and gets the freeze / uninstall / clear-data / export dialogs for free. That is
+ * what lets more than one surface offer these actions without a second copy of four AlertDialogs
+ * drifting out of sync with this one.
+ *
+ * [onFreeze] is the "do it" callback: this composable decides whether a confirmation has to come
+ * first, the host decides what freezing means.
+ */
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+fun AppInfoHeaderAndActions(
+    appInfo: AppInfo,
+    isRoot: Boolean,
+    isShizuku: Boolean,
+    isDhizuku: Boolean,
+    isInFreezer: Boolean,
+    onAppAction: (AppClickAction) -> Unit,
+    onFreeze: (Boolean) -> Unit,
+    onToggleFreezerMembership: () -> Unit,
+    onClearData: () -> Unit,
+    onManagePermissions: () -> Unit,
+    onUninstallTriggered: () -> Unit,
+    modifier: Modifier = Modifier,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null
+) {
+    val context = LocalContext.current
+    val packageName = appInfo.packageName
+
+    var showClearDataConfirmation by remember { mutableStateOf(false) }
+    var showUninstallConfirmation by remember { mutableStateOf(false) }
+    var showFreezeConfirmation by remember { mutableStateOf(false) }
+    var showExportSheet by remember { mutableStateOf(false) }
+
+    Column(modifier = modifier) {
+        AppDetailsHeader(
+            appInfo = appInfo,
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = animatedVisibilityScope
+        )
+
+        AppDetailsActionRow(
+            appInfo = appInfo,
+            isRoot = isRoot,
+            isShizuku = isShizuku,
+            isDhizuku = isDhizuku,
+            isInFreezer = isInFreezer,
+            onLaunch = { onAppAction(AppClickAction.Launch(appInfo)) },
+            onSystemSettings = { onAppAction(AppClickAction.AppInfoSettings(appInfo)) },
+            onFreezeToggle = { shouldFreeze ->
+                // Unfreeze immediately. When freezing, only SYSTEM apps get the
+                // safety-warning dialog (instability / reboot-loop risk); user
+                // apps are safe to freeze directly (mirrors AppInfoDialog gating).
+                if (shouldFreeze && appInfo.isSystem) {
+                    showFreezeConfirmation = true
+                } else {
+                    onFreeze(shouldFreeze)
+                }
+            },
+            onSuspendToggle = { shouldSuspend ->
+                if (shouldSuspend) onAppAction(AppClickAction.Suspend(appInfo))
+                else onAppAction(AppClickAction.UnSuspend(appInfo))
+            },
+            onForceStop = { onAppAction(AppClickAction.Kill(appInfo)) },
+            onManagePermissions = onManagePermissions,
+            onToggleFreezerMembership = onToggleFreezerMembership,
+            onClearCache = { onAppAction(AppClickAction.ClearCache(appInfo)) },
+            onClearData = { showClearDataConfirmation = true },
+            onUninstall = { showUninstallConfirmation = true },
+            onShare = { onAppAction(AppClickAction.Share(appInfo)) },
+            onExport = { showExportSheet = true }
+        )
+    }
+
     // --- DIALOGS ---
 
     if (showClearDataConfirmation) {
@@ -320,7 +324,7 @@ fun AppInfoDetailsScreen(
             text = { Text(stringResource(R.string.dialog_clear_data_desc)) },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.clearData(packageName)
+                    onClearData()
                     showClearDataConfirmation = false
                 }) {
                     Text(
@@ -338,197 +342,248 @@ fun AppInfoDetailsScreen(
     }
 
     if (showUninstallConfirmation) {
-        val appInfo = state.detailedInfo?.appInfo
-        if (appInfo != null) {
-            val recommendation = appInfo.bloatRecommendation?.lowercase()
-            val isSystem = appInfo.isSystem
-            val isUadFailed = isSystem && appInfo.isUadLoadFailed
-            val isUnsafe = isSystem && recommendation == "unsafe"
-            val isExpert = isSystem && recommendation == "expert" && !isUadFailed
-            val isBlocked = isUnsafe || isUadFailed
-            AlertDialog(
-                onDismissRequest = { showUninstallConfirmation = false },
-                title = {
-                    Text(
-                        text = when {
-                            isBlocked -> stringResource(R.string.uninstall_blocked)
-                            isExpert -> stringResource(R.string.uninstall_expert_warning)
-                            isSystem -> stringResource(R.string.uninstall_system_app_title)
-                            else -> stringResource(R.string.uninstall_app_title)
-                        },
-                        color = if (isBlocked || isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-                    )
-                },
-                text = {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        if (isSystem && !isUadFailed) {
-                            appInfo.bloatRecommendation?.let { rec ->
-                                val (color, textColor) = getBloatRecommendationColors(rec)
-                                StatusChip(
-                                    text = rec,
-                                    color = color,
-                                    textColor = textColor
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                            }
+        val recommendation = appInfo.bloatRecommendation?.lowercase()
+        val isSystem = appInfo.isSystem
+        val isUadFailed = isSystem && appInfo.isUadLoadFailed
+        val isUnsafe = isSystem && recommendation == "unsafe"
+        val isExpert = isSystem && recommendation == "expert" && !isUadFailed
+        val isBlocked = isUnsafe || isUadFailed
+        AlertDialog(
+            onDismissRequest = { showUninstallConfirmation = false },
+            title = {
+                Text(
+                    text = when {
+                        isBlocked -> stringResource(R.string.uninstall_blocked)
+                        isExpert -> stringResource(R.string.uninstall_expert_warning)
+                        isSystem -> stringResource(R.string.uninstall_system_app_title)
+                        else -> stringResource(R.string.uninstall_app_title)
+                    },
+                    color = if (isBlocked || isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    if (isSystem && !isUadFailed) {
+                        appInfo.bloatRecommendation?.let { rec ->
+                            val (color, textColor) = getBloatRecommendationColors(rec)
+                            StatusChip(
+                                text = rec,
+                                color = color,
+                                textColor = textColor
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
                         }
+                    }
 
-                        if (isUadFailed) {
-                            Text(
-                                text = stringResource(R.string.uad_load_failed_desc),
-                                textAlign = TextAlign.Center
-                            )
-                        } else if (isUnsafe) {
-                            Text(
-                                text = stringResource(R.string.warning_unsafe_uninstall),
-                                textAlign = TextAlign.Center
-                            )
-                        } else if (isExpert) {
-                            Text(
-                                text = stringResource(R.string.warning_expert_uninstall),
-                                textAlign = TextAlign.Center
-                            )
-                        } else if (isSystem) {
-                            Text(
-                                text = stringResource(R.string.uninstall_system_app_desc),
-                                textAlign = TextAlign.Center
-                            )
-                        } else {
-                            Text(
-                                text = stringResource(
-                                    R.string.uninstall_app_desc,
-                                    appInfo.appName ?: packageName
-                                ),
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-                },
-                confirmButton = {
-                    if (!isBlocked) {
-                        TextButton(onClick = {
-                            if (isSystem) {
-                                onAppAction(AppClickAction.Uninstall(appInfo))
-                            } else {
-                                val intent =
-                                    android.content.Intent(android.content.Intent.ACTION_DELETE).apply {
-                                        data = "package:$packageName".toUri()
-                                    }
-                                context.startActivity(intent)
-                            }
-                            showUninstallConfirmation = false
-                            // Close the details screen once uninstall is triggered
-                            onBack()
-                        }) {
-                            Text(
-                                text = if (isExpert) stringResource(R.string.uninstall_anyway) else if (isSystem) stringResource(R.string.yes) else stringResource(R.string.action_uninstall),
-                                color = if (isExpert || !isSystem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = {
-                        showUninstallConfirmation = false
-                    }) {
-                        Text(if (isBlocked) stringResource(R.string.close) else if (isSystem) stringResource(R.string.no) else stringResource(R.string.cancel))
+                    if (isUadFailed) {
+                        Text(
+                            text = stringResource(R.string.uad_load_failed_desc),
+                            textAlign = TextAlign.Center
+                        )
+                    } else if (isUnsafe) {
+                        Text(
+                            text = stringResource(R.string.warning_unsafe_uninstall),
+                            textAlign = TextAlign.Center
+                        )
+                    } else if (isExpert) {
+                        Text(
+                            text = stringResource(R.string.warning_expert_uninstall),
+                            textAlign = TextAlign.Center
+                        )
+                    } else if (isSystem) {
+                        Text(
+                            text = stringResource(R.string.uninstall_system_app_desc),
+                            textAlign = TextAlign.Center
+                        )
+                    } else {
+                        Text(
+                            text = stringResource(
+                                R.string.uninstall_app_desc,
+                                appInfo.appName ?: packageName
+                            ),
+                            textAlign = TextAlign.Center
+                        )
                     }
                 }
-            )
-        }
+            },
+            confirmButton = {
+                if (!isBlocked) {
+                    TextButton(onClick = {
+                        if (isSystem) {
+                            onAppAction(AppClickAction.Uninstall(appInfo))
+                        } else {
+                            val intent =
+                                android.content.Intent(android.content.Intent.ACTION_DELETE).apply {
+                                    data = "package:$packageName".toUri()
+                                }
+                            context.startActivity(intent)
+                        }
+                        showUninstallConfirmation = false
+                        // Close the surface hosting these actions once uninstall is triggered
+                        onUninstallTriggered()
+                    }) {
+                        Text(
+                            text = if (isExpert) stringResource(R.string.uninstall_anyway) else if (isSystem) stringResource(R.string.yes) else stringResource(R.string.action_uninstall),
+                            color = if (isExpert || !isSystem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showUninstallConfirmation = false
+                }) {
+                    Text(if (isBlocked) stringResource(R.string.close) else if (isSystem) stringResource(R.string.no) else stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 
     if (showFreezeConfirmation) {
-        val appInfo = state.detailedInfo?.appInfo
-        if (appInfo != null) {
-            val recommendation = appInfo.bloatRecommendation?.lowercase()
-            val isSystem = appInfo.isSystem
-            val isUadFailed = isSystem && appInfo.isUadLoadFailed
-            val isUnsafe = isSystem && recommendation == "unsafe"
-            val isExpert = isSystem && recommendation == "expert" && !isUadFailed
-            val isBlocked = isUnsafe || isUadFailed
-            AlertDialog(
-                onDismissRequest = { showFreezeConfirmation = false },
-                title = {
-                    Text(
-                        text = when {
-                            isBlocked -> stringResource(R.string.freeze_blocked)
-                            isExpert -> stringResource(R.string.freeze_expert_warning)
-                            else -> stringResource(R.string.freeze_system_app_title)
-                        },
-                        color = if (isBlocked || isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-                    )
-                },
-                text = {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        if (isSystem && !isUadFailed) {
-                            appInfo.bloatRecommendation?.let { rec ->
-                                val (color, textColor) = getBloatRecommendationColors(rec)
-                                StatusChip(
-                                    text = rec,
-                                    color = color,
-                                    textColor = textColor
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                            }
+        val recommendation = appInfo.bloatRecommendation?.lowercase()
+        val isSystem = appInfo.isSystem
+        val isUadFailed = isSystem && appInfo.isUadLoadFailed
+        val isUnsafe = isSystem && recommendation == "unsafe"
+        val isExpert = isSystem && recommendation == "expert" && !isUadFailed
+        val isBlocked = isUnsafe || isUadFailed
+        AlertDialog(
+            onDismissRequest = { showFreezeConfirmation = false },
+            title = {
+                Text(
+                    text = when {
+                        isBlocked -> stringResource(R.string.freeze_blocked)
+                        isExpert -> stringResource(R.string.freeze_expert_warning)
+                        else -> stringResource(R.string.freeze_system_app_title)
+                    },
+                    color = if (isBlocked || isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    if (isSystem && !isUadFailed) {
+                        appInfo.bloatRecommendation?.let { rec ->
+                            val (color, textColor) = getBloatRecommendationColors(rec)
+                            StatusChip(
+                                text = rec,
+                                color = color,
+                                textColor = textColor
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
                         }
+                    }
 
-                        if (isUadFailed) {
-                            Text(
-                                text = stringResource(R.string.uad_load_failed_freeze_desc),
-                                textAlign = TextAlign.Center
-                            )
-                        } else if (isUnsafe) {
-                            Text(
-                                text = stringResource(R.string.freeze_unsafe_desc),
-                                textAlign = TextAlign.Center
-                            )
-                        } else if (isExpert) {
-                            Text(
-                                text = stringResource(R.string.freeze_expert_desc),
-                                textAlign = TextAlign.Center
-                            )
-                        } else {
-                            Text(
-                                text = stringResource(R.string.freeze_system_app_desc),
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-                },
-                confirmButton = {
-                    if (!isBlocked) {
-                        TextButton(onClick = {
-                            viewModel.toggleFreezerState(packageName, appInfo.appName, true)
-                            showFreezeConfirmation = false
-                        }) {
-                            Text(
-                                text = if (isExpert) stringResource(R.string.freeze_anyway) else stringResource(R.string.yes),
-                                color = if (isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = {
-                        showFreezeConfirmation = false
-                    }) {
-                        Text(if (isBlocked) stringResource(R.string.close) else stringResource(R.string.no))
+                    if (isUadFailed) {
+                        Text(
+                            text = stringResource(R.string.uad_load_failed_freeze_desc),
+                            textAlign = TextAlign.Center
+                        )
+                    } else if (isUnsafe) {
+                        Text(
+                            text = stringResource(R.string.freeze_unsafe_desc),
+                            textAlign = TextAlign.Center
+                        )
+                    } else if (isExpert) {
+                        Text(
+                            text = stringResource(R.string.freeze_expert_desc),
+                            textAlign = TextAlign.Center
+                        )
+                    } else {
+                        Text(
+                            text = stringResource(R.string.freeze_system_app_desc),
+                            textAlign = TextAlign.Center
+                        )
                     }
                 }
-            )
-        }
+            },
+            confirmButton = {
+                if (!isBlocked) {
+                    TextButton(onClick = {
+                        onFreeze(true)
+                        showFreezeConfirmation = false
+                    }) {
+                        Text(
+                            text = if (isExpert) stringResource(R.string.freeze_anyway) else stringResource(R.string.yes),
+                            color = if (isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showFreezeConfirmation = false
+                }) {
+                    Text(if (isBlocked) stringResource(R.string.close) else stringResource(R.string.no))
+                }
+            }
+        )
     }
 
     if (showExportSheet) {
-        state.detailedInfo?.appInfo?.let { appInfo ->
-            ExportBottomSheet(appInfo = appInfo, onDismiss = { showExportSheet = false })
+        ExportBottomSheet(appInfo = appInfo, onDismiss = { showExportSheet = false })
+    }
+}
+
+/**
+ * The tabbed detail body: everything below the action row.
+ *
+ * Takes a fully-loaded [DetailedAppInfo] and nothing else, so a host is free to render the header
+ * and actions from a cheap [AppInfo] it already has and only pay for this once the details land.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AppInfoDetailBody(
+    details: DetailedAppInfo,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        // rememberSaveable so the active tab survives rotation / config change.
+        var selectedTab by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(0) }
+        val tabs = listOf(
+            stringResource(R.string.tab_overview_title),
+            stringResource(R.string.tab_components),
+            stringResource(R.string.tab_libs_features),
+            stringResource(R.string.action_permissions)
+        )
+
+        SecondaryScrollableTabRow(
+            selectedTabIndex = selectedTab,
+            containerColor = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.primary,
+            edgePadding = 0.dp,
+            indicator = {
+                TabRowDefaults.SecondaryIndicator(
+                    modifier = Modifier.tabIndicatorOffset(selectedTab),
+                    color = MaterialTheme.colorScheme.primary
+                )
+            },
+            divider = {}
+        ) {
+            tabs.forEachIndexed { index, title ->
+                Tab(
+                    selected = selectedTab == index,
+                    onClick = { selectedTab = index },
+                    text = {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Medium
+                        )
+                    }
+                )
+            }
+        }
+
+        when (selectedTab) {
+            0 -> GeneralTabScreen(details)
+            1 -> ComponentsTabScreen(details)
+            2 -> LibsAndFeaturesTabScreen(details)
+            3 -> PermissionsTabScreen(details.permissions)
         }
     }
 }
