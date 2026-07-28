@@ -439,6 +439,9 @@
     <string name="usage_access_needed_subtitle">读取应用大小以进行按大小排序所需</string>
     <string name="usage_access_needed_title">需要使用情况访问权限</string>
     <string name="usage_access_prompt_body">Thor 需要使用情况访问权限才能读取应用大小。请为 Thor 启用该权限，然后再次选择\"大小\"。您也可以在\"设置 → 权限\"中进行管理。</string>
+    <string name="notification_access">通知</string>
+    <string name="notification_access_granted_subtitle">批量冻结结果将以通知形式显示</string>
+    <string name="notification_access_needed_subtitle">允许通知以查看批量冻结结果</string>
     <string name="open_settings">打开设置</string>
     <string name="freeze_mode">冻结模式</string>
     <string name="suspend_instead_of_freeze">挂起代替冻结</string>

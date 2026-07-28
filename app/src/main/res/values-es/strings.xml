@@ -447,6 +447,9 @@
     <string name="usage_access_needed_subtitle">Necesario para leer el tamaño de las apps al ordenar por tamaño</string>
     <string name="usage_access_needed_title">Acceso de uso necesario</string>
     <string name="usage_access_prompt_body">Thor necesita Acceso de uso para leer el tamaño de las aplicaciones. Actívalo para Thor y luego vuelve a seleccionar \"Tamaño\". También puedes gestionarlo en Ajustes → Permisos.</string>
+    <string name="notification_access">Notificaciones</string>
+    <string name="notification_access_granted_subtitle">Los resultados del congelado masivo se muestran como notificaciones</string>
+    <string name="notification_access_needed_subtitle">Permite las notificaciones para ver los resultados del congelado masivo</string>
     <string name="open_settings">Abrir ajustes</string>
     <string name="freeze_mode">Modo de congelación</string>
     <string name="suspend_instead_of_freeze">Suspender en lugar de congelar</string>

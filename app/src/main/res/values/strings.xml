@@ -199,6 +199,9 @@
     <string name="usage_access_needed_subtitle">Needed to read app sizes for the Size sort</string>
     <string name="usage_access_needed_title">Usage Access needed</string>
     <string name="usage_access_prompt_body">Thor needs Usage Access to read app sizes. Enable it for Thor, then pick \"Size\" again. You can also manage this under Settings → Permissions.</string>
+    <string name="notification_access">Notifications</string>
+    <string name="notification_access_granted_subtitle">Bulk freeze results are shown as notifications</string>
+    <string name="notification_access_needed_subtitle">Allow notifications to see bulk freeze results</string>
     <string name="open_settings">Open settings</string>
 
     <!-- Quick Settings Tile -->

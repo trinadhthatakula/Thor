@@ -481,6 +481,9 @@
     <string name="usage_access_needed_subtitle">مطلوب لقراءة أحجام التطبيقات للفرز حسب الحجم</string>
     <string name="usage_access_needed_title">الوصول إلى بيانات الاستخدام مطلوب</string>
     <string name="usage_access_prompt_body">يحتاج Thor إلى إذن الوصول إلى بيانات الاستخدام لقراءة أحجام التطبيقات. يرجى تفعيله لـ Thor، ثم اختر \"الحجم\" مجددًا. يمكنك أيضًا إدارة هذا تحت الإعدادات ← الأذونات.</string>
+    <string name="notification_access">الإشعارات</string>
+    <string name="notification_access_granted_subtitle">تظهر نتائج التجميد الجماعي كإشعارات</string>
+    <string name="notification_access_needed_subtitle">اسمح بالإشعارات لرؤية نتائج التجميد الجماعي</string>
     <string name="open_settings">فتح الإعدادات</string>
     <string name="freeze_mode">وضع التجميد</string>
     <string name="suspend_instead_of_freeze">التعليق بدلاً من التجميد</string>

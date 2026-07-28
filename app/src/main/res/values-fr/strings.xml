@@ -447,6 +447,9 @@
     <string name="usage_access_needed_subtitle">Nécessaire pour lire la taille des applications pour le tri par Taille</string>
     <string name="usage_access_needed_title">Accès aux données d\'utilisation requis</string>
     <string name="usage_access_prompt_body">Thor a besoin de l\'accès aux données d\'utilisation pour lire la taille des applications. Activez-le pour Thor, puis choisissez de nouveau \"Taille\". Vous pouvez également gérer cela dans Paramètres → Autorisations.</string>
+    <string name="notification_access">Notifications</string>
+    <string name="notification_access_granted_subtitle">Les résultats du gel groupé sont affichés en notifications</string>
+    <string name="notification_access_needed_subtitle">Autorisez les notifications pour voir les résultats du gel groupé</string>
     <string name="open_settings">Ouvrir les paramètres</string>
     <string name="freeze_mode">Mode de congélation</string>
     <string name="suspend_instead_of_freeze">Suspendre au lieu de congeler</string>

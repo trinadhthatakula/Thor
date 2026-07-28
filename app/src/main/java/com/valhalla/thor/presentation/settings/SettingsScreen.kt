@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.presentation.settings
 
+import android.Manifest
 import android.content.Intent
 import android.os.Build
 import androidx.compose.foundation.background
@@ -51,6 +52,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -348,10 +352,15 @@ fun SettingsScreen(
         val usageAccessManager = koinInject<UsageAccessManager>()
         val lifecycleOwner = LocalLifecycleOwner.current
         var usageGranted by remember { mutableStateOf(usageAccessManager.isGranted()) }
+        var notificationsGranted by remember {
+            mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled())
+        }
         DisposableEffect(lifecycleOwner) {
             val observer = LifecycleEventObserver { _, event ->
                 if (event == Lifecycle.Event.ON_RESUME) {
                     usageGranted = usageAccessManager.isGranted()
+                    notificationsGranted =
+                        NotificationManagerCompat.from(context).areNotificationsEnabled()
                 }
             }
             lifecycleOwner.lifecycle.addObserver(observer)
@@ -381,6 +390,34 @@ fun SettingsScreen(
                     }
                 }
             )
+            // API 33+ only: below that, notifications need no runtime permission at all, so a
+            // row here would be a switch the user cannot meaningfully change.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val notificationPermissionLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission()
+                ) { granted -> notificationsGranted = granted }
+
+                SettingsSwitchRow(
+                    icon = R.drawable.frozen,
+                    title = stringResource(R.string.notification_access),
+                    subtitle = if (notificationsGranted) {
+                        stringResource(R.string.notification_access_granted_subtitle)
+                    } else {
+                        stringResource(R.string.notification_access_needed_subtitle)
+                    },
+                    checked = notificationsGranted,
+                    onCheckedChange = {
+                        // Only the system dialog can grant this. Thor never self-grants it,
+                        // even when it holds root/Shizuku: the dialog grants the identical
+                        // capability, and Dhizuku cannot self-grant at all.
+                        if (!notificationsGranted) {
+                            notificationPermissionLauncher.launch(
+                                Manifest.permission.POST_NOTIFICATIONS
+                            )
+                        }
+                    }
+                )
+            }
         }
 
         Spacer(Modifier.height(32.dp))
