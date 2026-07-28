@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit reviews pull requests against the repository's default branch out of the box.
+# Thor's default branch is `master`, but master only ever receives release promotions — every
+# feature and fix PR targets `dev`. Without this file CodeRabbit therefore skipped the reviews
+# that actually matter and only ever saw the release merges.
+language: en-US
+reviews:
+  auto_review:
+    enabled: true
+    # In addition to the default branch, not instead of it.
+    base_branches:
+      - dev

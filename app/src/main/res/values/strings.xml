@@ -199,6 +199,9 @@
     <string name="usage_access_needed_subtitle">Needed to read app sizes for the Size sort</string>
     <string name="usage_access_needed_title">Usage Access needed</string>
     <string name="usage_access_prompt_body">Thor needs Usage Access to read app sizes. Enable it for Thor, then pick \"Size\" again. You can also manage this under Settings → Permissions.</string>
+    <string name="notification_access">Notifications</string>
+    <string name="notification_access_granted_subtitle">Bulk freeze results are shown as notifications</string>
+    <string name="notification_access_needed_subtitle">Allow notifications to see bulk freeze results</string>
     <string name="open_settings">Open settings</string>
 
     <!-- Quick Settings Tile -->
@@ -216,6 +219,12 @@
     </plurals>
     <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
     <string name="tile_freeze_partial_failure" tools:ignore="PluralsCandidate">Froze %1$d/%2$d apps (%3$d failed)</string>
+    <!-- Third result bucket: neither confirmed success nor confirmed failure — the deadline
+         fired before these packages resolved. -->
+    <string name="tile_freeze_incomplete" tools:ignore="PluralsCandidate">Froze %1$d/%2$d apps (%3$d unfinished)</string>
+    <string name="tile_checking">Checking…</string>
+    <string name="tile_freezing">Freezing…</string>
+    <string name="channel_bulk_result_name">Bulk action results</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Freezer Settings</string>
@@ -311,6 +320,9 @@
     </plurals>
     <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
     <string name="tile_unfreeze_partial_failure" tools:ignore="PluralsCandidate">Unfroze %1$d/%2$d apps (%3$d failed)</string>
+    <!-- Unfreeze counterpart of tile_freeze_incomplete: the deadline fired before these
+         packages resolved, so they are neither confirmed done nor confirmed failed. -->
+    <string name="tile_unfreeze_incomplete" tools:ignore="PluralsCandidate">Unfroze %1$d/%2$d apps (%3$d unfinished)</string>
     <string name="error_format">Error: %1$s</string>
     <string name="failed_to_load_apps">Failed to load apps</string>
     <plurals name="removed_from_freezer_success">

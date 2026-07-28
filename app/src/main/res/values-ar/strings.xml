@@ -195,6 +195,10 @@
         <item quantity="other">تم تجميد %1$d تطبيقات</item>
     </plurals>
     <string name="tile_freeze_partial_failure">تم تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
+    <string name="tile_freeze_incomplete">تم تجميد %1$d/%2$d تطبيقات (%3$d لم تكتمل)</string>
+    <string name="tile_checking">جارٍ التحقق…</string>
+    <string name="tile_freezing">جارٍ التجميد…</string>
+    <string name="channel_bulk_result_name">نتائج الإجراءات المجمّعة</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">إعدادات المجمد</string>
@@ -259,6 +263,7 @@
         <item quantity="other">تم إلغاء تجميد %1$d تطبيقات</item>
     </plurals>
     <string name="tile_unfreeze_partial_failure">تم إلغاء تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
+    <string name="tile_unfreeze_incomplete">تم إلغاء تجميد %1$d/%2$d تطبيقات (%3$d لم تكتمل)</string>
     <string name="error_format">خطأ: %1$s</string>
     <string name="failed_to_load_apps">فشل في تحميل التطبيقات</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
@@ -477,6 +482,9 @@
     <string name="usage_access_needed_subtitle">مطلوب لقراءة أحجام التطبيقات للفرز حسب الحجم</string>
     <string name="usage_access_needed_title">الوصول إلى بيانات الاستخدام مطلوب</string>
     <string name="usage_access_prompt_body">يحتاج Thor إلى إذن الوصول إلى بيانات الاستخدام لقراءة أحجام التطبيقات. يرجى تفعيله لـ Thor، ثم اختر \"الحجم\" مجددًا. يمكنك أيضًا إدارة هذا تحت الإعدادات ← الأذونات.</string>
+    <string name="notification_access">الإشعارات</string>
+    <string name="notification_access_granted_subtitle">تظهر نتائج التجميد الجماعي كإشعارات</string>
+    <string name="notification_access_needed_subtitle">اسمح بالإشعارات لرؤية نتائج التجميد الجماعي</string>
     <string name="open_settings">فتح الإعدادات</string>
     <string name="freeze_mode">وضع التجميد</string>
     <string name="suspend_instead_of_freeze">التعليق بدلاً من التجميد</string>

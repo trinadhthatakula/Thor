@@ -6,7 +6,6 @@ package com.valhalla.thor.data.launcher
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -21,16 +20,19 @@ import androidx.core.graphics.createBitmap
 import androidx.core.graphics.drawable.IconCompat
 import androidx.core.graphics.drawable.toBitmap
 import com.valhalla.thor.R
+import com.valhalla.thor.data.freezer.AppFreezeStateReader
+import com.valhalla.thor.data.freezer.BulkFreezeRunner
 import com.valhalla.thor.data.receivers.FreezerShortcutPinnedReceiver
-import com.valhalla.thor.domain.model.FreezerMode
+import com.valhalla.thor.domain.model.BulkOp
+import com.valhalla.thor.domain.model.BulkResult
+import com.valhalla.thor.domain.model.FreezeState
 import com.valhalla.thor.domain.repository.FreezerRepository
-import com.valhalla.thor.domain.repository.PreferenceRepository
-import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.Single
 
@@ -39,8 +41,8 @@ import org.koin.core.annotation.Single
 class FreezerShortcutManager(
     private val context: Context,
     private val freezerRepository: FreezerRepository,
-    private val manageAppUseCase: ManageAppUseCase,
-    private val preferenceRepository: PreferenceRepository,
+    private val bulkFreezeRunner: BulkFreezeRunner,
+    private val stateReader: AppFreezeStateReader,
 ) {
     // App-scoped: bulk work must survive the (finishing) trampoline activity.
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -113,29 +115,70 @@ class FreezerShortcutManager(
         )
     }
 
-    /** Bulk freeze/unfreeze every package in the freezer, off the finishing activity. */
-    fun runBulk(disable: Boolean) {
+    /**
+     * Bulk freeze/unfreeze every package in the freezer, off the finishing activity.
+     *
+     * Returns the run so the caller can await its [BulkResult] and report it. The icon rebuild
+     * is deliberately *not* part of that Deferred: it belongs to this manager's own
+     * process-lifetime scope, so a caller that finishes early never truncates it, and a caller
+     * that awaits does not wait on shortcut bookkeeping it does not care about.
+     */
+    fun runBulk(disable: Boolean): Deferred<BulkResult?> {
+        val op = if (disable) BulkOp.FREEZE else BulkOp.UNFREEZE
+        // Delegate so this shares the tile's candidate filter, Semaphore(5), deadline and
+        // result reporting. It previously ran sequentially and discarded every Result.
+        val run = bulkFreezeRunner.launch(op)
+        scheduleIconRefresh(run)
+        return run
+    }
+
+    // The run this manager has already scheduled an icon refresh for, so repeated taps do not
+    // stack redundant rebuilds. Guarded by the instance monitor; see scheduleIconRefresh.
+    private var refreshScheduledFor: Deferred<BulkResult?>? = null
+
+    /**
+     * Rebuild the pinned per-app shortcut icons once [run] settles — at most once per run.
+     *
+     * The dedupe is not cosmetic. `BulkFreezeRunner.launch` coalesces same-op taps onto one
+     * shared `Deferred`, and the bulk shortcut shows nothing for up to two seconds, so impatient
+     * re-taps are the expected case rather than the exotic one. Without the guard each tap
+     * queues another full rebuild: N concurrent icon decodes over every pinned package, for
+     * byte-identical output. That is the same hazard [pinAppShortcutSuspend] exists to avoid.
+     *
+     * Identity, not equality: a conflicting op returns a *different* Deferred and must get its
+     * own refresh, because it leaves the packages in the opposite state.
+     */
+    @Synchronized
+    private fun scheduleIconRefresh(run: Deferred<BulkResult?>) {
+        if (refreshScheduledFor === run) return
+        refreshScheduledFor = run
         scope.launch {
-            val pinnedIds = pinnedShortcutIds()
-            val updated = mutableListOf<ShortcutInfoCompat>()
-            // Freeze must honor the user's Freezer mode: Suspend mode suspends, Freeze mode disables.
-            val useSuspend = disable &&
-                    preferenceRepository.userPreferences.first().freezerMode == FreezerMode.SUSPEND
-            freezerRepository.getAllPackageNames().forEach { pkg ->
-                when {
-                    disable && useSuspend -> manageAppUseCase.setAppSuspended(pkg, true)
-                    disable -> manageAppUseCase.setAppDisabled(pkg, true)
-                    // Unfreeze must restore suspended apps too, not just re-enable disabled ones.
-                    else -> manageAppUseCase.forceUnfreeze(pkg)
+            try {
+                // Icons follow app state, so wait for the run to settle before rebuilding them.
+                // join() rather than watching runningOp: a fast run can clear that before this
+                // coroutine is even dispatched, and we would then wait forever.
+                run.join()
+                val pinnedIds = pinnedShortcutIds()
+                val updated = freezerRepository.getAllPackageNames()
+                    .filter { FreezerShortcutContract.appShortcutId(it) in pinnedIds }
+                    .mapNotNull { pkg -> appLabel(pkg)?.let { buildAppShortcut(pkg, it) } }
+                if (updated.isNotEmpty()) {
+                    ShortcutManagerCompat.updateShortcuts(context, updated)
                 }
-                // Only apps that actually have a pinned shortcut need a state-following icon refresh;
-                // accumulate them and push ONE updateShortcuts IPC instead of N.
-                if (FreezerShortcutContract.appShortcutId(pkg) in pinnedIds) {
-                    appLabel(pkg)?.let { updated.add(buildAppShortcut(pkg, it)) }
+            } catch (e: CancellationException) {
+                // Never swallow cancellation — it breaks cooperative coroutine cancellation.
+                throw e
+            } catch (e: Exception) {
+                // stateOf (called by buildAppShortcut) catches only NameNotFoundException;
+                // a binder-death RuntimeException would otherwise escape to Android's default
+                // uncaught handler and kill the process. Log and continue.
+                Logger.e("FreezerShortcut", "icon refresh after bulk run failed", e)
+            } finally {
+                // Release the slot under the same monitor, and only if it is still ours: a
+                // conflicting op may already have claimed it for its own run.
+                synchronized(this@FreezerShortcutManager) {
+                    if (refreshScheduledFor === run) refreshScheduledFor = null
                 }
-            }
-            if (updated.isNotEmpty()) {
-                ShortcutManagerCompat.updateShortcuts(context, updated)
             }
         }
     }
@@ -222,7 +265,7 @@ class FreezerShortcutManager(
         ShortcutInfoCompat.Builder(context, FreezerShortcutContract.appShortcutId(packageName))
             .setShortLabel(label)
             .setLongLabel(label)
-            .setIcon(appIcon(packageName, grayscale = isFrozen(packageName)))
+            .setIcon(appIcon(packageName, grayscale = stateReader.stateOf(packageName) == FreezeState.FROZEN))
             .setIntent(
                 trampolineIntent(FreezerShortcutContract.ACTION_LAUNCH)
                     .putExtra(FreezerShortcutContract.EXTRA_PACKAGE, packageName)
@@ -233,17 +276,6 @@ class FreezerShortcutManager(
     private fun updateShortcutIcon(packageName: String) {
         val label = appLabel(packageName) ?: return
         ShortcutManagerCompat.updateShortcuts(context, listOf(buildAppShortcut(packageName, label)))
-    }
-
-    // "Frozen" == the app is disabled OR (in Suspend mode) suspended-but-enabled, so the shortcut
-    // icon greys out in both cases. MATCH_DISABLED_COMPONENTS so we can still read a disabled app;
-    // FLAG_SUSPENDED (API 24+, matches the rest of the app) catches the suspended case.
-    private fun isFrozen(packageName: String): Boolean = try {
-        val info = context.packageManager
-            .getApplicationInfo(packageName, PackageManager.MATCH_DISABLED_COMPONENTS)
-        !info.enabled || (info.flags and ApplicationInfo.FLAG_SUSPENDED) != 0
-    } catch (e: Exception) {
-        false
     }
 
     private fun appLabel(packageName: String): String? = try {

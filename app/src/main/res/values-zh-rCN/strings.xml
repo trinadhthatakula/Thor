@@ -182,6 +182,10 @@
         <item quantity="other">已冻结 %1$d 个应用</item>
     </plurals>
     <string name="tile_freeze_partial_failure">已冻结 %1$d/%2$d 个应用（%3$d 个失败）</string>
+    <string name="tile_freeze_incomplete">已冻结 %1$d/%2$d 个应用（%3$d 个未完成）</string>
+    <string name="tile_checking">正在检查…</string>
+    <string name="tile_freezing">正在冻结…</string>
+    <string name="channel_bulk_result_name">批量操作结果</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">冻结设置</string>
@@ -228,6 +232,7 @@
         <item quantity="other">已解冻 %1$d 个应用</item>
     </plurals>
     <string name="tile_unfreeze_partial_failure">已解冻 %1$d/%2$d 个应用（%3$d 个失败）</string>
+    <string name="tile_unfreeze_incomplete">已解冻 %1$d/%2$d 个应用（%3$d 个未完成）</string>
     <string name="error_format">错误: %1$s</string>
     <string name="failed_to_load_apps">加载应用失败</string>
     <plurals name="removed_from_freezer_success">
@@ -435,6 +440,9 @@
     <string name="usage_access_needed_subtitle">读取应用大小以进行按大小排序所需</string>
     <string name="usage_access_needed_title">需要使用情况访问权限</string>
     <string name="usage_access_prompt_body">Thor 需要使用情况访问权限才能读取应用大小。请为 Thor 启用该权限，然后再次选择\"大小\"。您也可以在\"设置 → 权限\"中进行管理。</string>
+    <string name="notification_access">通知</string>
+    <string name="notification_access_granted_subtitle">批量冻结结果将以通知形式显示</string>
+    <string name="notification_access_needed_subtitle">允许通知以查看批量冻结结果</string>
     <string name="open_settings">打开设置</string>
     <string name="freeze_mode">冻结模式</string>
     <string name="suspend_instead_of_freeze">挂起代替冻结</string>

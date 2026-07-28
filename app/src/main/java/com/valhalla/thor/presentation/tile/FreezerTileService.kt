@@ -4,138 +4,184 @@
 package com.valhalla.thor.presentation.tile
 
 import android.os.Build
-import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
-import android.widget.Toast
 import com.valhalla.thor.R
-import com.valhalla.thor.domain.model.FreezerMode
-import com.valhalla.thor.domain.repository.FreezerRepository
-import com.valhalla.thor.domain.repository.PreferenceRepository
-import com.valhalla.thor.domain.repository.SystemRepository
-import com.valhalla.thor.domain.usecase.ManageAppUseCase
+import com.valhalla.thor.data.freezer.BulkFreezeRunner
+import com.valhalla.thor.data.manager.PrivilegeManager
+import com.valhalla.thor.domain.model.BulkOp
+import com.valhalla.thor.domain.model.BulkResult
+import com.valhalla.thor.util.Logger
+import com.valhalla.thor.util.bulkResultMessage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.android.ext.android.inject
 
+/**
+ * Quick Settings tile that bulk-freezes the freezer watchlist.
+ *
+ * The tile owns no work. [BulkFreezeRunner] is an app-scoped @Single that runs the batch and
+ * publishes its state, so a QS shade collapse destroying this service cannot truncate a
+ * freeze and cannot leave anything retaining the destroyed instance. This service only
+ * observes and paints.
+ *
+ * The retention claim holds unconditionally: [scope] is cancelled in [onStopListening], again
+ * defensively at the top of [onStartListening], and again in [onDestroy] — so no lifecycle
+ * ordering leaves a live collector holding this instance.
+ */
 class FreezerTileService : TileService() {
 
-    private val freezerRepository: FreezerRepository by inject()
-    private val manageAppUseCase: ManageAppUseCase by inject()
-    private val systemRepository: SystemRepository by inject()
-    private val preferenceRepository: PreferenceRepository by inject()
+    private val runner: BulkFreezeRunner by inject()
+    private val privilegeManager: PrivilegeManager by inject()
 
     private var scope: CoroutineScope? = null
 
+    /** The [BulkResult] currently displayed in the subtitle; consumed in [onStopListening]. */
+    private var shownResult: BulkResult? = null
+
     override fun onStartListening() {
-        scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-        scope?.launch { refreshTile() }
+        // Cancel any previous scope before replacing it. The framework does not deliver
+        // onStartListening twice without an intervening onStopListening (TileService.H only
+        // dispatches it when mListening == false, and every path that clears mListening calls
+        // onStopListening in the same breath), so this is not fixing an observed leak. It is
+        // two cheap unconditional lines that make the class KDoc's "nothing retains the
+        // destroyed instance" claim true by construction, instead of true only as long as that
+        // framework detail holds.
+        scope?.cancel()
+        val listenScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        scope = listenScope
+
+        // Phase 1: paint synchronously from whatever is already cached, so the tile is never
+        // blank while the sweep runs. Phase 2 is the collector below, which repaints as the
+        // real state lands.
+        paint()
+
+        listenScope.launch {
+            try {
+                combine(
+                    privilegeManager.state,
+                    runner.freezableCount,
+                    runner.runningOp,
+                    runner.lastResult,
+                ) { _, _, _, _ -> Unit }.collect { paint() }
+            } catch (e: CancellationException) {
+                // CancellationException is an Exception in Kotlin, so it must be rethrown
+                // ahead of the broad catch or the shade closing looks like a crash.
+                throw e
+            } catch (e: Exception) {
+                Logger.e("FreezerTile", "tile state collector failed", e)
+            }
+        }
+
+        // Phase 2: re-derive from live per-app state. The watchlist alone cannot tell us
+        // whether anything is still freezable, which is why the tile used to stay lit after
+        // freezing everything.
+        listenScope.launch {
+            try {
+                runner.refreshFreezableCount()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // This is the one that matters: the sweep does a Room read plus N
+                // PackageManager.getApplicationInfo calls, and AppFreezeStateReader.stateOf
+                // catches only NameNotFoundException. A SQLiteException or a binder-death
+                // RuntimeException would otherwise reach Android's default uncaught handler —
+                // there is no CoroutineExceptionHandler anywhere in :app — and kill the
+                // process straight from the QS shade.
+                Logger.e("FreezerTile", "candidate sweep failed", e)
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        scope?.cancel()
+        scope = null
+        super.onDestroy()
     }
 
     override fun onStopListening() {
         scope?.cancel()
         scope = null
+        // Consume only the result that was actually displayed. Deferred to onStopListening so
+        // the message holds for the full shade-open window and no observer sees the write.
+        shownResult?.let { runner.consumeResult(it) }
+        shownResult = null
     }
 
     override fun onClick() {
-        // appScope (not a service-lifetime scope): collapsing the QS shade destroys this service, so
-        // a bulk freeze pinned to onDestroy()-cancelled work would leave a PARTIAL freeze and skip the
-        // result toast + tile refresh. The process-scoped runner lets the loop finish either way.
-        appScope.launch {
-            val hasPrivilege = withContext(Dispatchers.IO) {
-                systemRepository.isRootAvailable() ||
-                        systemRepository.isShizukuAvailable() ||
-                        systemRepository.isDhizukuAvailable()
-            }
-            if (!hasPrivilege) {
-                Toast.makeText(
-                    applicationContext,
-                    getString(R.string.tile_grant_privilege_toast),
-                    Toast.LENGTH_SHORT
-                ).show()
-                return@launch
-            }
-            val pkgs = withContext(Dispatchers.IO) { freezerRepository.getAllPackageNames() }
-            if (pkgs.isEmpty()) {
-                Toast.makeText(
-                    applicationContext,
-                    getString(R.string.tile_no_apps_toast),
-                    Toast.LENGTH_SHORT
-                ).show()
-                return@launch
-            }
-            // Honor the persisted Freezer mode so the tile stays consistent with the in-app freezer:
-            // Suspend mode suspends, Freeze mode disables (mirrors FreezerViewModel.freezeSingleApp).
-            val suspendMode = withContext(Dispatchers.IO) {
-                preferenceRepository.userPreferences.first().freezerMode == FreezerMode.SUSPEND
-            }
-            // appScope is process-scoped and never cancelled; bound the batch so a wedged/hung shell
-            // can't hang this coroutine forever and leak the FreezerTileService instance + captures.
-            val results = withTimeoutOrNull(30_000L) {
-                pkgs.map { pkg ->
-                    async(Dispatchers.IO) {
-                        if (suspendMode) manageAppUseCase.setAppSuspended(pkg, true)
-                        else manageAppUseCase.setAppDisabled(pkg, true)
-                    }
-                }.awaitAll()
-            }
-            val failures = results?.count { it.isFailure } ?: pkgs.size
-            val msg = if (failures == 0) {
-                resources.getQuantityString(R.plurals.tile_freeze_success, pkgs.size, pkgs.size)
-            } else {
-                getString(
-                    R.string.tile_freeze_partial_failure,
-                    pkgs.size - failures,
-                    pkgs.size,
-                    failures
-                )
-            }
-            Toast.makeText(applicationContext, msg, Toast.LENGTH_SHORT).show()
-            // appScope outlives this service: if the QS shade collapsed mid-freeze the service is no
-            // longer listening (onStopListening set scope = null) and touching qsTile.updateTile()
-            // can throw inside the framework (its binder is gone), so only refresh while still bound.
-            if (scope != null) refreshTile()
-        }
+        // Hand off immediately and synchronously. Nothing about the tap may depend on this
+        // service's scope: the privilege state is often unresolved at tap time (PrivilegeManager
+        // probes on IO and the first DataStore emission may not have landed), and awaiting it
+        // here — on a scope onStopListening cancels — meant that on a cold process, tapping and
+        // then collapsing the shade dropped the freeze silently.
+        //
+        // Nothing is lost by not pre-checking. BulkFreezeRunner.run awaits `isReady` itself and
+        // returns null when there is no privilege, precisely so it does not depend on its
+        // caller having awaited anything; and the NO_PRIVILEGE paint the pre-check used to do
+        // is already driven by the collector in onStartListening, which repaints on every
+        // PrivilegeManager emission. tileVisualFor also orders NO_PRIVILEGE ahead of WORKING,
+        // so a run that is about to no-op cannot flash "Freezing…" on an unprivileged tile.
+        runner.launch(BulkOp.FREEZE)
     }
 
-    private suspend fun refreshTile() {
+    /**
+     * Push the current state onto the tile. The [qsTile] null-check is belt-and-suspenders;
+     * the real protection against post-collapse [android.service.quicksettings.Tile.updateTile]
+     * calls is that [scope] is cancelled in [onStopListening] on the same Main looper, so a
+     * cancelled continuation in the collector can never run its body afterwards.
+     */
+    private fun paint() {
         val tile = qsTile ?: return
-        val hasPrivilege = withContext(Dispatchers.IO) {
-            systemRepository.isRootAvailable() ||
-                    systemRepository.isShizukuAvailable() ||
-                    systemRepository.isDhizukuAvailable()
-        }
-        if (!hasPrivilege) {
-            tile.state = Tile.STATE_UNAVAILABLE
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                tile.subtitle = getString(R.string.tile_no_privilege)
+        // FREEZE only: an Unfreeze-all shortcut running in the background is not this tile's
+        // work, and painting it as "Freezing…" was a lie about which direction it was going.
+        val freezing = runner.runningOp.value == BulkOp.FREEZE
+        val visual = tileVisualFor(
+            privilege = privilegeManager.state.value,
+            freezableCount = runner.freezableCount.value,
+            isRunning = freezing,
+        )
+        val count = runner.freezableCount.value ?: 0
+
+        tile.state = tileStateFor(visual)
+
+        // A finished run's message wins the subtitle for the whole shade-open window.
+        // Record it in shownResult so onStopListening can consume exactly what was displayed.
+        // Writing to shownResult (a plain field, not a flow) does not re-trigger the collector.
+        val result = runner.lastResult.value
+        val subtitle = if (result != null && !freezing) {
+            shownResult = result
+            bulkResultMessage(result).asString(this)
+        } else {
+            when (visual) {
+                TileVisual.CHECKING -> getString(R.string.tile_checking)
+                TileVisual.WORKING -> getString(R.string.tile_freezing)
+                TileVisual.NO_PRIVILEGE -> getString(R.string.tile_no_privilege)
+                TileVisual.NOTHING_TO_FREEZE -> getString(R.string.tile_no_apps)
+                TileVisual.READY ->
+                    resources.getQuantityString(R.plurals.tile_subtitle_format, count, count)
             }
-            tile.updateTile()
-            return
         }
-        val pkgs = withContext(Dispatchers.IO) { freezerRepository.getAllPackageNames() }
-        tile.state = if (pkgs.isEmpty()) Tile.STATE_INACTIVE else Tile.STATE_ACTIVE
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            tile.subtitle = if (pkgs.isEmpty()) {
-                getString(R.string.tile_no_apps)
-            } else {
-                resources.getQuantityString(R.plurals.tile_subtitle_format, pkgs.size, pkgs.size)
-            }
+
+        // Never setLabel: it mutates the tile's identity in the QS picker.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) tile.subtitle = subtitle
+        // contentDescription carries the identity, stateDescription the state — TalkBack reads
+        // them in that order and concatenates them itself. Putting the subtitle in both
+        // announced it twice ("Freezer: 3 apps, 3 apps"), with a hardcoded ": " separator in an
+        // app that ships ar/es/fr/zh.
+        //
+        // Below R there is no stateDescription, so contentDescription is the only channel that
+        // can convey state at all (subtitle itself is Q+). Keep the combined form there rather
+        // than silently dropping the state announcement for TalkBack users on 28-29.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            tile.stateDescription = subtitle
+            tile.contentDescription = getString(R.string.freezer)
+        } else {
+            tile.contentDescription = "${getString(R.string.freezer)}: $subtitle"
         }
         tile.updateTile()
-    }
-
-    private companion object {
-        // Process-scoped (static) so a bulk freeze outlives any single service instance: the QS shade
-        // collapse destroys the tile service, so this must NOT be tied to a service-lifetime scope and
-        // is intentionally never cancelled. SupervisorJob keeps one failed freeze from cancelling the rest.
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     }
 }

@@ -185,6 +185,10 @@
         <item quantity="other">%1$d applications gelées</item>
     </plurals>
     <string name="tile_freeze_partial_failure">%1$d/%2$d applications gelées (%3$d échouées)</string>
+    <string name="tile_freeze_incomplete">%1$d/%2$d applications gelées (%3$d inachevées)</string>
+    <string name="tile_checking">Vérification…</string>
+    <string name="tile_freezing">Gel en cours…</string>
+    <string name="channel_bulk_result_name">Résultats des actions groupées</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Paramètres du congélateur</string>
@@ -234,6 +238,7 @@
         <item quantity="other">%1$d applications dégelées</item>
     </plurals>
     <string name="tile_unfreeze_partial_failure">%1$d/%2$d applications dégelées (%3$d échouées)</string>
+    <string name="tile_unfreeze_incomplete">%1$d/%2$d applications dégelées (%3$d inachevées)</string>
     <string name="error_format">Erreur : %1$s</string>
     <string name="failed_to_load_apps">Échec du chargement des applications</string>
     <plurals name="removed_from_freezer_success">
@@ -443,6 +448,9 @@
     <string name="usage_access_needed_subtitle">Nécessaire pour lire la taille des applications pour le tri par Taille</string>
     <string name="usage_access_needed_title">Accès aux données d\'utilisation requis</string>
     <string name="usage_access_prompt_body">Thor a besoin de l\'accès aux données d\'utilisation pour lire la taille des applications. Activez-le pour Thor, puis choisissez de nouveau \"Taille\". Vous pouvez également gérer cela dans Paramètres → Autorisations.</string>
+    <string name="notification_access">Notifications</string>
+    <string name="notification_access_granted_subtitle">Les résultats du gel groupé sont affichés en notifications</string>
+    <string name="notification_access_needed_subtitle">Autorisez les notifications pour voir les résultats du gel groupé</string>
     <string name="open_settings">Ouvrir les paramètres</string>
     <string name="freeze_mode">Mode de congélation</string>
     <string name="suspend_instead_of_freeze">Suspendre au lieu de congeler</string>
