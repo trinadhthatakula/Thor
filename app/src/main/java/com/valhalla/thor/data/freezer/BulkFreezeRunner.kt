@@ -174,7 +174,16 @@ class BulkFreezeRunner(
     // B-8: returns null when there is nothing to act on, so the caller can skip publishing a
     // misleading BulkResult(0,0,0).
     private suspend fun run(op: BulkOp): BulkResult? {
-        if (!privilegeManager.state.value.hasAnyPrivilege) return null
+        // Await readiness here rather than trusting the caller to have awaited it. PrivilegeState
+        // starts at active = NONE / isReady = false, and hasAnyPrivilege is `active != NONE`, so
+        // the raw snapshot reads false until BOTH the probe and the first DataStore emission have
+        // landed — reading it directly turns a cold-start run into a silent no-op.
+        //
+        // The tile happens to be safe because it awaits `isReady` itself before calling launch()
+        // (it needs the resolved state to paint), but FreezerLaunchActivity's shortcuts run their
+        // own direct probe and call straight through. The runner must not depend on its caller
+        // having awaited anything.
+        if (!privilegeManager.state.first { it.isReady }.hasAnyPrivilege) return null
 
         val watchlist = freezerRepository.getAllPackageNames()
         val targets = freezableCandidates(watchlist, op, stateReader::stateOf)
