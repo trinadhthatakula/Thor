@@ -14,6 +14,7 @@ import android.os.Bundle
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.manager.ExtensionManager
 import com.valhalla.thor.domain.model.isAuthorizedExtensionCaller
+import com.valhalla.thor.domain.model.isFrozen
 import com.valhalla.thor.domain.model.opTargets
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.Logger
@@ -43,6 +44,14 @@ class ExtensionOpsProvider : ContentProvider(), KoinComponent {
     private companion object {
         /** Upper bound for the whole batch of privileged shell ops on the binder thread. */
         const val OP_TIMEOUT_MS = 30_000L
+
+        /**
+         * Both of Thor's freeze mechanics, same pair [com.valhalla.thor.data.freezer.AppFreezeStateReader]
+         * queries with: MATCH_DISABLED_COMPONENTS for a user app frozen with `pm disable`,
+         * MATCH_UNINSTALLED_PACKAGES for a *system* app frozen with `pm uninstall --user N`.
+         */
+        const val MATCH_FLAGS =
+            PackageManager.MATCH_UNINSTALLED_PACKAGES or PackageManager.MATCH_DISABLED_COMPONENTS
     }
 
     override fun onCreate() = true
@@ -107,11 +116,19 @@ class ExtensionOpsProvider : ContentProvider(), KoinComponent {
         return result
     }
 
-    /** True if any of [pkgs] is currently frozen (disabled OR suspended). MATCH_DISABLED so we can read a disabled app. */
+    /**
+     * True if any of [pkgs] is currently frozen — disabled, uninstalled for this user, or suspended.
+     *
+     * MATCH_DISABLED_COMPONENTS alone only saw the `pm disable` half of a freeze. A system app is
+     * frozen with `pm uninstall --user N`, so it is not installed for this user and the lookup threw
+     * NameNotFoundException: an all-system-app target list read as *not* frozen, and `toggle` then
+     * re-froze apps that were already frozen instead of thawing them. A package still missing under
+     * [MATCH_FLAGS] genuinely is not there, so it stays "not frozen".
+     */
     private fun anyFrozen(pm: PackageManager, pkgs: List<String>): Boolean = pkgs.any { pkg ->
         runCatching {
-            val info = pm.getApplicationInfo(pkg, PackageManager.MATCH_DISABLED_COMPONENTS)
-            !info.enabled || (info.flags and ApplicationInfo.FLAG_SUSPENDED) != 0
+            val info = pm.getApplicationInfo(pkg, MATCH_FLAGS)
+            isFrozenAppInfo(info.enabled, info.flags)
         }.getOrDefault(false)
     }
 
@@ -122,3 +139,18 @@ class ExtensionOpsProvider : ContentProvider(), KoinComponent {
     override fun delete(uri: Uri, s: String?, sa: Array<out String>?): Int = 0
     override fun update(uri: Uri, v: ContentValues?, s: String?, sa: Array<out String>?): Int = 0
 }
+
+/**
+ * The frozen verdict for one [ApplicationInfo], taken as (enabled, flags) so it stays a plain JVM
+ * unit under test — a PackageManager cannot be faked in a unit test, and the flag arithmetic is the
+ * half that got this wrong.
+ *
+ * FLAG_INSTALLED stops being optional the moment MATCH_UNINSTALLED_PACKAGES is in the query flags:
+ * the lookup then *succeeds* for a system app uninstalled for this user and reports `enabled == true`,
+ * so skipping the fold would only swap "throws, reads not frozen" for "succeeds, reads not frozen".
+ * Same fold AppFreezeStateReader, AppInfoMapper and AppRepositoryImpl apply.
+ */
+fun isFrozenAppInfo(enabled: Boolean, flags: Int): Boolean = isFrozen(
+    enabled = enabled && (flags and ApplicationInfo.FLAG_INSTALLED) != 0,
+    isSuspended = (flags and ApplicationInfo.FLAG_SUSPENDED) != 0,
+)
