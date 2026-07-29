@@ -408,10 +408,8 @@
     <string name="unlock">Desbloquear</string>
     <string name="thank_you_support_desc">Tu suscripción está activa. ¡Gracias por ayudar a apoyar el desarrollo de Thor!</string>
     
-    <!-- Detailed View & Animation Intensity -->
+    <!-- Details & Animation Intensity -->
     <string name="action_details">Detalles</string>
-    <string name="detailed_view">Vista detallada</string>
-    <string name="detailed_view_desc">Al hacer clic, ir directamente a la pantalla de detalles en lugar de mostrar el diálogo</string>
     <string name="animation_intensity">Intensidad de animación</string>
     <string name="animation_intensity_desc">Controla la velocidad, animaciones y transiciones de navegación</string>
     <string name="animation_intensity_low">Baja</string>

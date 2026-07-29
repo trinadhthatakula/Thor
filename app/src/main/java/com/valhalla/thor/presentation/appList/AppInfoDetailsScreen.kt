@@ -57,7 +57,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import com.valhalla.asgard.components.StatusChip as AsgardStatusChip
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -71,6 +70,7 @@ import com.valhalla.thor.presentation.widgets.AppActionRow
 import com.valhalla.thor.presentation.widgets.AppRiskAction
 import com.valhalla.thor.presentation.widgets.AppRiskDialog
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
+import com.valhalla.thor.presentation.widgets.StatusChip
 import coil3.compose.AsyncImage
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
@@ -594,15 +594,6 @@ private fun AppDetailsHeader(
             }
         }
     }
-}
-
-@Composable
-private fun StatusChip(
-    text: String,
-    color: Color,
-    textColor: Color = MaterialTheme.colorScheme.onSurface
-) {
-    AsgardStatusChip(text = text, containerColor = color, contentColor = textColor)
 }
 
 @Composable

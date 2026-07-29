@@ -41,8 +41,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import com.valhalla.asgard.components.StatusChip as AsgardStatusChip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -62,6 +60,7 @@ import com.valhalla.thor.presentation.appList.AppInfoDetailBody
 import com.valhalla.thor.presentation.appList.AppInfoDetailsViewModel
 import com.valhalla.thor.presentation.appList.ExportBottomSheet
 import com.valhalla.thor.presentation.utils.AppIconModel
+import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
@@ -114,10 +113,18 @@ import org.koin.androidx.compose.koinViewModel
  * the host keeps owning what freezing means and stays the single owner of the "Frozen — Add to
  * Freezer?" prompt.
  *
- * Not wired here, on purpose: the action row's freezer-membership toggle. On the Freezer tab the
- * host derives the selected app from `state.freezerApps`, so removing it from the freezer would
- * yank this sheet out of composition mid-interaction. That wants the host to own membership state;
- * it is not a prerequisite for showing details in-sheet.
+ * Freezer membership is host state, not sheet state: [isInFreezer] and [onToggleFreezerMembership]
+ * pass straight through to [AppActionRow], where a null callback hides the action outright, so a
+ * host that does not track membership offers nothing it cannot honour. The Freezer tab does track
+ * it, and derives the selected app from `state.freezerApps` — removing an app from the freezer
+ * drops it out of that list and takes this sheet with it. That host therefore dismisses on the
+ * spot, so the teardown is its own decision rather than a race with the next emission.
+ *
+ * The membership control is the one action whose *meaning* the host sets rather than just its
+ * effect, and the two hosts disagree today: the Apps tab moves watchlist membership and nothing
+ * else, while the Freezer tab also restores the app on the way out. Each matches the surface it
+ * replaced, so neither is a regression, but one label naming two operations is a product question
+ * rather than a wiring one — written up in `docs/follow-ups/freezer-membership-toggle-semantics.md`.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -126,8 +133,10 @@ fun AppInfoSheet(
     isRoot: Boolean = false,
     isShizuku: Boolean = false,
     isDhizuku: Boolean = false,
+    isInFreezer: Boolean = false,
     onDismiss: () -> Unit,
-    onAppAction: (AppClickAction) -> Unit = {}
+    onAppAction: (AppClickAction) -> Unit = {},
+    onToggleFreezerMembership: (() -> Unit)? = null
 ) {
     // Default enabledValues = {Hidden, PartiallyExpanded, Expanded}. The sheet opens at the partial
     // detent, which material3 pins at min(windowHeight / 2, contentHeight) — there is no peek
@@ -217,6 +226,7 @@ fun AppInfoSheet(
                     isRoot = isRoot,
                     isShizuku = isShizuku,
                     isDhizuku = isDhizuku,
+                    isInFreezer = isInFreezer,
                     onLaunch = {
                         onAppAction(AppClickAction.Launch(appInfo))
                         onDismiss()
@@ -243,6 +253,7 @@ fun AppInfoSheet(
                     },
                     onForceStop = { onAppAction(AppClickAction.Kill(appInfo)) },
                     onManagePermissions = { onAppAction(AppClickAction.ManagePermissions(appInfo)) },
+                    onToggleFreezerMembership = onToggleFreezerMembership,
                     onClearCache = { onAppAction(AppClickAction.ClearCache(appInfo)) },
                     onClearData = { showClearDataConfirmation = true },
                     onFixStore = { showReinstallWarning = true },
@@ -479,13 +490,7 @@ private fun AppHeader(appInfo: AppInfo) {
                 )
             }
             appInfo.bloatRecommendation?.let { recommendation ->
-                val (color, textColor) = when (recommendation.lowercase()) {
-                    "recommended" -> Color(0xFFC8E6C9) to Color(0xFF1B5E20)
-                    "advanced" -> Color(0xFFFFF9C4) to Color(0xFFF57F17)
-                    "expert" -> Color(0xFFFFE0B2) to Color(0xFFE65100)
-                    "unsafe" -> Color(0xFFFFCDD2) to Color(0xFFB71C1C)
-                    else -> MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant
-                }
+                val (color, textColor) = getBloatRecommendationColors(recommendation)
                 StatusChip(
                     text = recommendation,
                     color = color,
@@ -511,14 +516,5 @@ private fun AppHeader(appInfo: AppInfo) {
 
         // UAD Description skipped by user request
     }
-}
-
-@Composable
-private fun StatusChip(
-    text: String,
-    color: Color,
-    textColor: Color = MaterialTheme.colorScheme.onSurface
-) {
-    AsgardStatusChip(text = text, containerColor = color, contentColor = textColor)
 }
 

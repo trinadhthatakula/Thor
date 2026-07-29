@@ -68,7 +68,11 @@ fun AppListScreen(
     icon: Int = R.drawable.thor_mono,
     viewModel: AppListViewModel = koinViewModel(),
     sharedTransitionScope: SharedTransitionScope? = null,
-    onNavigateToAppInfo: (packageName: String, appName: String) -> Unit,
+    // Non-null only when this window actually has a detail pane to push the route into; null means
+    // there is no second pane, so a tap opens AppInfoSheet in place instead. The host decides — see
+    // MainScreen's hasDetailPane, which reads the pane count off the scaffold directive rather than
+    // off a width breakpoint.
+    onNavigateToAppInfo: ((packageName: String, appName: String) -> Unit)? = null,
     // These actions bubble up to MainScreen/HomeViewModel for execution
     onAppAction: (AppClickAction) -> Unit = {},
     onMultiAppAction: (MultiAppAction) -> Unit = {}
@@ -219,7 +223,7 @@ fun AppListScreen(
                         }
                     },
                     onAppInfoSelected = { appInfo ->
-                        if (state.useDetailedView) {
+                        if (onNavigateToAppInfo != null) {
                             onNavigateToAppInfo(appInfo.packageName, appInfo.appName ?: "")
                         } else {
                             selectedPackageForSheet = appInfo.packageName
@@ -255,6 +259,7 @@ fun AppListScreen(
                 isRoot = state.isRoot,
                 isShizuku = state.isShizuku,
                 isDhizuku = state.isDhizuku,
+                isInFreezer = app.packageName in state.freezerPackageNames,
                 onDismiss = { selectedPackageForSheet = null },
                 onAppAction = { action ->
                     when {
@@ -265,7 +270,12 @@ fun AppListScreen(
                         else -> onAppAction(action)
                     }
                     selectedPackageForSheet = null
-                }
+                },
+                // No dismissal here, unlike the Freezer tab: this list is the whole scan, so the app
+                // stays in it either way, and the selection resolves against allUserApps /
+                // allSystemApps rather than a membership-derived list — nothing can yank the sheet
+                // out from under the toggle.
+                onToggleFreezerMembership = { viewModel.toggleFreezerMembership(app.packageName) }
             )
         }
 

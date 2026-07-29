@@ -499,10 +499,8 @@
     <string name="unlock">Unlock</string>
     <string name="thank_you_support_desc">Your subscription is active. Thank you for helping support the development of Thor!</string>
 
-    <!-- Detailed View & Animation Intensity -->
+    <!-- Details & Animation Intensity -->
     <string name="action_details">Details</string>
-    <string name="detailed_view">Detailed View</string>
-    <string name="detailed_view_desc">Click directly to details screen instead of dialog</string>
     <string name="animation_intensity">Animation Intensity</string>
     <string name="animation_intensity_desc">Control navigation animations and transitions</string>
     <string name="animation_intensity_low">Low</string>

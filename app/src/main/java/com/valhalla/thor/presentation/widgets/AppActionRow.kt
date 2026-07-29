@@ -43,7 +43,9 @@ import org.koin.compose.koinInject
  * self-contained, and the two nullable callbacks below, which are genuinely surface-specific:
  *
  * - [onOpenDetails] — meaningless on the details screen itself; pass null there.
- * - [onToggleFreezerMembership] — pass null where freezer membership isn't known.
+ * - [onToggleFreezerMembership] — pass null where freezer membership isn't known. What *leaving* the
+ *   freezer means is the host's to define, and the two hosts define it differently: see
+ *   `docs/follow-ups/freezer-membership-toggle-semantics.md`.
  *
  * A null callback hides its action rather than disabling it; an action that can never do anything
  * useful here is noise, not a hint.

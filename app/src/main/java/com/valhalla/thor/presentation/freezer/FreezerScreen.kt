@@ -436,7 +436,20 @@ fun FreezerScreen(
             isRoot = state.isRoot,
             isShizuku = state.isShizuku,
             isDhizuku = state.isDhizuku,
+            isInFreezer = app.packageName in state.freezerPackageNames,
             onDismiss = { selectedPackageName = null },
+            // Dismissing here is not optional. selectedAppInfo is resolved out of
+            // state.freezerApps, so removing this app from the freezer drops it from that list and
+            // the sheet goes with it on the next emission. Doing it ourselves, now, makes the
+            // teardown deliberate and immediate instead of a race with the flow — and matches
+            // every other action below, which all clear the selection too.
+            onToggleFreezerMembership = {
+                viewModel.toggleManaged(
+                    app.packageName,
+                    add = app.packageName !in state.freezerPackageNames
+                )
+                selectedPackageName = null
+            },
             onAppAction = { action ->
                 when (action) {
                     is AppClickAction.Freeze -> {

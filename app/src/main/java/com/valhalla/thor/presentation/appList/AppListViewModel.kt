@@ -6,6 +6,7 @@ package com.valhalla.thor.presentation.appList
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.data.launcher.FreezerShortcutManager
 import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.data.manager.StorageStatsHelper
 import com.valhalla.thor.data.manager.UsageAccessManager
@@ -59,6 +60,9 @@ data class AppListUiState(
     // Raw Data
     val allUserApps: List<AppInfo> = emptyList(),
     val allSystemApps: List<AppInfo> = emptyList(),
+    // Freezer membership (the watchlist), not freeze state: an app can be frozen without being in
+    // the freezer and vice versa. Drives the sheet's "Add to / Remove from Freezer" action.
+    val freezerPackageNames: Set<String> = emptySet(),
     // Filter State
     val appListType: AppListType = AppListType.USER,
     val filterType: FilterType = FilterType.Source,
@@ -75,7 +79,6 @@ data class AppListUiState(
     // Detail View State
     val selectedAppDetails: AppInfo? = null,
     val isLoadingDetails: Boolean = false,
-    val useDetailedView: Boolean = true,
     val isGrid: Boolean = true,
     val isComputingSizes: Boolean = false,
     // Holds the pull-to-refresh indicator up for a readable minimum. isLoading cannot do this job:
@@ -102,6 +105,7 @@ class AppListViewModel(
     private val manageAppUseCase: ManageAppUseCase,
     private val preferenceRepository: PreferenceRepository,
     private val freezerRepository: FreezerRepository,
+    private val freezerShortcutManager: FreezerShortcutManager,
     private val appRepository: AppRepository,
     private val storageStatsHelper: StorageStatsHelper,
     private val usageAccessManager: UsageAccessManager
@@ -128,7 +132,6 @@ class AppListViewModel(
             sortOrder = prefs.appSortOrder,
             filterType = prefs.appFilterType,
             selectedFilter = prefs.appSelectedFilter,
-            useDetailedView = prefs.useDetailedView,
             isGrid = prefs.appListIsGrid
         )
         processList(mergedState)
@@ -143,6 +146,28 @@ class AppListViewModel(
     init {
         loadApps(deferForTransition = true)
         observeSizeSort()
+        observeFreezerMembership()
+    }
+
+    /**
+     * Mirrors the freezer watchlist into state so the app-info sheet can offer "Add to / Remove from
+     * Freezer" without a per-app `contains()` round trip. This is the only surface offering that
+     * toggle on phones now that the details screen is a wide-window detail pane, and it is a Room
+     * flow, so an add/remove made anywhere else (freezer screen, launcher shortcut) lands here too.
+     */
+    private fun observeFreezerMembership() {
+        viewModelScope.launch {
+            freezerRepository.getAll()
+                .catch { e ->
+                    // Room's Flow throws on a failed query; a membership read failure must not take
+                    // the app list down with it — the sheet just falls back to "not in freezer".
+                    if (e is CancellationException) throw e // preserve structured-concurrency cancellation
+                    Logger.e("AppListViewModel", "freezer membership observation failed", e)
+                }
+                .collect { packages ->
+                    _rawState.update { it.copy(freezerPackageNames = packages.toSet()) }
+                }
+        }
     }
 
     /**
@@ -358,6 +383,37 @@ class AppListViewModel(
             _events.send(
                 AppListEvent.ShowMessage(UiText.StringResource(R.string.added_to_freezer_success))
             )
+        }
+    }
+
+    /**
+     * Freezer watchlist membership, not freeze state — this adds/removes the app from the set the
+     * freezer screen and the bulk freeze paths operate on; it never disables anything itself.
+     *
+     * Reads `contains()` rather than [AppListUiState.freezerPackageNames] so the decision is made
+     * against the database at the moment of the tap, not against a state snapshot the observer may
+     * not have refreshed yet. No state write here either: [observeFreezerMembership] is collecting
+     * the same Room flow and reflects the change on its own.
+     */
+    fun toggleFreezerMembership(packageName: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (freezerRepository.contains(packageName)) {
+                freezerRepository.remove(packageName)
+                // Pinned launcher shortcuts can't be removed silently, only greyed out — leaving a
+                // live shortcut for an app no longer in the freezer would let it drive a freeze
+                // from the launcher.
+                freezerShortcutManager.disableAppShortcut(packageName)
+                _events.send(
+                    AppListEvent.ShowMessage(
+                        UiText.PluralsResource(R.plurals.removed_from_freezer_success, 1)
+                    )
+                )
+            } else {
+                freezerRepository.add(packageName)
+                _events.send(
+                    AppListEvent.ShowMessage(UiText.StringResource(R.string.added_to_freezer_success))
+                )
+            }
         }
     }
 

@@ -68,8 +68,7 @@ class PreferenceRepositoryImpl(
         // Support Developer Prompt
         val HAS_SHOWN_SUPPORT_DEVELOPER_PROMPT = booleanPreferencesKey("has_shown_support_developer_prompt")
 
-        // App Redirection & Animations
-        val USE_DETAILED_VIEW = booleanPreferencesKey("use_detailed_view")
+        // Animations
         val ANIMATION_INTENSITY = stringPreferencesKey("animation_intensity")
 
         // Grid/List View
@@ -181,12 +180,6 @@ class PreferenceRepositoryImpl(
         }
     }
 
-    override suspend fun setDetailedViewEnabled(enabled: Boolean) {
-        context.dataStore.edit {
-            it[Keys.USE_DETAILED_VIEW] = enabled
-        }
-    }
-
     override suspend fun setAnimationIntensity(intensity: AnimationIntensity) {
         context.dataStore.edit {
             it[Keys.ANIMATION_INTENSITY] = intensity.name
@@ -270,7 +263,6 @@ internal fun Preferences.toUserPreferences(): UserPreferences {
         ?.let { runCatching { AnimationIntensity.valueOf(it) }.getOrNull() }
         ?: AnimationIntensity.MEDIUM
 
-    val useDetailedView = prefs[Keys.USE_DETAILED_VIEW] ?: true
     val appListIsGrid = prefs[Keys.APP_LIST_IS_GRID] ?: true
     val freezerIsGrid = prefs[Keys.FREEZER_IS_GRID] ?: true
     val freezerMode = prefs[Keys.FREEZER_MODE]
@@ -294,7 +286,6 @@ internal fun Preferences.toUserPreferences(): UserPreferences {
         addFreezerToLauncher = prefs[Keys.ADD_FREEZER_TO_LAUNCHER] ?: false,
         hasShownDisabledAppsPrompt = prefs[Keys.HAS_SHOWN_DISABLED_APPS_PROMPT] ?: false,
         hasShownSupportDeveloperPrompt = prefs[Keys.HAS_SHOWN_SUPPORT_DEVELOPER_PROMPT] ?: false,
-        useDetailedView = useDetailedView,
         animationIntensity = animationIntensity,
         appListIsGrid = appListIsGrid,
         freezerIsGrid = freezerIsGrid,
