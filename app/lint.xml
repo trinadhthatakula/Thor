@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Severity overrides for Android Lint. app/build.gradle.kts sets warningsAsErrors, so anything left at
+  WARNING here fails the build — keep this file to the checks that are deliberately, permanently
+  exempt, and fix everything else at the source.
+-->
+<lint>
+    <!--
+      VectorPath fires on five paths over lint's 3000-character limit, all of them brand art:
+      drawable/thor_mono.xml (three paths), drawable/thor_drawn_foreground.xml and
+      drawable/dhizuku.xml. #269 already compacted every vector path that could be shortened
+      losslessly; what remains is real curve detail, so lint's two suggestions — drop precision, or
+      rasterise — would either visibly change the logo or break the adaptive/monochrome icon sources,
+      which have to stay vectors.
+
+      Downgraded to informational rather than ignored: this keeps a *newly* oversized path visible in
+      the lint report instead of silently accepting it, while warningsAsErrors only promotes WARNING,
+      so it cannot fail the build.
+    -->
+    <issue id="VectorPath" severity="informational" />
+
+    <!--
+      Both of these report "a newer version of X is available" — GradleDependency on the release
+      variants, NewerVersionAvailable on the debug ones (it also covers plugins, which is how the
+      Koin compiler plugin turned up). That is a notice about the outside world, not a defect in
+      this repo: with warningsAsErrors it turns every upstream release into a red build here, on a
+      commit that changed nothing. The catalog deliberately pins fast-moving pre-release artifacts
+      (AGP 9.4.0-alpha06, material3 1.5.0-alphaNN, navigation3, androidx-adaptive rc), so that is
+      not hypothetical — between adding this block and running lint twice it fired on material3
+      alpha25, navigation3 1.1.5 and koin-compiler 1.1.0.
+
+      Same reasoning that took the Play upload off every master push: a check that goes red when
+      you have done nothing wrong stops being a signal and trains you to ignore red. Dependency
+      currency is a deliberate, reviewed bump, not a build gate.
+
+      Informational rather than ignored, so the upgrade candidates stay listed in the report.
+    -->
+    <issue id="GradleDependency" severity="informational" />
+    <issue id="NewerVersionAvailable" severity="informational" />
+</lint>

@@ -155,6 +155,29 @@ android {
         aidl = true
     }
 
+    lint {
+        // The severity overrides live in lint.xml, not in this block, so the reason for each one
+        // travels with the rule instead of with the build script. AGP would pick app/lint.xml up by
+        // itself; naming it keeps the link visible from here.
+        lintConfig = file("lint.xml")
+
+        // :app is at 0 errors / 0 warnings today (the only warnings, VectorPath, are downgraded in
+        // lint.xml). Enforce that rather than let it rot: a warning is a build failure, and release
+        // variants are checked too.
+        abortOnError = true
+        checkReleaseBuilds = true
+        warningsAsErrors = true
+
+        // Analyse :app's own sources only. :bypass has its own lint task, and with warnings fatal we
+        // do not want this module's result to move because a dependency we do not control changed.
+        checkDependencies = false
+
+        // AGP 9 always writes the HTML/XML/SARIF reports and has deprecated the toggles and *Output
+        // paths, so the only thing left worth asking for is the text report on stdout — otherwise a
+        // CI failure just points at an HTML file nobody can open from the log.
+        printTextReport = true
+    }
+
     packaging {
         dex {
             // Compress dex in generated APKs. dex is otherwise STORED uncompressed (~76% of the
@@ -235,6 +258,13 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
     testImplementation(libs.junit)
+    // Virtual time (`runTest`, `StandardTestDispatcher`) and Flow-emission assertions — without these
+    // every behavioural test of a ViewModel or of BulkFreezeRunner has to sleep in wall-clock, which
+    // is why docs/follow-ups/{viewmodel-behavior-tests,bulk-freeze-runner-concurrency-tests}.md were
+    // filed as blocked. No mocking library: those follow-ups all specify "fake, don't mock", matching
+    // the hand-written fakes the existing suite already uses.
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.turbine)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
@@ -247,6 +277,10 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.navigation3)
     implementation(libs.accompanist.drawablepainter)
     implementation(libs.kotlinx.serialization.json)
+    // :app has ~300 `import kotlinx.coroutines.*` and no direct declaration — they arrive through
+    // Odin's `api(kotlinx-coroutines-android)`. Declared here so Thor pins its own version instead of
+    // silently tracking whatever Odin ships, and so coroutines-test stays on the same 1.11.0.
+    implementation(libs.kotlinx.coroutines.android)
     implementation(libs.lottie.compose)
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
