@@ -62,7 +62,8 @@ class AppModule {
     @Single
     fun extensionDataDao(appDatabase: AppDatabase) = appDatabase.extensionDataDao()
 
-    // RealShellRepository lives in :suCore (com.valhalla.superuser.ktx), outside the scan scope
+    // RealShellRepository comes from the Odin library (com.valhalla.superuser.ktx), outside the
+    // scan scope — the component scan only sees com.valhalla.thor.
     @Single
     fun shellRepository(): ShellRepository = RealShellRepository()
 }
