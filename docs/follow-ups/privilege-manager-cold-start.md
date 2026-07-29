@@ -1,9 +1,13 @@
 # Follow-up: measure `PrivilegeManager`'s cold-start cost
 
-**Status:** Instrumentation landed (debug-only). **Measurement started 2026-07-30 — 2 of 8
-configurations done, see [Measurements taken so far](#measurements-taken-so-far).** Root-granted is
-already **bad** on three signals and bimodal in the shape confound 7 predicts; the remaining six
-configurations still need a real device, which CI cannot provide.
+**Status:** Instrumentation landed. **Measurement started 2026-07-30 — 2 of 8 configurations done,
+see [Measurements taken so far](#measurements-taken-so-far).** Root-granted is **bad** on three
+signals and was bimodal in exactly the shape confound 7 predicted. **Two changes have since landed
+on the strength of that**: the duplicate root probe in `HomeActivity` is gone (§7), and a
+release-shaped `benchmark` build type now carries the trace, so the release spinner window can be
+measured instead of projected. **Both invalidate the config-1 numbers for run-for-run comparison —
+config 1 needs re-running before anything else.** The remaining six configurations still need a real
+device, which CI cannot provide.
 **Severity:** Suspected moderate **on rooted devices** — which inverts the guess this doc was filed
 with. The root probe costs 627–789 ms in 6 of 10 cold starts and ~99% of `probe total`; the
 no-`su` path measured ~10× cheaper.
@@ -219,15 +223,24 @@ configurations against each other** — those comparisons are valid because ever
 together. Do **not** quote `ready sinceProcessStart` as Thor's cold-start figure. For the absolute
 figure, run `am start -W` against a release build, where the trace prints nothing.
 
-### 7. Known confound: `HomeActivity` probes root independently
+### 7. ~~Known confound: `HomeActivity` probes root independently~~ — REMOVED 2026-07-30
 
-`HomeActivity.onResume()` calls `systemRepository.isRootAvailable()` directly
-(`HomeActivity.kt:108`), racing `PrivilegeManager`'s own root probe. Both land on Odin's cached,
-synchronized shell: **whichever gets there first pays for shell init and the other returns almost
-instantly.** So a `root=4ms` line does not prove the root probe is cheap — it may mean `onResume`
-already paid, off-trace. Cross-check against `ready sinceProcessStart`; if `ready` is large while
-every tier is small, the cost is real and is being attributed to the untraced caller. (The auto-freeze
-path also probes all three, but only from its screen-off receiver, so it is not on the start path.)
+`HomeActivity.onResume()` used to call `systemRepository.isRootAvailable()` directly, racing
+`PrivilegeManager`'s own root probe. Both landed on Odin's cached, synchronized shell: **whichever
+got there first paid for shell init and the other returned almost instantly** — which is precisely
+the 62-85 ms / 627-789 ms split with nothing in between that configuration 1 measured.
+
+It now reads `privilegeManager.state.first { it.isReady }` instead, so there is exactly one root
+probe per cold start and it is the traced one. (The auto-freeze path also probes all three, but only
+from its screen-off receiver, so it was never on the start path.)
+
+⚠️ **Expect this to make the numbers look *worse*, and do not treat that as a regression.** The
+duplicate was not adding work — it was *stealing* it. In the runs where `onResume` won the race,
+`PrivilegeManager` found the shell already built and reported 62-85 ms while the user still waited
+the full ~700 ms, paid off-trace by the untraced caller. With one caller left, every cold start
+should report the true cost and the distribution should collapse to **unimodal, near the old slow
+mode**. That is the measurement becoming honest, not the app becoming slower. If the fast mode
+survives the change, the race was not the cause and this section is wrong — say so and re-open it.
 
 ## What a bad result looks like
 
@@ -300,6 +313,10 @@ data cannot yet settle is which side pays in the *fast* mode — a fast `root=` 
 (508 ms) is consistent both with "shell init was genuinely cheap that run" and with "`onResume`
 paid ~700 ms in parallel, off-trace, without delaying `ready`". Distinguishing them needs
 `HomeActivity.kt:108` instrumented too, or removed.
+
+**Removed, 2026-07-30** (see §7). These ten runs are therefore the *last* measurement taken with two
+competing probes, and the table above should not be compared run-for-run against anything measured
+after that change — only against itself.
 
 **Odin's 10 s `SHELL_INIT_TIMEOUT_MS` was never reached** — max tier 789 ms. The hang class described
 above did not appear in this run.
@@ -419,22 +436,48 @@ per-tier numbers and `ready sinceProcessStart` cannot be obtained from a stock r
 `am start -W` is the only cold-start signal release exposes, and it ends at first frame — before the
 privilege state exists (§5).
 
-**To measure the projection above rather than infer it**, the minimal honest change is a third build
-type that inherits release's `isMinifyEnabled`/`isShrinkResources`/signing but enables the trace via
-its own `buildConfigField` (e.g. `PRIVILEGE_TRACE`), with `PrivilegeProbeTrace.start()` gated on that
-field instead of `BuildConfig.DEBUG`. A new build type does not alter the `fossRelease` variant's
-inputs, so FOSS reproducibility is unaffected — unlike baseline profiles, which is a different
-concern and stays excluded.
+#### The `benchmark` build type — added 2026-07-30, use this instead
 
-⚠️ **That recipe alone produces a silent build.** `PrivilegeProbeTrace` emits through
-`Logger.d` (`PrivilegeProbeTrace.kt:54` and `:86`), and `Logger` gates every level on `isDebug`,
-which `ThorApplication.kt:67` sets from `BuildConfig.DEBUG` — still `false` in anything derived from
-release. Ungating the trace without also forcing `Logger.isDebug = true` for that build type yields a
-build that computes the timings and prints none of them, which looks exactly like a probe that never
-ran. Both switches, or neither. (Same root cause as
-[release builds emit no Thor logcat](release-builds-emit-no-thor-logcat.md).)
+So the projection above can be **measured rather than inferred**, there is now a third build type:
 
-**Not done: this is a build-config change beyond a measurement task, and it is the owner's call.**
+```
+./gradlew assembleStoreBenchmark
+# app/build/outputs/apk/store/benchmark/app-store-benchmark.apk
+```
+
+`benchmark` does `initWith(release)` — same `isMinifyEnabled`, `isShrinkResources`, ProGuard files
+and release signing, so it runs at the same compilation tier — and turns the trace back on. Two
+switches, because one is not enough:
+
+| Switch | Where | Why it is needed |
+|---|---|---|
+| `BuildConfig.PRIVILEGE_TRACE` | `defaultConfig` false, `debug` + `benchmark` true | decides whether the timings are **taken**. `PrivilegeProbeTrace.start()` now folds on this, not on `BuildConfig.DEBUG`, which is false in anything derived from release |
+| `Logger.isDebug` | `ThorApplication.kt`, `DEBUG \|\| PRIVILEGE_TRACE` | decides whether they are **printed**. `Logger` gates every level including `e`, so ungating only the trace yields a build that measures everything and logs nothing — indistinguishable from a probe that never ran |
+
+**It is confined to the store flavour.** Build types and flavours are a cross product, so declaring
+`benchmark` would also have created `fossBenchmark`; an `androidComponents.beforeVariants` block
+disables that variant, leaving `storeBenchmark` as the only one. The foss flavour keeps exactly the
+two variants it always had — verified: 97 `storeBenchmark` tasks exist and **zero** `fossBenchmark`
+tasks do, with `assembleFoss{,Debug,Release,DebugAndroidTest,DebugUnitTest}` unchanged. Nothing in
+the benchmark configuration is reachable from `fossRelease`, so IzzyOnDroid reproducibility cannot be
+affected by it.
+
+**No `applicationIdSuffix`, on purpose.** It installs over `com.valhalla.thor` with the same package
+name and release signature, so the Magisk/KernelSU/Shizuku grants that package already holds carry
+over. KernelSU Next has no request mode, so a separate application id would mean granting root by
+hand before every session. `versionNameSuffix = "-benchmark"` is what tells them apart on-device.
+The trade is that it replaces an installed release build — reinstall the real one afterwards.
+
+Verified in the emitted artifacts rather than assumed:
+
+```
+app-store-benchmark.apk : dex=1  ThorPrivPerf=1  logmsgs=2   <- traced, and release-shaped
+app-foss-release.apk    : dex=1  ThorPrivPerf=0  logmsgs=0   <- still folds out completely
+BuildConfig.PRIVILEGE_TRACE: foss/debug=true  foss/release=false  store/benchmark=true
+```
+
+CI is unaffected: `pr-ci.yml` runs `assembleFossDebug`, `testFossDebugUnitTest` and
+`lintStoreRelease`, none of which touch the new variant.
 
 ### What this run does not establish
 
@@ -488,17 +531,25 @@ numbers first.**
   through `monkey`, so no `LaunchState` line exists. Re-run with `am start -W -n`.
 - A one-line verdict per configuration: within budget / investigate / bad, and if any is "bad", which
   lever above it points at. → **config 1 is bad**, and it points at **lever 5 + confound 7 first**:
-  the remaining serialization is Odin's `@Synchronized MainShell.get()`, and Thor has *two* callers
-  racing it on every cold start. Removing the duplicate probe in `HomeActivity.onResume()` is the
-  change to price before lever 1 (drop the `isReady` gate) or lever 3 (warm it in
-  `ThorApplication.onCreate`), because until there is one caller, neither can be measured honestly.
+  the remaining serialization is Odin's `@Synchronized MainShell.get()`. ✅ **Confound 7 is now
+  removed** — `HomeActivity` reads `PrivilegeManager`'s result instead of probing independently, so
+  there is one caller. Lever 1 (drop the `isReady` gate) and lever 3 (warm it in
+  `ThorApplication.onCreate`) can now be priced honestly, which they could not be before.
 - The instrumentation stays in — it is free in release and this measurement will need repeating
   after any change to the probe chain or to Odin's shell init.
 
 ### Next session, in order
 
-1. Instrument or delete `HomeActivity.kt:108`'s independent `isRootAvailable()` call, then re-run
-   config 1. This is the one measurement that turns the bimodality from a hypothesis into a cause.
-2. Re-run config 1 with `am start -W -n` and the warm-up discards, so the numbers satisfy §1 and §2.
-3. Run config 8 (non-rooted, no Shizuku, no Dhizuku) — the floor the whole comparison rests on.
-4. Then 2, 4, 5, 6, 7.
+Two of the three blockers this list opened with are cleared. What remains is device time.
+
+1. ~~Instrument or delete `HomeActivity.kt:108`'s independent `isRootAvailable()` call~~ — **done**,
+   §7. **Re-run config 1 and check the shape first**: the prediction is unimodal near the old *slow*
+   mode (~700 ms), because the fast mode was the duplicate stealing the shell init, not the probe
+   being cheap. If the fast mode survives, the race was not the cause and §7 needs re-opening.
+2. Re-run with `am start -W -n` and warm-up discards so the numbers satisfy §1 and §2.
+3. ~~Build a release-shaped traced build~~ — **done**, `assembleStoreBenchmark`. Run config 1 on it
+   and read the spinner window directly (`ready sinceProcessStart` minus `TotalTime`) instead of
+   projecting it. This is the number that decides whether #22 is a real user-visible defect: the
+   projection says ~579 ms, over budget, and the projection is the weakest link in the whole doc.
+4. Run config 8 (non-rooted, no Shizuku, no Dhizuku) — the floor the whole comparison rests on.
+5. Then 2, 4, 5, 6, 7.

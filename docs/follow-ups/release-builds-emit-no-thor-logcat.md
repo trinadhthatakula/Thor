@@ -70,14 +70,18 @@ So this is filed as a decision, not a defect.
    `Logger.isDebug = true` for the session. Turns "send me a logcat" into a supportable request
    without leaking by default. Costs a preference, a Settings row, and the same call-site audit as
    (2) if it is to be safe to share.
-4. **A separate `benchmark`/`diagnostic` build type.** `initWith(release)` plus
-   `isDebuggable = true`, its own `buildConfigField`, and an explicit `Logger.isDebug = true` — note
-   that `initWith(release)` alone is **not** enough, because the flag reads `BuildConfig.DEBUG`,
-   which stays false. This is also what #22 needs to measure a release-shaped build's privilege
-   probe, so options (4) and the #22 work share an implementation. Do not build it for logging alone.
+4. ~~**A separate `benchmark`/`diagnostic` build type.**~~ **This already exists** — added
+   2026-07-30 for #22. `storeBenchmark` is `initWith(release)` with
+   `buildConfigField("boolean", "PRIVILEGE_TRACE", "true")`, and `ThorApplication` sets
+   `Logger.isDebug = BuildConfig.DEBUG || BuildConfig.PRIVILEGE_TRACE` — both switches, because
+   `initWith(release)` alone is **not** enough: the flag reads `BuildConfig.DEBUG`, which stays
+   false. So a full-logging release-shaped build is one `./gradlew assembleStoreBenchmark` away
+   today. It is confined to the store flavour and never distributed, which means it solves
+   *reproduction*, not *field diagnosis* — you cannot ask a user to install it. It does not close
+   this item.
 
-Option 2 is the smallest thing that removes the actual gap. Option 4 is the one to reach for if #22's
-measurement work goes ahead, since it pays for itself twice.
+Option 2 is the smallest thing that removes the actual gap, and option 4 has already been built for
+another reason, so the remaining question is only about what a **shipped** build should say.
 
 ## Acceptance
 

@@ -12,7 +12,8 @@ import java.util.concurrent.atomic.AtomicLongArray
 enum class PrivilegeProbeTier { ROOT, SHIZUKU, DHIZUKU }
 
 /**
- * Debug-only stopwatch for one privilege probe run.
+ * Stopwatch for one privilege probe run, compiled in only where `BuildConfig.PRIVILEGE_TRACE` is
+ * set — the `debug` and `benchmark` build types.
  *
  * The app deliberately holds its loaders until the first probe lands (`isLoading = !priv.isReady`
  * in AppListViewModel/FreezerViewModel) so privileged controls never flash disabled, which puts
@@ -25,9 +26,15 @@ enum class PrivilegeProbeTier { ROOT, SHIZUKU, DHIZUKU }
  * tier is timed inside the coroutine that already runs it ([timeProbe] is `inline`), so what is
  * measured is what ships.
  *
- * Zero-cost in release: [start] is `inline` and `BuildConfig.DEBUG` is a compile-time `false`
- * there, so the trace folds to `null`, [timeProbe] collapses to a bare `block()`, and no clock is
- * read, no array allocated and no message string built.
+ * Zero-cost in release: [start] is `inline` and `BuildConfig.PRIVILEGE_TRACE` is a compile-time
+ * `false` there, so the trace folds to `null`, [timeProbe] collapses to a bare `block()`, and no
+ * clock is read, no array allocated and no message string built.
+ *
+ * The gate is `PRIVILEGE_TRACE` and not `BuildConfig.DEBUG` so that `benchmark` — which is
+ * release-shaped, and therefore has `DEBUG == false` — can still be measured. Note that the flag
+ * only decides whether the timings are *taken*; whether they are *printed* is
+ * `Logger.isDebug`, which `ThorApplication` wires to the same field for exactly this reason.
+ * Ungating one without the other yields a build that measures everything and logs nothing.
  *
  * Monotonic clock only. A wall-clock read straddling an NTP step produces a negative or absurd
  * duration, which is worse than no measurement because it still looks like data.
@@ -66,10 +73,12 @@ class PrivilegeProbeTrace(private val runStartedAtMs: Long) {
 
         /** `null` — and therefore compiled out along with every call it feeds — outside debug. */
         // Inlined for constant folding, not for call overhead: only at the call site can the
-        // compiler see `BuildConfig.DEBUG == false`, prove `trace` is null and drop the rest.
+        // compiler see `BuildConfig.PRIVILEGE_TRACE == false`, prove `trace` is null and drop the
+        // rest.
         @Suppress("NOTHING_TO_INLINE")
         inline fun start(): PrivilegeProbeTrace? =
-            if (BuildConfig.DEBUG) PrivilegeProbeTrace(SystemClock.elapsedRealtime()) else null
+            if (BuildConfig.PRIVILEGE_TRACE) PrivilegeProbeTrace(SystemClock.elapsedRealtime())
+            else null
 
         /**
          * The number cold start actually waits on: process start -> first `isReady`.

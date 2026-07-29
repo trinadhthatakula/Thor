@@ -88,6 +88,13 @@ android {
         ndk {
             debugSymbolLevel = "SYMBOL_TABLE"
         }
+
+        // Startup-timing instrumentation switch, read by PrivilegeProbeTrace and by
+        // ThorApplication's Logger.isDebug wiring. Off by default so `release` inherits false and
+        // stays silent; `debug` and `benchmark` turn it back on below. It exists as its own field
+        // rather than reusing BuildConfig.DEBUG because the benchmark build type is release-shaped,
+        // so BuildConfig.DEBUG is false there and the trace would compile out again.
+        buildConfigField("boolean", "PRIVILEGE_TRACE", "false")
     }
 
     signingConfigs {
@@ -127,6 +134,27 @@ android {
         debug {
             isMinifyEnabled = false
             applicationIdSuffix = ".debug"
+            buildConfigField("boolean", "PRIVILEGE_TRACE", "true")
+        }
+
+        // Release-shaped build for on-device startup measurement, and nothing else. It exists
+        // because the numbers that matter cannot be taken from either shipping build type: `debug`
+        // runs at a different compilation tier (run-from-apk vs speed-profile) so its timings do
+        // not transfer, and `release` compiles the trace out entirely.
+        //
+        // Never distributed. It is restricted to the store flavour below, so the foss variant's
+        // inputs are untouched and IzzyOnDroid reproducibility cannot be affected by anything here.
+        //
+        // No applicationIdSuffix on purpose: it installs over the release build, keeping the same
+        // package name and signature, so the Magisk/KernelSU/Shizuku grants already given to
+        // `com.valhalla.thor` carry over. KernelSU Next has no request mode, so a new application id
+        // would mean granting root by hand again before every measurement session. The
+        // versionNameSuffix is what tells the two apart on-device.
+        create("benchmark") {
+            initWith(getByName("release"))
+            versionNameSuffix = "-benchmark"
+            matchingFallbacks += "release"
+            buildConfigField("boolean", "PRIVILEGE_TRACE", "true")
         }
     }
 
@@ -202,6 +230,19 @@ android {
 }
 
 androidComponents {
+    // 0. Confine the benchmark build type to the store flavour.
+    //
+    // Build types and flavours are a cross product in AGP, so declaring `benchmark` would otherwise
+    // create `fossBenchmark` as well as `storeBenchmark`. Disabling the foss half here means the
+    // foss flavour has exactly the two variants it always had and no task, artifact or input of the
+    // reproducible `fossRelease` build can be reached from the benchmark configuration at all.
+    // storeBenchmark is the only benchmark variant, and it is never published.
+    beforeVariants(
+        selector().withBuildType("benchmark").withFlavor("distribution", "foss")
+    ) { variantBuilder ->
+        variantBuilder.enable = false
+    }
+
     // 1. Existing FOSS Copy Task
     onVariants(selector().withFlavor("distribution", "foss")) { variant ->
         // foss ships as a single universal APK (GitHub direct download), so every locale lands in

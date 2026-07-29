@@ -61,7 +61,8 @@ class PrivilegeManager(
         Shizuku.addRequestPermissionResultListener(permissionResultListener)
 
         scope.launch {
-            // Debug-only cold-start marker. Every later emission (refresh, preference change) also
+            // Cold-start marker, present only in traced builds. Every later emission (refresh,
+            // preference change) also
             // carries isReady = true, so the first one has to be latched; a collector-local flag
             // rather than re-reading _state, which would race a concurrent refresh() emission.
             var firstReadyLogged = false
@@ -82,7 +83,7 @@ class PrivilegeManager(
                 _state.value = newState
                 // Logged after publishing, because it is the publish that releases the loaders
                 // every isLoading = !priv.isReady consumer is holding.
-                if (BuildConfig.DEBUG && !firstReadyLogged && newState.isReady) {
+                if (BuildConfig.PRIVILEGE_TRACE && !firstReadyLogged && newState.isReady) {
                     firstReadyLogged = true
                     PrivilegeProbeTrace.logFirstReady(newState.active.name)
                 }
