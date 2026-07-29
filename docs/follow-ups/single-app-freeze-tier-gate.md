@@ -45,9 +45,11 @@ consolidation into `FreezePolicy.kt` fixed the *predicate* duplication. It did n
 
 Every caller is gated. Traced 2026-07-29:
 
-- `AppInfoDialog.kt` — `onFreezeToggle` only sets `showFreezeConfirmation` when
-  `shouldFreeze && appInfo.isSystem`; the dialog is the only other constructor of
-  `AppClickAction.Freeze`, and it has no confirm button when blocked.
+- `AppInfoSheet.kt:238` — `onFreezeToggle` only sets `showFreezeConfirmation` when
+  `shouldFreeze && appInfo.isSystem`; the sheet is the only remaining constructor of
+  `AppClickAction.Freeze`, and `AppRiskDialog` has no confirm button when blocked. (This was
+  `AppInfoDialog.kt` when the follow-up was filed; the unified-sheet branch deleted that file and
+  moved the gate here unchanged.)
 - `AppInfoDetailsScreen.kt` — the same gate, same dialog.
 - `ManageFreezerSheet.kt` — `if (!inFreezer && tier != FreezeTier.NORMAL) pendingApp = app`, and
   `tier != NORMAL` implies `isSystem` by construction (`freezeTierOf` opens with
@@ -56,6 +58,24 @@ Every caller is gated. Traced 2026-07-29:
 So: no reachable path today. The exposure is that a fourth surface — a new shortcut, an extension
 trigger, an automation intent, a widget — reaches for `freezeApp(packageName, …)` because that is
 the obvious entry point, and inherits nothing.
+
+### Not this: the *membership* adds, which were a live bug and are now fixed
+
+Adding an app to the freezer watchlist is a different action from freezing it, and it had the same
+gap for real. `FreezerViewModel.toggleManaged` checked the tier; `AppListViewModel`
+`.toggleFreezerMembership` and `AppInfoDetailsViewModel.addOrRemoveFromFreezer` did not, so the
+snowflake on the Apps tab and on the details screen would happily put a BLOCKED system app on the
+watchlist that the Freezer tab's own manage sheet refuses. Every bulk run then silently skipped it —
+the app just sat there looking managed.
+
+That was latent behind the `useDetailedView` setting until the unified-sheet branch made the
+snowflake part of the default tap path, so it was fixed there: all three now resolve the `AppInfo`,
+refuse on `BLOCKED`, fail closed when it cannot be resolved, and emit `R.string.error_unsafe_skipped`.
+Removal is deliberately never gated, so anything that got on the list before the gate can still get
+off it.
+
+That is option 1 applied to the membership paths — three copies of the same block, which is exactly
+the argument for doing the freeze paths as option 2 rather than making it six.
 
 ## Fix
 

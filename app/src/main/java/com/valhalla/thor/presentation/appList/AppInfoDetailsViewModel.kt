@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
 import com.valhalla.thor.data.launcher.FreezerShortcutManager
 import com.valhalla.thor.domain.model.DetailedAppInfo
+import com.valhalla.thor.domain.model.FreezeTier
+import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
@@ -221,6 +223,15 @@ class AppInfoDetailsViewModel(
                 _uiState.update { it.copy(isInFreezer = false) }
                 _events.send(UiText.PluralsResource(R.plurals.removed_from_freezer_success, 1))
             } else {
+                // Same BLOCKED gate as FreezerViewModel.toggleManaged and
+                // AppListViewModel.toggleFreezerMembership — three surfaces reach the watchlist and
+                // all three have to agree, or the answer just depends on which one you tapped.
+                // Fails closed while details are still loading: an unknown tier is not a safe tier.
+                val app = _uiState.value.detailedInfo?.appInfo
+                if (app == null || app.freezeTier == FreezeTier.BLOCKED) {
+                    _events.send(UiText.StringResource(R.string.error_unsafe_skipped))
+                    return@launch
+                }
                 freezerRepository.add(packageName)
                 _uiState.update { it.copy(isInFreezer = true) }
                 _events.send(UiText.StringResource(R.string.added_to_freezer_success))

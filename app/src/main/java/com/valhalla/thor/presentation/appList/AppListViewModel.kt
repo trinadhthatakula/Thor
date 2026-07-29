@@ -394,6 +394,9 @@ class AppListViewModel(
      * against the database at the moment of the tap, not against a state snapshot the observer may
      * not have refreshed yet. No state write here either: [observeFreezerMembership] is collecting
      * the same Room flow and reflects the change on its own.
+     *
+     * Adding is gated on [FreezeTier]; removing never is, so an app that got onto the watchlist
+     * before the gate existed can always be taken back off.
      */
     fun toggleFreezerMembership(packageName: String) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -409,6 +412,23 @@ class AppListViewModel(
                     )
                 )
             } else {
+                // Same BLOCKED gate as FreezerViewModel.toggleManaged, and for the same reason: the
+                // watchlist is the input to every bulk-freeze surface, so letting an unsafe app in
+                // means the snowflake lights up and the app sits in the freezer list forever while
+                // every run silently skips it. Refusing the add is the honest answer.
+                //
+                // Resolved against _rawState, not the filtered uiState: a search or filter that
+                // hides the app must not turn into "not found" and, via the fail-closed branch
+                // below, a refusal.
+                val app = (_rawState.value.allUserApps + _rawState.value.allSystemApps)
+                    .firstOrNull { it.packageName == packageName }
+                if (app == null || app.freezeTier == FreezeTier.BLOCKED) {
+                    // Fail closed on an unresolvable package: an unknown tier is not a safe tier.
+                    _events.send(
+                        AppListEvent.ShowMessage(UiText.StringResource(R.string.error_unsafe_skipped))
+                    )
+                    return@launch
+                }
                 freezerRepository.add(packageName)
                 _events.send(
                     AppListEvent.ShowMessage(UiText.StringResource(R.string.added_to_freezer_success))
