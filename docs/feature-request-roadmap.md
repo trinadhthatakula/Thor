@@ -26,9 +26,11 @@
 **Shipped since this document was written but not tracked by any issue:** the Freezer QS tile
 rework (PRs #284 / #286 / #287), the Shizu CoreFetch store manifest (#280), the app-list refresh
 timing fix (#278), the `longVersionCode` truncation fix (#277), installer downgrade detection
-(#276), the portable-installer theme fix (#273), Odin Phase 3 (#266), the release-only suspend R8
-fix (#265), and the unified app-info sheet (#288, in review). That is where the last four weeks
-went — the feature backlog below barely moved because the work was elsewhere.
+(#276), the portable-installer theme fix (#273), Odin Phase 3 (#266), and the release-only suspend
+R8 fix (#265). That is where the last four weeks went — the feature backlog below barely moved
+because the work was elsewhere.
+
+**In review, not yet merged:** the unified app-info sheet (#288) and this refresh (#289).
 
 ---
 
@@ -53,7 +55,11 @@ went — the feature backlog below barely moved because the work was elsewhere.
 
 ## Sequencing
 
-**🟢 Do first (~1 week):** **#164b** (`.xapk` writer — half a day, closes a public promise and lets #164 be closed) → **#55a** (freeze profiles) → **#161** (Samsung My Files) → **#285** (permission filter). All lean on existing infra and carry no feasibility risk.
+**🟢 Do first (~1 week):** **#164b** (`.xapk` writer — half a day, closes a public promise and lets #164 be closed) → **#55a** (freeze profiles) → **#161** (Samsung My Files) → **#285** (permission filter). All lean on existing infra and are low-risk — with one caveat:
+**#285's estimate is pending scope validation.** It is only a UI change if the permission data it
+filters on is already available where the list is built; if it has to be read per app at list time,
+or cached, that is a Room schema change and a different size of job. Settle that question before
+committing to the 1–2 d figure.
 
 **🟡 High-value bets (scope carefully):**
 - **#51 backup** — highest *impact* (4), a genuine differentiator, and the **oldest unkept promise in the README**. Ship **phased**: phase 1 (APK-only backup to a SAF location) is now roughly a day, because #164's picker, remembered destination and writers already exist; root data backup is a separate 5–8 d effort; skip bespoke phone-to-phone transport (the exported file already rides the share sheet). Pair phase 1 with `.xapk` export — same code, same session.
@@ -72,7 +78,7 @@ went — the feature backlog below barely moved because the work was elsewhere.
 - **Left (#164b):** `.xapk` output. `ApksMetadataGenerator` already produces the XAPK `manifest.json` for the *share* path, and Thor can already *install* an APKPure `.xapk` (`15f57d6d`), so the writer is the only missing piece — call it half a day. It was promised explicitly in-thread ("`.xapk` export specifically is planned"), so leaving it undone is a visible broken promise rather than a silent gap.
 - **Also unbuilt (deliberately):** the raw split-folder output and a user-facing format picker. Thor chooses the format from the app's shape, which is the better default; a picker is only worth adding once `.xapk` gives it a third option.
 - **Risks:** none hard. System/protected apps degrade without root (consistent with the app). OBB export stays out of scope.
-- **Verify with a round trip:** export → reinstall through Thor's own installer. A writer that produces a file nothing can read is the only real failure mode here.
+- **Verify with more than a round trip:** installability is necessary but not sufficient. Export → reinstall through Thor's own installer *and* a third-party one, then also check the two failure shapes a successful install would hide: a bundle whose OBB assets are silently absent, and split contents/metadata a different reader rejects. See `docs/follow-ups/app-data-backup-and-xapk-export.md`.
 
 ### #55a — Freeze profiles · 🟢 · 2–3 d · impact 3
 - **What:** named groups of apps you can freeze/unfreeze on demand.

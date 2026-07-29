@@ -24,7 +24,7 @@ Files:
 
 `AppBundleBuilderImpl.build` already writes **both** manifests into every split bundle it produces:
 
-```
+```text
 :80  val metadataFile = File(tempSplitDir, "metadata.json")
 :81  apksMetadataGenerator.generateJson(appInfo, metadataFile)
 :84  val manifestFile = File(tempSplitDir, "manifest.json")
@@ -54,12 +54,27 @@ missing work is a choice and a filename, not a format.
 explain string rather than shipping a bundle that silently loses game data — an XAPK missing its OBB
 looks valid and fails at play time, which is the worst failure shape available here.
 
-### Verify with a round trip
+### How to verify
 
-Export → reinstall through Thor's own installer, and then through a third-party one (APKPure's, or
-SAI). Thor can already *install* an APKPure `.xapk` (`15f57d6d`, ZipFile-based to survive STORED +
-data-descriptor entries), so the round trip is testable end to end today. A writer whose output
-nothing can read is the only real failure mode.
+The round trip is the first check, not the only one. Export → reinstall through Thor's own
+installer, and then through a third-party one (APKPure's, or SAI). Thor can already *install* an
+APKPure `.xapk` (`15f57d6d`, ZipFile-based to survive STORED + data-descriptor entries), so that
+much is testable end to end today.
+
+But a successful install hides the two failures that actually matter here, because both produce a
+file that installs fine and is still wrong:
+
+1. **Missing OBB.** Export an app that *has* `Android/obb/<pkg>/`, install the result, and launch
+   it. It will install cleanly and then fail at play time — which is why the explain string has to
+   say so up front (see *Scope out* above). Assert the absence deliberately; do not let a green
+   install imply the assets travelled.
+2. **Metadata a different reader rejects.** Thor writes `manifest.json` for its own consumption
+   today, so nothing has ever validated it against a third-party parser. Check the split names,
+   `total_size`, and the `split_configs` list against what SAI/APKPure actually read — a field Thor
+   emits but nobody else accepts fails only on someone else's device.
+
+Also worth one negative test: export a split app, delete one split from the zip, and confirm the
+installer reports a real error rather than installing a partial app.
 
 ---
 
