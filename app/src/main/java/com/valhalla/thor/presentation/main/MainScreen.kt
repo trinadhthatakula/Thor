@@ -56,6 +56,7 @@ import androidx.window.core.layout.WindowSizeClass
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.navigation3.rememberListDetailSceneStrategy
 import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy
+import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -140,9 +141,20 @@ fun MainScreen(
 
     val currentBackStack = backStacks[activeTab] ?: homeBackStack
 
-    val listDetailStrategy = rememberListDetailSceneStrategy<NavKey>()
-
     val adaptiveInfo = currentWindowAdaptiveInfoV2()
+
+    // One directive, computed here and handed to the strategy, so that "is there a detail pane?"
+    // is read off the same object that decides the layout instead of being guessed from a
+    // breakpoint. calculatePaneScaffoldDirective allows two horizontal partitions only at Expanded
+    // width — Compact *and* Medium both get one — and ListDetailSceneStrategy declines to build a
+    // scene at a single partition (shouldHandleSinglePaneLayout defaults to false), so NavDisplay
+    // falls through to rendering the top entry alone. isWideScreen (>= 600 dp) is therefore the
+    // wrong question to ask: on a 600-839 dp window it is true while no detail pane exists.
+    val paneDirective = calculatePaneScaffoldDirective(adaptiveInfo)
+    val hasDetailPane = paneDirective.maxHorizontalPartitions > 1
+
+    val listDetailStrategy = rememberListDetailSceneStrategy<NavKey>(directive = paneDirective)
+
     val isWideScreen = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
     val showNavRailLabel = adaptiveInfo.windowSizeClass.isHeightAtLeastBreakpoint(600)
     
@@ -370,20 +382,20 @@ fun MainScreen(
                         AppListScreen(
                             viewModel = appListViewModel,
                             sharedTransitionScope = sharedScope,
-                            onNavigateToAppInfo = { pkg, name ->
-                                appsBackStack.add(ThorRoute.AppInfoDetails(pkg, name))
+                            // Only push the details route where a detail pane can actually show it.
+                            // Without a second partition the route does not sit beside the list, it
+                            // replaces it full-screen — the jump this whole change exists to remove.
+                            // A null callback keeps the tap on AppInfoSheet, which now carries the
+                            // same tabbed body anyway.
+                            onNavigateToAppInfo = if (hasDetailPane) {
+                                { pkg, name -> appsBackStack.add(ThorRoute.AppInfoDetails(pkg, name)) }
+                            } else {
+                                null
                             },
                             onAppAction = { action ->
                                 if (action is AppClickAction.ManagePermissions) {
                                     appsBackStack.add(
                                         ThorRoute.PermissionManager(
-                                            action.appInfo.packageName,
-                                            action.appInfo.appName ?: ""
-                                        )
-                                    )
-                                } else if (action is AppClickAction.OpenDetails) {
-                                    appsBackStack.add(
-                                        ThorRoute.AppInfoDetails(
                                             action.appInfo.packageName,
                                             action.appInfo.appName ?: ""
                                         )
@@ -402,55 +414,28 @@ fun MainScreen(
                 entry<ThorRoute.Freezer>(
                     metadata = ListDetailSceneStrategy.listPane(detailPlaceholder = { AppDetailPlaceholder() })
                 ) {
-                    val activeDetailRoute = freezerBackStack.lastOrNull() as? ThorRoute.AppInfoDetails
-                    if (isLandscapePhone && activeDetailRoute != null) {
-                        AppInfoDetailsScreen(
-                            packageName = activeDetailRoute.packageName,
-                            appName = activeDetailRoute.appName,
-                            sharedTransitionScope = sharedScope,
-                            onBack = {
-                                if (freezerBackStack.size > 1) {
-                                    freezerBackStack.removeLastOrNull()
-                                }
-                            },
-                            onNavigateToPermissionManager = { pkg, name ->
-                                freezerBackStack.add(ThorRoute.PermissionManager(pkg, name))
-                            },
-                            onAppAction = { action ->
+                    // No landscape detail-pane branch here any more: the freezer's only route to
+                    // ThorRoute.AppInfoDetails was the sheet's "Details" action, which now expands
+                    // the sheet in place instead. Nothing pushes that route onto freezerBackStack.
+                    FreezerScreen(
+                        viewModel = freezerViewModel,
+                        sharedTransitionScope = sharedScope,
+                        onAppAction = { action ->
+                            if (action is AppClickAction.ManagePermissions) {
+                                freezerBackStack.add(
+                                    ThorRoute.PermissionManager(
+                                        action.appInfo.packageName,
+                                        action.appInfo.appName ?: ""
+                                    )
+                                )
+                            } else {
                                 checkAndProcessAction(action, { pendingSingleAction = it }) {
                                     mainViewModel.onAppAction(it)
                                 }
-                            },
-                            showOnlyHeaderAndActions = true
-                        )
-                    } else {
-                        FreezerScreen(
-                            viewModel = freezerViewModel,
-                            sharedTransitionScope = sharedScope,
-                            onAppAction = { action ->
-                                if (action is AppClickAction.ManagePermissions) {
-                                    freezerBackStack.add(
-                                        ThorRoute.PermissionManager(
-                                            action.appInfo.packageName,
-                                            action.appInfo.appName ?: ""
-                                        )
-                                    )
-                                } else if (action is AppClickAction.OpenDetails) {
-                                    freezerBackStack.add(
-                                        ThorRoute.AppInfoDetails(
-                                            action.appInfo.packageName,
-                                            action.appInfo.appName ?: ""
-                                        )
-                                    )
-                                } else {
-                                    checkAndProcessAction(action, { pendingSingleAction = it }) {
-                                        mainViewModel.onAppAction(it)
-                                    }
-                                }
-                            },
-                            onMultiAppAction = { pendingMultiAction = it }
-                        )
-                    }
+                            }
+                        },
+                        onMultiAppAction = { pendingMultiAction = it }
+                    )
                 }
 
                 entry<ThorRoute.Settings> {
@@ -523,7 +508,15 @@ fun MainScreen(
                                 mainViewModel.onAppAction(it)
                             }
                         },
-                        showOnlyTabs = isLandscapePhone
+                        // showOnlyTabs suppresses this screen's top bar *and* its header and action
+                        // row, on the understanding that the list pane is rendering those instead
+                        // (the isLandscapePhone branch on entry<ThorRoute.Apps>). With no second
+                        // partition there is no list pane doing that, and NavDisplay renders this
+                        // entry alone — tabs with no title, no actions and no way back. Nothing
+                        // pushes the route without a detail pane any more, but a window can still
+                        // shrink under a route that is already on the stack (unfolding, resizing a
+                        // split-screen window), so the condition has to be checked here too.
+                        showOnlyTabs = isLandscapePhone && hasDetailPane
                     )
                 }
             }

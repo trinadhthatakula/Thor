@@ -385,7 +385,6 @@ class MainViewModel(
                 is AppClickAction.Suspend -> quickAction(action) { manageAppUseCase.setAppSuspended(it.packageName, true) }
                 is AppClickAction.UnSuspend -> quickAction(action) { manageAppUseCase.setAppSuspended(it.packageName, false) }
                 is AppClickAction.ManagePermissions -> {}
-                is AppClickAction.OpenDetails -> {}
                 // Handled entirely in FreezerScreen (viewModel.pinAppToLauncher); never routed here.
                 is AppClickAction.AddToHomeScreen -> {}
             }
@@ -437,10 +436,7 @@ class MainViewModel(
                     UiText.StringResource(R.string.log_uninstalling_batch),
                     action.appList
                 ) { appInfo ->
-                    val isSystem = appInfo.isSystem
-                    val isUadFailed = isSystem && appInfo.isUadLoadFailed
-                    val isUnsafe = isSystem && appInfo.bloatRecommendation?.lowercase() == "unsafe"
-                    if (isUadFailed || isUnsafe) {
+                    if (appInfo.freezeTier == FreezeTier.BLOCKED) {
                         Result.failure(UiTextException(UiText.StringResource(R.string.error_unsafe_skipped)))
                     } else {
                         val result = manageAppUseCase.uninstallApp(appInfo.packageName)

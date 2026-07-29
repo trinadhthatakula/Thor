@@ -198,12 +198,6 @@ class SettingsViewModel(
         }
     }
 
-    fun setDetailedViewEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            preferenceRepository.setDetailedViewEnabled(enabled)
-        }
-    }
-
     fun setAnimationIntensity(intensity: AnimationIntensity) {
         viewModelScope.launch {
             preferenceRepository.setAnimationIntensity(intensity)

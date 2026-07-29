@@ -6,16 +6,19 @@ package com.valhalla.thor.presentation.appList
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.data.launcher.FreezerShortcutManager
 import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.data.manager.StorageStatsHelper
 import com.valhalla.thor.data.manager.UsageAccessManager
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
+import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.domain.model.sortApps
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
@@ -57,6 +60,9 @@ data class AppListUiState(
     // Raw Data
     val allUserApps: List<AppInfo> = emptyList(),
     val allSystemApps: List<AppInfo> = emptyList(),
+    // Freezer membership (the watchlist), not freeze state: an app can be frozen without being in
+    // the freezer and vice versa. Drives the sheet's "Add to / Remove from Freezer" action.
+    val freezerPackageNames: Set<String> = emptySet(),
     // Filter State
     val appListType: AppListType = AppListType.USER,
     val filterType: FilterType = FilterType.Source,
@@ -73,7 +79,6 @@ data class AppListUiState(
     // Detail View State
     val selectedAppDetails: AppInfo? = null,
     val isLoadingDetails: Boolean = false,
-    val useDetailedView: Boolean = true,
     val isGrid: Boolean = true,
     val isComputingSizes: Boolean = false,
     // Holds the pull-to-refresh indicator up for a readable minimum. isLoading cannot do this job:
@@ -100,6 +105,7 @@ class AppListViewModel(
     private val manageAppUseCase: ManageAppUseCase,
     private val preferenceRepository: PreferenceRepository,
     private val freezerRepository: FreezerRepository,
+    private val freezerShortcutManager: FreezerShortcutManager,
     private val appRepository: AppRepository,
     private val storageStatsHelper: StorageStatsHelper,
     private val usageAccessManager: UsageAccessManager
@@ -126,7 +132,6 @@ class AppListViewModel(
             sortOrder = prefs.appSortOrder,
             filterType = prefs.appFilterType,
             selectedFilter = prefs.appSelectedFilter,
-            useDetailedView = prefs.useDetailedView,
             isGrid = prefs.appListIsGrid
         )
         processList(mergedState)
@@ -141,6 +146,28 @@ class AppListViewModel(
     init {
         loadApps(deferForTransition = true)
         observeSizeSort()
+        observeFreezerMembership()
+    }
+
+    /**
+     * Mirrors the freezer watchlist into state so the app-info sheet can offer "Add to / Remove from
+     * Freezer" without a per-app `contains()` round trip. This is the only surface offering that
+     * toggle on phones now that the details screen is a wide-window detail pane, and it is a Room
+     * flow, so an add/remove made anywhere else (freezer screen, launcher shortcut) lands here too.
+     */
+    private fun observeFreezerMembership() {
+        viewModelScope.launch {
+            freezerRepository.getAll()
+                .catch { e ->
+                    // Room's Flow throws on a failed query; a membership read failure must not take
+                    // the app list down with it — the sheet just falls back to "not in freezer".
+                    if (e is CancellationException) throw e // preserve structured-concurrency cancellation
+                    Logger.e("AppListViewModel", "freezer membership observation failed", e)
+                }
+                .collect { packages ->
+                    _rawState.update { it.copy(freezerPackageNames = packages.toSet()) }
+                }
+        }
     }
 
     /**
@@ -350,6 +377,16 @@ class AppListViewModel(
         }
     }
 
+    /**
+     * The "Frozen — add it to the Freezer?" prompt's confirm.
+     *
+     * Deliberately **not** tier-gated, unlike [toggleFreezerMembership]. This only ever runs after
+     * [freezeApp] succeeded, so the app is already frozen; the question is whether to track it, not
+     * whether to freeze it. Membership is what makes a frozen app recoverable —
+     * `freezableCandidates` drops `blockedFromFreeze` from FREEZE runs but filters UNFREEZE runs on
+     * `state == FROZEN` alone — so tracking can never cause a re-freeze and is the only way
+     * Unfreeze-all reaches it. Refusing here would strand a frozen app off the list it belongs on.
+     */
     fun addToFreezer(packageName: String) {
         viewModelScope.launch(Dispatchers.IO) {
             freezerRepository.add(packageName)
@@ -359,16 +396,65 @@ class AppListViewModel(
         }
     }
 
+    /**
+     * Freezer watchlist membership, not freeze state — this adds/removes the app from the set the
+     * freezer screen and the bulk freeze paths operate on; it never disables anything itself.
+     *
+     * Reads `contains()` rather than [AppListUiState.freezerPackageNames] so the decision is made
+     * against the database at the moment of the tap, not against a state snapshot the observer may
+     * not have refreshed yet. No state write here either: [observeFreezerMembership] is collecting
+     * the same Room flow and reflects the change on its own.
+     *
+     * Adding is gated on [FreezeTier]; removing never is, so an app that got onto the watchlist
+     * before the gate existed can always be taken back off.
+     */
+    fun toggleFreezerMembership(packageName: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (freezerRepository.contains(packageName)) {
+                freezerRepository.remove(packageName)
+                // Pinned launcher shortcuts can't be removed silently, only greyed out — leaving a
+                // live shortcut for an app no longer in the freezer would let it drive a freeze
+                // from the launcher.
+                freezerShortcutManager.disableAppShortcut(packageName)
+                _events.send(
+                    AppListEvent.ShowMessage(
+                        UiText.PluralsResource(R.plurals.removed_from_freezer_success, 1)
+                    )
+                )
+            } else {
+                // Same BLOCKED gate as FreezerViewModel.toggleManaged, and for the same reason: the
+                // watchlist is the input to every bulk-freeze surface, so letting an unsafe app in
+                // means the snowflake lights up and the app sits in the freezer list forever while
+                // every run silently skips it. Refusing the add is the honest answer.
+                //
+                // Resolved against _rawState, not the filtered uiState: a search or filter that
+                // hides the app must not turn into "not found" and, via the fail-closed branch
+                // below, a refusal.
+                val app = (_rawState.value.allUserApps + _rawState.value.allSystemApps)
+                    .firstOrNull { it.packageName == packageName }
+                if (app == null || app.freezeTier == FreezeTier.BLOCKED) {
+                    // Fail closed on an unresolvable package: an unknown tier is not a safe tier.
+                    _events.send(
+                        AppListEvent.ShowMessage(UiText.StringResource(R.string.error_unsafe_skipped))
+                    )
+                    return@launch
+                }
+                freezerRepository.add(packageName)
+                _events.send(
+                    AppListEvent.ShowMessage(UiText.StringResource(R.string.added_to_freezer_success))
+                )
+            }
+        }
+    }
+
     fun performMultiAction(action: MultiAppAction) {
         viewModelScope.launch(Dispatchers.IO) {
             when (action) {
                 is MultiAppAction.Freeze -> {
-                    val eligibleApps = action.appList.filter { appInfo ->
-                        val isSystem = appInfo.isSystem
-                        val isUadFailed = isSystem && appInfo.isUadLoadFailed
-                        val isUnsafe = isSystem && appInfo.bloatRecommendation?.lowercase() == "unsafe"
-                        !(isUadFailed || isUnsafe)
-                    }
+                    // EXPERT apps go through unwarned here by design — a batch is not the place to
+                    // interrogate the user app by app. BLOCKED is stopped here; the single-app
+                    // freeze paths still lean on the dialog hiding its confirm button instead.
+                    val eligibleApps = action.appList.filter { it.freezeTier != FreezeTier.BLOCKED }
                     val skippedCount = action.appList.size - eligibleApps.size
                     val succeededPackages = mutableSetOf<String>()
                     var failures = skippedCount

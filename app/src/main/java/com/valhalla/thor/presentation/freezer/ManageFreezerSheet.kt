@@ -25,7 +25,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -33,7 +32,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -48,7 +46,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.valhalla.thor.R
@@ -60,9 +57,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
 import com.valhalla.asgard.components.ConnectedButtonGroup
 import com.valhalla.asgard.components.ConnectedButtonGroupItem
-import com.valhalla.asgard.components.StatusChip
-import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 import com.valhalla.thor.presentation.widgets.AppIcon
+import com.valhalla.thor.presentation.widgets.AppRiskAction
+import com.valhalla.thor.presentation.widgets.AppRiskDialog
 import com.valhalla.thor.presentation.widgets.AppSearchBar
 import kotlinx.coroutines.launch
 
@@ -175,9 +172,13 @@ fun ManageFreezerSheet(
         }
     }
 
+    // Only non-NORMAL apps ever land here, so the shared dialog's normal-tier wording is
+    // unreachable from this call site — blocked gets no confirm button, expert gets the red
+    // "Freeze anyway", exactly as the freeze confirmation in the app info sheet does.
     pendingApp?.let { app ->
-        FreezeTierDialog(
+        AppRiskDialog(
             app = app,
+            action = AppRiskAction.Freeze,
             onConfirm = {
                 onToggle(app.packageName, true)
                 pendingApp = null
@@ -185,76 +186,6 @@ fun ManageFreezerSheet(
             onDismiss = { pendingApp = null }
         )
     }
-}
-
-/**
- * The blocked / expert confirmation for adding a system app to the Freezer.
- *
- * Mirrors the freeze confirmation in AppInfoDialog, and deliberately so: blocked apps get no
- * confirm button at all, expert apps get a red "Freeze anyway". [FreezerViewModel.toggleManaged]
- * repeats the blocked check because a dialog is advice, not enforcement.
- */
-@Composable
-private fun FreezeTierDialog(
-    app: AppInfo,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    val tier = app.freezeTier
-    val isBlocked = tier == FreezeTier.BLOCKED
-    // Blocked splits two ways for the body text only: no usable UAD data at all vs. an app the
-    // list names as unsafe. The verdict is identical either way.
-    val isUadFailed = app.isUadLoadFailed
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = stringResource(
-                    if (isBlocked) R.string.freeze_blocked else R.string.freeze_expert_warning
-                ),
-                color = MaterialTheme.colorScheme.error
-            )
-        },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                if (!isUadFailed) {
-                    app.bloatRecommendation?.let { rec ->
-                        val (color, textColor) = getBloatRecommendationColors(rec)
-                        StatusChip(text = rec, containerColor = color, contentColor = textColor)
-                        Spacer(Modifier.height(12.dp))
-                    }
-                }
-                Text(
-                    text = stringResource(
-                        when {
-                            isUadFailed -> R.string.uad_load_failed_freeze_desc
-                            isBlocked -> R.string.freeze_unsafe_desc
-                            else -> R.string.freeze_expert_desc
-                        }
-                    ),
-                    textAlign = TextAlign.Center
-                )
-            }
-        },
-        confirmButton = {
-            if (!isBlocked) {
-                TextButton(onClick = onConfirm) {
-                    Text(
-                        text = stringResource(R.string.freeze_anyway),
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(if (isBlocked) R.string.close else R.string.no))
-            }
-        }
-    )
 }
 
 @Composable

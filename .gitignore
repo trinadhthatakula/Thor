@@ -36,3 +36,5 @@ CLAUDE.md
 # Local font-subsetting tool venv (fonttools/pyftsubset) — never commit
 .tools-venv/
 /docs/enforcement
+# Generated audit reports — large, regenerable, and never worth committing
+/docs/audit
