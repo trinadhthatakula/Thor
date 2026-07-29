@@ -385,7 +385,6 @@ class MainViewModel(
                 is AppClickAction.Suspend -> quickAction(action) { manageAppUseCase.setAppSuspended(it.packageName, true) }
                 is AppClickAction.UnSuspend -> quickAction(action) { manageAppUseCase.setAppSuspended(it.packageName, false) }
                 is AppClickAction.ManagePermissions -> {}
-                is AppClickAction.OpenDetails -> {}
                 // Handled entirely in FreezerScreen (viewModel.pinAppToLauncher); never routed here.
                 is AppClickAction.AddToHomeScreen -> {}
             }

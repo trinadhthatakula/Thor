@@ -240,7 +240,7 @@ class FreezerViewModel(
         _uiState.update { it.copy(manageSheetSearchQuery = query) }
     }
 
-    // --- Snackbar from AppInfoDialog (app frozen outside freezer) ---
+    // --- Snackbar from AppInfoSheet (app frozen outside freezer) ---
 
     fun addToFreezer(packageName: String) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -255,7 +255,7 @@ class FreezerViewModel(
         }
     }
 
-    // --- Single-app freeze/unfreeze (called from AppInfoDialog in FreezerScreen) ---
+    // --- Single-app freeze/unfreeze (called from AppInfoSheet in FreezerScreen) ---
 
     fun freezeSingleApp(packageName: String, appName: String?, inFreezer: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {

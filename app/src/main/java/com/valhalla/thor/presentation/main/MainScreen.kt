@@ -381,13 +381,6 @@ fun MainScreen(
                                             action.appInfo.appName ?: ""
                                         )
                                     )
-                                } else if (action is AppClickAction.OpenDetails) {
-                                    appsBackStack.add(
-                                        ThorRoute.AppInfoDetails(
-                                            action.appInfo.packageName,
-                                            action.appInfo.appName ?: ""
-                                        )
-                                    )
                                 } else {
                                     checkAndProcessAction(action, { pendingSingleAction = it }) {
                                         mainViewModel.onAppAction(it)
@@ -402,55 +395,28 @@ fun MainScreen(
                 entry<ThorRoute.Freezer>(
                     metadata = ListDetailSceneStrategy.listPane(detailPlaceholder = { AppDetailPlaceholder() })
                 ) {
-                    val activeDetailRoute = freezerBackStack.lastOrNull() as? ThorRoute.AppInfoDetails
-                    if (isLandscapePhone && activeDetailRoute != null) {
-                        AppInfoDetailsScreen(
-                            packageName = activeDetailRoute.packageName,
-                            appName = activeDetailRoute.appName,
-                            sharedTransitionScope = sharedScope,
-                            onBack = {
-                                if (freezerBackStack.size > 1) {
-                                    freezerBackStack.removeLastOrNull()
-                                }
-                            },
-                            onNavigateToPermissionManager = { pkg, name ->
-                                freezerBackStack.add(ThorRoute.PermissionManager(pkg, name))
-                            },
-                            onAppAction = { action ->
+                    // No landscape detail-pane branch here any more: the freezer's only route to
+                    // ThorRoute.AppInfoDetails was the sheet's "Details" action, which now expands
+                    // the sheet in place instead. Nothing pushes that route onto freezerBackStack.
+                    FreezerScreen(
+                        viewModel = freezerViewModel,
+                        sharedTransitionScope = sharedScope,
+                        onAppAction = { action ->
+                            if (action is AppClickAction.ManagePermissions) {
+                                freezerBackStack.add(
+                                    ThorRoute.PermissionManager(
+                                        action.appInfo.packageName,
+                                        action.appInfo.appName ?: ""
+                                    )
+                                )
+                            } else {
                                 checkAndProcessAction(action, { pendingSingleAction = it }) {
                                     mainViewModel.onAppAction(it)
                                 }
-                            },
-                            showOnlyHeaderAndActions = true
-                        )
-                    } else {
-                        FreezerScreen(
-                            viewModel = freezerViewModel,
-                            sharedTransitionScope = sharedScope,
-                            onAppAction = { action ->
-                                if (action is AppClickAction.ManagePermissions) {
-                                    freezerBackStack.add(
-                                        ThorRoute.PermissionManager(
-                                            action.appInfo.packageName,
-                                            action.appInfo.appName ?: ""
-                                        )
-                                    )
-                                } else if (action is AppClickAction.OpenDetails) {
-                                    freezerBackStack.add(
-                                        ThorRoute.AppInfoDetails(
-                                            action.appInfo.packageName,
-                                            action.appInfo.appName ?: ""
-                                        )
-                                    )
-                                } else {
-                                    checkAndProcessAction(action, { pendingSingleAction = it }) {
-                                        mainViewModel.onAppAction(it)
-                                    }
-                                }
-                            },
-                            onMultiAppAction = { pendingMultiAction = it }
-                        )
-                    }
+                            }
+                        },
+                        onMultiAppAction = { pendingMultiAction = it }
+                    )
                 }
 
                 entry<ThorRoute.Settings> {

@@ -70,7 +70,7 @@ import androidx.compose.ui.res.vectorResource
 import com.valhalla.asgard.components.ConnectedButtonGroup
 import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
-import com.valhalla.thor.presentation.widgets.AppInfoDialog
+import com.valhalla.thor.presentation.widgets.AppInfoSheet
 import com.valhalla.thor.presentation.widgets.AppItemGrid
 import com.valhalla.thor.presentation.widgets.AppItemList
 import com.valhalla.thor.presentation.widgets.AppSearchBar
@@ -429,9 +429,9 @@ fun FreezerScreen(
         }
     }
 
-    // AppInfoDialog
+    // AppInfoSheet
     selectedAppInfo?.let { app ->
-        AppInfoDialog(
+        AppInfoSheet(
             appInfo = app,
             isRoot = state.isRoot,
             isShizuku = state.isShizuku,

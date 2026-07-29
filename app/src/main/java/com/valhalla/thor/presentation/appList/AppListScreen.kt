@@ -39,13 +39,13 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.basicMarquee
 import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.text.font.FontWeight
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.MultiAppAction
-import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
@@ -56,7 +56,7 @@ import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.presentation.widgets.AppList
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
 import com.valhalla.thor.data.manager.UsageAccessManager
-import com.valhalla.thor.presentation.widgets.AppInfoDialog
+import com.valhalla.thor.presentation.widgets.AppInfoSheet
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 
@@ -75,7 +75,23 @@ fun AppListScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    var selectedAppForDialog by remember { mutableStateOf<AppInfo?>(null) }
+    // The package, not the AppInfo, and rememberSaveable rather than remember: AppInfoSheet parks a
+    // composable-scoped ViewModelStore on this entry's store and relies on re-entering composition
+    // to release it, so the sheet has to come back after a configuration change. Resolving against
+    // the live list also keeps the sheet's freeze/suspend state honest while it is open.
+    //
+    // Resolved against the whole scan, never `displayedApps` — the same shape FreezerScreen uses.
+    // rememberSaveable outlives the process; `appListType` does not, it resets to USER. A package
+    // picked off the system list would come back as a selection the filtered list cannot render and
+    // no code path can clear, and would then spring the sheet open on a later, unrelated tap of the
+    // System toggle. The filter is live, too: a background freeze or suspend that moves the app out
+    // of an active State filter would tear the sheet out of composition mid-scroll, with no
+    // dismissal animation and onDismiss never running.
+    var selectedPackageForSheet by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedAppForSheet = selectedPackageForSheet?.let { pkg ->
+        state.allUserApps.find { it.packageName == pkg }
+            ?: state.allSystemApps.find { it.packageName == pkg }
+    }
     // One-off freezer prompt is driven by a transient event; the screen holds its own visibility
     // state so it isn't replayed on recomposition/config change.
     var freezerPrompt by remember { mutableStateOf<FreezerPrompt?>(null) }
@@ -206,7 +222,7 @@ fun AppListScreen(
                         if (state.useDetailedView) {
                             onNavigateToAppInfo(appInfo.packageName, appInfo.appName ?: "")
                         } else {
-                            selectedAppForDialog = appInfo
+                            selectedPackageForSheet = appInfo.packageName
                         }
                     },
                     onListTypeChanged = { viewModel.updateListType(it) },
@@ -233,24 +249,22 @@ fun AppListScreen(
                 .padding(bottom = 16.dp)
         )
 
-        selectedAppForDialog?.let { app ->
-            AppInfoDialog(
+        selectedAppForSheet?.let { app ->
+            AppInfoSheet(
                 appInfo = app,
                 isRoot = state.isRoot,
                 isShizuku = state.isShizuku,
                 isDhizuku = state.isDhizuku,
-                onDismiss = { selectedAppForDialog = null },
+                onDismiss = { selectedPackageForSheet = null },
                 onAppAction = { action ->
                     when {
-                        action is AppClickAction.OpenDetails ->
-                            onNavigateToAppInfo(app.packageName, app.appName ?: "")
-                        // Freeze from the dialog goes through the local VM so it surfaces the
+                        // Freeze from the sheet goes through the local VM so it surfaces the
                         // "Frozen — Add to Freezer?" prompt instead of silently just disabling.
                         action is AppClickAction.Freeze ->
                             viewModel.freezeApp(action.appInfo.packageName, action.appInfo.appName, true)
                         else -> onAppAction(action)
                     }
-                    selectedAppForDialog = null
+                    selectedPackageForSheet = null
                 }
             )
         }

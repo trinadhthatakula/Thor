@@ -287,7 +287,7 @@ fun AppInfoHeaderAndActions(
             onFreezeToggle = { shouldFreeze ->
                 // Unfreeze immediately. When freezing, only SYSTEM apps get the
                 // safety-warning dialog (instability / reboot-loop risk); user
-                // apps are safe to freeze directly (mirrors AppInfoDialog gating).
+                // apps are safe to freeze directly (mirrors AppInfoSheet gating).
                 if (shouldFreeze && appInfo.isSystem) {
                     showFreezeConfirmation = true
                 } else {
