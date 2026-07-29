@@ -48,7 +48,6 @@ import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.presentation.appList.ExportBottomSheet
 import com.valhalla.thor.presentation.utils.AppIconModel
-import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -184,166 +183,28 @@ fun AppInfoDialog(
     }
 
     if (showUninstallConfirmation) {
-        val recommendation = appInfo.bloatRecommendation?.lowercase()
-        val isUadFailed = appInfo.isSystem && appInfo.isUadLoadFailed
-        val isUnsafe = recommendation == "unsafe"
-        val isExpert = recommendation == "expert" && !isUadFailed
-        val isBlocked = isUnsafe || isUadFailed
-        AlertDialog(
-            onDismissRequest = { showUninstallConfirmation = false },
-            title = {
-                Text(
-                    text = when {
-                        isBlocked -> stringResource(R.string.uninstall_blocked)
-                        isExpert -> stringResource(R.string.uninstall_expert_warning)
-                        else -> stringResource(R.string.uninstall_system_app_title)
-                    },
-                    color = if (isBlocked || isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-                )
+        AppRiskDialog(
+            app = appInfo,
+            action = AppRiskAction.Uninstall,
+            onConfirm = {
+                onAppAction(AppClickAction.Uninstall(appInfo))
+                showUninstallConfirmation = false
+                onDismiss()
             },
-            text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    if (!isUadFailed) {
-                        appInfo.bloatRecommendation?.let { rec ->
-                            val (color, textColor) = getBloatRecommendationColors(rec)
-                            StatusChip(
-                                text = rec,
-                                color = color,
-                                textColor = textColor
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                        }
-                    }
-
-                    if (isUadFailed) {
-                        Text(
-                            text = stringResource(R.string.uad_load_failed_desc),
-                            textAlign = TextAlign.Center
-                        )
-                    } else if (isUnsafe) {
-                        Text(
-                            text = stringResource(R.string.warning_unsafe_uninstall),
-                            textAlign = TextAlign.Center
-                        )
-                    } else if (isExpert) {
-                        Text(
-                            text = stringResource(R.string.warning_expert_uninstall),
-                            textAlign = TextAlign.Center
-                        )
-                    } else {
-                        Text(
-                            text = stringResource(R.string.uninstall_system_app_desc),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                if (!isBlocked) {
-                    TextButton(onClick = {
-                        onAppAction(AppClickAction.Uninstall(appInfo))
-                        showUninstallConfirmation = false
-                        onDismiss()
-                    }) {
-                        Text(
-                            text = if (isExpert) stringResource(R.string.uninstall_anyway) else stringResource(R.string.yes),
-                            color = if (isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showUninstallConfirmation = false
-                }) {
-                    Text(if (isBlocked) stringResource(R.string.close) else stringResource(R.string.no))
-                }
-            }
+            onDismiss = { showUninstallConfirmation = false }
         )
     }
 
     if (showFreezeConfirmation) {
-        val recommendation = appInfo.bloatRecommendation?.lowercase()
-        val isUadFailed = appInfo.isSystem && appInfo.isUadLoadFailed
-        val isUnsafe = recommendation == "unsafe"
-        val isExpert = recommendation == "expert" && !isUadFailed
-        val isBlocked = isUnsafe || isUadFailed
-        AlertDialog(
-            onDismissRequest = { showFreezeConfirmation = false },
-            title = {
-                Text(
-                    text = when {
-                        isBlocked -> stringResource(R.string.freeze_blocked)
-                        isExpert -> stringResource(R.string.freeze_expert_warning)
-                        else -> stringResource(R.string.freeze_system_app_title)
-                    },
-                    color = if (isBlocked || isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-                )
+        AppRiskDialog(
+            app = appInfo,
+            action = AppRiskAction.Freeze,
+            onConfirm = {
+                onAppAction(AppClickAction.Freeze(appInfo))
+                showFreezeConfirmation = false
+                onDismiss()
             },
-            text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    if (!isUadFailed) {
-                        appInfo.bloatRecommendation?.let { rec ->
-                            val (color, textColor) = getBloatRecommendationColors(rec)
-                            StatusChip(
-                                text = rec,
-                                color = color,
-                                textColor = textColor
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                        }
-                    }
-
-                    if (isUadFailed) {
-                        Text(
-                            text = stringResource(R.string.uad_load_failed_freeze_desc),
-                            textAlign = TextAlign.Center
-                        )
-                    } else if (isUnsafe) {
-                        Text(
-                            text = stringResource(R.string.freeze_unsafe_desc),
-                            textAlign = TextAlign.Center
-                        )
-                    } else if (isExpert) {
-                        Text(
-                            text = stringResource(R.string.freeze_expert_desc),
-                            textAlign = TextAlign.Center
-                        )
-                    } else {
-                        Text(
-                            text = stringResource(R.string.freeze_system_app_desc),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                if (!isBlocked) {
-                    TextButton(onClick = {
-                        onAppAction(AppClickAction.Freeze(appInfo))
-                        showFreezeConfirmation = false
-                        onDismiss()
-                    }) {
-                        Text(
-                            text = if (isExpert) stringResource(R.string.freeze_anyway) else stringResource(R.string.yes),
-                            color = if (isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showFreezeConfirmation = false
-                }) {
-                    Text(if (isBlocked) stringResource(R.string.close) else stringResource(R.string.no))
-                }
-            }
+            onDismiss = { showFreezeConfirmation = false }
         )
     }
 

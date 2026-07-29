@@ -12,10 +12,12 @@ import com.valhalla.thor.data.manager.UsageAccessManager
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
+import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.domain.model.sortApps
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
@@ -363,12 +365,10 @@ class AppListViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             when (action) {
                 is MultiAppAction.Freeze -> {
-                    val eligibleApps = action.appList.filter { appInfo ->
-                        val isSystem = appInfo.isSystem
-                        val isUadFailed = isSystem && appInfo.isUadLoadFailed
-                        val isUnsafe = isSystem && appInfo.bloatRecommendation?.lowercase() == "unsafe"
-                        !(isUadFailed || isUnsafe)
-                    }
+                    // EXPERT apps go through unwarned here by design — a batch is not the place to
+                    // interrogate the user app by app. BLOCKED is stopped here; the single-app
+                    // freeze paths still lean on the dialog hiding its confirm button instead.
+                    val eligibleApps = action.appList.filter { it.freezeTier != FreezeTier.BLOCKED }
                     val skippedCount = action.appList.size - eligibleApps.size
                     val succeededPackages = mutableSetOf<String>()
                     var failures = skippedCount

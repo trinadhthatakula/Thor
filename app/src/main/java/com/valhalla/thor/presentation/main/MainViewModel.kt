@@ -437,10 +437,7 @@ class MainViewModel(
                     UiText.StringResource(R.string.log_uninstalling_batch),
                     action.appList
                 ) { appInfo ->
-                    val isSystem = appInfo.isSystem
-                    val isUadFailed = isSystem && appInfo.isUadLoadFailed
-                    val isUnsafe = isSystem && appInfo.bloatRecommendation?.lowercase() == "unsafe"
-                    if (isUadFailed || isUnsafe) {
+                    if (appInfo.freezeTier == FreezeTier.BLOCKED) {
                         Result.failure(UiTextException(UiText.StringResource(R.string.error_unsafe_skipped)))
                     } else {
                         val result = manageAppUseCase.uninstallApp(appInfo.packageName)

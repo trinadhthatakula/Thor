@@ -28,7 +28,6 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -69,6 +68,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.presentation.widgets.AppActionRow
+import com.valhalla.thor.presentation.widgets.AppRiskAction
+import com.valhalla.thor.presentation.widgets.AppRiskDialog
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
 import coil3.compose.AsyncImage
 import com.valhalla.thor.R
@@ -81,7 +82,6 @@ import com.valhalla.thor.presentation.theme.firaMonoFontFamily
 import com.valhalla.thor.presentation.utils.AppIconModel
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
-import com.valhalla.thor.presentation.widgets.AnimateLottieRaw
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import androidx.compose.ui.platform.ClipEntry
@@ -337,185 +337,36 @@ fun AppInfoHeaderAndActions(
     }
 
     if (showUninstallConfirmation) {
-        val recommendation = appInfo.bloatRecommendation?.lowercase()
-        val isSystem = appInfo.isSystem
-        val isUadFailed = isSystem && appInfo.isUadLoadFailed
-        val isUnsafe = isSystem && recommendation == "unsafe"
-        val isExpert = isSystem && recommendation == "expert" && !isUadFailed
-        val isBlocked = isUnsafe || isUadFailed
-        AlertDialog(
-            onDismissRequest = { showUninstallConfirmation = false },
-            title = {
-                Text(
-                    text = when {
-                        isBlocked -> stringResource(R.string.uninstall_blocked)
-                        isExpert -> stringResource(R.string.uninstall_expert_warning)
-                        isSystem -> stringResource(R.string.uninstall_system_app_title)
-                        else -> stringResource(R.string.uninstall_app_title)
-                    },
-                    color = if (isBlocked || isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-                )
-            },
-            text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    if (isSystem && !isUadFailed) {
-                        appInfo.bloatRecommendation?.let { rec ->
-                            val (color, textColor) = getBloatRecommendationColors(rec)
-                            StatusChip(
-                                text = rec,
-                                color = color,
-                                textColor = textColor
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
+        AppRiskDialog(
+            app = appInfo,
+            action = AppRiskAction.Uninstall,
+            onConfirm = {
+                if (appInfo.isSystem) {
+                    onAppAction(AppClickAction.Uninstall(appInfo))
+                } else {
+                    val intent =
+                        android.content.Intent(android.content.Intent.ACTION_DELETE).apply {
+                            data = "package:$packageName".toUri()
                         }
-                    }
-
-                    if (isUadFailed) {
-                        Text(
-                            text = stringResource(R.string.uad_load_failed_desc),
-                            textAlign = TextAlign.Center
-                        )
-                    } else if (isUnsafe) {
-                        Text(
-                            text = stringResource(R.string.warning_unsafe_uninstall),
-                            textAlign = TextAlign.Center
-                        )
-                    } else if (isExpert) {
-                        Text(
-                            text = stringResource(R.string.warning_expert_uninstall),
-                            textAlign = TextAlign.Center
-                        )
-                    } else if (isSystem) {
-                        Text(
-                            text = stringResource(R.string.uninstall_system_app_desc),
-                            textAlign = TextAlign.Center
-                        )
-                    } else {
-                        Text(
-                            text = stringResource(
-                                R.string.uninstall_app_desc,
-                                appInfo.appName ?: packageName
-                            ),
-                            textAlign = TextAlign.Center
-                        )
-                    }
+                    context.startActivity(intent)
                 }
+                showUninstallConfirmation = false
+                // Close the surface hosting these actions once uninstall is triggered
+                onUninstallTriggered()
             },
-            confirmButton = {
-                if (!isBlocked) {
-                    TextButton(onClick = {
-                        if (isSystem) {
-                            onAppAction(AppClickAction.Uninstall(appInfo))
-                        } else {
-                            val intent =
-                                android.content.Intent(android.content.Intent.ACTION_DELETE).apply {
-                                    data = "package:$packageName".toUri()
-                                }
-                            context.startActivity(intent)
-                        }
-                        showUninstallConfirmation = false
-                        // Close the surface hosting these actions once uninstall is triggered
-                        onUninstallTriggered()
-                    }) {
-                        Text(
-                            text = if (isExpert) stringResource(R.string.uninstall_anyway) else if (isSystem) stringResource(R.string.yes) else stringResource(R.string.action_uninstall),
-                            color = if (isExpert || !isSystem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showUninstallConfirmation = false
-                }) {
-                    Text(if (isBlocked) stringResource(R.string.close) else if (isSystem) stringResource(R.string.no) else stringResource(R.string.cancel))
-                }
-            }
+            onDismiss = { showUninstallConfirmation = false }
         )
     }
 
     if (showFreezeConfirmation) {
-        val recommendation = appInfo.bloatRecommendation?.lowercase()
-        val isSystem = appInfo.isSystem
-        val isUadFailed = isSystem && appInfo.isUadLoadFailed
-        val isUnsafe = isSystem && recommendation == "unsafe"
-        val isExpert = isSystem && recommendation == "expert" && !isUadFailed
-        val isBlocked = isUnsafe || isUadFailed
-        AlertDialog(
-            onDismissRequest = { showFreezeConfirmation = false },
-            title = {
-                Text(
-                    text = when {
-                        isBlocked -> stringResource(R.string.freeze_blocked)
-                        isExpert -> stringResource(R.string.freeze_expert_warning)
-                        else -> stringResource(R.string.freeze_system_app_title)
-                    },
-                    color = if (isBlocked || isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-                )
+        AppRiskDialog(
+            app = appInfo,
+            action = AppRiskAction.Freeze,
+            onConfirm = {
+                onFreeze(true)
+                showFreezeConfirmation = false
             },
-            text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    if (isSystem && !isUadFailed) {
-                        appInfo.bloatRecommendation?.let { rec ->
-                            val (color, textColor) = getBloatRecommendationColors(rec)
-                            StatusChip(
-                                text = rec,
-                                color = color,
-                                textColor = textColor
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                        }
-                    }
-
-                    if (isUadFailed) {
-                        Text(
-                            text = stringResource(R.string.uad_load_failed_freeze_desc),
-                            textAlign = TextAlign.Center
-                        )
-                    } else if (isUnsafe) {
-                        Text(
-                            text = stringResource(R.string.freeze_unsafe_desc),
-                            textAlign = TextAlign.Center
-                        )
-                    } else if (isExpert) {
-                        Text(
-                            text = stringResource(R.string.freeze_expert_desc),
-                            textAlign = TextAlign.Center
-                        )
-                    } else {
-                        Text(
-                            text = stringResource(R.string.freeze_system_app_desc),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                if (!isBlocked) {
-                    TextButton(onClick = {
-                        onFreeze(true)
-                        showFreezeConfirmation = false
-                    }) {
-                        Text(
-                            text = if (isExpert) stringResource(R.string.freeze_anyway) else stringResource(R.string.yes),
-                            color = if (isExpert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showFreezeConfirmation = false
-                }) {
-                    Text(if (isBlocked) stringResource(R.string.close) else stringResource(R.string.no))
-                }
-            }
+            onDismiss = { showFreezeConfirmation = false }
         )
     }
 
