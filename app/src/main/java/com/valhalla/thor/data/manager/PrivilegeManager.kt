@@ -3,11 +3,15 @@
 
 package com.valhalla.thor.data.manager
 
+import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.domain.model.PrivilegeState
 import com.valhalla.thor.domain.model.resolvePrivilegeMode
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.Logger
+import com.valhalla.thor.util.PrivilegeProbeTier
+import com.valhalla.thor.util.PrivilegeProbeTrace
+import com.valhalla.thor.util.timeProbe
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +61,10 @@ class PrivilegeManager(
         Shizuku.addRequestPermissionResultListener(permissionResultListener)
 
         scope.launch {
+            // Debug-only cold-start marker. Every later emission (refresh, preference change) also
+            // carries isReady = true, so the first one has to be latched; a collector-local flag
+            // rather than re-reading _state, which would race a concurrent refresh() emission.
+            var firstReadyLogged = false
             combine(availabilityFlow(), preferenceRepository.userPreferences) { avail, prefs ->
                 PrivilegeState(
                     root = avail.root,
@@ -70,7 +78,15 @@ class PrivilegeManager(
                     ),
                     isReady = true
                 )
-            }.collect { _state.value = it }
+            }.collect { newState ->
+                _state.value = newState
+                // Logged after publishing, because it is the publish that releases the loaders
+                // every isLoading = !priv.isReady consumer is holding.
+                if (BuildConfig.DEBUG && !firstReadyLogged && newState.isReady) {
+                    firstReadyLogged = true
+                    PrivilegeProbeTrace.logFirstReady(newState.active.name)
+                }
+            }
         }
     }
 
@@ -87,14 +103,31 @@ class PrivilegeManager(
     private fun availabilityFlow(): Flow<Availability> =
         refreshTrigger
             .map {
+                // Started before the coroutineScope so `total` includes the async dispatch — that
+                // is latency the caller waits for, and hiding it would flatter the measurement.
+                // Null (and compiled out) in release; see PrivilegeProbeTrace.
+                val trace = PrivilegeProbeTrace.start()
                 // Probe the three sources concurrently: the root probe can spawn a shell
                 // (100-500ms), so running them in parallel keeps cold-start latency at
                 // max(probe) instead of the sum.
                 coroutineScope {
-                    val root = async { safeProbe { systemRepository.isRootAvailable() } }
-                    val shizuku = async { safeProbe { systemRepository.isShizukuAvailable() } }
-                    val dhizuku = async { safeProbe { systemRepository.isDhizukuAvailable() } }
+                    val root = async {
+                        trace.timeProbe(PrivilegeProbeTier.ROOT) {
+                            safeProbe { systemRepository.isRootAvailable() }
+                        }
+                    }
+                    val shizuku = async {
+                        trace.timeProbe(PrivilegeProbeTier.SHIZUKU) {
+                            safeProbe { systemRepository.isShizukuAvailable() }
+                        }
+                    }
+                    val dhizuku = async {
+                        trace.timeProbe(PrivilegeProbeTier.DHIZUKU) {
+                            safeProbe { systemRepository.isDhizukuAvailable() }
+                        }
+                    }
                     Availability(root.await(), shizuku.await(), dhizuku.await())
+                        .also { trace?.logRun(it.root, it.shizuku, it.dhizuku) }
                 }
             }
             .flowOn(Dispatchers.IO)
