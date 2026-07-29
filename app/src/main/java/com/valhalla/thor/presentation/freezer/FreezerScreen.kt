@@ -438,11 +438,11 @@ fun FreezerScreen(
             isDhizuku = state.isDhizuku,
             isInFreezer = app.packageName in state.freezerPackageNames,
             onDismiss = { selectedPackageName = null },
-            // Dismissing here is not optional. selectedAppInfo is resolved out of
-            // state.freezerApps, so removing this app from the freezer drops it from that list and
-            // the sheet goes with it on the next emission. Doing it ourselves, now, makes the
-            // teardown deliberate and immediate instead of a race with the flow — and matches
-            // every other action below, which all clear the selection too.
+            // Dismissing here is not optional, and this is the only action it's true of.
+            // selectedAppInfo is resolved out of state.freezerApps, which is the watchlist
+            // (`allApps.filter { it.packageName in pkgSet }`), so leaving the freezer drops this app
+            // from that list and the sheet would go with it on the next emission. Doing it
+            // ourselves, now, makes the teardown deliberate instead of a race with the flow.
             onToggleFreezerMembership = {
                 viewModel.toggleManaged(
                     app.packageName,
@@ -451,30 +451,28 @@ fun FreezerScreen(
                 selectedPackageName = null
             },
             onAppAction = { action ->
+                // No clears below, same as the Apps tab: AppInfoSheet calls onDismiss() itself for
+                // every terminal action, and the rest — suspend, force-stop, clear cache, share,
+                // settings, permissions — are meant to leave the sheet up so you can see the result.
+                // Freezing and unfreezing don't touch membership, so neither can pull this app out
+                // of state.freezerApps.
                 when (action) {
-                    is AppClickAction.Freeze -> {
+                    is AppClickAction.Freeze ->
                         viewModel.freezeSingleApp(
                             app.packageName,
                             app.appName,
                             inFreezer = app.packageName in state.freezerPackageNames
                         )
-                        selectedPackageName = null
-                    }
 
-                    is AppClickAction.UnFreeze -> {
+                    is AppClickAction.UnFreeze ->
                         viewModel.unfreezeSingleApp(app.packageName, app.appName)
-                        selectedPackageName = null
-                    }
 
                     is AppClickAction.AddToHomeScreen -> {
                         viewModel.pinAppToLauncher(app)
                         selectedPackageName = null
                     }
 
-                    else -> {
-                        onAppAction(action)
-                        selectedPackageName = null
-                    }
+                    else -> onAppAction(action)
                 }
             }
         )
