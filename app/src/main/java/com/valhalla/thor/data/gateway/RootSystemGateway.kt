@@ -55,7 +55,7 @@ class RootSystemGateway(
     private suspend fun getRootService(): IThorRootService? = connectionMutex.withLock {
         if (!isDaemonReset) {
             isDaemonReset = true
-            // Kill any old daemon to make sure the newly compiled suCore is loaded and executed
+            // Kill any old daemon so the newly compiled root service is loaded and executed
             runCatching {
                 shellRepository.exec("pkill -f ${context.packageName}:root")
             }
