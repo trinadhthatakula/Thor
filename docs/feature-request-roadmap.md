@@ -83,7 +83,12 @@ committing to the 1–2 d figure.
 ### #55a — Freeze profiles · 🟢 · 2–3 d · impact 3
 - **What:** named groups of apps you can freeze/unfreeze on demand.
 - **Reuses:** `FreezerRepository` + Room `freezer_apps` table, `FreezerViewModel` multi-select + batch `MultiAppAction.Freeze/UnFreeze`, `AutoMigration`. New profile tables + a small UI.
-- **Risks:** the Room migration is on a shipped database, so it needs a real `AutoMigration` and a schema-export diff — not `fallbackToDestructiveMigration`. Beyond that: a profile-triggered bulk freeze would be a **fourth** surface reaching `BulkFreezeRunner` (after the Freezer screen, the launcher shortcuts and the QS tile), so it must route through the runner rather than freezing directly, and it must respect `FreezePolicy` — see `docs/follow-ups/single-app-freeze-tier-gate.md`.
+- **Risks:** the Room migration is on a shipped database, so it needs a real `AutoMigration` and a schema-export diff — not `fallbackToDestructiveMigration`. Beyond that: a profile-triggered bulk freeze would be a **fourth** surface reaching `BulkFreezeRunner` (after the Freezer screen, the launcher shortcuts and the QS tile), so it must route through the runner rather than freezing directly, and it must respect the freeze tier gate, which now lives in `FreezeAppUseCase.kt:35-48` (the follow-up
+  doc this used to link shipped and was deleted in `412f655e`). Two further risks the recon pass
+  found: `BulkFreezeRunner`'s job slot coalesces on the `BulkOp` alone, so "freeze profile A" then
+  "freeze profile B" would return the first `Deferred` and silently never freeze B; and
+  `FreezerBridgeProvider` refuses to restore anything absent from the watchlist, so apps that live
+  only in a profile would be un-unfreezable from the launcher.
 - Otherwise on-brand for the freezer.
 
 ### #161 — `.apks` won't open from Samsung My Files · 🟢 · 1–2 d · impact 2 *(bug)*
