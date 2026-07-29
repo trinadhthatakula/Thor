@@ -1,11 +1,14 @@
 # Follow-up: `BulkFreezeRunner` has no tests, and its bugs are the kind only `runTest` finds
 
-**Status:** Deferred — blocked on the same test dependency as
-[`viewmodel-behavior-tests.md`](viewmodel-behavior-tests.md); these two should land together.
+**Status:** Deferred — the dependency blocker is **gone**, the design blocker is not. See
+"Blocker" below; this no longer waits on
+[`viewmodel-behavior-tests.md`](viewmodel-behavior-tests.md), which has landed.
 **Severity:** Minor (test-coverage gap; the two known defects are fixed).
 **Effort:** medium.
 **Raised by:** the final whole-branch review of `fix/freezer-tile-rework` (2026-07-28), which found
 two real concurrency defects in a class that no test touches.
+**Revised:** 2026-07-30 on `chore/tier0-batch-1`, after the test dependencies were added and the
+suite was attempted.
 
 Files: `app/src/main/java/com/valhalla/thor/data/freezer/BulkFreezeRunner.kt:124 (fun launch)`,
 `app/src/main/java/com/valhalla/thor/data/freezer/BulkFreezeRunner.kt:209 (private suspend fun run)`,
@@ -34,19 +37,44 @@ Both defects the final review found are exactly what a `runTest` would have caug
    straggling FREEZE could re-disable a package the replacing UNFREEZE had just enabled. A test that
    launches FREEZE, launches UNFREEZE, and asserts the recorded call order per package catches it.
 
-The suite cannot express either today: `app/build.gradle.kts` declares exactly one unit-test
-dependency, `testImplementation(libs.junit)`. No `kotlinx-coroutines-test` means no virtual time,
-no `TestScope`, and no way to control the interleaving these tests are *about* — a real-time version
-would be a flaky sleep race.
+## Blocker
+
+The blocker this document originally named — "`app/build.gradle.kts` declares exactly one unit-test
+dependency, `testImplementation(libs.junit)`" — is **stale**. `kotlinx-coroutines-test` and turbine
+were both added on `chore/tier0-batch-1`, and `BulkFreezeWorkerTest` already uses `runTest`. Virtual
+time is available. Do not re-file that as the reason.
+
+The real blocker is a missing seam, and it is in main source, not the test config.
+`BulkFreezeRunner`'s constructor takes four collaborators a JVM unit test cannot produce, and Kotlin
+classes are final by default, so none of them can be subclassed by a hand-written fake either:
+
+| Collaborator | Declared at | Why a fake cannot stand in |
+|---|---|---|
+| `PrivilegeManager` | `data/manager/PrivilegeManager.kt:43` | final; its `init` registers Shizuku binder and permission listeners |
+| `AppFreezeStateReader` | `data/freezer/AppFreezeStateReader.kt:27` | final, over the abstract `android.content.pm.PackageManager` |
+| `UadHelper` | `data/source/local/UadHelper.kt:49` | final, over `android.content.Context` |
+| `BulkResultNotifier` | `data/freezer/BulkResultNotifier.kt:36` | final, over `android.content.Context` |
+
+`:app` has no mocking library on purpose — every existing test is a hand-written fake — so "add
+mockk" is a change to the suite's whole approach, not a shortcut around this. The honest options are
+to extract an interface for each of the four (the pattern `FreezerRepository` and `PreferenceRepository`
+already follow, which is why *those* two are fakeable), or to lift the runner's decision logic out of
+the class the way `freezableCandidates` and `bulkActionFor` were already lifted. Either is real main-source
+work and should be decided deliberately rather than smuggled in with a test PR.
+
+What *was* reachable without a seam is now covered:
+`app/src/test/java/com/valhalla/thor/data/freezer/BulkFreezeWorkerTest.kt` pins what one worker does
+to one package when the privilege layer refuses and when the batch is cancelled under it. That is a
+worker body, not the runner's machinery — the acceptance criteria below remain unmet.
 
 ## Sketch
 
 Not a decision, just the shape:
 
-1. **Share the dependency work with `viewmodel-behavior-tests.md`.** That follow-up already proposes
-   adding `kotlinx-coroutines-test` (pinned to the existing `kotlinxCoroutines` version) and turbine.
-   Do it once, use it for both. Turbine is what makes the `isRunning` / `lastResult` / `freezableCount`
-   emission *sequences* assertable rather than just their final values.
+1. ~~**Share the dependency work with `viewmodel-behavior-tests.md`.**~~ Done — `kotlinx-coroutines-test`
+   and turbine are in the catalog and on `:app`'s test classpath. Turbine is what will make the
+   `isRunning` / `lastResult` / `freezableCount` emission *sequences* assertable rather than just their
+   final values.
 
 2. **Inject the scope, or inject the dispatcher.** The runner already takes `@Named("io")
    CoroutineDispatcher`, so a `StandardTestDispatcher` goes in through the existing seam; the

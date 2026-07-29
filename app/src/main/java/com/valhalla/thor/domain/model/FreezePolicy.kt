@@ -52,3 +52,18 @@ fun freezeTierOf(
 /** [freezeTierOf] for an app we already hold. */
 val AppInfo.freezeTier: FreezeTier
     get() = freezeTierOf(isSystem, bloatRecommendation, isUadLoadFailed)
+
+/**
+ * The fail-closed reading of [freezeTier]: may we freeze this app at all?
+ *
+ * Nullable on purpose. "Could not resolve the app" and "the app is BLOCKED" have to produce the
+ * same answer, and re-typing that per call site is how one of them eventually gets written as
+ * `app != null && app.freezeTier != BLOCKED` — which reads an unresolvable package as a safe one
+ * and freezes it. That is the exact defect PR #287's review caught, and the lookups behind this
+ * (`AppRepository.getAppDetails`, a state snapshot a rescan may have dropped) all return null on
+ * *any* failure. An unknown tier is not a safe tier.
+ *
+ * Freeze-only, matching [FreezeCandidate.blockedFromFreeze]: unfreezing must never consult it.
+ */
+fun isBlockedFromFreeze(app: AppInfo?): Boolean =
+    app == null || app.freezeTier == FreezeTier.BLOCKED

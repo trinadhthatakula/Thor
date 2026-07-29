@@ -3,9 +3,30 @@ name: Dev Build & Test
 on:
   push:
     branches: [ "master" ]
+    # A change that cannot reach the APK should not spend seven minutes proving it — run
+    # 30286348722 built for 339s off a one-file change to .github/scripts/. Filtering the whole
+    # workflow is only safe because this one is not a required status check: the rulesets on dev
+    # and master require "build-and-test" from pr-ci.yml and nothing else, and GitHub reports a
+    # path-skipped required check as pending forever. That is why pr-ci.yml has no path filters
+    # and this one does.
+    #
+    # release-notes/** is deliberately absent: the notes are read by the run that publishes them,
+    # and that run always carries the gradle.properties bump alongside, so it is never skipped.
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.github/**/*.md'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/scripts/**'
+      - '.github/assets/**'
+      - '.github/CODEOWNERS'
+      - '.github/FUNDING.yml'
+      - '.github/dependabot.yml'
   workflow_dispatch:
 
-# Don't let overlapping release runs race on the same version tag / Play upload.
+# Don't let overlapping runs race on the same version tag.
 concurrency:
   group: dev-build-${{ github.ref }}
   cancel-in-progress: false
@@ -42,7 +63,10 @@ jobs:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > app/release.jks
 
-      # Added Play Store JSON for Dev (needed for Internal Track upload)
+      # Left in place although this job no longer uploads to Play: fastlane's Appfile resolves
+      # json_key_file at boot from JSON_KEY_FILE, and the cleanup step below shreds it either
+      # way. Dropping it is a separate, deliberate change to secret handling, not a side effect
+      # of moving the Play upload to the production branch.
       - name: Decode Google Play Service Account
         env:
           PLAY_STORE_JSON_KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
@@ -51,9 +75,54 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      # --- 2. BUILD & DEPLOY (FASTLANE) ---
-      # Replaced manual Gradle command with Fastlane lane
-      - name: Run Fastlane (Distribute Dev)
+      # --- 2. IS THIS PUSH A RELEASE? ---
+      # Every push to master used to publish, and master is a trunk, not a release trigger. That
+      # collides head-on with this repo's own rule that versionCode moves *only* in a dedicated
+      # chore(release) commit: under that rule most master pushes deliberately carry an unchanged
+      # code, so `fix(shizu): …` merges kept dying on "Version code NNNN has already been used".
+      # The check was firing on the convention being followed correctly, which is why master has
+      # been red continuously rather than red once.
+      #
+      # Play's duplicate-code rejection is NOT suppressed anywhere here, and must not be — it is
+      # the real versioning gate and it is server-side. This step only decides whether a push was
+      # *meant* to publish at all, so the rejection is left to fire on an actual mistake: a
+      # chore(release) that reuses a code still fails exactly as it does today.
+      #
+      # Compares the parsed value, not `git diff --quiet -- gradle.properties`: that file also
+      # carries Gradle daemon flags and memory settings, and a JVM tweak is not a release.
+      # HEAD^ on a PR merge commit is the previous master tip (first parent), which is the
+      # comparison we want. Fails OPEN — if the old value cannot be read we attempt the publish
+      # and let Play adjudicate, rather than silently skipping a real release.
+      - name: Detect release (did versionCode change?)
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual dispatch — an explicit request to publish."
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          read_code() { grep -E '^[[:space:]]*versionCode[[:space:]]*=' | head -n1 | cut -d= -f2 | tr -d '[:space:]'; }
+          NEW=$(read_code < gradle.properties)
+          OLD=$(git show 'HEAD^:gradle.properties' 2>/dev/null | read_code || echo "")
+          if [ -z "$NEW" ]; then
+            echo "::error::versionCode not found in gradle.properties"
+            exit 1
+          fi
+          if [ -n "$OLD" ] && [ "$OLD" = "$NEW" ]; then
+            echo "::notice::versionCode unchanged at $NEW — building for verification only, not publishing."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::versionCode ${OLD:-<unreadable>} -> $NEW — publishing."
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # --- 3. BUILD (FASTLANE) ---
+      # One step, two lanes, so the env block is not duplicated. distribute_dev builds and uploads
+      # to the internal track; build_release_candidates runs the same copyStoreReleaseApk /
+      # copyFossReleaseApk tasks and writes the same version_name.txt / version_code.txt, but skips
+      # upload_to_play_store and bundleStoreRelease. A non-release push therefore still proves
+      # master compiles and signs — it just publishes nothing.
+      - name: Run Fastlane
         env:
           JSON_KEY_FILE: ${{ github.workspace }}/app/google-play-api.json
           SUPPLY_JSON_KEY: ${{ github.workspace }}/app/google-play-api.json
@@ -61,11 +130,14 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEYSTORE_FILE_PATH: ${{ github.workspace }}/app/release.jks
-        run: bundle exec fastlane android distribute_dev
+        run: bundle exec fastlane android ${{ steps.ver.outputs.release == 'true' && 'distribute_dev' || 'build_release_candidates' }}
 
-      # --- 3. PREPARE RELEASE NOTES ---
+      # --- 4. PREPARE RELEASE NOTES ---
+      # From here down everything is publication, so it all rides on the same condition. A
+      # verification build stops after the Fastlane step.
       - name: Prepare Release Notes
         id: prep_notes
+        if: steps.ver.outputs.release == 'true'
         run: |
           if [ ! -f version_name.txt ] || [ ! -f version_code.txt ]; then
             echo "Error: version_name.txt or version_code.txt is missing!" >&2
@@ -115,9 +187,9 @@ jobs:
             echo "has_telegram_notes=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # --- 4. TELEGRAM ---
+      # --- 5. TELEGRAM ---
       - name: Send APK to Telegram
-        if: success()
+        if: success() && steps.ver.outputs.release == 'true'
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -150,8 +222,9 @@ jobs:
                -F "parse_mode=Markdown" \
                "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendDocument" > /dev/null
 
-      # --- 5. GITHUB RELEASE (PRE-RELEASE) ---
+      # --- 6. GITHUB RELEASE (PRE-RELEASE) ---
       - name: Create GitHub Pre-Release
+        if: steps.ver.outputs.release == 'true'
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           # Unique tag for dev builds: v1.0.0-dev-45
@@ -166,7 +239,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # --- 5. CLEANUP ---
+      # --- 7. CLEANUP ---
       - name: Cleanup sensitive files
         if: always()
         run: |

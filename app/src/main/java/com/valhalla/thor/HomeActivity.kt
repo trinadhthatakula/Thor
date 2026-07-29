@@ -14,8 +14,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.repository.PreferenceRepository
-import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.presentation.common.ShizukuPermissionHandler
 import com.valhalla.thor.presentation.home.HomeViewModel
 import com.valhalla.thor.presentation.main.MainScreen
@@ -24,13 +24,14 @@ import com.valhalla.thor.presentation.security.BiometricScreen
 import com.valhalla.thor.presentation.security.SecurityViewModel
 import com.valhalla.thor.presentation.theme.ThorTheme
 import com.valhalla.thor.util.Logger
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 import org.koin.androidx.viewmodel.ext.android.viewModel
 
 class HomeActivity : ComponentActivity() {
 
-    private val systemRepository: SystemRepository by inject()
+    private val privilegeManager: PrivilegeManager by inject()
     private val homeViewModel: HomeViewModel by viewModel()
     private val securityViewModel: SecurityViewModel by viewModel()
     private val preferenceRepository: PreferenceRepository by inject()
@@ -102,10 +103,27 @@ class HomeActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Ask for Shizuku only if root did not answer — read from [PrivilegeManager], not by probing.
+     *
+     * This used to call `systemRepository.isRootAvailable()` directly, which made it the *second*
+     * caller of a probe `PrivilegeManager` already runs at startup. Both land in Odin's
+     * `@Synchronized MainShell.get()`, so the two raced: whichever arrived first paid for shell
+     * init and the other either waited on the monitor or found the shell already built. That is the
+     * bimodality the #22 measurement found — a root probe taking 62-85ms in four cold starts out of
+     * ten and 627-789ms in the other six, with nothing in between.
+     *
+     * Waiting on `isReady` costs nothing extra: the probe was already running, this is the same
+     * result the rest of the app is waiting for, and `hasRequestedShizuku` still latches so the
+     * request fires once per activity. The early return keeps repeated `onResume` calls from
+     * stacking collectors on `lifecycleScope`, which outlives each pause.
+     */
     override fun onResume() {
         super.onResume()
+        if (hasRequestedShizuku) return
         lifecycleScope.launch {
-            if (!systemRepository.isRootAvailable() && !hasRequestedShizuku) {
+            val privileges = privilegeManager.state.first { it.isReady }
+            if (!privileges.root && !hasRequestedShizuku) {
                 hasRequestedShizuku = true
                 shizukuHandler.checkAndRequestPermission(requestCode)
             }

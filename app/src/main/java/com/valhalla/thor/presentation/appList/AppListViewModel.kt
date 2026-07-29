@@ -23,12 +23,14 @@ import com.valhalla.thor.domain.model.sortApps
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
+import com.valhalla.thor.util.UiTextException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -103,6 +105,7 @@ class AppListViewModel(
     private val getAppDetailsUseCase: GetAppDetailsUseCase,
     private val privilegeManager: PrivilegeManager,
     private val manageAppUseCase: ManageAppUseCase,
+    private val freezeAppUseCase: FreezeAppUseCase,
     private val preferenceRepository: PreferenceRepository,
     private val freezerRepository: FreezerRepository,
     private val freezerShortcutManager: FreezerShortcutManager,
@@ -322,7 +325,11 @@ class AppListViewModel(
 
     fun freezeApp(packageName: String, appName: String?, freeze: Boolean) {
         viewModelScope.launch {
-            val result = manageAppUseCase.setAppDisabled(packageName, freeze)
+            // Freezing goes through FreezeAppUseCase so the BLOCKED tier is enforced below this
+            // view model rather than by AppRiskDialog declining to render a confirm button.
+            // Unfreezing keeps the raw call: it must never be blocked.
+            val result = if (freeze) freezeAppUseCase(packageName)
+            else manageAppUseCase.setAppDisabled(packageName, false)
             result.onSuccess {
                 // Update the app's enabled state in our local list immediately for UI responsiveness
                 _rawState.update { state ->
@@ -365,12 +372,12 @@ class AppListViewModel(
                     )
                 }
             }.onFailure { e ->
+                // A UiTextException already carries the message to show (the tier refusal) and
+                // has a null `message`, which error_format would render as a bare "Error: ".
                 _events.send(
                     AppListEvent.ShowMessage(
-                        UiText.StringResource(
-                            R.string.error_format,
-                            e.message ?: ""
-                        )
+                        if (e is UiTextException) e.uiText
+                        else UiText.StringResource(R.string.error_format, e.message ?: "")
                     )
                 )
             }
@@ -452,8 +459,10 @@ class AppListViewModel(
             when (action) {
                 is MultiAppAction.Freeze -> {
                     // EXPERT apps go through unwarned here by design — a batch is not the place to
-                    // interrogate the user app by app. BLOCKED is stopped here; the single-app
-                    // freeze paths still lean on the dialog hiding its confirm button instead.
+                    // interrogate the user app by app. BLOCKED is filtered here rather than left
+                    // to FreezeAppUseCase (which is what `freezeApp` uses) so the skipped apps
+                    // are counted once, in `failures`, instead of each costing a redundant
+                    // getAppDetails on the way to a second report of the same refusal.
                     val eligibleApps = action.appList.filter { it.freezeTier != FreezeTier.BLOCKED }
                     val skippedCount = action.appList.size - eligibleApps.size
                     val succeededPackages = mutableSetOf<String>()

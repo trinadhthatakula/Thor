@@ -1,7 +1,12 @@
 # Follow-up: ViewModel behavior tests need `kotlinx-coroutines-test` + turbine
 
-**Status:** Deferred — blocked on two test dependencies the project does not yet have.
+**Status:** Partly done, **no longer blocked**. The two dependencies landed on `chore/tier0-batch-1`
+and were used: `MainViewModelTest` (24 tests) and `SecurityViewModelTest` (7) now cover those two
+view models behaviourally. `AppListViewModel` — the one this doc was actually written about — is
+still uncovered, and the four tests listed under *Sketch* §4 are still unwritten. What remains is
+writing them, not enabling them.
 **Severity:** Minor (test-coverage gap; no runtime defect). **Effort:** small–medium.
+**Revised:** 2026-07-30, after the dependencies landed.
 **Raised by:** an external model's review of PR #278 (2026-07-27), which noted that the PR's timing
 behavior is covered only by pure-function tests over the delay constants, not by tests of the
 ViewModel logic that consumes them. The observation is correct.
@@ -27,40 +32,35 @@ Those tests are real — one was rewritten after mutation testing showed the ori
 pays it, or that a second refresh arriving mid-hold keeps the indicator up instead of hiding it at
 the original deadline. Those are precisely the regressions this PR could re-introduce.
 
-The suite cannot express them today:
+~~The suite cannot express them today~~ — it can now. That paragraph described a state that ended on
+2026-07-30: `kotlinx-coroutines-test` and turbine are in the catalog and on `:app`'s test classpath,
+`MainDispatcherRule` exists at `app/src/test/java/com/valhalla/thor/presentation/MainDispatcherRule.kt`,
+shared fakes live in `ViewModelTestDoubles.kt` next to it, and several suites already run on virtual
+time. `AppListViewModel`'s temporal behaviour is simply not among them yet.
 
-- `app/build.gradle.kts:237` declares exactly one unit-test dependency — `testImplementation(libs.junit)`.
-- No `kotlinx-coroutines-test` ⇒ no virtual time. Each of these tests would otherwise have to sleep
-  in real wall-clock (800 ms+ per case), which is a bad trade for a suite that currently runs
-  104 tests instantly.
-- No turbine ⇒ no ergonomic way to assert a sequence of `StateFlow` emissions.
-- All 15 existing test classes are synchronous pure-logic tests; `grep -rl "runTest\|runBlocking\|CoroutineScope" app/src/test` returns nothing.
-
-So this is a missing-capability gap, not an oversight about whether the tests are worth having.
+This is therefore no longer a missing-capability gap. It is unwritten tests, with the harness they
+need already sitting beside them.
 
 ## Sketch
 
 Not a decision, just the shape:
 
-1. **Add the dependencies.** In `gradle/libs.versions.toml`:
+1. ~~**Add the dependencies.**~~ Done. For the record, what landed in `gradle/libs.versions.toml`:
    ```toml
    kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
    turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
    ```
-   `kotlinxCoroutines` already exists (`1.11.0`), so coroutines-test costs no new version entry —
-   and it **must** stay pinned to the same version as the runtime artifact. Resolve the current
-   turbine release rather than copying a version from here.
-   Then in `app/build.gradle.kts`: `testImplementation(libs.kotlinx.coroutines.test)` and
-   `testImplementation(libs.turbine)`.
+   `kotlinxCoroutines` already existed (`1.11.0`), so coroutines-test cost no new version entry — and
+   it **must** stay pinned to the same version as the runtime artifact. Turbine resolved to `1.2.1`.
 
-2. **Check the dispatcher seam.** The A2 batch of the audit remediation moved dispatchers behind
-   injection, so the ViewModel may already be testable as-is. Where `viewModelScope` still lands on
-   `Dispatchers.Main`, add a JUnit rule doing `Dispatchers.setMain(StandardTestDispatcher())` /
-   `resetMain()`.
+2. ~~**Check the dispatcher seam.**~~ Answered: `viewModelScope` does land on `Dispatchers.Main`, so
+   `MainDispatcherRule` (`Dispatchers.setMain(StandardTestDispatcher())` / `resetMain()`) is the seam.
+   It already exists — use it rather than writing a second one.
 
-3. **Fake, don't mock.** `AppRepository` is an interface and `getAllApps()` is a flow, so a
-   hand-written fake with a controllable channel is enough. No mockk/Robolectric — keep these as
-   plain JVM tests so they stay in `testFossDebugUnitTest`.
+3. **Fake, don't mock.** Still the rule, and now the precedent: `ViewModelTestDoubles.kt` holds
+   hand-written fakes shared across the suites written so far. `AppRepository` is an interface and
+   `getAllApps()` is a flow, so a fake with a controllable channel is enough. No mockk/Robolectric —
+   keep these as plain JVM tests so they stay in `testFossDebugUnitTest`.
 
 4. **Tests worth having** (behavioral, not constant-pinning):
    - `loadApps()` starts the scan without advancing virtual time — the actual fix in this PR;

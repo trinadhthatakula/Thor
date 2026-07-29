@@ -159,10 +159,12 @@ class DhizukuSystemGateway(
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
+        val userId = getPackageUserId(packageName)
+            ?: return Result.failure(Exception("Dhizuku: cannot resolve the Android user for $packageName; refusing to grant on user 0."))
         val escapedPackageName = packageName.escapeForShell()
         val escapedPermissionName = permissionName.escapeForShell()
         return try {
-            val result = DhizukuHelper.execute("pm grant $escapedPackageName $escapedPermissionName")
+            val result = DhizukuHelper.execute("pm grant --user $userId $escapedPackageName $escapedPermissionName")
             if (result.first == 0) Result.success(Unit)
             else Result.failure(Exception("Dhizuku: pm grant failed with exit code ${result.first}: ${result.second}"))
         } catch (e: Exception) {
@@ -177,15 +179,37 @@ class DhizukuSystemGateway(
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
+        val userId = getPackageUserId(packageName)
+            ?: return Result.failure(Exception("Dhizuku: cannot resolve the Android user for $packageName; refusing to revoke on user 0."))
         val escapedPackageName = packageName.escapeForShell()
         val escapedPermissionName = permissionName.escapeForShell()
         return try {
-            val result = DhizukuHelper.execute("pm revoke $escapedPackageName $escapedPermissionName")
+            val result = DhizukuHelper.execute("pm revoke --user $userId $escapedPackageName $escapedPermissionName")
             if (result.first == 0) Result.success(Unit)
             else Result.failure(Exception("Dhizuku: pm revoke failed with exit code ${result.first}: ${result.second}"))
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
+
+    /**
+     * The Android user the package actually lives in.
+     *
+     * `pm grant`/`pm revoke` default to user 0 when no `--user` is passed, so on a work profile or a
+     * Xiaomi Second Space the change would hit the primary user's same-named package instead. Derived
+     * from the package's own uid, matching the Root and Shizuku gateways — a permission must not
+     * grant under one privilege mode and quietly miss under another.
+     *
+     * Dhizuku runs these as the Device Owner (user 0), which is not guaranteed to hold
+     * INTERACT_ACROSS_USERS, so a cross-user `--user` may be refused. That is the intended outcome:
+     * `pm` reports a real failure instead of silently mutating user 0's copy of the package. For the
+     * ordinary same-user case `--user <id>` is exactly what the bare command already did, and Dhizuku
+     * already passes `--user` on its install/uninstall paths.
+     *
+     * Null means the package could not be resolved at all; callers must fail rather than fall back to
+     * user 0, which is the original bug.
+     */
+    private fun getPackageUserId(packageName: String): Int? =
+        reflector.getApplicationInfoOrNull(packageName)?.let { userIdOf(it.uid) }
 
 }

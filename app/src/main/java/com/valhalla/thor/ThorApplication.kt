@@ -64,7 +64,12 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
-        com.valhalla.thor.extension.api.Logger.isDebug = BuildConfig.DEBUG
+        // Logger gates every level on this flag, `e` included, so a build with it false emits no
+        // Thor logcat at all. PRIVILEGE_TRACE is OR-ed in because the benchmark build type is
+        // release-shaped (DEBUG == false) and would otherwise take its startup timings and print
+        // none of them. See docs/follow-ups/release-builds-emit-no-thor-logcat.md.
+        com.valhalla.thor.extension.api.Logger.isDebug =
+            BuildConfig.DEBUG || BuildConfig.PRIVILEGE_TRACE
 
         startKoin<ThorApplication> {
             androidContext(this@ThorApplication)

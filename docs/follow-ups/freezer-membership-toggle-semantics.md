@@ -60,8 +60,8 @@ The two failure modes are symmetric, which is why this is a decision rather than
    "get this app out of the freezer" almost certainly means "and give it back to me".
 3. **Unify on remove-and-restore** so the Apps tab thaws too. Consistent and never orphans, but it
    changes shipped behaviour on a surface users already know, and makes a membership control
-   privileged — it would need the same tier gate as the freeze paths (see
-   `single-app-freeze-tier-gate.md`).
+   privileged — it would need the same tier gate as the freeze paths (`FreezeAppUseCase.kt:35-48`;
+   the follow-up doc that used to describe this shipped and was deleted in `412f655e`).
 4. **Confirm on the destructive direction only** — a dialog on the Freezer tab's remove, none on the
    Apps tab. Solves the surprise without picking a semantic, at the cost of a tap.
 

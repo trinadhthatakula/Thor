@@ -88,6 +88,13 @@ android {
         ndk {
             debugSymbolLevel = "SYMBOL_TABLE"
         }
+
+        // Startup-timing instrumentation switch, read by PrivilegeProbeTrace and by
+        // ThorApplication's Logger.isDebug wiring. Off by default so `release` inherits false and
+        // stays silent; `debug` and `benchmark` turn it back on below. It exists as its own field
+        // rather than reusing BuildConfig.DEBUG because the benchmark build type is release-shaped,
+        // so BuildConfig.DEBUG is false there and the trace would compile out again.
+        buildConfigField("boolean", "PRIVILEGE_TRACE", "false")
     }
 
     signingConfigs {
@@ -127,6 +134,27 @@ android {
         debug {
             isMinifyEnabled = false
             applicationIdSuffix = ".debug"
+            buildConfigField("boolean", "PRIVILEGE_TRACE", "true")
+        }
+
+        // Release-shaped build for on-device startup measurement, and nothing else. It exists
+        // because the numbers that matter cannot be taken from either shipping build type: `debug`
+        // runs at a different compilation tier (run-from-apk vs speed-profile) so its timings do
+        // not transfer, and `release` compiles the trace out entirely.
+        //
+        // Never distributed. It is restricted to the store flavour below, so the foss variant's
+        // inputs are untouched and IzzyOnDroid reproducibility cannot be affected by anything here.
+        //
+        // No applicationIdSuffix on purpose: it installs over the release build, keeping the same
+        // package name and signature, so the Magisk/KernelSU/Shizuku grants already given to
+        // `com.valhalla.thor` carry over. KernelSU Next has no request mode, so a new application id
+        // would mean granting root by hand again before every measurement session. The
+        // versionNameSuffix is what tells the two apart on-device.
+        create("benchmark") {
+            initWith(getByName("release"))
+            versionNameSuffix = "-benchmark"
+            matchingFallbacks += "release"
+            buildConfigField("boolean", "PRIVILEGE_TRACE", "true")
         }
     }
 
@@ -155,6 +183,29 @@ android {
         aidl = true
     }
 
+    lint {
+        // The severity overrides live in lint.xml, not in this block, so the reason for each one
+        // travels with the rule instead of with the build script. AGP would pick app/lint.xml up by
+        // itself; naming it keeps the link visible from here.
+        lintConfig = file("lint.xml")
+
+        // :app is at 0 errors / 0 warnings today (the only warnings, VectorPath, are downgraded in
+        // lint.xml). Enforce that rather than let it rot: a warning is a build failure, and release
+        // variants are checked too.
+        abortOnError = true
+        checkReleaseBuilds = true
+        warningsAsErrors = true
+
+        // Analyse :app's own sources only. :bypass has its own lint task, and with warnings fatal we
+        // do not want this module's result to move because a dependency we do not control changed.
+        checkDependencies = false
+
+        // AGP 9 always writes the HTML/XML/SARIF reports and has deprecated the toggles and *Output
+        // paths, so the only thing left worth asking for is the text report on stdout — otherwise a
+        // CI failure just points at an HTML file nobody can open from the log.
+        printTextReport = true
+    }
+
     packaging {
         dex {
             // Compress dex in generated APKs. dex is otherwise STORED uncompressed (~76% of the
@@ -179,6 +230,19 @@ android {
 }
 
 androidComponents {
+    // 0. Confine the benchmark build type to the store flavour.
+    //
+    // Build types and flavours are a cross product in AGP, so declaring `benchmark` would otherwise
+    // create `fossBenchmark` as well as `storeBenchmark`. Disabling the foss half here means the
+    // foss flavour has exactly the two variants it always had and no task, artifact or input of the
+    // reproducible `fossRelease` build can be reached from the benchmark configuration at all.
+    // storeBenchmark is the only benchmark variant, and it is never published.
+    beforeVariants(
+        selector().withBuildType("benchmark").withFlavor("distribution", "foss")
+    ) { variantBuilder ->
+        variantBuilder.enable = false
+    }
+
     // 1. Existing FOSS Copy Task
     onVariants(selector().withFlavor("distribution", "foss")) { variant ->
         // foss ships as a single universal APK (GitHub direct download), so every locale lands in
@@ -235,6 +299,13 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
     testImplementation(libs.junit)
+    // Virtual time (`runTest`, `StandardTestDispatcher`) and Flow-emission assertions — without these
+    // every behavioural test of a ViewModel or of BulkFreezeRunner has to sleep in wall-clock, which
+    // is why docs/follow-ups/{viewmodel-behavior-tests,bulk-freeze-runner-concurrency-tests}.md were
+    // filed as blocked. No mocking library: those follow-ups all specify "fake, don't mock", matching
+    // the hand-written fakes the existing suite already uses.
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.turbine)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
@@ -247,6 +318,10 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.navigation3)
     implementation(libs.accompanist.drawablepainter)
     implementation(libs.kotlinx.serialization.json)
+    // :app has ~300 `import kotlinx.coroutines.*` and no direct declaration — they arrive through
+    // Odin's `api(kotlinx-coroutines-android)`. Declared here so Thor pins its own version instead of
+    // silently tracking whatever Odin ships, and so coroutines-test stays on the same 1.11.0.
+    implementation(libs.kotlinx.coroutines.android)
     implementation(libs.lottie.compose)
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
