@@ -158,10 +158,12 @@ class ShizukuSystemGateway(
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
+        val userId = getPackageUserId(packageName)
+            ?: return Result.failure(Exception("Shizuku: cannot resolve the Android user for $packageName; refusing to grant on user 0."))
         val escapedPackageName = packageName.escapeForShell()
         val escapedPermissionName = permissionName.escapeForShell()
         return try {
-            val result = ShizukuHelper.execute("pm grant $escapedPackageName $escapedPermissionName")
+            val result = ShizukuHelper.execute("pm grant --user $userId $escapedPackageName $escapedPermissionName")
             if (result.first == 0) Result.success(Unit)
             else Result.failure(Exception("Shizuku: pm grant failed with exit code ${result.first}: ${result.second}"))
         } catch (e: Exception) {
@@ -176,16 +178,33 @@ class ShizukuSystemGateway(
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
+        val userId = getPackageUserId(packageName)
+            ?: return Result.failure(Exception("Shizuku: cannot resolve the Android user for $packageName; refusing to revoke on user 0."))
         val escapedPackageName = packageName.escapeForShell()
         val escapedPermissionName = permissionName.escapeForShell()
         return try {
-            val result = ShizukuHelper.execute("pm revoke $escapedPackageName $escapedPermissionName")
+            val result = ShizukuHelper.execute("pm revoke --user $userId $escapedPackageName $escapedPermissionName")
             if (result.first == 0) Result.success(Unit)
             else Result.failure(Exception("Shizuku: pm revoke failed with exit code ${result.first}: ${result.second}"))
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
+
+    /**
+     * The Android user the package actually lives in.
+     *
+     * `pm grant`/`pm revoke` default to user 0 when no `--user` is passed, so on a work profile or a
+     * Xiaomi Second Space the change would hit the primary user's same-named package instead. Derived
+     * from the package's own uid rather than the foreground user, matching RootSystemGateway so a
+     * permission that grants under Root grants identically under Shizuku. The reflector's lookup
+     * already carries MATCH_UNINSTALLED_PACKAGES, so a frozen system app still resolves.
+     *
+     * Null means the package could not be resolved at all; callers must fail rather than fall back to
+     * user 0, which is the original bug.
+     */
+    private fun getPackageUserId(packageName: String): Int? =
+        reflector.getApplicationInfoOrNull(packageName)?.let { userIdOf(it.uid) }
 
     /**
      * Standardizes error handling for reflection and shell actions.
