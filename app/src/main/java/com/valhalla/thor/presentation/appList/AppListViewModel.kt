@@ -377,6 +377,16 @@ class AppListViewModel(
         }
     }
 
+    /**
+     * The "Frozen — add it to the Freezer?" prompt's confirm.
+     *
+     * Deliberately **not** tier-gated, unlike [toggleFreezerMembership]. This only ever runs after
+     * [freezeApp] succeeded, so the app is already frozen; the question is whether to track it, not
+     * whether to freeze it. Membership is what makes a frozen app recoverable —
+     * `freezableCandidates` drops `blockedFromFreeze` from FREEZE runs but filters UNFREEZE runs on
+     * `state == FROZEN` alone — so tracking can never cause a re-freeze and is the only way
+     * Unfreeze-all reaches it. Refusing here would strand a frozen app off the list it belongs on.
+     */
     fun addToFreezer(packageName: String) {
         viewModelScope.launch(Dispatchers.IO) {
             freezerRepository.add(packageName)

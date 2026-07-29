@@ -202,6 +202,13 @@ class AppInfoDetailsViewModel(
         }
     }
 
+    /**
+     * The freezer prompt's confirm. Deliberately not tier-gated, unlike [addOrRemoveFromFreezer]:
+     * [toggleFreezerState] only raises the prompt inside `onSuccess`, so the app is already frozen
+     * and the question is whether to track it. Tracking a frozen app can't re-freeze it
+     * (`freezableCandidates` drops blocked apps from FREEZE runs) and is what lets Unfreeze-all
+     * reach it, so refusing here would stand between the user and their own frozen app.
+     */
     fun addToFreezer(packageName: String) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { freezerRepository.add(packageName) }

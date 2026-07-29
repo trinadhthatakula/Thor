@@ -77,6 +77,27 @@ off it.
 That is option 1 applied to the membership paths — three copies of the same block, which is exactly
 the argument for doing the freeze paths as option 2 rather than making it six.
 
+**The other four `freezerRepository.add` sites are deliberately ungated, and should stay that way.**
+CodeRabbit raised them on #288 as the same bug; they are not. The line is *who is asking for what*:
+
+- **"Put this app I am looking at on the watchlist"** — gated. The app is not frozen, so an entry
+  for a `BLOCKED` app buys nothing and every bulk run skips it. That is the snowflake, the manage
+  sheet, `toggleManaged`.
+- **"This app is already frozen — track it?"** — not gated. `AppListViewModel.addToFreezer`,
+  `FreezerViewModel.addToFreezer` and `AppInfoDetailsViewModel.addToFreezer` are only ever reached
+  from a prompt raised inside `result.onSuccess { … if (freeze && !inFreezer) }`, and
+  `FreezerViewModel.addAppsToFreezer` runs over apps that are already `!enabled`. Membership is what
+  makes those apps *recoverable*: `freezableCandidates` drops `blockedFromFreeze` from FREEZE runs
+  but filters UNFREEZE runs on `state == FROZEN` alone, so an entry can never cause a re-freeze and
+  is the only way Unfreeze-all reaches the app. Failing closed there would refuse to track an app
+  that is already frozen — harm, not caution.
+- `addAppsToFreezer` could not see a blocked app regardless: `disabledAppsNotInFreezer` filters
+  `!isSystem` and `freezeTierOf` opens with `!isSystem -> NORMAL`.
+
+`MainViewModel:319` and `:444` add after a *successful system uninstall*, which is Thor's freeze
+mechanism for system apps — same category, same reasoning, and `:444` is already gated on the
+uninstall itself.
+
 ## Fix
 
 Push the check to where the freeze happens, not where it is offered. Either:

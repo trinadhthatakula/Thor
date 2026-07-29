@@ -242,6 +242,12 @@ class FreezerViewModel(
 
     // --- Snackbar from AppInfoSheet (app frozen outside freezer) ---
 
+    /**
+     * Deliberately not tier-gated, unlike [toggleManaged]: the prompt this confirms is only raised
+     * after a freeze succeeded, so the app is already frozen and the question is whether to track
+     * it. Tracking can't re-freeze a blocked app (`freezableCandidates` drops it from FREEZE runs)
+     * and is what lets Unfreeze-all reach it.
+     */
     fun addToFreezer(packageName: String) {
         viewModelScope.launch(Dispatchers.IO) {
             freezerRepository.add(packageName)
@@ -346,6 +352,13 @@ class FreezerViewModel(
         }
     }
 
+    /**
+     * The "you have disabled apps that aren't in the Freezer — import them?" dialog.
+     *
+     * Not tier-gated for the same reason as [addToFreezer] — these apps are already disabled — and
+     * it could not matter anyway: `disabledAppsNotInFreezer` filters on `!isSystem`, and
+     * `freezeTierOf` opens with `!isSystem -> NORMAL`, so nothing blocked can reach this list.
+     */
     fun addAppsToFreezer(packageNames: List<String>) {
         viewModelScope.launch(Dispatchers.IO) {
             packageNames.forEach { pkg ->
