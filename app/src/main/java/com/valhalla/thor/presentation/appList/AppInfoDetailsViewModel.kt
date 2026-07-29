@@ -14,8 +14,10 @@ import com.valhalla.thor.presentation.freezer.FreezerPrompt
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.UiText
+import com.valhalla.thor.util.UiTextException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
@@ -44,6 +46,7 @@ class AppInfoDetailsViewModel(
     private val appRepository: AppRepository,
     private val systemRepository: SystemRepository,
     private val manageAppUseCase: ManageAppUseCase,
+    private val freezeAppUseCase: FreezeAppUseCase,
     private val freezerRepository: FreezerRepository,
     private val freezerShortcutManager: FreezerShortcutManager
 ) : ViewModel() {
@@ -131,7 +134,11 @@ class AppInfoDetailsViewModel(
 
     fun toggleFreezerState(packageName: String, appName: String?, freeze: Boolean) {
         viewModelScope.launch {
-            val result = manageAppUseCase.setAppDisabled(packageName, freeze)
+            // Freezing goes through FreezeAppUseCase so the BLOCKED tier is enforced below this
+            // view model rather than by AppRiskDialog declining to render a confirm button.
+            // Unfreezing keeps the raw call: it must never be blocked.
+            val result = if (freeze) freezeAppUseCase(packageName)
+            else manageAppUseCase.setAppDisabled(packageName, false)
             result.onSuccess {
                 freezerShortcutManager.refreshAppShortcut(packageName)
                 val inFreezer = withContext(Dispatchers.IO) { freezerRepository.contains(packageName) }
@@ -146,7 +153,12 @@ class AppInfoDetailsViewModel(
                 // Refresh detail only — no privilege re-probe, no loader flash.
                 refreshDetails(packageName)
             }.onFailure { e ->
-                _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                // A UiTextException already carries the message to show (the tier refusal) and
+                // has a null `message`, which error_format would render as a bare "Error: ".
+                _events.send(
+                    if (e is UiTextException) e.uiText
+                    else UiText.StringResource(R.string.error_format, e.message ?: "")
+                )
             }
         }
     }
