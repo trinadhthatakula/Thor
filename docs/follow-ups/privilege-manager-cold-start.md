@@ -1,9 +1,12 @@
 # Follow-up: measure `PrivilegeManager`'s cold-start cost
 
-**Status:** Instrumentation landed (debug-only); the measurement itself is on the owner — it needs a
-real device in each privilege configuration, which CI cannot provide.
-**Severity:** Unknown, which is the point. Suspected minor-to-moderate on non-rooted and
-root-denied devices.
+**Status:** Instrumentation landed (debug-only). **Measurement started 2026-07-30 — 2 of 8
+configurations done, see [Measurements taken so far](#measurements-taken-so-far).** Root-granted is
+already **bad** on three signals and bimodal in the shape confound 7 predicts; the remaining six
+configurations still need a real device, which CI cannot provide.
+**Severity:** Suspected moderate **on rooted devices** — which inverts the guess this doc was filed
+with. The root probe costs 627–789 ms in 6 of 10 cold starts and ~99% of `probe total`; the
+no-`su` path measured ~10× cheaper.
 **Effort:** ~30 min per configuration to run; the analysis is a one-liner.
 **Raised by:** follow-up #22, approved "but it needs proper checks".
 **Related:** [`perfetto-trace-pass.md`](perfetto-trace-pass.md) is the umbrella device session that
@@ -256,6 +259,88 @@ override it — or on `MainShell.get()`'s monitor. Capture a thread dump (`adb s
 then `adb logcat`) while it is happening so the parked stack is on the record; the log line alone
 cannot show it.
 
+## Measurements taken so far
+
+**2026-07-30 — 2 of the 8 configurations measured. This does not meet the acceptance bar below**
+(no `LaunchState: COLD` line, no warm-up discard, six configurations untouched), but the first
+configuration already returns a **bad** result on three of the five signals, so it is recorded rather
+than held.
+
+### Configuration 1 — root granted (KernelSU Next) + Shizuku installed, running, granted
+
+Device `25053PC47G`, Android 16, debug build `com.valhalla.thor.debug`. N = 10.
+
+| Series | n | median | p90 | max | min | p90 ÷ median | Verdict |
+|---|---:|---:|---:|---:|---:|---:|---|
+| `probe total` | 10 | 662 ms | 757 ms | 793 ms | 66 ms | 1.14 | **bad** (> 500) |
+| `root=` | 10 | 656 ms | 751 ms | 789 ms | 62 ms | 1.15 | **bad** (> 500) |
+| `shizuku=` | 10 | 4.5 ms | 9 ms | 16 ms | 0 ms | 2.0 | good |
+| `dhizuku=` | 10 | 2 ms | 5 ms | 16 ms | 1 ms | 2.5 | good |
+| `ready sinceProcessStart` | 10 | 1201 ms | 1332 ms | 1436 ms | 508 ms | 1.11 | **bad** (> 800) |
+
+**Verdict: bad — and the p90 ÷ median column is lying, read the distribution instead.** Every ratio
+sits under 2, which the table above would call "steady work". It is not steady; it is **bimodal**,
+and a 60/40 split puts the median inside the slow mode where a ratio cannot see it:
+
+| mode | runs | `root=` | `ready` |
+|---|---|---|---|
+| fast | 4 of 10 | 62–85 ms | 508–540 ms |
+| slow | 6 of 10 | 627–789 ms | 1195–1436 ms |
+
+Raw `root=` series, in run order: `85, 80, 733, 627, 789, 684, 62, 70, 751, 750`. Nothing between
+85 ms and 627 ms in ten runs.
+
+The two modes differ by **667 ms of root-probe time and 778 ms of time-to-`ready`** — i.e. the swing
+in the root probe accounts for essentially the whole swing in the number the loaders wait on. Neither
+Shizuku nor Dhizuku moves at all between modes. The root probe is ~99% of `probe total` in both modes.
+
+**This is exactly the signature confound 7 predicts.** `HomeActivity.onResume()` and
+`PrivilegeManager` race for Odin's `@Synchronized` shell; the loser pays for shell init. What the
+data cannot yet settle is which side pays in the *fast* mode — a fast `root=` with a fast `ready`
+(508 ms) is consistent both with "shell init was genuinely cheap that run" and with "`onResume`
+paid ~700 ms in parallel, off-trace, without delaying `ready`". Distinguishing them needs
+`HomeActivity.kt:108` instrumented too, or removed.
+
+**Odin's 10 s `SHELL_INIT_TIMEOUT_MS` was never reached** — max tier 789 ms. The hang class described
+above did not appear in this run.
+
+### No `su` (configuration 3), Shizuku installed — emulator baseline
+
+Emulator, API 37, no `su` binary. Shizuku is installed; whether the server was running was not
+verified, so this is config 3 and *not* a clean read of 4/5/6. N = 5, below the doc's own N ≥ 10 bar.
+
+| Series | n | median | p90 | max | min | Verdict |
+|---|---:|---:|---:|---:|---:|---|
+| `probe total` | 5 | 67 ms | 74 ms | 74 ms | 56 ms | good |
+| `root=` (returns `false`) | 5 | 66 ms | 72 ms | 72 ms | 54 ms | good |
+| `ready sinceProcessStart` | 5 | 599 ms | 725 ms | 725 ms | 581 ms | investigate (400–800) |
+
+**Verdict: within budget.** Unimodal, no slow tail. The "config #8 must be fastest" expectation holds
+in the right direction so far — the configuration with nothing to find is ~10× cheaper than the one
+with root, which is the correct sign but says nothing yet about #8 itself.
+
+### The spinner window is not yet measured, and the debug build is hiding it
+
+Four unpaired `Displayed` samples on the rooted device: `+1s181ms, +1s243ms, +1s244ms, +1s413ms`.
+Against those, `ready` at 1195–1436 ms lands *at or just after* first frame in the slow mode and
+several hundred ms *before* it in the fast mode. So the lower bound from §5.2 comes out at roughly
+zero — **the spinner window looks fine, but only because the debug build's own first frame takes
+~1.2 s and covers the probe.** A release build draws its first frame far sooner, and a 750 ms root
+probe would then be exposed as visible spinner on the Apps and Freezer tabs. Do not read "spinner
+window ≈ 0" here as a pass; it is an artifact of §6. Redo it with the exact epoch-timestamp method in
+§5.1, with the two events paired per run.
+
+### What this run does not establish
+
+- **Coldness rests on `am force-stop` plus the one-`ready`-line-per-run self-check** (which held for
+  all 10 runs). Launches went through `monkey`, not `am start -W -n`, so there is no
+  `LaunchState: COLD` line on the record. The self-check is the stronger of the two signals, but the
+  protocol above asks for both.
+- No warm-up runs were discarded and no `cmd package compile -m speed -f` normalization was done, so
+  JIT warm-up is inside these numbers.
+- Configurations 2, 4, 5, 6, 7 and 8 are unmeasured. **#8 — the floor, and the one the "bad result"
+  table hangs on — has not been run at all.**
+
 ## What to do if it is slow
 
 Levers, not decisions. **This follow-up is measurement only — do not implement any of these without
@@ -290,9 +375,24 @@ numbers first.**
 ## Acceptance
 
 - The table in "What a bad result looks like" is filled in for **each** of the 8 configurations, with
-  `n`, median, p90 and max — not a single number per cell.
+  `n`, median, p90 and max — not a single number per cell. → **2 of 8 done** (config 1 at N=10,
+  config 3 at N=5).
 - Every run in every series is confirmed cold (`LaunchState: COLD`, and one `ready` line per run).
+  → **half done**: the one-`ready`-line check held for all 10 config-1 runs, but the runs went
+  through `monkey`, so no `LaunchState` line exists. Re-run with `am start -W -n`.
 - A one-line verdict per configuration: within budget / investigate / bad, and if any is "bad", which
-  lever above it points at.
+  lever above it points at. → **config 1 is bad**, and it points at **lever 5 + confound 7 first**:
+  the remaining serialization is Odin's `@Synchronized MainShell.get()`, and Thor has *two* callers
+  racing it on every cold start. Removing the duplicate probe in `HomeActivity.onResume()` is the
+  change to price before lever 1 (drop the `isReady` gate) or lever 3 (warm it in
+  `ThorApplication.onCreate`), because until there is one caller, neither can be measured honestly.
 - The instrumentation stays in — it is free in release and this measurement will need repeating
   after any change to the probe chain or to Odin's shell init.
+
+### Next session, in order
+
+1. Instrument or delete `HomeActivity.kt:108`'s independent `isRootAvailable()` call, then re-run
+   config 1. This is the one measurement that turns the bimodality from a hypothesis into a cause.
+2. Re-run config 1 with `am start -W -n` and the warm-up discards, so the numbers satisfy §1 and §2.
+3. Run config 8 (non-rooted, no Shizuku, no Dhizuku) — the floor the whole comparison rests on.
+4. Then 2, 4, 5, 6, 7.
