@@ -330,6 +330,112 @@ probe would then be exposed as visible spinner on the Apps and Freezer tabs. Do 
 window ≈ 0" here as a pass; it is an artifact of §6. Redo it with the exact epoch-timestamp method in
 §5.1, with the two events paired per run.
 
+### Release build, same device, same day — and it makes the result worse, not better
+
+Run because the owner's reasonable hypothesis was "release builds are faster". They are, by a lot,
+and **that is precisely the problem.**
+
+`com.valhalla.thor` 1.93.0-foss (`versionCode` 1930), R8-minified + resource-shrunk + signed,
+installed on the same device `1da5425f` with root granted in KernelSU Next. N = 12 measured after 3
+discarded warm-ups, `am start -W -n`, **every run reported `LaunchState: COLD`** — so this series
+satisfies §1 and §2 in a way the debug series above does not.
+
+| `TotalTime` (→ first frame) | n | median | p90 | max | min | p90 ÷ median |
+|---|---:|---:|---:|---:|---:|---:|
+| **release** | 12 | **285.5 ms** | 313 ms | 315 ms | 274 ms | 1.10 |
+| **debug** | 12 | **1152 ms** | 1185 ms | 1193 ms | 1125 ms | 1.03 |
+
+**Release reaches first frame 4.04× faster — 866 ms sooner.** Three compounding causes, all verified
+in the artifacts rather than assumed:
+
+1. **R8 merged 21 dex files into 1.** `unzip -l` on each APK: `app-foss-release.apk` has one
+   `classes.dex`, `app-foss-debug.apk` has 21.
+2. **The release APK embeds an ART profile and the debug APK does not** — `assets/dexopt/baseline.prof`
+   (9974 B) + `baseline.profm`, from library dependencies shipping their own `baseline-prof.txt`.
+   Its 5409 merged lines cover 2346 classes — 47.7% of the APK's 4914 `class_defs` — and 8513
+   startup-flagged methods, but they contain **zero `com/valhalla/` entries**: every rule comes from
+   androidx/Compose/appcompat/fragment/Lottie/Coil/coroutines AARs. So the framework and UI layers
+   are AOT-compiled on first launch and *Thor's own code is not*. That matters for the inference
+   below — the privilege probe's own bytecode gets no profile-guided head start in either build.
+   This is *not* the excluded `app/baselineprofile` module; it is dependency-supplied and
+   deterministic, so it does not threaten FOSS reproducibility.
+3. **Consequently the two builds run at different compilation tiers.** `dumpsys package dexopt`:
+   release is `[status=speed-profile] [reason=baseline]` **at install time, before first launch**;
+   debug is `[status=run-from-apk]` — interpreter plus JIT, never AOT.
+
+**This is not a controlled comparison, and must not be quoted as one.** It measures minification,
+resource shrinking, non-debuggable *and* AOT-from-profile all at once — plus one more asymmetry: the
+release package is a **fresh install** with empty DataStore, empty Room and no Shizuku grant, while
+the debug package has accumulated state. First frame precedes both the data load and the probe, so
+that asymmetry is weak here, but the 4× belongs to "shipped build vs debug build", not to any single
+cause.
+
+⚠️ **`TotalTime` is unimodal in both builds** (p90 ÷ median 1.03 and 1.10) — and **that is not
+evidence that the probe's bimodality is gone.** It cannot be. `SystemRepositoryImpl.isRootAvailable()`
+is `withContext(Dispatchers.IO)` and `HomeViewModel` (unlike the Apps/Freezer tabs) renders
+optimistically off the preferred mode, so the probe never blocked first frame in *either* build.
+A clean release `TotalTime` is exactly what you would see whether the probe took 70 ms or 790 ms.
+Reading it as reassurance is the specific way this measurement turns into a lie. What it does show
+is that the bimodality is not in the launch path — consistent with it living in the probe, which the
+debug trace measures directly and this does not.
+
+#### Why this is bad news
+
+The privilege probe's cost is **process spawn and shell handshake** — `su` under KernelSU Next, via
+Odin — not bytecode execution. R8 and AOT do not make `fork`/`exec` faster. So the ~450–570 ms of
+*non-probe* startup work shrinks by ~4×, and the ~720 ms root probe does not move.
+
+Decomposing the debug series (`ready` − `root=`, per mode) and scaling only the non-probe part:
+
+| mode | non-probe work | root probe | projected release `ready` | projected spinner window |
+|---|---:|---:|---:|---:|
+| fast (4/10 runs) | 448 → ~111 ms | 74 ms | ~185 ms | **none** — ready lands before first frame |
+| slow (6/10 runs) | 572 → ~142 ms | 722 ms | ~864 ms | **~579 ms** |
+
+Against this doc's own threshold — spinner ≤ 200 ms good, 200–500 investigate, **> 500 bad** — the
+slow mode on release lands in **bad**, in ~60% of cold starts. On debug the same window measured
+approximately **zero**, because a 1152 ms first frame comfortably covered a 1201 ms `ready`.
+
+**The debug build was hiding a user-visible defect, and making the app faster is what exposes it.**
+Users on the shipped build see disabled freeze controls for roughly half a second, on the majority of
+cold starts, on rooted devices — the exact failure the `isReady` gate was introduced to prevent.
+
+**This is an inference, not a measurement.** It rests on one assumption — that the root probe's cost
+does not scale with compilation tier — which is well-founded but untested. See below for what it
+would take to measure it directly.
+
+#### The trace does not exist in release, and that is by design
+
+Verified rather than assumed, with the debug APK as a positive control:
+
+```
+app-foss-release.apk: searched  1 dex | ThorPrivPerf=0 PrivilegeProbeTrace=0  logmsgs=0
+app-foss-debug.apk  : searched 21 dex | ThorPrivPerf=1 PrivilegeProbeTrace=14 logmsgs=2
+```
+
+`PrivilegeProbeTrace.start()`'s `BuildConfig.DEBUG` fold works exactly as its KDoc claims: the tag,
+the class and both message strings are entirely absent from the shipped dex. **So `probe total`, the
+per-tier numbers and `ready sinceProcessStart` cannot be obtained from a stock release build at all.**
+`am start -W` is the only cold-start signal release exposes, and it ends at first frame — before the
+privilege state exists (§5).
+
+**To measure the projection above rather than infer it**, the minimal honest change is a third build
+type that inherits release's `isMinifyEnabled`/`isShrinkResources`/signing but enables the trace via
+its own `buildConfigField` (e.g. `PRIVILEGE_TRACE`), with `PrivilegeProbeTrace.start()` gated on that
+field instead of `BuildConfig.DEBUG`. A new build type does not alter the `fossRelease` variant's
+inputs, so FOSS reproducibility is unaffected — unlike baseline profiles, which is a different
+concern and stays excluded.
+
+⚠️ **That recipe alone produces a silent build.** `PrivilegeProbeTrace` emits through
+`Logger.d` (`PrivilegeProbeTrace.kt:54` and `:86`), and `Logger` gates every level on `isDebug`,
+which `ThorApplication.kt:67` sets from `BuildConfig.DEBUG` — still `false` in anything derived from
+release. Ungating the trace without also forcing `Logger.isDebug = true` for that build type yields a
+build that computes the timings and prints none of them, which looks exactly like a probe that never
+ran. Both switches, or neither. (Same root cause as
+[release builds emit no Thor logcat](release-builds-emit-no-thor-logcat.md).)
+
+**Not done: this is a build-config change beyond a measurement task, and it is the owner's call.**
+
 ### What this run does not establish
 
 - **Coldness rests on `am force-stop` plus the one-`ready`-line-per-run self-check** (which held for
