@@ -1,13 +1,50 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
-   See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
+   Auto Backup ruleset for API 28-30 (android:fullBackupContent). API 31+ ignores this file and
+   reads res/xml/data_extraction_rules.xml instead; minSdk is 28, so both ship and the two must
+   stay semantically identical — change one, change the other.
+
+   Policy: back up the settings the user chose, and nothing else.
+
+   This is an allowlist. A single <include> is what makes it one: once any path is included,
+   everything not named is out. So there are deliberately NO <exclude> entries here — an <exclude>
+   that sits outside every <include> is redundant by construction, and lint's FullBackupContent
+   check reports exactly that as an error. What each omission buys is recorded below instead,
+   because the reasoning is the part worth keeping; the elements were not.
 -->
 <full-backup-content>
+
+    <!-- The only state worth restoring: DataStore Preferences — theme, sort/filter, privilege
+         mode, freezer mode, biometric lock and friends. The store name "thor_preferences" is
+         declared in data/repository/PreferenceRepositoryImpl.kt:28, and DataStore writes it to
+         files/datastore/<name>.preferences_pb, so the domain is "file", NOT "sharedpref" — Thor
+         persists nothing through SharedPreferences. A path that matches nothing fails exactly as
+         silently as the empty template this replaced, so it has to track that filename.
+
+         The two device-specific keys in here re-resolve rather than break on a new device:
+         export_dir_uri is revalidated by ExportAppUseCase (falls back to Downloads if the SAF
+         grant is gone) and privilege_mode falls through the Root -> Shizuku -> Dhizuku chain. -->
+    <include
+        domain="file"
+        path="datastore/thor_preferences.preferences_pb" />
+
     <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+       Left out on purpose, and each for a different reason:
+
+       - files/app_icons/ — one PNG per installed app, so it grows with the device's app count.
+         Cloud backup has a 25 MB per-app quota and overrunning it fails the ENTIRE backup with no
+         user-visible error, so this cache alone could silently cost the user their settings.
+         AppIconLoader regenerates it on demand.
+
+       - the Room database ("thor_database", built in di/Modules.kt, plus its -wal and -shm
+         sidecars) — derived state. The app metadata cache is rebuilt from PackageManager on
+         launch, so a restored copy is stale on arrival, and the freezer watchlist sharing the
+         same file would name packages the new device may not even have installed.
+
+       - cacheDir — APK staging, split bundles, analysis scratch and installer icons, running to
+         hundreds of MB. The platform skips it anyway.
+
+       If any of these ever becomes worth backing up, splitting the user-curated freezer watchlist
+       out of the derived metadata cache is the prerequisite, not widening this file.
+    -->
+
 </full-backup-content>
