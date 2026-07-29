@@ -14,8 +14,10 @@ Files: `.github/workflows/dev-check.yml`, `.github/workflows/production-deploy.y
 
 ## Problem
 
-Google Play version codes are unique **per app**, not per track. A code can be uploaded exactly once,
-to one track, ever.
+Google Play version codes are unique **per app**, not per track. The invariant is about *uploads*,
+not tracks: a given version code may be **uploaded** exactly once, ever. It may afterwards appear on
+any number of tracks, because promoting an already-uploaded artifact is not a second upload — which
+is the whole basis of option 1 below.
 
 Thor uploads from two places:
 

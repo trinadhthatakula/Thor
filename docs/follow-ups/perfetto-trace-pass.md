@@ -49,9 +49,12 @@ Not a decision, just the shape:
 4. **Bulk freeze:** capture one Freeze-all run. `BulkFreezeRunner` bounds concurrency at
    `MAX_CONCURRENT`; the trace says whether that bound is the right one on a device where each
    `pm` call contends on the PackageManager lock.
-5. **LeakCanary** on a debug build for the same session — it costs nothing to have running while the
-   traces are being taken, and the ViewModel/scope lifetimes touched by recent work are exactly what
-   it is good at.
+5. **LeakCanary** on a debug build — but in a **separate session, after the captures above**, never
+   alongside them. It watches every retained object and dumps the heap on suspicion, which perturbs
+   allocation, GC and thread scheduling; a frame timeline or cold-start number taken with it running
+   is measuring LeakCanary as much as Thor. The ViewModel/scope lifetimes touched by recent work are
+   precisely what it is good at, so it is worth its own pass — just not a shared one. If a trace does
+   get taken with it attached, exclude that trace from every timing conclusion.
 
 ## Acceptance
 

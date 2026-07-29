@@ -1,4 +1,4 @@
-# Follow-up: a restored `biometric_lock=true` can lock the user out of Thor permanently
+# Follow-up: a restored `biometric_lock=true` is a hard lockout with no in-app escape
 
 **Status:** OPEN, unfixed. Surfaced while device-verifying follow-up #20 (backup rules), confirmed by
 reading the auth path.

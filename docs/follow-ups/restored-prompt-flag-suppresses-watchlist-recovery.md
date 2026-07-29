@@ -55,8 +55,18 @@ untracked, and the only thing that would have said so has been turned off by a b
    fix. Costs a custom `BackupAgent` where Thor currently has none, which is a real increment.
 3. **Derive the condition instead of storing it.** Drop the flag from the gate and prompt whenever
    `disabledAppsNotInFreezer` is non-empty *and* the watchlist is empty — i.e. ask the question the
-   flag is a stale proxy for. Needs a per-session suppression so a user who declines is not re-asked
-   on every visit (`hasCheckedAutoPrompt` already does that job within a composition).
+   flag is a stale proxy for. Needs a suppression so a user who declines is not re-asked on every
+   visit, and **`hasCheckedAutoPrompt` is not that mechanism as it stands.** Two reasons, both worth
+   checking before assuming it can be reused:
+   - It is `rememberSaveable` owned by `FreezerScreen` (`FreezerScreen.kt:101`), so its lifetime is
+     the screen's saved state, not the session. It survives a rotation and system-initiated process
+     death, and does **not** survive a cold launch from the launcher.
+   - It is set when the prompt is *shown* (`FreezerScreen.kt:117-119`), not when it is dismissed, so
+     it records "we already offered this" rather than "the user said no".
+   Decide the scope explicitly and say so in the acceptance below: screen-scoped is what exists,
+   session-scoped wants `FreezerViewModel` state, and "never ask me again" is a preference — which is
+   the flag this whole document is about, so choosing it means fixing its restore behaviour rather
+   than escaping it.
 4. **Do nothing, and say so.** Defensible: the prompt is a convenience, the manual add path works,
    and the damage is one missed offer. If this is the answer, delete this doc rather than leaving it
    open.
@@ -68,6 +78,7 @@ cannot go stale if it does not exist. Option 2 is more faithful to intent but bu
 
 - Freeze some apps → `bmgr backupnow` → `adb uninstall` → `adb install -t -r` → open the Freezer tab.
   The import prompt appears, listing the still-frozen apps.
-- Declining the prompt still suppresses it for the rest of the session (whatever mechanism is chosen).
+- Declining the prompt suppresses it for whatever scope option 3 settled on — and that scope is
+  named in the acceptance, not left as "the session". Re-entering the Freezer tab must not re-ask.
 - **`pm clear` + relaunch is not a valid test** — Android Auto Backup restores only at package
   *install* time, so a clear-and-relaunch never restores the flag and the bug will not reproduce.

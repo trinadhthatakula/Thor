@@ -4,7 +4,9 @@
 cold-start comparison (2026-07-30).
 **Severity:** Minor-to-moderate, and **narrower than it first looks** — see "What this is not" before
 acting on it. Crashes are still diagnosable; non-fatal failures are not.
-**Effort:** small — one `Logger.isDebug` assignment, plus a decision about what "release" should mean.
+**Effort:** depends entirely on the option. One `Logger.isDebug` assignment if the whole flag flips;
+a `thor-extension-api` release if only errors are wanted (see option 2). Plus, either way, a decision
+about what "release" should mean.
 
 Files: `app/src/main/java/com/valhalla/thor/ThorApplication.kt:67`
 
@@ -63,9 +65,19 @@ So this is filed as a decision, not a defect.
    logs. Zero work, zero risk, and honest if the privacy argument is the one that matters. If this is
    the answer, delete this doc.
 2. **Let errors through in release.** Ungate `Logger.e` (and possibly `w`) while leaving `v`/`d`/`i`
-   debug-only. Smallest useful change: the failure paths become visible, the chatty ones stay quiet.
-   Requires an audit that no `Logger.e` call site interpolates a package list or a raw command —
-   several probably do, so this is a review pass, not a one-liner.
+   debug-only. Smallest useful change *in principle*: the failure paths become visible, the chatty
+   ones stay quiet. Two costs, and the first is easy to miss:
+   - **It is not a change Thor can make.** `Logger`'s single `isDebug` flag gates all five levels
+     together, and `Logger` ships in `com.trinadhthatakula:thor-extension-api` (pinned at **3.0.0**
+     in `gradle/libs.versions.toml:34`), not in this repo. Per-level gating means a new API surface
+     — a `minLevel`, or separate flags — released as a new artifact version and adopted here.
+     Publishing to Central is irreversible, and the flag is contract with third-party extensions, so
+     this is a versioned API decision, not a line of app code.
+   - Then an audit that no `Logger.e` call site interpolates a package list or a raw command —
+     several probably do. A review pass on top of the API change, not instead of it.
+   If the API change is unwanted, the only in-repo variant of this option is flipping the whole flag
+   for release, which broadens the privacy audit from `e`/`w` to all 149 sites and gives up the
+   quiet-by-default property that made option 2 attractive.
 3. **A user-toggled debug-logging preference.** Off by default, surfaced in Settings, sets
    `Logger.isDebug = true` for the session. Turns "send me a logcat" into a supportable request
    without leaking by default. Costs a preference, a Settings row, and the same call-site audit as
@@ -80,8 +92,12 @@ So this is filed as a decision, not a defect.
    *reproduction*, not *field diagnosis* — you cannot ask a user to install it. It does not close
    this item.
 
-Option 2 is the smallest thing that removes the actual gap, and option 4 has already been built for
-another reason, so the remaining question is only about what a **shipped** build should say.
+Option 2 removes the actual gap most precisely but is **not** the cheapest — it reaches outside this
+repo into a published artifact. Option 3 is the cheapest thing that is entirely in Thor's hands, and
+buys the same diagnosis by asking the user to opt in rather than by changing what release means.
+Option 4 has already been built for another reason and closes nothing here. So the remaining
+question is what a **shipped** build should say, and whether answering it is worth an
+`thor-extension-api` version.
 
 ## Acceptance
 

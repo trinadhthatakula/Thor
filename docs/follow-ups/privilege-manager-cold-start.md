@@ -42,7 +42,7 @@ reachable, this instrumentation is what will show it.
 Two lines, one tag, monotonic clock (`SystemClock.elapsedRealtime()`; a wall-clock read straddling
 an NTP step would yield a negative duration that still looks like data).
 
-```
+```text
 D ThorPrivPerf: probe total=412ms root=408ms/true shizuku=3ms/false dhizuku=1ms/false
 D ThorPrivPerf: ready sinceProcessStart=1180ms active=ROOT
 ```
@@ -83,9 +83,19 @@ adb shell am force-stop "$PKG"        # kills the process — this is the one th
 adb shell am kill "$PKG"              # no-op if already dead; belt and braces
 adb logcat -c
 adb shell am start -W -n "$CMP"
-sleep 6                               # let the probe run land before you read logcat
+# Poll for the probe to land — do NOT sleep a fixed interval. The root probe is bounded by
+# Odin's 10 s SHELL_INIT_TIMEOUT_MS, so any fixed wait shorter than that force-stops the
+# process mid-probe and silently drops the slowest runs: precisely the samples this
+# measurement exists to catch. 15 s ceiling = the 10 s guard plus margin.
+for _ in $(seq 1 30); do
+  adb logcat -d ThorPrivPerf:D '*:S' | grep -q 'ready sinceProcessStart' && break
+  sleep 0.5
+done
 adb logcat -d ThorPrivPerf:D '*:S'    # shorthand: adb logcat -d -s ThorPrivPerf
 ```
+
+If the loop falls through without a `ready` line, that is **data, not a failed run** — it means the
+probe exceeded 10 s and the hang class in §1 is still reachable. Record it; do not retry it away.
 
 Clear the task from recents by hand at least once per configuration (there is no reliable adb
 equivalent) so no OEM ROM can restore saved state; `adb shell dumpsys activity recents | grep -i thor`
@@ -100,10 +110,20 @@ adb logcat -c
 for i in $(seq 1 "$N"); do
   adb shell am force-stop "$PKG"; adb shell am kill "$PKG"; sleep 2
   adb shell am start -W -n "$CMP" | grep -E 'LaunchState|TotalTime|WaitTime'
-  sleep 6
+  # Wait for *this* run's ready line by counting, not by sleeping. logcat is deliberately not
+  # cleared between iterations, so a bare `grep -q` would match the previous run's line and
+  # return instantly. Same reasoning as the single run: never wait less than Odin's 10 s guard.
+  for _ in $(seq 1 30); do
+    [ "$(adb logcat -d ThorPrivPerf:D '*:S' | grep -c 'ready sinceProcessStart')" -ge "$i" ] && break
+    sleep 0.5
+  done
 done
 adb logcat -d ThorPrivPerf:D '*:S'
 ```
+
+Check `n` in the summary below against `N` before believing any percentile. A short count means
+runs timed out past 10 s and were dropped — which biases the result *fast*, in the direction that
+makes the problem look solved.
 
 Then, for any of the four numbers (`probe total`, each tier, `ready sinceProcessStart`):
 
@@ -332,9 +352,17 @@ verified, so this is config 3 and *not* a clean read of 4/5/6. N = 5, below the 
 | `root=` (returns `false`) | 5 | 66 ms | 72 ms | 72 ms | 54 ms | good |
 | `ready sinceProcessStart` | 5 | 599 ms | 725 ms | 725 ms | 581 ms | investigate (400–800) |
 
-**Verdict: within budget.** Unimodal, no slow tail. The "config #8 must be fastest" expectation holds
-in the right direction so far — the configuration with nothing to find is ~10× cheaper than the one
-with root, which is the correct sign but says nothing yet about #8 itself.
+**Verdict: investigate — and the two halves of this row disagree on purpose.** The *probe* is
+unambiguously fine (67 ms median, no slow tail); `ready sinceProcessStart` is not, at p90 = 725 ms,
+which lands inside the 400–800 ms investigate band. Since the probe accounts for ~70 ms of it, the
+other ~650 ms is process init, Koin start and first ViewModel resolution — i.e. **the cost is not in
+the thing this document instruments.** That is worth knowing, but it is not a pass.
+
+It stays "investigate" until an N ≥ 10 run confirms it; N = 5 is below this document's own bar and
+p90 on five samples is just the maximum wearing a percentile's name. The "config #8 must be fastest"
+expectation holds in the right direction so far — the configuration with nothing to find is ~10×
+cheaper on `probe total` than the one with root, which is the correct sign but says nothing yet
+about #8 itself.
 
 ### The spinner window is not yet measured, and the debug build is hiding it
 
@@ -425,7 +453,7 @@ would take to measure it directly.
 
 Verified rather than assumed, with the debug APK as a positive control:
 
-```
+```text
 app-foss-release.apk: searched  1 dex | ThorPrivPerf=0 PrivilegeProbeTrace=0  logmsgs=0
 app-foss-debug.apk  : searched 21 dex | ThorPrivPerf=1 PrivilegeProbeTrace=14 logmsgs=2
 ```
@@ -440,7 +468,7 @@ privilege state exists (§5).
 
 So the projection above can be **measured rather than inferred**, there is now a third build type:
 
-```
+```bash
 ./gradlew assembleStoreBenchmark
 # app/build/outputs/apk/store/benchmark/app-store-benchmark.apk
 ```
@@ -470,7 +498,7 @@ The trade is that it replaces an installed release build — reinstall the real 
 
 Verified in the emitted artifacts rather than assumed:
 
-```
+```text
 app-store-benchmark.apk : dex=1  ThorPrivPerf=1  logmsgs=2   <- traced, and release-shaped
 app-foss-release.apk    : dex=1  ThorPrivPerf=0  logmsgs=0   <- still folds out completely
 BuildConfig.PRIVILEGE_TRACE: foss/debug=true  foss/release=false  store/benchmark=true
