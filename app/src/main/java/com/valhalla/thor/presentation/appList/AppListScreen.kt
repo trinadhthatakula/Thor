@@ -269,7 +269,13 @@ fun AppListScreen(
                             viewModel.freezeApp(action.appInfo.packageName, action.appInfo.appName, true)
                         else -> onAppAction(action)
                     }
-                    selectedPackageForSheet = null
+                    // Deliberately no `selectedPackageForSheet = null` here. AppInfoSheet owns its
+                    // own dismissal and already calls onDismiss() for every terminal action (launch,
+                    // freeze, uninstall, clear data, fix store); the rest — suspend, force-stop,
+                    // clear cache, share, system settings — are meant to leave the sheet up so you
+                    // can see the result and keep going. Clearing unconditionally would close it for
+                    // those too, and would do it by dropping the composable, so there'd be no exit
+                    // animation either.
                 },
                 // No dismissal here, unlike the Freezer tab: this list is the whole scan, so the app
                 // stays in it either way, and the selection resolves against allUserApps /
