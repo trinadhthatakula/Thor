@@ -5,6 +5,7 @@ package com.valhalla.thor.domain.usecase
 
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.ExportTargetChoice
 import com.valhalla.thor.domain.model.resolveExportTarget
 import com.valhalla.thor.domain.repository.AppBundleBuilder
@@ -25,19 +26,26 @@ class ExportAppUseCase(
     private val fileStore: AppBundleFileStore,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) {
-    /** Build the bundle and write it to the resolved target. Returns a location label. */
-    suspend operator fun invoke(appInfo: AppInfo): Result<String> = withContext(ioDispatcher) {
+    /** Build the bundle in [format] and write it to the resolved target. Returns a location label. */
+    suspend operator fun invoke(
+        appInfo: AppInfo,
+        format: BundleFormat = BundleFormat.autoFor(appInfo),
+    ): Result<String> = withContext(ioDispatcher) {
+        var staged: File? = null
         try {
-            val file = bundleBuilder.build(appInfo, cacheSubDir = "export_temp").getOrElse { return@withContext Result.failure(it) }
-            val mime = mimeFor(file)
+            val file = bundleBuilder.build(appInfo, cacheSubDir = "export_temp", format = format)
+                .getOrElse { return@withContext Result.failure(it) }
+            staged = file
 
             val savedUri = preferenceRepository.userPreferences.first().exportDirUri
             val resolution = resolveExportTarget(savedUri, fileStore.isTreeWritable(savedUri))
             if (resolution.clearSavedDir) preferenceRepository.setExportDirUri(null)
 
             val location = when (val choice = resolution.choice) {
-                is ExportTargetChoice.Custom -> fileStore.writeToTree(file, choice.treeUri, mime)
-                ExportTargetChoice.Downloads -> fileStore.writeToDownloads(file, mime)
+                is ExportTargetChoice.Custom ->
+                    fileStore.writeToTree(file, choice.treeUri, format.mime)
+
+                ExportTargetChoice.Downloads -> fileStore.writeToDownloads(file, format.mime)
             }
             Result.success(location)
         } catch (e: CancellationException) {
@@ -45,6 +53,19 @@ class ExportAppUseCase(
         } catch (e: Exception) {
             if (BuildConfig.DEBUG) e.printStackTrace()
             Result.failure(e)
+        } finally {
+            // Export is the only caller that can free the staged copy: writeToTree/writeToDownloads
+            // stream every byte to the destination before returning, and the staged path never
+            // leaves this function. Share cannot — it hands a FileProvider content:// URI to
+            // another app that opens the file long after the use case returns, so its "share_temp"
+            // copy has to outlive the call. Do not unify the two.
+            // In the finally so cancellation frees it too — delete() does not suspend, so it
+            // still runs on a cancelled coroutine. That covers the window from the build
+            // returning to the write finishing; a cancel *during* the build never assigns
+            // `staged`, and the builder clears its own staging dir on that path instead.
+            // This one path only, never the directory — staging is per package, so nothing
+            // else in flight is holding this exact file.
+            staged?.delete()
         }
     }
 
@@ -54,8 +75,4 @@ class ExportAppUseCase(
         val savedUri = preferenceRepository.userPreferences.first().exportDirUri
         fileStore.currentTargetLabel(savedUri)
     }
-
-    private fun mimeFor(file: File) =
-        if (file.name.endsWith(".apk")) "application/vnd.android.package-archive"
-        else "application/octet-stream"
 }

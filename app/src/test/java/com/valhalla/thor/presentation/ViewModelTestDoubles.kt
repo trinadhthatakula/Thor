@@ -5,6 +5,7 @@ package com.valhalla.thor.presentation
 
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FreezerMode
@@ -268,7 +269,12 @@ class FakePreferenceRepository(
 // quietly, so a future share test reports the real reason instead of a confusing null.
 
 class FakeAppBundleBuilder : AppBundleBuilder {
-    override suspend fun build(appInfo: AppInfo, cacheSubDir: String): Result<File> =
+    // No default values on the override — Kotlin takes them from the interface.
+    override suspend fun build(
+        appInfo: AppInfo,
+        cacheSubDir: String,
+        format: BundleFormat
+    ): Result<File> =
         Result.failure(UnsupportedOperationException("bundle building needs a device"))
 }
 

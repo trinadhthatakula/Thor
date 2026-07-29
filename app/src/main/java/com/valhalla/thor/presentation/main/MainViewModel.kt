@@ -9,6 +9,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.freezeTier
@@ -44,7 +45,8 @@ import org.koin.core.annotation.Named
 sealed interface MainSideEffect {
     data class LaunchApp(val packageName: String) : MainSideEffect
     data class OpenAppSettings(val packageName: String) : MainSideEffect
-    data class ShareApp(val uri: android.net.Uri) : MainSideEffect
+    /** [mime] describes the container that was actually built, not the app it came from. */
+    data class ShareApp(val uri: android.net.Uri, val mime: String) : MainSideEffect
     data class ShareApps(val uris: List<android.net.Uri>) : MainSideEffect
     data class NormalUninstall(val packageName: String) : MainSideEffect
 
@@ -282,7 +284,8 @@ class MainViewModel(
                     if (result.isSuccess) {
                         addLog(UiText.StringResource(R.string.log_files_ready))
                         dismissLogger()
-                        _effect.send(MainSideEffect.ShareApp(result.getOrThrow()))
+                        val uri = result.getOrThrow()
+                        _effect.send(MainSideEffect.ShareApp(uri, mimeForBundle(uri)))
                     } else {
                         addLog(UiText.StringResource(R.string.log_error, result.exceptionOrNull()?.message ?: ""))
                         finishLogger()
@@ -627,6 +630,20 @@ class MainViewModel(
         else {
             _effect.send(MainSideEffect.Message(UiText.StringResource(R.string.error_app_info_missing)))
         }
+    }
+
+    /**
+     * The declared type for a share, taken from the bundle's own file name. The builder — not the
+     * app — decides the container (a split app comes back as an `.apks` zip), so the file name is
+     * the only honest source; the FileProvider URI's last segment is that name.
+     *
+     * An unrecognised extension falls back to the non-installable type on purpose: typing a zip as
+     * a package archive is what makes an installer accept the share and then choke on it.
+     */
+    private fun mimeForBundle(uri: android.net.Uri): String {
+        val extension = uri.lastPathSegment.orEmpty().substringAfterLast('.', "")
+        return BundleFormat.entries.firstOrNull { it.extension == extension }?.mime
+            ?: BundleFormat.APKS.mime
     }
 
     private fun getSuccessMessage(action: AppClickAction, appName: String): UiText {

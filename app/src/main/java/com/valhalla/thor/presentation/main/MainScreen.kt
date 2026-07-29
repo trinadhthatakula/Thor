@@ -243,7 +243,7 @@ fun MainScreen(
 
                     is MainSideEffect.ShareApp -> {
                         val intent = Intent(Intent.ACTION_SEND).apply {
-                            type = "application/vnd.android.package-archive"
+                            type = effect.mime
                             putExtra(Intent.EXTRA_STREAM, effect.uri)
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }

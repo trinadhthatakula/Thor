@@ -425,7 +425,9 @@
     <string name="legacy_extension_desc">Une version obsolète de l\'extension Stormbringer (orthographiée par erreur \"Strombringer\") est installée. Veuillez la désinstaller pour éviter les conflits et installer la version mise à jour.</string>
     <string name="action_export">Exporter</string>
     <string name="export_explain_apk">Thor enregistre cette application sous forme d\'un fichier d\'installation unique (.apk) dans le dossier ci-dessous. Utilisez-le pour sauvegarder l\'application ou la réinstaller plus tard.</string>
-    <string name="export_explain_apks">Cette application est composée de plusieurs parties distinctes, Thor les regroupe donc dans un seul paquet (.apks) dans le dossier ci-dessous. Réinstallez-la à tout moment avec l\'installateur de Thor.</string>
+    <string name="export_explain_apks">Cette application est composée de plusieurs parties distinctes, regroupées dans un seul paquet (.apks) dans le dossier ci-dessous. Réinstallez-la à tout moment avec l\'installateur de Thor.</string>
+    <string name="export_explain_xapk">Thor regroupe les parties de cette application dans un seul fichier (.xapk) dans le dossier ci-dessous, un format que d\'autres installateurs comprennent également. Les données de jeu (fichiers OBB) ne sont pas incluses, car Android 11 et versions ultérieures empêchent toute application de lire le dossier OBB d\'une autre ; un jeu volumineux s\'installera depuis ce fichier, mais risque de ne pas fonctionner.</string>
+    <string name="export_format">Format</string>
     <string name="export_save_to">Enregistrer sous</string>
     <string name="export_change">Modifier</string>
     <string name="export_in_progress">Exportation en cours…</string>

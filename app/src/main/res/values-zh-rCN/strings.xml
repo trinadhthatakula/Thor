@@ -417,7 +417,9 @@
     <string name="legacy_extension_desc">已安装旧版 Stormbringer 扩展（拼写错误为 \"Strombringer\"）。请将其卸载以避免冲突，并安装更新的 Stormbringer 扩展。</string>
     <string name="action_export">导出</string>
     <string name="export_explain_apk">Thor 将此应用保存为单个安装文件 (.apk) 到下方文件夹中。您可以使用它备份应用或在以后重新安装。</string>
-    <string name="export_explain_apks">此应用包含多个拆分部分，因此 Thor 将它们打包为一个捆绑包 (.apks) 并保存到下方文件夹中。可随时使用 Thor 安装程序重新安装。</string>
+    <string name="export_explain_apks">此应用包含多个拆分部分，它们会被打包为一个捆绑包 (.apks) 并保存到下方文件夹中。可随时使用 Thor 安装程序重新安装。</string>
+    <string name="export_explain_xapk">Thor 会将此应用的各个部分打包为单个文件 (.xapk) 并保存到下方文件夹中，其他安装器也能识别这种格式。游戏数据（OBB 文件）不会包含在内，因为 Android 11 及更高版本禁止任何应用读取其他应用的 OBB 文件夹；大型游戏可以通过此文件安装，但可能无法运行。</string>
+    <string name="export_format">格式</string>
     <string name="export_save_to">保存至</string>
     <string name="export_change">更改</string>
     <string name="export_in_progress">正在导出…</string>

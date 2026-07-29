@@ -459,7 +459,9 @@
     <string name="legacy_extension_desc">تم تثبيت إصدار قديم من امتداد Stormbringer (باسم خاطئ \"Strombringer\") الملحق. يرجى إلغاء تثبيته لتجنب التعارض وتثبيت امتداد Stormbringer المحدث.</string>
     <string name="action_export">تصدير</string>
     <string name="export_explain_apk">يقوم Thor بحفظ هذا التطبيق كملف تثبيت فردي (.apk) في المجلد أدناه. استخدمه لنسخ التطبيق احتياطيًا أو إعادة تثبيته لاحقًا.</string>
-    <string name="export_explain_apks">يأتي هذا التطبيق في أجزاء متعددة ومقسمة، لذا يقوم Thor بحزمها في حزمة واحدة (.apks) في المجلد أدناه. يمكنك إعادة تثبيتها في أي وقت باستخدام مثبت Thor.</string>
+    <string name="export_explain_apks">يأتي هذا التطبيق في أجزاء متعددة ومقسمة، تُحزم في حزمة واحدة (.apks) في المجلد أدناه. يمكنك إعادة تثبيتها في أي وقت باستخدام مثبت Thor.</string>
+    <string name="export_explain_xapk">يحزم Thor أجزاء هذا التطبيق في ملف واحد (.xapk) في المجلد أدناه، وهي صيغة تفهمها المثبتات الأخرى أيضًا. لا تُضمَّن بيانات الألعاب (ملفات OBB) لأن Android 11 والإصدارات الأحدث تمنع أي تطبيق من قراءة مجلد OBB الخاص بتطبيق آخر؛ لذا ستُثبَّت اللعبة الكبيرة من هذا الملف لكنها قد لا تعمل.</string>
+    <string name="export_format">الصيغة</string>
     <string name="export_save_to">حفظ في</string>
     <string name="export_change">تغيير</string>
     <string name="export_in_progress">جاري التصدير…</string>
