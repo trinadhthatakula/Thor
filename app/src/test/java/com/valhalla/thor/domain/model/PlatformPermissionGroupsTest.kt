@@ -22,6 +22,23 @@ import org.junit.Test
  */
 class PlatformPermissionGroupsTest {
 
+    /** Thor's minSdk — the oldest device every one of these answers has to be right on. */
+    private val oldest = 28
+
+    /** Android 13, where the platform re-homed `ACCESS_MEDIA_LOCATION`. */
+    private val tiramisu = 33
+
+    /** A device new enough to define everything the table carries. */
+    private val latest = 36
+
+    /**
+     * Most of the table has had one answer for as long as it has existed, so most assertions here
+     * are about a *permission* rather than a device and say so by leaving the level defaulted. The
+     * ones that are genuinely about a version boundary pass it explicitly.
+     */
+    private fun groupOf(permission: String, sdkInt: Int = latest) =
+        PlatformPermissionGroups.groupOf(permission, sdkInt)
+
     private val declaredGroups = setOf(
         PlatformPermissionGroups.CONTACTS,
         PlatformPermissionGroups.CALENDAR,
@@ -59,10 +76,10 @@ class PlatformPermissionGroupsTest {
     fun addVoicemailIsKeyedOnItsRealConstantValue() {
         // The bug this pins: android.permission.ADD_VOICEMAIL is not a permission any device
         // declares, so the Phone chip silently skipped every voicemail app.
-        assertNull(PlatformPermissionGroups.groupOf("android.permission.ADD_VOICEMAIL"))
+        assertNull(groupOf("android.permission.ADD_VOICEMAIL"))
         assertEquals(
             PlatformPermissionGroups.PHONE,
-            PlatformPermissionGroups.groupOf("com.android.voicemail.permission.ADD_VOICEMAIL")
+            groupOf("com.android.voicemail.permission.ADD_VOICEMAIL")
         )
     }
 
@@ -96,30 +113,41 @@ class PlatformPermissionGroupsTest {
     @Test
     fun theHeadlinePermissionsResolveToTheGroupsUsersLookFor() {
         // These six are the filter, in practice. Each one is a chip a user goes looking for by name.
-        assertEquals(
-            PlatformPermissionGroups.CAMERA,
-            PlatformPermissionGroups.groupOf("android.permission.CAMERA")
-        )
+        assertEquals(PlatformPermissionGroups.CAMERA, groupOf("android.permission.CAMERA"))
         assertEquals(
             PlatformPermissionGroups.MICROPHONE,
-            PlatformPermissionGroups.groupOf("android.permission.RECORD_AUDIO")
+            groupOf("android.permission.RECORD_AUDIO")
         )
         assertEquals(
             PlatformPermissionGroups.LOCATION,
-            PlatformPermissionGroups.groupOf("android.permission.ACCESS_FINE_LOCATION")
+            groupOf("android.permission.ACCESS_FINE_LOCATION")
         )
         assertEquals(
             PlatformPermissionGroups.CONTACTS,
-            PlatformPermissionGroups.groupOf("android.permission.READ_CONTACTS")
+            groupOf("android.permission.READ_CONTACTS")
         )
-        assertEquals(
-            PlatformPermissionGroups.SMS,
-            PlatformPermissionGroups.groupOf("android.permission.READ_SMS")
-        )
+        assertEquals(PlatformPermissionGroups.SMS, groupOf("android.permission.READ_SMS"))
         assertEquals(
             PlatformPermissionGroups.STORAGE,
-            PlatformPermissionGroups.groupOf("android.permission.READ_EXTERNAL_STORAGE")
+            groupOf("android.permission.READ_EXTERNAL_STORAGE")
         )
+    }
+
+    @Test
+    fun theHeadlinePermissionsAnswerTheSameOnTheOldestSupportedDevice() {
+        // Everything above, on Thor's minSdk. Only the entries in `regrouped` may vary by API level;
+        // if a plain one ever starts to, the version parameter has leaked somewhere it does not
+        // belong and the chip a user sees depends on their OS for no reason.
+        listOf(
+            "android.permission.CAMERA" to PlatformPermissionGroups.CAMERA,
+            "android.permission.RECORD_AUDIO" to PlatformPermissionGroups.MICROPHONE,
+            "android.permission.ACCESS_FINE_LOCATION" to PlatformPermissionGroups.LOCATION,
+            "android.permission.READ_CONTACTS" to PlatformPermissionGroups.CONTACTS,
+            "android.permission.READ_SMS" to PlatformPermissionGroups.SMS,
+            "android.permission.READ_EXTERNAL_STORAGE" to PlatformPermissionGroups.STORAGE
+        ).forEach { (permission, group) ->
+            assertEquals(permission, group, groupOf(permission, oldest))
+        }
     }
 
     @Test
@@ -130,17 +158,35 @@ class PlatformPermissionGroupsTest {
             "android.permission.ACCESS_FINE_LOCATION",
             "android.permission.ACCESS_COARSE_LOCATION",
             "android.permission.ACCESS_BACKGROUND_LOCATION"
-        ).map { PlatformPermissionGroups.groupOf(it) }
+        ).map { groupOf(it) }
         assertEquals(setOf(PlatformPermissionGroups.LOCATION), location.toSet())
 
         assertEquals(
             PlatformPermissionGroups.PHONE,
-            PlatformPermissionGroups.groupOf("android.permission.READ_PHONE_NUMBERS")
+            groupOf("android.permission.READ_PHONE_NUMBERS")
         )
         assertEquals(
             PlatformPermissionGroups.CALL_LOG,
-            PlatformPermissionGroups.groupOf("android.permission.READ_CALL_LOG")
+            groupOf("android.permission.READ_CALL_LOG")
         )
+    }
+
+    @Test
+    fun everyNearbyDevicePermissionSharesOneChip() {
+        // Same argument as location: Bluetooth, UWB, Wi-Fi and the generic ranging permission are
+        // several permissions and one question the user asks ("what can find things around me?").
+        // RANGING is the Android 16 addition — PermissionMapping.kt puts it here, and without a row
+        // it fell through to PermissionInfo.group, which reads UNDEFINED for platform permissions,
+        // so an app holding only RANGING left the Nearby devices chip altogether.
+        val nearby = listOf(
+            "android.permission.BLUETOOTH_SCAN",
+            "android.permission.BLUETOOTH_CONNECT",
+            "android.permission.BLUETOOTH_ADVERTISE",
+            "android.permission.UWB_RANGING",
+            "android.permission.NEARBY_WIFI_DEVICES",
+            "android.permission.RANGING"
+        ).map { groupOf(it) }
+        assertEquals(setOf(PlatformPermissionGroups.NEARBY_DEVICES), nearby.toSet())
     }
 
     @Test
@@ -149,22 +195,41 @@ class PlatformPermissionGroupsTest {
         // audio. The chips follow the prompts, not the old single bucket.
         assertEquals(
             PlatformPermissionGroups.READ_MEDIA_VISUAL,
-            PlatformPermissionGroups.groupOf("android.permission.READ_MEDIA_IMAGES")
+            groupOf("android.permission.READ_MEDIA_IMAGES")
         )
         assertEquals(
             PlatformPermissionGroups.READ_MEDIA_VISUAL,
-            PlatformPermissionGroups.groupOf("android.permission.READ_MEDIA_VIDEO")
+            groupOf("android.permission.READ_MEDIA_VIDEO")
         )
         assertEquals(
             PlatformPermissionGroups.READ_MEDIA_AURAL,
-            PlatformPermissionGroups.groupOf("android.permission.READ_MEDIA_AUDIO")
+            groupOf("android.permission.READ_MEDIA_AUDIO")
         )
-        // Deliberately STORAGE, not READ_MEDIA_VISUAL: an app asking for it has always also asked
-        // for a storage or media read, so this is the placement that double-counts nothing.
-        assertEquals(
-            PlatformPermissionGroups.STORAGE,
-            PlatformPermissionGroups.groupOf("android.permission.ACCESS_MEDIA_LOCATION")
-        )
+    }
+
+    @Test
+    fun accessMediaLocationMovesToTheMediaChipWhereThePlatformMovesIt() {
+        // The one permission whose group is a property of the device. Tiramisu split STORAGE and
+        // PermissionController re-homed this with it, so on 33+ a photo app requesting
+        // READ_MEDIA_IMAGES + ACCESS_MEDIA_LOCATION belongs entirely to Photos and videos — pinning
+        // it to STORAGE put it in a chip the system itself would never show it under. Below 33
+        // there is no media group to move it to and STORAGE is the honest answer.
+        val permission = "android.permission.ACCESS_MEDIA_LOCATION"
+
+        assertEquals(PlatformPermissionGroups.STORAGE, groupOf(permission, oldest))
+        assertEquals(PlatformPermissionGroups.STORAGE, groupOf(permission, tiramisu - 1))
+        assertEquals(PlatformPermissionGroups.READ_MEDIA_VISUAL, groupOf(permission, tiramisu))
+        assertEquals(PlatformPermissionGroups.READ_MEDIA_VISUAL, groupOf(permission, latest))
+    }
+
+    @Test
+    fun everyRegroupedPermissionAlsoHasABaseRow() {
+        // A regrouped entry is an override, not a definition. One without a row in the main table
+        // would resolve on new devices and disappear on old ones — the silent-drop failure this
+        // file exists to catch, wearing a new hat.
+        val orphans =
+            PlatformPermissionGroups.regroupedPermissions - PlatformPermissionGroups.knownPermissions
+        assertEquals(emptySet<String>(), orphans)
     }
 
     @Test
@@ -172,9 +237,9 @@ class PlatformPermissionGroupsTest {
         // INTERNET matching 400 apps is not a filter. The table only carries permissions the system
         // itself puts behind a prompt; everything else must fall through to PermissionInfo, which
         // will correctly refuse it for not being dangerous.
-        assertNull(PlatformPermissionGroups.groupOf("android.permission.INTERNET"))
-        assertNull(PlatformPermissionGroups.groupOf("android.permission.WAKE_LOCK"))
-        assertNull(PlatformPermissionGroups.groupOf("android.permission.VIBRATE"))
+        assertNull(groupOf("android.permission.INTERNET"))
+        assertNull(groupOf("android.permission.WAKE_LOCK"))
+        assertNull(groupOf("android.permission.VIBRATE"))
     }
 
     @Test
@@ -182,9 +247,9 @@ class PlatformPermissionGroupsTest {
         // Null means "ask the platform", not "no group" — an app's own permission is the one case
         // where PermissionInfo.group is still honest, and the repository relies on getting null
         // here to go and read it.
-        assertNull(PlatformPermissionGroups.groupOf("com.example.app.permission.C2D_MESSAGE"))
-        assertNull(PlatformPermissionGroups.groupOf("moe.shizuku.manager.permission.API_V23"))
-        assertNull(PlatformPermissionGroups.groupOf(""))
+        assertNull(groupOf("com.example.app.permission.C2D_MESSAGE"))
+        assertNull(groupOf("moe.shizuku.manager.permission.API_V23"))
+        assertNull(groupOf(""))
     }
 
     @Test
@@ -201,19 +266,22 @@ class PlatformPermissionGroupsTest {
         // A pin, not a limit. Adding a permission is expected and this number should move with it —
         // but a silent *drop* (a rebase that eats a line, a duplicate key overwriting an earlier
         // one) is exactly the change that produces a chip quietly missing some apps.
-        assertEquals(42, PlatformPermissionGroups.knownPermissions.size)
+        assertEquals(43, PlatformPermissionGroups.knownPermissions.size)
         assertEquals(15, PlatformPermissionGroups.knownGroups.size)
     }
 
     @Test
     fun knownPermissionsAndGroupOfAgree() {
         // knownPermissions is exposed for tests; if it ever stops being the same map groupOf reads,
-        // every assertion above becomes vacuous.
-        PlatformPermissionGroups.knownPermissions.forEach { permission ->
-            assertNotNull(
-                "$permission is in knownPermissions but groupOf() does not resolve it",
-                PlatformPermissionGroups.groupOf(permission)
-            )
+        // every assertion above becomes vacuous. Both ends of the supported range, because an
+        // entry that only resolves on one of them is an entry that drops apps on the other.
+        listOf(oldest, latest).forEach { sdkInt ->
+            PlatformPermissionGroups.knownPermissions.forEach { permission ->
+                assertNotNull(
+                    "$permission is in knownPermissions but groupOf() does not resolve it on $sdkInt",
+                    groupOf(permission, sdkInt)
+                )
+            }
         }
     }
 }

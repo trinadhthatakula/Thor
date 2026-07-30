@@ -55,6 +55,16 @@ object PlatformPermissionGroups {
 
     private const val P = "android.permission."
 
+    /**
+     * `Build.VERSION_CODES.TIRAMISU`, spelled out.
+     *
+     * This file is pure Kotlin and stays that way — the running API level arrives as a parameter so
+     * a test can name a device instead of being one. `Build.VERSION.SDK_INT` also reads 0 under the
+     * mockable android.jar, so a default argument reading it would silently put every unit test on
+     * the pre-Tiramisu side of [regrouped] while looking like it tested the device's answer.
+     */
+    private const val TIRAMISU = 33
+
     private val byPermission: Map<String, String> = buildMap {
         put(P + "READ_CONTACTS", CONTACTS)
         put(P + "WRITE_CONTACTS", CONTACTS)
@@ -72,10 +82,8 @@ object PlatformPermissionGroups {
 
         put(P + "READ_EXTERNAL_STORAGE", STORAGE)
         put(P + "WRITE_EXTERNAL_STORAGE", STORAGE)
-        // Grouped with STORAGE rather than with the media groups. PermissionController moves it to
-        // READ_MEDIA_VISUAL on Tiramisu+, but a permission may only sit in one chip here, and an app
-        // requesting it has always also requested a storage-or-media read — so the STORAGE chip is
-        // the one where it changes nothing and the media chip is the one where it would double-count.
+        // Its placement below Tiramisu. PermissionController moves it to READ_MEDIA_VISUAL on 33+,
+        // and so does this table — see [regrouped].
         put(P + "ACCESS_MEDIA_LOCATION", STORAGE)
 
         put(P + "READ_MEDIA_IMAGES", READ_MEDIA_VISUAL)
@@ -118,24 +126,67 @@ object PlatformPermissionGroups {
         put(P + "BLUETOOTH_ADVERTISE", NEARBY_DEVICES)
         put(P + "UWB_RANGING", NEARBY_DEVICES)
         put(P + "NEARBY_WIFI_DEVICES", NEARBY_DEVICES)
+        // Android 16's generic ranging permission — PermissionMapping.kt puts it in NEARBY_DEVICES
+        // behind `Flags.rangingStackEnabled()`. Listing it needs no API guard of its own: on a
+        // device that does not define it, or defines it without the flag that makes it dangerous,
+        // `runtimeGroupFor` never reaches the table. Leaving it out was the strictly worse failure —
+        // the fallback reads `PermissionInfo.group`, which is UNDEFINED for platform permissions, so
+        // an app holding only RANGING dropped out of the Nearby devices chip entirely.
+        put(P + "RANGING", NEARBY_DEVICES)
 
         put(P + "POST_NOTIFICATIONS", NOTIFICATIONS)
     }
 
     /**
-     * The group for a platform runtime permission, or null if [permission] is not one.
+     * The permissions the platform *moves* between groups, and the API level at which the move
+     * takes effect.
+     *
+     * There is exactly one today. Tiramisu split STORAGE into the media groups, and
+     * PermissionController's `PermissionMapping.kt` re-homes `ACCESS_MEDIA_LOCATION` from Storage to
+     * Photos and videos with it — the permission is meaningless without a media read, and on 33+ the
+     * grant that gets you that read is `READ_MEDIA_IMAGES`, not `READ_EXTERNAL_STORAGE`.
+     *
+     * A single static answer was wrong in one direction whichever one it picked: pinned to STORAGE,
+     * a modern photo app that requests `READ_MEDIA_IMAGES` + `ACCESS_MEDIA_LOCATION` and nothing
+     * else lands in a Storage chip the system would never show it under; pinned to READ_MEDIA_VISUAL
+     * it does the mirror-image thing on a pre-33 device. Filtering by group is only useful if the
+     * groups are the ones the user saw in the system's own prompt, and which those are is a property
+     * of the device, not of the permission.
+     */
+    private val regrouped: Map<String, Pair<Int, String>> = mapOf(
+        P + "ACCESS_MEDIA_LOCATION" to (TIRAMISU to READ_MEDIA_VISUAL)
+    )
+
+    /**
+     * The group for a platform runtime permission on a device running [sdkInt], or null if
+     * [permission] is not one.
      *
      * Null means "ask the platform" — either it is a custom permission an app declared, or a
      * platform permission that is not dangerous, or one added after this table was written. It never
      * means "no group": a caller that gets null must fall back rather than drop the permission.
+     *
+     * [sdkInt] is only consulted for the handful of permissions in [regrouped]; everything else has
+     * had one home for as long as it has existed. It is a parameter rather than a read of
+     * `Build.VERSION.SDK_INT` so the boundary is assertable from both sides — see [TIRAMISU].
      */
-    fun groupOf(permission: String): String? = byPermission[permission]
+    fun groupOf(permission: String, sdkInt: Int): String? {
+        regrouped[permission]?.let { (since, group) -> if (sdkInt >= since) return group }
+        return byPermission[permission]
+    }
 
     /** Every permission this table knows, for the test that pins it against the platform's list. */
     val knownPermissions: Set<String> get() = byPermission.keys
 
-    /** Every group this table can produce. */
-    val knownGroups: Set<String> get() = byPermission.values.toSet()
+    /**
+     * The permissions whose group depends on the API level, for the test that keeps them listed in
+     * [byPermission] too — a regrouped entry missing its base row would resolve on new devices and
+     * vanish on old ones.
+     */
+    val regroupedPermissions: Set<String> get() = regrouped.keys
+
+    /** Every group this table can produce, on any API level. */
+    val knownGroups: Set<String>
+        get() = byPermission.values.toSet() + regrouped.values.map { it.second }
 }
 
 /**
@@ -168,10 +219,15 @@ data class DeclaredPermission(val isDangerous: Boolean, val group: String?)
  * `PermissionInfo.group` reads UNDEFINED for every dangerous platform permission (see
  * [PlatformPermissionGroups]), so the field is useless for exactly the permissions this filter is
  * about and honest for the custom ones it is not.
+ *
+ * [sdkInt] is the running API level, and it decides the *group* for the few permissions the platform
+ * itself re-homes across versions — it is not a second existence check. The device's own answer is
+ * still the only thing that says whether the permission is real here; see
+ * [PlatformPermissionGroups.groupOf].
  */
-fun runtimeGroupFor(permission: String, declared: DeclaredPermission?): String? {
+fun runtimeGroupFor(permission: String, declared: DeclaredPermission?, sdkInt: Int): String? {
     if (declared == null || !declared.isDangerous) return null
-    PlatformPermissionGroups.groupOf(permission)?.let { return it }
+    PlatformPermissionGroups.groupOf(permission, sdkInt)?.let { return it }
     return declared.group
         ?.takeUnless { it.isBlank() || it == PlatformPermissionGroups.UNDEFINED }
 }

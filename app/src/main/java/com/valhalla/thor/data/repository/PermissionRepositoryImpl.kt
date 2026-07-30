@@ -168,7 +168,7 @@ class PermissionRepositoryImpl(
      * `PackageManager` is abstract and `:app` has no mocking library.
      */
     private fun resolveRuntimeGroup(permName: String): String? =
-        runtimeGroupFor(permName, declaredPermission(permName))
+        runtimeGroupFor(permName, declaredPermission(permName), Build.VERSION.SDK_INT)
 
     /** What this device says about [permName], or null if it does not define it. */
     @Suppress("DEPRECATION")
