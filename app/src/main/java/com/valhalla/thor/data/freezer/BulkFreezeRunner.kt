@@ -22,7 +22,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -130,32 +129,45 @@ class BulkFreezeRunner(
      */
     val completions: SharedFlow<BulkOp> = _completions.asSharedFlow()
 
-    private val _runningRequest = MutableStateFlow<BulkRequest?>(null)
+    private val _runningRequests = MutableStateFlow<List<BulkRequest>>(emptyList())
 
     /**
-     * The request currently running, or null. Carries the whole request rather than a bare
-     * Boolean for the same reason [freezableCount] is freeze-specific: a shared "is running"
-     * flag painted the freeze-only tile as WORKING while a background Unfreeze-all shortcut ran.
+     * Every request in flight, oldest first: the one actually touching packages, then whatever
+     * has been serialized behind it. Empty when nothing is running.
      *
-     * It carries the *scope* too, so the tile can tell "the watchlist is being frozen" from
-     * "some profile is being frozen" — only the first is the tile's own work.
+     * A *list* rather than a single slot because a same-op run of a different scope queues behind
+     * its predecessor instead of replacing it, so "what is running" genuinely has more than one
+     * answer. One slot forced the newer launch to overwrite the older — and the older is the one
+     * still mutating packages. Running a freeze profile during a watchlist freeze therefore made
+     * the QS tile paint itself idle (and surface a stale "Froze N apps" subtitle) while the
+     * watchlist freeze it started was still going.
+     *
+     * Requests rather than a bare Boolean for the same reason [freezableCount] is freeze-specific:
+     * a shared "is running" flag painted the freeze-only tile as WORKING while a background
+     * Unfreeze-all shortcut ran. The *scope* is carried too, so the tile can tell "the watchlist
+     * is being frozen" from "some profile is being frozen" — only the first is the tile's own
+     * work — and the profiles sheet can spin every row it has queued rather than only the last.
      */
-    val runningRequest: StateFlow<BulkRequest?> = _runningRequest.asStateFlow()
+    val runningRequests: StateFlow<List<BulkRequest>> = _runningRequests.asStateFlow()
 
-    private var activeJob: Deferred<BulkResult?>? = null
-    // B-1: track the request alongside the job so a *different* run started during this one
-    // begins its own batch rather than silently returning the wrong job. Originally this was the
-    // op alone, which was enough while the watchlist was the only target list; with profiles it
-    // would coalesce "freeze profile A" and "freeze profile B" into one run over A.
-    private var activeRequest: BulkRequest? = null
+    /**
+     * A launched run and the request that started it, kept together so [launch] can tell a
+     * coalescable repeat from a genuinely different run.
+     *
+     * B-1: keyed on the request, not the op alone. The op was enough while the watchlist was the
+     * only target list; with profiles it would coalesce "freeze profile A" and "freeze profile B"
+     * into one run over A.
+     */
+    private class InFlight(val request: BulkRequest, val job: Deferred<BulkResult?>)
 
-    // Every run that has not settled yet, oldest first. Nearly always at most one — but a same-op
-    // run of a different scope *queues behind* its predecessor instead of replacing it, so
-    // [activeJob] is the tail of a chain rather than the only job in flight. A conflicting op has
-    // to cancel the whole chain: cancelling the tail alone would only stop the job still waiting
-    // to start and leave the one actually mutating packages running alongside the replacement —
-    // precisely the FREEZE-versus-UNFREEZE overlap the launch KDoc bounds everywhere else.
-    private val unsettled = mutableListOf<Deferred<BulkResult?>>()
+    // Every run that has not settled yet, oldest first — the single source of truth for both
+    // [runningRequests] and the coalescing key, whose newest launch is the last entry. Nearly
+    // always at most one entry, but a same-op run of a different scope *queues behind* its
+    // predecessor instead of replacing it. A conflicting op has to cancel the whole chain:
+    // cancelling the tail alone would only stop the job still waiting to start and leave the one
+    // actually mutating packages running alongside the replacement — precisely the
+    // FREEZE-versus-UNFREEZE overlap the launch KDoc bounds everywhere else.
+    private val unsettled = mutableListOf<InFlight>()
 
     // Instance-scoped, NOT per run. A per-run Semaphore bounds one generation only: when a
     // conflicting op replaces an in-flight batch, workers abandoned by that batch may still be
@@ -229,8 +241,9 @@ class BulkFreezeRunner(
      * Start a bulk run and return it. Returns the in-flight run instead of starting a second one
      * — the pre-rework tile spawned a fresh unbounded batch over the same packages on every tap.
      *
-     * Returning the run rather than making callers watch [runningOp] is deliberate: a fast run
-     * can clear runningOp before an observer starts collecting, and `await()` has no such window.
+     * Returning the run rather than making callers watch [runningRequests] is deliberate: a fast
+     * run can leave that list before an observer starts collecting, and `await()` has no such
+     * window.
      * The awaited value is the [BulkResult], or null when the run was a no-op (no privilege, or
      * nothing to act on) — which is what lets a caller that *is* allowed to show UI, such as
      * `FreezerLaunchActivity`, report an outcome the notifier may have had to drop.
@@ -269,22 +282,22 @@ class BulkFreezeRunner(
     @Synchronized
     fun launch(request: BulkRequest): Deferred<BulkResult?> {
         // Same-request coalescing: return the in-flight run unchanged.
-        activeJob?.takeIf { it.isActive && activeRequest == request }?.let { return it }
+        val newest = unsettled.lastOrNull()
+        newest?.takeIf { it.job.isActive && it.request == request }?.let { return it.job }
 
-        // Handoff: capture the previous job BEFORE overwriting the slot, along with whether it
-        // is a run we may cancel. The new job's first act is to settle it, so it will not touch
-        // any package until the previous one has fully unwound (run body AND finally sweep).
-        // _runningRequest stays set across the handoff because the replaced job's finally
-        // guards the clear with an identity check (see finally block).
-        val previous = activeJob
+        // Handoff: capture the previous run BEFORE this one joins the chain, along with whether
+        // it is a run we may cancel. The new job's first act is to settle it, so it will not
+        // touch any package until the previous one has fully unwound (run body AND finally
+        // sweep). The previous request stays published throughout, because it is retired from
+        // [unsettled] by its own completion rather than by whoever launched next.
+        val previous = newest?.job
         // Same op, different scope → serialize instead of replace. See the KDoc: cancelling a
         // freeze to start another freeze abandons the first one half-done.
-        val cancelPrevious = activeRequest?.op != request.op
+        val cancelPrevious = newest?.request?.op != request.op
         // Snapshot the whole chain under the monitor, not just the tail. Taken before this job
         // joins [unsettled], so it can never contain the job about to await it.
-        val doomed = if (cancelPrevious) unsettled.toList() else emptyList()
+        val doomed = if (cancelPrevious) unsettled.map { it.job } else emptyList()
 
-        _runningRequest.value = request
         val job = scope.async {
             try {
                 // Wait for any previous job to fully settle (including its NonCancellable sweep)
@@ -347,7 +360,8 @@ class BulkFreezeRunner(
                 _lastResult.value = null
                 null
             } finally {
-                // B-6: sweep before clearing runningRequest for a stable combined emission.
+                // B-6: sweep before this run leaves [runningRequests], for a stable combined
+                // emission — completion, and therefore retirement, is what ends this block.
                 // NOT runCatching: CancellationException is an Exception in Kotlin, and this
                 // runs in a finally where cancellation is exactly what we may be unwinding
                 // from. withContext(NonCancellable) lets the sweep finish even then, and the
@@ -361,48 +375,47 @@ class BulkFreezeRunner(
                 // Only join() on a separate job is actually interruptible. Without a bound
                 // this is the one unbounded wait in the class: NonCancellable means a wedged
                 // binder (PMS lock contention right after a batch of pm disable/uninstall is
-                // not exotic) pins _runningRequest and activeJob for the process lifetime,
+                // not exotic) keeps this run in _runningRequests for the process lifetime,
                 // leaving the tile on "Freezing…" and every later tap coalescing into the
                 // stuck job.
                 withContext(NonCancellable) {
                     val sweep = scope.launch { sweepFreezableCount() }
                     if (withTimeoutOrNull(SWEEP_GRACE_MS) { sweep.join() } == null) {
                         // Abandoned, not cancelled: it still publishes when the binder returns.
-                        // The cost is that runningRequest clears against the pre-run count for
-                        // one paint — the tile re-sweeps on every onStartListening, so it heals.
+                        // The cost is that the run retires against the pre-run count for one
+                        // paint — the tile re-sweeps on every onStartListening, so it heals.
                         Logger.d(
                             "BulkFreezeRunner",
                             "post-run candidate sweep exceeded ${SWEEP_GRACE_MS}ms; releasing the run"
                         )
                     }
                 }
-                // R1/R2: clear runningRequest only if this is still the active job. A successor
-                // job has overwritten activeJob and is already running (or is waiting on us);
-                // it must keep _runningRequest set across the handoff. Identity check under the
-                // monitor for the same reason as the launch guard: the slot must be read
-                // atomically.
-                val thisJob = coroutineContext[Job]
-                synchronized(this@BulkFreezeRunner) {
-                    // Unconditional, unlike the slot clear below: a job that has been overtaken
-                    // still has to leave the chain, or a later conflicting op would cancel-and-join
-                    // a settled job on every launch and the list would grow for the process
-                    // lifetime.
-                    unsettled.removeAll { it === thisJob }
-                    if (activeJob === thisJob) {
-                        _runningRequest.value = null
-                        // Drop the slot too: otherwise activeJob retains a completed Job and
-                        // activeRequest a stale request for the process lifetime. Only safe
-                        // under the same identity check — a successor owns the slot now.
-                        activeJob = null
-                        activeRequest = null
-                    }
-                }
             }
         }
-        activeJob = job
-        activeRequest = request
-        unsettled += job
+        unsettled += InFlight(request, job)
+        publishRunning()
+        // R1/R2: retire on *completion* rather than from the coroutine's own finally. A job
+        // cancelled before its body ever ran never reaches that finally — a real case, since a
+        // conflicting op cancels the whole chain and the tail of a chain is by definition the run
+        // that has not started — and it would then sit in [unsettled] for the process lifetime,
+        // pinning the tile on "Freezing…" and making every later conflicting op cancel-and-join a
+        // long-dead job. Completion fires after the body, so the post-run sweep still lands
+        // before the request is withdrawn.
+        job.invokeOnCompletion { retire(job) }
         return job
+    }
+
+    /** Drop a settled run from the chain and republish. Identity, not equality: two runs of the
+     * same request can overlap across a cancel/replace handoff. */
+    @Synchronized
+    private fun retire(job: Deferred<BulkResult?>) {
+        unsettled.removeAll { it.job === job }
+        publishRunning()
+    }
+
+    /** Republish [runningRequests] from [unsettled]. Callers hold the monitor. */
+    private fun publishRunning() {
+        _runningRequests.value = unsettled.map { it.request }
     }
 
     /**

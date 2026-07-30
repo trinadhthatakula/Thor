@@ -547,6 +547,7 @@
     <string name="profile_deleted">تم حذف الملف</string>
     <string name="profile_nothing_to_do">لا يوجد ما يمكن فعله لهذا الملف</string>
     <string name="error_profile_name_taken">اسم الملف هذا مستخدم بالفعل</string>
+    <string name="error_profile_delete_failed">تعذر حذف هذا الملف</string>
     <string name="error_profiles_load_failed">تعذر تحميل ملفات التجميد</string>
     <string name="action_edit">تعديل</string>
     <string name="action_delete">حذف</string>

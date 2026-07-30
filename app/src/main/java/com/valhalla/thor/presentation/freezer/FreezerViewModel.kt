@@ -4,6 +4,7 @@
 package com.valhalla.thor.presentation.freezer
 
 import android.database.sqlite.SQLiteConstraintException
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
@@ -77,10 +78,12 @@ data class FreezerUiState(
     val profiles: List<FreezeProfile> = emptyList(),
     val profileEditorSearchQuery: String = "",
     /**
-     * The bulk run in flight, or null. Carries the whole request, not a Boolean, so a profile row
-     * can show its own spinner without every other row spinning alongside it.
+     * Every bulk run in flight, oldest first. Carries whole requests, not a Boolean, so a profile
+     * row can show its own spinner without every other row spinning alongside it — and a list
+     * rather than one slot because runs of the same op serialize, so a profile queued behind a
+     * watchlist freeze must not erase the freeze that is actually running.
      */
-    val runningRequest: BulkRequest? = null
+    val runningRequests: List<BulkRequest> = emptyList()
 )
 
 @KoinViewModel
@@ -280,8 +283,8 @@ class FreezerViewModel(
 
     private fun observeRunningRequest() {
         viewModelScope.launch {
-            bulkFreezeRunner.runningRequest.collect { request ->
-                _uiState.update { it.copy(runningRequest = request) }
+            bulkFreezeRunner.runningRequests.collect { requests ->
+                _uiState.update { it.copy(runningRequests = requests) }
             }
         }
     }
@@ -319,7 +322,7 @@ class FreezerViewModel(
 
     fun createProfile(name: String, packageNames: List<String>) {
         viewModelScope.launch(Dispatchers.IO) {
-            runProfileWrite {
+            runProfileWrite(R.string.error_profile_name_taken) {
                 freezeProfileRepository.create(name, packageNames)
                 emitToast(UiText.StringResource(R.string.profile_saved))
             }
@@ -328,7 +331,7 @@ class FreezerViewModel(
 
     fun updateProfile(profileId: Long, name: String, packageNames: List<String>) {
         viewModelScope.launch(Dispatchers.IO) {
-            runProfileWrite {
+            runProfileWrite(R.string.error_profile_name_taken) {
                 freezeProfileRepository.update(profileId, name, packageNames)
                 emitToast(UiText.StringResource(R.string.profile_saved))
             }
@@ -337,7 +340,10 @@ class FreezerViewModel(
 
     fun deleteProfile(profileId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
-            runProfileWrite {
+            // A delete cannot collide with the unique name index — the only constraint it can
+            // trip is the members table's foreign key — so it must not borrow the save path's
+            // "that name is already taken", which would be nonsense over a Delete button.
+            runProfileWrite(R.string.error_profile_delete_failed) {
                 freezeProfileRepository.delete(profileId)
                 emitToast(UiText.StringResource(R.string.profile_deleted))
             }
@@ -350,16 +356,21 @@ class FreezerViewModel(
      * The editor validates against the names it can see, which is a snapshot; the unique index
      * is the only thing that actually holds. Deleting a profile also cascades, and Room surfaces
      * a foreign-key failure as the same exception type — so both get named rather than crashing
-     * the screen through a coroutine no one catches.
+     * the screen through a coroutine no one catches. [constraintMessage] is what separates them:
+     * one exception type, two writes that can raise it for unrelated reasons, and only the caller
+     * knows which constraint was reachable.
      */
-    private suspend fun runProfileWrite(block: suspend () -> Unit) {
+    private suspend fun runProfileWrite(
+        @StringRes constraintMessage: Int,
+        block: suspend () -> Unit
+    ) {
         try {
             block()
         } catch (e: CancellationException) {
             throw e
         } catch (e: SQLiteConstraintException) {
             Logger.e("FreezeViewModel", "profile write rejected by a constraint", e)
-            emitToast(UiText.StringResource(R.string.error_profile_name_taken))
+            emitToast(UiText.StringResource(constraintMessage))
         } catch (e: Exception) {
             Logger.e("FreezeViewModel", "profile write failed", e)
             emitToast(UiText.StringResource(R.string.error_format, e.message ?: ""))

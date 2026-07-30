@@ -499,6 +499,7 @@
     <string name="profile_deleted">配置已删除</string>
     <string name="profile_nothing_to_do">此配置无需操作</string>
     <string name="error_profile_name_taken">该配置名称已被占用</string>
+    <string name="error_profile_delete_failed">无法删除该配置</string>
     <string name="error_profiles_load_failed">无法加载冻结配置</string>
     <string name="action_edit">编辑</string>
     <string name="action_delete">删除</string>

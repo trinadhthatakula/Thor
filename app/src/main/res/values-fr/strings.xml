@@ -508,6 +508,7 @@
     <string name="profile_deleted">Profil supprimé</string>
     <string name="profile_nothing_to_do">Rien à faire pour ce profil</string>
     <string name="error_profile_name_taken">Ce nom de profil est déjà pris</string>
+    <string name="error_profile_delete_failed">Impossible de supprimer ce profil</string>
     <string name="error_profiles_load_failed">Échec du chargement des profils de congélation</string>
     <string name="action_edit">Modifier</string>
     <string name="action_delete">Supprimer</string>

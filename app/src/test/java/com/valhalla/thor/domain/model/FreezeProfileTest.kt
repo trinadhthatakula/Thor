@@ -54,6 +54,19 @@ class FreezeProfileTest {
         assertEquals(ProfileNameError.DUPLICATE, profileNameError("games", listOf("Games")))
     }
 
+    @Test fun `accepts a name that differs only in non-ASCII case`() {
+        // SQLite's NOCASE collation folds ASCII only, so "Ä" and "ä" are two distinct names to
+        // the unique index. Rejecting the pair here — which Kotlin's Unicode-aware
+        // equals(ignoreCase = true) does — is a name the database would take but the editor
+        // will not, with an inline error the user cannot argue with.
+        assertEquals(ProfileNameError.OK, profileNameError("Ärger", listOf("ärger")))
+    }
+
+    @Test fun `still rejects an ASCII duplicate around non-ASCII characters`() {
+        // The other half of the same rule: folding ASCII only must not mean folding nothing.
+        assertEquals(ProfileNameError.DUPLICATE, profileNameError("Café Apps", listOf("Café apps")))
+    }
+
     @Test fun `rejects a duplicate that differs only in surrounding whitespace`() {
         assertEquals(ProfileNameError.DUPLICATE, profileNameError(" Games ", listOf("Games")))
     }

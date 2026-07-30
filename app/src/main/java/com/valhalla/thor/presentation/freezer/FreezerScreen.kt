@@ -531,7 +531,7 @@ fun FreezerScreen(
     if (showProfilesSheet) {
         FreezeProfilesSheet(
             profiles = state.profiles,
-            runningRequest = state.runningRequest,
+            runningRequests = state.runningRequests,
             hasPrivilege = hasPrivilege,
             onRun = viewModel::runProfile,
             onCreate = {

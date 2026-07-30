@@ -66,7 +66,7 @@ class FreezerTileService : TileService() {
                 combine(
                     privilegeManager.state,
                     runner.freezableCount,
-                    runner.runningRequest,
+                    runner.runningRequests,
                     runner.lastResult,
                 ) { _, _, _, _ -> Unit }.collect { paint() }
             } catch (e: CancellationException) {
@@ -142,7 +142,11 @@ class FreezerTileService : TileService() {
         // it was going. A freeze profile run is the same kind of lie in the other axis — right
         // direction, wrong list — and it would leave the tile claiming to be busy while the
         // count it displays never moves, because that count is the watchlist's.
-        val freezing = runner.runningRequest.value == BulkRequest(BulkOp.FREEZE)
+        //
+        // Membership, not equality against the newest launch: a profile run started during a
+        // watchlist freeze is queued *behind* it, and asking only about the newest would paint
+        // this tile idle while the freeze it started is still going.
+        val freezing = BulkRequest(BulkOp.FREEZE) in runner.runningRequests.value
         val visual = tileVisualFor(
             privilege = privilegeManager.state.value,
             freezableCount = runner.freezableCount.value,

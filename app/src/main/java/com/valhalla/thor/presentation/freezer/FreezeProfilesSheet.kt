@@ -64,7 +64,7 @@ import com.valhalla.thor.domain.model.FreezeProfile
 @Composable
 fun FreezeProfilesSheet(
     profiles: List<FreezeProfile>,
-    runningRequest: BulkRequest?,
+    runningRequests: List<BulkRequest>,
     hasPrivilege: Boolean,
     onRun: (profileId: Long, op: BulkOp) -> Unit,
     onCreate: () -> Unit,
@@ -143,8 +143,9 @@ fun FreezeProfilesSheet(
                         profile = profile,
                         // Row-specific, not a global "something is running": two profiles are
                         // serialized rather than coalesced, so tapping the second must not paint
-                        // the first one's spinner onto it.
-                        isRunning = runningRequest?.scope == BulkScope.Profile(profile.id),
+                        // the first one's spinner onto it. Both rows do spin while both are in
+                        // flight, which is the truth — the second is queued, not ignored.
+                        isRunning = runningRequests.any { it.scope == BulkScope.Profile(profile.id) },
                         hasPrivilege = hasPrivilege,
                         onRun = { op -> onRun(profile.id, op) },
                         onEdit = { onEdit(profile) },

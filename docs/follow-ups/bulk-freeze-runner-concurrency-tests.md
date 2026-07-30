@@ -50,7 +50,7 @@ classes are final by default, so none of them can be subclassed by a hand-writte
 
 | Collaborator | Declared at | Why a fake cannot stand in |
 |---|---|---|
-| `PrivilegeManager` | `data/manager/PrivilegeManager.kt:43` | final; its `init` registers Shizuku binder and permission listeners |
+| `PrivilegeManager` | `data/manager/PrivilegeManager.kt:43` | final; its `init` registers Shizuku binder and permission listeners — PR #296 adds a `PrivilegeStateProvider` port for exactly this reason, so once it lands this row is solved and only the other three remain |
 | `AppFreezeStateReader` | `data/freezer/AppFreezeStateReader.kt:27` | final, over the abstract `android.content.pm.PackageManager` |
 | `UadHelper` | `data/source/local/UadHelper.kt:49` | final, over `android.content.Context` |
 | `BulkResultNotifier` | `data/freezer/BulkResultNotifier.kt:36` | final, over `android.content.Context` |
@@ -96,8 +96,14 @@ Not a decision, just the shape:
    - a worker that ignores cancellation cannot make the handoff wait longer than `CANCEL_GRACE_MS`;
    - never more than `MAX_CONCURRENT` workers in flight *across* two overlapping generations —
      the reason the semaphore is an instance field;
-   - `_isRunning` stays `true` across a conflicting-op handoff (the identity guard in `finally`) and
-     clears exactly once at the end;
+   - `runningRequests` keeps the *running* request across a conflicting-op handoff and empties
+     exactly once at the end;
+   - `runningRequests` holds **both** requests while a same-op run of a different scope is queued
+     behind another — a watchlist FREEZE with a profile FREEZE serialized behind it must not drop
+     the watchlist entry, which is what made the QS tile paint idle mid-freeze;
+   - a run cancelled *before its body ever started* still leaves `runningRequests` — it never
+     reaches the coroutine's `finally`, so retirement hangs off `invokeOnCompletion`, and a
+     regression here strands the tile on "Freezing…" for the process lifetime;
    - `_lastResult` is published for FREEZE only, and `BulkResult.op` matches the run that produced it;
    - the deadline produces `unresolved > 0` rather than counting unreached packages as failures.
 

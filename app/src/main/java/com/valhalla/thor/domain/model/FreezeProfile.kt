@@ -50,7 +50,26 @@ fun profileNameError(raw: String, existingNames: Collection<String>): ProfileNam
     return when {
         name.isEmpty() -> ProfileNameError.BLANK
         name.length > MAX_PROFILE_NAME_LENGTH -> ProfileNameError.TOO_LONG
-        existingNames.any { it.equals(name, ignoreCase = true) } -> ProfileNameError.DUPLICATE
+        existingNames.any { equalsNoCase(it, name) } -> ProfileNameError.DUPLICATE
         else -> ProfileNameError.OK
     }
 }
+
+/**
+ * Equality under SQLite's `NOCASE` collation — which folds **ASCII only**.
+ *
+ * Deliberately not `String.equals(ignoreCase = true)`: Kotlin's fold is Unicode-aware, so it
+ * calls "Ä" and "ä" the same name while `COLLATE NOCASE` does not. That mismatch is a
+ * false rejection, and the worse direction of the two — the user is told a name is taken, the
+ * inline error cannot be dismissed, and the profile the database would have accepted can never
+ * be saved. Erring the other way costs nothing: [profileNameError] is a courtesy check and
+ * `FreezerViewModel.runProfileWrite` still catches the constraint violation.
+ */
+private fun equalsNoCase(a: String, b: String): Boolean {
+    // Length is safe to compare first because the fold is per-character; nothing here maps one
+    // char onto two the way a Unicode fold can (German ß → ss).
+    if (a.length != b.length) return false
+    return a.indices.all { foldAscii(a[it]) == foldAscii(b[it]) }
+}
+
+private fun foldAscii(c: Char): Char = if (c in 'A'..'Z') c + 32 else c
