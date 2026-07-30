@@ -1,18 +1,22 @@
 # Follow-up: ViewModel behavior tests need `kotlinx-coroutines-test` + turbine
 
-**Status:** Partly done, **no longer blocked**. The two dependencies landed on `chore/tier0-batch-1`
-and were used: `MainViewModelTest` (24 tests) and `SecurityViewModelTest` (7) now cover those two
-view models behaviourally. `AppListViewModel` — the one this doc was actually written about — is
-still uncovered, and the four tests listed under *Sketch* §4 are still unwritten. What remains is
-writing them, not enabling them.
+**Status:** ✅ **Done.** `AppListViewModelTest` covers all five behaviours from *Sketch* §4 in 8
+tests, on virtual time, on branch `test/applist-viewmodel-behavior`. The dependencies had landed
+earlier on `chore/tier0-batch-1` and are also used by `MainViewModelTest` (24 tests) and
+`SecurityViewModelTest` (7).
 **Severity:** Minor (test-coverage gap; no runtime defect). **Effort:** small–medium.
-**Revised:** 2026-07-30, after the dependencies landed.
+**Revised:** 2026-07-30 — twice: once when the dependencies landed, again when the tests were
+written and the *"only unwritten tests"* claim below turned out to be wrong. See
+*What it actually took*.
 **Raised by:** an external model's review of PR #278 (2026-07-27), which noted that the PR's timing
 behavior is covered only by pure-function tests over the delay constants, not by tests of the
 ViewModel logic that consumes them. The observation is correct.
 
 Files: `app/src/main/java/com/valhalla/thor/presentation/appList/AppListViewModel.kt`,
+`app/src/test/java/com/valhalla/thor/presentation/appList/AppListViewModelTest.kt`,
 `app/src/test/java/com/valhalla/thor/presentation/appList/TransitionSettleDelayTest.kt`,
+`app/src/test/java/com/valhalla/thor/presentation/ViewModelTestDoubles.kt`,
+`app/src/main/java/com/valhalla/thor/domain/repository/{PrivilegeStateProvider,StorageStatsProvider,UsageAccessGate,AppShortcutController}.kt`,
 `app/build.gradle.kts`, `gradle/libs.versions.toml`
 
 ## Problem
@@ -38,8 +42,42 @@ the original deadline. Those are precisely the regressions this PR could re-intr
 shared fakes live in `ViewModelTestDoubles.kt` next to it, and several suites already run on virtual
 time. `AppListViewModel`'s temporal behaviour is simply not among them yet.
 
-This is therefore no longer a missing-capability gap. It is unwritten tests, with the harness they
-need already sitting beside them.
+~~This is therefore no longer a missing-capability gap. It is unwritten tests, with the harness they
+need already sitting beside them.~~ Half right, and the wrong half was load-bearing — see below.
+
+## What it actually took
+
+The harness was there; the *view model* was not constructible. Four of `AppListViewModel`'s eleven
+collaborators were concrete Koin `@Single` classes bound to Android:
+
+| Collaborator | Why it could not be built on a plain JVM |
+|---|---|
+| `PrivilegeManager` | registers Shizuku binder/permission listeners from `init` |
+| `StorageStatsHelper` | `context.getSystemService(StorageStatsManager)` + `context.packageManager` in property initializers |
+| `UsageAccessManager` | `context.getSystemService(AppOpsManager)` in a property initializer |
+| `FreezerShortcutManager` | `Context` + `ShortcutManagerCompat` |
+
+`android.jar` methods throw `RuntimeException("Stub!")` in unit tests (this project does not set
+`testOptions.unitTests.isReturnDefaultValues`), and all four classes are `final`, so there was no
+subclass or stub-Context route either. That is why this view model — the one the doc was written
+about — stayed uncovered while two others got tested: **not** because nobody wrote the tests.
+
+The seam, kept deliberately additive:
+
+- four narrow ports in `domain/repository/` — `PrivilegeStateProvider` (just `state`),
+  `StorageStatsProvider`, `UsageAccessGate`, `AppShortcutController` (just `disableAppShortcut`) —
+  each covering only what `AppListViewModel` actually calls;
+- the four classes implement them and declare `@Single(binds = [...])`, which **adds** a bound type
+  without removing the concrete one, so the other seven call sites (`HomeViewModel`,
+  `FreezerViewModel`, `BulkFreezeRunner`, `FreezerTileService`, …) are untouched;
+- `AppListViewModel` takes the ports, plus `@Named("default")`/`@Named("io")` dispatchers instead of
+  hardcoded `Dispatchers.*` — the convention CLAUDE.md already states, and the thing that lets the
+  `flowOn` sort/filter pipeline behind `uiState` share the test's virtual clock rather than run on a
+  real thread pool;
+- fakes for the four ports live beside the existing ones in `ViewModelTestDoubles.kt`.
+
+**The generalisable bit:** "the harness exists" is not the same as "the subject is reachable".
+Before filing a test-coverage follow-up, try constructing the class.
 
 ## Sketch
 
@@ -76,7 +114,20 @@ Not a decision, just the shape:
 
 ## Acceptance
 
-- All five behaviors asserted under virtual time; no measurable wall-clock added to the suite.
+- ✅ All five behaviors asserted under virtual time; no measurable wall-clock added to the suite
+  (the 8 tests run in ~0.2 s total; the suite went 209 → 217).
 - **Mutation-checked**, the same way `REFRESH_INDICATOR_MIN_VISIBLE` was: deleting the
   `ensureActive()` call, or flipping the `deferForTransition` default, must make at least one test
   fail. A test that survives both mutations is not constraining the behavior it claims to.
+  - ✅ `deferForTransition = false` → `true`: **3 tests fail** (`a manual refresh starts the scan
+    without advancing the clock`, and both indicator tests — a deferred refresh never raises the
+    flag).
+  - ⚠️ `ensureActive()`: **not reachable from a JVM test, and the criterion as written cannot be
+    met.** It sits inside `AppRepositoryImpl.getAllApps()`'s `callbackFlow`, behind
+    `pm.getInstalledPackages`, a `BroadcastReceiver` and `context.resources` — the same wall this
+    doc's own premise tripped over. Only an instrumented test can delete-and-observe it.
+    What stands in for it is the view model half of the same rule: `a second load tears the previous
+    scan down before starting the next` asserts the repository flow has exactly one live collector
+    after a relaunch, and **deleting `appsJob?.cancel()` makes it fail**. `ensureActive()` only
+    matters because that cancel happens; this pins the half that is in reach. Closing the other half
+    belongs with the instrumented-test story, not here.
