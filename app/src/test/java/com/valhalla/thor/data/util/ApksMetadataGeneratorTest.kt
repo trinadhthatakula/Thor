@@ -162,10 +162,16 @@ class ApksMetadataGeneratorTest {
 
         val manifest = parseXapkManifest(json)
         assertNotNull(json, manifest)
-        assertEquals(listOf("base.apk", "base_2.apk"), manifest!!.splitApkFiles())
-        // And the id still comes from the source leaf — `base_2` is a container detail, whereas the
-        // id is what an installer matches the split on.
-        assertTrue(json, json.contains("\"id\":\"base\""))
+        // Asserted as pairs, not as two independent claims: the id still comes from the *source*
+        // leaf — `base_2` is a container detail, whereas the id is what an installer matches the
+        // split on — and both source leaves here are `base.apk`, so both ids are `base`. Checking
+        // the file list and `"id":"base"` separately would pass on the base entry alone, leaving a
+        // regression that wrote the renamed split's id as `base_2` invisible.
+        assertEquals(
+            json,
+            listOf("base.apk" to "base", "base_2.apk" to "base"),
+            manifest!!.splitApks.map { it.file to it.id }
+        )
     }
 
     /**

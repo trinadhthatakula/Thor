@@ -7,9 +7,9 @@ the field stays for phase 2; see its section.
 **Raised by:** the #30 reconnaissance pass (2026-07-30).
 **Resolved:** 2026-07-31, in the #30 branch (PR #293).
 
-These are **not** part of #30's feature work. They are pre-existing, and they sit in exactly the code
-#30 touches, so the cheapest moment to fix them is that branch. Filed separately so #30's scope stays
-honest and so they do not quietly disappear if #30 slips.
+These are **not** part of #30's feature work. They are pre-existing, and they sit in exactly the
+code that #30 touches, so the cheapest moment to fix them is that branch. Filed separately so #30's
+scope stays honest and so they do not quietly disappear if #30 slips.
 
 Both fixes landed as a *consequence* of the feature work rather than as separate commits, which is
 what "same files" meant. Recorded here per defect so the closure is checkable against the code.
