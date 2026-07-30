@@ -12,6 +12,7 @@ import android.net.Uri
 import android.os.Binder
 import android.os.Bundle
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.data.freezer.AppFreezeStateReader
 import com.valhalla.thor.data.manager.ExtensionManager
 import com.valhalla.thor.domain.model.isAuthorizedExtensionCaller
 import com.valhalla.thor.domain.model.isFrozen
@@ -44,14 +45,6 @@ class ExtensionOpsProvider : ContentProvider(), KoinComponent {
     private companion object {
         /** Upper bound for the whole batch of privileged shell ops on the binder thread. */
         const val OP_TIMEOUT_MS = 30_000L
-
-        /**
-         * Both of Thor's freeze mechanics, same pair [com.valhalla.thor.data.freezer.AppFreezeStateReader]
-         * queries with: MATCH_DISABLED_COMPONENTS for a user app frozen with `pm disable`,
-         * MATCH_UNINSTALLED_PACKAGES for a *system* app frozen with `pm uninstall --user N`.
-         */
-        const val MATCH_FLAGS =
-            PackageManager.MATCH_UNINSTALLED_PACKAGES or PackageManager.MATCH_DISABLED_COMPONENTS
     }
 
     override fun onCreate() = true
@@ -123,11 +116,11 @@ class ExtensionOpsProvider : ContentProvider(), KoinComponent {
      * frozen with `pm uninstall --user N`, so it is not installed for this user and the lookup threw
      * NameNotFoundException: an all-system-app target list read as *not* frozen, and `toggle` then
      * re-froze apps that were already frozen instead of thawing them. A package still missing under
-     * [MATCH_FLAGS] genuinely is not there, so it stays "not frozen".
+     * [AppFreezeStateReader.MATCH_FLAGS] genuinely is not there, so it stays "not frozen".
      */
     private fun anyFrozen(pm: PackageManager, pkgs: List<String>): Boolean = pkgs.any { pkg ->
         runCatching {
-            val info = pm.getApplicationInfo(pkg, MATCH_FLAGS)
+            val info = pm.getApplicationInfo(pkg, AppFreezeStateReader.MATCH_FLAGS)
             isFrozenAppInfo(info.enabled, info.flags)
         }.getOrDefault(false)
     }

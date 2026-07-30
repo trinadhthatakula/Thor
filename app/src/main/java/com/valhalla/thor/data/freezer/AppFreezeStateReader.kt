@@ -83,7 +83,26 @@ class AppFreezeStateReader(
         ABSENT
     }
 
-    private companion object {
+    companion object {
+        /**
+         * The query flags any lookup of a possibly-frozen package needs, and the one definition of
+         * them.
+         *
+         * MATCH_UNINSTALLED_PACKAGES for a *system* app frozen with `pm uninstall --user N`, whose
+         * lookup throws `NameNotFoundException` without it; MATCH_DISABLED_COMPONENTS for a user
+         * app frozen with `pm disable`, which is belt-and-braces rather than load-bearing —
+         * `getApplicationInfo` does not filter on the enabled setting.
+         *
+         * Public because the *copies* are what went wrong. `ExtensionOpsProvider` reported a frozen
+         * system app as not-frozen to extensions until it grew its own pair, and
+         * `FreezerShortcutManager` had neither flag — latent only because per-app pinned shortcuts
+         * are gated to user apps. One definition, so the next site to need them cannot half-have
+         * them.
+         *
+         * A caller that resolves an `ApplicationInfo` with these must fold FLAG_INSTALLED into
+         * `enabled`, as [candidateOf] does: the lookup now *succeeds* for a package uninstalled for
+         * this user and reports `enabled == true`, which trades one wrong answer for another.
+         */
         const val MATCH_FLAGS =
             PackageManager.MATCH_UNINSTALLED_PACKAGES or PackageManager.MATCH_DISABLED_COMPONENTS
 
@@ -91,6 +110,6 @@ class AppFreezeStateReader(
         // is one where we could not read the app at all, so we also could not have classified
         // it. ABSENT already excludes the package from both ops, but leaving the verdict at
         // "not blocked" would quietly re-enable freezing if the state test ever moved.
-        val ABSENT = FreezeCandidate(FreezeState.ABSENT, blockedFromFreeze = true)
+        private val ABSENT = FreezeCandidate(FreezeState.ABSENT, blockedFromFreeze = true)
     }
 }
