@@ -177,7 +177,7 @@ class BackupIndexTest {
         val at = ZonedDateTime.of(2026, 7, 30, 11, 42, 33, 0, ZoneId.systemDefault())
             .toInstant().toEpochMilli()
 
-        assertEquals("thor-backup-20260730-114233.json", BackupIndex.fileNameFor(at))
+        assertEquals("thor-backup-20260730-114233-000.json", BackupIndex.fileNameFor(at))
         assertEquals("application/json", BackupIndex.MIME)
     }
 
@@ -190,6 +190,30 @@ class BackupIndexTest {
             .toInstant().toEpochMilli()
 
         assertNotEquals(BackupIndex.fileNameFor(first), BackupIndex.fileNameFor(first + 1_000))
+    }
+
+    @Test
+    fun `two runs in the same second do not write over each other either`() {
+        // Not a hypothetical: cancel-and-replace is the ordinary way two runs finish close
+        // together, because the cancelled run writes its manifest under NonCancellable while the
+        // replacement is already going. At second granularity one of the two manifests is deleted
+        // by the other's write and its bundles are left undescribed.
+        val first = ZonedDateTime.of(2026, 7, 30, 11, 42, 33, 0, ZoneId.systemDefault())
+            .toInstant().toEpochMilli()
+
+        assertNotEquals(BackupIndex.fileNameFor(first), BackupIndex.fileNameFor(first + 40))
+    }
+
+    @Test
+    fun `the name still sorts chronologically when read as text`() {
+        // The whole point of the sortable field order: a human with only a file listing gets the
+        // runs in order. Adding the millisecond field must not break that at a second boundary.
+        val base = ZonedDateTime.of(2026, 7, 30, 11, 42, 33, 0, ZoneId.systemDefault())
+            .toInstant().toEpochMilli()
+        val names = listOf(base + 900, base + 1_000, base, base + 60_000)
+            .map { BackupIndex.fileNameFor(it) }
+
+        assertEquals(names.sorted(), listOf(names[2], names[0], names[1], names[3]))
     }
 
     @Test

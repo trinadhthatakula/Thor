@@ -41,8 +41,15 @@ data class BackupIndex(
         // "the export I ran last night" is a local-clock notion. Machines read createdAt, which
         // is unambiguous epoch millis. Sortable field order means lexical sort == chronological
         // sort for anyone who only has the name.
+        //
+        // Milliseconds, not seconds, and that is not decoration. Two runs can finish in the same
+        // *second* — cancel-and-replace is the ordinary way it happens, since the cancelled run
+        // writes its manifest under NonCancellable while the replacement is already going — and
+        // both file-store paths write by name after deleting a collision. At second granularity
+        // that silently destroys one of the two manifests and leaves its bundles undescribed,
+        // which is the exact failure the timestamped name exists to prevent.
         private val fileStamp: DateTimeFormatter =
-            DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").withZone(ZoneId.systemDefault())
+            DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS").withZone(ZoneId.systemDefault())
 
         /**
          * One manifest per run, named for when the run finished.
@@ -50,6 +57,11 @@ data class BackupIndex(
          * A single fixed name would have each export overwrite the last one's manifest in a folder
          * the user keeps exporting into, leaving every earlier bundle undescribed — the manifest
          * would then be a *worse* record than the file listing it sits next to.
+         *
+         * Collision is now bounded by the clock's resolution rather than by a second: two runs
+         * would have to finish their manifest write within the same millisecond, which no pair of
+         * SAF writes does. It is not *impossible*, so a reader that finds one manifest where it
+         * expected two should treat that as the known limit, not as a missing run.
          */
         fun fileNameFor(createdAt: Long): String =
             FILE_NAME_PREFIX + fileStamp.format(Instant.ofEpochMilli(createdAt)) + FILE_NAME_SUFFIX
