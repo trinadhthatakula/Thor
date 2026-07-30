@@ -496,6 +496,19 @@
     <string name="action_remove">Remove</string>
     <string name="biometric_unlock_title">Unlock Thor</string>
     <string name="biometric_unlock_subtitle">Authenticate to continue</string>
+    <string name="biometric_unavailable_title">This device can\'t unlock Thor</string>
+    <string name="biometric_unavailable_message">App lock is on, but this device has nothing to unlock it with. Set up a screen lock or enroll a fingerprint in system settings, then come back — Thor will let you in.</string>
+    <!-- Android 9 only: its prompt cannot accept a screen lock, so a PIN is not a way back in. -->
+    <string name="biometric_unavailable_message_biometric_only">App lock is on, but this device has no fingerprint enrolled — and on Android 9 the unlock prompt can\'t accept a screen lock. Enroll a fingerprint in system settings, then come back — Thor will let you in.</string>
+    <!-- Shown when the user taps the app-lock switch on a device with nothing enrolled. -->
+    <string name="biometric_not_enrolled_toast">Biometrics not enrolled — set up a screen lock or fingerprint first</string>
+    <!-- Android 9 only: its prompt cannot accept a screen lock, so only a fingerprint is a way in. -->
+    <string name="biometric_not_enrolled_toast_biometric_only">No fingerprint enrolled — on Android 9 a screen lock won\'t unlock Thor, so enroll one first</string>
+    <!-- Android 9 with no biometric sensor: nothing the user can enroll will ever open the lock. -->
+    <string name="biometric_lock_unavailable_toast">App lock can\'t be turned on: this device has no biometrics to unlock it with</string>
+    <!-- Shown once when Thor turns its own app lock off, because this device can never open it. -->
+    <string name="biometric_lock_disabled_no_biometric">App lock turned off: this device has no biometrics to unlock it with</string>
+    <string name="open_security_settings">Open security settings</string>
     <string name="unlock">Unlock</string>
     <string name="thank_you_support_desc">Your subscription is active. Thank you for helping support the development of Thor!</string>
 
