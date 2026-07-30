@@ -271,6 +271,18 @@ class FreezerViewModel(
     private fun observeProfiles() {
         viewModelScope.launch {
             freezeProfileRepository.observeProfiles()
+                // Same bounded retry the app list gets, and for the same reason: `catch` ends the
+                // flow, so without this one transient Room failure freezes the profiles list for
+                // the rest of the process — the sheet keeps showing a stale set of profiles and
+                // the only way back is to restart the app.
+                .retryWhen { cause, attempt ->
+                    if (cause is CancellationException || attempt >= 2) {
+                        false
+                    } else {
+                        delay(500)
+                        true
+                    }
+                }
                 // A Room read failure must not take the whole Freezer screen down with it: the
                 // watchlist is a separate flow and stays perfectly usable without profiles.
                 .catch { e ->
