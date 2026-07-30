@@ -99,6 +99,12 @@
     <string name="descending">Descendente</string>
     <string name="filters">Filtros</string>
     <string name="sort_by">Ordenar por</string>
+    <string name="filter_type_state">Estado</string>
+    <string name="filter_type_source">Origen de instalación</string>
+    <string name="filter_type_permission">Permiso</string>
+    <string name="permission_filter_loading">Leyendo permisos…</string>
+    <string name="permission_filter_unavailable">No se encontraron grupos de permisos en este dispositivo</string>
+    <string name="permission_filter_failed">No se pudieron leer los permisos en este dispositivo</string>
 
     <!-- App Info Dialog -->
     <string name="clear_app_data_title">¿Borrar datos de la aplicación?</string>

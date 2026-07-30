@@ -99,6 +99,12 @@
     <string name="descending">تنازلي</string>
     <string name="filters">الفلاتر</string>
     <string name="sort_by">فرز حسب</string>
+    <string name="filter_type_state">الحالة النشطة</string>
+    <string name="filter_type_source">مصدر التثبيت</string>
+    <string name="filter_type_permission">الإذن</string>
+    <string name="permission_filter_loading">جارٍ قراءة الأذونات…</string>
+    <string name="permission_filter_unavailable">لم يتم العثور على مجموعات أذونات على هذا الجهاز</string>
+    <string name="permission_filter_failed">تعذّرت قراءة الأذونات على هذا الجهاز</string>
 
     <!-- App Info Dialog -->
     <string name="clear_app_data_title">مسح بيانات التطبيق؟</string>

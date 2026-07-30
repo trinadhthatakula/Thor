@@ -102,6 +102,12 @@
     <string name="descending">Descending</string>
     <string name="filters">Filters</string>
     <string name="sort_by">Sort By</string>
+    <string name="filter_type_state">Active State</string>
+    <string name="filter_type_source">Installation Source</string>
+    <string name="filter_type_permission">Permission</string>
+    <string name="permission_filter_loading">Reading permissions…</string>
+    <string name="permission_filter_unavailable">No permission groups found on this device</string>
+    <string name="permission_filter_failed">Couldn\'t read permissions on this device</string>
 
     <!-- App Info Dialog -->
     <string name="clear_app_data_title">Clear App Data?</string>

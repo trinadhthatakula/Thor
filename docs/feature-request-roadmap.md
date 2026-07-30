@@ -105,11 +105,36 @@ platform no longer tells you which group a permission belongs to, so Thor ships 
 - **Risks:** over-broad filters make Thor pop up for every zip or `application/octet-stream`, which is worse than the bug. Narrow the fix to the extensions Thor actually installs.
 - **Why do it:** a named reporter with device details and a screenshot, unanswered since 2026-07-18, and a working comparison app to diff against. Cheap goodwill.
 
-### #285 — Filter the app list by permission · 🟢 · 1–2 d · impact 2–3 *(new)*
+### #285 — Filter the app list by permission · ✅ built · impact 2–3
 - **What:** filter or group the app list by a permission — "which apps can use the camera".
 - **Reuses:** `FilterType` is an extensible sealed interface and the filter chip row already renders dynamically, so the UI is additive. Permissions are already parsed per app for the info sheet's Permissions tab.
-- **The one real question:** where the data comes from. Parsing manifests for the whole device on demand is too slow for a filter, so this likely wants a permission index in the Room cache, populated on scan — which turns a UI feature into a schema change. Scope that before estimating harder.
-- **Status:** opened 2026-07-28, labelled `enhancement` + `needs triage`, zero comments. It postdates this document's original ranking.
+- ~~**The one real question:** where the data comes from … this likely wants a permission index in the Room cache, populated on scan — which turns a UI feature into a schema change.~~
+  **Answered: no schema change.** The fear was per-app parsing at list time. It isn't needed —
+  `PackageManager.getInstalledPackages(GET_PERMISSIONS)` returns every package's declared
+  permissions in a *single* call, so the whole device is indexed in one sweep. `PermissionRepository.buildPermissionIndex()`
+  runs that while the filter is selected and keeps `group -> packages` in memory on the ViewModel,
+  rebuilding when the app list itself changes. Caching it in Room would have been actively worse:
+  the index is invalidated by any install, uninstall or update, so a persisted copy buys a migration
+  and a staleness bug in exchange for nothing.
+- **Three judgement calls made while building, flagged for review:**
+  1. **Runtime permissions only, grouped.** Chips are permission *groups* (Camera, Microphone,
+     Location…), not individual permissions. `INTERNET` matching 400 apps is not a filter, and the
+     question users actually ask is about the capabilities the system itself gates behind a prompt.
+     Non-dangerous and ungrouped permissions are left out of the index entirely.
+  2. **Chip labels come from the platform,** via `PermissionGroupInfo.loadLabel` — so they are
+     already translated into every locale Android supports and read identically to the permission
+     dialogs the user has seen, instead of Thor shipping its own five translations of "Camera".
+  3. **The permission → group table is hardcoded in Thor** (`PlatformPermissionGroups`), because the
+     device will not answer the question. Since Android 10 the framework manifest declares *every*
+     dangerous platform permission with `permissionGroup="android.permission-group.UNDEFINED"` and
+     the real mapping lives inside PermissionController; verified on an API 37 emulator, where
+     `pm list permissions -g -d` shows CAMERA, LOCATION, CONTACTS and the rest all **empty**. Reading
+     `PermissionInfo.group` — the obvious implementation, and the one this feature shipped with
+     before review — produces no Camera chip, no Microphone chip and no Location chip on any modern
+     device. The *group* names are still real, so the localised labels in (2) still work. Custom
+     permissions declared by apps still go through `PermissionInfo.group`, which is where that field
+     is still honest.
+- **Status:** opened 2026-07-28, labelled `enhancement` + `needs triage`, zero comments.
 
 ### #51 — App + data backup / transfer · 🟨 phase 1 shipped · impact 4
 - **What:** back up an app's APK(s) + private data to a file; transfer app+data between phones.
