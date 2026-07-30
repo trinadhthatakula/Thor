@@ -249,8 +249,10 @@ class BulkFreezeRunner(
      * `FreezerLaunchActivity`, report an outcome the notifier may have had to drop.
      *
      * Same-request coalescing: a second tap for the same op *over the same scope* returns the
-     * existing run. Keyed on the whole [BulkRequest], not the op: "freeze profile A" and
-     * "freeze profile B" are both FREEZE but must not collapse into one run over A.
+     * existing run — any unsettled run matching it, not merely the most recent launch, so a repeat
+     * still coalesces once something is queued behind it. Keyed on the whole [BulkRequest], not the
+     * op: "freeze profile A" and "freeze profile B" are both FREEZE but must not collapse into one
+     * run over A.
      *
      * Same-op, different scope: the new run **waits** for the previous one rather than
      * cancelling it. Two freezes do not contradict each other, so cancelling A to start B would
@@ -281,9 +283,25 @@ class BulkFreezeRunner(
 
     @Synchronized
     fun launch(request: BulkRequest): Deferred<BulkResult?> {
-        // Same-request coalescing: return the in-flight run unchanged.
         val newest = unsettled.lastOrNull()
-        newest?.takeIf { it.job.isActive && it.request == request }?.let { return it.job }
+        // Same-request coalescing: return the in-flight run unchanged. Matched against the whole
+        // chain rather than its tail, because once one run is queued behind another the request
+        // being repeated is often the *head* — a watchlist freeze from the tile, with a profile
+        // freeze already queued behind it, would otherwise not match the tail, take the serialize
+        // path instead, and enqueue a second full watchlist batch that re-acts on every package and
+        // re-posts a result after the first one already reported. That is precisely the double-act
+        // this method promises cannot happen.
+        //
+        // Only while the chain is uniform in op, though. A conflicting-op launch cancels every
+        // entry from inside its own coroutine body, so between that launch and the cancellation
+        // landing, a doomed entry still reports `isActive` — handing its job back would coalesce a
+        // caller onto a run that is about to be cancelled, and its freeze would never happen. When
+        // every entry shares the incoming op there has been no such launch: it would still be in
+        // the chain itself, carrying the op that fails this check.
+        if (unsettled.all { it.request.op == request.op }) {
+            unsettled.firstOrNull { it.job.isActive && it.request == request }
+                ?.let { return it.job }
+        }
 
         // Handoff: capture the previous run BEFORE this one joins the chain, along with whether
         // it is a run we may cancel. The new job's first act is to settle it, so it will not

@@ -91,6 +91,11 @@ Not a decision, just the shape:
    - a run started before `PrivilegeState.isReady` waits and then proceeds, rather than no-opping
      (defect 1, mutation-checked: reverting to `state.value` must fail this);
    - same-op coalescing returns the *same* `Job` and does not double-act on any package;
+   - coalescing still happens when the repeated request is **not** the most recent launch: a
+     watchlist FREEZE with a profile FREEZE queued behind it, tapped again from the tile, must get
+     the running job back rather than a second watchlist batch appended to the chain — and the
+     mirror case, a repeat arriving while a conflicting op is tearing the chain down, must **not**
+     coalesce onto a doomed run;
    - conflicting-op replacement cancels the previous batch, and no package receives a FREEZE action
      after the replacing UNFREEZE batch has started (defect 2);
    - a worker that ignores cancellation cannot make the handoff wait longer than `CANCEL_GRACE_MS`;
