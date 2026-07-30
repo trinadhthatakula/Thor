@@ -30,6 +30,13 @@
     <!--
        Left out on purpose, and each for a different reason:
 
+       - datastore/thor_local_state.preferences_pb — the second Preferences store, declared beside
+         the first in PreferenceRepositoryImpl.kt. It holds facts ABOUT the excluded state rather
+         than settings: "we already offered to import the frozen apps we found" describes the
+         freezer watchlist, and the watchlist is in the database, which is not backed up. Restoring
+         such a value into an install that has no watchlist turns off the affordance built to
+         rebuild one. Do not add it here — a path per store is what keeps the two halves aligned.
+
        - files/app_icons/ — one PNG per installed app, so it grows with the device's app count.
          Cloud backup has a 25 MB per-app quota and overrunning it fails the ENTIRE backup with no
          user-visible error, so this cache alone could silently cost the user their settings.
