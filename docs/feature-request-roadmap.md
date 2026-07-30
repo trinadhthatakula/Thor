@@ -30,13 +30,13 @@ timing fix (#278), the `longVersionCode` truncation fix (#277), installer downgr
 R8 fix (#265). That is where the last four weeks went — the feature backlog below barely moved
 because the work was elsewhere.
 
-**In review, not yet merged:** the permission filter (#294/#285), freeze profiles (#295/#55a), and
-two fixes with no issue behind them — the watchlist prompt flag (#299) and the shortcut match flags
-(#300). `.xapk` export + backup phase 1 (#293), the biometric hard-lockout escape hatch (#292), the
-Dependabot Bundler ecosystem (#291), the unified app-info sheet (#288) and the previous refresh
-(#289) have all since merged. Every open branch edits this file, so this paragraph and the ranking
-table are written to be *identical* on each of them — same text merges clean, and the alternative is
-re-resolving the same conflict once per merge.
+**In review, not yet merged:** the permission filter (#294/#285), freeze profiles (#295/#55a) and the
+watchlist prompt flag (#299), a fix with no issue behind it. The shortcut match flags (#300), `.xapk`
+export + backup phase 1 (#293), the biometric hard-lockout escape hatch (#292), the Dependabot
+Bundler ecosystem (#291), the unified app-info sheet (#288) and the previous refresh (#289) have all
+since merged. Every open branch edits this file, so this paragraph and the ranking table are written
+to be *identical* on each of them — same text merges clean, and the alternative is re-resolving the
+same conflict once per merge.
 
 ---
 
