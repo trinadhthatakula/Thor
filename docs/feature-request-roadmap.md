@@ -59,8 +59,8 @@ this file, expect a textual conflict here and in the ranking table — each edit
 
 **🟢 Do first (~1 week):** ~~**#285** (permission filter)~~ **built, in review** → **#164b** (`.xapk` writer — half a day, closes a public promise and lets #164 be closed) → **#55a** (freeze profiles) → **#161** (Samsung My Files). All lean on existing infra and are low-risk — with one caveat:
 ~~**#285's estimate is pending scope validation.**~~ **Settled, and it was the cheap answer** — see
-#285 below. One `getInstalledPackages(GET_PERMISSIONS)` sweep, held in memory while the filter is
-selected. **No Room schema change.** The expensive surprise was elsewhere: since API 29 the platform
+the **#285** row below. One `getInstalledPackages(GET_PERMISSIONS)` sweep, held in memory while the
+filter is selected. **No Room schema change.** The expensive surprise was elsewhere: since API 29 the platform
 no longer tells you which group a permission belongs to, so Thor ships the table itself.
 
 **🟡 High-value bets (scope carefully):**

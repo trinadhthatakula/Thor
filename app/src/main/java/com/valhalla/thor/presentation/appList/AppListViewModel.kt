@@ -191,7 +191,9 @@ class AppListViewModel(
      * refreshes anyway.
      *
      * Nothing is built until that set is non-empty, so the startup sweep waits for the first real
-     * app load rather than racing it and then immediately redoing itself.
+     * app load rather than racing it and then immediately redoing itself. That wait reports itself
+     * as loading, because to the chip row an empty index during it is indistinguishable from a
+     * device with no permission groups, and only one of those is true.
      */
     private fun observePermissionFilter() {
         viewModelScope.launch {
@@ -204,8 +206,19 @@ class AppListViewModel(
             ) { type, packages -> type to packages }
                 .collect { (type, packages) ->
                     permissionIndexJob?.cancel()
-                    if (type != FilterType.Permission || packages.isEmpty()) {
+                    if (type != FilterType.Permission) {
                         _rawState.update { it.copy(isLoadingPermissions = false) }
+                        return@collect
+                    }
+                    if (packages.isEmpty()) {
+                        // Waiting on the app list, not done with it. Both states leave
+                        // `permissionIndex` empty, and the chip row has to tell them apart: dropping
+                        // out of loading here puts "No permission groups found on this device" —
+                        // a claim about the *device* — on screen beside the main spinner, for every
+                        // returning user who left the filter here. `permissionIndexFailed` is left
+                        // alone rather than cleared; the loading state outranks it in that selector
+                        // anyway, and the very next emission re-answers it from a real build.
+                        _rawState.update { it.copy(isLoadingPermissions = true) }
                         return@collect
                     }
                     permissionIndexJob = launch {

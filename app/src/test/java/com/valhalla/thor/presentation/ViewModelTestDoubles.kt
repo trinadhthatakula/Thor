@@ -396,13 +396,17 @@ fun userApp(
     isSuspended: Boolean = false,
     isDebuggable: Boolean = false,
     appName: String? = null,
+    // The permission index keys its invalidation on `packageName@lastUpdateTime`, so this is how a
+    // test says "the same app, updated" as opposed to "the same app".
+    lastUpdateTime: Long = 0L,
 ): AppInfo = AppInfo(
     appName = appName,
     packageName = packageName,
     isSystem = false,
     enabled = enabled,
     isSuspended = isSuspended,
-    isDebuggable = isDebuggable
+    isDebuggable = isDebuggable,
+    lastUpdateTime = lastUpdateTime
 )
 
 /**

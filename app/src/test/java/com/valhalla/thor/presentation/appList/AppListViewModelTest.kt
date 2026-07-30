@@ -3,7 +3,12 @@
 
 package com.valhalla.thor.presentation.appList
 
+import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AnimationIntensity
+import com.valhalla.thor.domain.model.FilterType
+import com.valhalla.thor.domain.model.PermissionIndex
+import com.valhalla.thor.domain.model.SortBy
+import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
@@ -19,6 +24,8 @@ import com.valhalla.thor.presentation.FakeStorageStatsProvider
 import com.valhalla.thor.presentation.FakeSystemRepository
 import com.valhalla.thor.presentation.FakeUsageAccessGate
 import com.valhalla.thor.presentation.MainDispatcherRule
+import com.valhalla.thor.presentation.userApp
+import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -93,9 +100,13 @@ class AppListViewModelTest {
      * arrives in.
      */
     private fun TestScope.viewModel(
-        intensity: AnimationIntensity = AnimationIntensity.MEDIUM
+        intensity: AnimationIntensity = AnimationIntensity.MEDIUM,
+        filterType: FilterType = FilterType.Source,
+        permissions: FakePermissionRepository = FakePermissionRepository()
     ): AppListViewModel {
-        val prefs = FakePreferenceRepository(UserPreferences(animationIntensity = intensity))
+        val prefs = FakePreferenceRepository(
+            UserPreferences(animationIntensity = intensity, appFilterType = filterType)
+        )
         val manageAppUseCase = ManageAppUseCase(system)
         val vm = AppListViewModel(
             getInstalledAppsUseCase = GetInstalledAppsUseCase(appRepository),
@@ -107,7 +118,7 @@ class AppListViewModelTest {
             freezerRepository = freezer,
             appShortcuts = FakeAppShortcutController(),
             appRepository = appRepository,
-            permissionRepository = FakePermissionRepository(),
+            permissionRepository = permissions,
             storageStats = FakeStorageStatsProvider(),
             usageAccess = FakeUsageAccessGate(),
             defaultDispatcher = mainDispatcherRule.dispatcher,
@@ -258,5 +269,85 @@ class AppListViewModelTest {
         runCurrent()
 
         assertEquals("two live collectors means two overlapping package scans", 1, scanCollectors())
+    }
+
+    // --- The permission index ----------------------------------------------------------------
+
+    /**
+     * The chip row shows one of three sentences while the index is empty, and this is the state that
+     * used to pick the wrong one: a returning user who left the filter on Permission was told "no
+     * permission groups found on this device" — a claim about their *hardware* — for as long as the
+     * package scan took, right beside the spinner that explained the real reason.
+     */
+    @Test
+    fun `a persisted permission filter reads as loading until the app list arrives`() = runTest {
+        val permissions = FakePermissionRepository()
+        val vm = viewModel(AnimationIntensity.LOW, FilterType.Permission, permissions)
+        runCurrent()
+
+        assertTrue(
+            "an empty index with no apps yet is 'not there yet', not 'not there at all'",
+            vm.uiState.value.isLoadingPermissions
+        )
+        assertFalse("nothing was attempted, so nothing failed", vm.uiState.value.permissionIndexFailed)
+        assertEquals("there is nothing to index yet", 0, permissions.indexBuilds)
+    }
+
+    /**
+     * The sweep costs a `getInstalledPackages(GET_PERMISSIONS)` over every app, so *when* it reruns
+     * is the whole design. It follows the app set — install, uninstall, update — and nothing else;
+     * a search keystroke or a sort change must not touch it, or typing into the search box would
+     * rebuild the index once per character.
+     */
+    @Test
+    fun `the index is built once per app-set change and never for a sort or a search`() = runTest {
+        val permissions = FakePermissionRepository(
+            Result.success(PermissionIndex(packagesByGroup = mapOf("CAMERA" to setOf("a"))))
+        )
+        val vm = viewModel(AnimationIntensity.LOW, FilterType.Permission, permissions)
+        runCurrent()
+
+        appRepository.apps.value = listOf(userApp("a"))
+        runCurrent()
+        assertEquals("the first real app load builds it", 1, permissions.indexBuilds)
+        assertFalse("and the wait is over", vm.uiState.value.isLoadingPermissions)
+
+        vm.updateSearchQuery("cam")
+        vm.updateSort(SortBy.NAME)
+        vm.updateSortOrder(SortOrder.DESCENDING)
+        runCurrent()
+        assertEquals("neither the query nor the sort changes what any app declares", 1, permissions.indexBuilds)
+
+        // The same package, updated. The key is `packageName@lastUpdateTime` precisely so this
+        // counts and a freeze or a size arriving does not.
+        appRepository.apps.value = listOf(userApp("a", lastUpdateTime = 1))
+        runCurrent()
+        assertEquals("an update can add or drop a permission, so it invalidates", 2, permissions.indexBuilds)
+    }
+
+    /**
+     * A failed sweep drops the previous index rather than keeping it: a stale index filters silently
+     * and wrongly. That leaves the chip row empty, so the failure has to be *stated* — both in the
+     * moment, as a toast, and afterwards in the row itself, since the toast is long gone by the time
+     * the user looks down at it.
+     */
+    @Test
+    fun `a failed index is announced and then admitted to in the chip row`() = runTest {
+        val permissions = FakePermissionRepository(Result.failure(IllegalStateException("no pm")))
+        val vm = viewModel(AnimationIntensity.LOW, FilterType.Permission, permissions)
+        val events = mutableListOf<AppListEvent>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { events += it } }
+        runCurrent()
+
+        appRepository.apps.value = listOf(userApp("a"))
+        runCurrent()
+
+        assertEquals(
+            listOf(AppListEvent.ShowMessage(UiText.StringResource(R.string.permission_filter_failed))),
+            events
+        )
+        assertTrue(vm.uiState.value.permissionIndexFailed)
+        assertFalse("a failure ends the wait too", vm.uiState.value.isLoadingPermissions)
+        assertTrue("the stale index is dropped, not kept", vm.uiState.value.permissionIndex.isEmpty)
     }
 }
