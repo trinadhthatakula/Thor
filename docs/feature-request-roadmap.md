@@ -19,7 +19,7 @@
 | **#210** | Keep-in-launcher | ✅ **Achievable slice done** — the Freeze\|Suspend mode shipped via #239 (PR #241). The accessibility-based auto-refreeze remains declined, as planned |
 | **#55a** | Freeze profiles | ✅ **Built** — `feat/freeze-profiles`, in review (#295). All three recon risks closed: the tier gate, the runner's coalescing key and the launcher restore gate (see below) |
 | #51 | App + data backup | 🟨 **Phase 1 done** — multi-select → bulk APK/bundle backup to the export target with a `thor-backup-<stamp>.json` manifest, a cancellable progress bar and a process-lifetime runner. **Phase 2 (root data tar) not started**, and that is the half `README.md` has promised for a year |
-| **#285** | Filter by permission | ✅ **Built** — `feat/permission-filter`, in review (#294). Scope question settled: one `getInstalledPackages` sweep, no Room change. ⚠️ the GitHub issue is still **open** — close it on merge |
+| **#285** | Filter by permission | ✅ **Done** — merged to `dev` (#294). Scope question settled: one `getInstalledPackages` sweep, no Room change. ⚠️ the GitHub issue is still **open** — close it |
 | #161 | `.apks` won't open from Samsung My Files | 🐞 **bug, not a feature** — unanswered since 2026-07-18 |
 | _all others_ | | ⬜ not started |
 
@@ -30,13 +30,14 @@ timing fix (#278), the `longVersionCode` truncation fix (#277), installer downgr
 R8 fix (#265). That is where the last four weeks went — the feature backlog below barely moved
 because the work was elsewhere.
 
-**In review, not yet merged:** the permission filter (#294/#285), freeze profiles (#295/#55a) and the
-watchlist prompt flag (#299), a fix with no issue behind it. The shortcut match flags (#300), `.xapk`
-export + backup phase 1 (#293), the biometric hard-lockout escape hatch (#292), the Dependabot
-Bundler ecosystem (#291), the unified app-info sheet (#288) and the previous refresh (#289) have all
-since merged. Every open branch edits this file, so this paragraph and the ranking table are written
-to be *identical* on each of them — same text merges clean, and the alternative is re-resolving the
-same conflict once per merge.
+**In review, not yet merged:** freeze profiles (#295/#55a), and nothing else. The permission filter
+(#294/#285), the watchlist prompt flag (#299), the shortcut match flags (#300), `.xapk` export +
+backup phase 1 (#293), the biometric hard-lockout escape hatch (#292), the Dependabot Bundler
+ecosystem (#291), the unified app-info sheet (#288) and the previous refresh (#289) have all since
+merged. While several branches were open at once they all edited this file, so this paragraph and the
+ranking table were kept *byte-identical* across them — same text merges with no resolution at all,
+and the alternative was re-resolving the same conflict once per merge. Worth redoing the moment a
+second branch opens.
 
 ---
 
@@ -49,7 +50,7 @@ same conflict once per merge.
 | — | **#164b** | `.xapk` export (the remainder of #164) | 2 | done | 2 | ✅ **Merged** (#293) — the format picker ships with it; close #164 on merge |
 | — | **#51 ph.1** | Bulk APK/bundle backup + manifest | **4** | done | 3 | ✅ **Merged** (#293) — phase 2 (root data) is what remains |
 | — | **#55a** | Freeze **profiles** (named groups) | 3 | done | 4 | 🟣 **Built**, in review (#295) — reused Room + `BulkFreezeRunner` as predicted; the runner needed a scoped coalescing key first *(split from #55)* |
-| — | **#285** | Filter app list by permission | 2–3 | done | 2 | 🟣 **Built**, in review (#294) — mostly UI as predicted, but the group table had to be shipped by Thor (see below) |
+| — | **#285** | Filter app list by permission | 2–3 | done | 2 | ✅ **Merged** (#294) — mostly UI as predicted, but the group table had to be shipped by Thor (see below); close the issue |
 | 1 | **#161** | `.apks` won't open from Samsung My Files | 2 | **1–2 d** | 2 | 🟢 a real bug with a named reporter and a working comparison app — cheap goodwill |
 | 2 | **#51 ph.2** | App **data** backup / transfer | **4** | root-data **5–8 d** · P2P 12–20 d | 5 | 🟡 highest remaining impact, hard-gated on root — phase 3 (P2P) stays declined |
 | 3 | **#130** | InstallWithOptions attribution + drill-down | 2 | **1–2 d** (label ≈0.25 d) | 2 | 🟡 label = trivial; attribution unreliable |
@@ -63,7 +64,7 @@ same conflict once per merge.
 ## Sequencing
 
 **🟢 Do first (~1 week):** ~~**#164b** (`.xapk` writer)~~ **merged (#293)** → ~~**#285** (permission
-filter)~~ **built, in review (#294)** → ~~**#55a** (freeze profiles)~~ **built, in review (#295)** →
+filter)~~ **merged (#294)** → ~~**#55a** (freeze profiles)~~ **built, in review (#295)** →
 **#161** (Samsung My Files). All lean on existing infra and are low-risk — with one caveat:
 ~~**#285's estimate is pending scope validation.**~~ **Settled, and it was the cheap answer** — see
 the **#285** row below. One `getInstalledPackages(GET_PERMISSIONS)` sweep, held in memory while the
@@ -89,16 +90,15 @@ platform no longer tells you which group a permission belongs to, so Thor ships 
 - **Risks:** none hard. System/protected apps degrade without root (consistent with the app). OBB export stays out of scope.
 - **Verify with more than a round trip:** installability is necessary but not sufficient. Export → reinstall through Thor's own installer *and* a third-party one, then also check the two failure shapes a successful install would hide: a bundle whose OBB assets are silently absent, and split contents/metadata a different reader rejects. See `docs/follow-ups/app-data-backup-and-xapk-export.md`.
 
-### #55a — Freeze profiles · 🟢 · 2–3 d · impact 3
+### #55a — Freeze profiles · ✅ built · impact 3
 - **What:** named groups of apps you can freeze/unfreeze on demand.
 - **Reuses:** `FreezerRepository` + Room `freezer_apps` table, `FreezerViewModel` multi-select + batch `MultiAppAction.Freeze/UnFreeze`, `AutoMigration`. New profile tables + a small UI.
-- **Risks:** the Room migration is on a shipped database, so it needs a real `AutoMigration` and a schema-export diff — not `fallbackToDestructiveMigration`. Beyond that: a profile-triggered bulk freeze would be a **fourth** surface reaching `BulkFreezeRunner` (after the Freezer screen, the launcher shortcuts and the QS tile), so it must route through the runner rather than freezing directly, and it must respect the freeze tier gate, which now lives in `FreezeAppUseCase.kt:35-48` (the follow-up
-  doc this used to link shipped and was deleted in `412f655e`). Two further risks the recon pass
-  found: `BulkFreezeRunner`'s job slot coalesces on the `BulkOp` alone, so "freeze profile A" then
-  "freeze profile B" would return the first `Deferred` and silently never freeze B; and
-  `FreezerBridgeProvider` refuses to restore anything absent from the watchlist, so apps that live
-  only in a profile would be un-unfreezable from the launcher.
-- Otherwise on-brand for the freezer.
+- **Shipped:** `freeze_profiles` + `freeze_profile_apps` (Room **auto-migration 5→6**, new tables only, schema export committed), `FreezeProfileRepository`, a profiles sheet with per-row freeze/unfreeze/edit/delete, an editor sheet reusing the watchlist's app picker, and a "save this selection as a profile" entry in the multi-select toolbox. 17 unit tests cover the name rule and the request identity.
+- **All three recon risks are closed, and each one is why a piece looks the way it does:**
+  1. **Tier gate.** Profiles route through `BulkFreezeRunner`, so `targetsFor` → `freezableCandidates(...)` applies the list-level `FreezeTier.BLOCKED` filter for free — routing *through the runner* is what earns the gate, which is the reason a profile run is not a direct freeze loop. The editor additionally warns at *add* time, because a profile is a standing instruction that later runs act on with no UI.
+  2. **Coalescing key.** The job slot keyed on `BulkOp` alone would have made "freeze profile A" then "freeze profile B" return the first `Deferred` and silently never freeze B. The key is now `BulkRequest(op, scope)`: same op / different scope serializes (`join()`), different op still replaces (`cancelAndJoin()`).
+  3. **Launcher restore.** `FreezerBridgeProvider` now checks the watchlist **∪** every profile's membership, so an app frozen only by a profile is not a dead launcher tap.
+- **Left for the owner:** on-device verification of the two new sheets, and — as with every freezer surface — a run on a real privilege backend.
 
 ### #161 — `.apks` won't open from Samsung My Files · 🟢 · 1–2 d · impact 2 *(bug)*
 - **What:** on a Galaxy S25 Ultra / One UI 8.5, tapping a `.apks` file in Samsung's stock My Files does not offer Thor, while InstallerX Revived and Universal Installer both appear. Thor *does* appear from other file managers.

@@ -3,17 +3,26 @@
 
 package com.valhalla.thor.presentation.freezer
 
+import android.database.sqlite.SQLiteConstraintException
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.data.freezer.BulkFreezeRunner
 import com.valhalla.thor.data.launcher.FreezerShortcutContract
 import com.valhalla.thor.data.launcher.FreezerShortcutManager
 import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.domain.model.BulkOp
+import com.valhalla.thor.domain.model.BulkOutcome
+import com.valhalla.thor.domain.model.BulkRequest
+import com.valhalla.thor.domain.model.BulkScope
+import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.freezeTier
+import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
@@ -22,6 +31,7 @@ import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.UiTextException
+import com.valhalla.thor.util.bulkResultMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -30,6 +40,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -64,12 +75,23 @@ data class FreezerUiState(
     val hasShownDisabledAppsPrompt: Boolean = false,
     val appListType: AppListType = AppListType.USER,
     val isGrid: Boolean = true,
-    val addFreezerToLauncher: Boolean = false
+    val addFreezerToLauncher: Boolean = false,
+    val profiles: List<FreezeProfile> = emptyList(),
+    val profileEditorSearchQuery: String = "",
+    /**
+     * Every bulk run in flight, oldest first. Carries whole requests, not a Boolean, so a profile
+     * row can show its own spinner without every other row spinning alongside it — and a list
+     * rather than one slot because runs of the same op serialize, so a profile queued behind a
+     * watchlist freeze must not erase the freeze that is actually running.
+     */
+    val runningRequests: List<BulkRequest> = emptyList()
 )
 
 @KoinViewModel
 class FreezerViewModel(
     private val freezerRepository: FreezerRepository,
+    private val freezeProfileRepository: FreezeProfileRepository,
+    private val bulkFreezeRunner: BulkFreezeRunner,
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val manageAppUseCase: ManageAppUseCase,
     private val freezeAppUseCase: FreezeAppUseCase,
@@ -91,6 +113,8 @@ class FreezerViewModel(
     init {
         observeApps()
         observePreferences()
+        observeProfiles()
+        observeRunningRequest()
     }
 
     private fun observeApps() {
@@ -241,6 +265,136 @@ class FreezerViewModel(
 
     fun updateManageSheetSearch(query: String) {
         _uiState.update { it.copy(manageSheetSearchQuery = query) }
+    }
+
+    // --- Freeze profiles (#55a) ---
+
+    private fun observeProfiles() {
+        viewModelScope.launch {
+            freezeProfileRepository.observeProfiles()
+                // Same bounded retry the app list gets, and for the same reason: `catch` ends the
+                // flow, so without this one transient Room failure freezes the profiles list for
+                // the rest of the process — the sheet keeps showing a stale set of profiles and
+                // the only way back is to restart the app.
+                .retryWhen { cause, attempt ->
+                    if (cause is CancellationException || attempt >= 2) {
+                        false
+                    } else {
+                        delay(500)
+                        true
+                    }
+                }
+                // A Room read failure must not take the whole Freezer screen down with it: the
+                // watchlist is a separate flow and stays perfectly usable without profiles.
+                .catch { e ->
+                    Logger.e("FreezeViewModel", "observe profiles failed", e)
+                    emitToast(UiText.StringResource(R.string.error_profiles_load_failed))
+                }
+                .collect { profiles -> _uiState.update { it.copy(profiles = profiles) } }
+        }
+    }
+
+    private fun observeRunningRequest() {
+        viewModelScope.launch {
+            bulkFreezeRunner.runningRequests.collect { requests ->
+                _uiState.update { it.copy(runningRequests = requests) }
+            }
+        }
+    }
+
+    fun updateProfileEditorSearch(query: String) {
+        _uiState.update { it.copy(profileEditorSearchQuery = query) }
+    }
+
+    /**
+     * Run a profile through [BulkFreezeRunner] rather than freezing here.
+     *
+     * That routing is the whole point of the runner's `targetsFor`: it is where the
+     * [FreezeTier] block is applied to a *list*, so a profile cannot freeze what the in-app
+     * dialog refuses to offer a confirm button for. It also gets same-request coalescing and
+     * the serialize-don't-cancel rule for free — tapping two profiles runs both, in order.
+     *
+     * The awaited result is reported as a toast. A profile run deliberately does not park its
+     * result in the tile subtitle (see the runner), so this is the only surface that reports it
+     * besides the notification, which the user may not have permitted.
+     */
+    fun runProfile(profileId: Long, op: BulkOp) {
+        viewModelScope.launch {
+            val outcome = bulkFreezeRunner
+                .launch(BulkRequest(op, BulkScope.Profile(profileId)))
+                .await()
+            emitToast(
+                when (outcome) {
+                    is BulkOutcome.Completed -> bulkResultMessage(outcome.result)
+                    // A no-op: no privilege, or nothing left to act on after the tier filter.
+                    // Saying "Froze 0 apps" would read as a failure of the freeze rather than of
+                    // the precondition, so name the precondition instead.
+                    BulkOutcome.NothingToDo ->
+                        UiText.StringResource(R.string.profile_nothing_to_do)
+                    // And this is not that. The run raised — Room, a dead binder — possibly after
+                    // freezing part of the profile, so the one thing that must not be said is
+                    // that there was nothing to do.
+                    is BulkOutcome.Failed -> UiText.StringResource(R.string.bulk_run_failed)
+                }
+            )
+        }
+    }
+
+    fun createProfile(name: String, packageNames: List<String>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runProfileWrite(R.string.error_profile_name_taken) {
+                freezeProfileRepository.create(name, packageNames)
+                emitToast(UiText.StringResource(R.string.profile_saved))
+            }
+        }
+    }
+
+    fun updateProfile(profileId: Long, name: String, packageNames: List<String>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runProfileWrite(R.string.error_profile_name_taken) {
+                freezeProfileRepository.update(profileId, name, packageNames)
+                emitToast(UiText.StringResource(R.string.profile_saved))
+            }
+        }
+    }
+
+    fun deleteProfile(profileId: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            // A delete cannot collide with the unique name index — the only constraint it can
+            // trip is the members table's foreign key — so it must not borrow the save path's
+            // "that name is already taken", which would be nonsense over a Delete button.
+            runProfileWrite(R.string.error_profile_delete_failed) {
+                freezeProfileRepository.delete(profileId)
+                emitToast(UiText.StringResource(R.string.profile_deleted))
+            }
+        }
+    }
+
+    /**
+     * Backstop for the editor's own [com.valhalla.thor.domain.model.profileNameError] check.
+     *
+     * The editor validates against the names it can see, which is a snapshot; the unique index
+     * is the only thing that actually holds. Deleting a profile also cascades, and Room surfaces
+     * a foreign-key failure as the same exception type — so both get named rather than crashing
+     * the screen through a coroutine no one catches. [constraintMessage] is what separates them:
+     * one exception type, two writes that can raise it for unrelated reasons, and only the caller
+     * knows which constraint was reachable.
+     */
+    private suspend fun runProfileWrite(
+        @StringRes constraintMessage: Int,
+        block: suspend () -> Unit
+    ) {
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: SQLiteConstraintException) {
+            Logger.e("FreezeViewModel", "profile write rejected by a constraint", e)
+            emitToast(UiText.StringResource(constraintMessage))
+        } catch (e: Exception) {
+            Logger.e("FreezeViewModel", "profile write failed", e)
+            emitToast(UiText.StringResource(R.string.error_format, e.message ?: ""))
+        }
     }
 
     // --- Snackbar from AppInfoSheet (app frozen outside freezer) ---

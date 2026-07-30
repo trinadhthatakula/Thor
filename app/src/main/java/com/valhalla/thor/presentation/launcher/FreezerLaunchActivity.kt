@@ -13,6 +13,7 @@ import androidx.core.content.pm.ShortcutManagerCompat
 import com.valhalla.thor.R
 import com.valhalla.thor.data.launcher.FreezerShortcutContract
 import com.valhalla.thor.data.launcher.FreezerShortcutManager
+import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.bulkResultMessage
@@ -95,7 +96,7 @@ class FreezerLaunchActivity : Activity() {
             // invisible but touchable, so sitting on it would swallow taps meant for the
             // launcher underneath. Past the window we acknowledge and get out of the way — the
             // run belongs to the app scope and finishes (and notifies) without us.
-            val result = withTimeoutOrNull(REPORT_WINDOW_MS) {
+            val outcome = withTimeoutOrNull(REPORT_WINDOW_MS) {
                 try {
                     run.await()
                 } catch (_: CancellationException) {
@@ -108,16 +109,20 @@ class FreezerLaunchActivity : Activity() {
                 }
             }
             toast(
-                when {
-                    result != null -> bulkResultMessage(result).asString(this@FreezerLaunchActivity)
-                    // Completed normally with no result: run() returns null when there is
-                    // nothing to act on. Privilege was checked above, so this is the empty
+                when (outcome) {
+                    is BulkOutcome.Completed ->
+                        bulkResultMessage(outcome.result).asString(this@FreezerLaunchActivity)
+                    // Nothing to act on. Privilege was checked above, so this is the empty
                     // target list — same message SettingsViewModel shows for Unfreeze-all on an
                     // empty watchlist.
-                    run.isCompleted && !run.isCancelled ->
-                        getString(R.string.tile_no_apps_toast)
+                    BulkOutcome.NothingToDo -> getString(R.string.tile_no_apps_toast)
+                    // Deliberately vague about what got frozen, because the runner does not know
+                    // either: the throw can land before the first package or halfway through the
+                    // batch. Saying "nothing to do" here — which is what this used to say — is the
+                    // one reading that is certainly wrong.
+                    is BulkOutcome.Failed -> getString(R.string.bulk_run_failed)
                     // Timed out, or replaced by a conflicting op: either way work is in flight.
-                    else -> getString(
+                    null -> getString(
                         if (disable) R.string.log_freezing_batch
                         else R.string.log_unfreezing_batch
                     )

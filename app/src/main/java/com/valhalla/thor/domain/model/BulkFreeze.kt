@@ -7,6 +7,32 @@ package com.valhalla.thor.domain.model
 enum class BulkOp { FREEZE, UNFREEZE }
 
 /**
+ * Which list of packages a bulk run acts on.
+ *
+ * Before profiles there was only one answer, so the runner keyed its single job slot on
+ * [BulkOp] alone. That is exactly the bug this type exists to prevent: with two profiles,
+ * "freeze A" followed by "freeze B" are both FREEZE, so the second call would have been
+ * coalesced onto the first run and B would silently never freeze.
+ */
+sealed interface BulkScope {
+    /** The freezer watchlist — the QS tile and both launcher Freeze-all/Unfreeze-all shortcuts. */
+    data object Watchlist : BulkScope
+
+    /** One freeze profile, by row id. */
+    data class Profile(val id: Long) : BulkScope
+}
+
+/**
+ * A bulk run's full identity: what to do, and to which list.
+ *
+ * Equality is the coalescing key — two requests are the same run only if both halves match.
+ */
+data class BulkRequest(
+    val op: BulkOp,
+    val scope: BulkScope = BulkScope.Watchlist,
+)
+
+/**
  * The concrete per-package action a bulk run performs.
  *
  * Separate from [BulkOp] because "freeze" is two different system calls depending on the
@@ -45,4 +71,34 @@ data class BulkResult(
     val failed: Int,
 ) {
     val unresolved: Int get() = total - succeeded - failed
+}
+
+/**
+ * How a bulk run ended, as its caller sees it.
+ *
+ * This exists because a nullable [BulkResult] cannot say it: the runner returned null both for
+ * "there was nothing to act on" and for "this blew up and was caught", so every surface that
+ * awaited a run reported a Room or binder failure as *nothing to do*. That is the one wrong thing
+ * to say about a failure — it tells the user their apps are fine when nobody knows whether they
+ * are, and it does so on the run most likely to have left the watchlist half-frozen.
+ *
+ * [NothingToDo] is a real, ordinary outcome and not a degenerate [Completed]: a run with no
+ * privilege or an empty target list touched nothing, and `BulkResult(0, 0, 0)` would be reported
+ * as "Froze 0 apps" — a false report of a freeze that never ran.
+ */
+sealed interface BulkOutcome {
+    /** The batch ran. [result] counts what it did, including partial and unresolved work. */
+    data class Completed(val result: BulkResult) : BulkOutcome
+
+    /** No privilege, or nothing left to act on after the tier filter. No package was touched. */
+    data object NothingToDo : BulkOutcome
+
+    /**
+     * The run raised, and it was caught so the process would survive it.
+     *
+     * Says nothing about how far it got: the throw can come from computing the targets (nothing
+     * touched) or from the middle of the batch (some packages already mutated), so a caller can
+     * report that it did not finish but must not claim what state the apps are in.
+     */
+    data class Failed(val cause: Throwable) : BulkOutcome
 }

@@ -524,4 +524,32 @@
     <string name="extension_install_failed">Error de verificación: %1$s</string>
     <string name="info_app_size">Tamaño</string>
     
+    <!-- Perfiles de congelación -->
+    <string name="freeze_profiles">Perfiles de congelación</string>
+    <string name="profile_new">Nuevo perfil</string>
+    <string name="profile_edit">Editar perfil</string>
+    <string name="profile_name_label">Nombre del perfil</string>
+    <string name="profile_name_too_long">Ese nombre es demasiado largo</string>
+    <string name="profile_name_duplicate">Ya existe un perfil con ese nombre</string>
+    <string name="no_profiles_yet">Aún no hay perfiles</string>
+    <string name="no_profiles_yet_desc">Agrupa las aplicaciones que congelas juntas y congélalas con un solo toque</string>
+    <string name="profile_save_selection">Guardar como perfil</string>
+    <string name="profile_delete_title">¿Eliminar «%1$s»?</string>
+    <string name="profile_delete_desc">Solo se elimina el perfil. Las aplicaciones que contiene se quedan tal cual — lo que esté congelado sigue congelado.</string>
+    <string name="profile_saved">Perfil guardado</string>
+    <string name="profile_deleted">Perfil eliminado</string>
+    <string name="profile_nothing_to_do">No hay nada que hacer con este perfil</string>
+    <string name="bulk_run_failed">La operación no terminó: revisa las apps antes de darla por hecha</string>
+    <string name="error_profile_name_taken">Ese nombre de perfil ya está en uso</string>
+    <string name="error_profile_delete_failed">No se pudo eliminar ese perfil</string>
+    <string name="error_profiles_load_failed">No se pudieron cargar los perfiles de congelación</string>
+    <string name="action_edit">Editar</string>
+    <string name="action_delete">Eliminar</string>
+    <string name="action_save">Guardar</string>
+    <string name="more_options">Más opciones</string>
+    <plurals name="profile_app_count">
+        <item quantity="one">%1$d aplicación</item>
+        <item quantity="other">%1$d aplicaciones</item>
+    </plurals>
+
 </resources>

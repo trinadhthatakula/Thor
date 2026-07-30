@@ -514,4 +514,31 @@
     <string name="extension_install_failed">验证失败：%1$s</string>
     <string name="info_app_size">大小</string>
     
+    <!-- 冻结配置 -->
+    <string name="freeze_profiles">冻结配置</string>
+    <string name="profile_new">新建配置</string>
+    <string name="profile_edit">编辑配置</string>
+    <string name="profile_name_label">配置名称</string>
+    <string name="profile_name_too_long">名称过长</string>
+    <string name="profile_name_duplicate">已存在同名配置</string>
+    <string name="no_profiles_yet">尚无配置</string>
+    <string name="no_profiles_yet_desc">把常一起冻结的应用编为一组，即可一键冻结</string>
+    <string name="profile_save_selection">保存为配置</string>
+    <string name="profile_delete_title">删除“%1$s”？</string>
+    <string name="profile_delete_desc">仅删除该配置。其中的应用保持原状 — 已冻结的仍保持冻结。</string>
+    <string name="profile_saved">配置已保存</string>
+    <string name="profile_deleted">配置已删除</string>
+    <string name="profile_nothing_to_do">此配置无需操作</string>
+    <string name="bulk_run_failed">本次操作未完成——请先确认各应用的状态</string>
+    <string name="error_profile_name_taken">该配置名称已被占用</string>
+    <string name="error_profile_delete_failed">无法删除该配置</string>
+    <string name="error_profiles_load_failed">无法加载冻结配置</string>
+    <string name="action_edit">编辑</string>
+    <string name="action_delete">删除</string>
+    <string name="action_save">保存</string>
+    <string name="more_options">更多选项</string>
+    <plurals name="profile_app_count">
+        <item quantity="other">%1$d 个应用</item>
+    </plurals>
+
 </resources>

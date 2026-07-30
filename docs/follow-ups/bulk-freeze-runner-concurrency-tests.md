@@ -55,7 +55,7 @@ class via `@Single(binds = [...])` so the other call sites do not move.
 
 | Collaborator | Declared at | Why a fake cannot stand in |
 |---|---|---|
-| ~~`PrivilegeManager`~~ | `data/manager/PrivilegeManager.kt:43` | ~~final; its `init` registers Shizuku binder and permission listeners~~ **Solved.** `domain/repository/PrivilegeStateProvider.kt` is the read-only port, shipped for the `AppListViewModel` tests, and `state` — read once at `BulkFreezeRunner.kt:361` — is all this runner ever takes from the manager. One constructor parameter, no new interface |
+| ~~`PrivilegeManager`~~ | `data/manager/PrivilegeManager.kt:43` | ~~final; its `init` registers Shizuku binder and permission listeners~~ **Solved.** `domain/repository/PrivilegeStateProvider.kt` is the read-only port, shipped for the `AppListViewModel` tests, and `state` — read once, in `run()` — is all this runner ever takes from the manager. One constructor parameter, no new interface |
 | `AppFreezeStateReader` | `data/freezer/AppFreezeStateReader.kt:27` | final, over the abstract `android.content.pm.PackageManager` |
 | `UadHelper` | `data/source/local/UadHelper.kt:49` | final, over `android.content.Context` |
 | `BulkResultNotifier` | `data/freezer/BulkResultNotifier.kt:36` | final, over `android.content.Context` |
@@ -96,13 +96,24 @@ Not a decision, just the shape:
    - a run started before `PrivilegeState.isReady` waits and then proceeds, rather than no-opping
      (defect 1, mutation-checked: reverting to `state.value` must fail this);
    - same-op coalescing returns the *same* `Job` and does not double-act on any package;
+   - coalescing still happens when the repeated request is **not** the most recent launch: a
+     watchlist FREEZE with a profile FREEZE queued behind it, tapped again from the tile, must get
+     the running job back rather than a second watchlist batch appended to the chain — and the
+     mirror case, a repeat arriving while a conflicting op is tearing the chain down, must **not**
+     coalesce onto a doomed run;
    - conflicting-op replacement cancels the previous batch, and no package receives a FREEZE action
      after the replacing UNFREEZE batch has started (defect 2);
    - a worker that ignores cancellation cannot make the handoff wait longer than `CANCEL_GRACE_MS`;
    - never more than `MAX_CONCURRENT` workers in flight *across* two overlapping generations —
      the reason the semaphore is an instance field;
-   - `_isRunning` stays `true` across a conflicting-op handoff (the identity guard in `finally`) and
-     clears exactly once at the end;
+   - `runningRequests` keeps the *running* request across a conflicting-op handoff and empties
+     exactly once at the end;
+   - `runningRequests` holds **both** requests while a same-op run of a different scope is queued
+     behind another — a watchlist FREEZE with a profile FREEZE serialized behind it must not drop
+     the watchlist entry, which is what made the QS tile paint idle mid-freeze;
+   - a run cancelled *before its body ever started* still leaves `runningRequests` — it never
+     reaches the coroutine's `finally`, so retirement hangs off `invokeOnCompletion`, and a
+     regression here strands the tile on "Freezing…" for the process lifetime;
    - `_lastResult` is published for FREEZE only, and `BulkResult.op` matches the run that produced it;
    - the deadline produces `unresolved > 0` rather than counting unreached packages as failures.
 
