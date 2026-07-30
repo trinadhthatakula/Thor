@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -339,9 +340,16 @@ class FreezerShortcutManager(
      */
     private fun applicationInfo(packageName: String): ApplicationInfo? = try {
         context.packageManager.getApplicationInfo(packageName, AppFreezeStateReader.MATCH_FLAGS)
+    } catch (_: PackageManager.NameNotFoundException) {
+        // An answer, not an error: the package is gone, and every caller reads null as "leave this
+        // shortcut alone".
+        null
     } catch (e: Exception) {
-        // NameNotFoundException included: here that is an answer, not an error — the package is
-        // gone, and every caller reads null as "leave this shortcut alone".
+        // Anything else — a dead Binder, a package manager that threw — produces the *same* null,
+        // because a shortcut left alone is still the right behaviour, but it is not the same event.
+        // Without this line a transient failure and a genuine uninstall are indistinguishable, and
+        // the symptom (a stale shortcut that never refreshes) points at neither.
+        Logger.e("FreezerShortcut", "package lookup failed for $packageName", e)
         null
     }
 
