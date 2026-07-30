@@ -199,8 +199,6 @@ class BackupRunnerTest {
             context = FakeContext(cache),
             backupAppsUseCase = BackupAppsUseCase(
                 exportAppUseCase = ExportAppUseCase(builder, prefs, store, io),
-                preferenceRepository = prefs,
-                fileStore = store,
                 ioDispatcher = io
             ),
             io = io
@@ -248,6 +246,7 @@ private class FakeBuilder(
         appInfo: AppInfo,
         cacheSubDir: String,
         format: BundleFormat,
+        fileName: String?,
     ): Result<File> = respond(appInfo, format)
 }
 

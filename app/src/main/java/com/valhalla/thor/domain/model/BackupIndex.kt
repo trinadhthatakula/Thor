@@ -125,16 +125,67 @@ data class BackupEntry(
 )
 
 /**
- * The name the bundle builder will give [appInfo]'s bundle in [format].
+ * The name [appInfo]'s bundle gets in [format], optionally with a [discriminator] appended to tell
+ * it apart from another app that would otherwise produce the same name.
  *
- * This mirrors the sanitiser in `AppBundleBuilderImpl.build` because the export path hands back a
- * location *label*, not the file it wrote, so there is no way to observe the real name from here.
- * The duplication is the reason it is a named function rather than an inline expression: when the
- * builder's naming rule changes, this is the one other place that has to change with it, and the
- * right cleanup is to have the builder call this instead of rolling its own.
+ * The one definition: `AppBundleBuilderImpl.build` calls this for the name it writes, and a batch
+ * calls it to record that name in the manifest. It used to be a mirror of the builder's own
+ * expression, which is a duplication that only stays correct while nobody edits either copy.
+ *
+ * The sanitiser is not cosmetic. `appName`/`versionName` are app-controlled and
+ * [formattedAppName] only strips spaces, so a `/` or `..` could otherwise escape the staging
+ * directory once the builder falls back to a root `cp`.
  */
-fun bundleFileNameFor(appInfo: AppInfo, format: BundleFormat): String {
-    val safeName = "${appInfo.formattedAppName()}_${appInfo.versionName}"
-        .replace(Regex("[^A-Za-z0-9._-]"), "_")
-    return "$safeName.${format.extension}"
+fun bundleFileNameFor(
+    appInfo: AppInfo,
+    format: BundleFormat,
+    discriminator: String? = null,
+): String {
+    val stem = buildString {
+        append(appInfo.formattedAppName())
+        append('_')
+        append(appInfo.versionName)
+        discriminator?.let {
+            append('_')
+            append(it)
+        }
+    }
+    return "${stem.replace(UNSAFE_NAME_CHARS, "_")}.${format.extension}"
+}
+
+private val UNSAFE_NAME_CHARS = Regex("[^A-Za-z0-9._-]")
+
+/**
+ * One file name per bundle, guaranteed distinct within the batch.
+ *
+ * Names are built from the app's *label* and version, and a device really does carry two packages
+ * with the same label — an OEM and a Play copy of the same app, a system app and its updated clone,
+ * two builds of the same app under different package names. Both file-store paths write by name and
+ * delete a collision first, so without this the second bundle silently replaces the first, the run
+ * counts two successes, and the manifest lists two entries pointing at one file. A backup that
+ * quietly holds nine of the ten apps it claims is worse than one that failed loudly.
+ *
+ * The discriminator is the package name, because that is the thing that actually differs and the
+ * thing a user restoring the folder needs to tell the two apart — a `_2` suffix would make the file
+ * unique and still unidentifiable. The numeric tail after it is a formality for the impossible case
+ * of one package appearing twice in a selection; it exists so this function's contract is
+ * unconditional rather than *almost* unconditional.
+ *
+ * Comparison is case-insensitive. The destination can be a FAT-formatted SD card through SAF, where
+ * `Alpha_1.0.apk` and `alpha_1.0.apk` are the same file — a distinction this cannot see and the
+ * file system would resolve by overwriting.
+ */
+fun uniqueBundleFileNames(bundles: List<Pair<AppInfo, BundleFormat>>): List<String> {
+    val taken = HashSet<String>(bundles.size)
+    return bundles.map { (app, format) ->
+        val candidates = sequence {
+            yield(bundleFileNameFor(app, format))
+            yield(bundleFileNameFor(app, format, app.packageName))
+            var suffix = 2
+            while (true) yield(bundleFileNameFor(app, format, "${app.packageName}_${suffix++}"))
+        }
+        // lowercase() with no locale is the invariant one; the Turkish-I trap needs an explicit
+        // locale to spring, and the names are ASCII by the time they get here anyway.
+        candidates.first { taken.add(it.lowercase()) }
+    }
 }

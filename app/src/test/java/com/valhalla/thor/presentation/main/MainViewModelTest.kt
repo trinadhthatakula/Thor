@@ -141,8 +141,6 @@ class MainViewModelTest {
                 FakeAppBundleFileStore(),
                 mainDispatcherRule.dispatcher
             ),
-            preferenceRepository = preferenceRepository,
-            fileStore = FakeAppBundleFileStore(),
             ioDispatcher = mainDispatcherRule.dispatcher
         ),
         io = mainDispatcherRule.dispatcher

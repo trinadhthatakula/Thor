@@ -13,7 +13,7 @@ import androidx.core.graphics.createBitmap
 import com.valhalla.thor.data.util.ApksMetadataGenerator
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BundleFormat
-import com.valhalla.thor.domain.model.formattedAppName
+import com.valhalla.thor.domain.model.bundleFileNameFor
 import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.SystemRepository
 import kotlinx.coroutines.CancellationException
@@ -49,6 +49,7 @@ class AppBundleBuilderImpl(
         appInfo: AppInfo,
         cacheSubDir: String,
         format: BundleFormat,
+        fileName: String?,
     ): Result<File> = withContext(ioDispatcher) {
         // Per-package subdir. Bulk share builds each selected app sequentially into
         // the same cacheSubDir and hands all the resulting content:// URIs to
@@ -60,13 +61,12 @@ class AppBundleBuilderImpl(
             if (cacheDir.exists()) cacheDir.deleteRecursively()
             cacheDir.mkdirs()
 
-            // Sanitize the output filename: appName/versionName are app-controlled and
-            // formattedAppName() only strips spaces, so a "/" or ".." could escape
-            // cacheDir once copyFileSafely() falls back to a root `cp`. Keep safe chars.
-            val safeName = "${appInfo.formattedAppName()}_${appInfo.versionName}"
-                .replace(Regex("[^A-Za-z0-9._-]"), "_")
-
-            val finalFile = File(cacheDir, "$safeName.${format.extension}")
+            // bundleFileNameFor owns the naming rule *and* the sanitiser — appName/versionName are
+            // app-controlled and formattedAppName() only strips spaces, so a "/" or ".." could
+            // escape cacheDir once copyFileSafely() falls back to a root `cp`. A caller-supplied
+            // name gets the same treatment for the same reason; a batch builds its names from the
+            // same function, so in practice this re-sanitises an already-safe string.
+            val finalFile = File(cacheDir, sanitizedName(fileName, appInfo, format))
             if (format == BundleFormat.APK) {
                 // Base only, even for a split app: that is what a monolithic .apk means, and
                 // autoFor() never picks this format for one.
@@ -159,6 +159,20 @@ class AppBundleBuilderImpl(
             cacheDir.deleteRecursively()
             Result.failure(e)
         }
+    }
+
+    /**
+     * The name to write, with a caller's suggestion honoured only once it is safe to use as a leaf.
+     *
+     * `..` and `.` are the two names that would still be path traversal after the character filter
+     * — the filter maps `/` away but leaves dots alone — and a blank name is not a file at all.
+     * Each of those falls back to the derived name rather than failing the export.
+     */
+    private fun sanitizedName(fileName: String?, appInfo: AppInfo, format: BundleFormat): String {
+        val derived = bundleFileNameFor(appInfo, format)
+        val requested = fileName?.replace(Regex("[^A-Za-z0-9._-]"), "_")?.trim() ?: return derived
+        return if (requested.isEmpty() || requested == "." || requested == "..") derived
+        else requested
     }
 
     /**

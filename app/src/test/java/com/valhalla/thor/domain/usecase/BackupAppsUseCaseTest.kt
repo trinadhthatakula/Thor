@@ -13,12 +13,14 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -212,7 +214,7 @@ class BackupAppsUseCaseTest {
             result
         )
         // The bundle is still in the folder; only its description is missing.
-        assertEquals(listOf("com.alpha.apk:${BundleFormat.APK.mime}"), f.store.writes)
+        assertEquals(listOf("com.alpha_1.0.apk:${BundleFormat.APK.mime}"), f.store.writes)
         // And the staged manifest is cleaned up on the failure path too, not just the happy one.
         assertEquals(emptyList<String>(), root.list()!!.toList())
     }
@@ -251,7 +253,7 @@ class BackupAppsUseCaseTest {
         // cancelled run that leaves files behind and no index is the same lie as a success-only
         // one. Written under NonCancellable, which is what lets it happen at all.
         assertEquals(
-            listOf("com.alpha.apk:${BundleFormat.APK.mime}", "$MANIFEST:${BackupIndex.MIME}"),
+            listOf("com.alpha_1.0.apk:${BundleFormat.APK.mime}", "$MANIFEST:${BackupIndex.MIME}"),
             stableNames(f.store.writes)
         )
         assertEquals(
@@ -281,8 +283,8 @@ class BackupAppsUseCaseTest {
         // the file store as a package-archive is what makes a receiver offer a doomed install.
         assertEquals(
             listOf(
-                "com.alpha.apk:application/vnd.android.package-archive",
-                "com.beta.apks:application/octet-stream",
+                "com.alpha_1.0.apk:application/vnd.android.package-archive",
+                "com.beta_1.0.apks:application/octet-stream",
                 "$MANIFEST:application/json"
             ),
             stableNames(f.store.writes)
@@ -300,7 +302,7 @@ class BackupAppsUseCaseTest {
 
         // com.fast overtook com.slow…
         assertEquals(
-            listOf("com.fast.apk", "com.slow.apk", MANIFEST),
+            listOf("com.fast_1.0.apk", "com.slow_1.0.apk", MANIFEST),
             stableNames(f.store.writes).map { it.substringBefore(':') }
         )
         // …and the index still reads in the order the user picked. Indexed slots, not an append:
@@ -312,7 +314,7 @@ class BackupAppsUseCaseTest {
     }
 
     @Test
-    fun `an entry records the payload measured at the source and the name the builder will use`() =
+    fun `an entry records the payload measured at the source and the name the bundle was given`() =
         runTest {
             val f = fixture()
 
@@ -330,10 +332,11 @@ class BackupAppsUseCaseTest {
             // and the sidecars: the export path returns a location label, not the file it wrote,
             // so the real on-disk length is not observable from here.
             assertEquals(3_072L, entry.sizeBytes)
-            // Likewise the name is the one the *builder* would derive, not one read back from the
-            // written file — which is why the fake above names its staged copy differently
-            // ("com.alpha.apks"). Assert the derived name literally, or this proves nothing.
+            // The name the run *assigned* — handed to the builder and recorded in the index from
+            // the same variable. Asserted on both sides, because an entry re-deriving its own name
+            // is exactly how two same-labelled apps came to share one file and claim two.
             assertEquals("Alpha_1.0.apks", entry.fileName)
+            assertTrue(f.store.files.containsKey("Alpha_1.0.apks"))
         }
 
     @Test
@@ -346,6 +349,82 @@ class BackupAppsUseCaseTest {
         // Both the JSON and the directory it was staged in. Everything else in cacheDir belongs to
         // ExportAppUseCase, which deletes its own staged bundle after each write.
         assertEquals(emptyList<String>(), root.list()!!.toList())
+    }
+
+    // --- What a batch fixes once, for the whole batch ------------------------------------------
+
+    @Test
+    fun `two apps that share a label and version each get their own file`() = runTest {
+        val f = fixture()
+
+        val result = f.useCase(
+            listOf(app("com.oem.chat", label = "Chat"), app("com.play.chat", label = "Chat")),
+            staging(),
+            ROOMY,
+            StagingGate(1)
+        )
+
+        // Two apps in, two files out. Names are built from the label, and a device really does
+        // carry two packages under one label — an OEM build and a Play build of the same app. Both
+        // file-store paths write by name after deleting a collision, so with per-app naming the
+        // second bundle replaced the first, the run still counted two successes, and the manifest
+        // listed two entries pointing at one file.
+        assertEquals(2, (result as BackupRunResult.Finished).succeeded)
+        val bundles = f.store.files.filterKeys { !it.startsWith(BackupIndex.FILE_NAME_PREFIX) }
+        assertEquals(setOf("Chat_1.0.apk", "Chat_1.0_com.play.chat.apk"), bundles.keys)
+        // …and each file holds the app it is named for, rather than the second app under the
+        // first one's name.
+        assertEquals("bundle for com.oem.chat", bundles["Chat_1.0.apk"])
+        assertEquals("bundle for com.play.chat", bundles["Chat_1.0_com.play.chat.apk"])
+        // The discriminator is the package name, not a "_2" tail: someone restoring the folder has
+        // to be able to tell which of two identically-labelled apps a file came from.
+        assertEquals(
+            listOf("Chat_1.0.apk", "Chat_1.0_com.play.chat.apk"),
+            BackupIndex.decode(f.store.manifest!!).entries.map { it.fileName }
+        )
+    }
+
+    @Test
+    fun `the whole run stages under one scope of its own, and it is gone afterwards`() = runTest {
+        val root = staging()
+        val f = fixture()
+
+        f.useCase(listOf(app("com.alpha"), app("com.beta")), root, ROOMY, StagingGate(2))
+
+        // One scope for the batch, and never the one a single-app export uses. The builder wipes
+        // its per-package staging directory on entry, so a one-off export of an app the batch is
+        // also exporting deletes the batch's half-written copy — and the zip that was mid-stream
+        // closes "successfully", truncated.
+        val scope = f.builder.scopes.distinct().single()
+        assertNotEquals(ExportAppUseCase.SINGLE_STAGING_DIR, scope)
+        assertTrue("unexpected staging scope: $scope", scope.startsWith("export_batch_"))
+        // And the run owns it outright, which is what makes taking the whole tree at the end safe.
+        assertEquals(emptyList<String>(), root.list()!!.toList())
+    }
+
+    @Test
+    fun `a destination change while the run is in flight does not split the batch`() = runTest {
+        lateinit var f: Fixture
+        f = fixture(build = { app, format ->
+            if (app.packageName == "com.alpha") {
+                // The export sheet is not modal: the user can pick a different folder — or have the
+                // saved one revoked — while a long run is going.
+                prefs.setExportDirUri("content://tree/picked-mid-run")
+                f.store.treeWritable = true
+            }
+            stagedBundle(app, format)
+        })
+
+        f.useCase(listOf(app("com.alpha"), app("com.beta")), staging(), ROOMY, StagingGate(1))
+
+        // The preference really did change under the run…
+        assertEquals("content://tree/picked-mid-run", prefs.userPreferences.first().exportDirUri)
+        // …and both bundles and the manifest still went to the folder that was current when the
+        // run started. Re-reading it per app would put the first eighty bundles in one folder and
+        // the rest in another, with one manifest in whichever the last write resolved to: it would
+        // then describe files that are not there and omit files that are.
+        assertEquals(List(3) { "Downloads/Thor" }, f.store.targets)
+        assertEquals(3, f.store.files.size)
     }
 
     // --- Progress -----------------------------------------------------------------------------
@@ -408,8 +487,6 @@ class BackupAppsUseCaseTest {
             store = store,
             useCase = BackupAppsUseCase(
                 exportAppUseCase = ExportAppUseCase(builder, prefs, store, io),
-                preferenceRepository = prefs,
-                fileStore = store,
                 ioDispatcher = io
             )
         )
@@ -483,7 +560,14 @@ private fun stableNames(writes: List<String>): List<String> = writes.map { entry
     if (isManifest) entry.replaceFirst(name, MANIFEST) else entry
 }
 
-/** Records what was asked for, and lets a test decide what each build answers — or whether it ever does. */
+/**
+ * Records what was asked for, and lets a test decide what each build answers — or whether it ever
+ * does.
+ *
+ * It *honours* the requested name rather than inventing one, because the whole point of the batch
+ * assigning names is that they reach the file store: a fake that named its own output would certify
+ * a run whose unique names were computed and then discarded.
+ */
 private class FakeBundleBuilder(
     private val respond: suspend (AppInfo, BundleFormat) -> Result<File>,
 ) : AppBundleBuilder {
@@ -491,48 +575,71 @@ private class FakeBundleBuilder(
     /** Every package that reached the builder, in the order it got there. */
     val builds = mutableListOf<String>()
 
+    /** The staging scope each build was told to use — one per run, never the single-export one. */
+    val scopes = mutableListOf<String>()
+
     override suspend fun build(
         appInfo: AppInfo,
         cacheSubDir: String,
         format: BundleFormat,
+        fileName: String?,
     ): Result<File> {
         builds += appInfo.packageName
-        return respond(appInfo, format)
+        scopes += cacheSubDir
+        return respond(appInfo, format).map { staged ->
+            if (fileName == null) staged
+            else File(staged.parentFile, fileName).also { staged.renameTo(it) }
+        }
     }
 }
 
 /**
- * The export destination.
+ * The export destination, modelled as a folder rather than as a log.
  *
- * [writes] is the assertion surface — `"name:mime"` is enough to tell a bundle from the manifest
- * and to catch a container typed as something the system would try to install. [manifest] keeps the
- * JSON text because the staged copy is deleted before the run returns.
+ * [writes] is the ordered assertion surface — `"name:mime"` is enough to tell a bundle from the
+ * manifest and to catch a container typed as something the system would try to install. [files] is
+ * what a reader would *find*: both real file-store paths write by name after deleting a collision,
+ * so a second bundle with a name the folder already holds replaces the first instead of sitting
+ * beside it. A store that only appended to a list would report two successes for one file.
+ * [manifest] keeps the JSON text because the staged copy is deleted before the run returns.
  */
 private class RecordingFileStore(
     private val onWrite: (File, String) -> Unit = { _, _ -> },
+    /** Flipped by the one test that changes the destination while a run is in flight. */
+    var treeWritable: Boolean = false,
 ) : AppBundleFileStore {
 
     val writes = mutableListOf<String>()
 
+    /** name → contents, last write of a name winning, exactly as the destination folder behaves. */
+    val files = linkedMapOf<String, String>()
+
+    /** Where each write landed, in order, so a batch that split across folders is visible. */
+    val targets = mutableListOf<String>()
+
     var manifest: String? = null
         private set
 
-    override suspend fun writeToDownloads(file: File, mime: String): String {
-        onWrite(file, mime)
-        if (mime == BackupIndex.MIME) manifest = file.readText()
-        writes += "${file.name}:$mime"
-        return "Downloads/Thor"
-    }
+    override suspend fun writeToDownloads(file: File, mime: String): String =
+        record(file, mime, "Downloads/Thor")
 
-    // No SAF tree is saved in these tests, so reaching either of these means the target resolution
-    // took a branch the fixture never set up.
     override suspend fun writeToTree(file: File, treeUriStr: String, mime: String): String =
-        error("no export tree is saved; the run should have resolved to Downloads")
+        record(file, mime, "Tree:$treeUriStr")
+
+    private fun record(file: File, mime: String, location: String): String {
+        onWrite(file, mime)
+        val text = file.readText()
+        if (mime == BackupIndex.MIME) manifest = text
+        writes += "${file.name}:$mime"
+        targets += location
+        files[file.name] = text
+        return location
+    }
 
     override suspend fun currentTargetLabel(savedTreeUriStr: String?): String =
         error("the batch never renders a target label")
 
-    override suspend fun isTreeWritable(treeUriStr: String?): Boolean = false
+    override suspend fun isTreeWritable(treeUriStr: String?): Boolean = treeWritable
 
     override fun shareUri(file: File): String = error("an export never shares")
 }

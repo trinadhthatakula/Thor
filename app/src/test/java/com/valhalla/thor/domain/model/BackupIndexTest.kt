@@ -258,4 +258,74 @@ class BackupIndexTest {
 
         assertEquals("com.example.alpha_1.0.apk", bundleFileNameFor(unlabelled, BundleFormat.APK))
     }
+
+    // --- One name per bundle, distinct within the batch ---------------------------------------
+
+    @Test
+    fun `two apps under one label are told apart by their package`() {
+        // An OEM build and a Play build of the same app is the ordinary case, not a contrived one.
+        // Both file-store paths write by name after deleting a collision, so one name for two apps
+        // means one file, two manifest entries naming it, and a run that reports two successes.
+        val names = uniqueBundleFileNames(
+            listOf(
+                labelled("com.oem.chat", "Chat") to BundleFormat.APK,
+                labelled("com.play.chat", "Chat") to BundleFormat.APK,
+            )
+        )
+
+        // The first keeps the plain name — the common case must not pay for the rare one — and the
+        // discriminator is the package, because that is what a person restoring the folder needs
+        // to tell the two apart. A "_2" tail would be unique and unidentifiable.
+        assertEquals(listOf("Chat_1.0.apk", "Chat_1.0_com.play.chat.apk"), names)
+    }
+
+    @Test
+    fun `names that were already distinct are left alone`() {
+        val names = uniqueBundleFileNames(
+            listOf(
+                labelled("com.example.alpha", "Alpha") to BundleFormat.APK,
+                labelled("com.example.beta", "Beta") to BundleFormat.APKS,
+            )
+        )
+
+        assertEquals(listOf("Alpha_1.0.apk", "Beta_1.0.apks"), names)
+    }
+
+    @Test
+    fun `a name that differs only in case counts as taken`() {
+        // The destination can be a FAT-formatted SD card reached through SAF, where Chat_1.0.apk
+        // and chat_1.0.apk are one file — a distinction this cannot see and the file system would
+        // resolve by overwriting.
+        val names = uniqueBundleFileNames(
+            listOf(
+                labelled("com.oem.chat", "Chat") to BundleFormat.APK,
+                labelled("com.play.chat", "chat") to BundleFormat.APK,
+            )
+        )
+
+        assertEquals(listOf("Chat_1.0.apk", "chat_1.0_com.play.chat.apk"), names)
+    }
+
+    @Test
+    fun `even one package listed twice ends up with two names`() {
+        // A selection cannot hold the same app twice, so this is a formality — it is here so the
+        // contract is "always distinct" rather than "distinct unless the caller does something
+        // odd", which is the sort of almost-guarantee that later grows an overwrite back.
+        val twice = labelled("com.example.alpha", "Alpha")
+
+        val names = uniqueBundleFileNames(List(3) { twice to BundleFormat.APK })
+
+        assertEquals(names.distinct(), names)
+        assertEquals(
+            listOf(
+                "Alpha_1.0.apk",
+                "Alpha_1.0_com.example.alpha.apk",
+                "Alpha_1.0_com.example.alpha_2.apk"
+            ),
+            names
+        )
+    }
+
+    private fun labelled(packageName: String, label: String) =
+        AppInfo(packageName = packageName, appName = label, versionName = "1.0")
 }

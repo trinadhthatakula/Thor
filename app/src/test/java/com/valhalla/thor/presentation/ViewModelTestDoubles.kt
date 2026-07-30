@@ -274,7 +274,8 @@ class FakeAppBundleBuilder : AppBundleBuilder {
     override suspend fun build(
         appInfo: AppInfo,
         cacheSubDir: String,
-        format: BundleFormat
+        format: BundleFormat,
+        fileName: String?
     ): Result<File> =
         Result.failure(UnsupportedOperationException("bundle building needs a device"))
 }

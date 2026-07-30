@@ -8,21 +8,15 @@ import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BackupEntry
 import com.valhalla.thor.domain.model.BackupIndex
 import com.valhalla.thor.domain.model.BundleFormat
-import com.valhalla.thor.domain.model.ExportTargetChoice
-import com.valhalla.thor.domain.model.bundleFileNameFor
-import com.valhalla.thor.domain.model.resolveExportTarget
-import com.valhalla.thor.domain.repository.AppBundleFileStore
-import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.model.uniqueBundleFileNames
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Factory
 import org.koin.core.annotation.Named
@@ -138,13 +132,11 @@ sealed interface BackupRunResult {
 @Factory
 class BackupAppsUseCase(
     private val exportAppUseCase: ExportAppUseCase,
-    private val preferenceRepository: PreferenceRepository,
-    private val fileStore: AppBundleFileStore,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) {
     /**
-     * @param stagingRoot the cache directory bundles are staged into — passed in rather than
-     *   resolved here so this stays free of Android types.
+     * @param stagingRoot the cache directory the run's own staging scope is created under — passed
+     *   in rather than resolved here so this stays free of Android types.
      * @param usableStagingBytes free space on [stagingRoot]'s volume, measured by the caller.
      *   Measuring it *here* would mean `File.usableSpace`, which under-reports on Android by
      *   ignoring the clearable cache the platform would evict to satisfy the write; the caller has
@@ -170,6 +162,14 @@ class BackupAppsUseCase(
             return@withContext BackupRunResult.Rejected(rejection)
         }
 
+        // Decided once, before any worker starts, and for the whole batch at a time — see
+        // [ExportSession] for why the destination cannot be re-read per app, and
+        // [uniqueBundleFileNames] for why the names cannot be derived per app.
+        val formats = apps.map { BundleFormat.autoFor(it) }
+        val names = uniqueBundleFileNames(apps.zip(formats))
+        val session = exportAppUseCase.openSession(stagingSubDir = runStagingDir())
+        val stagingDir = File(stagingRoot, session.stagingSubDir)
+
         // Indexed rather than appended so the manifest keeps the order the user selected, whatever
         // order the workers finish in. Distinct indices need no lock; coroutineScope's join is the
         // happens-before edge that makes the writes visible afterwards.
@@ -183,74 +183,88 @@ class BackupAppsUseCase(
         val lock = Any()
 
         try {
-            coroutineScope {
-                apps.forEachIndexed { index, app ->
-                    launch {
-                        gate.withPermit {
-                            // Inside the permit, not outside: a cancel that lands while this
-                            // worker was queued must not start a multi-GB copy it will throw away.
-                            ensureActive()
-                            val format = BundleFormat.autoFor(app)
-                            val label = app.appName ?: app.packageName
-                            synchronized(lock) {
-                                current = label
-                                onProgress(BackupProgress(completed, saved, apps.size, current))
-                            }
-
-                            val result = try {
-                                exportAppUseCase(app, format)
-                            } catch (e: CancellationException) {
-                                // CancellationException IS an Exception in Kotlin, so it has to be
-                                // rethrown ahead of the broad catch or the ensureActive() above is
-                                // defeated and the batch quietly ignores cancellation.
-                                throw e
-                            } catch (e: Exception) {
-                                // One app must not take the batch down with it. The export path
-                                // already returns Result.failure for its own errors; this covers
-                                // anything that escapes it.
-                                Logger.e(TAG, "backup export failed for ${app.packageName}", e)
-                                Result.failure(e)
-                            }
-
-                            slots[index] = result.fold(
-                                onSuccess = { where ->
-                                    synchronized(lock) {
-                                        location = where
-                                        saved++
-                                    }
-                                    entryFor(app, format, app.apkPayloadBytes(), error = null)
-                                },
-                                onFailure = { t ->
-                                    entryFor(app, format, bytes = null, error = t.describe())
+            try {
+                coroutineScope {
+                    apps.forEachIndexed { index, app ->
+                        launch {
+                            gate.withPermit {
+                                // Inside the permit, not outside: a cancel that lands while this
+                                // worker was queued must not start a multi-GB copy it will throw
+                                // away.
+                                ensureActive()
+                                val format = formats[index]
+                                val name = names[index]
+                                val label = app.appName ?: app.packageName
+                                synchronized(lock) {
+                                    current = label
+                                    onProgress(BackupProgress(completed, saved, apps.size, current))
                                 }
-                            )
 
-                            synchronized(lock) {
-                                completed++
-                                onProgress(BackupProgress(completed, saved, apps.size, current))
+                                val result = try {
+                                    exportAppUseCase.exportInto(app, format, session, name)
+                                } catch (e: CancellationException) {
+                                    // CancellationException IS an Exception in Kotlin, so it has to
+                                    // be rethrown ahead of the broad catch or the ensureActive()
+                                    // above is defeated and the batch ignores cancellation.
+                                    throw e
+                                } catch (e: Exception) {
+                                    // One app must not take the batch down with it. The export path
+                                    // already returns Result.failure for its own errors; this
+                                    // covers anything that escapes it.
+                                    Logger.e(TAG, "backup export failed for ${app.packageName}", e)
+                                    Result.failure(e)
+                                }
+
+                                slots[index] = result.fold(
+                                    onSuccess = { where ->
+                                        synchronized(lock) {
+                                            location = where
+                                            saved++
+                                        }
+                                        entryFor(app, format, name, app.apkPayloadBytes(), null)
+                                    },
+                                    onFailure = { t ->
+                                        entryFor(app, format, name, null, error = t.describe())
+                                    }
+                                )
+
+                                synchronized(lock) {
+                                    completed++
+                                    onProgress(BackupProgress(completed, saved, apps.size, current))
+                                }
                             }
                         }
                     }
                 }
+            } catch (e: CancellationException) {
+                // Still write the manifest. A cancelled run leaves real files in the user's folder
+                // and an undescribed folder is the same lie a success-only index would be.
+                // NonCancellable because every suspension point below would otherwise resume with
+                // cancellation, and deliberately unbounded: this is one small JSON write, not the
+                // multi-gigabyte stream that made BulkFreezeRunner bound its own post-run work.
+                withContext(NonCancellable) {
+                    writeIndex(slots.filterNotNull(), stagingDir, session)
+                }
+                throw e
             }
-        } catch (e: CancellationException) {
-            // Still write the manifest. A cancelled run leaves real files in the user's folder and
-            // an undescribed folder is the same lie a success-only index would be. NonCancellable
-            // because every suspension point below would otherwise resume with cancellation, and
-            // deliberately unbounded: this is one small JSON write, not the multi-gigabyte stream
-            // that made BulkFreezeRunner bound its own post-run work.
-            withContext(NonCancellable) { writeIndex(slots.filterNotNull(), stagingRoot) }
-            throw e
-        }
 
-        val entries = slots.filterNotNull()
-        BackupRunResult.Finished(
-            total = apps.size,
-            succeeded = entries.count { it.error == null },
-            failed = entries.count { it.error != null },
-            location = location,
-            indexWritten = writeIndex(entries, stagingRoot),
-        )
+            val entries = slots.filterNotNull()
+            BackupRunResult.Finished(
+                total = apps.size,
+                succeeded = entries.count { it.error == null },
+                failed = entries.count { it.error != null },
+                location = location,
+                indexWritten = writeIndex(entries, stagingDir, session),
+            )
+        } finally {
+            // Outside both the run and the manifest write, so it covers every way out. The run owns
+            // this directory outright, which is what makes taking the whole tree safe in a way
+            // deleting a shared one never was: a cancelled run cleaning up while its replacement is
+            // already staging cannot reach the replacement's files. Everything under it is either a
+            // per-package staging dir the builder left behind or the manifest just written.
+            // Non-suspending, so it still runs on the cancelled path.
+            stagingDir.deleteRecursively()
+        }
     }
 
     /**
@@ -282,12 +296,13 @@ class BackupAppsUseCase(
     }
 
     /**
-     * Stage the manifest into the cache, push it through the same writer the bundles went through,
-     * then delete the staged copy.
+     * Stage the manifest inside the run's own staging directory, push it through the same writer
+     * the bundles went through, then delete the staged copy.
      *
-     * Goes through [AppBundleFileStore] rather than a new port because writing a small file to the
-     * export target is exactly what `writeToTree`/`writeToDownloads` already are; the interface
-     * needs nothing added for this.
+     * Goes through the export path's [ExportAppUseCase.writeStaged] rather than reaching for the
+     * file store directly, because that is what guarantees the manifest lands in the same folder
+     * the bundles did. Resolving the destination a second time here is how a non-modal destination
+     * change used to produce a manifest describing a folder it was not in.
      *
      * The name carries the run's timestamp because both file-store paths write by name and delete
      * a collision first. A fixed `thor-backup.json` would mean the Tuesday export silently
@@ -295,10 +310,13 @@ class BackupAppsUseCase(
      * exactly the lie the manifest exists to prevent. One file per run instead; a reader that
      * wants the whole folder globs the prefix and merges.
      */
-    private suspend fun writeIndex(entries: List<BackupEntry>, stagingRoot: File): Boolean {
+    private suspend fun writeIndex(
+        entries: List<BackupEntry>,
+        stagingDir: File,
+        session: ExportSession,
+    ): Boolean {
         if (entries.isEmpty()) return false
         val createdAt = System.currentTimeMillis()
-        val stagingDir = File(stagingRoot, INDEX_STAGING_DIR)
         val staged = File(stagingDir, BackupIndex.fileNameFor(createdAt))
         return try {
             stagingDir.mkdirs()
@@ -309,21 +327,7 @@ class BackupAppsUseCase(
                     entries = entries,
                 ).encode()
             )
-
-            // Resolved again here rather than reused from the export loop: ExportAppUseCase owns
-            // its own resolution and does not hand it back, and re-resolving is what keeps the
-            // manifest landing wherever the last bundle landed even if the saved tree went away
-            // mid-run.
-            val savedUri = preferenceRepository.userPreferences.first().exportDirUri
-            val resolution = resolveExportTarget(savedUri, fileStore.isTreeWritable(savedUri))
-            if (resolution.clearSavedDir) preferenceRepository.setExportDirUri(null)
-            when (val choice = resolution.choice) {
-                is ExportTargetChoice.Custom ->
-                    fileStore.writeToTree(staged, choice.treeUri, BackupIndex.MIME)
-
-                ExportTargetChoice.Downloads ->
-                    fileStore.writeToDownloads(staged, BackupIndex.MIME)
-            }
+            exportAppUseCase.writeStaged(staged, session, BackupIndex.MIME)
             true
         } catch (e: CancellationException) {
             throw e
@@ -333,25 +337,44 @@ class BackupAppsUseCase(
             Logger.e(TAG, "failed to write ${staged.name}", e)
             false
         } finally {
+            // The file only. The directory is the run's and is taken whole by the caller's finally,
+            // which also has to happen after this on the cancelled path.
             staged.delete()
-            // Only the empty dir: delete() on a non-empty one is a no-op, so a manifest another
-            // run is still staging beside this one survives. That matters now that a cancelled
-            // run finishes its manifest under NonCancellable while its replacement is starting.
-            stagingDir.delete()
         }
     }
 
-    private fun entryFor(app: AppInfo, format: BundleFormat, bytes: Long?, error: String?) =
-        BackupEntry(
-            packageName = app.packageName,
-            label = app.appName ?: app.packageName,
-            versionCode = app.versionCode,
-            versionName = app.versionName ?: "",
-            format = format,
-            fileName = if (error == null) bundleFileNameFor(app, format) else null,
-            sizeBytes = bytes,
-            error = error,
-        )
+    /**
+     * A staging scope no other export can be inside.
+     *
+     * The builder wipes its per-package directory on entry, so two runs staging the same package
+     * under one scope delete each other's work mid-copy — a single export of an app that a batch is
+     * also exporting was enough. `nanoTime` rather than a counter because the scope has to be
+     * unique across runs of *different* instances of this `@Factory` use case, and rather than a
+     * wall clock because two runs can start in the same millisecond.
+     *
+     * Cleaned up by the caller's `finally`. A process killed mid-run leaves one behind, which the
+     * platform reclaims with the rest of `cacheDir`.
+     */
+    private fun runStagingDir(): String = "$BATCH_STAGING_PREFIX${System.nanoTime()}"
+
+    private fun entryFor(
+        app: AppInfo,
+        format: BundleFormat,
+        fileName: String,
+        bytes: Long?,
+        error: String?,
+    ) = BackupEntry(
+        packageName = app.packageName,
+        label = app.appName ?: app.packageName,
+        versionCode = app.versionCode,
+        versionName = app.versionName ?: "",
+        format = format,
+        // The name the bundle was *told* to take, not one re-derived here: re-deriving is what
+        // made two same-labelled apps produce one file and two entries naming it.
+        fileName = if (error == null) fileName else null,
+        sizeBytes = bytes,
+        error = error,
+    )
 
     /** Source APK bytes: what actually ends up inside the bundle. */
     private fun AppInfo.apkPayloadBytes(): Long {
@@ -378,7 +401,7 @@ class BackupAppsUseCase(
 
     private companion object {
         const val TAG = "BackupAppsUseCase"
-        const val INDEX_STAGING_DIR = "backup_temp"
+        const val BATCH_STAGING_PREFIX = "export_batch_"
 
         // Room for the manifest plus ordinary cache churn from the rest of the app while a long
         // run is in flight. Small enough not to refuse a batch a nearly-full device could still
