@@ -6,10 +6,6 @@ package com.valhalla.thor.presentation.appList
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
-import com.valhalla.thor.data.launcher.FreezerShortcutManager
-import com.valhalla.thor.data.manager.PrivilegeManager
-import com.valhalla.thor.data.manager.StorageStatsHelper
-import com.valhalla.thor.data.manager.UsageAccessManager
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
@@ -23,9 +19,13 @@ import com.valhalla.thor.domain.model.filterApps
 import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.domain.model.sortApps
 import com.valhalla.thor.domain.repository.AppRepository
+import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.PrivilegeStateProvider
+import com.valhalla.thor.domain.repository.StorageStatsProvider
+import com.valhalla.thor.domain.repository.UsageAccessGate
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
@@ -35,7 +35,7 @@ import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.UiTextException
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.Channel
@@ -54,6 +54,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
+import org.koin.core.annotation.Named
 
 // ... AppListUiState remains same ...
 data class AppListUiState(
@@ -114,16 +115,21 @@ sealed interface AppListEvent {
 class AppListViewModel(
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val getAppDetailsUseCase: GetAppDetailsUseCase,
-    private val privilegeManager: PrivilegeManager,
+    private val privilege: PrivilegeStateProvider,
     private val manageAppUseCase: ManageAppUseCase,
     private val freezeAppUseCase: FreezeAppUseCase,
     private val preferenceRepository: PreferenceRepository,
     private val freezerRepository: FreezerRepository,
-    private val freezerShortcutManager: FreezerShortcutManager,
+    private val appShortcuts: AppShortcutController,
     private val appRepository: AppRepository,
     private val permissionRepository: PermissionRepository,
-    private val storageStatsHelper: StorageStatsHelper,
-    private val usageAccessManager: UsageAccessManager
+    private val storageStats: StorageStatsProvider,
+    private val usageAccess: UsageAccessGate,
+    // Injected rather than hardcoded so a test can put every stage of this view model on one
+    // scheduler: the sort/filter pipeline below runs off-main, and a `Dispatchers.Default` baked
+    // in here would keep it on a real thread pool while the rest ran on virtual time.
+    @Named("default") private val defaultDispatcher: CoroutineDispatcher,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
     private var appsJob: Job? = null
@@ -141,7 +147,7 @@ class AppListViewModel(
     val events: Flow<AppListEvent> = _events.receiveAsFlow()
 
     // Combine raw app data with user preferences from DataStore
-    // OPTIMIZATION: flowOn(Dispatchers.Default) ensures sorting/filtering happens on background thread
+    // OPTIMIZATION: flowOn(defaultDispatcher) ensures sorting/filtering happens on background thread
     val uiState = combine(_rawState, preferenceRepository.userPreferences) { state, prefs ->
         val mergedState = state.copy(
             sortBy = prefs.appSortBy,
@@ -152,7 +158,7 @@ class AppListViewModel(
         )
         processList(mergedState)
     }
-        .flowOn(Dispatchers.Default) // Move computation off Main Thread
+        .flowOn(defaultDispatcher) // Move computation off Main Thread
         .stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(5000),
@@ -285,7 +291,7 @@ class AppListViewModel(
             // so a Shizuku grant reflects here without reloading the list.
             combine(
                 getInstalledAppsUseCase(),
-                privilegeManager.state
+                privilege.state
             ) { (user, system), priv ->
                 Triple(user, system, priv)
             }.catch { e ->
@@ -314,7 +320,7 @@ class AppListViewModel(
                     )
                 }
                 if (priv.hasAnyPrivilege) {
-                    launch { usageAccessManager.maybeAutoGrant() }
+                    launch { usageAccess.maybeAutoGrant() }
                 }
             }
         }
@@ -370,7 +376,7 @@ class AppListViewModel(
     private fun ensureInstallSizes() {
         sizeJob?.cancel()
         sizeJob = viewModelScope.launch {
-            if (!usageAccessManager.isGranted() && !usageAccessManager.tryGrantViaPrivilege()) {
+            if (!usageAccess.isGranted() && !usageAccess.tryGrantViaPrivilege()) {
                 _rawState.update { it.copy(needsUsageAccessPrompt = true) }
                 return@launch
             }
@@ -378,7 +384,7 @@ class AppListViewModel(
             try {
                 val packages = (_rawState.value.allUserApps + _rawState.value.allSystemApps)
                     .map { it.packageName }
-                val sizes = storageStatsHelper.installSizes(packages)
+                val sizes = storageStats.installSizes(packages)
                 _rawState.update { state ->
                     state.copy(
                         needsUsageAccessPrompt = false,
@@ -422,7 +428,7 @@ class AppListViewModel(
                 }
 
                 if (freeze) {
-                    val inFreezer = withContext(Dispatchers.IO) {
+                    val inFreezer = withContext(ioDispatcher) {
                         freezerRepository.contains(packageName)
                     }
                     if (!inFreezer) {
@@ -473,7 +479,7 @@ class AppListViewModel(
      * Unfreeze-all reaches it. Refusing here would strand a frozen app off the list it belongs on.
      */
     fun addToFreezer(packageName: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             freezerRepository.add(packageName)
             _events.send(
                 AppListEvent.ShowMessage(UiText.StringResource(R.string.added_to_freezer_success))
@@ -494,13 +500,13 @@ class AppListViewModel(
      * before the gate existed can always be taken back off.
      */
     fun toggleFreezerMembership(packageName: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             if (freezerRepository.contains(packageName)) {
                 freezerRepository.remove(packageName)
                 // Pinned launcher shortcuts can't be removed silently, only greyed out — leaving a
                 // live shortcut for an app no longer in the freezer would let it drive a freeze
                 // from the launcher.
-                freezerShortcutManager.disableAppShortcut(packageName)
+                appShortcuts.disableAppShortcut(packageName)
                 _events.send(
                     AppListEvent.ShowMessage(
                         UiText.PluralsResource(R.plurals.removed_from_freezer_success, 1)
@@ -533,7 +539,7 @@ class AppListViewModel(
     }
 
     fun performMultiAction(action: MultiAppAction) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             when (action) {
                 is MultiAppAction.Freeze -> {
                     // EXPERT apps go through unwarned here by design — a batch is not the place to

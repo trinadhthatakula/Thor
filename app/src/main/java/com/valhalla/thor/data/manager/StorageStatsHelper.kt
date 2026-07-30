@@ -9,6 +9,7 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Process
+import com.valhalla.thor.domain.repository.StorageStatsProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Single
@@ -18,14 +19,14 @@ import org.koin.core.annotation.Single
  * StorageStatsManager. Requires the GET_USAGE_STATS app-op for other packages
  * (see UsageAccessManager) — a per-package failure is skipped, never thrown.
  */
-@Single
-class StorageStatsHelper(private val context: Context) {
+@Single(binds = [StorageStatsProvider::class])
+class StorageStatsHelper(private val context: Context) : StorageStatsProvider {
 
     private val statsManager = context.getSystemService(StorageStatsManager::class.java)
     private val pm = context.packageManager
     private val user = Process.myUserHandle()
 
-    suspend fun installSizes(packages: List<String>): Map<String, Long> =
+    override suspend fun installSizes(packages: List<String>): Map<String, Long> =
         withContext(Dispatchers.IO) {
             val manager = statsManager ?: return@withContext emptyMap()
             // One Binder call for all ApplicationInfo instead of one per package.

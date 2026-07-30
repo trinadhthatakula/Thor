@@ -7,6 +7,7 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.domain.model.PrivilegeState
 import com.valhalla.thor.domain.model.resolvePrivilegeMode
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.PrivilegeStateProvider
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.PrivilegeProbeTier
@@ -39,15 +40,15 @@ import rikka.shizuku.Shizuku
  * Shizuku listeners (they live for the app), so consumers created before a
  * first-launch grant still see it once granted.
  */
-@Single
+@Single(binds = [PrivilegeStateProvider::class])
 class PrivilegeManager(
     private val systemRepository: SystemRepository,
     private val preferenceRepository: PreferenceRepository
-) {
+) : PrivilegeStateProvider {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val _state = MutableStateFlow(PrivilegeState())
-    val state: StateFlow<PrivilegeState> = _state.asStateFlow()
+    override val state: StateFlow<PrivilegeState> = _state.asStateFlow()
 
     // Bumped to force a re-probe; StateFlow<Int> emits on every distinct value.
     private val refreshTrigger = MutableStateFlow(0)
