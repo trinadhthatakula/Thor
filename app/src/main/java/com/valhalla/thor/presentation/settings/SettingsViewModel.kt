@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.presentation.settings
 
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
@@ -16,6 +17,7 @@ import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
+import com.valhalla.thor.presentation.security.biometricRefusalMessage
 import com.valhalla.thor.util.LocaleManager
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.CoroutineDispatcher
@@ -135,11 +137,22 @@ class SettingsViewModel(
      * Asks [AuthCapability] fresh rather than reading `uiState.canUseBiometric`: that snapshot is
      * recomputed only when the preferences flow emits, so a user who enrols a fingerprint and returns
      * to a still-composed Settings screen would otherwise be refused on a stale `false`.
+     *
+     * The message is chosen by [biometricRefusalMessage], not fixed: a refusal that tells an
+     * Android 9 user to "set up a screen lock" sends them to do something their prompt cannot accept,
+     * which is the same mistake `BiometricUnavailableScreen` exists to avoid making.
      */
     fun setBiometricLock(enabled: Boolean) {
         viewModelScope.launch {
             if (enabled && !biometricHelper.canAuthenticate()) {
-                _events.send(UiText.StringResource(R.string.biometric_not_enrolled_toast))
+                _events.send(
+                    UiText.StringResource(
+                        biometricRefusalMessage(
+                            Build.VERSION.SDK_INT,
+                            biometricHelper.hasHardware()
+                        )
+                    )
+                )
                 return@launch
             }
             preferenceRepository.setBiometricLock(enabled)

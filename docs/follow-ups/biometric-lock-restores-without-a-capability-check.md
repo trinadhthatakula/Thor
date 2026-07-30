@@ -113,7 +113,8 @@ so nobody re-proposes it.
 
 ## Resolution
 
-**What shipped is option 5, which nobody wrote down: keep the lock closed, but stop lying about it.**
+**What shipped is none of the four above — call it the honest-dead-end option: keep the lock closed,
+but stop lying about it.**
 
 The acceptance criterion below says "Thor opens to `MainScreen` **(or offers a working way out)**".
 The second clause is what this takes, because every one of options 1–3 changes what the lock *means*
@@ -231,7 +232,12 @@ It ships **asymmetrically**, because the sentence is scoped to *"API 28 with no 
 biometric"* and the two halves have different costs if applied too widely:
 
 - **Refusing to arm is universal.** `SettingsViewModel.setBiometricLock(true)` is refused on *any*
-  device where `canAuthenticate()` is false, and answers with a toast naming what is missing.
+  device where `canAuthenticate()` is false, and answers with a toast naming what is missing. Which
+  toast is `biometricRefusalMessage(SDK_INT, hasHardware)`, off the same two predicates the prompt is
+  built from, so the refusal cannot name a fix the prompt would then reject: Android 10 and up hears
+  "screen lock or fingerprint", API 28 *with* a sensor hears "fingerprint — a screen lock will not do
+  it here", and the one unrecoverable device is told the lock cannot be turned on at all rather than
+  being sent to a Settings page that cannot help it.
   Refusing costs the user nothing: they are standing in Settings, they can go enrol and come back.
   The switch is no longer `enabled = state.canUseBiometric` — a disabled row swallows the tap
   (`clickable(enabled = false)`), so the old behaviour was a greyed-out control and silence, and
@@ -284,7 +290,8 @@ moot** — the case each of them existed to rescue no longer occurs.
   android.jar, so every one of them runs the API-28-shaped branch; that is also why
   `FakeAuthCapability.hardware` defaults to `true`, or the pre-existing cases would have silently
   switched branch. `onlyApi28WithNoSensorIsBeyondEnrolment` in `PromptAuthenticatorsTest` pins the
-  predicate itself across 28–36.
+  predicate itself across 28–36, and `theRefusalNamesSomethingTheUserCanActuallyDo` pins the three
+  refusal strings against the same range.
 - **OUTSTANDING (needs a device).** The restore path is exercised end to end at least once:
   `bmgr backupnow` with biometric lock on → `adb uninstall` → `adb install -t -r` → launch on a
   device with **no screen lock and no enrolled biometric**. "No screen lock" alone does not reach

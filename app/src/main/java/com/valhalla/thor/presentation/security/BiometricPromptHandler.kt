@@ -9,7 +9,9 @@ import android.hardware.biometrics.BiometricManager.Authenticators.DEVICE_CREDEN
 import android.hardware.biometrics.BiometricPrompt
 import android.os.Build
 import android.os.CancellationSignal
+import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
+import com.valhalla.thor.R
 
 /**
  * Handles biometric authentication using the framework BiometricPrompt API (API 28+).
@@ -136,3 +138,29 @@ internal fun promptAcceptsDeviceCredential(sdkInt: Int): Boolean =
  */
 internal fun enrolmentCanFixLockout(sdkInt: Int, hasBiometricHardware: Boolean): Boolean =
     promptAcceptsDeviceCredential(sdkInt) || hasBiometricHardware
+
+/**
+ * What to tell a user whose attempt to *arm* the app lock was refused, on this device.
+ *
+ * Same rule the unavailable screen uses for its copy, and for the same reason: the refusal is
+ * useless unless it names something the user can actually go and do. The three answers are the
+ * three shapes the situation takes, and they are exactly the two predicates above composed —
+ *
+ * - **Nothing will ever work.** [enrolmentCanFixLockout] false: API 28 with no sensor. Sending them
+ *   to Settings would be a wild goose chase, so this one says the device cannot do it and stops.
+ * - **A fingerprint will work; a screen lock will not.** API 28 with a sensor. Android 9's prompt
+ *   takes no device credential, so the generic "set up a screen lock or fingerprint" is half wrong
+ *   and the wrong half is the one most users would try first.
+ * - **Either will work.** Android 10 and up, the ordinary case.
+ *
+ * A `@StringRes` rather than a string because the caller is a view model, which has no `Context` and
+ * emits `UiText`. Kept next to the predicates it composes so the three copy variants and the two
+ * capability rules cannot drift apart.
+ */
+@StringRes
+internal fun biometricRefusalMessage(sdkInt: Int, hasBiometricHardware: Boolean): Int = when {
+    !enrolmentCanFixLockout(sdkInt, hasBiometricHardware) ->
+        R.string.biometric_lock_unavailable_toast
+    !promptAcceptsDeviceCredential(sdkInt) -> R.string.biometric_not_enrolled_toast_biometric_only
+    else -> R.string.biometric_not_enrolled_toast
+}

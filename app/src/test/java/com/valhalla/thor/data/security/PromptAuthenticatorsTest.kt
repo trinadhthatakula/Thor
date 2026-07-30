@@ -6,6 +6,8 @@ package com.valhalla.thor.data.security
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK
 import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
+import com.valhalla.thor.R
+import com.valhalla.thor.presentation.security.biometricRefusalMessage
 import com.valhalla.thor.presentation.security.enrolmentCanFixLockout
 import com.valhalla.thor.presentation.security.promptAcceptsDeviceCredential
 import org.junit.Assert.assertEquals
@@ -92,6 +94,39 @@ class PromptAuthenticatorsTest {
         for (sdk in 29..36) {
             assertTrue(enrolmentCanFixLockout(sdk, hasBiometricHardware = false))
             assertTrue(enrolmentCanFixLockout(sdk, hasBiometricHardware = true))
+        }
+    }
+
+    /**
+     * The refusal copy follows the same two rules, because a refusal that names the wrong fix is
+     * worse than a silent one: it sends the user to a Settings page that cannot help and they come
+     * back to the same refusal.
+     */
+    @Test
+    fun theRefusalNamesSomethingTheUserCanActuallyDo() {
+        // Nothing will ever satisfy this prompt, so it must not send anyone to Settings.
+        assertEquals(
+            R.string.biometric_lock_unavailable_toast,
+            biometricRefusalMessage(28, hasBiometricHardware = false)
+        )
+        // A sensor is present and Android 9's prompt takes nothing else, so a screen lock is not
+        // the answer here even though it is the answer everywhere else.
+        assertEquals(
+            R.string.biometric_not_enrolled_toast_biometric_only,
+            biometricRefusalMessage(28, hasBiometricHardware = true)
+        )
+        // Q and up: either works, hardware stops mattering, and the generic copy is true.
+        for (sdk in 29..36) {
+            assertEquals(
+                "sdk $sdk with a sensor",
+                R.string.biometric_not_enrolled_toast,
+                biometricRefusalMessage(sdk, hasBiometricHardware = true)
+            )
+            assertEquals(
+                "sdk $sdk with no sensor",
+                R.string.biometric_not_enrolled_toast,
+                biometricRefusalMessage(sdk, hasBiometricHardware = false)
+            )
         }
     }
 }

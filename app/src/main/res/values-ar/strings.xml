@@ -443,6 +443,8 @@
     <string name="biometric_unavailable_message">قفل التطبيق مُفعَّل، لكن لا يوجد في هذا الجهاز ما يمكن إلغاء القفل به. قم بإعداد قفل شاشة أو تسجيل بصمة من إعدادات النظام ثم عُد — وسيسمح لك Thor بالدخول.</string>
     <string name="biometric_unavailable_message_biometric_only">قفل التطبيق مُفعَّل، لكن لا توجد بصمة مُسجَّلة على هذا الجهاز، وفي Android 9 لا يمكن لطلب إلغاء القفل قبول قفل الشاشة. سجِّل بصمة من إعدادات النظام ثم عُد — وسيسمح لك Thor بالدخول.</string>
     <string name="biometric_not_enrolled_toast">لا توجد بيانات حيوية مُسجَّلة — أعدّ قفل شاشة أو بصمة أولاً</string>
+    <string name="biometric_not_enrolled_toast_biometric_only">لا توجد بصمة مُسجَّلة — في أندرويد 9 لا يفتح قفل الشاشة تطبيق ثور، فسجّل بصمة أولاً</string>
+    <string name="biometric_lock_unavailable_toast">لا يمكن تفعيل قفل التطبيق: لا توجد في هذا الجهاز مقاييس حيوية لإلغاء قفله</string>
     <string name="biometric_lock_disabled_no_biometric">تم إيقاف قفل التطبيق: لا توجد في هذا الجهاز مقاييس حيوية لإلغاء قفله</string>
     <string name="open_security_settings">فتح إعدادات الأمان</string>
     <string name="unlock">إلغاء القفل</string>
