@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.presentation.security
 
+import android.os.Build
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -97,15 +98,17 @@ fun BiometricScreen(
  * accepts is the one exit that was always available and never mentioned; this says so and opens the
  * right page.
  *
- * The copy stays off the *cause* on purpose. What the prompt accepts is API-dependent —
- * `promptAuthenticators` falls back to biometric-only on API 28-29, where a device with a PIN and
- * no fingerprint lands here despite having a perfectly good screen lock — so naming a single cause
- * would be wrong on the versions the fallback exists for.
+ * The copy is chosen by what the prompt on *this* API level accepts, not by what a modern device
+ * would accept. Android 9's framework prompt has no device-credential path, so telling a P user to
+ * "set up a screen lock" is advice that cannot work — and this screen's whole reason to exist is
+ * that it is the last thing the user is shown before they conclude Thor is broken. Q and up take
+ * the credential (see [promptAcceptsDeviceCredential]), so there the screen lock half is true.
  */
 @Composable
 fun BiometricUnavailableScreen(
     onOpenSecuritySettings: () -> Unit,
-    onExit: () -> Unit
+    onExit: () -> Unit,
+    credentialAccepted: Boolean = promptAcceptsDeviceCredential(Build.VERSION.SDK_INT)
 ) {
     Box(
         modifier = Modifier
@@ -140,7 +143,13 @@ fun BiometricUnavailableScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = stringResource(R.string.biometric_unavailable_message),
+                text = stringResource(
+                    if (credentialAccepted) {
+                        R.string.biometric_unavailable_message
+                    } else {
+                        R.string.biometric_unavailable_message_biometric_only
+                    }
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,

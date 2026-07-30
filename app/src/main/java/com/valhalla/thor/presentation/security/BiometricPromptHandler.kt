@@ -62,12 +62,27 @@ internal class BiometricPromptHandler(private val context: Context) {
             .setTitle(title)
             .setSubtitle(subtitle)
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            builder.setAllowedAuthenticators(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)
-        } else {
-            // On API 28-29, DEVICE_CREDENTIAL wasn't supported in setAllowedAuthenticators.
-            // We fall back to a negative button if only BIOMETRIC_STRONG is possible.
-            builder.setNegativeButton("Cancel", executor) { _, _ ->
+        when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ->
+                builder.setAllowedAuthenticators(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)
+
+            // Android 10 has no setAllowedAuthenticators, but it does have the flag that became
+            // DEVICE_CREDENTIAL — and the app lock needs it, because without it a device whose
+            // only unlock is a PIN can never satisfy the prompt. Deprecated on purpose: it is the
+            // only device-credential path Q offers, and R+ takes the branch above.
+            //
+            // Mutually exclusive with setNegativeButton (the framework throws), which is why this
+            // is a `when` and not two independent `if`s. The system prompt supplies its own
+            // "Use PIN" affordance and Back still dismisses, so nothing is lost.
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
+                @Suppress("DEPRECATION")
+                builder.setDeviceCredentialAllowed(true)
+
+            // Android 9's prompt is biometric-only: setDeviceCredentialAllowed arrives in Q, so
+            // there is nothing here to accept a screen lock with. `promptAuthenticators` asks
+            // BiometricManager the matching biometric-only question, and the unavailable screen
+            // tells a P user to enrol rather than to set a screen lock that would not help.
+            else -> builder.setNegativeButton("Cancel", executor) { _, _ ->
                 onError("User cancelled")
             }
         }
@@ -81,3 +96,21 @@ internal class BiometricPromptHandler(private val context: Context) {
         cancellationSignal = null
     }
 }
+
+/**
+ * Whether the prompt [BiometricPromptHandler] builds on [sdkInt] can be satisfied by the device
+ * credential — a PIN, pattern or password — as opposed to a biometric only.
+ *
+ * True from Q up: R+ passes `DEVICE_CREDENTIAL` to `setAllowedAuthenticators`, Q sets the
+ * deprecated `setDeviceCredentialAllowed`. False on P, whose framework prompt has neither.
+ *
+ * The version literal is repeated inside [BiometricPromptHandler.authenticate] rather than read
+ * from here, because lint's `NewApi` only recognises a direct `SDK_INT` comparison as a guard for
+ * an API-29 call. `PromptAuthenticatorsTest` pins this against `promptAuthenticators` so the two
+ * halves — what the prompt accepts and what capability asks about — cannot drift apart silently.
+ *
+ * Read by [BiometricUnavailableScreen], which must not tell an Android 9 user that setting a
+ * screen lock will get them in.
+ */
+internal fun promptAcceptsDeviceCredential(sdkInt: Int): Boolean =
+    sdkInt >= Build.VERSION_CODES.Q

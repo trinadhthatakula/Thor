@@ -4,8 +4,12 @@
 package com.valhalla.thor.data.security
 
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
+import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK
 import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
+import com.valhalla.thor.presentation.security.promptAcceptsDeviceCredential
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -22,14 +26,25 @@ import org.junit.Test
 class PromptAuthenticatorsTest {
 
     /**
-     * androidx `AuthenticatorUtils.isSupportedCombination` returns false for
-     * `BIOMETRIC_STRONG or DEVICE_CREDENTIAL` when `SDK_INT` is in `[P, Q]`, i.e. exactly Android
-     * 9 and 10 — and Thor's minSdk is 28, so those are shipped, supported devices.
+     * Android 9's framework prompt has no device-credential path at all — `setDeviceCredentialAllowed`
+     * arrives in Q — so asking about one would claim a capability the prompt cannot honour.
      */
     @Test
-    fun android9And10AskBiometricOnly_becauseTheCombinationIsRejectedThere() {
+    fun android9AsksBiometricOnly_becauseItsPromptCannotTakeACredential() {
         assertEquals(BIOMETRIC_STRONG, promptAuthenticators(28))
-        assertEquals(BIOMETRIC_STRONG, promptAuthenticators(29))
+        assertFalse(promptAcceptsDeviceCredential(28))
+    }
+
+    /**
+     * Android 10 *can* take a credential, via the deprecated `setDeviceCredentialAllowed`, but
+     * androidx `AuthenticatorUtils.isSupportedCombination` rejects `BIOMETRIC_STRONG or
+     * DEVICE_CREDENTIAL` below R. `BIOMETRIC_WEAK or DEVICE_CREDENTIAL` is supported at every
+     * level, so it is how the same question gets asked there.
+     */
+    @Test
+    fun android10AsksTheOnlyCredentialCombinationItSupports() {
+        assertEquals(BIOMETRIC_WEAK or DEVICE_CREDENTIAL, promptAuthenticators(29))
+        assertTrue(promptAcceptsDeviceCredential(29))
     }
 
     @Test
@@ -39,16 +54,19 @@ class PromptAuthenticatorsTest {
     }
 
     /**
-     * The predicate has to agree with `BiometricPromptHandler`, which calls
-     * `setAllowedAuthenticators` only on API 30+ and builds a biometric-only prompt with a Cancel
-     * button below that. If they diverge, the gate is answering a different question than the
-     * screen behind it — the capability check says "impossible" while the prompt would have worked,
-     * or the reverse.
+     * The predicate has to agree with `BiometricPromptHandler`, which builds a credential-capable
+     * prompt from Q up and a biometric-only one on P. If they diverge, the gate is answering a
+     * different question than the screen behind it — the capability check says "impossible" while
+     * the prompt would have worked, or the reverse, which is the lockout this whole split exists
+     * to prevent. `promptAcceptsDeviceCredential` is the same boundary in the form the unavailable
+     * screen reads, and it must not drift from this one.
      */
     @Test
-    fun theSplitFallsOnTheSameVersionAsThePromptHandlers() {
-        val firstCombined = (28..36).first { promptAuthenticators(it) != BIOMETRIC_STRONG }
+    fun everyLevelThatAsksAboutACredentialIsOneWhosePromptAcceptsOne() {
+        val asked = (28..36).filter { promptAuthenticators(it) and DEVICE_CREDENTIAL != 0 }
+        val accepted = (28..36).filter { promptAcceptsDeviceCredential(it) }
 
-        assertEquals(30, firstCombined)
+        assertEquals(accepted, asked)
+        assertEquals((29..36).toList(), asked)
     }
 }

@@ -73,8 +73,9 @@ class SecurityViewModel(
     /**
      * Re-asks whether authentication is possible. Called from `onResume`, which is what makes
      * [AuthState.Unavailable] an escape rather than a nicer dead end: the user leaves for system
-     * Settings, sets a screen lock, comes back, and this flips them to [AuthState.Locked] — a
-     * prompt that can now succeed — with no restart.
+     * Settings, enrols whatever that screen told them to (a screen lock from Android 10 up, a
+     * fingerprint on 9), comes back, and this flips them to [AuthState.Locked] — a prompt that can
+     * now succeed — with no restart.
      */
     fun refreshCapability() {
         val capable = authCapability.canAuthenticate()
