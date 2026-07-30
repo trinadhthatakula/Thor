@@ -1,6 +1,6 @@
 # Thor — Feature Request Roadmap
 
-**Date:** 2026-07-02 · **Last reviewed:** 2026-07-29 (statuses re-checked against `origin/dev` and the live issue tracker)
+**Date:** 2026-07-02 · **Last reviewed:** 2026-07-30 (statuses re-checked against `origin/dev` and the live issue tracker)
 **Purpose:** A prioritized, codebase-grounded triage of the open feature requests in the issue tracker — ranked by value-to-effort with implementation estimates and impact, to drive the "greens first" build order.
 **Method:** Each request was analyzed against the actual Thor codebase (existing infra it can reuse, layers it touches, root/Shizuku/Dhizuku feasibility), so the estimates reflect *what already exists vs. what must be built*, not guesses.
 
@@ -15,11 +15,11 @@
 | Issue | Feature | Status |
 |-------|---------|--------|
 | **#57** | Sort by size | ✅ **Done** — built as *total install size* (metric upgraded from APK size at maintainer's call); merged to `dev` (`3e8de3e`). ⚠️ the GitHub issue is still **open** — close it |
-| **#164** | Export bundles | 🟨 **Mostly done** — SAF picker, remembered destination, and `.apk` / `.apks` writers all shipped (`ExportBottomSheet`, `AppBundleFileStoreImpl`, 11 `export_*` strings). **`.xapk` export is the only part left**, and it was promised in-thread |
+| **#164** | Export bundles | ✅ **Done as scoped** — `.xapk` shipped alongside the existing `.apk` / `.apks` writers, with a format picker in the export sheet (`BundleFormat`, `ExportBottomSheet`). ⚠️ **close it with the scope stated**: the issue's fourth output, a raw split *folder*, is declined, not built — closing silently would read as shipped. The in-thread `.xapk` promise is kept |
 | **#210** | Keep-in-launcher | ✅ **Achievable slice done** — the Freeze\|Suspend mode shipped via #239 (PR #241). The accessibility-based auto-refreeze remains declined, as planned |
-| #55a | Freeze profiles | ⬜ **next green** — now the top unstarted item |
-| #51 | App + data backup | ⬜ not started — but phase 1 got much cheaper once #164's SAF export landed. Also the oldest promise in `README.md` ("Upcoming Features → BackUp App Data") |
-| **#285** | Filter by permission | ✅ **Built** — `feat/permission-filter`, in review. Scope question settled: one `getInstalledPackages` sweep, no Room change. ⚠️ the GitHub issue is still **open** — close it on merge |
+| **#55a** | Freeze profiles | ✅ **Built** — `feat/freeze-profiles`, in review (#295). All three recon risks closed: the tier gate, the runner's coalescing key and the launcher restore gate (see below) |
+| #51 | App + data backup | 🟨 **Phase 1 done** — multi-select → bulk APK/bundle backup to the export target with a `thor-backup-<stamp>.json` manifest, a cancellable progress bar and a process-lifetime runner. **Phase 2 (root data tar) not started**, and that is the half `README.md` has promised for a year |
+| **#285** | Filter by permission | ✅ **Built** — `feat/permission-filter`, in review (#294). Scope question settled: one `getInstalledPackages` sweep, no Room change. ⚠️ the GitHub issue is still **open** — close it on merge |
 | #161 | `.apks` won't open from Samsung My Files | 🐞 **bug, not a feature** — unanswered since 2026-07-18 |
 | _all others_ | | ⬜ not started |
 
@@ -30,9 +30,13 @@ timing fix (#278), the `longVersionCode` truncation fix (#277), installer downgr
 R8 fix (#265). That is where the last four weeks went — the feature backlog below barely moved
 because the work was elsewhere.
 
-**In review, not yet merged:** the unified app-info sheet (#288), this refresh (#289), and the
-permission filter (`feat/permission-filter`, #285). If more than one of the open branches touches
-this file, expect a textual conflict here and in the ranking table — each edits only its own rows.
+**In review, not yet merged:** the permission filter (#294/#285), freeze profiles (#295/#55a), and
+two fixes with no issue behind them — the watchlist prompt flag (#299) and the shortcut match flags
+(#300). `.xapk` export + backup phase 1 (#293), the biometric hard-lockout escape hatch (#292), the
+Dependabot Bundler ecosystem (#291), the unified app-info sheet (#288) and the previous refresh
+(#289) have all since merged. Every open branch edits this file, so this paragraph and the ranking
+table are written to be *identical* on each of them — same text merges clean, and the alternative is
+re-resolving the same conflict once per merge.
 
 ---
 
@@ -42,29 +46,32 @@ this file, expect a textual conflict here and in the ranking table — each edit
 |---|-------|---------|:------:|:---------:|:----------:|----------------|
 | — | **#57** | Sort by (install) size | 3–4 | done | 2 | ✅ **Merged** (#230) — close the issue |
 | — | **#210** | Freezer "keep-in-launcher" | 3 | done | 4 | ✅ **Slice merged** (#241) — suspend mode; rest declined |
-| 1 | **#164b** | `.xapk` export (the remainder of #164) | 2 | **0.5–1 d** | 2 | 🟢 **do first** — everything but the writer exists, and it was publicly promised |
-| 2 | **#55a** | Freeze **profiles** (named groups) | 3 | **2–3 d** | 4 | 🟢 quick win — reuses Room + batch-freeze *(split from #55)* |
-| 3 | **#161** | `.apks` won't open from Samsung My Files | 2 | **1–2 d** | 2 | 🟢 a real bug with a named reporter and a working comparison app — cheap goodwill |
-| — | **#285** | Filter app list by permission | 2–3 | done | 2 | ✅ **Built**, in review — mostly UI as predicted, but the group table had to be shipped by Thor (see below) |
-| 4 | **#51** | App **+ data backup** / transfer | **4** | APK-only **≈1 d now** · root-data **5–8 d** · P2P 12–20 d | 5 | 🟡 highest impact, root-gated — phase it; phase 1 got cheap once #164 landed |
-| 5 | **#130** | InstallWithOptions attribution + drill-down | 2 | **1–2 d** (label ≈0.25 d) | 2 | 🟡 label = trivial; attribution unreliable |
-| 6 | **#58** | **App lock** (root/Shizuku) | 3 | **8–15 d** | 5 | 🔴 differentiator but heavy build + ongoing tax |
-| 7 | **#178** | App **tagging** | 3 | **3–5 d** | 3 | 🔴 low-risk but **zero demand** |
-| 8 | **#209** | **VirusTotal** scanner | 2 | **4–7 d** | 3 | 🔴 network stack + user API key + privacy |
+| — | **#164b** | `.xapk` export (the remainder of #164) | 2 | done | 2 | ✅ **Merged** (#293) — the format picker ships with it; close #164 on merge |
+| — | **#51 ph.1** | Bulk APK/bundle backup + manifest | **4** | done | 3 | ✅ **Merged** (#293) — phase 2 (root data) is what remains |
+| — | **#55a** | Freeze **profiles** (named groups) | 3 | done | 4 | 🟣 **Built**, in review (#295) — reused Room + `BulkFreezeRunner` as predicted; the runner needed a scoped coalescing key first *(split from #55)* |
+| — | **#285** | Filter app list by permission | 2–3 | done | 2 | 🟣 **Built**, in review (#294) — mostly UI as predicted, but the group table had to be shipped by Thor (see below) |
+| 1 | **#161** | `.apks` won't open from Samsung My Files | 2 | **1–2 d** | 2 | 🟢 a real bug with a named reporter and a working comparison app — cheap goodwill |
+| 2 | **#51 ph.2** | App **data** backup / transfer | **4** | root-data **5–8 d** · P2P 12–20 d | 5 | 🟡 highest remaining impact, hard-gated on root — phase 3 (P2P) stays declined |
+| 3 | **#130** | InstallWithOptions attribution + drill-down | 2 | **1–2 d** (label ≈0.25 d) | 2 | 🟡 label = trivial; attribution unreliable |
+| 4 | **#58** | **App lock** (root/Shizuku) | 3 | **8–15 d** | 5 | 🔴 differentiator but heavy build + ongoing tax |
+| 5 | **#178** | App **tagging** | 3 | **3–5 d** | 3 | 🔴 low-risk but **zero demand** |
+| 6 | **#209** | **VirusTotal** scanner | 2 | **4–7 d** | 3 | 🔴 network stack + user API key + privacy |
 | — | **#55b** | Process manager (RAM/CPU) | 3 | 4–7 d | 4 | 🔴 fragile shell parsing, Shizuku/root-only, Dhizuku dead-end *(split from #55)* |
 
 ---
 
 ## Sequencing
 
-**🟢 Do first (~1 week):** ~~**#285** (permission filter)~~ **built, in review** → **#164b** (`.xapk` writer — half a day, closes a public promise and lets #164 be closed) → **#55a** (freeze profiles) → **#161** (Samsung My Files). All lean on existing infra and are low-risk — with one caveat:
+**🟢 Do first (~1 week):** ~~**#164b** (`.xapk` writer)~~ **merged (#293)** → ~~**#285** (permission
+filter)~~ **built, in review (#294)** → ~~**#55a** (freeze profiles)~~ **built, in review (#295)** →
+**#161** (Samsung My Files). All lean on existing infra and are low-risk — with one caveat:
 ~~**#285's estimate is pending scope validation.**~~ **Settled, and it was the cheap answer** — see
 the **#285** row below. One `getInstalledPackages(GET_PERMISSIONS)` sweep, held in memory while the
-filter is selected. **No Room schema change.** The expensive surprise was elsewhere: since API 29 the platform
-no longer tells you which group a permission belongs to, so Thor ships the table itself.
+filter is selected. **No Room schema change.** The expensive surprise was elsewhere: since API 29 the
+platform no longer tells you which group a permission belongs to, so Thor ships the table itself.
 
 **🟡 High-value bets (scope carefully):**
-- **#51 backup** — highest *impact* (4), a genuine differentiator, and the **oldest unkept promise in the README**. Ship **phased**: phase 1 (APK-only backup to a SAF location) is now roughly a day, because #164's picker, remembered destination and writers already exist; root data backup is a separate 5–8 d effort; skip bespoke phone-to-phone transport (the exported file already rides the share sheet). Pair phase 1 with `.xapk` export — same code, same session.
+- **#51 backup, phase 2** — phase 1 (bundles only — `.apk`, `.apks` or `.xapk`, whichever the app's shape and the picker call for; **no app data**) shipped with `.xapk`, in the same session, exactly as this document proposed. What is left is the root-only data tar, a separate 5–8 d effort behind an explicit "requires root" state; bespoke phone-to-phone transport stays skipped (the exported file already rides the share sheet). The README's "BackUp App Data" promise is only half-kept until phase 2 lands.
 - **#130** — do the *achievable slice* (the friendly installer label) and explicitly decline the parts Android won't allow.
 
 **✅ Closed out since the last review:** #57 (shipped) and #210 (achievable slice shipped as the Freeze|Suspend mode). Neither issue has been closed on GitHub yet.
@@ -75,10 +82,10 @@ no longer tells you which group a permission belongs to, so Thor ships the table
 
 ## Per-feature detail
 
-### #164 — Export to folder (APK / XAPK / APKS / split) · 🟨 mostly shipped · impact 3
-- **Shipped:** the SAF `ACTION_OPEN_DOCUMENT_TREE` picker, a remembered destination (with a `Downloads/Thor` default), `DocumentFile` write plumbing, progress/failure states, and both writers Thor picks between automatically — `.apk` for a single-APK app, `.apks` for a split app. See `ExportBottomSheet`, `AppBundleFileStoreImpl`, `AppBundleBuilderImpl`, `BundleZip`, and the 11 `export_*` strings.
-- **Left (#164b):** `.xapk` output. `ApksMetadataGenerator` already produces the XAPK `manifest.json` for the *share* path, and Thor can already *install* an APKPure `.xapk` (`15f57d6d`), so the writer is the only missing piece — call it half a day. It was promised explicitly in-thread ("`.xapk` export specifically is planned"), so leaving it undone is a visible broken promise rather than a silent gap.
-- **Also unbuilt (deliberately):** the raw split-folder output and a user-facing format picker. Thor chooses the format from the app's shape, which is the better default; a picker is only worth adding once `.xapk` gives it a third option.
+### #164 — Export to folder (APK / XAPK / APKS / split) · ✅ shipped · impact 3
+- **Shipped:** the SAF `ACTION_OPEN_DOCUMENT_TREE` picker, a remembered destination (with a `Downloads/Thor` default), `DocumentFile` write plumbing, progress/failure states, and all three writers — `.apk`, `.apks`, `.xapk`. See `BundleFormat`, `ExportBottomSheet`, `AppBundleFileStoreImpl`, `AppBundleBuilderImpl`, `BundleZip`.
+- **Shipped with it (#164b):** `.xapk` output, and the format picker the third option finally justified. The sheet offers two chips — the app's native container plus `.xapk` — because the third is always the wrong offer: `.apks` around a single base APK is a zip that buys nothing, and a monolithic `.apk` of a split app installs something that will not run. `autoFor()` never returns XAPK, so an export nobody touches produces what it always did.
+- **Still unbuilt (deliberately):** the raw split-folder output. Thor chooses the default format from the app's shape, which is the better default.
 - **Risks:** none hard. System/protected apps degrade without root (consistent with the app). OBB export stays out of scope.
 - **Verify with more than a round trip:** installability is necessary but not sufficient. Export → reinstall through Thor's own installer *and* a third-party one, then also check the two failure shapes a successful install would hide: a bundle whose OBB assets are silently absent, and split contents/metadata a different reader rejects. See `docs/follow-ups/app-data-backup-and-xapk-export.md`.
 
@@ -130,12 +137,13 @@ no longer tells you which group a permission belongs to, so Thor ships the table
      is still honest.
 - **Status:** opened 2026-07-28, labelled `enhancement` + `needs triage`, zero comments.
 
-### #51 — App + data backup / transfer · 🟡 · phased · impact 4
+### #51 — App + data backup / transfer · 🟨 phase 1 shipped · impact 4
 - **What:** back up an app's APK(s) + private data to a file; transfer app+data between phones.
-- **Standing promise:** `README.md` has listed "BackUp App Data" under *Upcoming Features* for about a year. Of everything in this document, this is the item users have been told to expect for longest.
-- **Reuses:** the APK half is now essentially built. `ShareAppUseCase`, `BundleZip`, the multi-APK install pipeline, *and* #164's SAF picker + remembered destination + `AppBundleFileStoreImpl` all exist, so phase 1 is wiring rather than construction.
+- **Standing promise:** `README.md` has listed "BackUp App Data" under *Upcoming Features* for about a year. Phase 1 keeps the APK half of it; the *data* half is still outstanding.
+- **Shipped (phase 1):** multi-select → **Backup** runs the whole selection through `ExportAppUseCase` (bounded to two apps staging at once) and drops a `thor-backup-<yyyyMMdd-HHmmss>.json` manifest beside the bundles, listing every app attempted, failures included. `BackupRunner` is a `@Single` on a process-lifetime scope, so a 200-app run outlives the sheet, the view model and the Activity **without a foreground service** — the same shape `BulkFreezeRunner` uses. A non-modal progress bar in the bottom bar reports it and can cancel it; a cancelled run still writes its manifest, so the folder is never undescribed. See `BackupAppsUseCase`, `BackupRunner`, `BackupIndex`, `ExportProgressBar`.
+  **What "process-lifetime" does not mean:** the run survives *Thor's UI* going away, not Thor's *process*. Once the last Activity is gone the process is a background process and the OS may kill it under memory pressure or after the user swipes the app away — the run then stops mid-batch with no message. What is on disk stays on disk and there is no resume, so the recovery story is the manifest: every app the run got to is described, the rest simply are not listed, and re-running the same selection re-exports them. Surviving process death would mean a foreground service (a new permission, a mandatory FSU type on API 34+, a time cap on 35+) or `WorkManager` with a serialisable work unit; neither is in phase 1, and the confirm dialog's "keep Thor open" copy is the honest version of that limit rather than a suggestion.
 - **HARD BLOCKER (data half only):** private-data backup requires **root** — Shizuku's shell uid cannot read `/data/data`, Dhizuku has no file access, and `adb backup` is dead on modern Android. Restore additionally needs correct uid/gid plus an SELinux relabel, which is where the real effort sits.
-- **Phasing:** (1) APK-only backup to a SAF location — ~1 day atop #164, and the natural companion to `.xapk` export; (2) root-only data tar backup/restore, gated behind an explicit "requires root" state; (3) **defer** live P2P transport (the exported file already rides the share sheet).
+- **Phasing:** (1) ✅ bundles-only backup (no app data) to the export target; (2) root-only data tar backup/restore, gated behind an explicit "requires root" state — the manifest's `schemaVersion` and its nullable fields exist so a v2 index can name a data file without breaking a v1 reader; (3) **defer** live P2P transport (the exported file already rides the share sheet).
 - **Pairs with:** `docs/follow-ups/app-data-backup-and-xapk-export.md`.
 
 ### #210 — Freezer "keep-in-launcher" · ✅ slice shipped · impact 3

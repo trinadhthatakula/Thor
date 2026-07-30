@@ -29,6 +29,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -55,6 +57,7 @@ import androidx.core.content.ContextCompat
 import coil3.compose.AsyncImage
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.usecase.ExportAppUseCase
 import com.valhalla.thor.presentation.utils.AppIconModel
@@ -73,7 +76,15 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
     val preferenceRepository = koinInject<PreferenceRepository>()
     val scope = rememberCoroutineScope()
 
-    val isSplit = appInfo.splitPublicSourceDirs.isNotEmpty()
+    // Two options, never three. The native container for this app — .apk for a monolithic app,
+    // .apks for a split one — plus .xapk, which is meaningful either way because it is the format
+    // other installers (SAI, APKPure) read. The third is always the wrong offer: .apks around a
+    // single base apk is a zip that buys nothing, and a monolithic .apk of a split app silently
+    // drops the config splits and produces an install that will not run. So the row is shown for
+    // every app rather than only for split ones; what changes is which container it opposes .xapk to.
+    val formatOptions = remember(appInfo.packageName) {
+        listOf(BundleFormat.autoFor(appInfo), BundleFormat.XAPK)
+    }
 
     // Resource values hoisted to composable scope so they can be read inside the
     // non-composable lambdas below (remember/coroutine/onClick) where stringResource
@@ -85,13 +96,16 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
 
     var targetLabel by remember { mutableStateOf(defaultDestLabel) }
     var exporting by remember { mutableStateOf(false) }
+    // Defaults to autoFor(), i.e. the format the builder has always picked on its own, so an
+    // export where nobody touches the row is byte-for-byte what shipped before the selector existed.
+    var format by remember(appInfo.packageName) { mutableStateOf(formatOptions.first()) }
 
     LaunchedEffect(Unit) { targetLabel = exportUseCase.currentTargetLabel() }
 
     val runExport = {
         exporting = true
         scope.launch {
-            val result = exportUseCase(appInfo)
+            val result = exportUseCase(appInfo, format)
             exporting = false
             result
                 .onSuccess {
@@ -200,7 +214,7 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                     )
                 }
                 Text(
-                    text = if (isSplit) ".apks" else ".apk",
+                    text = ".${format.extension}",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
@@ -211,10 +225,40 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                 )
             }
 
-            // Plain-language explanation (adapts to the export format)
+            // Format
+            Text(
+                text = stringResource(R.string.export_format).uppercase(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                formatOptions.forEach { option ->
+                    FilterChip(
+                        selected = option == format,
+                        onClick = { format = option },
+                        enabled = !exporting,
+                        // A file extension, not copy — the same token in every locale, so it is
+                        // built from BundleFormat rather than from a translated string.
+                        label = { Text(".${option.extension}") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    )
+                }
+            }
+
+            // Plain-language explanation of the selected format. For .xapk this is the only place
+            // the user is told the OBB assets are left out, so it has to follow the selection.
             Text(
                 text = stringResource(
-                    if (isSplit) R.string.export_explain_apks else R.string.export_explain_apk
+                    when (format) {
+                        BundleFormat.APK -> R.string.export_explain_apk
+                        BundleFormat.APKS -> R.string.export_explain_apks
+                        BundleFormat.XAPK -> R.string.export_explain_xapk
+                    }
                 ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant

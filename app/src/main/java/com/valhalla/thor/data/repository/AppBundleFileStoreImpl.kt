@@ -16,11 +16,15 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.repository.AppBundleFileStore
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 
 /**
  * Android-backed [AppBundleFileStore]: writes bundles to public Downloads
@@ -50,9 +54,12 @@ class AppBundleFileStoreImpl(
             val doc = tree.createFile(mime, file.name) ?: throw IOException("Could not create file")
             try {
                 context.contentResolver.openOutputStream(doc.uri)?.use { out ->
-                    file.inputStream().use { it.copyTo(out) }
+                    file.inputStream().use { it.copyCancellableTo(out) }
                 } ?: throw IOException("openOutputStream failed")
             } catch (e: Exception) {
+                // CancellationException is an Exception, so a cancelled export lands here too and
+                // that is the point: the half-written document is deleted before the throw
+                // propagates. Rethrowing unchanged keeps the cancellation a cancellation.
                 doc.delete() // don't leave a partial/corrupted file behind
                 throw e
             }
@@ -81,7 +88,7 @@ class AppBundleFileStoreImpl(
         FileProvider.getUriForFile(context, "${BuildConfig.APPLICATION_ID}.provider", file).toString()
 
     @RequiresApi(Build.VERSION_CODES.Q)
-    private fun writeToDownloadsMediaStore(source: File, mime: String): String {
+    private suspend fun writeToDownloadsMediaStore(source: File, mime: String): String {
         val resolver = context.contentResolver
         val relativePath = Environment.DIRECTORY_DOWNLOADS + "/Thor/"
         // MediaStore.insert appends " (1)" instead of overwriting, so delete any same-named
@@ -101,25 +108,66 @@ class AppBundleFileStoreImpl(
         val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
             ?: throw IOException("MediaStore insert failed")
         try {
-            resolver.openOutputStream(uri)?.use { out -> source.inputStream().use { it.copyTo(out) } }
-                ?: throw IOException("openOutputStream failed")
+            resolver.openOutputStream(uri)?.use { out ->
+                source.inputStream().use { it.copyCancellableTo(out) }
+            } ?: throw IOException("openOutputStream failed")
             values.clear()
             values.put(MediaStore.Downloads.IS_PENDING, 0)
             resolver.update(uri, values, null, null)
         } catch (e: Exception) {
+            // Cancellation included — see writeToTree. An IS_PENDING entry that is never cleared
+            // is invisible to other apps and never collected, so leaving one behind on cancel
+            // would be a permanent phantom row in the user's Downloads.
             resolver.delete(uri, null, null) // don't leave a dangling pending entry
             throw e
         }
         return context.getString(R.string.export_dest_downloads)
     }
 
-    private fun writeToDownloadsLegacy(source: File): String {
+    private suspend fun writeToDownloadsLegacy(source: File): String {
         @Suppress("DEPRECATION")
         val dir = File(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Thor"
         )
         if (!dir.exists()) dir.mkdirs()
-        source.copyTo(File(dir, source.name), overwrite = true)
+        val dest = File(dir, source.name)
+        try {
+            source.inputStream().use { input ->
+                dest.outputStream().use { output -> input.copyCancellableTo(output) }
+            }
+        } catch (e: Exception) {
+            // The SAF and MediaStore paths have always cleaned up after themselves; this one had
+            // nothing to clean up because `File.copyTo` could not be interrupted. Now that it can,
+            // a cancelled export would otherwise leave a truncated .apk sitting in Downloads under
+            // the right name — the one failure shape a user cannot tell from a good export.
+            dest.delete()
+            throw e
+        }
         return context.getString(R.string.export_dest_downloads)
+    }
+
+    /**
+     * `InputStream.copyTo` in chunks, checking for cancellation between them.
+     *
+     * Exports are cancellable from the UI and a bundle is routinely hundreds of megabytes. The
+     * stock `copyTo` is one uninterruptible call, so cancelling mid-write did nothing until the
+     * whole file had been pushed through SAF or MediaStore — the progress UI would sit on a
+     * cancelled export for as long as the copy took. The check is a volatile read per 8 KB against
+     * an IO-bound loop, which costs nothing next to the write it guards. Mirrors
+     * `AppBundleBuilderImpl.copyCancellable`, which does the same for the staging copies.
+     */
+    private suspend fun InputStream.copyCancellableTo(out: OutputStream) {
+        val buffer = ByteArray(COPY_BUFFER_BYTES)
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            val read = read(buffer)
+            if (read == -1) break
+            out.write(buffer, 0, read)
+        }
+        out.flush()
+    }
+
+    private companion object {
+        const val COPY_BUFFER_BYTES = 8192
     }
 }
