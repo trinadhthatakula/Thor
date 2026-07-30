@@ -20,4 +20,4 @@
 
 • 🔒 App lock can no longer lock you out.
 
-🌍 Now in Arabic, Spanish, French and Chinese.
+🌍 Every new string ships in Arabic, Spanish, French and Chinese.

@@ -6,11 +6,11 @@ freezer's Quick Settings tile, pinned shortcuts and bulk engine substantially re
 sheet unified into a single surface, and a batch of security and correctness fixes that includes an
 **escape hatch for an app lock that could previously lock you out permanently**.
 
-> **Not in this release: app backup.** Exporting installable bundles is not a backup — no app *data*
-> is captured, and there is no restore path. #51 stays open, and the word is deliberately absent
-> below.
+> **Not in this release: app-data backup.** Exporting installable bundles is not a backup — no app
+> *data* is captured, and there is no restore path. #51 stays **open**. Where "backup" does appear
+> below it means either Android's own cloud backup or an explicit statement that export is *not* one.
 
-> 219 commits and 22 merged pull requests since **v1.93.0**.
+*219 commits and 22 merged pull requests since **v1.93.0**.*
 
 ---
 
@@ -30,8 +30,8 @@ sheet unified into a single surface, and a batch of security and correctness fix
 ## What's Changed
 
 ### 🧊 Freeze Profiles (#295 — the profiles half of #55)
-#55 asks for two things: freeze **profiles** and a **process manager**. Profiles ship here; the
-process manager does not, so **#55 stays open**.
+Issue #55 asks for two things: freeze **profiles** and a **process manager**. Profiles ship here;
+the process manager does not, so **#55 stays open**.
 
 Named groups of apps, frozen or unfrozen as a set, saved in two new Room tables via
 `@AutoMigration(5→6)` (new tables only, schema export committed).
@@ -220,6 +220,7 @@ bulk freeze engine were rebuilt around one runner and one state reader.
 ## 🛠 Commits Log (`v1.93.0...HEAD`)
 
 **Merged pull requests**
+* `b1f270e8` — #301 bump to 1931, v1.93.1 release notes, Shizu changelog sync
 * `2a503959` — #295 freeze profiles (#55, profiles half)
 * `4e35e0b4` — #294 filter the app list by permission (#285)
 * `1f35400b` — #299 keep the watchlist prompt flag off the backup
