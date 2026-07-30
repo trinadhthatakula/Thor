@@ -433,7 +433,9 @@
     <string name="legacy_extension_desc">Se ha detectado una versión heredada de la extensión Stormbringer (escrita incorrectamente como \"Strombringer\"). Por favor, desinstálala para evitar conflictos e instala la versión actualizada.</string>
     <string name="action_export">Exportar</string>
     <string name="export_explain_apk">Thor guarda esta aplicación como un único archivo de instalación (.apk) en la carpeta de abajo. Úsala para hacer una copia de seguridad o reinstalarla más tarde.</string>
-    <string name="export_explain_apks">Esta aplicación consta de varias partes divididas, por lo que Thor las empaqueta en un único archivo compilado (.apks) en la carpeta de abajo. Reinstálala en cualquier momento con el instalador de Thor.</string>
+    <string name="export_explain_apks">Esta aplicación consta de varias partes divididas, que se agrupan en un único paquete (.apks) en la carpeta de abajo. Reinstálala en cualquier momento con el instalador de Thor.</string>
+    <string name="export_explain_xapk">Thor agrupa las partes de esta aplicación en un único archivo (.xapk) en la carpeta de abajo, un formato que también entienden otros instaladores. Los datos de juego (archivos OBB) no se incluyen porque Android 11 y versiones posteriores impiden que cualquier aplicación lea la carpeta OBB de otra; un juego grande se instalará desde este archivo, pero puede que no funcione.</string>
+    <string name="export_format">Formato</string>
     <string name="export_save_to">Guardar en</string>
     <string name="export_change">Cambiar</string>
     <string name="export_in_progress">Exportando…</string>
@@ -442,6 +444,22 @@
     <string name="export_failed_unknown">error desconocido</string>
     <string name="export_dest_downloads">Descargas/Thor</string>
     <string name="export_dest_selected">Carpeta seleccionada</string>
+
+    <string name="action_export_selected">Exportar</string>
+    <string name="export_bulk_confirm_title">¿Exportar las aplicaciones seleccionadas?</string>
+    <plurals name="export_bulk_confirm_desc">
+        <item quantity="one">Thor guarda %1$d archivo de instalación en tu carpeta de exportación, uno por cada aplicación seleccionada. Puede tardar mucho tiempo y necesitar bastante espacio libre, así que mantén Thor abierto hasta que termine.</item>
+        <item quantity="other">Thor guarda %1$d archivos de instalación en tu carpeta de exportación, uno por cada aplicación seleccionada. Puede tardar mucho tiempo y necesitar bastante espacio libre, así que mantén Thor abierto hasta que termine.</item>
+    </plurals>
+    <string name="export_bulk_progress">Exportando %1$d de %2$d</string>
+    <string name="export_bulk_finished">Se exportaron %1$d de %2$d aplicaciones a %3$s</string>
+    <string name="export_bulk_finished_none">No se pudo exportar ninguna de las %1$d aplicaciones seleccionadas</string>
+    <string name="export_bulk_index_failed">Los archivos se guardaron, pero no se pudo escribir la lista junto a ellos</string>
+    <string name="export_bulk_failed">La exportación falló — se guardaron %1$d de %2$d apps</string>
+    <string name="export_bulk_stop">Detener exportación</string>
+    <string name="export_bulk_cancelled">Exportación detenida: se guardaron %1$d de %2$d aplicaciones</string>
+    <string name="export_bulk_nothing_selected">Selecciona al menos una aplicación para exportar</string>
+    <string name="export_bulk_no_space">No hay suficiente espacio libre para exportar. Thor necesita unos %1$s libres para preparar estos archivos, pero solo hay %2$s disponibles. Libera espacio o selecciona menos aplicaciones.</string>
     <string name="failed_to_load_permissions">Error al cargar los permisos</string>
     <string name="permission_status_updated">Estado de permiso actualizado</string>
     <string name="failed_to_modify_permission">Error al modificar el permiso</string>

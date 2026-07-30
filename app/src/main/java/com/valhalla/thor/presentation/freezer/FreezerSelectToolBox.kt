@@ -114,6 +114,12 @@ fun FreezerSelectToolBox(
             )
 
             FreezerToolItem(
+                icon = R.drawable.storage,
+                label = stringResource(R.string.action_export_selected),
+                onClick = { onMultiAppAction(MultiAppAction.Backup(selected)) }
+            )
+
+            FreezerToolItem(
                 icon = R.drawable.delete_forever,
                 label = stringResource(R.string.action_uninstall),
                 onClick = { onMultiAppAction(MultiAppAction.Uninstall(selected)) }

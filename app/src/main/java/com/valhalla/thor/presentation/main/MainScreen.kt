@@ -91,6 +91,7 @@ import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
 import com.valhalla.thor.presentation.widgets.AffirmationDialog
 import com.valhalla.thor.presentation.widgets.MultiAppAffirmationDialog
+import com.valhalla.thor.presentation.widgets.ExportProgressBar
 import com.valhalla.thor.presentation.widgets.FreezeLoggerDialog
 import com.valhalla.thor.presentation.widgets.TermLoggerDialog
 import com.valhalla.thor.presentation.widgets.ThankYouDialog
@@ -243,7 +244,7 @@ fun MainScreen(
 
                     is MainSideEffect.ShareApp -> {
                         val intent = Intent(Intent.ACTION_SEND).apply {
-                            type = "application/vnd.android.package-archive"
+                            type = effect.mime
                             putExtra(Intent.EXTRA_STREAM, effect.uri)
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
@@ -301,17 +302,39 @@ fun MainScreen(
         Scaffold(
             modifier = Modifier.weight(1f),
             bottomBar = {
-                if (!isWideScreen) {
+                Column {
+                    // Above the navigation bar and outside its AnimatedVisibility: an export
+                    // outlives the screen that started it, so it must stay visible on a screen
+                    // that has hidden the bar, and on a wide layout that never had one. It is
+                    // also the only cancel affordance there is.
                     AnimatedVisibility(
-                        visible = showBottomBar,
+                        visible = state.exportProgress != null,
                         enter = slideInVertically(initialOffsetY = { it }),
                         exit = slideOutVertically(targetOffsetY = { it })
                     ) {
-                        AsgardNavigationBar(
-                            items = navItems,
-                            selectedIndex = selectedNavIndex,
-                            onSelect = { handleDestinationSelected(AppDestinations.entries[it]) }
-                        )
+                        // Retained across the exit animation so the bar slides out showing its
+                        // final numbers instead of blanking the instant the run clears.
+                        val lastProgress = remember { mutableStateOf(state.exportProgress) }
+                        state.exportProgress?.let { lastProgress.value = it }
+                        lastProgress.value?.let { progress ->
+                            ExportProgressBar(
+                                state = progress,
+                                onCancel = { mainViewModel.cancelExport() }
+                            )
+                        }
+                    }
+                    if (!isWideScreen) {
+                        AnimatedVisibility(
+                            visible = showBottomBar,
+                            enter = slideInVertically(initialOffsetY = { it }),
+                            exit = slideOutVertically(targetOffsetY = { it })
+                        ) {
+                            AsgardNavigationBar(
+                                items = navItems,
+                                selectedIndex = selectedNavIndex,
+                                onSelect = { handleDestinationSelected(AppDestinations.entries[it]) }
+                            )
+                        }
                     }
                 }
             }
