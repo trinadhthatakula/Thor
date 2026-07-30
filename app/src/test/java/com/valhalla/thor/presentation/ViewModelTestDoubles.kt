@@ -3,8 +3,10 @@
 
 package com.valhalla.thor.presentation
 
+import android.content.ContextWrapper
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FreezerMode
@@ -275,7 +277,13 @@ class FakePreferenceRepository(
 // quietly, so a future share test reports the real reason instead of a confusing null.
 
 class FakeAppBundleBuilder : AppBundleBuilder {
-    override suspend fun build(appInfo: AppInfo, cacheSubDir: String): Result<File> =
+    // No default values on the override — Kotlin takes them from the interface.
+    override suspend fun build(
+        appInfo: AppInfo,
+        cacheSubDir: String,
+        format: BundleFormat,
+        fileName: String?
+    ): Result<File> =
         Result.failure(UnsupportedOperationException("bundle building needs a device"))
 }
 
@@ -367,6 +375,23 @@ class FakeAuthCapability(
 ) : AuthCapability {
     override fun canAuthenticate(): Boolean = capable
     override fun hasHardware(): Boolean = hardware
+}
+
+/**
+ * A [android.content.Context] that answers `getCacheDir()` and nothing else.
+ *
+ * Needed because `BackupRunner` is a final Kotlin class like everything else in `data/`, so there
+ * is nothing to substitute for it, and a view model that takes one cannot be built without a
+ * Context. The only Android thing the runner touches is the cache dir it hands the use case as a
+ * staging root, and [ContextWrapper] is the one concrete Context in android.jar — its constructor
+ * survives the mockable-jar rewrite as a bare `super()` call, so subclassing it needs no mocking
+ * library. Every other method still throws "not mocked", which is the right answer: a test that
+ * reaches one is asking for a device.
+ *
+ * Not a general-purpose Context. Widen it only for something equally narrow.
+ */
+class FakeContext(private val cache: File) : ContextWrapper(null) {
+    override fun getCacheDir(): File = cache
 }
 
 /**

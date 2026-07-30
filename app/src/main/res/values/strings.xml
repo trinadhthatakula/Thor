@@ -145,7 +145,9 @@
     <!-- Export -->
     <string name="action_export">Export</string>
     <string name="export_explain_apk">Thor saves this app as a single installer file (.apk) to the folder below. Use it to back up the app or reinstall it later.</string>
-    <string name="export_explain_apks">This app ships as several split parts, so Thor packages them into one bundle (.apks) in the folder below. Reinstall it anytime with Thor\'s installer.</string>
+    <string name="export_explain_apks">This app ships as several split parts, packed into one bundle (.apks) in the folder below. Reinstall it anytime with Thor\'s installer.</string>
+    <string name="export_explain_xapk">Thor packs this app\'s parts into a single .xapk in the folder below, a format other installers understand too. Game data (OBB files) is left out because Android 11 and later stops any app from reading another app\'s OBB folder; a large game will install from this file but may not run.</string>
+    <string name="export_format">Format</string>
     <string name="export_save_to">Save to</string>
     <string name="export_change">Change</string>
     <string name="export_in_progress">Exporting…</string>
@@ -154,6 +156,28 @@
     <string name="export_failed_unknown">unknown error</string>
     <string name="export_dest_downloads">Downloads/Thor</string>
     <string name="export_dest_selected">Selected folder</string>
+
+    <!-- Bulk export (multi-select toolbox). Scope is deliberately "the apps you picked", never
+         "back up everything": the count-bearing strings below all read as composites of two
+         independent counts, so none of them is a <plurals> candidate. -->
+    <string name="action_export_selected">Export</string>
+    <string name="export_bulk_confirm_title">Export selected apps?</string>
+    <plurals name="export_bulk_confirm_desc">
+        <item quantity="one">Thor saves %1$d installer file to your export folder — one per selected app. This can take a long time and can need a lot of free storage, so keep Thor open until it finishes.</item>
+        <item quantity="other">Thor saves %1$d installer files to your export folder — one per selected app. This can take a long time and can need a lot of free storage, so keep Thor open until it finishes.</item>
+    </plurals>
+    <string name="export_bulk_progress" tools:ignore="PluralsCandidate">Exporting %1$d of %2$d</string>
+    <!-- Covers the partial outcome too — "8 of 12" is the normal result, not the exception. -->
+    <string name="export_bulk_finished" tools:ignore="PluralsCandidate">Exported %1$d of %2$d apps to %3$s</string>
+    <string name="export_bulk_finished_none" tools:ignore="PluralsCandidate">Couldn\'t export any of the %1$d selected apps</string>
+    <!-- Names no file: the manifest is thor-backup-<timestamp>.json, one per run, so there is no
+         fixed name to quote and the user does not need one to understand what is missing. -->
+    <string name="export_bulk_index_failed">Files were saved, but the list beside them couldn\'t be written</string>
+    <string name="export_bulk_cancelled" tools:ignore="PluralsCandidate">Export stopped — %1$d of %2$d apps were saved</string>
+    <string name="export_bulk_failed" tools:ignore="PluralsCandidate">Export failed — %1$d of %2$d apps were saved</string>
+    <string name="export_bulk_stop">Stop export</string>
+    <string name="export_bulk_nothing_selected">Select at least one app to export</string>
+    <string name="export_bulk_no_space">Not enough free space to export. Thor needs about %1$s free to prepare these files, but only %2$s is available. Free up space or select fewer apps.</string>
 
     <!-- Main Screen / Global -->
     <string name="cannot_launch_app">Cannot launch app</string>
