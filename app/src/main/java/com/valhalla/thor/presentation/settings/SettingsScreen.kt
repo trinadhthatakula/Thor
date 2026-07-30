@@ -326,6 +326,12 @@ fun SettingsScreen(
                 .background(MaterialTheme.colorScheme.surfaceContainerLow)
                 .padding(8.dp)
         ) {
+            // Deliberately left enabled when the device cannot authenticate. A disabled row
+            // swallows the tap (`clickable(enabled = false)`), so a user whose device has nothing
+            // enrolled got a greyed-out switch and silence — the subtitle was the only clue, and it
+            // is a line of body text under a control that no longer responds. Tappable, the refusal
+            // in `setBiometricLock` can answer with a toast that names what is missing. `checked`
+            // stays bound to the preference, so a refused tap settles straight back.
             SettingsSwitchRow(
                 icon = R.drawable.round_key,
                 title = stringResource(R.string.biometric_lock),
@@ -335,7 +341,6 @@ fun SettingsScreen(
                     stringResource(R.string.biometric_not_available)
                 },
                 checked = prefs.biometricLockEnabled,
-                enabled = state.canUseBiometric,
                 onCheckedChange = { viewModel.setBiometricLock(it) }
             )
         }
