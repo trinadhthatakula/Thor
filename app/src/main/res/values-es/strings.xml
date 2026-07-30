@@ -408,6 +408,8 @@
     <string name="biometric_unavailable_title">Este dispositivo no puede desbloquear Thor</string>
     <string name="biometric_unavailable_message">El bloqueo de la app está activado, pero este dispositivo no tiene nada con lo que desbloquearlo. Configura un bloqueo de pantalla o registra una huella en los ajustes del sistema y vuelve: Thor te dejará entrar.</string>
     <string name="biometric_unavailable_message_biometric_only">El bloqueo de la app está activado, pero este dispositivo no tiene ninguna huella registrada y, en Android 9, la solicitud de desbloqueo no puede aceptar un bloqueo de pantalla. Registra una huella en los ajustes del sistema y vuelve: Thor te dejará entrar.</string>
+    <string name="biometric_not_enrolled_toast">Biometría no registrada: configura primero un bloqueo de pantalla o una huella</string>
+    <string name="biometric_lock_disabled_no_biometric">Bloqueo de la app desactivado: este dispositivo no tiene biometría con la que desbloquearlo</string>
     <string name="open_security_settings">Abrir ajustes de seguridad</string>
     <string name="unlock">Desbloquear</string>
     <string name="thank_you_support_desc">Tu suscripción está activa. ¡Gracias por ayudar a apoyar el desarrollo de Thor!</string>

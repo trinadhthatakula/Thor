@@ -32,6 +32,11 @@ sealed interface AuthState {
      * offer a TRY AGAIN button that can only ever loop. The way out is enrolling something the
      * prompt accepts, which is outside the app — so this state exists to say so, name the right
      * thing for this API level, and send the user there.
+     *
+     * **Requires that enrolling something is actually possible** — see [enrolmentCanFixLockout].
+     * On an API 28 device with no biometric sensor it is not, and there this screen would be an
+     * honest dead end rather than a way out; `SecurityViewModel` disarms the lock and reports
+     * [NotRequired] instead.
      */
     data object Unavailable : AuthState
 

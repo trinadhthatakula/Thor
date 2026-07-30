@@ -8,6 +8,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -29,6 +30,7 @@ import com.valhalla.thor.presentation.security.BiometricScreen
 import com.valhalla.thor.presentation.security.BiometricUnavailableScreen
 import com.valhalla.thor.presentation.security.SecurityViewModel
 import com.valhalla.thor.presentation.theme.ThorTheme
+import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -80,6 +82,19 @@ class HomeActivity : ComponentActivity() {
                 amoledMode = prefs.useAmoled,
             ) {
                 val authState by securityViewModel.authState.collectAsStateWithLifecycle()
+
+                // The only place SecurityViewModel speaks: it disarms a lock this device can never
+                // open, and that must not happen silently — the user set that lock deliberately and
+                // is entitled to know Thor took it off. Collected here rather than in a screen
+                // because the disarm lands *before* any screen: it is what decides which of the
+                // branches below composes at all.
+                ObserveAsEvents(securityViewModel.events) { event ->
+                    Toast.makeText(
+                        this@HomeActivity,
+                        event.asString(this@HomeActivity),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
 
                 when (authState) {
                     AuthState.NotRequired,

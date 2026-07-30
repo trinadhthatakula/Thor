@@ -123,8 +123,27 @@ class SettingsViewModel(
         viewModelScope.launch { preferenceRepository.setUseAmoled(enabled) }
     }
 
+    /**
+     * Arms or disarms the app lock, refusing to arm one that could never open.
+     *
+     * The refusal is deliberately wider than the self-heal in `SecurityViewModel`: *any* device that
+     * cannot authenticate right now is refused, not only the unrecoverable API 28 case. Turning a
+     * lock **on** costs nothing to refuse — the user is standing in Settings, the toast names what is
+     * missing, and they can go enrol it and come back. Turning one **off** on their behalf is a
+     * security downgrade, so that stays confined to the case where enrolling cannot help.
+     *
+     * Asks [AuthCapability] fresh rather than reading `uiState.canUseBiometric`: that snapshot is
+     * recomputed only when the preferences flow emits, so a user who enrols a fingerprint and returns
+     * to a still-composed Settings screen would otherwise be refused on a stale `false`.
+     */
     fun setBiometricLock(enabled: Boolean) {
-        viewModelScope.launch { preferenceRepository.setBiometricLock(enabled) }
+        viewModelScope.launch {
+            if (enabled && !biometricHelper.canAuthenticate()) {
+                _events.send(UiText.StringResource(R.string.biometric_not_enrolled_toast))
+                return@launch
+            }
+            preferenceRepository.setBiometricLock(enabled)
+        }
     }
 
     fun setPrivilegeMode(mode: PrivilegeMode?) {

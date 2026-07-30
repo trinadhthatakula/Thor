@@ -6,6 +6,7 @@ package com.valhalla.thor.data.security
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK
 import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
+import com.valhalla.thor.presentation.security.enrolmentCanFixLockout
 import com.valhalla.thor.presentation.security.promptAcceptsDeviceCredential
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -68,5 +69,29 @@ class PromptAuthenticatorsTest {
 
         assertEquals(accepted, asked)
         assertEquals((29..36).toList(), asked)
+    }
+
+    /**
+     * The one device where a locked-out user has nothing to go and enrol.
+     *
+     * `SecurityViewModel` disarms the app lock on exactly this answer, so a `true` leaked in here
+     * strands a user at a prompt that can never succeed, and a `false` leaked out hands Thor
+     * permission to switch off a lock the user could still have opened. Both are security-relevant
+     * in opposite directions, which is why it is a named predicate with its own test rather than a
+     * condition inlined into the view model.
+     */
+    @Test
+    fun onlyApi28WithNoSensorIsBeyondEnrolment() {
+        assertFalse(enrolmentCanFixLockout(28, hasBiometricHardware = false))
+
+        // A sensor with nothing enrolled is the *recoverable* case: enrolling on it is the fix.
+        assertTrue(enrolmentCanFixLockout(28, hasBiometricHardware = true))
+
+        // From Q up the prompt takes a PIN, so a device with no sensor at all is still recoverable
+        // — the user sets a screen lock. Hardware stops mattering entirely.
+        for (sdk in 29..36) {
+            assertTrue(enrolmentCanFixLockout(sdk, hasBiometricHardware = false))
+            assertTrue(enrolmentCanFixLockout(sdk, hasBiometricHardware = true))
+        }
     }
 }

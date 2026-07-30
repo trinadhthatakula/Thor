@@ -114,3 +114,25 @@ internal class BiometricPromptHandler(private val context: Context) {
  */
 internal fun promptAcceptsDeviceCredential(sdkInt: Int): Boolean =
     sdkInt >= Build.VERSION_CODES.Q
+
+/**
+ * Whether a user held at a prompt that cannot succeed could *enrol their way back in* on [sdkInt].
+ *
+ * Two very different situations hide behind "the lock is on and no prompt can succeed":
+ *
+ * - **Recoverable.** The device would accept something the user simply has not enrolled — a screen
+ *   lock from Android 10 up, a fingerprint anywhere there is a sensor. [BiometricUnavailableScreen]
+ *   names the right one for this API level, deep-links to it, and `onResume` re-queries, so the user
+ *   goes and enrols and is let in. The lock survives, which is the point of having one.
+ * - **Unrecoverable.** Nothing they can enrol will ever satisfy the prompt: API 28, whose framework
+ *   prompt takes no device credential at all, on hardware with no biometric sensor. Setting a PIN
+ *   there changes nothing. That is not a locked door, it is a wall — the exits are EXIT and clearing
+ *   Thor's data — and it is the one case where Thor takes its own lock off rather than leave the
+ *   user standing in front of it.
+ *
+ * [hasBiometricHardware] is sensor *presence*, not enrolment. A sensor with nothing enrolled is
+ * recoverable precisely because enrolling on it is the fix; asking about enrolment here would
+ * collapse the two cases this function exists to tell apart.
+ */
+internal fun enrolmentCanFixLockout(sdkInt: Int, hasBiometricHardware: Boolean): Boolean =
+    promptAcceptsDeviceCredential(sdkInt) || hasBiometricHardware

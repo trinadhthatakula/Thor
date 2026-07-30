@@ -1,12 +1,13 @@
 # Follow-up: a restored `biometric_lock=true` is a hard lockout with no in-app escape
 
-**Status:** **FIXED on API 29+; still a lockout on API 28 with no enrollable biometric.** The closed
-loop is gone everywhere — the launch path consults `canAuthenticate()` and the user is shown a screen
-that explains itself instead of a retry cycle — but on Android 9 that screen sends the user somewhere
-that cannot help them, because the API 28 prompt takes no device credential. See
-[Resolution](#resolution) and [the API 28 residual](#residual-api-28-with-no-enrollable-biometric).
-The fix takes **none** of options 1/2/3, which stay open as the owner's call. Surfaced while
-device-verifying follow-up #20 (backup rules), confirmed by reading the auth path.
+**Status:** **FIXED.** The closed loop is gone everywhere. On API 29+ the user is shown a screen that
+explains itself and deep-links to the enrolment that clears it; on API 28 with no biometric hardware
+— where nothing they could enrol would ever satisfy the prompt — Thor now **refuses to arm the lock
+and disarms one that arrived anyway**, which is the owner's decision of 2026-07-30. See
+[Resolution](#resolution) and [the API 28 residual, and how it was closed](#residual-api-28-with-no-enrollable-biometric).
+What shipped is **option 2, scoped to the unrecoverable case only**; options 1, 3 and 5 stay
+unimplemented and are no longer needed. Surfaced while device-verifying follow-up #20 (backup rules),
+confirmed by reading the auth path.
 **Severity:** **Major.** The failure mode is a hard lockout with no in-app escape — the only exits are
 "clear app data", "uninstall", or "go set up a screen lock". It is rare *and* it lands exactly on new
 users, at the worst possible moment.
@@ -65,8 +66,11 @@ So on a device where authentication cannot succeed, the loop is closed:
 
 The only other control on that screen is **EXIT**, which calls `finish()`. `MainScreen` is never
 composed, so Settings is unreachable, so the switch that would turn the preference off
-(`SettingsScreen.kt:338`, correctly guarded by `enabled = state.canUseBiometric`) **cannot be reached
-by the user who needs it.** The guard is real and it is unreachable in precisely the case it exists for.
+(`SettingsScreen.kt:338`, guarded at the time by `enabled = state.canUseBiometric`) **cannot be
+reached by the user who needs it.** The guard is real and it is unreachable in precisely the case it
+exists for. (That guard has since moved into `SettingsViewModel` as a refusal with a toast — see
+[the owner's decision](#owners-decision-2026-07-30-and-what-it-turned-into) — but the reachability
+problem it describes is the same one.)
 
 ### When this actually happens
 
@@ -194,16 +198,10 @@ says a screen lock will not do it there and to enrol a fingerprint.
 
 ### Residual: API 28 with no enrollable biometric
 
-An **Android 9 device with no biometric hardware at all** (or hardware the user cannot enrol) still
-has no way in. The unavailable screen is honest with them — it says a screen lock will not do it
-there — but honest is not the same as unstuck: nothing they can do in system Settings satisfies a
-biometric-only prompt. Reaching the state still needs a restore, or an enrolment removed after the
-fact, since the Settings toggle is gated on the same predicate. Once there, the remaining path is
-EXIT and clearing Thor's data.
-
-So the acceptance criterion below is met on API 29+ and **not** met on API 28 without enrollable
-biometric hardware. Raised by the external review of #292, and recorded here rather than papered
-over.
+An **Android 9 device with no biometric hardware at all** had no way in. The unavailable screen was
+honest with them — it says a screen lock will not do it there — but honest is not the same as
+unstuck: nothing they can do in system Settings satisfies a biometric-only prompt. Once there, the
+remaining path was EXIT and clearing Thor's data.
 
 There is one route that is *not* in options 1–3, and it is worth writing down because "unfixable
 without the owner's call" overstated it — the platform does have a credential path on API 28:
@@ -217,34 +215,76 @@ without the owner's call" overstated it — the platform does have a credential 
    `FragmentActivity` and `HomeActivity` is a `ComponentActivity`, so the direct intent — behind an
    activity-result launcher on the unavailable screen — is the cheaper of the two ways to get there.
 
-   **This is still a decision, just a smaller one than 1–3.** It does not open the lock; it makes a
-   PIN satisfy it. API 30+ already accepts the credential, so this is version parity rather than new
-   policy — but it *is* a change to what unlocks Thor on a shipped OS version, for someone who set
-   the lock when only a fingerprint would do. It also only helps a device that has a screen lock; one
-   with neither a credential nor biometric hardware is unreachable by any option here except 1–3.
+   Not taken. It does not open the lock, it makes a PIN satisfy it — but it *is* a change to what
+   unlocks Thor on a shipped OS version, for someone who set the lock when only a fingerprint would
+   do. And it still leaves a device with neither a credential nor biometric hardware stuck, so it
+   would have closed the common half of the residual and left the hard half open.
 
-**Still the owner's call, untouched by this:** options 1 (fail open), 2 (self-heal by writing
-`biometric_lock=false`) and 3 (in-app disable from the error screen). Each remains implementable on
-top of what shipped — `AuthState.Unavailable` is exactly the branch any of them would hang off.
-Nothing here pre-empts that decision; it only means the user is no longer trapped while it is
-pending.
+#### Owner's decision (2026-07-30), and what it turned into
+
+> "API 28 with no enrollable biometric will not be able to turn on biometric, we will just not allow
+> him to turn on biometric and show them a toast saying biometric not enrolled. If the setting is
+> restored from backup we do the same and turn off the setting ourself."
+
+That is **option 2** — self-heal by writing `biometric_lock=false` — plus a refusal on the way in.
+It ships **asymmetrically**, because the sentence is scoped to *"API 28 with no enrollable
+biometric"* and the two halves have different costs if applied too widely:
+
+- **Refusing to arm is universal.** `SettingsViewModel.setBiometricLock(true)` is refused on *any*
+  device where `canAuthenticate()` is false, and answers with a toast naming what is missing.
+  Refusing costs the user nothing: they are standing in Settings, they can go enrol and come back.
+  The switch is no longer `enabled = state.canUseBiometric` — a disabled row swallows the tap
+  (`clickable(enabled = false)`), so the old behaviour was a greyed-out control and silence, and
+  there was no way to *answer* a tap that never arrived.
+- **Disarming is confined to the unrecoverable case** — `enrolmentCanFixLockout(SDK_INT, hasHardware)`
+  false, i.e. API 28 with no sensor. Everywhere else the user can enrol their way in, and the shipped
+  `AuthState.Unavailable` screen takes them there. Silently dropping a lock the user can still open
+  would be a security downgrade dressed up as a bug fix, so the wider reading of the instruction was
+  not taken.
+
+`enrolmentCanFixLockout` is a named predicate in `BiometricPromptHandler.kt` with its own test rather
+than a condition inlined into the view model, because it is wrong in opposite directions: a `true`
+leaked in strands a user at a prompt that can never succeed, a `false` leaked out hands Thor
+permission to switch off a lock the user could still have opened. It asks about sensor *presence*,
+not enrolment — a sensor with nothing enrolled is the recoverable case precisely because enrolling on
+it is the fix.
+
+The disarm is driven off the preference flow in `SecurityViewModel.init`, not checked once, because
+the preference is read asynchronously: `_biometricEnabled` seeds `false` and the restored `true`
+lands a moment later, which is exactly the case this exists for. Writing `false` flips that flow, so
+it settles after one pass. A matching branch in the `authState` `when` (`!capable && !enrolmentCanFix
+-> NotRequired`) keeps a frame of the dead-end screen from rendering while the write lands.
+
+It is not silent: `SecurityViewModel` emits a `UiText` on a buffered `Channel`, collected by
+`HomeActivity` — buffered, not `replay = 0`, because the disarm fires during `onCreate`, before any
+collector reaches STARTED. Thor removed a security control the user deliberately switched on; saying
+so is the minimum.
+
+**Options 1 (fail open unconditionally), 3 (in-app disable from the error screen) and 5 are now
+moot** — the case each of them existed to rescue no longer occurs.
 
 ## Acceptance
 
-- **PARTLY DONE — API 29+ only.** With `biometric_lock=true` in DataStore on a device with **no
-  enrolled biometric that `promptAuthenticators(SDK_INT)` accepts** and **no screen lock** — both,
-  since on API 30+ either one alone still unlocks — Thor no longer cycles `BiometricLockView` ↔
-  `BiometricErrorView`; it shows `BiometricUnavailableScreen`, which satisfies the "working way out"
-  clause because setting a screen lock or enrolling a biometric gets the user in.
-  **On API 28 with no enrollable biometric hardware it is a way out of the *loop* but not a way
-  *in*** — the screen is honest and the user is still locked out. Closing that needs option 5 or one
-  of options 1–3, all of which are the owner's call.
+- **DONE.** With `biometric_lock=true` in DataStore on a device with **no enrolled biometric that
+  `promptAuthenticators(SDK_INT)` accepts** and **no screen lock** — both, since on API 30+ either
+  one alone still unlocks — Thor no longer cycles `BiometricLockView` ↔ `BiometricErrorView`; it
+  shows `BiometricUnavailableScreen`, which satisfies the "working way out" clause because setting a
+  screen lock or enrolling a biometric gets the user in.
+- **DONE.** On API 28 with no biometric hardware — the one device where no enrolment could ever
+  satisfy the prompt — Thor writes `biometric_lock=false`, opens to `MainScreen` and says so with a
+  toast, and the Settings switch refuses to arm it again while the device stays that way.
 - ~~A unit test on `SecurityViewModel` covering enabled-but-not-capable. The harness exists —
   `MainDispatcherRule` and `ViewModelTestDoubles` landed in the #16 batch, and `SecurityViewModel`
   already has behaviour tests, so this is a new case in an existing file, not new scaffolding.~~
-  Done — five new cases in `SecurityViewModelTest`, plus `FakeAuthCapability` in
+  Done — eight new cases in `SecurityViewModelTest`, plus `FakeAuthCapability` in
   `ViewModelTestDoubles`: enabled-but-not-capable, the recover-and-return transition, stale-error
-  clearing, no eviction of an unlocked session, and no gate at all while the lock is off.
+  clearing, no eviction of an unlocked session, no gate at all while the lock is off, and the three
+  covering the disarm — that it happens and is *written*, that it is announced, and that a lock the
+  user could enrol their way into is left alone. `Build.VERSION.SDK_INT` reads 0 under the mockable
+  android.jar, so every one of them runs the API-28-shaped branch; that is also why
+  `FakeAuthCapability.hardware` defaults to `true`, or the pre-existing cases would have silently
+  switched branch. `onlyApi28WithNoSensorIsBeyondEnrolment` in `PromptAuthenticatorsTest` pins the
+  predicate itself across 28–36.
 - **OUTSTANDING (needs a device).** The restore path is exercised end to end at least once:
   `bmgr backupnow` with biometric lock on → `adb uninstall` → `adb install -t -r` → launch on a
   device with **no screen lock and no enrolled biometric**. "No screen lock" alone does not reach

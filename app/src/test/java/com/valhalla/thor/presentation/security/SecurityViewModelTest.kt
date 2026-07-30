@@ -4,11 +4,14 @@
 package com.valhalla.thor.presentation.security
 
 import app.cash.turbine.test
+import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.presentation.FakeAuthCapability
 import com.valhalla.thor.presentation.FakePreferenceRepository
 import com.valhalla.thor.presentation.MainDispatcherRule
+import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -200,5 +203,60 @@ class SecurityViewModelTest {
         // Unavailable is a *lock* screen with an explanation on it, so showing it to someone who
         // never turned the lock on would invent a gate out of nothing.
         assertEquals(AuthState.NotRequired, vm.authState.value)
+    }
+
+    // ── The lock nothing can open ───────────────────────────────────────────────────────────────
+    //
+    // `Build.VERSION.SDK_INT` reads 0 under the mockable android.jar, so every test in this file
+    // runs the API-28-shaped branch: `promptAcceptsDeviceCredential` is false and the biometric
+    // hardware flag alone decides whether enrolling could help. That is the exact device the two
+    // tests below are about, and it is why `FakeAuthCapability.hardware` defaults to true — without
+    // it the tests above would silently switch branch.
+
+    @Test
+    fun `a lock no enrolment could ever open is taken off rather than shown`() = runTest {
+        val prefs = locked()
+        val vm = SecurityViewModel(prefs, FakeAuthCapability(capable = false, hardware = false))
+
+        // API 28 with no sensor: the framework prompt takes no device credential and there is
+        // nothing to enrol on. Unavailable would be an honest screen with no way off it but EXIT
+        // and clearing app data — the user is locked out of Thor permanently by a preference that
+        // Auto Backup restored onto hardware that cannot satisfy it.
+        assertEquals(AuthState.NotRequired, vm.authState.value)
+
+        // And it is *written*, not just routed around: a state the view model quietly ignores comes
+        // back the next time anything reads the preference, and Settings would still show the lock
+        // as on.
+        assertEquals(false, prefs.userPreferences.first().biometricLockEnabled)
+    }
+
+    @Test
+    fun `taking the lock off says so`() = runTest {
+        val vm = SecurityViewModel(locked(), FakeAuthCapability(capable = false, hardware = false))
+
+        vm.events.test {
+            // Silence here means Thor removed a security control the user deliberately switched on
+            // and let them believe it was still there. The Channel is buffered precisely so this
+            // survives being sent before the activity's collector starts.
+            assertEquals(
+                UiText.StringResource(R.string.biometric_lock_disabled_no_biometric),
+                awaitItem()
+            )
+        }
+    }
+
+    @Test
+    fun `a lock the user could enrol their way into is left alone`() = runTest {
+        val prefs = locked()
+        val vm = SecurityViewModel(prefs, FakeAuthCapability(capable = false, hardware = true))
+
+        // Same "armed and cannot open" state, different device: there is a sensor, so enrolling a
+        // fingerprint fixes it. Unavailable names that and deep-links to it, and `refreshCapability`
+        // turns the return trip into a working prompt.
+        assertEquals(AuthState.Unavailable, vm.authState.value)
+
+        // Disarming here would be a security downgrade dressed up as a bug fix — the lock is
+        // openable, the user just has not enrolled yet.
+        assertEquals(true, prefs.userPreferences.first().biometricLockEnabled)
     }
 }

@@ -400,6 +400,8 @@
     <string name="biometric_unavailable_title">此设备无法解锁 Thor</string>
     <string name="biometric_unavailable_message">应用锁已开启，但此设备没有可用来解锁的方式。请在系统设置中设置屏幕锁或录入指纹，然后返回 — Thor 会让你进入。</string>
     <string name="biometric_unavailable_message_biometric_only">应用锁已开启，但此设备未录入指纹；在 Android 9 上，解锁提示无法接受屏幕锁。请在系统设置中录入指纹，然后返回 — Thor 会让你进入。</string>
+    <string name="biometric_not_enrolled_toast">未录入生物识别 — 请先设置屏幕锁或录入指纹</string>
+    <string name="biometric_lock_disabled_no_biometric">已关闭应用锁：此设备没有可用来解锁的生物识别方式</string>
     <string name="open_security_settings">打开安全设置</string>
     <string name="unlock">解锁</string>
     <string name="thank_you_support_desc">您的订阅已生效。感谢您支持 Thor 的开发！</string>
