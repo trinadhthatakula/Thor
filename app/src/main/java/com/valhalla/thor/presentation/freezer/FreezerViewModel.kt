@@ -15,6 +15,7 @@ import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.BulkOp
+import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.BulkScope
 import com.valhalla.thor.domain.model.FreezeProfile
@@ -319,15 +320,22 @@ class FreezerViewModel(
      */
     fun runProfile(profileId: Long, op: BulkOp) {
         viewModelScope.launch {
-            val result = bulkFreezeRunner
+            val outcome = bulkFreezeRunner
                 .launch(BulkRequest(op, BulkScope.Profile(profileId)))
                 .await()
-            // null means the run was a no-op: no privilege, or nothing left to act on after the
-            // tier filter. Saying "Froze 0 apps" would read as a failure of the freeze rather
-            // than of the precondition, so name the precondition instead.
             emitToast(
-                if (result == null) UiText.StringResource(R.string.profile_nothing_to_do)
-                else bulkResultMessage(result)
+                when (outcome) {
+                    is BulkOutcome.Completed -> bulkResultMessage(outcome.result)
+                    // A no-op: no privilege, or nothing left to act on after the tier filter.
+                    // Saying "Froze 0 apps" would read as a failure of the freeze rather than of
+                    // the precondition, so name the precondition instead.
+                    BulkOutcome.NothingToDo ->
+                        UiText.StringResource(R.string.profile_nothing_to_do)
+                    // And this is not that. The run raised — Room, a dead binder — possibly after
+                    // freezing part of the profile, so the one thing that must not be said is
+                    // that there was nothing to do.
+                    is BulkOutcome.Failed -> UiText.StringResource(R.string.bulk_run_failed)
+                }
             )
         }
     }

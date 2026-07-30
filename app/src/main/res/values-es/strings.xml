@@ -507,6 +507,7 @@
     <string name="profile_saved">Perfil guardado</string>
     <string name="profile_deleted">Perfil eliminado</string>
     <string name="profile_nothing_to_do">No hay nada que hacer con este perfil</string>
+    <string name="bulk_run_failed">La operación no terminó: revisa las apps antes de darla por hecha</string>
     <string name="error_profile_name_taken">Ese nombre de perfil ya está en uso</string>
     <string name="error_profile_delete_failed">No se pudo eliminar ese perfil</string>
     <string name="error_profiles_load_failed">No se pudieron cargar los perfiles de congelación</string>

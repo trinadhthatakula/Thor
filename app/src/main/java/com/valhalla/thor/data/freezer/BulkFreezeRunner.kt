@@ -8,6 +8,7 @@ import com.valhalla.thor.data.source.local.UadHelper
 import com.valhalla.thor.data.source.local.UadSnapshot
 import com.valhalla.thor.domain.model.BulkAction
 import com.valhalla.thor.domain.model.BulkOp
+import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.BulkResult
 import com.valhalla.thor.domain.model.BulkScope
@@ -158,7 +159,7 @@ class BulkFreezeRunner(
      * only target list; with profiles it would coalesce "freeze profile A" and "freeze profile B"
      * into one run over A.
      */
-    private class InFlight(val request: BulkRequest, val job: Deferred<BulkResult?>)
+    private class InFlight(val request: BulkRequest, val job: Deferred<BulkOutcome>)
 
     // Every run that has not settled yet, oldest first — the single source of truth for both
     // [runningRequests] and the coalescing key, whose newest launch is the last entry. Nearly
@@ -244,9 +245,10 @@ class BulkFreezeRunner(
      * Returning the run rather than making callers watch [runningRequests] is deliberate: a fast
      * run can leave that list before an observer starts collecting, and `await()` has no such
      * window.
-     * The awaited value is the [BulkResult], or null when the run was a no-op (no privilege, or
-     * nothing to act on) — which is what lets a caller that *is* allowed to show UI, such as
-     * `FreezerLaunchActivity`, report an outcome the notifier may have had to drop.
+     * The awaited value is a [BulkOutcome] — the [BulkResult] when the batch ran, `NothingToDo`
+     * when there was no privilege or nothing to act on, `Failed` when it raised and was caught.
+     * That is what lets a caller that *is* allowed to show UI, such as `FreezerLaunchActivity`,
+     * report an outcome the notifier may have had to drop, and say which of the three it was.
      *
      * Same-request coalescing: a second tap for the same op *over the same scope* returns the
      * existing run — any unsettled run matching it, not merely the most recent launch, so a repeat
@@ -279,10 +281,10 @@ class BulkFreezeRunner(
      * UNFREEZE batch already enabled, and that package is not in the unfreeze target list
      * either (it was not frozen when the candidates were computed).
      */
-    fun launch(op: BulkOp): Deferred<BulkResult?> = launch(BulkRequest(op))
+    fun launch(op: BulkOp): Deferred<BulkOutcome> = launch(BulkRequest(op))
 
     @Synchronized
-    fun launch(request: BulkRequest): Deferred<BulkResult?> {
+    fun launch(request: BulkRequest): Deferred<BulkOutcome> {
         val newest = unsettled.lastOrNull()
         // Same-request coalescing: return the in-flight run unchanged. Matched against the whole
         // chain rather than its tail, because once one run is queued behind another the request
@@ -330,40 +332,54 @@ class BulkFreezeRunner(
                 // B-8: run() returns null for no-op cases (no privilege, empty target list);
                 // do not publish BulkResult(0,0,0) because the tile already communicates
                 // "nothing to freeze" — a false "Froze 0 apps" message is worse than silence.
-                run(request)?.also { result ->
-                    // Publish to _lastResult for FREEZE only. The tile is freeze-only (D1) and
-                    // _lastResult is process-lifetime, so parking an UNFREEZE result here would
-                    // render it in the tile subtitle the next time the shade opens — possibly
-                    // hours later. The notification reports both ops, but only when the user
-                    // permits notifications; the returned Deferred is what gives an UNFREEZE
-                    // caller an unconditional surface. See the BulkResultNotifier KDoc.
-                    //
-                    // UNFREEZE clears instead of skipping: an unconsumed FREEZE result (one the
-                    // shade never opened to display) describes packages this run has just
-                    // unfrozen, so leaving it would show "Froze N apps" on a tile that is now
-                    // READY again. Stale either way — drop it. That clear is scope-agnostic:
-                    // a profile unfreeze can restore watchlist apps too, so it invalidates the
-                    // parked freeze report just as surely as an Unfreeze-all does.
-                    //
-                    // A profile FREEZE parks nothing. The subtitle is the *tile's* report of the
-                    // tile's own list, and the sheet that started a profile run reports it there
-                    // by awaiting this Deferred — pushing it into the tile as well would put
-                    // "Froze 4 apps" over a watchlist those four may not even belong to.
-                    if (request.op == BulkOp.UNFREEZE) _lastResult.value = null
-                    else if (request.scope == BulkScope.Watchlist) _lastResult.value = result
-                    // Unconditional, unlike the lines around it: a completion is not a *report*
-                    // of the run, it is the fact that package state changed. It must not inherit
-                    // the tile's freeze-only rule (an unfreeze recolours icons too) nor the
-                    // notifier's permission gate (icons are not a notification).
-                    //
-                    // Ahead of notifier.post for the same reason: post() is a binder call into
-                    // NotificationManager and the outer catch would swallow anything it threw,
-                    // silently skipping the emission for a run whose packages are already
-                    // mutated. tryEmit cannot throw or suspend, so nothing is owed to ordering
-                    // the other way.
-                    _completions.tryEmit(request.op)
-                    if (result.total > 0) notifier.post(result)
+                // That null becomes BulkOutcome.NothingToDo here, so a caller can tell it apart
+                // from the Failed this block's catch returns.
+                val result = run(request) ?: return@async BulkOutcome.NothingToDo
+                // Publish to _lastResult for FREEZE only. The tile is freeze-only (D1) and
+                // _lastResult is process-lifetime, so parking an UNFREEZE result here would
+                // render it in the tile subtitle the next time the shade opens — possibly
+                // hours later. The notification reports both ops, but only when the user
+                // permits notifications; the returned Deferred is what gives an UNFREEZE
+                // caller an unconditional surface. See the BulkResultNotifier KDoc.
+                //
+                // UNFREEZE clears instead of skipping: an unconsumed FREEZE result (one the
+                // shade never opened to display) describes packages this run has just
+                // unfrozen, so leaving it would show "Froze N apps" on a tile that is now
+                // READY again. Stale either way — drop it. That clear is scope-agnostic:
+                // a profile unfreeze can restore watchlist apps too, so it invalidates the
+                // parked freeze report just as surely as an Unfreeze-all does.
+                //
+                // A profile FREEZE parks nothing. The subtitle is the *tile's* report of the
+                // tile's own list, and the sheet that started a profile run reports it there
+                // by awaiting this Deferred — pushing it into the tile as well would put
+                // "Froze 4 apps" over a watchlist those four may not even belong to.
+                if (request.op == BulkOp.UNFREEZE) _lastResult.value = null
+                else if (request.scope == BulkScope.Watchlist) _lastResult.value = result
+                // Unconditional, unlike the lines around it: a completion is not a *report*
+                // of the run, it is the fact that package state changed. It must not inherit
+                // the tile's freeze-only rule (an unfreeze recolours icons too) nor the
+                // notifier's permission gate (icons are not a notification).
+                //
+                // Ahead of notifier.post for the same reason: post() is a binder call into
+                // NotificationManager and the outer catch would swallow anything it threw,
+                // silently skipping the emission for a run whose packages are already
+                // mutated. tryEmit cannot throw or suspend, so nothing is owed to ordering
+                // the other way.
+                _completions.tryEmit(request.op)
+                if (result.total > 0) {
+                    // Caught here rather than by the block's own catch, which would turn a run
+                    // that froze every app it was given into Failed because the *notification*
+                    // about it could not be posted. The packages are already mutated at this
+                    // point; failing to describe that is not failing to do it.
+                    try {
+                        notifier.post(result)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Logger.e("BulkFreezeRunner", "posting the result for $request failed", e)
+                    }
                 }
+                BulkOutcome.Completed(result)
             } catch (e: CancellationException) {
                 // B-2: CancellationException is an Exception in Kotlin; rethrowing here keeps
                 // structured cancellation intact and prevents the finally sweep from misreading
@@ -376,7 +392,10 @@ class BulkFreezeRunner(
                 // previous run's outcome.
                 Logger.e("BulkFreezeRunner", "bulk $request run failed unexpectedly", e)
                 _lastResult.value = null
-                null
+                // Failed, not null: an awaiting caller used to receive the same value a no-op
+                // returns and told the user nothing had happened, on the one run where some of
+                // their apps may well have been mutated before the throw.
+                BulkOutcome.Failed(e)
             } finally {
                 // B-6: sweep before this run leaves [runningRequests], for a stable combined
                 // emission — completion, and therefore retirement, is what ends this block.
@@ -426,7 +445,7 @@ class BulkFreezeRunner(
     /** Drop a settled run from the chain and republish. Identity, not equality: two runs of the
      * same request can overlap across a cancel/replace handoff. */
     @Synchronized
-    private fun retire(job: Deferred<BulkResult?>) {
+    private fun retire(job: Deferred<BulkOutcome>) {
         unsettled.removeAll { it.job === job }
         publishRunning()
     }

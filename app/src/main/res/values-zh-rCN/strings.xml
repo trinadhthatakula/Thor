@@ -498,6 +498,7 @@
     <string name="profile_saved">配置已保存</string>
     <string name="profile_deleted">配置已删除</string>
     <string name="profile_nothing_to_do">此配置无需操作</string>
+    <string name="bulk_run_failed">本次操作未完成——请先确认各应用的状态</string>
     <string name="error_profile_name_taken">该配置名称已被占用</string>
     <string name="error_profile_delete_failed">无法删除该配置</string>
     <string name="error_profiles_load_failed">无法加载冻结配置</string>

@@ -546,6 +546,7 @@
     <string name="profile_saved">تم حفظ الملف</string>
     <string name="profile_deleted">تم حذف الملف</string>
     <string name="profile_nothing_to_do">لا يوجد ما يمكن فعله لهذا الملف</string>
+    <string name="bulk_run_failed">لم تكتمل هذه العملية — تحقّق من التطبيقات قبل الاعتماد عليها</string>
     <string name="error_profile_name_taken">اسم الملف هذا مستخدم بالفعل</string>
     <string name="error_profile_delete_failed">تعذر حذف هذا الملف</string>
     <string name="error_profiles_load_failed">تعذر تحميل ملفات التجميد</string>

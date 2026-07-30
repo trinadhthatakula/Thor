@@ -507,6 +507,7 @@
     <string name="profile_saved">Profil enregistré</string>
     <string name="profile_deleted">Profil supprimé</string>
     <string name="profile_nothing_to_do">Rien à faire pour ce profil</string>
+    <string name="bulk_run_failed">L\'opération n\'est pas allée au bout — vérifiez les applis avant de vous y fier</string>
     <string name="error_profile_name_taken">Ce nom de profil est déjà pris</string>
     <string name="error_profile_delete_failed">Impossible de supprimer ce profil</string>
     <string name="error_profiles_load_failed">Échec du chargement des profils de congélation</string>

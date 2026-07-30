@@ -523,6 +523,7 @@
     <string name="profile_saved">Profile saved</string>
     <string name="profile_deleted">Profile deleted</string>
     <string name="profile_nothing_to_do">Nothing to do for this profile</string>
+    <string name="bulk_run_failed">That run did not finish — check the apps before relying on it</string>
     <string name="error_profile_name_taken">That profile name is already taken</string>
     <string name="error_profile_delete_failed">Could not delete that profile</string>
     <string name="error_profiles_load_failed">Failed to load freeze profiles</string>

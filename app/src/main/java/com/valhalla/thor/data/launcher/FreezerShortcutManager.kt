@@ -24,7 +24,7 @@ import com.valhalla.thor.data.freezer.AppFreezeStateReader
 import com.valhalla.thor.data.freezer.BulkFreezeRunner
 import com.valhalla.thor.data.receivers.FreezerShortcutPinnedReceiver
 import com.valhalla.thor.domain.model.BulkOp
-import com.valhalla.thor.domain.model.BulkResult
+import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.model.FreezeState
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.util.Logger
@@ -141,12 +141,12 @@ class FreezerShortcutManager(
     /**
      * Bulk freeze/unfreeze every package in the freezer, off the finishing activity.
      *
-     * Returns the run so the caller can await its [BulkResult] and report it. The icon rebuild
+     * Returns the run so the caller can await its [BulkOutcome] and report it. The icon rebuild
      * is deliberately *not* part of that Deferred: it hangs off the runner's completions (see
      * the `init` block), so a caller that finishes early never truncates it, and a caller that
      * awaits does not wait on shortcut bookkeeping it does not care about.
      */
-    fun runBulk(disable: Boolean): Deferred<BulkResult?> =
+    fun runBulk(disable: Boolean): Deferred<BulkOutcome> =
         // Delegate so this shares the tile's candidate filter, Semaphore(5), deadline and
         // result reporting. It previously ran sequentially and discarded every Result.
         bulkFreezeRunner.launch(if (disable) BulkOp.FREEZE else BulkOp.UNFREEZE)
