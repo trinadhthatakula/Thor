@@ -1,6 +1,8 @@
 # Pinned-shortcut PackageManager lookups drop frozen system apps
 
-**Status:** filed, not fixed. Latent — unreachable while per-app pins stay user-apps-only.
+**Status:** **FIXED**, both sites together and by the shape suggested below. Still latent when it was
+fixed — that is the point of fixing it now rather than after the pin gate moves. See
+[Resolution](#resolution).
 **Found:** 2026-07-29, during the root-cause sweep for the tile icon-refresh bug (PR #286).
 
 ## The gap
@@ -57,10 +59,44 @@ One binder call instead of two, and no way for the two to disagree.
 Lifting the "v1: user apps only" pin gate — which is exactly what the "should the tile be allowed
 to freeze system apps?" discussion would lead to. Do this first if that lands.
 
+## Resolution
+
+Done as suggested: one `applicationInfo(packageName)` read with the freeze-aware flags, handed to
+both `getApplicationLabel(ApplicationInfo)` and `getApplicationIcon(ApplicationInfo)`. `appLabel`
+became a pure `ApplicationInfo -> String`, `appIcon` takes the info instead of the package name, and
+a new `liveAppShortcut` is the one place that resolves a package and builds a shortcut from what it
+found — so "fix them together" is now the only thing the code lets you do.
+
+Two things beyond the straight port:
+
+**The flags have one definition now.** They had three — `AppFreezeStateReader`,
+`ExtensionOpsProvider`, and none in the shortcut manager, which is the whole bug in miniature.
+`AppFreezeStateReader.MATCH_FLAGS` is public and the other two use it, so a fourth site cannot
+half-have them. `FreezeMatchFlagsTest` pins the pair; that is all a JVM test can reach, since a
+`PackageManager` cannot be faked, but the flags are the half that kept drifting.
+
+**The fallback icon is no longer the white square.** This section warned that un-masking `appIcon`
+turns a stale icon into a blank one, because `IconCompat.createWithResource(context,
+R.drawable.frozen)` hands the launcher a `?attr/colorControlNormal`-tinted vector it cannot resolve.
+The catch now goes through `bulkIcon`, the composed-bitmap path that already existed for exactly
+this, so the degraded case is a frost tile rather than nothing. The masking is gone *and* what it
+was masking is fixed, rather than the first alone.
+
+Unchanged: the `!isSystem` pin gate, at all four entry points. This removes the landmine under it;
+it does not lift it.
+
+### Acceptance
+
+Not device-verifiable today — every path into these lookups is still user-apps-only, so there is no
+frozen system app to point at. It becomes testable the moment the gate lifts, which is when this
+would otherwise have been found. `FreezeMatchFlagsTest` plus the compiler (the label can no longer
+be resolved without the info the icon also uses) is what stands in for it until then.
+
 ## Same gap, elsewhere (scoped out)
 
-- `ExtensionOpsProvider.kt:113` — misreports a frozen **system** app as not-frozen to extensions.
-  Real, user-visible to extension authors, unrelated to shortcuts.
+- ~~`ExtensionOpsProvider.kt:113` — misreports a frozen **system** app as not-frozen to extensions.
+  Real, user-visible to extension authors, unrelated to shortcuts.~~ **Fixed separately** (#14 in
+  the follow-ups README), and now reads the shared constant rather than its own copy.
 - `FreezerLaunchActivity.kt:168` (`isSuspended`) — benign; the `||` at `:137` short-circuits so it
   is only evaluated once `getLaunchIntentForPackage` has already resolved.
 - `AutoFreezeManager.kt:122` (flags `0`) — benign; a frozen system app throws, is logged
