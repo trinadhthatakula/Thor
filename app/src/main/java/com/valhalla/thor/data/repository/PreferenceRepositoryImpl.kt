@@ -8,9 +8,11 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.valhalla.thor.data.repository.PreferenceRepositoryImpl.Keys
+import com.valhalla.thor.data.repository.PreferenceRepositoryImpl.LocalKeys
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FreezerMode
@@ -21,11 +23,31 @@ import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import org.koin.core.annotation.Single
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "thor_preferences")
+
+/**
+ * The second store, for state that describes **this install** rather than what the user chose.
+ *
+ * Thor's backup ruleset is an allowlist naming exactly one path, `datastore/thor_preferences
+ * .preferences_pb` — so a store with any other name is excluded from Auto Backup by construction,
+ * with no ruleset change and no `BackupAgent`. That is the entire point of it: a value in here
+ * cannot arrive on a device that never produced it.
+ *
+ * What belongs here is a fact *about* something that is itself excluded from backup — the Room
+ * database, principally. `has_shown_disabled_apps_prompt` is the case that forced this: it means
+ * "we have already offered to import the frozen apps we found", which is a statement about the
+ * freezer watchlist, and the watchlist does not travel. Restored into an install whose watchlist is
+ * empty, it switched off the one affordance built to rebuild that watchlist, silently. See
+ * `docs/follow-ups/restored-prompt-flag-suppresses-watchlist-recovery.md`.
+ *
+ * A user *setting* does not belong here, however local it feels — settings are what the backup is
+ * for.
+ */
+private val Context.localState: DataStore<Preferences> by preferencesDataStore(name = "thor_local_state")
 
 @Single(binds = [PreferenceRepository::class])
 class PreferenceRepositoryImpl(
@@ -63,7 +85,12 @@ class PreferenceRepositoryImpl(
         val FREEZER_MODE = stringPreferencesKey("freezer_mode")
 
         // Freezer Prompts
-        val HAS_SHOWN_DISABLED_APPS_PROMPT = booleanPreferencesKey("has_shown_disabled_apps_prompt")
+        //
+        // Write-to-delete only. This key lived here until 1.93; it now lives in [LocalKeys], and
+        // the copy left behind in a shipped install is removed the next time the flag is written.
+        // Reading it again would undo the fix — a restored `true` here is exactly the stale value
+        // that suppressed the watchlist recovery prompt.
+        val LEGACY_DISABLED_APPS_PROMPT = booleanPreferencesKey("has_shown_disabled_apps_prompt")
 
         // Support Developer Prompt
         val HAS_SHOWN_SUPPORT_DEVELOPER_PROMPT = booleanPreferencesKey("has_shown_support_developer_prompt")
@@ -83,8 +110,16 @@ class PreferenceRepositoryImpl(
         val AUTO_REINSTALL_ENABLED = booleanPreferencesKey("auto_reinstall_enabled")
     }
 
-    override val userPreferences: Flow<UserPreferences> = context.dataStore.data
-        .map { it.toUserPreferences() }
+    /** Keys in [localState] — see that store's doc for what earns a place here. */
+    internal object LocalKeys {
+        /** "We have already offered to import the frozen apps we found." A fact about the watchlist. */
+        val HAS_SHOWN_DISABLED_APPS_PROMPT = booleanPreferencesKey("has_shown_disabled_apps_prompt")
+    }
+
+    override val userPreferences: Flow<UserPreferences> =
+        combine(context.dataStore.data, context.localState.data) { prefs, local ->
+            prefs.toUserPreferences(local)
+        }
 
     // --- App List ---
 
@@ -176,8 +211,15 @@ class PreferenceRepositoryImpl(
     }
 
     override suspend fun setHasShownDisabledAppsPrompt(hasShown: Boolean) {
+        context.localState.edit {
+            it[LocalKeys.HAS_SHOWN_DISABLED_APPS_PROMPT] = hasShown
+        }
+        // Sweep up the pre-1.93 copy on the way past. Nothing reads it any more, so this is tidiness
+        // rather than correctness — but leaving it in the backed-up file leaves a loaded gun for
+        // whoever next adds a read of that key. This path runs at most a handful of times per
+        // install, so the extra write is not worth guarding against.
         context.dataStore.edit {
-            it[Keys.HAS_SHOWN_DISABLED_APPS_PROMPT] = hasShown
+            it.remove(Keys.LEGACY_DISABLED_APPS_PROMPT)
         }
     }
 
@@ -239,11 +281,18 @@ class PreferenceRepositoryImpl(
 }
 
 /**
- * Pure mapping from an already-read [Preferences] snapshot to [UserPreferences].
+ * Pure mapping from already-read [Preferences] snapshots to [UserPreferences].
  * Extracted from the [PreferenceRepositoryImpl.userPreferences] Flow so it is unit-testable
  * on plain JVM (no Android / DataStore access). Every field mirrors the prior inline mapping.
+ *
+ * The receiver is the backed-up settings store; [local] is the per-install one. Two snapshots
+ * rather than one because which file a value came out of is the whole distinction — see
+ * [PreferenceRepositoryImpl] and the `localState` store above. [local] defaults to empty so a
+ * caller that only cares about settings need not conjure one.
  */
-internal fun Preferences.toUserPreferences(): UserPreferences {
+internal fun Preferences.toUserPreferences(
+    local: Preferences = emptyPreferences()
+): UserPreferences {
     val prefs = this
 
     val sortBy = prefs[Keys.SORT_BY]
@@ -294,7 +343,10 @@ internal fun Preferences.toUserPreferences(): UserPreferences {
         autoFreezeEnabled = prefs[Keys.AUTO_FREEZE] ?: false,
         freezerMode = freezerMode,
         addFreezerToLauncher = prefs[Keys.ADD_FREEZER_TO_LAUNCHER] ?: false,
-        hasShownDisabledAppsPrompt = prefs[Keys.HAS_SHOWN_DISABLED_APPS_PROMPT] ?: false,
+        // From `local`, never from `prefs`: a `true` in the settings file is either a pre-1.93
+        // leftover or a restored one, and both describe a watchlist this install may not have.
+        hasShownDisabledAppsPrompt =
+            local[LocalKeys.HAS_SHOWN_DISABLED_APPS_PROMPT] ?: false,
         hasShownSupportDeveloperPrompt = prefs[Keys.HAS_SHOWN_SUPPORT_DEVELOPER_PROMPT] ?: false,
         animationIntensity = animationIntensity,
         appListIsGrid = appListIsGrid,
