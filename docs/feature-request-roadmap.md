@@ -19,7 +19,7 @@
 | **#210** | Keep-in-launcher | ✅ **Achievable slice done** — the Freeze\|Suspend mode shipped via #239 (PR #241). The accessibility-based auto-refreeze remains declined, as planned |
 | **#55a** | Freeze profiles | ✅ **Built** — `feat/freeze-profiles`, in review (#295). All three recon risks closed: the tier gate, the runner's coalescing key and the launcher restore gate (see below) |
 | #51 | App + data backup | 🟨 **Phase 1 done** — multi-select → bulk APK/bundle backup to the export target with a `thor-backup-<stamp>.json` manifest, a cancellable progress bar and a process-lifetime runner. **Phase 2 (root data tar) not started**, and that is the half `README.md` has promised for a year |
-| **#285** | Filter by permission | ✅ **Built** — `feat/permission-filter`, in review (#294). Scope question settled: one `getInstalledPackages` sweep, no Room change. ⚠️ the GitHub issue is still **open** — close it on merge |
+| **#285** | Filter by permission | ✅ **Done** — merged to `dev` (#294). Scope question settled: one `getInstalledPackages` sweep, no Room change. ⚠️ the GitHub issue is still **open** — close it |
 | #161 | `.apks` won't open from Samsung My Files | 🐞 **bug, not a feature** — unanswered since 2026-07-18 |
 | _all others_ | | ⬜ not started |
 
@@ -30,13 +30,14 @@ timing fix (#278), the `longVersionCode` truncation fix (#277), installer downgr
 R8 fix (#265). That is where the last four weeks went — the feature backlog below barely moved
 because the work was elsewhere.
 
-**In review, not yet merged:** the permission filter (#294/#285), freeze profiles (#295/#55a) and the
-watchlist prompt flag (#299), a fix with no issue behind it. The shortcut match flags (#300), `.xapk`
-export + backup phase 1 (#293), the biometric hard-lockout escape hatch (#292), the Dependabot
-Bundler ecosystem (#291), the unified app-info sheet (#288) and the previous refresh (#289) have all
-since merged. Every open branch edits this file, so this paragraph and the ranking table are written
-to be *identical* on each of them — same text merges clean, and the alternative is re-resolving the
-same conflict once per merge.
+**In review, not yet merged:** freeze profiles (#295/#55a), and nothing else. The permission filter
+(#294/#285), the watchlist prompt flag (#299), the shortcut match flags (#300), `.xapk` export +
+backup phase 1 (#293), the biometric hard-lockout escape hatch (#292), the Dependabot Bundler
+ecosystem (#291), the unified app-info sheet (#288) and the previous refresh (#289) have all since
+merged. While several branches were open at once they all edited this file, so this paragraph and the
+ranking table were kept *byte-identical* across them — same text merges with no resolution at all,
+and the alternative was re-resolving the same conflict once per merge. Worth redoing the moment a
+second branch opens.
 
 ---
 
@@ -49,7 +50,7 @@ same conflict once per merge.
 | — | **#164b** | `.xapk` export (the remainder of #164) | 2 | done | 2 | ✅ **Merged** (#293) — the format picker ships with it; close #164 on merge |
 | — | **#51 ph.1** | Bulk APK/bundle backup + manifest | **4** | done | 3 | ✅ **Merged** (#293) — phase 2 (root data) is what remains |
 | — | **#55a** | Freeze **profiles** (named groups) | 3 | done | 4 | 🟣 **Built**, in review (#295) — reused Room + `BulkFreezeRunner` as predicted; the runner needed a scoped coalescing key first *(split from #55)* |
-| — | **#285** | Filter app list by permission | 2–3 | done | 2 | 🟣 **Built**, in review (#294) — mostly UI as predicted, but the group table had to be shipped by Thor (see below) |
+| — | **#285** | Filter app list by permission | 2–3 | done | 2 | ✅ **Merged** (#294) — mostly UI as predicted, but the group table had to be shipped by Thor (see below); close the issue |
 | 1 | **#161** | `.apks` won't open from Samsung My Files | 2 | **1–2 d** | 2 | 🟢 a real bug with a named reporter and a working comparison app — cheap goodwill |
 | 2 | **#51 ph.2** | App **data** backup / transfer | **4** | root-data **5–8 d** · P2P 12–20 d | 5 | 🟡 highest remaining impact, hard-gated on root — phase 3 (P2P) stays declined |
 | 3 | **#130** | InstallWithOptions attribution + drill-down | 2 | **1–2 d** (label ≈0.25 d) | 2 | 🟡 label = trivial; attribution unreliable |
@@ -63,7 +64,7 @@ same conflict once per merge.
 ## Sequencing
 
 **🟢 Do first (~1 week):** ~~**#164b** (`.xapk` writer)~~ **merged (#293)** → ~~**#285** (permission
-filter)~~ **built, in review (#294)** → ~~**#55a** (freeze profiles)~~ **built, in review (#295)** →
+filter)~~ **merged (#294)** → ~~**#55a** (freeze profiles)~~ **built, in review (#295)** →
 **#161** (Samsung My Files). All lean on existing infra and are low-risk — with one caveat:
 ~~**#285's estimate is pending scope validation.**~~ **Settled, and it was the cheap answer** — see
 the **#285** row below. One `getInstalledPackages(GET_PERMISSIONS)` sweep, held in memory while the
