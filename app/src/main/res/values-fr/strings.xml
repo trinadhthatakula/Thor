@@ -411,6 +411,14 @@
     <string name="action_remove">Supprimer</string>
     <string name="biometric_unlock_title">Déverrouiller Thor</string>
     <string name="biometric_unlock_subtitle">Authentifiez-vous pour continuer</string>
+    <string name="biometric_unavailable_title">Cet appareil ne peut pas déverrouiller Thor</string>
+    <string name="biometric_unavailable_message">Le verrouillage de l\'application est activé, mais cet appareil n\'a rien qui permette de le déverrouiller. Configurez un verrouillage d\'écran ou enregistrez une empreinte dans les paramètres système, puis revenez — Thor vous laissera entrer.</string>
+    <string name="biometric_unavailable_message_biometric_only">Le verrouillage de l\'application est activé, mais aucune empreinte n\'est enregistrée sur cet appareil — et sous Android 9, la demande de déverrouillage ne peut pas accepter un verrouillage d\'écran. Enregistrez une empreinte dans les paramètres système, puis revenez — Thor vous laissera entrer.</string>
+    <string name="biometric_not_enrolled_toast">Biométrie non enregistrée — configurez d\'abord un verrouillage d\'écran ou une empreinte</string>
+    <string name="biometric_not_enrolled_toast_biometric_only">Aucune empreinte enregistrée — sous Android 9, un verrouillage d\'écran ne déverrouille pas Thor : enregistrez d\'abord une empreinte</string>
+    <string name="biometric_lock_unavailable_toast">Impossible d\'activer le verrouillage de l\'application : cet appareil n\'a aucune biométrie pour le déverrouiller</string>
+    <string name="biometric_lock_disabled_no_biometric">Verrouillage de l\'application désactivé : cet appareil n\'a aucune biométrie pour le déverrouiller</string>
+    <string name="open_security_settings">Ouvrir les paramètres de sécurité</string>
     <string name="unlock">Déverrouiller</string>
     <string name="thank_you_support_desc">Votre abonnement est actif. Merci d\'aider à soutenir le développement de Thor !</string>
     
