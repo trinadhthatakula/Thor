@@ -9,6 +9,7 @@ import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.PrivilegeState
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.ThemeMode
@@ -16,12 +17,17 @@ import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.AppBundleFileStore
 import com.valhalla.thor.domain.repository.AppRepository
+import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.AuthCapability
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.PrivilegeStateProvider
+import com.valhalla.thor.domain.repository.StorageStatsProvider
 import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.domain.repository.UsageAccessGate
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import java.io.File
@@ -282,6 +288,69 @@ class FakeAppBundleFileStore : AppBundleFileStore {
 
     private fun unsupported(): Nothing =
         throw UnsupportedOperationException("file store needs a device")
+}
+
+// The four ports below exist so a view model can be built without a Context. Each concrete
+// implementation resolves a system service (or registers Shizuku listeners) from its initializer,
+// which throws on a plain JVM — see the KDoc on each interface for what was left behind.
+
+/**
+ * A privilege probe a test can drive by hand: no Shizuku listeners, no probe coroutine, no Binder.
+ *
+ * Starts at the *cold-start* value — `isReady = false` — because that is the state every consumer
+ * has to survive, and a fake that started ready would hide the loader-gating rule entirely.
+ */
+class FakePrivilegeStateProvider(
+    initial: PrivilegeState = PrivilegeState()
+) : PrivilegeStateProvider {
+
+    private val _state = MutableStateFlow(initial)
+
+    override val state: StateFlow<PrivilegeState> = _state
+
+    /** Publish a new probe result, as the real manager does when a grant lands. */
+    fun emit(next: PrivilegeState) {
+        _state.value = next
+    }
+}
+
+/** Answers from a fixed table and records what it was asked, so "was a size scan run" is assertable. */
+class FakeStorageStatsProvider(
+    private val sizes: Map<String, Long> = emptyMap()
+) : StorageStatsProvider {
+
+    val queries = mutableListOf<List<String>>()
+
+    override suspend fun installSizes(packages: List<String>): Map<String, Long> {
+        queries += packages
+        // Mirrors the real one: an unreadable package is *absent*, not zero.
+        return sizes.filterKeys { it in packages }
+    }
+}
+
+/** Grant state is a plain flag a test can flip mid-run, matching how the app-op behaves. */
+class FakeUsageAccessGate(var granted: Boolean = true) : UsageAccessGate {
+
+    var autoGrantCalls = 0
+        private set
+
+    override fun isGranted(): Boolean = granted
+
+    override suspend fun tryGrantViaPrivilege(): Boolean = granted
+
+    override suspend fun maybeAutoGrant() {
+        autoGrantCalls++
+    }
+}
+
+/** Records the packages whose launcher shortcut was retired. */
+class FakeAppShortcutController : AppShortcutController {
+
+    val disabled = mutableListOf<String>()
+
+    override fun disableAppShortcut(packageName: String) {
+        disabled += packageName
+    }
 }
 
 /**
