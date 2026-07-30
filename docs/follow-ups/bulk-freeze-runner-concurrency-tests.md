@@ -46,11 +46,16 @@ time is available. Do not re-file that as the reason.
 
 The real blocker is a missing seam, and it is in main source, not the test config.
 `BulkFreezeRunner`'s constructor takes four collaborators a JVM unit test cannot produce, and Kotlin
-classes are final by default, so none of them can be subclassed by a hand-written fake either:
+classes are final by default, so none of them can be subclassed by a hand-written fake either.
+
+**Three, as of 2026-07-31.** The `AppListViewModel` behaviour tests hit the same wall and cut four
+ports through it, one of which lands here for free — see the first row. That is also the shape the
+remaining three want: a port covering only what *this* caller uses, implemented by the existing
+class via `@Single(binds = [...])` so the other call sites do not move.
 
 | Collaborator | Declared at | Why a fake cannot stand in |
 |---|---|---|
-| `PrivilegeManager` | `data/manager/PrivilegeManager.kt:43` | final; its `init` registers Shizuku binder and permission listeners |
+| ~~`PrivilegeManager`~~ | `data/manager/PrivilegeManager.kt:43` | ~~final; its `init` registers Shizuku binder and permission listeners~~ **Solved.** `domain/repository/PrivilegeStateProvider.kt` is the read-only port, shipped for the `AppListViewModel` tests, and `state` — read once at `BulkFreezeRunner.kt:361` — is all this runner ever takes from the manager. One constructor parameter, no new interface |
 | `AppFreezeStateReader` | `data/freezer/AppFreezeStateReader.kt:27` | final, over the abstract `android.content.pm.PackageManager` |
 | `UadHelper` | `data/source/local/UadHelper.kt:49` | final, over `android.content.Context` |
 | `BulkResultNotifier` | `data/freezer/BulkResultNotifier.kt:36` | final, over `android.content.Context` |
