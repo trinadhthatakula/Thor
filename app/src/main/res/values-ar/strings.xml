@@ -470,6 +470,26 @@
     <string name="export_failed_unknown">خطأ غير معروف</string>
     <string name="export_dest_downloads">التنزيلات/Thor</string>
     <string name="export_dest_selected">المجلد المحدد</string>
+
+    <string name="action_export_selected">تصدير</string>
+    <string name="export_bulk_confirm_title">تصدير التطبيقات المحددة؟</string>
+    <plurals name="export_bulk_confirm_desc">
+        <item quantity="zero">يحفظ Thor في مجلد التصدير ملف تثبيت واحدًا لكل تطبيق محدد، أي %1$d من الملفات في المجموع. قد يستغرق ذلك وقتًا طويلًا وقد يحتاج إلى مساحة تخزين كبيرة، لذا أبقِ Thor مفتوحًا حتى ينتهي.</item>
+        <item quantity="one">يحفظ Thor في مجلد التصدير ملف تثبيت واحدًا لكل تطبيق محدد، أي %1$d من الملفات في المجموع. قد يستغرق ذلك وقتًا طويلًا وقد يحتاج إلى مساحة تخزين كبيرة، لذا أبقِ Thor مفتوحًا حتى ينتهي.</item>
+        <item quantity="two">يحفظ Thor في مجلد التصدير ملف تثبيت واحدًا لكل تطبيق محدد، أي %1$d من الملفات في المجموع. قد يستغرق ذلك وقتًا طويلًا وقد يحتاج إلى مساحة تخزين كبيرة، لذا أبقِ Thor مفتوحًا حتى ينتهي.</item>
+        <item quantity="few">يحفظ Thor في مجلد التصدير ملف تثبيت واحدًا لكل تطبيق محدد، أي %1$d من الملفات في المجموع. قد يستغرق ذلك وقتًا طويلًا وقد يحتاج إلى مساحة تخزين كبيرة، لذا أبقِ Thor مفتوحًا حتى ينتهي.</item>
+        <item quantity="many">يحفظ Thor في مجلد التصدير ملف تثبيت واحدًا لكل تطبيق محدد، أي %1$d من الملفات في المجموع. قد يستغرق ذلك وقتًا طويلًا وقد يحتاج إلى مساحة تخزين كبيرة، لذا أبقِ Thor مفتوحًا حتى ينتهي.</item>
+        <item quantity="other">يحفظ Thor في مجلد التصدير ملف تثبيت واحدًا لكل تطبيق محدد، أي %1$d من الملفات في المجموع. قد يستغرق ذلك وقتًا طويلًا وقد يحتاج إلى مساحة تخزين كبيرة، لذا أبقِ Thor مفتوحًا حتى ينتهي.</item>
+    </plurals>
+    <string name="export_bulk_progress">جارٍ تصدير %1$d من %2$d</string>
+    <string name="export_bulk_finished">تم تصدير %1$d من أصل %2$d تطبيقًا إلى %3$s</string>
+    <string name="export_bulk_finished_none">تعذّر تصدير أي من التطبيقات المحددة البالغ عددها %1$d</string>
+    <string name="export_bulk_index_failed">تم حفظ الملفات، لكن تعذّرت كتابة القائمة المرافقة لها</string>
+    <string name="export_bulk_failed">فشل التصدير — تم حفظ %1$d من %2$d تطبيقات</string>
+    <string name="export_bulk_stop">إيقاف التصدير</string>
+    <string name="export_bulk_cancelled">تم إيقاف التصدير — تم حفظ %1$d من أصل %2$d تطبيقًا</string>
+    <string name="export_bulk_nothing_selected">حدّد تطبيقًا واحدًا على الأقل للتصدير</string>
+    <string name="export_bulk_no_space">لا توجد مساحة حرة كافية للتصدير. يحتاج Thor إلى نحو %1$s من المساحة الحرة لتحضير هذه الملفات، لكن المتاح %2$s فقط. حرّر بعض المساحة أو حدّد تطبيقات أقل.</string>
     <string name="failed_to_load_permissions">فشل تحميل الأذونات</string>
     <string name="permission_status_updated">تم تحديث حالة الإذن</string>
     <string name="failed_to_modify_permission">فشل تعديل الإذن</string>

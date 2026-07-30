@@ -6,6 +6,7 @@ package com.valhalla.thor.presentation.main
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.data.backup.BackupRunner
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
@@ -16,6 +17,8 @@ import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.domain.model.isActive
 import com.valhalla.thor.domain.model.isFrozen
 import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.domain.usecase.BackupRejection
+import com.valhalla.thor.domain.usecase.BackupRunResult
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.domain.usecase.ShareAppUseCase
@@ -38,6 +41,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
+import java.util.Locale
 
 /**
  * Side Effects: One-time events that the UI must handle (Navigation, Intents).
@@ -79,11 +83,39 @@ data class FreezeLoggerState(
 )
 
 /**
+ * Live view of the multi-app export owned by [BackupRunner]; null when nothing is exporting.
+ *
+ * It looks like [FreezeLoggerState] but is not its sibling: that one describes work this ViewModel
+ * is doing, so it has an `isComplete` flag and a dismiss call. This one only *watches* a run that
+ * outlives the ViewModel — the run ending is the dismissal, and the outcome arrives separately as
+ * a [MainSideEffect.Message], so there is nothing here to complete or dismiss.
+ */
+data class ExportProgressState(
+    val completed: Int,
+    val total: Int,
+    /** The app that started most recently. Data, not copy — render it verbatim or not at all. */
+    val currentLabel: String?
+) {
+    /** `Exporting 3 of 12`, left as a [UiText] so this stays free of a Context. */
+    val status: UiText
+        get() = UiText.StringResource(R.string.export_bulk_progress, completed, total)
+
+    /**
+     * Bar fill, 0f..1f. Guarded because a zero total would divide by zero, and an empty selection
+     * is rejected rather than run — so this defends against a state that should not exist rather
+     * than one that routinely does.
+     */
+    val fraction: Float
+        get() = if (total <= 0) 0f else completed.toFloat() / total
+}
+
+/**
  * Main UI State holding global feedback.
  */
 data class MainUiState(
     val loggerState: LoggerState = LoggerState(), // For persistent Logs
     val freezeLoggerState: FreezeLoggerState = FreezeLoggerState(), // Compact freeze/unfreeze progress
+    val exportProgress: ExportProgressState? = null, // Multi-app export, null when idle
     val selectedDestination: AppDestinations = AppDestinations.HOME, // For Bottom Nav
     val hasShownSupportDeveloperPrompt: Boolean = true,
     val showSupportDeveloperPrompt: Boolean = false,
@@ -97,6 +129,7 @@ class MainViewModel(
     private val shareAppUseCase: ShareAppUseCase,
     private val preferenceRepository: PreferenceRepository,
     private val freezerRepository: FreezerRepository,
+    private val backupRunner: BackupRunner,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -111,6 +144,7 @@ class MainViewModel(
 
     init {
         observePreferences()
+        observeBackupRun()
     }
 
     private fun observePreferences() {
@@ -122,6 +156,39 @@ class MainViewModel(
                         prefs = prefs
                     )
                 }
+            }
+        }
+    }
+
+    /**
+     * Mirror [BackupRunner]'s two flows — progress into [MainUiState], outcome into a one-shot
+     * message.
+     *
+     * Collected from `init`, not from the Backup branch, because a run outlives the ViewModel that
+     * started it: reopen Thor mid-export and *this* instance never called `start`, so a collector
+     * hung off the start call would show nothing. `progress` is a StateFlow whose null means idle,
+     * so attaching to a finished run costs nothing.
+     */
+    private fun observeBackupRun() {
+        viewModelScope.launch {
+            backupRunner.progress.collect { progress ->
+                _uiState.update { state ->
+                    state.copy(
+                        exportProgress = progress?.let {
+                            ExportProgressState(it.completed, it.total, it.current)
+                        }
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            backupRunner.completions.collect {
+                reportExportResult(it)
+                // Acknowledge it, or the replay that lets a finished run report to a UI that was
+                // not there yet also makes it report to every UI that comes after: rotate the
+                // device an hour later and the same "Exported 8 of 12" arrives again, support
+                // prompt included.
+                backupRunner.consumeCompletion()
             }
         }
     }
@@ -503,6 +570,14 @@ class MainViewModel(
                         }
                     }
                 }
+
+                // Deliberately not run here. Exporting 200 apps takes minutes and has to survive
+                // the toolbox, this ViewModel and usually the Activity behind it, so the work
+                // belongs to BackupRunner's process-lifetime scope; this branch only hands over
+                // the selection. The returned Deferred is dropped on purpose — [observeBackupRun]
+                // is the single place an outcome is reported, and awaiting it here as well would
+                // report the same run twice.
+                is MultiAppAction.Backup -> backupRunner.start(action.appList)
             }
         }
     }
@@ -563,6 +638,116 @@ class MainViewModel(
 
     fun dismissFreezeLogger() {
         _uiState.update { it.copy(freezeLoggerState = FreezeLoggerState()) }
+    }
+
+    /** Stop the export in flight. Whatever it already wrote stays written. */
+    fun cancelExport() {
+        backupRunner.cancel()
+    }
+
+    /**
+     * Report the end of an export run as a one-shot message.
+     *
+     * A message rather than state so it can be delivered whichever screen the user has wandered
+     * off to while the run continued — which is the normal case for a run this long.
+     */
+    private suspend fun reportExportResult(result: BackupRunResult) {
+        when (result) {
+            is BackupRunResult.Rejected ->
+                _effect.send(MainSideEffect.Message(result.reason.asMessage()))
+
+            // saved, not attempted: the sentence says "were saved", and an app that failed is
+            // counted by neither the folder nor the user.
+            is BackupRunResult.Cancelled -> _effect.send(
+                MainSideEffect.Message(
+                    UiText.StringResource(
+                        R.string.export_bulk_cancelled,
+                        result.saved,
+                        result.total
+                    )
+                )
+            )
+
+            is BackupRunResult.Failed -> _effect.send(
+                MainSideEffect.Message(
+                    UiText.StringResource(
+                        R.string.export_bulk_failed,
+                        result.saved,
+                        result.total
+                    )
+                )
+            )
+
+            is BackupRunResult.Finished -> {
+                // location is null exactly when nothing was written, so it is both the "did
+                // anything land?" test and the only value that could leave the sentence hanging
+                // after "to".
+                val location = result.location
+                if (location == null) {
+                    _effect.send(
+                        MainSideEffect.Message(
+                            UiText.StringResource(R.string.export_bulk_finished_none, result.total)
+                        )
+                    )
+                } else {
+                    // The partial run needs no string of its own: "8 of 12" and "12 of 12" read
+                    // correctly from the same sentence, so nothing here branches on `failed`.
+                    _effect.send(
+                        MainSideEffect.Message(
+                            UiText.StringResource(
+                                R.string.export_bulk_finished,
+                                result.succeeded,
+                                result.total,
+                                location
+                            )
+                        )
+                    )
+                    // A second message rather than a longer first one: the missing manifest is a
+                    // separate fact about the same folder, and only worth saying when there are
+                    // files in there for it to have described.
+                    if (!result.indexWritten) {
+                        _effect.send(
+                            MainSideEffect.Message(
+                                UiText.StringResource(R.string.export_bulk_index_failed)
+                            )
+                        )
+                    }
+                    triggerSupportPromptIfNeeded()
+                }
+            }
+        }
+    }
+
+    private fun BackupRejection.asMessage(): UiText = when (this) {
+        BackupRejection.NothingToExport ->
+            UiText.StringResource(R.string.export_bulk_nothing_selected)
+
+        is BackupRejection.InsufficientStagingSpace -> UiText.StringResource(
+            R.string.export_bulk_no_space,
+            formatBytes(requiredBytes),
+            formatBytes(availableBytes)
+        )
+    }
+
+    /**
+     * A byte count as a short human string.
+     *
+     * `android.text.format.Formatter.formatShortFileSize` is the usual answer and is what the
+     * details screen uses, but it needs a Context and this ViewModel deliberately has none — every
+     * other string leaves here as a [UiText] for the screen to resolve. Same SI units the platform
+     * helper has used since O, and the number goes through the default locale so the decimal
+     * separator is the user's.
+     */
+    private fun formatBytes(bytes: Long): String {
+        val units = listOf("B", "kB", "MB", "GB", "TB")
+        var value = bytes.toDouble()
+        var unit = 0
+        while (value >= 1000 && unit < units.lastIndex) {
+            value /= 1000
+            unit++
+        }
+        val pattern = if (unit == 0) "%.0f %s" else "%.1f %s"
+        return String.format(Locale.getDefault(), pattern, value, units[unit])
     }
 
     private suspend fun performLoggedMultiAction(

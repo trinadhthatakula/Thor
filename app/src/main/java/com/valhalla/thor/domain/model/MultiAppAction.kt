@@ -9,6 +9,10 @@ sealed interface MultiAppAction {
     data class Freeze(val appList: List<AppInfo>, val useSuspend: Boolean = false) : MultiAppAction
     data class UnFreeze(val appList: List<AppInfo>) : MultiAppAction
     data class Share(val appList: List<AppInfo>) : MultiAppAction
+
+    /** Writes one installer bundle per app to the export destination. Sibling of [Share], but the
+     *  files land in the user's export folder instead of a one-shot content-provider Uri. */
+    data class Backup(val appList: List<AppInfo>) : MultiAppAction
     data class Kill(val appList: List<AppInfo>) : MultiAppAction
 
     data class ClearCache(val appList: List<AppInfo>) : MultiAppAction

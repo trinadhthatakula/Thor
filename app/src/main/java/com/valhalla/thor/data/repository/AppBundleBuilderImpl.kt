@@ -18,6 +18,8 @@ import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.SystemRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
@@ -211,14 +213,41 @@ class AppBundleBuilderImpl(
 
     private suspend fun copyFileSafely(sourcePath: String, destFile: File): Boolean {
         return try {
-            File(sourcePath).copyTo(destFile, overwrite = true)
+            copyCancellable(File(sourcePath), destFile)
             true
+        } catch (e: CancellationException) {
+            // Ahead of the broad catch, or a cancelled copy falls through to the root fallback and
+            // starts the whole multi-gigabyte copy again as a shell command — which no longer
+            // observes cancellation at all.
+            throw e
         } catch (_: Exception) {
             systemRepository.copyFileWithRoot(sourcePath, destFile.absolutePath).isSuccess
         }
     }
 
-    private fun zipFiles(files: List<File>, zipFile: File) {
+    /**
+     * `File.copyTo` in chunks, so a cancel does not have to wait out a whole APK.
+     *
+     * A bulk export cancels by cancelling the coroutine, and the replacement run waits for this
+     * one to unwind before it starts staging. A single uninterruptible `copyTo` of a 2 GB app
+     * therefore becomes a 2 GB stall with the UI showing "0 of N" — the check per 8 KB chunk is a
+     * volatile read against an IO-bound loop, which is free by comparison.
+     */
+    private suspend fun copyCancellable(source: File, dest: File) {
+        FileInputStream(source).use { input ->
+            FileOutputStream(dest).use { output ->
+                val buffer = ByteArray(COPY_BUFFER_BYTES)
+                while (true) {
+                    currentCoroutineContext().ensureActive()
+                    val read = input.read(buffer)
+                    if (read == -1) break
+                    output.write(buffer, 0, read)
+                }
+            }
+        }
+    }
+
+    private suspend fun zipFiles(files: List<File>, zipFile: File) {
         ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { out ->
             // APK entries are already DEFLATEd, so re-compressing them is pure CPU for ~0%
             // saving. Measurable when a bulk share zips dozens of apps in a row.
@@ -228,13 +257,16 @@ class AppBundleBuilderImpl(
             // is indifferent; only a reader that fast-paths STORED loses the shortcut.
             out.setLevel(Deflater.NO_COMPRESSION)
             // 8 KB buffer — 1 KB is needlessly slow when zipping multi-MB APK splits.
-            val data = ByteArray(8192)
+            val data = ByteArray(COPY_BUFFER_BYTES)
             files.forEach { file ->
                 FileInputStream(file).use { fi ->
                     BufferedInputStream(fi).use { origin ->
                         val entry = ZipEntry(file.name)
                         out.putNextEntry(entry)
                         while (true) {
+                            // Same reason as copyCancellable: zipping a split app is the other
+                            // multi-gigabyte loop a cancel would otherwise have to sit through.
+                            currentCoroutineContext().ensureActive()
                             val readBytes = origin.read(data)
                             if (readBytes == -1) break
                             out.write(data, 0, readBytes)
@@ -247,5 +279,6 @@ class AppBundleBuilderImpl(
 
     private companion object {
         const val FALLBACK_ICON_PX = 192
+        const val COPY_BUFFER_BYTES = 8192
     }
 }

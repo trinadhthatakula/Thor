@@ -428,6 +428,21 @@
     <string name="export_failed_unknown">未知错误</string>
     <string name="export_dest_downloads">下载/Thor</string>
     <string name="export_dest_selected">选定文件夹</string>
+
+    <string name="action_export_selected">导出</string>
+    <string name="export_bulk_confirm_title">导出所选应用？</string>
+    <plurals name="export_bulk_confirm_desc">
+        <item quantity="other">Thor 会向导出文件夹中保存 %1$d 个安装文件，每个所选应用一个。这可能耗时很久，并且可能需要大量可用空间，请保持 Thor 处于打开状态直至完成。</item>
+    </plurals>
+    <string name="export_bulk_progress">正在导出第 %1$d 个，共 %2$d 个</string>
+    <string name="export_bulk_finished">已将 %2$d 个应用中的 %1$d 个导出至 %3$s</string>
+    <string name="export_bulk_finished_none">无法导出所选的 %1$d 个应用</string>
+    <string name="export_bulk_index_failed">文件已保存，但无法写入随附的清单</string>
+    <string name="export_bulk_failed">导出失败 — 已保存 %2$d 个应用中的 %1$d 个</string>
+    <string name="export_bulk_stop">停止导出</string>
+    <string name="export_bulk_cancelled">已停止导出 — 已保存 %2$d 个应用中的 %1$d 个</string>
+    <string name="export_bulk_nothing_selected">请至少选择一个要导出的应用</string>
+    <string name="export_bulk_no_space">可用空间不足，无法导出。Thor 需要约 %1$s 可用空间来准备这些文件，但目前仅剩 %2$s。请释放一些空间或减少所选应用。</string>
     <string name="failed_to_load_permissions">加载权限失败</string>
     <string name="permission_status_updated">权限状态已更新</string>
     <string name="failed_to_modify_permission">修改权限失败</string>

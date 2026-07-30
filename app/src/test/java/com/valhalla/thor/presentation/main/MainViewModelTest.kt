@@ -4,16 +4,20 @@
 package com.valhalla.thor.presentation.main
 
 import com.valhalla.thor.R
+import com.valhalla.thor.data.backup.BackupRunner
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.domain.usecase.BackupAppsUseCase
+import com.valhalla.thor.domain.usecase.ExportAppUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.domain.usecase.ShareAppUseCase
 import com.valhalla.thor.presentation.FakeAppBundleBuilder
 import com.valhalla.thor.presentation.FakeAppBundleFileStore
 import com.valhalla.thor.presentation.FakeAppRepository
+import com.valhalla.thor.presentation.FakeContext
 import com.valhalla.thor.presentation.FakeFreezerRepository
 import com.valhalla.thor.presentation.FakePreferenceRepository
 import com.valhalla.thor.presentation.FakeSystemRepository
@@ -28,12 +32,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import java.io.File
+import java.nio.file.Files
 
 /**
  * Behaviour tests for [MainViewModel] — the one view model in `presentation/` that can be built on
@@ -65,6 +72,9 @@ class MainViewModelTest {
     private lateinit var freezer: FakeFreezerRepository
     private lateinit var prefs: FakePreferenceRepository
 
+    /** Stands in for `Context.cacheDir`: an export stages bundles and its manifest into it. */
+    private lateinit var cache: File
+
     @Before
     fun setUp() {
         system = FakeSystemRepository()
@@ -73,6 +83,12 @@ class MainViewModelTest {
         // Default `UserPreferences` has hasShownSupportDeveloperPrompt = false, i.e. a user who has
         // never seen the donation prompt. The prompt tests below depend on that starting point.
         prefs = FakePreferenceRepository()
+        cache = Files.createTempDirectory("thor_cache_").toFile()
+    }
+
+    @After
+    fun tearDown() {
+        cache.deleteRecursively()
     }
 
     /**
@@ -84,7 +100,8 @@ class MainViewModelTest {
      * action under test.
      */
     private fun TestScope.viewModel(
-        preferenceRepository: FakePreferenceRepository = prefs
+        preferenceRepository: FakePreferenceRepository = prefs,
+        runner: BackupRunner = backupRunner(preferenceRepository),
     ): MainViewModel {
         val vm = MainViewModel(
             manageAppUseCase = ManageAppUseCase(system),
@@ -96,11 +113,40 @@ class MainViewModelTest {
             ),
             preferenceRepository = preferenceRepository,
             freezerRepository = freezer,
+            backupRunner = runner,
             ioDispatcher = mainDispatcherRule.dispatcher
         )
         backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.uiState.collect {} }
         return vm
     }
+
+    /**
+     * The export runner the view model watches from `init`.
+     *
+     * A real runner over a fake Context rather than a fake runner: `BackupRunner` is a final Kotlin
+     * class like everything else in `data/`, so there is nothing to substitute, and the one Android
+     * thing it touches is the cache dir it stages into. Its scope is given the rule's dispatcher, so
+     * a run a test starts shares the test's clock instead of escaping onto a real IO thread and
+     * finishing after the assertions.
+     *
+     * Both bundle fakes refuse, so no export in this file can succeed — which is fine, because what
+     * is under test here is the handover, not the export. `BackupAppsUseCaseTest` owns the run.
+     */
+    private fun backupRunner(preferenceRepository: FakePreferenceRepository) = BackupRunner(
+        context = FakeContext(cache),
+        backupAppsUseCase = BackupAppsUseCase(
+            exportAppUseCase = ExportAppUseCase(
+                FakeAppBundleBuilder(),
+                preferenceRepository,
+                FakeAppBundleFileStore(),
+                mainDispatcherRule.dispatcher
+            ),
+            preferenceRepository = preferenceRepository,
+            fileStore = FakeAppBundleFileStore(),
+            ioDispatcher = mainDispatcherRule.dispatcher
+        ),
+        io = mainDispatcherRule.dispatcher
+    )
 
     /**
      * Subscribes to [MainViewModel.effect] and returns the live list of everything it delivers.
@@ -310,6 +356,53 @@ class MainViewModelTest {
             )
         )
         assertTrue(logs.contains(UiText.StringResource(R.string.log_failed, "INSTALL_FAILED")))
+    }
+
+    // --- Bulk export -------------------------------------------------------------------------
+
+    @Test
+    fun `a bulk export is handed off and its outcome reported exactly once`() = runTest {
+        val vm = viewModel()
+        val effects = effectsOf(vm)
+
+        vm.onMultiAppAction(MultiAppAction.Backup(listOf(userApp("com.a"), userApp("com.b"))))
+        advanceUntilIdle()
+
+        // An export only reads public APK paths. A batch that reached the privilege layer would be
+        // doing something to apps it was asked to copy.
+        assertTrue(system.calls.isEmpty())
+        // And it does not open either log dialog. `TermLoggerDialog` refuses to dismiss before the
+        // run completes, so reusing it here would pin the user to a screen for the length of a run
+        // that is explicitly designed to outlive that screen.
+        assertFalse(vm.uiState.value.loggerState.isVisible)
+        assertFalse(vm.uiState.value.freezeLoggerState.isVisible)
+        // Exactly one, whatever the outcome was: the completions collector is the only reporter.
+        // Awaiting the Deferred `start` returns as well — the obvious way to "make sure" the result
+        // is seen — toasts the same run twice.
+        assertEquals(1, effects.size)
+        assertTrue(effects.single() is MainSideEffect.Message)
+    }
+
+    @Test
+    fun `a finished run is not re-reported to the next view model over the same runner`() = runTest {
+        // The runner replays its last completion so a run that outlived its UI can still report.
+        // Left unacknowledged, that same replay makes the outcome permanent: rotate the device an
+        // hour later and the finished export announces itself again — support prompt included.
+        // The runner is the singleton here and the view model is the thing being recreated, so
+        // only the runner can know the outcome has already been shown.
+        val runner = backupRunner(prefs)
+        val first = viewModel(runner = runner)
+        val firstEffects = effectsOf(first)
+
+        first.onMultiAppAction(MultiAppAction.Backup(listOf(userApp("com.a"))))
+        advanceUntilIdle()
+        assertEquals(1, firstEffects.size)
+
+        val second = viewModel(runner = runner)
+        val secondEffects = effectsOf(second)
+        advanceUntilIdle()
+
+        assertEquals(emptyList<MainSideEffect>(), secondEffects)
     }
 
     // --- Single-app actions ----------------------------------------------------------------

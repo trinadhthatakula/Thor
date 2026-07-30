@@ -1,107 +1,72 @@
-# Follow-up: `.xapk` export, and the app-data backup the README has promised for a year
+# Follow-up: app-**data** backup (#51 phase 2), and what phase 1 + `.xapk` left to verify
 
-**Status:** OPEN — planned together, because the cheap half unblocks nothing on its own and the
-expensive half needs the cheap half's plumbing.
-**Severity:** Not a defect. One public promise unkept in an issue thread (#164) and one unkept in
-`README.md` (#51).
-**Effort:** `.xapk` export ≈ half a day. Backup phase 1 ≈ a day. Backup phase 2 (root data) 5–8 days.
+**Status:** OPEN — narrowed. `.xapk` export (#164b) and backup **phase 1** shipped together as
+planned; what remains is the root-only **data** half of #51 plus two device checks the desk cannot
+do.
+**Severity:** Not a defect. One public promise now kept (#164), one still half-kept — `README.md`
+promises "BackUp App Data", and only the APK half of that exists.
+**Effort:** Backup phase 2 (root data) 5–8 days. The two open verifications: under an hour each, on
+a device.
 **Raised by:** the deferred-items audit (2026-07-29); the owner asked for both to be filed and built
-in the same session.
+in the same session. Narrowed 2026-07-30 when phase 1 landed.
 
 Files:
+`app/src/main/java/com/valhalla/thor/domain/model/BackupIndex.kt`,
+`app/src/main/java/com/valhalla/thor/domain/usecase/BackupAppsUseCase.kt`,
+`app/src/main/java/com/valhalla/thor/data/backup/BackupRunner.kt`,
 `app/src/main/java/com/valhalla/thor/data/repository/AppBundleBuilderImpl.kt`,
-`app/src/main/java/com/valhalla/thor/domain/repository/AppBundleBuilder.kt`,
-`app/src/main/java/com/valhalla/thor/domain/repository/AppBundleFileStore.kt`,
-`app/src/main/java/com/valhalla/thor/data/repository/AppBundleFileStoreImpl.kt`,
-`app/src/main/java/com/valhalla/thor/data/repository/BundleZip.kt`,
 `README.md:76-81` (Upcoming Features), `docs/feature-request-roadmap.md` (#164, #51)
 
 ---
 
-## Part 1 — `.xapk` export (the remainder of #164)
+## What shipped (for the record)
 
-### Why it is nearly free
+**`.xapk` export (#164b).** `BundleFormat` (`APK`/`APKS`/`XAPK`) owns the format policy that used to
+be a `splitPublicSourceDirs.isEmpty()` branch in the builder, and carries the MIME that decides
+whether a receiver treats the file as installable. The export sheet offers two chips — the app's
+native container plus `.xapk` — never three, because the third is always the wrong offer. `autoFor()`
+never returns XAPK, so an export nobody touches produces exactly what it produced before.
 
-`AppBundleBuilderImpl.build` already writes **both** manifests into every split bundle it produces:
+**Backup phase 1 (#51).** Multi-select → **Backup** runs the selection through the *existing*
+`ExportAppUseCase` — the only thing that deletes its staged copy after a successful write, which is
+the single property keeping `cacheDir` bounded across a 200-app run — and writes a
+`thor-backup-<yyyyMMdd-HHmmss>.json` manifest beside the bundles. Two apps stage at once, gated by a
+semaphore owned by the runner rather than the run, so a cancel-and-replace cannot double the cache
+peak. `BackupRunner` is a `@Single` on a process-lifetime scope: the run outlives the sheet, the
+view model and the Activity **without** a foreground service.
 
-```text
-:80  val metadataFile = File(tempSplitDir, "metadata.json")
-:81  apksMetadataGenerator.generateJson(appInfo, metadataFile)
-:84  val manifestFile = File(tempSplitDir, "manifest.json")
-:85  apksMetadataGenerator.generateManifestJson(appInfo, manifestFile)
-```
+Three design decisions worth not re-litigating:
 
-`metadata.json` is the SAI/`.apks` descriptor; `manifest.json` is the **XAPK** descriptor. So the
-zip Thor writes today is already structurally an XAPK — it is only ever *named* `.apks` (`:64`). The
-missing work is a choice and a filename, not a format.
+- **One manifest per run, timestamped.** Both file-store paths write by name and delete a collision
+  first, so the fixed `thor-backup.json` the original plan called for would have let Tuesday's
+  export silently replace Monday's manifest while leaving Monday's bundles undescribed. A reader
+  that wants the whole folder globs `thor-backup-*.json` and merges.
+- **The manifest records failures.** An entry with `error` set and `fileName`/`sizeBytes` null is
+  the same flat shape as a success — no polymorphic discriminator, so a `jq` one-liner or a restore
+  tool written years from now against schema v1 does not have to learn Kotlin's conventions.
+- **Cancelling still writes the manifest.** A cancelled run leaves real files in the folder, and an
+  undescribed folder is the same lie a success-only index would be.
 
-### What to build
+## Still to verify, on a device
 
-1. A format parameter on `AppBundleBuilder.build` (or a `BundleFormat` enum in `domain/model/`) —
-   `APK` / `APKS` / `XAPK`. Keep the current auto-selection as the default: single-APK apps have no
-   meaningful choice, so only offer the picker when the app actually has splits.
-2. `.xapk` naming plus the right MIME on the way out. `AppBundleFileStore.writeToDownloads` /
-   `writeToTree` both take a `mime` — `.xapk` has no registered type, so
-   `application/octet-stream` is the honest answer; do **not** claim
-   `application/vnd.android.package-archive` for a zip, or file managers will hand it to the
-   platform installer, which cannot read it.
-3. A third option in `ExportBottomSheet`, and a matching `export_explain_xapk` string. Remember to
-   add it to all five locales (`values`, `values-ar`, `values-es`, `values-fr`, `values-zh-rCN`).
+Neither is desk-testable, and a green install hides both:
 
-### Scope out
-
-**OBB assets.** A real XAPK carries `Android/obb/<pkg>/*.obb`, and Thor exports none. Say so in the
-explain string rather than shipping a bundle that silently loses game data — an XAPK missing its OBB
-looks valid and fails at play time, which is the worst failure shape available here.
-
-### How to verify
-
-The round trip is the first check, not the only one. Export → reinstall through Thor's own
-installer, and then through a third-party one (APKPure's, or SAI). Thor can already *install* an
-APKPure `.xapk` (`15f57d6d`, ZipFile-based to survive STORED + data-descriptor entries), so that
-much is testable end to end today.
-
-But a successful install hides the two failures that actually matter here, because both produce a
-file that installs fine and is still wrong:
-
-1. **Missing OBB.** Export an app that *has* `Android/obb/<pkg>/`, install the result, and launch
-   it. It will install cleanly and then fail at play time — which is why the explain string has to
-   say so up front (see *Scope out* above). Assert the absence deliberately; do not let a green
-   install imply the assets travelled.
-2. **Metadata a different reader rejects.** Thor writes `manifest.json` for its own consumption
-   today, so nothing has ever validated it against a third-party parser. Check the split names,
-   `total_size`, and the `split_configs` list against what SAI/APKPure actually read — a field Thor
-   emits but nobody else accepts fails only on someone else's device.
+1. **Missing OBB.** A real XAPK carries `Android/obb/<pkg>/*.obb` and Thor exports none. Export an
+   app that *has* an OBB directory, install the result, and launch it: it will install cleanly and
+   fail at play time. Assert the absence deliberately rather than letting a green install imply the
+   assets travelled. The explain string already says so up front.
+2. **Metadata a different reader rejects.** Thor writes `manifest.json` for its own consumption, so
+   nothing has validated it against a third-party parser. Check the split names, `total_size` and
+   the split list against what SAI and APKPure actually read — a field Thor emits but nobody else
+   accepts fails only on someone else's device. Validate against a real APKPure `.xapk` in both
+   directions.
 
 Also worth one negative test: export a split app, delete one split from the zip, and confirm the
 installer reports a real error rather than installing a partial app.
 
 ---
 
-## Part 2 — App + data backup (#51)
-
-### The standing promise
-
-`README.md:78` has listed **"BackUp App Data"** under *Upcoming Features* for roughly a year. It is
-the oldest unkept commitment in the project, and #51 is the highest-impact item on the roadmap
-(impact 4).
-
-### Phase 1 — APK-only backup (≈1 day)
-
-Now cheap, because #164 built the plumbing: the SAF `ACTION_OPEN_DOCUMENT_TREE` picker, the
-remembered destination with a `Downloads/Thor` default, `AppBundleFileStoreImpl`, progress and
-failure states. Phase 1 is a **multi-app** wrapper over the existing single-app export plus a
-manifest of what was backed up. Do this in the same session as `.xapk` export — same files, same
-tests, one review.
-
-Design notes:
-- Batch it through the existing bundle builder per app; do not invent a second path.
-- Write one index file (`thor-backup.json`: package, label, versionCode, versionName, format,
-  filename, timestamp) so a restore does not have to guess from filenames.
-- Bound concurrency. Building bundles is I/O- and CPU-heavy and a 200-app backup must not spawn 200
-  jobs; reuse the `BulkFreezeRunner` lesson — one owner, a semaphore, a cancellable scope.
-
-### Phase 2 — Root-only data backup (5–8 days)
+## Phase 2 — Root-only data backup (5–8 days)
 
 **Hard blocker, unchanged:** private-data backup requires **root**.
 - Shizuku runs as the shell uid and cannot read `/data/data/<pkg>`.
@@ -119,6 +84,11 @@ Thor. Plan for:
   nothing of value.
 - Force-stopping the app before reading, and after restoring, so nothing is written underneath.
 
+**The manifest is already shaped for it.** `BackupIndex.schemaVersion` is written even when it
+equals its default, and `BackupIndexTest` pins that a v1 reader survives a v2 document carrying an
+extra `dataFileName` — so phase 2 can name a data file per entry without breaking anything that
+already reads a phase-1 folder. Bump `SCHEMA_VERSION` when it does.
+
 ### Phase 3 — declined
 
 Bespoke phone-to-phone transport. The exported file already rides the share sheet; a custom P2P
@@ -128,9 +98,7 @@ transport is 12–20 days for something Nearby Share does.
 
 ## Sequencing
 
-`.xapk` export and backup phase 1 land together — one branch, one PR, because phase 1 is a batch
-wrapper over the same builder the `.xapk` work touches. Phase 2 is its own branch behind a root
-gate, and should not block a release.
+Phase 2 is its own branch behind a root gate and should not block a release.
 
-Once `.xapk` ships, **#164 can be closed** — everything else in that issue is either shipped or
-deliberately declined.
+**#164 can be closed now** — everything in that issue is either shipped or deliberately declined
+(the raw split-folder output). **#51 stays open** on phase 2.
