@@ -17,7 +17,7 @@
 | **#57** | Sort by size | ✅ **Done** — built as *total install size* (metric upgraded from APK size at maintainer's call); merged to `dev` (`3e8de3e`). ⚠️ the GitHub issue is still **open** — close it |
 | **#164** | Export bundles | 🟨 **Mostly done** — SAF picker, remembered destination, and `.apk` / `.apks` writers all shipped (`ExportBottomSheet`, `AppBundleFileStoreImpl`, 11 `export_*` strings). **`.xapk` export is the only part left**, and it was promised in-thread |
 | **#210** | Keep-in-launcher | ✅ **Achievable slice done** — the Freeze\|Suspend mode shipped via #239 (PR #241). The accessibility-based auto-refreeze remains declined, as planned |
-| #55a | Freeze profiles | ⬜ **next green** — now the top unstarted item |
+| **#55a** | Freeze profiles | ✅ **Built** — `feat/freeze-profiles`, in review. All three recon risks closed: the tier gate, the runner's coalescing key and the launcher restore gate (see below) |
 | #51 | App + data backup | ⬜ not started — but phase 1 got much cheaper once #164's SAF export landed. Also the oldest promise in `README.md` ("Upcoming Features → BackUp App Data") |
 | #285 | Filter by permission | 🆕 **new, untriaged** — opened 2026-07-28, postdates this document |
 | #161 | `.apks` won't open from Samsung My Files | 🐞 **bug, not a feature** — unanswered since 2026-07-18 |
@@ -41,7 +41,7 @@ because the work was elsewhere.
 | — | **#57** | Sort by (install) size | 3–4 | done | 2 | ✅ **Merged** (#230) — close the issue |
 | — | **#210** | Freezer "keep-in-launcher" | 3 | done | 4 | ✅ **Slice merged** (#241) — suspend mode; rest declined |
 | 1 | **#164b** | `.xapk` export (the remainder of #164) | 2 | **0.5–1 d** | 2 | 🟢 **do first** — everything but the writer exists, and it was publicly promised |
-| 2 | **#55a** | Freeze **profiles** (named groups) | 3 | **2–3 d** | 4 | 🟢 quick win — reuses Room + batch-freeze *(split from #55)* |
+| — | **#55a** | Freeze **profiles** (named groups) | 3 | done | 4 | ✅ **Built**, in review — reused Room + `BulkFreezeRunner` as predicted; the runner needed a scoped coalescing key first *(split from #55)* |
 | 3 | **#161** | `.apks` won't open from Samsung My Files | 2 | **1–2 d** | 2 | 🟢 a real bug with a named reporter and a working comparison app — cheap goodwill |
 | 4 | **#285** | Filter app list by permission | 2–3 | **1–2 d** | 2 | 🟢 `FilterType` is an extensible sealed interface and permissions are already parsed for the info sheet — mostly UI |
 | 5 | **#51** | App **+ data backup** / transfer | **4** | APK-only **≈1 d now** · root-data **5–8 d** · P2P 12–20 d | 5 | 🟡 highest impact, root-gated — phase it; phase 1 got cheap once #164 landed |
@@ -80,16 +80,15 @@ committing to the 1–2 d figure.
 - **Risks:** none hard. System/protected apps degrade without root (consistent with the app). OBB export stays out of scope.
 - **Verify with more than a round trip:** installability is necessary but not sufficient. Export → reinstall through Thor's own installer *and* a third-party one, then also check the two failure shapes a successful install would hide: a bundle whose OBB assets are silently absent, and split contents/metadata a different reader rejects. See `docs/follow-ups/app-data-backup-and-xapk-export.md`.
 
-### #55a — Freeze profiles · 🟢 · 2–3 d · impact 3
+### #55a — Freeze profiles · ✅ built · impact 3
 - **What:** named groups of apps you can freeze/unfreeze on demand.
 - **Reuses:** `FreezerRepository` + Room `freezer_apps` table, `FreezerViewModel` multi-select + batch `MultiAppAction.Freeze/UnFreeze`, `AutoMigration`. New profile tables + a small UI.
-- **Risks:** the Room migration is on a shipped database, so it needs a real `AutoMigration` and a schema-export diff — not `fallbackToDestructiveMigration`. Beyond that: a profile-triggered bulk freeze would be a **fourth** surface reaching `BulkFreezeRunner` (after the Freezer screen, the launcher shortcuts and the QS tile), so it must route through the runner rather than freezing directly, and it must respect the freeze tier gate, which now lives in `FreezeAppUseCase.kt:35-48` (the follow-up
-  doc this used to link shipped and was deleted in `412f655e`). Two further risks the recon pass
-  found: `BulkFreezeRunner`'s job slot coalesces on the `BulkOp` alone, so "freeze profile A" then
-  "freeze profile B" would return the first `Deferred` and silently never freeze B; and
-  `FreezerBridgeProvider` refuses to restore anything absent from the watchlist, so apps that live
-  only in a profile would be un-unfreezable from the launcher.
-- Otherwise on-brand for the freezer.
+- **Shipped:** `freeze_profiles` + `freeze_profile_apps` (Room **auto-migration 5→6**, new tables only, schema export committed), `FreezeProfileRepository`, a profiles sheet with per-row freeze/unfreeze/edit/delete, an editor sheet reusing the watchlist's app picker, and a "save this selection as a profile" entry in the multi-select toolbox. 17 unit tests cover the name rule and the request identity.
+- **All three recon risks are closed, and each one is why a piece looks the way it does:**
+  1. **Tier gate.** Profiles route through `BulkFreezeRunner`, so `targetsFor` → `freezableCandidates(...)` applies the list-level `FreezeTier.BLOCKED` filter for free — routing *through the runner* is what earns the gate, which is the reason a profile run is not a direct freeze loop. The editor additionally warns at *add* time, because a profile is a standing instruction that later runs act on with no UI.
+  2. **Coalescing key.** The job slot keyed on `BulkOp` alone would have made "freeze profile A" then "freeze profile B" return the first `Deferred` and silently never freeze B. The key is now `BulkRequest(op, scope)`: same op / different scope serializes (`join()`), different op still replaces (`cancelAndJoin()`).
+  3. **Launcher restore.** `FreezerBridgeProvider` now checks the watchlist **∪** every profile's membership, so an app frozen only by a profile is not a dead launcher tap.
+- **Left for the owner:** on-device verification of the two new sheets, and — as with every freezer surface — a run on a real privilege backend.
 
 ### #161 — `.apks` won't open from Samsung My Files · 🟢 · 1–2 d · impact 2 *(bug)*
 - **What:** on a Galaxy S25 Ultra / One UI 8.5, tapping a `.apks` file in Samsung's stock My Files does not offer Thor, while InstallerX Revived and Universal Installer both appear. Thor *does* appear from other file managers.
