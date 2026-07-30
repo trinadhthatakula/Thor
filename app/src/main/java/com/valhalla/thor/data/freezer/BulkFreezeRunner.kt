@@ -254,7 +254,8 @@ class BulkFreezeRunner(
      * existing run — any unsettled run matching it, not merely the most recent launch, so a repeat
      * still coalesces once something is queued behind it. Keyed on the whole [BulkRequest], not the
      * op: "freeze profile A" and "freeze profile B" are both FREEZE but must not collapse into one
-     * run over A.
+     * run over A. The search is confined to the chain's trailing same-op run, which is precisely
+     * the part of it no conflicting launch has already doomed — see the comment in the body.
      *
      * Same-op, different scope: the new run **waits** for the previous one rather than
      * cancelling it. Two freezes do not contradict each other, so cancelling A to start B would
@@ -294,16 +295,12 @@ class BulkFreezeRunner(
         // re-posts a result after the first one already reported. That is precisely the double-act
         // this method promises cannot happen.
         //
-        // Only while the chain is uniform in op, though. A conflicting-op launch cancels every
-        // entry from inside its own coroutine body, so between that launch and the cancellation
-        // landing, a doomed entry still reports `isActive` — handing its job back would coalesce a
-        // caller onto a run that is about to be cancelled, and its freeze would never happen. When
-        // every entry shares the incoming op there has been no such launch: it would still be in
-        // the chain itself, carrying the op that fails this check.
-        if (unsettled.all { it.request.op == request.op }) {
-            unsettled.firstOrNull { it.job.isActive && it.request == request }
-                ?.let { return it.job }
-        }
+        // The eligible part of the chain is [coalesceTargetIndex]'s business — it is the one rule
+        // here that is a pure function of the chain, and it has its own tests because getting it
+        // wrong is a silent double-act rather than a crash.
+        coalesceTargetIndex(unsettled.size, request, { unsettled[it].request }) {
+            unsettled[it].job.isActive
+        }?.let { return unsettled[it].job }
 
         // Handoff: capture the previous run BEFORE this one joins the chain, along with whether
         // it is a run we may cancel. The new job's first act is to settle it, so it will not
@@ -578,4 +575,52 @@ class BulkFreezeRunner(
         // rather than a load limiter, because a sweep that misses only costs one stale paint.
         const val SWEEP_GRACE_MS = 10_000L
     }
+}
+
+/**
+ * Which entry of `BulkFreezeRunner`'s serialized chain a repeat of [request] may be handed back,
+ * or `null` if it has to start a run of its own.
+ *
+ * Extracted from `launch` because the runner itself cannot be built in a JVM test — four final
+ * collaborators over `Context`/`PackageManager`, see `BulkFreezeWorkerTest` — while this rule is a
+ * pure function of the chain's shape, and getting it wrong is a silent double-act rather than a
+ * crash. Indices rather than a list of entries so `InFlight` can stay private and nothing has to be
+ * copied under the monitor.
+ *
+ * Two ways to be wrong, in opposite directions:
+ *
+ * - **Coalesce too little** and the caller falls through to the serialize path, queueing a second
+ *   identical batch behind the first. Both run, both act on every package, both report.
+ * - **Coalesce too much** and the caller is handed a run that is already doomed. A conflicting-op
+ *   launch cancels the whole chain from inside its own coroutine body, so between that launch and
+ *   the cancellation landing a doomed entry still answers `isActive` — and the caller's freeze
+ *   would simply never happen.
+ *
+ * The trailing same-op run of the chain is exactly the set of entries nothing has doomed, so it is
+ * the right shape rather than a cheap approximation. An entry E is doomed by some later entry X
+ * whose op differs from the entry before X; if everything from E to the end shares E's op, no such
+ * X can exist after E. Scanning back, the first op change marks a launch that cancelled everything
+ * before it.
+ *
+ * @param size how many entries the chain holds
+ * @param requestAt the request of entry `i`, oldest first
+ * @param isActive whether entry `i`'s job is still active
+ */
+internal inline fun coalesceTargetIndex(
+    size: Int,
+    request: BulkRequest,
+    requestAt: (Int) -> BulkRequest,
+    isActive: (Int) -> Boolean
+): Int? {
+    // Start of the trailing same-op run: one past the newest entry carrying a different op, or 0
+    // when the chain is uniform (including when it is empty).
+    var start = size
+    while (start > 0 && requestAt(start - 1).op == request.op) start--
+
+    for (i in start until size) {
+        // Whole-request equality, not the op: "freeze profile A" and "freeze profile B" are both
+        // FREEZE and must not collapse into one run over A.
+        if (isActive(i) && requestAt(i) == request) return i
+    }
+    return null
 }
