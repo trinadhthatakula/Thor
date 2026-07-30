@@ -30,10 +30,29 @@ never returns XAPK, so an export nobody touches produces exactly what it produce
 **Backup phase 1 (#51).** Multi-select → **Backup** runs the selection through the *existing*
 `ExportAppUseCase` — the only thing that deletes its staged copy after a successful write, which is
 the single property keeping `cacheDir` bounded across a 200-app run — and writes a
-`thor-backup-<yyyyMMdd-HHmmss>.json` manifest beside the bundles. Two apps stage at once, gated by a
-semaphore owned by the runner rather than the run, so a cancel-and-replace cannot double the cache
-peak. `BackupRunner` is a `@Single` on a process-lifetime scope: the run outlives the sheet, the
-view model and the Activity **without** a foreground service.
+`thor-backup-<yyyyMMdd-HHmmss-SSS>.json` manifest beside the bundles. Two apps stage at once, gated
+by a semaphore owned by the runner rather than the run, so a cancel-and-replace cannot double the
+cache peak. `BackupRunner` is a `@Single` on a process-lifetime scope: the run outlives the sheet,
+the view model and the Activity **without** a foreground service.
+
+**What that guarantee is not.** "Process-lifetime" means the run survives Thor's *UI* going away,
+not Thor's *process*. With the last Activity gone, Thor is a background process: the OS may kill it
+under memory pressure, and a swipe-away from Recents kills it outright. The run then stops
+mid-batch, silently — there is no notification to update and no message to deliver, because the
+thing that would deliver it is gone.
+
+Recovery is the manifest, and it is deliberately the *only* recovery. Whatever landed stays on disk
+and is described; the apps the run never reached are simply absent from the folder and from the
+manifest; re-running the same selection exports them. There is no resume token and no partial-state
+file, because a resume would have to survive the same kill that stopped the run, which is the
+problem it is trying to solve.
+
+Making a run survive process death means one of two things, both out of phase 1's scope: a
+foreground service (a new permission, a mandatory `foregroundServiceType` on API 34+, a time cap on
+35+, and a class of start-not-allowed crashes) or `WorkManager` with a serialisable work unit (which
+would mean the selection, the destination `Uri` grant and the format all had to round-trip through a
+`Data` bundle). The confirm dialog's "keep Thor open" copy is the honest statement of this limit
+rather than a suggestion, and it is worth keeping worded that way.
 
 Three design decisions worth not re-litigating:
 
