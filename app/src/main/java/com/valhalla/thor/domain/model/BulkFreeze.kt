@@ -7,6 +7,32 @@ package com.valhalla.thor.domain.model
 enum class BulkOp { FREEZE, UNFREEZE }
 
 /**
+ * Which list of packages a bulk run acts on.
+ *
+ * Before profiles there was only one answer, so the runner keyed its single job slot on
+ * [BulkOp] alone. That is exactly the bug this type exists to prevent: with two profiles,
+ * "freeze A" followed by "freeze B" are both FREEZE, so the second call would have been
+ * coalesced onto the first run and B would silently never freeze.
+ */
+sealed interface BulkScope {
+    /** The freezer watchlist — the QS tile and both launcher Freeze-all/Unfreeze-all shortcuts. */
+    data object Watchlist : BulkScope
+
+    /** One freeze profile, by row id. */
+    data class Profile(val id: Long) : BulkScope
+}
+
+/**
+ * A bulk run's full identity: what to do, and to which list.
+ *
+ * Equality is the coalescing key — two requests are the same run only if both halves match.
+ */
+data class BulkRequest(
+    val op: BulkOp,
+    val scope: BulkScope = BulkScope.Watchlist,
+)
+
+/**
  * The concrete per-package action a bulk run performs.
  *
  * Separate from [BulkOp] because "freeze" is two different system calls depending on the

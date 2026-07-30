@@ -530,5 +530,35 @@
     <string name="extension_retry">إعادة المحاولة</string>
     <string name="extension_install_failed">فشل التحقق: %1$s</string>
     <string name="info_app_size">الحجم</string>
-    
+
+    <!-- ملفات التجميد -->
+    <string name="freeze_profiles">ملفات التجميد</string>
+    <string name="profile_new">ملف جديد</string>
+    <string name="profile_edit">تعديل الملف</string>
+    <string name="profile_name_label">اسم الملف</string>
+    <string name="profile_name_too_long">هذا الاسم طويل جدًا</string>
+    <string name="profile_name_duplicate">يوجد ملف بهذا الاسم بالفعل</string>
+    <string name="no_profiles_yet">لا توجد ملفات بعد</string>
+    <string name="no_profiles_yet_desc">اجمع التطبيقات التي تجمّدها معًا، ثم جمّدها بنقرة واحدة</string>
+    <string name="profile_save_selection">حفظ كملف</string>
+    <string name="profile_delete_title">حذف «%1$s»؟</string>
+    <string name="profile_delete_desc">يُحذف الملف فقط. تبقى التطبيقات التي بداخله كما هي — وما كان مجمدًا يظل مجمدًا.</string>
+    <string name="profile_saved">تم حفظ الملف</string>
+    <string name="profile_deleted">تم حذف الملف</string>
+    <string name="profile_nothing_to_do">لا يوجد ما يمكن فعله لهذا الملف</string>
+    <string name="error_profile_name_taken">اسم الملف هذا مستخدم بالفعل</string>
+    <string name="error_profiles_load_failed">تعذر تحميل ملفات التجميد</string>
+    <string name="action_edit">تعديل</string>
+    <string name="action_delete">حذف</string>
+    <string name="action_save">حفظ</string>
+    <string name="more_options">المزيد من الخيارات</string>
+    <plurals name="profile_app_count">
+        <item quantity="zero">%1$d تطبيقات</item>
+        <item quantity="one">%1$d تطبيق</item>
+        <item quantity="two">%1$d تطبيقان</item>
+        <item quantity="few">%1$d تطبيقات</item>
+        <item quantity="many">%1$d تطبيقًا</item>
+        <item quantity="other">%1$d تطبيقات</item>
+    </plurals>
+
 </resources>

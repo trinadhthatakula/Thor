@@ -9,6 +9,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.data.freezer.BulkFreezeRunner
 import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.BulkOp
+import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.BulkResult
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.bulkResultMessage
@@ -65,7 +66,7 @@ class FreezerTileService : TileService() {
                 combine(
                     privilegeManager.state,
                     runner.freezableCount,
-                    runner.runningOp,
+                    runner.runningRequest,
                     runner.lastResult,
                 ) { _, _, _, _ -> Unit }.collect { paint() }
             } catch (e: CancellationException) {
@@ -136,9 +137,12 @@ class FreezerTileService : TileService() {
      */
     private fun paint() {
         val tile = qsTile ?: return
-        // FREEZE only: an Unfreeze-all shortcut running in the background is not this tile's
-        // work, and painting it as "Freezing…" was a lie about which direction it was going.
-        val freezing = runner.runningOp.value == BulkOp.FREEZE
+        // FREEZE over the watchlist only: an Unfreeze-all shortcut running in the background is
+        // not this tile's work, and painting it as "Freezing…" was a lie about which direction
+        // it was going. A freeze profile run is the same kind of lie in the other axis — right
+        // direction, wrong list — and it would leave the tile claiming to be busy while the
+        // count it displays never moves, because that count is the watchlist's.
+        val freezing = runner.runningRequest.value == BulkRequest(BulkOp.FREEZE)
         val visual = tileVisualFor(
             privilege = privilegeManager.state.value,
             freezableCount = runner.freezableCount.value,

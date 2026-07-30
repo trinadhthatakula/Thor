@@ -154,9 +154,9 @@ fun ManageFreezerSheet(
         ) {
             items(filtered.sortedBy { it.appName }, key = { it.packageName }) { app ->
                 val inFreezer = app.packageName in freezerPackageNames
-                FreezerManageItem(
+                FreezerAppPickerItem(
                     app = app,
-                    inFreezer = inFreezer,
+                    selected = inFreezer,
                     onClick = {
                         // Ask once, here, rather than on every later freeze. A watchlist entry
                         // is a standing instruction: the QS tile and the launcher Freeze-all
@@ -188,10 +188,17 @@ fun ManageFreezerSheet(
     }
 }
 
+/**
+ * One tappable app tile in a picker grid.
+ *
+ * Shared with the freeze-profile editor rather than duplicated: both grids answer the same
+ * question ("is this app in the list I'm building?"), and a second copy is how the two drift
+ * into looking like different controls for the same gesture.
+ */
 @Composable
-private fun FreezerManageItem(
+internal fun FreezerAppPickerItem(
     app: AppInfo,
-    inFreezer: Boolean,
+    selected: Boolean,
     onClick: () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -201,7 +208,7 @@ private fun FreezerManageItem(
             .padding(6.dp)
             .clip(RoundedCornerShape(32.dp))
             .background(
-                if (inFreezer) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+                if (selected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
                 else MaterialTheme.colorScheme.surfaceContainerLow
             )
             .combinedClickable(
@@ -213,7 +220,7 @@ private fun FreezerManageItem(
     ) {
         Box {
             AppIcon(app.packageName, app.enabled, app.isSuspended, 56.dp)
-            if (inFreezer) {
+            if (selected) {
                 Icon(
                     painter = painterResource(R.drawable.check_circle),
                     contentDescription = null,

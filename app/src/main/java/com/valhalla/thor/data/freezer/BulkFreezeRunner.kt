@@ -8,9 +8,12 @@ import com.valhalla.thor.data.source.local.UadHelper
 import com.valhalla.thor.data.source.local.UadSnapshot
 import com.valhalla.thor.domain.model.BulkAction
 import com.valhalla.thor.domain.model.BulkOp
+import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.BulkResult
+import com.valhalla.thor.domain.model.BulkScope
 import com.valhalla.thor.domain.model.bulkActionFor
 import com.valhalla.thor.domain.model.freezableCandidates
+import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
@@ -43,17 +46,24 @@ import org.koin.core.annotation.Single
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Runs bulk freeze/unfreeze for every surface that needs it — the QS tile and the launcher
- * Freeze-all / Unfreeze-all shortcuts.
+ * Runs bulk freeze/unfreeze for every surface that needs it — the QS tile, the launcher
+ * Freeze-all / Unfreeze-all shortcuts, and the freeze profiles sheet.
  *
  * As a @Single it owns a process-lifetime scope, which is the point: a QS shade collapse
  * destroys the TileService, and pinning the batch to a service-lifetime scope would leave a
  * partial freeze. Because the scope lives here rather than in a companion object on the
  * service, nothing retains the destroyed service.
+ *
+ * Profiles route through here rather than freezing directly, and that is not a stylistic
+ * preference: [targetsFor] is where the [com.valhalla.thor.domain.model.FreezeTier] block is
+ * applied to a *list* of packages. A fourth surface that called `setAppDisabled` itself would
+ * be the one bulk path able to freeze what every dialog in the app refuses to offer a confirm
+ * button for.
  */
 @Single
 class BulkFreezeRunner(
     private val freezerRepository: FreezerRepository,
+    private val freezeProfileRepository: FreezeProfileRepository,
     private val manageAppUseCase: ManageAppUseCase,
     private val preferenceRepository: PreferenceRepository,
     private val privilegeManager: PrivilegeManager,
@@ -120,19 +130,32 @@ class BulkFreezeRunner(
      */
     val completions: SharedFlow<BulkOp> = _completions.asSharedFlow()
 
-    private val _runningOp = MutableStateFlow<BulkOp?>(null)
+    private val _runningRequest = MutableStateFlow<BulkRequest?>(null)
 
     /**
-     * The op currently running, or null. Carries the op rather than a bare Boolean for the same
-     * reason [freezableCount] is freeze-specific: a shared "is running" flag painted the
-     * freeze-only tile as WORKING while a background Unfreeze-all shortcut ran.
+     * The request currently running, or null. Carries the whole request rather than a bare
+     * Boolean for the same reason [freezableCount] is freeze-specific: a shared "is running"
+     * flag painted the freeze-only tile as WORKING while a background Unfreeze-all shortcut ran.
+     *
+     * It carries the *scope* too, so the tile can tell "the watchlist is being frozen" from
+     * "some profile is being frozen" — only the first is the tile's own work.
      */
-    val runningOp: StateFlow<BulkOp?> = _runningOp.asStateFlow()
+    val runningRequest: StateFlow<BulkRequest?> = _runningRequest.asStateFlow()
 
     private var activeJob: Deferred<BulkResult?>? = null
-    // B-1: track op alongside job so UNFREEZE during a FREEZE run starts its own batch rather
-    // than silently returning the wrong job.
-    private var activeOp: BulkOp? = null
+    // B-1: track the request alongside the job so a *different* run started during this one
+    // begins its own batch rather than silently returning the wrong job. Originally this was the
+    // op alone, which was enough while the watchlist was the only target list; with profiles it
+    // would coalesce "freeze profile A" and "freeze profile B" into one run over A.
+    private var activeRequest: BulkRequest? = null
+
+    // Every run that has not settled yet, oldest first. Nearly always at most one — but a same-op
+    // run of a different scope *queues behind* its predecessor instead of replacing it, so
+    // [activeJob] is the tail of a chain rather than the only job in flight. A conflicting op has
+    // to cancel the whole chain: cancelling the tail alone would only stop the job still waiting
+    // to start and leave the one actually mutating packages running alongside the replacement —
+    // precisely the FREEZE-versus-UNFREEZE overlap the launch KDoc bounds everywhere else.
+    private val unsettled = mutableListOf<Deferred<BulkResult?>>()
 
     // Instance-scoped, NOT per run. A per-run Semaphore bounds one generation only: when a
     // conflicting op replaces an in-flight batch, workers abandoned by that batch may still be
@@ -151,12 +174,12 @@ class BulkFreezeRunner(
      */
     suspend fun refreshFreezableCount() {
         withContext(io) {
-            _freezableCount.value = targetsFor(BulkOp.FREEZE).size
+            _freezableCount.value = targetsFor(BulkRequest(BulkOp.FREEZE)).size
         }
     }
 
     /**
-     * The packages [op] would act on right now — the one place either surface asks that.
+     * The packages [request] would act on right now — the one place any surface asks that.
      *
      * Shared by [refreshFreezableCount] and [run] because a count derived differently from the
      * batch it describes is a tile that lies: it would offer "Freeze 3" and then freeze two, or
@@ -166,17 +189,23 @@ class BulkFreezeRunner(
      * blocked tier — unsafe system apps, and every system app when the UAD list will not load —
      * is excluded exactly as `MainViewModel.performCountedFreeze`, `AutoFreezeManager` and the
      * in-app freeze dialog exclude it; before this, the tile was the one bulk path that would
-     * happily freeze what the dialog refuses to render a confirm button for.
+     * happily freeze what the dialog refuses to render a confirm button for. A profile is
+     * filtered by the same call, so putting a blocked app in one cannot freeze it either.
      *
      * UNFREEZE gets [UadSnapshot.UNFILTERED] on purpose. Unfreezing is how a user escapes a bad
      * freeze, so it must never be gated on the same list: if `uad_lists.json` failed to load,
      * a filtered unfreeze would classify every system app as blocked and strand them frozen.
      */
-    private suspend fun targetsFor(op: BulkOp): List<String> {
-        val watchlist = freezerRepository.getAllPackageNames()
-        if (watchlist.isEmpty()) return emptyList()
-        val uad = if (op == BulkOp.FREEZE) uadHelper.snapshot() else UadSnapshot.UNFILTERED
-        return freezableCandidates(watchlist, op) { stateReader.candidateOf(it, uad) }
+    private suspend fun targetsFor(request: BulkRequest): List<String> {
+        val members = when (val scope = request.scope) {
+            BulkScope.Watchlist -> freezerRepository.getAllPackageNames()
+            // A deleted profile reads as empty, which run() turns into a no-op rather than an
+            // error — the sheet row is already gone by then, so there is nothing to report to.
+            is BulkScope.Profile -> freezeProfileRepository.packagesOf(scope.id)
+        }
+        if (members.isEmpty()) return emptyList()
+        val uad = if (request.op == BulkOp.FREEZE) uadHelper.snapshot() else UadSnapshot.UNFILTERED
+        return freezableCandidates(members, request.op) { stateReader.candidateOf(it, uad) }
     }
 
     /**
@@ -206,10 +235,20 @@ class BulkFreezeRunner(
      * nothing to act on) — which is what lets a caller that *is* allowed to show UI, such as
      * `FreezerLaunchActivity`, report an outcome the notifier may have had to drop.
      *
-     * Same-op coalescing: a second tap for the same op returns the existing run.
+     * Same-request coalescing: a second tap for the same op *over the same scope* returns the
+     * existing run. Keyed on the whole [BulkRequest], not the op: "freeze profile A" and
+     * "freeze profile B" are both FREEZE but must not collapse into one run over A.
      *
-     * Conflicting-op replacement: the new job cancels the previous one and joins it before
-     * touching any package. That handoff is **bounded, not absolute**. What actually holds:
+     * Same-op, different scope: the new run **waits** for the previous one rather than
+     * cancelling it. Two freezes do not contradict each other, so cancelling A to start B would
+     * leave A half-frozen with nothing said about it — the user tapped both and is owed both.
+     * The wait is bounded by the outgoing run's own deadline and post-run sweep.
+     *
+     * Conflicting-op replacement: the new job cancels **every** unsettled run — the whole
+     * serialized chain, not only its tail — and joins each before touching any package. The
+     * distinction matters because the tail of a chain is the run that has not started yet; the
+     * head is the one holding packages open. That handoff is **bounded, not absolute**. What
+     * actually holds:
      *
      * - the outgoing run gets [CANCEL_GRACE_MS] to unwind, so every worker that observes
      *   cancellation is finished before the replacement starts;
@@ -225,29 +264,42 @@ class BulkFreezeRunner(
      * UNFREEZE batch already enabled, and that package is not in the unfreeze target list
      * either (it was not frozen when the candidates were computed).
      */
+    fun launch(op: BulkOp): Deferred<BulkResult?> = launch(BulkRequest(op))
+
     @Synchronized
-    fun launch(op: BulkOp): Deferred<BulkResult?> {
-        // Same-op coalescing: return the in-flight run unchanged.
-        activeJob?.takeIf { it.isActive && activeOp == op }?.let { return it }
+    fun launch(request: BulkRequest): Deferred<BulkResult?> {
+        // Same-request coalescing: return the in-flight run unchanged.
+        activeJob?.takeIf { it.isActive && activeRequest == request }?.let { return it }
 
-        // Conflicting-op replacement: capture the previous job BEFORE overwriting the slot.
-        // The new job's first act is cancelAndJoin(), so it will not touch any package until
-        // the previous one has fully unwound (run body AND finally sweep). _runningOp stays
-        // set across the handoff because the replaced job's finally guards the clear with an
-        // identity check (see finally block).
+        // Handoff: capture the previous job BEFORE overwriting the slot, along with whether it
+        // is a run we may cancel. The new job's first act is to settle it, so it will not touch
+        // any package until the previous one has fully unwound (run body AND finally sweep).
+        // _runningRequest stays set across the handoff because the replaced job's finally
+        // guards the clear with an identity check (see finally block).
         val previous = activeJob
+        // Same op, different scope → serialize instead of replace. See the KDoc: cancelling a
+        // freeze to start another freeze abandons the first one half-done.
+        val cancelPrevious = activeRequest?.op != request.op
+        // Snapshot the whole chain under the monitor, not just the tail. Taken before this job
+        // joins [unsettled], so it can never contain the job about to await it.
+        val doomed = if (cancelPrevious) unsettled.toList() else emptyList()
 
-        _runningOp.value = op
+        _runningRequest.value = request
         val job = scope.async {
             try {
-                // Wait for any replaced job to fully settle (including its NonCancellable sweep)
+                // Wait for any previous job to fully settle (including its NonCancellable sweep)
                 // before we start. cancel() alone would not be enough — it returns immediately
-                // and puts us back in a two-jobs-in-flight state.
-                previous?.cancelAndJoin()
+                // and puts us back in a two-jobs-in-flight state. join() rather than await() on
+                // the serialize path: we have nothing to do with the previous run's outcome, and
+                // await() would rethrow its failure as ours.
+                // Oldest first, so the run that is actually touching packages is the first one
+                // stopped. Each cancelled job settles fully (body AND NonCancellable sweep)
+                // before the next cancel, and before this run reaches any package of its own.
+                if (cancelPrevious) doomed.forEach { it.cancelAndJoin() } else previous?.join()
                 // B-8: run() returns null for no-op cases (no privilege, empty target list);
                 // do not publish BulkResult(0,0,0) because the tile already communicates
                 // "nothing to freeze" — a false "Froze 0 apps" message is worse than silence.
-                run(op)?.also { result ->
+                run(request)?.also { result ->
                     // Publish to _lastResult for FREEZE only. The tile is freeze-only (D1) and
                     // _lastResult is process-lifetime, so parking an UNFREEZE result here would
                     // render it in the tile subtitle the next time the shade opens — possibly
@@ -258,8 +310,16 @@ class BulkFreezeRunner(
                     // UNFREEZE clears instead of skipping: an unconsumed FREEZE result (one the
                     // shade never opened to display) describes packages this run has just
                     // unfrozen, so leaving it would show "Froze N apps" on a tile that is now
-                    // READY again. Stale either way — drop it.
-                    _lastResult.value = if (op == BulkOp.FREEZE) result else null
+                    // READY again. Stale either way — drop it. That clear is scope-agnostic:
+                    // a profile unfreeze can restore watchlist apps too, so it invalidates the
+                    // parked freeze report just as surely as an Unfreeze-all does.
+                    //
+                    // A profile FREEZE parks nothing. The subtitle is the *tile's* report of the
+                    // tile's own list, and the sheet that started a profile run reports it there
+                    // by awaiting this Deferred — pushing it into the tile as well would put
+                    // "Froze 4 apps" over a watchlist those four may not even belong to.
+                    if (request.op == BulkOp.UNFREEZE) _lastResult.value = null
+                    else if (request.scope == BulkScope.Watchlist) _lastResult.value = result
                     // Unconditional, unlike the lines around it: a completion is not a *report*
                     // of the run, it is the fact that package state changed. It must not inherit
                     // the tile's freeze-only rule (an unfreeze recolours icons too) nor the
@@ -270,7 +330,7 @@ class BulkFreezeRunner(
                     // silently skipping the emission for a run whose packages are already
                     // mutated. tryEmit cannot throw or suspend, so nothing is owed to ordering
                     // the other way.
-                    _completions.tryEmit(op)
+                    _completions.tryEmit(request.op)
                     if (result.total > 0) notifier.post(result)
                 }
             } catch (e: CancellationException) {
@@ -283,11 +343,11 @@ class BulkFreezeRunner(
                 // death) would reach Android's default uncaught handler and kill the process.
                 // Log it and clear any stale result so the surface is not left showing the
                 // previous run's outcome.
-                Logger.e("BulkFreezeRunner", "bulk $op run failed unexpectedly", e)
+                Logger.e("BulkFreezeRunner", "bulk $request run failed unexpectedly", e)
                 _lastResult.value = null
                 null
             } finally {
-                // B-6: sweep before clearing runningOp for a stable combined emission.
+                // B-6: sweep before clearing runningRequest for a stable combined emission.
                 // NOT runCatching: CancellationException is an Exception in Kotlin, and this
                 // runs in a finally where cancellation is exactly what we may be unwinding
                 // from. withContext(NonCancellable) lets the sweep finish even then, and the
@@ -301,39 +361,47 @@ class BulkFreezeRunner(
                 // Only join() on a separate job is actually interruptible. Without a bound
                 // this is the one unbounded wait in the class: NonCancellable means a wedged
                 // binder (PMS lock contention right after a batch of pm disable/uninstall is
-                // not exotic) pins _runningOp and activeJob for the process lifetime, leaving
-                // the tile on "Freezing…" and every later tap coalescing into the stuck job.
+                // not exotic) pins _runningRequest and activeJob for the process lifetime,
+                // leaving the tile on "Freezing…" and every later tap coalescing into the
+                // stuck job.
                 withContext(NonCancellable) {
                     val sweep = scope.launch { sweepFreezableCount() }
                     if (withTimeoutOrNull(SWEEP_GRACE_MS) { sweep.join() } == null) {
                         // Abandoned, not cancelled: it still publishes when the binder returns.
-                        // The cost is that runningOp clears against the pre-run count for one
-                        // paint — the tile re-sweeps on every onStartListening, so it heals.
+                        // The cost is that runningRequest clears against the pre-run count for
+                        // one paint — the tile re-sweeps on every onStartListening, so it heals.
                         Logger.d(
                             "BulkFreezeRunner",
                             "post-run candidate sweep exceeded ${SWEEP_GRACE_MS}ms; releasing the run"
                         )
                     }
                 }
-                // R1/R2: clear runningOp only if this is still the active job. A replacement
-                // job has overwritten activeJob and is already running; it must keep
-                // _runningOp set across the handoff. Identity check under the monitor for
-                // the same reason as the launch guard: the slot must be read atomically.
+                // R1/R2: clear runningRequest only if this is still the active job. A successor
+                // job has overwritten activeJob and is already running (or is waiting on us);
+                // it must keep _runningRequest set across the handoff. Identity check under the
+                // monitor for the same reason as the launch guard: the slot must be read
+                // atomically.
                 val thisJob = coroutineContext[Job]
                 synchronized(this@BulkFreezeRunner) {
+                    // Unconditional, unlike the slot clear below: a job that has been overtaken
+                    // still has to leave the chain, or a later conflicting op would cancel-and-join
+                    // a settled job on every launch and the list would grow for the process
+                    // lifetime.
+                    unsettled.removeAll { it === thisJob }
                     if (activeJob === thisJob) {
-                        _runningOp.value = null
+                        _runningRequest.value = null
                         // Drop the slot too: otherwise activeJob retains a completed Job and
-                        // activeOp a stale op for the process lifetime. Only safe under the
-                        // same identity check — a replacement job owns the slot now.
+                        // activeRequest a stale request for the process lifetime. Only safe
+                        // under the same identity check — a successor owns the slot now.
                         activeJob = null
-                        activeOp = null
+                        activeRequest = null
                     }
                 }
             }
         }
         activeJob = job
-        activeOp = op
+        activeRequest = request
+        unsettled += job
         return job
     }
 
@@ -348,7 +416,8 @@ class BulkFreezeRunner(
 
     // B-8: returns null when there is nothing to act on, so the caller can skip publishing a
     // misleading BulkResult(0,0,0).
-    private suspend fun run(op: BulkOp): BulkResult? {
+    private suspend fun run(request: BulkRequest): BulkResult? {
+        val op = request.op
         // Await readiness here rather than trusting the caller to have awaited it. PrivilegeState
         // starts at active = NONE / isReady = false, and hasAnyPrivilege is `active != NONE`, so
         // the raw snapshot reads false until BOTH the probe and the first DataStore emission have
@@ -360,7 +429,7 @@ class BulkFreezeRunner(
         // having awaited anything.
         if (!privilegeManager.state.first { it.isReady }.hasAnyPrivilege) return null
 
-        val targets = targetsFor(op)
+        val targets = targetsFor(request)
         if (targets.isEmpty()) return null
 
         // Resolved once per run, not per package: the mode cannot change mid-batch, and the

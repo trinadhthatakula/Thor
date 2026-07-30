@@ -11,6 +11,7 @@ import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.room.AppDao
 import com.valhalla.thor.data.source.local.room.AppDatabase
+import com.valhalla.thor.data.source.local.room.FreezeProfileDao
 import com.valhalla.thor.data.source.local.room.FreezerDao
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -58,6 +59,10 @@ class AppModule {
 
     @Single
     fun freezerDao(appDatabase: AppDatabase): FreezerDao = appDatabase.freezerDao()
+
+    @Single
+    fun freezeProfileDao(appDatabase: AppDatabase): FreezeProfileDao =
+        appDatabase.freezeProfileDao()
 
     @Single
     fun extensionDataDao(appDatabase: AppDatabase) = appDatabase.extensionDataDao()

@@ -12,6 +12,7 @@ import android.net.Uri
 import android.os.Binder
 import android.os.Bundle
 import com.valhalla.thor.domain.model.mayRestore
+import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.Logger
@@ -30,10 +31,12 @@ import org.koin.core.component.inject
  * the (dedicated) extension key. So we defend with two independent bounds, both applied before any
  * privileged work:
  *   1. the caller must be a HOME/launcher app (the only place the hook legitimately runs), and
- *   2. the target must already be in the user's Freezer (`mayRestore`).
+ *   2. the target must already be in the user's Freezer — its watchlist or any freeze profile
+ *      (`mayRestore`).
  */
 class FreezerBridgeProvider : ContentProvider(), KoinComponent {
     private val freezerRepository: FreezerRepository by inject()
+    private val freezeProfileRepository: FreezeProfileRepository by inject()
     private val manageAppUseCase: ManageAppUseCase by inject()
 
     private companion object {
@@ -61,8 +64,12 @@ class FreezerBridgeProvider : ContentProvider(), KoinComponent {
                 // On the launcher's launch hot path, so keep the bound tight: a hung root shell must
                 // not pin this binder thread. On timeout we fail closed (ok=false).
                 withTimeout(RESTORE_TIMEOUT_MS) {
-                    val inFreezer = freezerRepository.getAllPackageNames().toSet()
-                    if (!mayRestore(pkg, inFreezer)) {
+                    // Watchlist *and* profiles: an app can be frozen by a profile without ever
+                    // being on the watchlist, and refusing those would make its launcher icon a
+                    // dead tap with nothing said about why.
+                    val restorable = freezerRepository.getAllPackageNames().toSet() +
+                            freezeProfileRepository.allProfilePackageNames()
+                    if (!mayRestore(pkg, restorable)) {
                         Logger.d("FreezerBridge", "restore refused (not in freezer): $pkg")
                         false
                     } else {

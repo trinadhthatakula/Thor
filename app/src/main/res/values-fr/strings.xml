@@ -492,4 +492,30 @@
     <string name="extension_install_failed">Échec de la vérification : %1$s</string>
     <string name="info_app_size">Taille</string>
     
+    <!-- Profils de congélation -->
+    <string name="freeze_profiles">Profils de congélation</string>
+    <string name="profile_new">Nouveau profil</string>
+    <string name="profile_edit">Modifier le profil</string>
+    <string name="profile_name_label">Nom du profil</string>
+    <string name="profile_name_too_long">Ce nom est trop long</string>
+    <string name="profile_name_duplicate">Un profil portant ce nom existe déjà</string>
+    <string name="no_profiles_yet">Aucun profil pour l\'instant</string>
+    <string name="no_profiles_yet_desc">Regroupez les applications que vous congelez ensemble, puis congelez-les d\'un seul geste</string>
+    <string name="profile_save_selection">Enregistrer comme profil</string>
+    <string name="profile_delete_title">Supprimer « %1$s » ?</string>
+    <string name="profile_delete_desc">Seul le profil est supprimé. Les applications qu\'il contient restent telles quelles — ce qui est congelé le reste.</string>
+    <string name="profile_saved">Profil enregistré</string>
+    <string name="profile_deleted">Profil supprimé</string>
+    <string name="profile_nothing_to_do">Rien à faire pour ce profil</string>
+    <string name="error_profile_name_taken">Ce nom de profil est déjà pris</string>
+    <string name="error_profiles_load_failed">Échec du chargement des profils de congélation</string>
+    <string name="action_edit">Modifier</string>
+    <string name="action_delete">Supprimer</string>
+    <string name="action_save">Enregistrer</string>
+    <string name="more_options">Plus d\'options</string>
+    <plurals name="profile_app_count">
+        <item quantity="one">%1$d application</item>
+        <item quantity="other">%1$d applications</item>
+    </plurals>
+
 </resources>

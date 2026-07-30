@@ -11,12 +11,21 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [AppEntity::class, FreezerEntity::class, ExtensionDataEntity::class],
-    version = 5,
+    entities = [
+        AppEntity::class,
+        FreezerEntity::class,
+        ExtensionDataEntity::class,
+        FreezeProfileEntity::class,
+        FreezeProfileAppEntity::class,
+    ],
+    version = 6,
     autoMigrations = [
         AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4),
-        AutoMigration(from = 4, to = 5)
+        AutoMigration(from = 4, to = 5),
+        // 5 → 6 adds the two freeze-profile tables and touches nothing that already exists, so
+        // Room can generate it: a shipped database gets the new tables and keeps its watchlist.
+        AutoMigration(from = 5, to = 6),
     ],
     exportSchema = true
 )
@@ -25,6 +34,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun appDao(): AppDao
     abstract fun freezerDao(): FreezerDao
     abstract fun extensionDataDao(): ExtensionDataDao
+    abstract fun freezeProfileDao(): FreezeProfileDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
