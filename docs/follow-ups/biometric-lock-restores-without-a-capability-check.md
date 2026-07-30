@@ -1,10 +1,12 @@
 # Follow-up: a restored `biometric_lock=true` is a hard lockout with no in-app escape
 
-**Status:** **FIXED in code, one acceptance item outstanding.** The closed loop is gone: the launch
-path now consults `canAuthenticate()` and the user is given a working way out. See
-[Resolution](#resolution) — the fix takes **none** of options 1/2/3, which stay open as the owner's
-call. Surfaced while device-verifying follow-up #20 (backup rules), confirmed by reading the auth
-path.
+**Status:** **FIXED on API 29+; still a lockout on API 28 with no enrollable biometric.** The closed
+loop is gone everywhere — the launch path consults `canAuthenticate()` and the user is shown a screen
+that explains itself instead of a retry cycle — but on Android 9 that screen sends the user somewhere
+that cannot help them, because the API 28 prompt takes no device credential. See
+[Resolution](#resolution) and [the API 28 residual](#residual-api-28-with-no-enrollable-biometric).
+The fix takes **none** of options 1/2/3, which stay open as the owner's call. Surfaced while
+device-verifying follow-up #20 (backup rules), confirmed by reading the auth path.
 **Severity:** **Major.** The failure mode is a hard lockout with no in-app escape — the only exits are
 "clear app data", "uninstall", or "go set up a screen lock". It is rare *and* it lands exactly on new
 users, at the worst possible moment.
@@ -190,12 +192,36 @@ The `Unavailable` copy is now chosen by that same boundary rather than being wri
 Android 10 and up gets "set up a screen lock or enroll a fingerprint", Android 9 gets a string that
 says a screen lock will not do it there and to enrol a fingerprint.
 
-**Residual, and genuinely unfixable without the owner's call:** an **Android 9 device with no
-biometric hardware at all** (or hardware the user cannot enrol) has no way in. Nothing it can do in
-system Settings satisfies a biometric-only prompt. Reaching that state still needs a restore or an
-enrolment removed after the fact, since the Settings toggle is gated on the same predicate — but
-once there, only options 1–3 below (fail open, self-heal, in-app disable) get that user in, and each
-is a security decision. The remaining path is EXIT, then clearing Thor's data.
+### Residual: API 28 with no enrollable biometric
+
+An **Android 9 device with no biometric hardware at all** (or hardware the user cannot enrol) still
+has no way in. The unavailable screen is honest with them — it says a screen lock will not do it
+there — but honest is not the same as unstuck: nothing they can do in system Settings satisfies a
+biometric-only prompt. Reaching the state still needs a restore, or an enrolment removed after the
+fact, since the Settings toggle is gated on the same predicate. Once there, the remaining path is
+EXIT and clearing Thor's data.
+
+So the acceptance criterion below is met on API 29+ and **not** met on API 28 without enrollable
+biometric hardware. Raised by the external review of #292, and recorded here rather than papered
+over.
+
+There is one route that is *not* in options 1–3, and it is worth writing down because "unfixable
+without the owner's call" overstated it — the platform does have a credential path on API 28:
+
+5. **Confirm the device credential directly on API 28.**
+   `KeyguardManager.createConfirmDeviceCredentialIntent()` (API 21, deprecated at 29 in favour of
+   `BiometricPrompt`) shows the system PIN/pattern/password screen and returns a result. It is
+   exactly what androidx's `BiometricPrompt` launches for the credential path on 28–29, which is why
+   `BIOMETRIC_WEAK or DEVICE_CREDENTIAL` is a combination androidx will answer at every API level.
+   Thor calls the *framework* prompt rather than androidx's precisely because androidx needs a
+   `FragmentActivity` and `HomeActivity` is a `ComponentActivity`, so the direct intent — behind an
+   activity-result launcher on the unavailable screen — is the cheaper of the two ways to get there.
+
+   **This is still a decision, just a smaller one than 1–3.** It does not open the lock; it makes a
+   PIN satisfy it. API 30+ already accepts the credential, so this is version parity rather than new
+   policy — but it *is* a change to what unlocks Thor on a shipped OS version, for someone who set
+   the lock when only a fingerprint would do. It also only helps a device that has a screen lock; one
+   with neither a credential nor biometric hardware is unreachable by any option here except 1–3.
 
 **Still the owner's call, untouched by this:** options 1 (fail open), 2 (self-heal by writing
 `biometric_lock=false`) and 3 (in-app disable from the error screen). Each remains implementable on
@@ -205,11 +231,14 @@ pending.
 
 ## Acceptance
 
-- ~~With `biometric_lock=true` in DataStore on a device with **no enrolled biometric that
-  `promptAuthenticators(SDK_INT)` accepts** and **no screen lock** — both, since on API 30+ either
-  one alone still unlocks — Thor opens to `MainScreen` (or offers a working way out) instead of
-  cycling `BiometricLockView` ↔ `BiometricErrorView`.~~ Done via the "working way out" clause —
-  `BiometricUnavailableScreen`.
+- **PARTLY DONE — API 29+ only.** With `biometric_lock=true` in DataStore on a device with **no
+  enrolled biometric that `promptAuthenticators(SDK_INT)` accepts** and **no screen lock** — both,
+  since on API 30+ either one alone still unlocks — Thor no longer cycles `BiometricLockView` ↔
+  `BiometricErrorView`; it shows `BiometricUnavailableScreen`, which satisfies the "working way out"
+  clause because setting a screen lock or enrolling a biometric gets the user in.
+  **On API 28 with no enrollable biometric hardware it is a way out of the *loop* but not a way
+  *in*** — the screen is honest and the user is still locked out. Closing that needs option 5 or one
+  of options 1–3, all of which are the owner's call.
 - ~~A unit test on `SecurityViewModel` covering enabled-but-not-capable. The harness exists —
   `MainDispatcherRule` and `ViewModelTestDoubles` landed in the #16 batch, and `SecurityViewModel`
   already has behaviour tests, so this is a new case in an existing file, not new scaffolding.~~
