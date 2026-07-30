@@ -22,6 +22,10 @@
        disableIfNoEncryptionCapabilities is deliberately left off: these prefs are flags and enum
        names, no secrets, and switching it on would silently disable backup on devices without
        client-side encryption — the very silent-nothing outcome we are fixing here.
+
+       Note the path names ONE DataStore, not the datastore/ directory. Thor has a second store,
+       thor_local_state, holding facts about the excluded database rather than user settings, and
+       naming the file rather than the folder is what keeps it out. See backup_rules.xml.
     -->
     <cloud-backup>
 
@@ -49,7 +53,9 @@
          - thor_database mixes the user-curated freezer watchlist with the derived app metadata
            cache in one file, so it cannot be taken selectively, and a watchlist row naming a
            package the new device does not have reads as a frozen app that is not there;
-         - everything under cacheDir is in-flight installer scratch, meaningless off-device.
+         - everything under cacheDir is in-flight installer scratch, meaningless off-device;
+         - thor_local_state describes the database that is not coming with it, so moving it would
+           land a claim about a watchlist that does not exist on the new device.
        If the watchlist is ever worth transferring, split it out of the metadata cache first
        rather than widening this section.
     -->
