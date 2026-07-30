@@ -6,27 +6,36 @@ package com.valhalla.thor.presentation.appList
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
-import com.valhalla.thor.data.manager.PrivilegeManager
-import com.valhalla.thor.data.manager.StorageStatsHelper
-import com.valhalla.thor.data.manager.UsageAccessManager
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
+import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.PermissionIndex
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
+import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.domain.model.filterApps
+import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.domain.model.sortApps
 import com.valhalla.thor.domain.repository.AppRepository
+import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.PrivilegeStateProvider
+import com.valhalla.thor.domain.repository.StorageStatsProvider
+import com.valhalla.thor.domain.repository.UsageAccessGate
+import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
+import com.valhalla.thor.util.UiTextException
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.Channel
@@ -36,6 +45,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -44,7 +54,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
-import kotlin.time.Duration.Companion.milliseconds
+import org.koin.core.annotation.Named
 
 // ... AppListUiState remains same ...
 data class AppListUiState(
@@ -56,6 +66,9 @@ data class AppListUiState(
     // Raw Data
     val allUserApps: List<AppInfo> = emptyList(),
     val allSystemApps: List<AppInfo> = emptyList(),
+    // Freezer membership (the watchlist), not freeze state: an app can be frozen without being in
+    // the freezer and vice versa. Drives the sheet's "Add to / Remove from Freezer" action.
+    val freezerPackageNames: Set<String> = emptySet(),
     // Filter State
     val appListType: AppListType = AppListType.USER,
     val filterType: FilterType = FilterType.Source,
@@ -69,12 +82,23 @@ data class AppListUiState(
     // Installer identifiers -> display label. Resolved to a String in the screen so the
     // ViewModel stays free of a Context dependency.
     val installerNameMap: Map<String, UiText> = emptyMap(),
+    // Runtime-permission group -> declaring packages, plus the platform's own labels for the chips.
+    // Empty until FilterType.Permission is selected; see observePermissionFilter().
+    val permissionIndex: PermissionIndex = PermissionIndex(),
+    val isLoadingPermissions: Boolean = false,
+    // Distinct from "the index is empty". Both leave the chip row with nothing to show, but only one
+    // of them is Thor's fault, and the row says so. The one-off toast is gone by the time a user
+    // looks up from the empty row and wonders what happened.
+    val permissionIndexFailed: Boolean = false,
     // Detail View State
     val selectedAppDetails: AppInfo? = null,
     val isLoadingDetails: Boolean = false,
-    val useDetailedView: Boolean = true,
     val isGrid: Boolean = true,
     val isComputingSizes: Boolean = false,
+    // Holds the pull-to-refresh indicator up for a readable minimum. isLoading cannot do this job:
+    // getAllApps() emits the Room cache before it starts the package rescan, so isLoading clears
+    // after one DAO read and the indicator would blink out while the real scan is still running.
+    val isManualRefreshing: Boolean = false,
     val needsUsageAccessPrompt: Boolean = false
 )
 
@@ -91,17 +115,27 @@ sealed interface AppListEvent {
 class AppListViewModel(
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val getAppDetailsUseCase: GetAppDetailsUseCase,
-    private val privilegeManager: PrivilegeManager,
+    private val privilege: PrivilegeStateProvider,
     private val manageAppUseCase: ManageAppUseCase,
+    private val freezeAppUseCase: FreezeAppUseCase,
     private val preferenceRepository: PreferenceRepository,
     private val freezerRepository: FreezerRepository,
+    private val appShortcuts: AppShortcutController,
     private val appRepository: AppRepository,
-    private val storageStatsHelper: StorageStatsHelper,
-    private val usageAccessManager: UsageAccessManager
+    private val permissionRepository: PermissionRepository,
+    private val storageStats: StorageStatsProvider,
+    private val usageAccess: UsageAccessGate,
+    // Injected rather than hardcoded so a test can put every stage of this view model on one
+    // scheduler: the sort/filter pipeline below runs off-main, and a `Dispatchers.Default` baked
+    // in here would keep it on a real thread pool while the rest ran on virtual time.
+    @Named("default") private val defaultDispatcher: CoroutineDispatcher,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
     private var appsJob: Job? = null
     private var sizeJob: Job? = null
+    private var refreshIndicatorJob: Job? = null
+    private var permissionIndexJob: Job? = null
     private val _rawState = MutableStateFlow(AppListUiState())
 
     // One-off UI feedback (toasts, freezer prompt). A buffered Channel fires each event exactly
@@ -113,19 +147,18 @@ class AppListViewModel(
     val events: Flow<AppListEvent> = _events.receiveAsFlow()
 
     // Combine raw app data with user preferences from DataStore
-    // OPTIMIZATION: flowOn(Dispatchers.Default) ensures sorting/filtering happens on background thread
+    // OPTIMIZATION: flowOn(defaultDispatcher) ensures sorting/filtering happens on background thread
     val uiState = combine(_rawState, preferenceRepository.userPreferences) { state, prefs ->
         val mergedState = state.copy(
             sortBy = prefs.appSortBy,
             sortOrder = prefs.appSortOrder,
             filterType = prefs.appFilterType,
             selectedFilter = prefs.appSelectedFilter,
-            useDetailedView = prefs.useDetailedView,
             isGrid = prefs.appListIsGrid
         )
         processList(mergedState)
     }
-        .flowOn(Dispatchers.Default) // Move computation off Main Thread
+        .flowOn(defaultDispatcher) // Move computation off Main Thread
         .stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(5000),
@@ -133,26 +166,145 @@ class AppListViewModel(
         )
 
     init {
-        loadApps()
+        loadApps(deferForTransition = true)
         observeSizeSort()
+        observeFreezerMembership()
+        observePermissionFilter()
     }
 
-    fun loadApps() {
+    /**
+     * Builds the permission index whenever [FilterType.Permission] is active *and* the set of
+     * installed apps has changed under it.
+     *
+     * Driven off the preference rather than [updateFilterType] so the persisted case is covered too
+     * — a user who left Thor on this filter gets the index built at startup instead of an empty
+     * chip row.
+     *
+     * The second input is the invalidation. The index is a snapshot of what every package declares,
+     * so an install, an uninstall or an update makes it wrong, and the filter it feeds does not
+     * degrade gracefully: a package the index has not heard of matches *no* group, so a freshly
+     * installed camera app is simply missing from the Camera chip with nothing to indicate why. The
+     * key is `packageName@lastUpdateTime`, which moves on all three of those events and stays put
+     * for the ones that do not matter (freeze, suspend, a size arriving), so a session that installs
+     * nothing pays for exactly one sweep. That the app list is *already* watching for those changes
+     * is what makes this cheap: no `PACKAGE_ADDED` receiver, no polling, just the list Thor
+     * refreshes anyway.
+     *
+     * Nothing is built until that set is non-empty, so the startup sweep waits for the first real
+     * app load rather than racing it and then immediately redoing itself. That wait reports itself
+     * as loading, because to the chip row an empty index during it is indistinguishable from a
+     * device with no permission groups, and only one of those is true.
+     */
+    private fun observePermissionFilter() {
+        viewModelScope.launch {
+            combine(
+                preferenceRepository.userPreferences.map { it.appFilterType }.distinctUntilChanged(),
+                _rawState.map { state ->
+                    (state.allUserApps + state.allSystemApps)
+                        .mapTo(HashSet()) { "${it.packageName}@${it.lastUpdateTime}" }
+                }.distinctUntilChanged()
+            ) { type, packages -> type to packages }
+                .collect { (type, packages) ->
+                    permissionIndexJob?.cancel()
+                    if (type != FilterType.Permission) {
+                        _rawState.update { it.copy(isLoadingPermissions = false) }
+                        return@collect
+                    }
+                    if (packages.isEmpty()) {
+                        // Waiting on the app list, not done with it. Both states leave
+                        // `permissionIndex` empty, and the chip row has to tell them apart: dropping
+                        // out of loading here puts "No permission groups found on this device" —
+                        // a claim about the *device* — on screen beside the main spinner, for every
+                        // returning user who left the filter here. `permissionIndexFailed` is left
+                        // alone rather than cleared; the loading state outranks it in that selector
+                        // anyway, and the very next emission re-answers it from a real build.
+                        _rawState.update { it.copy(isLoadingPermissions = true) }
+                        return@collect
+                    }
+                    permissionIndexJob = launch {
+                        _rawState.update {
+                            it.copy(isLoadingPermissions = true, permissionIndexFailed = false)
+                        }
+                        val result = permissionRepository.buildPermissionIndex()
+                        result.onFailure { e ->
+                            Logger.e("AppListViewModel", "Permission index failed: ${e.message}")
+                            _events.send(
+                                AppListEvent.ShowMessage(
+                                    UiText.StringResource(R.string.permission_filter_failed)
+                                )
+                            )
+                        }
+                        _rawState.update { state ->
+                            state.copy(
+                                // On failure the previous index is dropped rather than kept: a stale
+                                // index filters silently and wrongly, an empty one shows a
+                                // placeholder the user can act on.
+                                permissionIndex = result.getOrElse { PermissionIndex() },
+                                permissionIndexFailed = result.isFailure,
+                                isLoadingPermissions = false
+                            )
+                        }
+                    }
+                }
+        }
+    }
+
+    /**
+     * Mirrors the freezer watchlist into state so the app-info sheet can offer "Add to / Remove from
+     * Freezer" without a per-app `contains()` round trip. This is the only surface offering that
+     * toggle on phones now that the details screen is a wide-window detail pane, and it is a Room
+     * flow, so an add/remove made anywhere else (freezer screen, launcher shortcut) lands here too.
+     */
+    private fun observeFreezerMembership() {
+        viewModelScope.launch {
+            freezerRepository.getAll()
+                .catch { e ->
+                    // Room's Flow throws on a failed query; a membership read failure must not take
+                    // the app list down with it — the sheet just falls back to "not in freezer".
+                    if (e is CancellationException) throw e // preserve structured-concurrency cancellation
+                    Logger.e("AppListViewModel", "freezer membership observation failed", e)
+                }
+                .collect { packages ->
+                    _rawState.update { it.copy(freezerPackageNames = packages.toSet()) }
+                }
+        }
+    }
+
+    /**
+     * @param deferForTransition hold the scan back until the screen-entry animation has had time to
+     * settle. Only the navigation-entry paths want this; see [settleDelayFor].
+     */
+    fun loadApps(deferForTransition: Boolean = false) {
         // Cancel any existing collector so the prior (infinite) getInstalledAppsUseCase()
         // callbackFlow tears down (awaitClose -> unregister receivers) before we relaunch.
         appsJob?.cancel()
 
+        if (!deferForTransition) holdRefreshIndicator()
+
         appsJob = viewModelScope.launch {
             _rawState.update { it.copy(isLoading = true) }
 
-            // Allow navigation/bottom bar animations to finish fluidly
-            delay(800.milliseconds)
+            // Allow navigation/bottom bar animations to finish fluidly.
+            // Opt-in, because this runs BEFORE the (cold) flow below is collected, so it is dead
+            // time prepended to the scan rather than overlapped with it. A deliberate
+            // pull-to-refresh has no transition to protect and must not pay for it.
+            if (deferForTransition) {
+                // catch: userPreferences is dataStore.data, which throws IOException on a failed
+                // read. Fall back to the defaults rather than letting a preference read failure
+                // take down the whole app list. (Flow.catch stays transparent to cancellation.)
+                val intensity = preferenceRepository.userPreferences
+                    .catch { emit(UserPreferences()) }
+                    .first()
+                    .animationIntensity
+                // LOW resolves to ZERO, which delay() returns from without suspending.
+                delay(settleDelayFor(intensity))
+            }
 
             // Privilege availability now comes from the shared reactive PrivilegeManager,
             // so a Shizuku grant reflects here without reloading the list.
             combine(
                 getInstalledAppsUseCase(),
-                privilegeManager.state
+                privilege.state
             ) { (user, system), priv ->
                 Triple(user, system, priv)
             }.catch { e ->
@@ -181,9 +333,38 @@ class AppListViewModel(
                     )
                 }
                 if (priv.hasAnyPrivilege) {
-                    launch { usageAccessManager.maybeAutoGrant() }
+                    launch { usageAccess.maybeAutoGrant() }
                 }
             }
+        }
+    }
+
+    /**
+     * Keeps the pull-to-refresh indicator on screen for a readable minimum, without holding the
+     * scan back.
+     *
+     * `isLoading` alone cannot drive the indicator on this path: `getAllApps()` sends the Room
+     * cache before it triggers the `pm.getInstalledPackages` rescan, and `priv.isReady` has long
+     * since latched true, so the first emission — one DAO read later — clears `isLoading` while
+     * the real scan is still running. The indicator would blink out immediately and the list would
+     * then mutate under the user with nothing to explain it.
+     *
+     * The old unconditional 800 ms delay masked this by keeping `isLoading` true, but it did so by
+     * postponing the work. This holds only the *indicator*, so the scan still starts at once. It
+     * also restores the re-entrancy guard that fell out of that delay: `PullToRefreshBox` ignores
+     * pulls while it is refreshing, so a user cannot stack overlapping package scans by pulling
+     * repeatedly.
+     */
+    private fun holdRefreshIndicator() {
+        refreshIndicatorJob?.cancel()
+        // Raised here rather than inside the coroutine, and lowered only by a timer that ran to
+        // completion. A cancelled hold must never lower the flag: the only thing that cancels one
+        // is a newer hold, which has already raised it again, so clearing from the old job's
+        // teardown would hide the indicator for the refresh that just started.
+        _rawState.update { it.copy(isManualRefreshing = true) }
+        refreshIndicatorJob = viewModelScope.launch {
+            delay(REFRESH_INDICATOR_MIN_VISIBLE)
+            _rawState.update { it.copy(isManualRefreshing = false) }
         }
     }
 
@@ -208,7 +389,7 @@ class AppListViewModel(
     private fun ensureInstallSizes() {
         sizeJob?.cancel()
         sizeJob = viewModelScope.launch {
-            if (!usageAccessManager.isGranted() && !usageAccessManager.tryGrantViaPrivilege()) {
+            if (!usageAccess.isGranted() && !usageAccess.tryGrantViaPrivilege()) {
                 _rawState.update { it.copy(needsUsageAccessPrompt = true) }
                 return@launch
             }
@@ -216,7 +397,7 @@ class AppListViewModel(
             try {
                 val packages = (_rawState.value.allUserApps + _rawState.value.allSystemApps)
                     .map { it.packageName }
-                val sizes = storageStatsHelper.installSizes(packages)
+                val sizes = storageStats.installSizes(packages)
                 _rawState.update { state ->
                     state.copy(
                         needsUsageAccessPrompt = false,
@@ -241,7 +422,11 @@ class AppListViewModel(
 
     fun freezeApp(packageName: String, appName: String?, freeze: Boolean) {
         viewModelScope.launch {
-            val result = manageAppUseCase.setAppDisabled(packageName, freeze)
+            // Freezing goes through FreezeAppUseCase so the BLOCKED tier is enforced below this
+            // view model rather than by AppRiskDialog declining to render a confirm button.
+            // Unfreezing keeps the raw call: it must never be blocked.
+            val result = if (freeze) freezeAppUseCase(packageName)
+            else manageAppUseCase.setAppDisabled(packageName, false)
             result.onSuccess {
                 // Update the app's enabled state in our local list immediately for UI responsiveness
                 _rawState.update { state ->
@@ -256,7 +441,7 @@ class AppListViewModel(
                 }
 
                 if (freeze) {
-                    val inFreezer = withContext(Dispatchers.IO) {
+                    val inFreezer = withContext(ioDispatcher) {
                         freezerRepository.contains(packageName)
                     }
                     if (!inFreezer) {
@@ -284,20 +469,30 @@ class AppListViewModel(
                     )
                 }
             }.onFailure { e ->
+                // A UiTextException already carries the message to show (the tier refusal) and
+                // has a null `message`, which error_format would render as a bare "Error: ".
                 _events.send(
                     AppListEvent.ShowMessage(
-                        UiText.StringResource(
-                            R.string.error_format,
-                            e.message ?: ""
-                        )
+                        if (e is UiTextException) e.uiText
+                        else UiText.StringResource(R.string.error_format, e.message ?: "")
                     )
                 )
             }
         }
     }
 
+    /**
+     * The "Frozen — add it to the Freezer?" prompt's confirm.
+     *
+     * Deliberately **not** tier-gated, unlike [toggleFreezerMembership]. This only ever runs after
+     * [freezeApp] succeeded, so the app is already frozen; the question is whether to track it, not
+     * whether to freeze it. Membership is what makes a frozen app recoverable —
+     * `freezableCandidates` drops `blockedFromFreeze` from FREEZE runs but filters UNFREEZE runs on
+     * `state == FROZEN` alone — so tracking can never cause a re-freeze and is the only way
+     * Unfreeze-all reaches it. Refusing here would strand a frozen app off the list it belongs on.
+     */
     fun addToFreezer(packageName: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             freezerRepository.add(packageName)
             _events.send(
                 AppListEvent.ShowMessage(UiText.StringResource(R.string.added_to_freezer_success))
@@ -305,16 +500,67 @@ class AppListViewModel(
         }
     }
 
+    /**
+     * Freezer watchlist membership, not freeze state — this adds/removes the app from the set the
+     * freezer screen and the bulk freeze paths operate on; it never disables anything itself.
+     *
+     * Reads `contains()` rather than [AppListUiState.freezerPackageNames] so the decision is made
+     * against the database at the moment of the tap, not against a state snapshot the observer may
+     * not have refreshed yet. No state write here either: [observeFreezerMembership] is collecting
+     * the same Room flow and reflects the change on its own.
+     *
+     * Adding is gated on [FreezeTier]; removing never is, so an app that got onto the watchlist
+     * before the gate existed can always be taken back off.
+     */
+    fun toggleFreezerMembership(packageName: String) {
+        viewModelScope.launch(ioDispatcher) {
+            if (freezerRepository.contains(packageName)) {
+                freezerRepository.remove(packageName)
+                // Pinned launcher shortcuts can't be removed silently, only greyed out — leaving a
+                // live shortcut for an app no longer in the freezer would let it drive a freeze
+                // from the launcher.
+                appShortcuts.disableAppShortcut(packageName)
+                _events.send(
+                    AppListEvent.ShowMessage(
+                        UiText.PluralsResource(R.plurals.removed_from_freezer_success, 1)
+                    )
+                )
+            } else {
+                // Same BLOCKED gate as FreezerViewModel.toggleManaged, and for the same reason: the
+                // watchlist is the input to every bulk-freeze surface, so letting an unsafe app in
+                // means the snowflake lights up and the app sits in the freezer list forever while
+                // every run silently skips it. Refusing the add is the honest answer.
+                //
+                // Resolved against _rawState, not the filtered uiState: a search or filter that
+                // hides the app must not turn into "not found" and, via the fail-closed branch
+                // below, a refusal.
+                val app = (_rawState.value.allUserApps + _rawState.value.allSystemApps)
+                    .firstOrNull { it.packageName == packageName }
+                if (app == null || app.freezeTier == FreezeTier.BLOCKED) {
+                    // Fail closed on an unresolvable package: an unknown tier is not a safe tier.
+                    _events.send(
+                        AppListEvent.ShowMessage(UiText.StringResource(R.string.error_unsafe_skipped))
+                    )
+                    return@launch
+                }
+                freezerRepository.add(packageName)
+                _events.send(
+                    AppListEvent.ShowMessage(UiText.StringResource(R.string.added_to_freezer_success))
+                )
+            }
+        }
+    }
+
     fun performMultiAction(action: MultiAppAction) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             when (action) {
                 is MultiAppAction.Freeze -> {
-                    val eligibleApps = action.appList.filter { appInfo ->
-                        val isSystem = appInfo.isSystem
-                        val isUadFailed = isSystem && appInfo.isUadLoadFailed
-                        val isUnsafe = isSystem && appInfo.bloatRecommendation?.lowercase() == "unsafe"
-                        !(isUadFailed || isUnsafe)
-                    }
+                    // EXPERT apps go through unwarned here by design — a batch is not the place to
+                    // interrogate the user app by app. BLOCKED is filtered here rather than left
+                    // to FreezeAppUseCase (which is what `freezeApp` uses) so the skipped apps
+                    // are counted once, in `failures`, instead of each costing a redundant
+                    // getAppDetails on the way to a second report of the same refusal.
+                    val eligibleApps = action.appList.filter { it.freezeTier != FreezeTier.BLOCKED }
                     val skippedCount = action.appList.size - eligibleApps.size
                     val succeededPackages = mutableSetOf<String>()
                     var failures = skippedCount
@@ -416,7 +662,11 @@ class AppListViewModel(
         // AppListType is usually session-only, but we reset filter to "All" when switching
         _rawState.update { it.copy(appListType = type) }
         viewModelScope.launch {
-            preferenceRepository.updateAppFilter(FilterType.Source, "All")
+            // Keep the filter *category*, reset only the selection. This used to hardcode
+            // FilterType.Source, which was invisible while Source was the only interesting default
+            // but means "filter by Camera, then tap System apps" silently throws you back to
+            // Installation Source — reading as a bug in whichever filter you had chosen.
+            preferenceRepository.updateAppFilter(uiState.value.filterType, "All")
         }
     }
 
@@ -471,22 +721,14 @@ class AppListViewModel(
             }
         }
 
-        // 3. Filter by Source/State
-        val filtered = when (state.filterType) {
-            FilterType.Source -> {
-                if (state.selectedFilter == "All") searched
-                else searched.filter { it.installerPackageName == state.selectedFilter }
-            }
-
-            FilterType.State -> {
-                when (state.selectedFilter) {
-                    "Active" -> searched.filter { it.enabled }
-                    "Frozen" -> searched.filter { !it.enabled }
-                    "Suspended" -> searched.filter { it.isSuspended }
-                    else -> searched
-                }
-            }
-        }
+        // 3. Filter by Source/State/Permission — the rules live in domain so they are testable,
+        // the same way sorting does.
+        val filtered = filterApps(
+            apps = searched,
+            filterType = state.filterType,
+            selectedFilter = state.selectedFilter,
+            permissionIndex = state.permissionIndex
+        )
 
         // 4. Sort
         val sorted = getSortedList(filtered, state.sortBy, state.sortOrder)
@@ -526,4 +768,5 @@ class AppListViewModel(
         sortBy: SortBy,
         order: SortOrder
     ): List<AppInfo> = sortApps(list, sortBy, order)
+
 }

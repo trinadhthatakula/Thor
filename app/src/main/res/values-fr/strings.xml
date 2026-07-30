@@ -99,6 +99,12 @@
     <string name="descending">Décroissant</string>
     <string name="filters">Filtres</string>
     <string name="sort_by">Trier par</string>
+    <string name="filter_type_state">État</string>
+    <string name="filter_type_source">Source d\'installation</string>
+    <string name="filter_type_permission">Autorisation</string>
+    <string name="permission_filter_loading">Lecture des autorisations…</string>
+    <string name="permission_filter_unavailable">Aucun groupe d\'autorisations trouvé sur cet appareil</string>
+    <string name="permission_filter_failed">Impossible de lire les autorisations sur cet appareil</string>
 
     <!-- App Info Dialog -->
     <string name="clear_app_data_title">Effacer les données ?</string>
@@ -127,7 +133,6 @@
     <string name="status_suspended">SUSPENDU</string>
 
     <!-- App Actions -->
-    <string name="action_launch">Lancer</string>
     <string name="action_share">Partager</string>
     <string name="action_freeze">Geler</string>
     <string name="action_unfreeze">Dégeler</string>
@@ -135,7 +140,6 @@
     <string name="action_unsuspend">Rétablir</string>
     <string name="action_kill">Arrêter</string>
     <string name="action_cache">Cache</string>
-    <string name="action_data">Données</string>
     <string name="action_uninstall">Désinstaller</string>
     <string name="action_reinstall">Réinstaller</string>
 
@@ -156,7 +160,6 @@
     <string name="cd_suspended">Suspendu</string>
     <string name="cd_selected">Sélectionné</string>
     <string name="cd_clear">Effacer</string>
-    <string name="cd_settings">Paramètres</string>
     <string name="select_app_details">Sélectionnez une application pour voir les détails</string>
 
     <!-- Permission Manager -->
@@ -185,6 +188,10 @@
         <item quantity="other">%1$d applications gelées</item>
     </plurals>
     <string name="tile_freeze_partial_failure">%1$d/%2$d applications gelées (%3$d échouées)</string>
+    <string name="tile_freeze_incomplete">%1$d/%2$d applications gelées (%3$d inachevées)</string>
+    <string name="tile_checking">Vérification…</string>
+    <string name="tile_freezing">Gel en cours…</string>
+    <string name="channel_bulk_result_name">Résultats des actions groupées</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Paramètres du congélateur</string>
@@ -234,6 +241,7 @@
         <item quantity="other">%1$d applications dégelées</item>
     </plurals>
     <string name="tile_unfreeze_partial_failure">%1$d/%2$d applications dégelées (%3$d échouées)</string>
+    <string name="tile_unfreeze_incomplete">%1$d/%2$d applications dégelées (%3$d inachevées)</string>
     <string name="error_format">Erreur : %1$s</string>
     <string name="failed_to_load_apps">Échec du chargement des applications</string>
     <plurals name="removed_from_freezer_success">
@@ -308,6 +316,7 @@
     <string name="title_thor_installer">Installateur Thor</string>
     <string name="install_analyzing">Analyse du paquet…</string>
     <string name="install_downgrade_warning">Cela va dégrader l\'application.</string>
+    <string name="install_downgrade_code_explainer">Le code de version %1$s est inférieur au %2$s installé. Android ordonne les mises à jour par code de version, et non par nom de version : une application peut sembler plus récente tout en étant une rétrogradation.</string>
     <string name="install_update_warning">Cela va mettre à jour l\'application existante.</string>
     <plurals name="install_permissions">
         <item quantity="one">Ce paquet demande %1$d autorisation. %2$s</item>
@@ -402,13 +411,19 @@
     <string name="action_remove">Supprimer</string>
     <string name="biometric_unlock_title">Déverrouiller Thor</string>
     <string name="biometric_unlock_subtitle">Authentifiez-vous pour continuer</string>
+    <string name="biometric_unavailable_title">Cet appareil ne peut pas déverrouiller Thor</string>
+    <string name="biometric_unavailable_message">Le verrouillage de l\'application est activé, mais cet appareil n\'a rien qui permette de le déverrouiller. Configurez un verrouillage d\'écran ou enregistrez une empreinte dans les paramètres système, puis revenez — Thor vous laissera entrer.</string>
+    <string name="biometric_unavailable_message_biometric_only">Le verrouillage de l\'application est activé, mais aucune empreinte n\'est enregistrée sur cet appareil — et sous Android 9, la demande de déverrouillage ne peut pas accepter un verrouillage d\'écran. Enregistrez une empreinte dans les paramètres système, puis revenez — Thor vous laissera entrer.</string>
+    <string name="biometric_not_enrolled_toast">Biométrie non enregistrée — configurez d\'abord un verrouillage d\'écran ou une empreinte</string>
+    <string name="biometric_not_enrolled_toast_biometric_only">Aucune empreinte enregistrée — sous Android 9, un verrouillage d\'écran ne déverrouille pas Thor : enregistrez d\'abord une empreinte</string>
+    <string name="biometric_lock_unavailable_toast">Impossible d\'activer le verrouillage de l\'application : cet appareil n\'a aucune biométrie pour le déverrouiller</string>
+    <string name="biometric_lock_disabled_no_biometric">Verrouillage de l\'application désactivé : cet appareil n\'a aucune biométrie pour le déverrouiller</string>
+    <string name="open_security_settings">Ouvrir les paramètres de sécurité</string>
     <string name="unlock">Déverrouiller</string>
     <string name="thank_you_support_desc">Votre abonnement est actif. Merci d\'aider à soutenir le développement de Thor !</string>
     
-    <!-- Detailed View & Animation Intensity -->
+    <!-- Details & Animation Intensity -->
     <string name="action_details">Détails</string>
-    <string name="detailed_view">Vue détaillée</string>
-    <string name="detailed_view_desc">Cliquer pour aller directement à l\'écran de détails au lieu d\'afficher le dialogue</string>
     <string name="animation_intensity">Intensité de l\'animation</string>
     <string name="animation_intensity_desc">Contrôler la vitesse, les animations et les transitions de navigation</string>
     <string name="animation_intensity_low">Faible</string>
@@ -424,7 +439,9 @@
     <string name="legacy_extension_desc">Une version obsolète de l\'extension Stormbringer (orthographiée par erreur \"Strombringer\") est installée. Veuillez la désinstaller pour éviter les conflits et installer la version mise à jour.</string>
     <string name="action_export">Exporter</string>
     <string name="export_explain_apk">Thor enregistre cette application sous forme d\'un fichier d\'installation unique (.apk) dans le dossier ci-dessous. Utilisez-le pour sauvegarder l\'application ou la réinstaller plus tard.</string>
-    <string name="export_explain_apks">Cette application est composée de plusieurs parties distinctes, Thor les regroupe donc dans un seul paquet (.apks) dans le dossier ci-dessous. Réinstallez-la à tout moment avec l\'installateur de Thor.</string>
+    <string name="export_explain_apks">Cette application est composée de plusieurs parties distinctes, regroupées dans un seul paquet (.apks) dans le dossier ci-dessous. Réinstallez-la à tout moment avec l\'installateur de Thor.</string>
+    <string name="export_explain_xapk">Thor regroupe les parties de cette application dans un seul fichier (.xapk) dans le dossier ci-dessous, un format que d\'autres installateurs comprennent également. Les données de jeu (fichiers OBB) ne sont pas incluses, car Android 11 et versions ultérieures empêchent toute application de lire le dossier OBB d\'une autre ; un jeu volumineux s\'installera depuis ce fichier, mais risque de ne pas fonctionner.</string>
+    <string name="export_format">Format</string>
     <string name="export_save_to">Enregistrer sous</string>
     <string name="export_change">Modifier</string>
     <string name="export_in_progress">Exportation en cours…</string>
@@ -433,6 +450,22 @@
     <string name="export_failed_unknown">erreur inconnue</string>
     <string name="export_dest_downloads">Téléchargements/Thor</string>
     <string name="export_dest_selected">Dossier sélectionné</string>
+
+    <string name="action_export_selected">Exporter</string>
+    <string name="export_bulk_confirm_title">Exporter les applications sélectionnées ?</string>
+    <plurals name="export_bulk_confirm_desc">
+        <item quantity="one">Thor enregistre %1$d fichier d\'installation dans votre dossier d\'exportation, un par application sélectionnée. Cela peut prendre beaucoup de temps et nécessiter beaucoup d\'espace libre, alors gardez Thor ouvert jusqu\'à la fin.</item>
+        <item quantity="other">Thor enregistre %1$d fichiers d\'installation dans votre dossier d\'exportation, un par application sélectionnée. Cela peut prendre beaucoup de temps et nécessiter beaucoup d\'espace libre, alors gardez Thor ouvert jusqu\'à la fin.</item>
+    </plurals>
+    <string name="export_bulk_progress">Exportation de %1$d sur %2$d</string>
+    <string name="export_bulk_finished">%1$d application(s) sur %2$d exportée(s) vers %3$s</string>
+    <string name="export_bulk_finished_none">Impossible d\'exporter les %1$d applications sélectionnées</string>
+    <string name="export_bulk_index_failed">Les fichiers ont été enregistrés, mais la liste qui les accompagne n\'a pas pu être écrite</string>
+    <string name="export_bulk_failed">L\'exportation a échoué — %1$d applis sur %2$d ont été enregistrées</string>
+    <string name="export_bulk_stop">Arrêter l\'exportation</string>
+    <string name="export_bulk_cancelled">Exportation arrêtée — %1$d application(s) sur %2$d enregistrées</string>
+    <string name="export_bulk_nothing_selected">Sélectionnez au moins une application à exporter</string>
+    <string name="export_bulk_no_space">Espace libre insuffisant pour l\'exportation. Thor a besoin d\'environ %1$s d\'espace libre pour préparer ces fichiers, mais seuls %2$s sont disponibles. Libérez de l\'espace ou sélectionnez moins d\'applications.</string>
     <string name="failed_to_load_permissions">Échec du chargement des autorisations</string>
     <string name="permission_status_updated">Statut de l\'autorisation mis à jour</string>
     <string name="failed_to_modify_permission">Échec de la modification de l\'autorisation</string>
@@ -442,6 +475,9 @@
     <string name="usage_access_needed_subtitle">Nécessaire pour lire la taille des applications pour le tri par Taille</string>
     <string name="usage_access_needed_title">Accès aux données d\'utilisation requis</string>
     <string name="usage_access_prompt_body">Thor a besoin de l\'accès aux données d\'utilisation pour lire la taille des applications. Activez-le pour Thor, puis choisissez de nouveau \"Taille\". Vous pouvez également gérer cela dans Paramètres → Autorisations.</string>
+    <string name="notification_access">Notifications</string>
+    <string name="notification_access_granted_subtitle">Les résultats du gel groupé sont affichés en notifications</string>
+    <string name="notification_access_needed_subtitle">Autorisez les notifications pour voir les résultats du gel groupé</string>
     <string name="open_settings">Ouvrir les paramètres</string>
     <string name="freeze_mode">Mode de congélation</string>
     <string name="suspend_instead_of_freeze">Suspendre au lieu de congeler</string>
@@ -488,4 +524,32 @@
     <string name="extension_install_failed">Échec de la vérification : %1$s</string>
     <string name="info_app_size">Taille</string>
     
+    <!-- Profils de congélation -->
+    <string name="freeze_profiles">Profils de congélation</string>
+    <string name="profile_new">Nouveau profil</string>
+    <string name="profile_edit">Modifier le profil</string>
+    <string name="profile_name_label">Nom du profil</string>
+    <string name="profile_name_too_long">Ce nom est trop long</string>
+    <string name="profile_name_duplicate">Un profil portant ce nom existe déjà</string>
+    <string name="no_profiles_yet">Aucun profil pour l\'instant</string>
+    <string name="no_profiles_yet_desc">Regroupez les applications que vous congelez ensemble, puis congelez-les d\'un seul geste</string>
+    <string name="profile_save_selection">Enregistrer comme profil</string>
+    <string name="profile_delete_title">Supprimer « %1$s » ?</string>
+    <string name="profile_delete_desc">Seul le profil est supprimé. Les applications qu\'il contient restent telles quelles — ce qui est congelé le reste.</string>
+    <string name="profile_saved">Profil enregistré</string>
+    <string name="profile_deleted">Profil supprimé</string>
+    <string name="profile_nothing_to_do">Rien à faire pour ce profil</string>
+    <string name="bulk_run_failed">L\'opération n\'est pas allée au bout — vérifiez les applis avant de vous y fier</string>
+    <string name="error_profile_name_taken">Ce nom de profil est déjà pris</string>
+    <string name="error_profile_delete_failed">Impossible de supprimer ce profil</string>
+    <string name="error_profiles_load_failed">Échec du chargement des profils de congélation</string>
+    <string name="action_edit">Modifier</string>
+    <string name="action_delete">Supprimer</string>
+    <string name="action_save">Enregistrer</string>
+    <string name="more_options">Plus d\'options</string>
+    <plurals name="profile_app_count">
+        <item quantity="one">%1$d application</item>
+        <item quantity="other">%1$d applications</item>
+    </plurals>
+
 </resources>

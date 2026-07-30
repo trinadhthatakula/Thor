@@ -3,6 +3,25 @@ name: 2. Production Build & Distribute
 on:
   push:
     branches: [ "production" ]
+    # Same reasoning as dev-check.yml: a change that cannot reach the APK must not spend seven
+    # minutes and a Play upload proving it. Safe to filter the whole workflow because this is
+    # not a required status check — the production ruleset requires a review and a code owner,
+    # no status contexts at all — so there is no check left pending by a skipped run.
+    #
+    # release-notes/** stays out of the list: a release push carries the gradle.properties bump
+    # next to the notes, so it is never skipped by this filter.
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.github/**/*.md'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/scripts/**'
+      - '.github/assets/**'
+      - '.github/CODEOWNERS'
+      - '.github/FUNDING.yml'
+      - '.github/dependabot.yml'
   workflow_dispatch:
 
 # Don't let overlapping release runs race on the same version tag / Play upload.
@@ -21,6 +40,53 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0 # full history + tags so the release-notes changelog fallback works
+
+      # Catches the cheap half of "Version code NNNN has already been used": pushing to production
+      # without a chore(release) bump. Play only says so after the ~7 minute build and the upload
+      # attempt; git can answer that particular case here in seconds.
+      #
+      # It does NOT catch the other half. dev-check.yml still publishes from master when the code
+      # moves, and the same chore(release) commit reaches both branches, so master can take a code
+      # on `internal` before production asks for it on `alpha` — Play's uniqueness is per app, not
+      # per track. That collision is real, pre-existing, and out of scope here; it is tracked in
+      # docs/follow-ups/two-branches-one-play-version-code.md. Do not "fix" it by widening this
+      # check, which cannot see what master did.
+      #
+      # Fails open on any git edge case (branch creation, unreachable parent) — a release must
+      # not be blocked by this check failing to make up its mind. workflow_dispatch skips it
+      # outright, which is also the escape hatch for re-publishing a code Play never accepted.
+      - name: Verify the version code moved
+        if: github.event_name == 'push'
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          version_code_at() {
+            git show "$1:gradle.properties" 2>/dev/null \
+              | sed -n 's/^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*//p' | tail -n 1
+          }
+
+          if [ -z "$BEFORE" ] || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            echo "No resolvable previous commit for this push — skipping the version code check."
+            exit 0
+          fi
+
+          # `|| true` so a git failure inside the substitution cannot trip `set -e` and turn a
+          # legitimate release red — an empty OLD/NEW is handled below as "cannot tell", not as
+          # an error.
+          OLD=$(version_code_at "$BEFORE") || true
+          NEW=$(version_code_at HEAD) || true
+
+          if [ -z "$NEW" ]; then
+            echo "::error::versionCode is missing from gradle.properties."
+            exit 1
+          fi
+
+          if [ "$OLD" = "$NEW" ]; then
+            echo "::error::versionCode is still $NEW, which Google Play has already taken — the upload would fail after the full build. Land a chore(release) bump before pushing to production, or re-run this workflow via workflow_dispatch if you know Play never accepted $NEW."
+            exit 1
+          fi
+
+          echo "versionCode ${OLD:-<none>} -> $NEW"
 
       - name: Setup JDK 21
         uses: actions/setup-java@v5
@@ -50,6 +116,11 @@ jobs:
         run: chmod +x gradlew
 
       # --- FASTLANE (CLOSED TESTING) ---
+      # One of the repo's two Play uploads — this one to `alpha`, dev-check.yml's to `internal`.
+      # Play rejects the second upload of a version code regardless of track, so when the same
+      # chore(release) commit reaches master and production, exactly one of the two runs can
+      # succeed. Which one wins is currently a race, and that is the open problem in
+      # docs/follow-ups/two-branches-one-play-version-code.md — not something this file decides.
       - name: Run Fastlane (Distribute Prod)
         env:
           JSON_KEY_FILE: ${{ github.workspace }}/app/google-play-api.json

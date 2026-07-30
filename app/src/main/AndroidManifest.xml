@@ -33,6 +33,11 @@
     <uses-permission
         android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
+    <!-- Bulk-freeze results from the QS tile and launcher shortcuts, neither of which has a
+         usable foreground surface: a Toast is dropped by checkCanEnqueueToast and, even when
+         enqueued, draws under the shade (layer 7 vs 17). Requested normally from Settings;
+         never self-granted. Inert below API 33. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".ThorApplication"

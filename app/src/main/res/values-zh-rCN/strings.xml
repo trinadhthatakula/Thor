@@ -98,6 +98,12 @@
     <string name="descending">降序</string>
     <string name="filters">过滤器</string>
     <string name="sort_by">排序方式</string>
+    <string name="filter_type_state">活动状态</string>
+    <string name="filter_type_source">安装来源</string>
+    <string name="filter_type_permission">权限</string>
+    <string name="permission_filter_loading">正在读取权限…</string>
+    <string name="permission_filter_unavailable">在此设备上未找到权限组</string>
+    <string name="permission_filter_failed">无法读取此设备上的权限</string>
 
     <!-- App Info Dialog -->
     <string name="clear_app_data_title">清除应用数据？</string>
@@ -126,7 +132,6 @@
     <string name="status_suspended">已暂停</string>
 
     <!-- App Actions -->
-    <string name="action_launch">启动</string>
     <string name="action_share">分享</string>
     <string name="action_freeze">冻结</string>
     <string name="action_unfreeze">解冻</string>
@@ -134,7 +139,6 @@
     <string name="action_unsuspend">取消暂停</string>
     <string name="action_kill">结束</string>
     <string name="action_cache">缓存</string>
-    <string name="action_data">数据</string>
     <string name="action_uninstall">卸载</string>
     <string name="action_reinstall">重新安装</string>
 
@@ -155,7 +159,6 @@
     <string name="cd_suspended">已暂停</string>
     <string name="cd_selected">已选择</string>
     <string name="cd_clear">清除</string>
-    <string name="cd_settings">设置</string>
     <string name="select_app_details">选择一个应用以查看详情</string>
 
     <!-- Permission Manager -->
@@ -182,6 +185,10 @@
         <item quantity="other">已冻结 %1$d 个应用</item>
     </plurals>
     <string name="tile_freeze_partial_failure">已冻结 %1$d/%2$d 个应用（%3$d 个失败）</string>
+    <string name="tile_freeze_incomplete">已冻结 %1$d/%2$d 个应用（%3$d 个未完成）</string>
+    <string name="tile_checking">正在检查…</string>
+    <string name="tile_freezing">正在冻结…</string>
+    <string name="channel_bulk_result_name">批量操作结果</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">冻结设置</string>
@@ -228,6 +235,7 @@
         <item quantity="other">已解冻 %1$d 个应用</item>
     </plurals>
     <string name="tile_unfreeze_partial_failure">已解冻 %1$d/%2$d 个应用（%3$d 个失败）</string>
+    <string name="tile_unfreeze_incomplete">已解冻 %1$d/%2$d 个应用（%3$d 个未完成）</string>
     <string name="error_format">错误: %1$s</string>
     <string name="failed_to_load_apps">加载应用失败</string>
     <plurals name="removed_from_freezer_success">
@@ -301,6 +309,7 @@
     <string name="title_thor_installer">Thor 安装器</string>
     <string name="install_analyzing">正在解析包…</string>
     <string name="install_downgrade_warning">这将降级该应用。</string>
+    <string name="install_downgrade_code_explainer">版本号 %1$s 低于已安装的 %2$s。Android 按版本号（versionCode）而非版本名称排序更新，因此应用看起来较新仍可能是降级。</string>
     <string name="install_update_warning">这将更新现有应用。</string>
     <plurals name="install_permissions">
         <item quantity="other">此包请求 %1$d 个权限。%2$s</item>
@@ -394,13 +403,19 @@
     <string name="action_remove">移除</string>
     <string name="biometric_unlock_title">解锁 Thor</string>
     <string name="biometric_unlock_subtitle">进行身份验证以继续</string>
+    <string name="biometric_unavailable_title">此设备无法解锁 Thor</string>
+    <string name="biometric_unavailable_message">应用锁已开启，但此设备没有可用来解锁的方式。请在系统设置中设置屏幕锁或录入指纹，然后返回 — Thor 会让你进入。</string>
+    <string name="biometric_unavailable_message_biometric_only">应用锁已开启，但此设备未录入指纹；在 Android 9 上，解锁提示无法接受屏幕锁。请在系统设置中录入指纹，然后返回 — Thor 会让你进入。</string>
+    <string name="biometric_not_enrolled_toast">未录入生物识别 — 请先设置屏幕锁或录入指纹</string>
+    <string name="biometric_not_enrolled_toast_biometric_only">未录入指纹 — 在 Android 9 上屏幕锁无法解锁 Thor，请先录入指纹</string>
+    <string name="biometric_lock_unavailable_toast">无法开启应用锁：此设备没有可用来解锁的生物识别方式</string>
+    <string name="biometric_lock_disabled_no_biometric">已关闭应用锁：此设备没有可用来解锁的生物识别方式</string>
+    <string name="open_security_settings">打开安全设置</string>
     <string name="unlock">解锁</string>
     <string name="thank_you_support_desc">您的订阅已生效。感谢您支持 Thor 的开发！</string>
     
-    <!-- Detailed View & Animation Intensity -->
+    <!-- Details & Animation Intensity -->
     <string name="action_details">详情</string>
-    <string name="detailed_view">详细视图</string>
-    <string name="detailed_view_desc">点击直接进入应用详情屏幕，而不显示对话框</string>
     <string name="animation_intensity">动画强度</string>
     <string name="animation_intensity_desc">控制导航动画与转场速度</string>
     <string name="animation_intensity_low">低</string>
@@ -416,7 +431,9 @@
     <string name="legacy_extension_desc">已安装旧版 Stormbringer 扩展（拼写错误为 \"Strombringer\"）。请将其卸载以避免冲突，并安装更新的 Stormbringer 扩展。</string>
     <string name="action_export">导出</string>
     <string name="export_explain_apk">Thor 将此应用保存为单个安装文件 (.apk) 到下方文件夹中。您可以使用它备份应用或在以后重新安装。</string>
-    <string name="export_explain_apks">此应用包含多个拆分部分，因此 Thor 将它们打包为一个捆绑包 (.apks) 并保存到下方文件夹中。可随时使用 Thor 安装程序重新安装。</string>
+    <string name="export_explain_apks">此应用包含多个拆分部分，它们会被打包为一个捆绑包 (.apks) 并保存到下方文件夹中。可随时使用 Thor 安装程序重新安装。</string>
+    <string name="export_explain_xapk">Thor 会将此应用的各个部分打包为单个文件 (.xapk) 并保存到下方文件夹中，其他安装器也能识别这种格式。游戏数据（OBB 文件）不会包含在内，因为 Android 11 及更高版本禁止任何应用读取其他应用的 OBB 文件夹；大型游戏可以通过此文件安装，但可能无法运行。</string>
+    <string name="export_format">格式</string>
     <string name="export_save_to">保存至</string>
     <string name="export_change">更改</string>
     <string name="export_in_progress">正在导出…</string>
@@ -425,6 +442,21 @@
     <string name="export_failed_unknown">未知错误</string>
     <string name="export_dest_downloads">下载/Thor</string>
     <string name="export_dest_selected">选定文件夹</string>
+
+    <string name="action_export_selected">导出</string>
+    <string name="export_bulk_confirm_title">导出所选应用？</string>
+    <plurals name="export_bulk_confirm_desc">
+        <item quantity="other">Thor 会向导出文件夹中保存 %1$d 个安装文件，每个所选应用一个。这可能耗时很久，并且可能需要大量可用空间，请保持 Thor 处于打开状态直至完成。</item>
+    </plurals>
+    <string name="export_bulk_progress">正在导出第 %1$d 个，共 %2$d 个</string>
+    <string name="export_bulk_finished">已将 %2$d 个应用中的 %1$d 个导出至 %3$s</string>
+    <string name="export_bulk_finished_none">无法导出所选的 %1$d 个应用</string>
+    <string name="export_bulk_index_failed">文件已保存，但无法写入随附的清单</string>
+    <string name="export_bulk_failed">导出失败 — 已保存 %2$d 个应用中的 %1$d 个</string>
+    <string name="export_bulk_stop">停止导出</string>
+    <string name="export_bulk_cancelled">已停止导出 — 已保存 %2$d 个应用中的 %1$d 个</string>
+    <string name="export_bulk_nothing_selected">请至少选择一个要导出的应用</string>
+    <string name="export_bulk_no_space">可用空间不足，无法导出。Thor 需要约 %1$s 可用空间来准备这些文件，但目前仅剩 %2$s。请释放一些空间或减少所选应用。</string>
     <string name="failed_to_load_permissions">加载权限失败</string>
     <string name="permission_status_updated">权限状态已更新</string>
     <string name="failed_to_modify_permission">修改权限失败</string>
@@ -434,6 +466,9 @@
     <string name="usage_access_needed_subtitle">读取应用大小以进行按大小排序所需</string>
     <string name="usage_access_needed_title">需要使用情况访问权限</string>
     <string name="usage_access_prompt_body">Thor 需要使用情况访问权限才能读取应用大小。请为 Thor 启用该权限，然后再次选择\"大小\"。您也可以在\"设置 → 权限\"中进行管理。</string>
+    <string name="notification_access">通知</string>
+    <string name="notification_access_granted_subtitle">批量冻结结果将以通知形式显示</string>
+    <string name="notification_access_needed_subtitle">允许通知以查看批量冻结结果</string>
     <string name="open_settings">打开设置</string>
     <string name="freeze_mode">冻结模式</string>
     <string name="suspend_instead_of_freeze">挂起代替冻结</string>
@@ -479,4 +514,31 @@
     <string name="extension_install_failed">验证失败：%1$s</string>
     <string name="info_app_size">大小</string>
     
+    <!-- 冻结配置 -->
+    <string name="freeze_profiles">冻结配置</string>
+    <string name="profile_new">新建配置</string>
+    <string name="profile_edit">编辑配置</string>
+    <string name="profile_name_label">配置名称</string>
+    <string name="profile_name_too_long">名称过长</string>
+    <string name="profile_name_duplicate">已存在同名配置</string>
+    <string name="no_profiles_yet">尚无配置</string>
+    <string name="no_profiles_yet_desc">把常一起冻结的应用编为一组，即可一键冻结</string>
+    <string name="profile_save_selection">保存为配置</string>
+    <string name="profile_delete_title">删除“%1$s”？</string>
+    <string name="profile_delete_desc">仅删除该配置。其中的应用保持原状 — 已冻结的仍保持冻结。</string>
+    <string name="profile_saved">配置已保存</string>
+    <string name="profile_deleted">配置已删除</string>
+    <string name="profile_nothing_to_do">此配置无需操作</string>
+    <string name="bulk_run_failed">本次操作未完成——请先确认各应用的状态</string>
+    <string name="error_profile_name_taken">该配置名称已被占用</string>
+    <string name="error_profile_delete_failed">无法删除该配置</string>
+    <string name="error_profiles_load_failed">无法加载冻结配置</string>
+    <string name="action_edit">编辑</string>
+    <string name="action_delete">删除</string>
+    <string name="action_save">保存</string>
+    <string name="more_options">更多选项</string>
+    <plurals name="profile_app_count">
+        <item quantity="other">%1$d 个应用</item>
+    </plurals>
+
 </resources>

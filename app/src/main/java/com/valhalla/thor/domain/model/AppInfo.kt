@@ -12,7 +12,11 @@ data class AppInfo(
     val appName: String? = null,
     val packageName: String = "",
     val versionName: String? = "",
-    val versionCode: Int = 0,
+    // Long, matching PackageInfo.longVersionCode: the platform packs versionCodeMajor into the
+    // HIGH 32 bits, so an Int cannot hold the value. Truncating to Int dropped versionCodeMajor
+    // outright and reinterpreted the low 32 bits as signed, which silently corrupted the sort
+    // order, the details screen and the version_code Thor writes into generated bundles.
+    val versionCode: Long = 0L,
     val minSdk: Int = 0,
     val targetSdk: Int = 0,
     val isSystem: Boolean = false,

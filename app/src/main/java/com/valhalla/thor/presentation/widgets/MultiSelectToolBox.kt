@@ -127,6 +127,11 @@ fun MultiSelectToolBox(
                 onClick = { onMultiAppAction(MultiAppAction.Share(selected)) }
             )
             ToolBoxItem(
+                icon = R.drawable.storage,
+                label = stringResource(R.string.action_export_selected),
+                onClick = { onMultiAppAction(MultiAppAction.Backup(selected)) }
+            )
+            ToolBoxItem(
                 icon = R.drawable.delete_forever,
                 label = stringResource(R.string.action_uninstall),
                 onClick = { onMultiAppAction(MultiAppAction.Uninstall(selected)) }

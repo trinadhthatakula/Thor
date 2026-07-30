@@ -1,19 +1,70 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
+   Backup / transfer ruleset for API 31+ (android:dataExtractionRules). API 28-30 ignores this
+   file and reads res/xml/backup_rules.xml instead; minSdk is 28, so both ship and the two must
+   stay semantically identical — change one, change the other.
+
+   Policy: back up the settings the user chose, and nothing else.
+
+   Each section is an allowlist. A single <include> is what makes it one: once any path is
+   included, everything not named is out. So there are deliberately NO <exclude> entries — an
+   <exclude> sitting outside every <include> is redundant by construction, and lint's
+   FullBackupContent check reports exactly that as an error. What each omission buys is recorded
+   in backup_rules.xml, which this file mirrors.
 -->
 <data-extraction-rules>
-    <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
-    </cloud-backup>
+
     <!--
-    <device-transfer>
-        <include .../>
-        <exclude .../>
-    </device-transfer>
+       Google cloud backup. Hard 25 MB per-app quota, and overrunning it fails the WHOLE backup
+       with no user-visible error — so an over-broad ruleset reads as "backup works" while nothing
+       is actually stored. That is the failure this allowlist exists to prevent, and it is why the
+       app-icon cache (one PNG per installed app) and the Room database are not included.
+
+       disableIfNoEncryptionCapabilities is deliberately left off: these prefs are flags and enum
+       names, no secrets, and switching it on would silently disable backup on devices without
+       client-side encryption — the very silent-nothing outcome we are fixing here.
+
+       Note the path names ONE DataStore, not the datastore/ directory. Thor has a second store,
+       thor_local_state, holding facts about the excluded database rather than user settings, and
+       naming the file rather than the folder is what keeps it out. See backup_rules.xml.
     -->
+    <cloud-backup>
+
+        <!-- DataStore Preferences — theme, sort/filter, privilege mode, freezer mode, biometric
+             lock and friends. The store name "thor_preferences" is declared in
+             data/repository/PreferenceRepositoryImpl.kt:28, and DataStore writes it to
+             files/datastore/<name>.preferences_pb, so the domain is "file", NOT "sharedpref" —
+             Thor persists nothing through SharedPreferences. A path that matches nothing fails
+             exactly as silently as the empty template this replaced.
+
+             The two device-specific keys in here re-resolve rather than break on a new device:
+             export_dir_uri is revalidated by ExportAppUseCase (falls back to Downloads if the
+             SAF grant is gone) and privilege_mode falls through Root -> Shizuku -> Dhizuku. -->
+        <include
+            domain="file"
+            path="datastore/thor_preferences.preferences_pb" />
+
+    </cloud-backup>
+
+    <!--
+       Direct device-to-device transfer. There is no quota here, so a wider set would be
+       affordable — it is still deliberately identical to the cloud set, because the extra
+       candidates are wrong to move, not merely too big:
+         - the icon cache is pure derived data and rebuilds itself on the new device;
+         - thor_database mixes the user-curated freezer watchlist with the derived app metadata
+           cache in one file, so it cannot be taken selectively, and a watchlist row naming a
+           package the new device does not have reads as a frozen app that is not there;
+         - everything under cacheDir is in-flight installer scratch, meaningless off-device;
+         - thor_local_state describes the database that is not coming with it, so moving it would
+           land a claim about a watchlist that does not exist on the new device.
+       If the watchlist is ever worth transferring, split it out of the metadata cache first
+       rather than widening this section.
+    -->
+    <device-transfer>
+
+        <include
+            domain="file"
+            path="datastore/thor_preferences.preferences_pb" />
+
+    </device-transfer>
+
 </data-extraction-rules>

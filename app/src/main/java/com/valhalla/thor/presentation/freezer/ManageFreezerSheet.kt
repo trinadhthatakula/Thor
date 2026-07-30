@@ -51,11 +51,15 @@ import androidx.compose.ui.unit.sp
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.domain.model.FreezeTier
+import com.valhalla.thor.domain.model.freezeTier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
 import com.valhalla.asgard.components.ConnectedButtonGroup
 import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import com.valhalla.thor.presentation.widgets.AppIcon
+import com.valhalla.thor.presentation.widgets.AppRiskAction
+import com.valhalla.thor.presentation.widgets.AppRiskDialog
 import com.valhalla.thor.presentation.widgets.AppSearchBar
 import kotlinx.coroutines.launch
 
@@ -70,6 +74,11 @@ fun ManageFreezerSheet(
     onDismiss: () -> Unit
 ) {
     var selectedType by rememberSaveable { mutableStateOf(AppListType.USER) }
+
+    // The app awaiting a blocked/expert confirmation, or null. Plain remember rather than
+    // rememberSaveable: AppInfo is not Saveable, and a dialog that survives process death would
+    // outlive the list it was raised from anyway — losing it on rotation is the safe direction.
+    var pendingApp by remember { mutableStateOf<AppInfo?>(null) }
 
     val filtered = remember(allApps, searchQuery, selectedType) {
         val typeFiltered = allApps.filter { it.isSystem == (selectedType == AppListType.SYSTEM) }
@@ -145,20 +154,51 @@ fun ManageFreezerSheet(
         ) {
             items(filtered.sortedBy { it.appName }, key = { it.packageName }) { app ->
                 val inFreezer = app.packageName in freezerPackageNames
-                FreezerManageItem(
+                FreezerAppPickerItem(
                     app = app,
-                    inFreezer = inFreezer,
-                    onClick = { onToggle(app.packageName, !inFreezer) }
+                    selected = inFreezer,
+                    onClick = {
+                        // Ask once, here, rather than on every later freeze. A watchlist entry
+                        // is a standing instruction: the QS tile and the launcher Freeze-all
+                        // shortcut act on it with no UI at all, so add time is the last moment
+                        // a warning can reach the user. Removal is never gated — unfreezing is
+                        // the way out of a bad state.
+                        val tier = app.freezeTier
+                        if (!inFreezer && tier != FreezeTier.NORMAL) pendingApp = app
+                        else onToggle(app.packageName, !inFreezer)
+                    }
                 )
             }
         }
     }
+
+    // Only non-NORMAL apps ever land here, so the shared dialog's normal-tier wording is
+    // unreachable from this call site — blocked gets no confirm button, expert gets the red
+    // "Freeze anyway", exactly as the freeze confirmation in the app info sheet does.
+    pendingApp?.let { app ->
+        AppRiskDialog(
+            app = app,
+            action = AppRiskAction.Freeze,
+            onConfirm = {
+                onToggle(app.packageName, true)
+                pendingApp = null
+            },
+            onDismiss = { pendingApp = null }
+        )
+    }
 }
 
+/**
+ * One tappable app tile in a picker grid.
+ *
+ * Shared with the freeze-profile editor rather than duplicated: both grids answer the same
+ * question ("is this app in the list I'm building?"), and a second copy is how the two drift
+ * into looking like different controls for the same gesture.
+ */
 @Composable
-private fun FreezerManageItem(
+internal fun FreezerAppPickerItem(
     app: AppInfo,
-    inFreezer: Boolean,
+    selected: Boolean,
     onClick: () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -168,7 +208,7 @@ private fun FreezerManageItem(
             .padding(6.dp)
             .clip(RoundedCornerShape(32.dp))
             .background(
-                if (inFreezer) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+                if (selected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
                 else MaterialTheme.colorScheme.surfaceContainerLow
             )
             .combinedClickable(
@@ -180,7 +220,7 @@ private fun FreezerManageItem(
     ) {
         Box {
             AppIcon(app.packageName, app.enabled, app.isSuspended, 56.dp)
-            if (inFreezer) {
+            if (selected) {
                 Icon(
                     painter = painterResource(R.drawable.check_circle),
                     contentDescription = null,

@@ -13,15 +13,21 @@ import androidx.core.content.pm.ShortcutManagerCompat
 import com.valhalla.thor.R
 import com.valhalla.thor.data.launcher.FreezerShortcutContract
 import com.valhalla.thor.data.launcher.FreezerShortcutManager
+import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
+import com.valhalla.thor.util.bulkResultMessage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.android.ext.android.inject
 
 /**
@@ -68,14 +74,60 @@ class FreezerLaunchActivity : Activity() {
     private fun reportShortcutUsed(shortcutId: String) =
         ShortcutManagerCompat.reportShortcutUsed(this, shortcutId)
 
-    // Bulk: privilege-guard, hand off to the app-scoped manager, finish immediately.
+    // Bulk: privilege-guard, hand off to the app-scoped manager, report, finish.
     private fun guardThenBulk(disable: Boolean) {
         scope.launch {
             if (!hasPrivilege()) {
                 toast(getString(R.string.tile_grant_privilege_toast))
-            } else {
-                freezerShortcutManager.runBulk(disable)
+                finish()
+                return@launch
             }
+            val run = freezerShortcutManager.runBulk(disable)
+
+            // Report from HERE rather than from the runner, because here is the only place it
+            // can be done unconditionally. NotificationManagerService.checkCanEnqueueToast drops
+            // a toast from a background package whose notifications are disabled — which is
+            // exactly what BulkFreezeRunner is (app-scoped, no UI). This trampoline is
+            // translucent but *resumed*, so it is foreground and its toast always renders. For
+            // Unfreeze-all that matters: the notification needs permission and the QS tile is
+            // freeze-only, so with notifications off an unfreeze used to report nothing at all.
+            //
+            // The wait is bounded well inside the run's own 30s deadline: this window is
+            // invisible but touchable, so sitting on it would swallow taps meant for the
+            // launcher underneath. Past the window we acknowledge and get out of the way — the
+            // run belongs to the app scope and finishes (and notifies) without us.
+            val outcome = withTimeoutOrNull(REPORT_WINDOW_MS) {
+                try {
+                    run.await()
+                } catch (_: CancellationException) {
+                    // Two very different cancellations arrive here. If our own scope died
+                    // (onDestroy) we must propagate; if the Deferred was cancelled because a
+                    // conflicting op replaced this run, we have nothing to report but are still
+                    // alive and still owe the user a toast.
+                    currentCoroutineContext().ensureActive()
+                    null
+                }
+            }
+            toast(
+                when (outcome) {
+                    is BulkOutcome.Completed ->
+                        bulkResultMessage(outcome.result).asString(this@FreezerLaunchActivity)
+                    // Nothing to act on. Privilege was checked above, so this is the empty
+                    // target list — same message SettingsViewModel shows for Unfreeze-all on an
+                    // empty watchlist.
+                    BulkOutcome.NothingToDo -> getString(R.string.tile_no_apps_toast)
+                    // Deliberately vague about what got frozen, because the runner does not know
+                    // either: the throw can land before the first package or halfway through the
+                    // batch. Saying "nothing to do" here — which is what this used to say — is the
+                    // one reading that is certainly wrong.
+                    is BulkOutcome.Failed -> getString(R.string.bulk_run_failed)
+                    // Timed out, or replaced by a conflicting op: either way work is in flight.
+                    null -> getString(
+                        if (disable) R.string.log_freezing_batch
+                        else R.string.log_unfreezing_batch
+                    )
+                }
+            )
             finish()
         }
     }
@@ -120,7 +172,8 @@ class FreezerLaunchActivity : Activity() {
     private fun isSuspended(pkg: String): Boolean = try {
         val info = packageManager.getApplicationInfo(pkg, PackageManager.MATCH_DISABLED_COMPONENTS)
         (info.flags and ApplicationInfo.FLAG_SUSPENDED) != 0
-    } catch (e: Exception) {
+    } catch (_: Exception) {
+        // Unreadable package: treat as not-suspended and let the launch path fail visibly.
         false
     }
 
@@ -136,5 +189,14 @@ class FreezerLaunchActivity : Activity() {
     override fun onDestroy() {
         super.onDestroy()
         scope.cancel()
+    }
+
+    private companion object {
+        /**
+         * How long the trampoline stays alive waiting for a bulk run's outcome. Short because
+         * the window is invisible yet touchable; long enough to cover an ordinary watchlist,
+         * which the runner fans out five wide.
+         */
+        const val REPORT_WINDOW_MS = 2_000L
     }
 }

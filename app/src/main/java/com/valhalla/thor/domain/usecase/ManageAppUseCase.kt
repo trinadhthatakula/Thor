@@ -19,9 +19,20 @@ class ManageAppUseCase(
     suspend fun clearAppData(packageName: String): Result<Unit> =
         systemRepository.clearAppData(packageName)
 
+    /**
+     * The raw primitive, with **no [com.valhalla.thor.domain.model.FreezeTier] check**. To freeze
+     * a single app use [FreezeAppUseCase]; it resolves the tier and refuses a blocked one.
+     *
+     * Left ungated so the batch paths — `BulkFreezeRunner`, `MainViewModel.performCountedFreeze`,
+     * `AppListViewModel.performMultiAction` — keep freezing from a target list they already
+     * filtered against one shared snapshot, instead of paying a per-package re-read and telling
+     * the user twice about apps they were already told were skipped. `disabled = false` is never
+     * gated anywhere: unfreezing is the way out of a bad freeze.
+     */
     suspend fun setAppDisabled(packageName: String, disabled: Boolean): Result<Unit> =
         systemRepository.setAppDisabled(packageName, disabled)
 
+    /** Ungated for the same reasons as [setAppDisabled]; see [FreezeAppUseCase]. */
     suspend fun setAppSuspended(packageName: String, suspended: Boolean): Result<Unit> =
         systemRepository.setAppSuspended(packageName, suspended)
 

@@ -45,6 +45,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -70,12 +71,15 @@ import androidx.compose.ui.res.vectorResource
 import com.valhalla.asgard.components.ConnectedButtonGroup
 import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
-import com.valhalla.thor.presentation.widgets.AppInfoDialog
+import com.valhalla.thor.presentation.widgets.AppInfoSheet
 import com.valhalla.thor.presentation.widgets.AppItemGrid
 import com.valhalla.thor.presentation.widgets.AppItemList
 import com.valhalla.thor.presentation.widgets.AppSearchBar
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
 import org.koin.androidx.compose.koinViewModel
+
+/** Sentinel id for "the editor is open on a profile that does not exist yet". */
+private const val NEW_PROFILE_ID = -1L
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -96,6 +100,20 @@ fun FreezerScreen(
         selectedPackageName?.let { pkg -> state.freezerApps.find { it.packageName == pkg } }
     var showManageSheet by rememberSaveable { mutableStateOf(false) }
     var showSettingsSheet by rememberSaveable { mutableStateOf(false) }
+    var showProfilesSheet by rememberSaveable { mutableStateOf(false) }
+
+    // The freeze-profile editor. null closes it; NEW_PROFILE_ID opens it on a fresh profile.
+    // An id rather than the FreezeProfile itself so the whole thing survives a config change —
+    // the row is re-resolved from state.profiles, which is also what keeps the editor honest if
+    // the profile changed underneath it.
+    var editorProfileId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var editorSeed by rememberSaveable(
+        stateSaver = listSaver<Set<String>, String>(save = { it.toList() }, restore = { it.toSet() })
+    ) { mutableStateOf(emptySet<String>()) }
+    // Whether closing the editor should land back on the profiles list. True when the editor was
+    // opened from it; false for "save selection as profile", which starts from the app grid and
+    // should return there.
+    var editorReturnsToList by rememberSaveable { mutableStateOf(false) }
 
     var showImportDialog by rememberSaveable { mutableStateOf(false) }
     var hasCheckedAutoPrompt by rememberSaveable { mutableStateOf(false) }
@@ -364,6 +382,15 @@ fun FreezerScreen(
                     onRemoveFromFreezer = {
                         viewModel.removeFromFreezer(state.multiSelection)
                     },
+                    onSaveAsProfile = {
+                        editorSeed = state.multiSelection
+                        editorReturnsToList = false
+                        editorProfileId = NEW_PROFILE_ID
+                        // Clear the selection only once the editor has the seed: the editor is a
+                        // separate sheet, so leaving the Freezer in multi-select behind it means
+                        // backing out lands on a toolbar for a selection the user has moved on from.
+                        viewModel.clearSelection()
+                    },
                     onMultiAppAction = { action ->
                         viewModel.clearSelection()
                         onMultiAppAction(action)
@@ -413,6 +440,18 @@ fun FreezerScreen(
                                 contentDescription = stringResource(R.string.add_to_freezer)
                             )
                         }
+                        // Not privilege-gated: browsing, creating and editing profiles is
+                        // ordinary list-keeping. The run buttons inside the sheet are the ones
+                        // that need root/Shizuku/Dhizuku, and they gate themselves.
+                        IconButton(
+                            onClick = { showProfilesSheet = true },
+                            colors = iconButtonColors
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.list_alt),
+                                contentDescription = stringResource(R.string.freeze_profiles)
+                            )
+                        }
                         IconButton(
                             onClick = { onMultiAppAction(MultiAppAction.UnFreeze(appsToUnfreeze)) },
                             enabled = hasDisabled && hasPrivilege,
@@ -429,39 +468,50 @@ fun FreezerScreen(
         }
     }
 
-    // AppInfoDialog
+    // AppInfoSheet
     selectedAppInfo?.let { app ->
-        AppInfoDialog(
+        AppInfoSheet(
             appInfo = app,
             isRoot = state.isRoot,
             isShizuku = state.isShizuku,
             isDhizuku = state.isDhizuku,
+            isInFreezer = app.packageName in state.freezerPackageNames,
             onDismiss = { selectedPackageName = null },
+            // Dismissing here is not optional, and this is the only action it's true of.
+            // selectedAppInfo is resolved out of state.freezerApps, which is the watchlist
+            // (`allApps.filter { it.packageName in pkgSet }`), so leaving the freezer drops this app
+            // from that list and the sheet would go with it on the next emission. Doing it
+            // ourselves, now, makes the teardown deliberate instead of a race with the flow.
+            onToggleFreezerMembership = {
+                viewModel.toggleManaged(
+                    app.packageName,
+                    add = app.packageName !in state.freezerPackageNames
+                )
+                selectedPackageName = null
+            },
             onAppAction = { action ->
+                // No clears below, same as the Apps tab: AppInfoSheet calls onDismiss() itself for
+                // every terminal action, and the rest — suspend, force-stop, clear cache, share,
+                // settings, permissions — are meant to leave the sheet up so you can see the result.
+                // Freezing and unfreezing don't touch membership, so neither can pull this app out
+                // of state.freezerApps.
                 when (action) {
-                    is AppClickAction.Freeze -> {
+                    is AppClickAction.Freeze ->
                         viewModel.freezeSingleApp(
                             app.packageName,
                             app.appName,
                             inFreezer = app.packageName in state.freezerPackageNames
                         )
-                        selectedPackageName = null
-                    }
 
-                    is AppClickAction.UnFreeze -> {
+                    is AppClickAction.UnFreeze ->
                         viewModel.unfreezeSingleApp(app.packageName, app.appName)
-                        selectedPackageName = null
-                    }
 
                     is AppClickAction.AddToHomeScreen -> {
                         viewModel.pinAppToLauncher(app)
                         selectedPackageName = null
                     }
 
-                    else -> {
-                        onAppAction(action)
-                        selectedPackageName = null
-                    }
+                    else -> onAppAction(action)
                 }
             }
         )
@@ -475,6 +525,61 @@ fun FreezerScreen(
             onSearchChange = viewModel::updateManageSheetSearch,
             onToggle = { pkg, add -> viewModel.toggleManaged(pkg, add) },
             onDismiss = { showManageSheet = false }
+        )
+    }
+
+    if (showProfilesSheet) {
+        FreezeProfilesSheet(
+            profiles = state.profiles,
+            runningRequests = state.runningRequests,
+            hasPrivilege = hasPrivilege,
+            onRun = viewModel::runProfile,
+            onCreate = {
+                editorSeed = emptySet()
+                editorReturnsToList = true
+                editorProfileId = NEW_PROFILE_ID
+                // Swap the editor in for the list rather than stacking it: two modal sheets at
+                // once leaves the lower one's scrim eating the upper one's dismiss gesture.
+                showProfilesSheet = false
+            },
+            onEdit = { profile ->
+                editorSeed = emptySet()
+                editorReturnsToList = true
+                editorProfileId = profile.id
+                showProfilesSheet = false
+            },
+            onDelete = viewModel::deleteProfile,
+            onDismiss = { showProfilesSheet = false }
+        )
+    }
+
+    // Save and cancel unwind identically — the only difference is whether a write was issued
+    // first — so the teardown lives in one place rather than being kept in step by hand.
+    val closeProfileEditor = {
+        editorProfileId = null
+        // The picker's query is VM state so it survives the sheet; clear it or the next open
+        // starts filtered by a search the user has forgotten making.
+        viewModel.updateProfileEditorSearch("")
+        showProfilesSheet = editorReturnsToList
+    }
+
+    editorProfileId?.let { id ->
+        // Re-resolved from state, so a profile deleted from another surface while the editor is
+        // open falls back to create rather than editing a row that no longer exists.
+        val editing = state.profiles.firstOrNull { it.id == id }
+        FreezeProfileEditorSheet(
+            profile = editing,
+            initialSelection = editorSeed,
+            existingNames = state.profiles.map { it.name },
+            allApps = state.allInstalledApps,
+            searchQuery = state.profileEditorSearchQuery,
+            onSearchChange = viewModel::updateProfileEditorSearch,
+            onSave = { name, packageNames ->
+                if (editing == null) viewModel.createProfile(name, packageNames)
+                else viewModel.updateProfile(editing.id, name, packageNames)
+                closeProfileEditor()
+            },
+            onDismiss = { closeProfileEditor() }
         )
     }
 

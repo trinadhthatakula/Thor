@@ -11,6 +11,7 @@ import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
@@ -101,6 +102,13 @@ class SystemRepositoryImpl(
             onSuccess = { gateway ->
                 try {
                     action(gateway)
+                } catch (e: CancellationException) {
+                    // CancellationException is an Exception in Kotlin and must not be swallowed.
+                    // BulkFreezeRunner's per-package workers rely on this rethrow: without it a
+                    // deadline-cancelled worker returns Result.failure(CancellationException)
+                    // instead of throwing, and the package is counted as failed rather than
+                    // unresolved.
+                    throw e
                 } catch (e: Exception) {
                     Result.failure(e)
                 }

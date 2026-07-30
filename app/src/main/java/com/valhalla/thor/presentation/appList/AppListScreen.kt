@@ -39,13 +39,13 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.basicMarquee
 import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.text.font.FontWeight
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.MultiAppAction
-import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
@@ -56,7 +56,7 @@ import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.presentation.widgets.AppList
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
 import com.valhalla.thor.data.manager.UsageAccessManager
-import com.valhalla.thor.presentation.widgets.AppInfoDialog
+import com.valhalla.thor.presentation.widgets.AppInfoSheet
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 
@@ -68,14 +68,34 @@ fun AppListScreen(
     icon: Int = R.drawable.thor_mono,
     viewModel: AppListViewModel = koinViewModel(),
     sharedTransitionScope: SharedTransitionScope? = null,
-    onNavigateToAppInfo: (packageName: String, appName: String) -> Unit,
+    // Non-null only when this window actually has a detail pane to push the route into; null means
+    // there is no second pane, so a tap opens AppInfoSheet in place instead. The host decides — see
+    // MainScreen's hasDetailPane, which reads the pane count off the scaffold directive rather than
+    // off a width breakpoint.
+    onNavigateToAppInfo: ((packageName: String, appName: String) -> Unit)? = null,
     // These actions bubble up to MainScreen/HomeViewModel for execution
     onAppAction: (AppClickAction) -> Unit = {},
     onMultiAppAction: (MultiAppAction) -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    var selectedAppForDialog by remember { mutableStateOf<AppInfo?>(null) }
+    // The package, not the AppInfo, and rememberSaveable rather than remember: AppInfoSheet parks a
+    // composable-scoped ViewModelStore on this entry's store and relies on re-entering composition
+    // to release it, so the sheet has to come back after a configuration change. Resolving against
+    // the live list also keeps the sheet's freeze/suspend state honest while it is open.
+    //
+    // Resolved against the whole scan, never `displayedApps` — the same shape FreezerScreen uses.
+    // rememberSaveable outlives the process; `appListType` does not, it resets to USER. A package
+    // picked off the system list would come back as a selection the filtered list cannot render and
+    // no code path can clear, and would then spring the sheet open on a later, unrelated tap of the
+    // System toggle. The filter is live, too: a background freeze or suspend that moves the app out
+    // of an active State filter would tear the sheet out of composition mid-scroll, with no
+    // dismissal animation and onDismiss never running.
+    var selectedPackageForSheet by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedAppForSheet = selectedPackageForSheet?.let { pkg ->
+        state.allUserApps.find { it.packageName == pkg }
+            ?: state.allSystemApps.find { it.packageName == pkg }
+    }
     // One-off freezer prompt is driven by a transient event; the screen holds its own visibility
     // state so it isn't replayed on recomposition/config change.
     var freezerPrompt by remember { mutableStateOf<FreezerPrompt?>(null) }
@@ -87,7 +107,8 @@ fun AppListScreen(
 
     LaunchedEffect(Unit) {
         if (state.allUserApps.isEmpty() && state.allSystemApps.isEmpty() && state.isLoading) {
-            viewModel.loadApps()
+            // Screen entry: let the navigation transition settle before the scan starts.
+            viewModel.loadApps(deferForTransition = true)
         }
     }
 
@@ -162,7 +183,11 @@ fun AppListScreen(
             PullToRefreshBox(
                 // isComputingSizes runs on a populated list, so surface it via the
                 // pull-refresh spinner (the empty-state loader wouldn't show).
-                isRefreshing = state.isLoading || state.isComputingSizes,
+                // isManualRefreshing keeps the indicator readable: isLoading clears on the Room
+                // cache emission, which lands long before the package rescan finishes.
+                isRefreshing = state.isLoading || state.isComputingSizes || state.isManualRefreshing,
+                // No deferForTransition: the user already made a deliberate gesture and nothing is
+                // animating in, so the settle delay would just be dead spinner time.
                 onRefresh = { viewModel.loadApps() },
                 state = refreshState,
                 modifier = Modifier.weight(1f) // Fill remaining space
@@ -177,7 +202,11 @@ fun AppListScreen(
                     sortBy = state.sortBy,
                     sortOrder = state.sortOrder,
                     searchQuery = state.searchQuery,
-                    isLoading = state.isLoading || state.isComputingSizes,
+                    // isLoadingPermissions counts as loading: while the sweep runs the Permission
+                    // filter has no index, so every app is filtered out and the list would say
+                    // "No matching apps found" — a wrong answer, not a pending one.
+                    isLoading = state.isLoading || state.isComputingSizes ||
+                            state.isLoadingPermissions,
                     appList = state.displayedApps,
                     isRoot = state.isRoot,
                     isShizuku = state.isShizuku,
@@ -185,6 +214,9 @@ fun AppListScreen(
                     isGrid = state.isGrid,
                     onToggleView = viewModel::toggleGridMode,
                     installerNameMap = installerNameMap,
+                    permissionIndex = state.permissionIndex,
+                    isLoadingPermissions = state.isLoadingPermissions,
+                    permissionIndexFailed = state.permissionIndexFailed,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
                     // Actions forwarded to ViewModel
@@ -198,10 +230,10 @@ fun AppListScreen(
                         }
                     },
                     onAppInfoSelected = { appInfo ->
-                        if (state.useDetailedView) {
+                        if (onNavigateToAppInfo != null) {
                             onNavigateToAppInfo(appInfo.packageName, appInfo.appName ?: "")
                         } else {
-                            selectedAppForDialog = appInfo
+                            selectedPackageForSheet = appInfo.packageName
                         }
                     },
                     onListTypeChanged = { viewModel.updateListType(it) },
@@ -228,25 +260,35 @@ fun AppListScreen(
                 .padding(bottom = 16.dp)
         )
 
-        selectedAppForDialog?.let { app ->
-            AppInfoDialog(
+        selectedAppForSheet?.let { app ->
+            AppInfoSheet(
                 appInfo = app,
                 isRoot = state.isRoot,
                 isShizuku = state.isShizuku,
                 isDhizuku = state.isDhizuku,
-                onDismiss = { selectedAppForDialog = null },
+                isInFreezer = app.packageName in state.freezerPackageNames,
+                onDismiss = { selectedPackageForSheet = null },
                 onAppAction = { action ->
                     when {
-                        action is AppClickAction.OpenDetails ->
-                            onNavigateToAppInfo(app.packageName, app.appName ?: "")
-                        // Freeze from the dialog goes through the local VM so it surfaces the
+                        // Freeze from the sheet goes through the local VM so it surfaces the
                         // "Frozen — Add to Freezer?" prompt instead of silently just disabling.
                         action is AppClickAction.Freeze ->
                             viewModel.freezeApp(action.appInfo.packageName, action.appInfo.appName, true)
                         else -> onAppAction(action)
                     }
-                    selectedAppForDialog = null
-                }
+                    // Deliberately no `selectedPackageForSheet = null` here. AppInfoSheet owns its
+                    // own dismissal and already calls onDismiss() for every terminal action (launch,
+                    // freeze, uninstall, clear data, fix store); the rest — suspend, force-stop,
+                    // clear cache, share, system settings — are meant to leave the sheet up so you
+                    // can see the result and keep going. Clearing unconditionally would close it for
+                    // those too, and would do it by dropping the composable, so there'd be no exit
+                    // animation either.
+                },
+                // No dismissal here, unlike the Freezer tab: this list is the whole scan, so the app
+                // stays in it either way, and the selection resolves against allUserApps /
+                // allSystemApps rather than a membership-derived list — nothing can yank the sheet
+                // out from under the toggle.
+                onToggleFreezerMembership = { viewModel.toggleFreezerMembership(app.packageName) }
             )
         }
 

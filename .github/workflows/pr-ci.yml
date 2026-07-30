@@ -34,11 +34,35 @@ jobs:
       - name: Assemble + unit test (foss debug)
         run: ./gradlew assembleFossDebug testFossDebugUnitTest --stacktrace
 
-      # Advisory for now — surfaces Android Lint without blocking merges on
-      # pre-existing lint debt. Promote to a required step once lint is clean.
-      - name: Android Lint (advisory)
-        continue-on-error: true
-        run: ./gradlew lintFossDebug
+      # Enforced, not advisory: :app is at 0 errors / 0 warnings and app/build.gradle.kts sets
+      # warningsAsErrors, so lint debt can only be introduced deliberately now.
+      #
+      # Deliberately a step of build-and-test rather than a job of its own. "build-and-test" is
+      # the only context the dev and master rulesets require; a separate lint job would show up
+      # green-or-red on the PR but merge would not wait for it until someone also edited the
+      # ruleset. Inside this job it is required the moment this file merges.
+      #
+      # storeRelease, not fossDebug: store is the variant Play receives, and the release build
+      # type is where the strict detectors live. A debug-variant lint pass says very little
+      # about what actually ships.
+      - name: Android Lint (store release)
+        id: lint
+        run: ./gradlew lintStoreRelease --stacktrace
+
+      # printTextReport puts the findings in the job log, but the HTML report carries the source
+      # snippet and the explanation for each issue. Attach it so a red check is diagnosable from
+      # the PR instead of requiring a local repro of a variant nobody builds by hand.
+      - name: Upload lint report
+        if: failure() && steps.lint.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: lint-results-storeRelease
+          path: |
+            app/build/reports/lint-results-storeRelease.html
+            app/build/reports/lint-results-storeRelease.xml
+            app/build/reports/lint-results-storeRelease.txt
+          if-no-files-found: warn
+          retention-days: 14
 
   # Runs on every PR rather than being path-filtered. on.pull_request.paths
   # filters the whole workflow, which would also gate build-and-test — the

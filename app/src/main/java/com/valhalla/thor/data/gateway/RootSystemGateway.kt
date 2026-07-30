@@ -55,7 +55,7 @@ class RootSystemGateway(
     private suspend fun getRootService(): IThorRootService? = connectionMutex.withLock {
         if (!isDaemonReset) {
             isDaemonReset = true
-            // Kill any old daemon to make sure the newly compiled suCore is loaded and executed
+            // Kill any old daemon so the newly compiled root service is loaded and executed
             runCatching {
                 shellRepository.exec("pkill -f ${context.packageName}:root")
             }
@@ -537,9 +537,11 @@ class RootSystemGateway(
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
+        val userId = getPackageUserId(packageName)
+            ?: return Result.failure(Exception("Cannot resolve the Android user for $packageName; refusing to grant on user 0."))
         val escapedPackage = packageName.escapeForShell()
         val escapedPerm = permissionName.escapeForShell()
-        return runCommand("pm grant $escapedPackage $escapedPerm")
+        return runCommand("pm grant --user $userId $escapedPackage $escapedPerm")
     }
 
     override suspend fun revokePermission(
@@ -549,10 +551,31 @@ class RootSystemGateway(
         if (!packageName.matches(PACKAGE_NAME_REGEX) || !permissionName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package or permission name"))
         }
+        val userId = getPackageUserId(packageName)
+            ?: return Result.failure(Exception("Cannot resolve the Android user for $packageName; refusing to revoke on user 0."))
         val escapedPackage = packageName.escapeForShell()
         val escapedPerm = permissionName.escapeForShell()
-        return runCommand("pm revoke $escapedPackage $escapedPerm")
+        return runCommand("pm revoke --user $userId $escapedPackage $escapedPerm")
     }
+
+    /**
+     * The Android user the package actually lives in.
+     *
+     * `PackageManagerShellCommand.runGrantRevokePermission` seeds `userId = UserHandle.USER_SYSTEM`,
+     * so a bare `pm grant`/`pm revoke` always lands on user 0 no matter which user Thor runs as. In a
+     * work profile or a Xiaomi Second Space — both ordinary secondary users — that either fails
+     * outright or silently mutates the primary user's same-named package.
+     *
+     * Deliberately derived from the *package*, not from `am get-current-user`: the foreground user of
+     * a work-profile device is the parent (0) while the profile's packages live in 10.
+     * `getApplicationInfoCompat` already carries MATCH_UNINSTALLED_PACKAGES, so a frozen system app
+     * still resolves here.
+     *
+     * Null means the package could not be resolved at all; callers must fail rather than fall back to
+     * user 0, which is the original bug.
+     */
+    private fun getPackageUserId(packageName: String): Int? =
+        getApplicationInfoCompat(packageName)?.let { userIdOf(it.uid) }
 
     /**
      * Raw shell execution for extensions, via the root shell.

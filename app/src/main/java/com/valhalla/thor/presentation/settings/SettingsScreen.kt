@@ -3,8 +3,15 @@
 
 package com.valhalla.thor.presentation.settings
 
+import android.Manifest
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
@@ -51,6 +58,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -169,15 +178,6 @@ fun SettingsScreen(
                 checked = prefs.showReinstallAllCard,
                 enableMarqueeOnClick = true,
                 onCheckedChange = { viewModel.setReinstallAllCardVisibility(it) }
-            )
-
-            SettingsSwitchRow(
-                icon = R.drawable.apps,
-                title = stringResource(R.string.detailed_view),
-                subtitle = stringResource(R.string.detailed_view_desc),
-                checked = prefs.useDetailedView,
-                enableMarqueeOnClick = true,
-                onCheckedChange = { viewModel.setDetailedViewEnabled(it) }
             )
 
             SettingsSwitchRow(
@@ -326,6 +326,12 @@ fun SettingsScreen(
                 .background(MaterialTheme.colorScheme.surfaceContainerLow)
                 .padding(8.dp)
         ) {
+            // Deliberately left enabled when the device cannot authenticate. A disabled row
+            // swallows the tap (`clickable(enabled = false)`), so a user whose device has nothing
+            // enrolled got a greyed-out switch and silence — the subtitle was the only clue, and it
+            // is a line of body text under a control that no longer responds. Tappable, the refusal
+            // in `setBiometricLock` can answer with a toast that names what is missing. `checked`
+            // stays bound to the preference, so a refused tap settles straight back.
             SettingsSwitchRow(
                 icon = R.drawable.round_key,
                 title = stringResource(R.string.biometric_lock),
@@ -335,7 +341,6 @@ fun SettingsScreen(
                     stringResource(R.string.biometric_not_available)
                 },
                 checked = prefs.biometricLockEnabled,
-                enabled = state.canUseBiometric,
                 onCheckedChange = { viewModel.setBiometricLock(it) }
             )
         }
@@ -348,10 +353,15 @@ fun SettingsScreen(
         val usageAccessManager = koinInject<UsageAccessManager>()
         val lifecycleOwner = LocalLifecycleOwner.current
         var usageGranted by remember { mutableStateOf(usageAccessManager.isGranted()) }
+        var notificationsGranted by remember {
+            mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled())
+        }
         DisposableEffect(lifecycleOwner) {
             val observer = LifecycleEventObserver { _, event ->
                 if (event == Lifecycle.Event.ON_RESUME) {
                     usageGranted = usageAccessManager.isGranted()
+                    notificationsGranted =
+                        NotificationManagerCompat.from(context).areNotificationsEnabled()
                 }
             }
             lifecycleOwner.lifecycle.addObserver(observer)
@@ -378,6 +388,85 @@ fun SettingsScreen(
                     // This op can't be toggled in-app; deep-link to system settings.
                     if (!usageGranted) {
                         runCatching { context.startActivity(usageAccessManager.usageAccessIntent()) }
+                    }
+                }
+            )
+            // The row itself is unconditional, because what it reports —
+            // areNotificationsEnabled(), the exact thing BulkResultNotifier checks — is
+            // meaningful and user-toggleable all the way down to minSdk 28. Only the *way* it is
+            // granted differs: a runtime permission on 33+, an app-level toggle in system
+            // settings below that. Gating the whole row on 33 left users on 28-32 with silently
+            // dropped bulk-result notifications and nothing in-app explaining why.
+            //
+            // Registering the launcher inside the version check is safe: SDK_INT is constant for
+            // the process, so the conditional group is stable across recompositions. It also
+            // keeps every POST_NOTIFICATIONS reference inside the check, which is what lint's
+            // InlinedApi wants.
+            val requestNotificationPermission: (() -> Unit)? =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    val activity = remember(context) { context.findActivity() }
+                    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+                        ActivityResultContracts.RequestPermission()
+                    ) { _ ->
+                        // Re-read instead of trusting `granted`. The switch reflects
+                        // areNotificationsEnabled(), which is also false when the permission is
+                        // held but the user muted the app's notifications; trusting `granted`
+                        // flipped the switch on and the next ON_RESUME flipped it back off.
+                        val enabled =
+                            NotificationManagerCompat.from(context).areNotificationsEnabled()
+                        notificationsGranted = enabled
+                        // RequestPermission returns immediately without showing a dialog once
+                        // the user has denied twice, which would leave this row a permanent
+                        // dead end. shouldShowRequestPermissionRationale distinguishes that
+                        // (and the "granted but muted" case, both false) from a plain first
+                        // denial (true, where re-tapping the row still shows the dialog).
+                        // Where the dialog can no longer help, deep-link to system settings
+                        // like the usage-access row above. Thor never self-grants this.
+                        val canAskAgain = activity?.let {
+                            ActivityCompat.shouldShowRequestPermissionRationale(
+                                it,
+                                Manifest.permission.POST_NOTIFICATIONS
+                            )
+                        } ?: false
+                        if (!enabled && !canAskAgain) {
+                            runCatching {
+                                context.startActivity(appNotificationSettingsIntent(context))
+                            }
+                        }
+                    }
+                    val request = {
+                        notificationPermissionLauncher.launch(
+                            Manifest.permission.POST_NOTIFICATIONS
+                        )
+                    }
+                    request
+                } else {
+                    null
+                }
+
+            SettingsSwitchRow(
+                icon = R.drawable.frozen,
+                title = stringResource(R.string.notification_access),
+                subtitle = if (notificationsGranted) {
+                    stringResource(R.string.notification_access_granted_subtitle)
+                } else {
+                    stringResource(R.string.notification_access_needed_subtitle)
+                },
+                checked = notificationsGranted,
+                onCheckedChange = {
+                    if (!notificationsGranted) {
+                        // 33+: only the system dialog can grant this. Thor never self-grants it
+                        // even when it holds root/Shizuku — the dialog grants the identical
+                        // capability, and Dhizuku cannot self-grant at all.
+                        // 28-32: there is no runtime permission to request, so the only lever
+                        // is the app-level toggle; deep-link to it, as the usage-access row does.
+                        if (requestNotificationPermission != null) {
+                            requestNotificationPermission()
+                        } else {
+                            runCatching {
+                                context.startActivity(appNotificationSettingsIntent(context))
+                            }
+                        }
                     }
                 }
             )
@@ -856,6 +945,24 @@ private fun SettingsSwitchRow(
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
     }
+}
+
+/**
+ * The system's per-app notification settings screen — the only place a user can undo a
+ * permanent POST_NOTIFICATIONS denial or re-enable app-wide notifications.
+ */
+private fun appNotificationSettingsIntent(context: Context): Intent =
+    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+
+/**
+ * Unwrap [LocalContext] to the hosting Activity. Compose hands out a ContextWrapper in some
+ * hosts, and `shouldShowRequestPermissionRationale` needs the real Activity.
+ */
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 @Composable

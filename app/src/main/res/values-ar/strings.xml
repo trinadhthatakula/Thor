@@ -99,6 +99,12 @@
     <string name="descending">تنازلي</string>
     <string name="filters">الفلاتر</string>
     <string name="sort_by">فرز حسب</string>
+    <string name="filter_type_state">الحالة النشطة</string>
+    <string name="filter_type_source">مصدر التثبيت</string>
+    <string name="filter_type_permission">الإذن</string>
+    <string name="permission_filter_loading">جارٍ قراءة الأذونات…</string>
+    <string name="permission_filter_unavailable">لم يتم العثور على مجموعات أذونات على هذا الجهاز</string>
+    <string name="permission_filter_failed">تعذّرت قراءة الأذونات على هذا الجهاز</string>
 
     <!-- App Info Dialog -->
     <string name="clear_app_data_title">مسح بيانات التطبيق؟</string>
@@ -127,7 +133,6 @@
     <string name="status_suspended">معلق</string>
 
     <!-- App Actions -->
-    <string name="action_launch">تشغيل</string>
     <string name="action_share">مشاركة</string>
     <string name="action_freeze">تجميد</string>
     <string name="action_unfreeze">إلغاء التجميد</string>
@@ -135,7 +140,6 @@
     <string name="action_unsuspend">إلغاء التعليق</string>
     <string name="action_kill">إنهاء</string>
     <string name="action_cache">ذاكرة مؤقتة</string>
-    <string name="action_data">بيانات</string>
     <string name="action_uninstall">إلغاء التثبيت</string>
     <string name="action_reinstall">إعادة تثبيت</string>
 
@@ -156,7 +160,6 @@
     <string name="cd_suspended">معلق</string>
     <string name="cd_selected">مختار</string>
     <string name="cd_clear">مسح</string>
-    <string name="cd_settings">الإعدادات</string>
     <string name="select_app_details">اختر تطبيقاً لعرض التفاصيل</string>
 
     <!-- Permission Manager -->
@@ -195,6 +198,10 @@
         <item quantity="other">تم تجميد %1$d تطبيقات</item>
     </plurals>
     <string name="tile_freeze_partial_failure">تم تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
+    <string name="tile_freeze_incomplete">تم تجميد %1$d/%2$d تطبيقات (%3$d لم تكتمل)</string>
+    <string name="tile_checking">جارٍ التحقق…</string>
+    <string name="tile_freezing">جارٍ التجميد…</string>
+    <string name="channel_bulk_result_name">نتائج الإجراءات المجمّعة</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">إعدادات المجمد</string>
@@ -259,6 +266,7 @@
         <item quantity="other">تم إلغاء تجميد %1$d تطبيقات</item>
     </plurals>
     <string name="tile_unfreeze_partial_failure">تم إلغاء تجميد %1$d/%2$d تطبيقات (فشل %3$d)</string>
+    <string name="tile_unfreeze_incomplete">تم إلغاء تجميد %1$d/%2$d تطبيقات (%3$d لم تكتمل)</string>
     <string name="error_format">خطأ: %1$s</string>
     <string name="failed_to_load_apps">فشل في تحميل التطبيقات</string>
     <!-- ar plural forms seeded from the base translation; pending native review -->
@@ -338,6 +346,7 @@
     <string name="title_thor_installer">مثبت Thor</string>
     <string name="install_analyzing">جاري تحليل الحزمة…</string>
     <string name="install_downgrade_warning">سيؤدي هذا إلى خفض إصدار التطبيق.</string>
+    <string name="install_downgrade_code_explainer">رمز الإصدار %1$s أقل من المثبَّت %2$s. يرتّب Android التحديثات حسب رمز الإصدار لا حسب اسم الإصدار، لذا قد يبدو التطبيق أحدث وهو في الواقع خفض للإصدار.</string>
     <string name="install_update_warning">سيؤدي هذا إلى تحديث التطبيق الحالي.</string>
     <plurals name="install_permissions">
         <item quantity="zero">لا تطلب هذه الحزمة أي أذونات. %2$s</item>
@@ -436,13 +445,19 @@
     <string name="action_remove">إزالة</string>
     <string name="biometric_unlock_title">إلغاء قفل Thor</string>
     <string name="biometric_unlock_subtitle">قم بالمصادقة للمتابعة</string>
+    <string name="biometric_unavailable_title">لا يمكن لهذا الجهاز إلغاء قفل Thor</string>
+    <string name="biometric_unavailable_message">قفل التطبيق مُفعَّل، لكن لا يوجد في هذا الجهاز ما يمكن إلغاء القفل به. قم بإعداد قفل شاشة أو تسجيل بصمة من إعدادات النظام ثم عُد — وسيسمح لك Thor بالدخول.</string>
+    <string name="biometric_unavailable_message_biometric_only">قفل التطبيق مُفعَّل، لكن لا توجد بصمة مُسجَّلة على هذا الجهاز، وفي Android 9 لا يمكن لطلب إلغاء القفل قبول قفل الشاشة. سجِّل بصمة من إعدادات النظام ثم عُد — وسيسمح لك Thor بالدخول.</string>
+    <string name="biometric_not_enrolled_toast">لا توجد بيانات حيوية مُسجَّلة — أعدّ قفل شاشة أو بصمة أولاً</string>
+    <string name="biometric_not_enrolled_toast_biometric_only">لا توجد بصمة مُسجَّلة — في أندرويد 9 لا يفتح قفل الشاشة تطبيق ثور، فسجّل بصمة أولاً</string>
+    <string name="biometric_lock_unavailable_toast">لا يمكن تفعيل قفل التطبيق: لا توجد في هذا الجهاز مقاييس حيوية لإلغاء قفله</string>
+    <string name="biometric_lock_disabled_no_biometric">تم إيقاف قفل التطبيق: لا توجد في هذا الجهاز مقاييس حيوية لإلغاء قفله</string>
+    <string name="open_security_settings">فتح إعدادات الأمان</string>
     <string name="unlock">إلغاء القفل</string>
     <string name="thank_you_support_desc">اشتراكك نشط الآن. شكرًا لك على المساعدة في دعم تطوير Thor!</string>
     
-    <!-- Detailed View & Animation Intensity -->
+    <!-- Details & Animation Intensity -->
     <string name="action_details">التفاصيل</string>
-    <string name="detailed_view">عرض مفصل</string>
-    <string name="detailed_view_desc">الانتقال مباشرةً إلى شاشة التفاصيل بدلاً من الحوار عند النقر</string>
     <string name="animation_intensity">كثافة الرسوم المتحركة</string>
     <string name="animation_intensity_desc">التحكم في سرعة ورسوم التنقل والانتقالات</string>
     <string name="animation_intensity_low">منخفضة</string>
@@ -458,7 +473,9 @@
     <string name="legacy_extension_desc">تم تثبيت إصدار قديم من امتداد Stormbringer (باسم خاطئ \"Strombringer\") الملحق. يرجى إلغاء تثبيته لتجنب التعارض وتثبيت امتداد Stormbringer المحدث.</string>
     <string name="action_export">تصدير</string>
     <string name="export_explain_apk">يقوم Thor بحفظ هذا التطبيق كملف تثبيت فردي (.apk) في المجلد أدناه. استخدمه لنسخ التطبيق احتياطيًا أو إعادة تثبيته لاحقًا.</string>
-    <string name="export_explain_apks">يأتي هذا التطبيق في أجزاء متعددة ومقسمة، لذا يقوم Thor بحزمها في حزمة واحدة (.apks) في المجلد أدناه. يمكنك إعادة تثبيتها في أي وقت باستخدام مثبت Thor.</string>
+    <string name="export_explain_apks">يأتي هذا التطبيق في أجزاء متعددة ومقسمة، تُحزم في حزمة واحدة (.apks) في المجلد أدناه. يمكنك إعادة تثبيتها في أي وقت باستخدام مثبت Thor.</string>
+    <string name="export_explain_xapk">يحزم Thor أجزاء هذا التطبيق في ملف واحد (.xapk) في المجلد أدناه، وهي صيغة تفهمها المثبتات الأخرى أيضًا. لا تُضمَّن بيانات الألعاب (ملفات OBB) لأن Android 11 والإصدارات الأحدث تمنع أي تطبيق من قراءة مجلد OBB الخاص بتطبيق آخر؛ لذا ستُثبَّت اللعبة الكبيرة من هذا الملف لكنها قد لا تعمل.</string>
+    <string name="export_format">الصيغة</string>
     <string name="export_save_to">حفظ في</string>
     <string name="export_change">تغيير</string>
     <string name="export_in_progress">جاري التصدير…</string>
@@ -467,6 +484,26 @@
     <string name="export_failed_unknown">خطأ غير معروف</string>
     <string name="export_dest_downloads">التنزيلات/Thor</string>
     <string name="export_dest_selected">المجلد المحدد</string>
+
+    <string name="action_export_selected">تصدير</string>
+    <string name="export_bulk_confirm_title">تصدير التطبيقات المحددة؟</string>
+    <plurals name="export_bulk_confirm_desc">
+        <item quantity="zero">يحفظ Thor في مجلد التصدير ملف تثبيت واحدًا لكل تطبيق محدد، أي %1$d من الملفات في المجموع. قد يستغرق ذلك وقتًا طويلًا وقد يحتاج إلى مساحة تخزين كبيرة، لذا أبقِ Thor مفتوحًا حتى ينتهي.</item>
+        <item quantity="one">يحفظ Thor في مجلد التصدير ملف تثبيت واحدًا لكل تطبيق محدد، أي %1$d من الملفات في المجموع. قد يستغرق ذلك وقتًا طويلًا وقد يحتاج إلى مساحة تخزين كبيرة، لذا أبقِ Thor مفتوحًا حتى ينتهي.</item>
+        <item quantity="two">يحفظ Thor في مجلد التصدير ملف تثبيت واحدًا لكل تطبيق محدد، أي %1$d من الملفات في المجموع. قد يستغرق ذلك وقتًا طويلًا وقد يحتاج إلى مساحة تخزين كبيرة، لذا أبقِ Thor مفتوحًا حتى ينتهي.</item>
+        <item quantity="few">يحفظ Thor في مجلد التصدير ملف تثبيت واحدًا لكل تطبيق محدد، أي %1$d من الملفات في المجموع. قد يستغرق ذلك وقتًا طويلًا وقد يحتاج إلى مساحة تخزين كبيرة، لذا أبقِ Thor مفتوحًا حتى ينتهي.</item>
+        <item quantity="many">يحفظ Thor في مجلد التصدير ملف تثبيت واحدًا لكل تطبيق محدد، أي %1$d من الملفات في المجموع. قد يستغرق ذلك وقتًا طويلًا وقد يحتاج إلى مساحة تخزين كبيرة، لذا أبقِ Thor مفتوحًا حتى ينتهي.</item>
+        <item quantity="other">يحفظ Thor في مجلد التصدير ملف تثبيت واحدًا لكل تطبيق محدد، أي %1$d من الملفات في المجموع. قد يستغرق ذلك وقتًا طويلًا وقد يحتاج إلى مساحة تخزين كبيرة، لذا أبقِ Thor مفتوحًا حتى ينتهي.</item>
+    </plurals>
+    <string name="export_bulk_progress">جارٍ تصدير %1$d من %2$d</string>
+    <string name="export_bulk_finished">تم تصدير %1$d من أصل %2$d تطبيقًا إلى %3$s</string>
+    <string name="export_bulk_finished_none">تعذّر تصدير أي من التطبيقات المحددة البالغ عددها %1$d</string>
+    <string name="export_bulk_index_failed">تم حفظ الملفات، لكن تعذّرت كتابة القائمة المرافقة لها</string>
+    <string name="export_bulk_failed">فشل التصدير — تم حفظ %1$d من %2$d تطبيقات</string>
+    <string name="export_bulk_stop">إيقاف التصدير</string>
+    <string name="export_bulk_cancelled">تم إيقاف التصدير — تم حفظ %1$d من أصل %2$d تطبيقًا</string>
+    <string name="export_bulk_nothing_selected">حدّد تطبيقًا واحدًا على الأقل للتصدير</string>
+    <string name="export_bulk_no_space">لا توجد مساحة حرة كافية للتصدير. يحتاج Thor إلى نحو %1$s من المساحة الحرة لتحضير هذه الملفات، لكن المتاح %2$s فقط. حرّر بعض المساحة أو حدّد تطبيقات أقل.</string>
     <string name="failed_to_load_permissions">فشل تحميل الأذونات</string>
     <string name="permission_status_updated">تم تحديث حالة الإذن</string>
     <string name="failed_to_modify_permission">فشل تعديل الإذن</string>
@@ -476,6 +513,9 @@
     <string name="usage_access_needed_subtitle">مطلوب لقراءة أحجام التطبيقات للفرز حسب الحجم</string>
     <string name="usage_access_needed_title">الوصول إلى بيانات الاستخدام مطلوب</string>
     <string name="usage_access_prompt_body">يحتاج Thor إلى إذن الوصول إلى بيانات الاستخدام لقراءة أحجام التطبيقات. يرجى تفعيله لـ Thor، ثم اختر \"الحجم\" مجددًا. يمكنك أيضًا إدارة هذا تحت الإعدادات ← الأذونات.</string>
+    <string name="notification_access">الإشعارات</string>
+    <string name="notification_access_granted_subtitle">تظهر نتائج التجميد الجماعي كإشعارات</string>
+    <string name="notification_access_needed_subtitle">اسمح بالإشعارات لرؤية نتائج التجميد الجماعي</string>
     <string name="open_settings">فتح الإعدادات</string>
     <string name="freeze_mode">وضع التجميد</string>
     <string name="suspend_instead_of_freeze">التعليق بدلاً من التجميد</string>
@@ -526,5 +566,37 @@
     <string name="extension_retry">إعادة المحاولة</string>
     <string name="extension_install_failed">فشل التحقق: %1$s</string>
     <string name="info_app_size">الحجم</string>
-    
+
+    <!-- ملفات التجميد -->
+    <string name="freeze_profiles">ملفات التجميد</string>
+    <string name="profile_new">ملف جديد</string>
+    <string name="profile_edit">تعديل الملف</string>
+    <string name="profile_name_label">اسم الملف</string>
+    <string name="profile_name_too_long">هذا الاسم طويل جدًا</string>
+    <string name="profile_name_duplicate">يوجد ملف بهذا الاسم بالفعل</string>
+    <string name="no_profiles_yet">لا توجد ملفات بعد</string>
+    <string name="no_profiles_yet_desc">اجمع التطبيقات التي تجمّدها معًا، ثم جمّدها بنقرة واحدة</string>
+    <string name="profile_save_selection">حفظ كملف</string>
+    <string name="profile_delete_title">حذف «%1$s»؟</string>
+    <string name="profile_delete_desc">يُحذف الملف فقط. تبقى التطبيقات التي بداخله كما هي — وما كان مجمدًا يظل مجمدًا.</string>
+    <string name="profile_saved">تم حفظ الملف</string>
+    <string name="profile_deleted">تم حذف الملف</string>
+    <string name="profile_nothing_to_do">لا يوجد ما يمكن فعله لهذا الملف</string>
+    <string name="bulk_run_failed">لم تكتمل هذه العملية — تحقّق من التطبيقات قبل الاعتماد عليها</string>
+    <string name="error_profile_name_taken">اسم الملف هذا مستخدم بالفعل</string>
+    <string name="error_profile_delete_failed">تعذر حذف هذا الملف</string>
+    <string name="error_profiles_load_failed">تعذر تحميل ملفات التجميد</string>
+    <string name="action_edit">تعديل</string>
+    <string name="action_delete">حذف</string>
+    <string name="action_save">حفظ</string>
+    <string name="more_options">المزيد من الخيارات</string>
+    <plurals name="profile_app_count">
+        <item quantity="zero">%1$d تطبيقات</item>
+        <item quantity="one">%1$d تطبيق</item>
+        <item quantity="two">%1$d تطبيقان</item>
+        <item quantity="few">%1$d تطبيقات</item>
+        <item quantity="many">%1$d تطبيقًا</item>
+        <item quantity="other">%1$d تطبيقات</item>
+    </plurals>
+
 </resources>

@@ -6,13 +6,19 @@ package com.valhalla.thor.presentation.main
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.data.backup.BackupRunner
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.domain.model.isActive
 import com.valhalla.thor.domain.model.isFrozen
 import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.domain.usecase.BackupRejection
+import com.valhalla.thor.domain.usecase.BackupRunResult
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.domain.usecase.ShareAppUseCase
@@ -35,6 +41,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
+import java.util.Locale
 
 /**
  * Side Effects: One-time events that the UI must handle (Navigation, Intents).
@@ -42,7 +49,8 @@ import org.koin.core.annotation.Named
 sealed interface MainSideEffect {
     data class LaunchApp(val packageName: String) : MainSideEffect
     data class OpenAppSettings(val packageName: String) : MainSideEffect
-    data class ShareApp(val uri: android.net.Uri) : MainSideEffect
+    /** [mime] describes the container that was actually built, not the app it came from. */
+    data class ShareApp(val uri: android.net.Uri, val mime: String) : MainSideEffect
     data class ShareApps(val uris: List<android.net.Uri>) : MainSideEffect
     data class NormalUninstall(val packageName: String) : MainSideEffect
 
@@ -75,11 +83,39 @@ data class FreezeLoggerState(
 )
 
 /**
+ * Live view of the multi-app export owned by [BackupRunner]; null when nothing is exporting.
+ *
+ * It looks like [FreezeLoggerState] but is not its sibling: that one describes work this ViewModel
+ * is doing, so it has an `isComplete` flag and a dismiss call. This one only *watches* a run that
+ * outlives the ViewModel — the run ending is the dismissal, and the outcome arrives separately as
+ * a [MainSideEffect.Message], so there is nothing here to complete or dismiss.
+ */
+data class ExportProgressState(
+    val completed: Int,
+    val total: Int,
+    /** The app that started most recently. Data, not copy — render it verbatim or not at all. */
+    val currentLabel: String?
+) {
+    /** `Exporting 3 of 12`, left as a [UiText] so this stays free of a Context. */
+    val status: UiText
+        get() = UiText.StringResource(R.string.export_bulk_progress, completed, total)
+
+    /**
+     * Bar fill, 0f..1f. Guarded because a zero total would divide by zero, and an empty selection
+     * is rejected rather than run — so this defends against a state that should not exist rather
+     * than one that routinely does.
+     */
+    val fraction: Float
+        get() = if (total <= 0) 0f else completed.toFloat() / total
+}
+
+/**
  * Main UI State holding global feedback.
  */
 data class MainUiState(
     val loggerState: LoggerState = LoggerState(), // For persistent Logs
     val freezeLoggerState: FreezeLoggerState = FreezeLoggerState(), // Compact freeze/unfreeze progress
+    val exportProgress: ExportProgressState? = null, // Multi-app export, null when idle
     val selectedDestination: AppDestinations = AppDestinations.HOME, // For Bottom Nav
     val hasShownSupportDeveloperPrompt: Boolean = true,
     val showSupportDeveloperPrompt: Boolean = false,
@@ -93,6 +129,7 @@ class MainViewModel(
     private val shareAppUseCase: ShareAppUseCase,
     private val preferenceRepository: PreferenceRepository,
     private val freezerRepository: FreezerRepository,
+    private val backupRunner: BackupRunner,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -105,8 +142,21 @@ class MainViewModel(
 
     private var pendingSupportPrompt = false
 
+    // Declared *above* `init`, and it has to stay there.
+    //
+    // `viewModelScope` runs on `Dispatchers.Main.immediate`, so a collector launched from `init`
+    // starts executing inline rather than on a later main-loop turn — and `completions` replays,
+    // so a view model built after a run finished receives that outcome *during* `init`. Every
+    // property the collector touches is therefore initialised or null at that moment, in plain
+    // declaration order. Moved back below `init`, this one is null exactly on the replay path:
+    // reopen Thor after an export that finished with no UI attached and the send NPEs inside
+    // `viewModelScope`, i.e. on the main thread, with no handler.
+    private val _effect = Channel<MainSideEffect>()
+    val effect = _effect.receiveAsFlow()
+
     init {
         observePreferences()
+        observeBackupRun()
     }
 
     private fun observePreferences() {
@@ -117,6 +167,55 @@ class MainViewModel(
                         hasShownSupportDeveloperPrompt = prefs.hasShownSupportDeveloperPrompt,
                         prefs = prefs
                     )
+                }
+            }
+        }
+    }
+
+    /**
+     * Mirror [BackupRunner]'s two flows — progress into [MainUiState], outcome into a one-shot
+     * message.
+     *
+     * Collected from `init`, not from the Backup branch, because a run outlives the ViewModel that
+     * started it: reopen Thor mid-export and *this* instance never called `start`, so a collector
+     * hung off the start call would show nothing. `progress` is a StateFlow whose null means idle,
+     * so attaching to a finished run costs nothing.
+     */
+    private fun observeBackupRun() {
+        viewModelScope.launch {
+            backupRunner.progress.collect { progress ->
+                _uiState.update { state ->
+                    state.copy(
+                        exportProgress = progress?.let {
+                            ExportProgressState(it.completed, it.total, it.current)
+                        }
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            backupRunner.completions.collect { result ->
+                val report = exportReport(result)
+                var shown = false
+                try {
+                    for (message in report.messages) {
+                        _effect.send(MainSideEffect.Message(message))
+                        shown = true
+                    }
+                    if (report.asksForSupport) triggerSupportPromptIfNeeded()
+                } finally {
+                    // Acknowledge once *any* of it has reached the user, and only then.
+                    //
+                    // Not acknowledging is what lets a run that finished with no UI attached report
+                    // when one arrives — so consuming an outcome nobody saw would lose it silently.
+                    // But `_effect` is a rendezvous channel and a finished run whose manifest
+                    // failed sends *twice*, so a ViewModel cleared between the two sends would
+                    // leave the outcome unconsumed and the next instance would replay the whole
+                    // thing: the "Exported 8 of 12" already read, support prompt included.
+                    //
+                    // In `finally` and non-suspending, so it still runs while this coroutine is
+                    // being cancelled — which is exactly the case it exists for.
+                    if (shown) backupRunner.consumeCompletion()
                 }
             }
         }
@@ -147,9 +246,6 @@ class MainViewModel(
             }
         }
     }
-
-    private val _effect = Channel<MainSideEffect>()
-    val effect = _effect.receiveAsFlow()
 
     // --- State Management Helpers ---
 
@@ -280,7 +376,8 @@ class MainViewModel(
                     if (result.isSuccess) {
                         addLog(UiText.StringResource(R.string.log_files_ready))
                         dismissLogger()
-                        _effect.send(MainSideEffect.ShareApp(result.getOrThrow()))
+                        val uri = result.getOrThrow()
+                        _effect.send(MainSideEffect.ShareApp(uri, mimeForBundle(uri)))
                     } else {
                         addLog(UiText.StringResource(R.string.log_error, result.exceptionOrNull()?.message ?: ""))
                         finishLogger()
@@ -383,7 +480,6 @@ class MainViewModel(
                 is AppClickAction.Suspend -> quickAction(action) { manageAppUseCase.setAppSuspended(it.packageName, true) }
                 is AppClickAction.UnSuspend -> quickAction(action) { manageAppUseCase.setAppSuspended(it.packageName, false) }
                 is AppClickAction.ManagePermissions -> {}
-                is AppClickAction.OpenDetails -> {}
                 // Handled entirely in FreezerScreen (viewModel.pinAppToLauncher); never routed here.
                 is AppClickAction.AddToHomeScreen -> {}
             }
@@ -435,10 +531,7 @@ class MainViewModel(
                     UiText.StringResource(R.string.log_uninstalling_batch),
                     action.appList
                 ) { appInfo ->
-                    val isSystem = appInfo.isSystem
-                    val isUadFailed = isSystem && appInfo.isUadLoadFailed
-                    val isUnsafe = isSystem && appInfo.bloatRecommendation?.lowercase() == "unsafe"
-                    if (isUadFailed || isUnsafe) {
+                    if (appInfo.freezeTier == FreezeTier.BLOCKED) {
                         Result.failure(UiTextException(UiText.StringResource(R.string.error_unsafe_skipped)))
                     } else {
                         val result = manageAppUseCase.uninstallApp(appInfo.packageName)
@@ -502,6 +595,14 @@ class MainViewModel(
                         }
                     }
                 }
+
+                // Deliberately not run here. Exporting 200 apps takes minutes and has to survive
+                // the toolbox, this ViewModel and usually the Activity behind it, so the work
+                // belongs to BackupRunner's process-lifetime scope; this branch only hands over
+                // the selection. The returned Deferred is dropped on purpose — [observeBackupRun]
+                // is the single place an outcome is reported, and awaiting it here as well would
+                // report the same run twice.
+                is MultiAppAction.Backup -> backupRunner.start(action.appList)
             }
         }
     }
@@ -516,10 +617,7 @@ class MainViewModel(
         val targets = if (isFreeze) {
             // Only freeze ACTIVE apps: skip unsafe/UAD system apps AND anything already frozen
             // (disabled or suspended) so we never stack disable+suspend into a mixed state.
-            apps.filter { app ->
-                app.isActive && !(app.isSystem && (app.isUadLoadFailed ||
-                    app.bloatRecommendation?.lowercase() == "unsafe"))
-            }
+            apps.filter { it.isActive && it.freezeTier != FreezeTier.BLOCKED }
         } else {
             apps
         }
@@ -565,6 +663,115 @@ class MainViewModel(
 
     fun dismissFreezeLogger() {
         _uiState.update { it.copy(freezeLoggerState = FreezeLoggerState()) }
+    }
+
+    /** Stop the export in flight. Whatever it already wrote stays written. */
+    fun cancelExport() {
+        backupRunner.cancel()
+    }
+
+    /** What the end of an export run should say, and whether it earns the support prompt. */
+    private data class ExportReport(
+        val messages: List<UiText>,
+        val asksForSupport: Boolean = false
+    )
+
+    /**
+     * The end of an export run, as data.
+     *
+     * Messages rather than state so the outcome reaches whichever screen the user wandered off to
+     * while the run continued — the normal case for a run this long.
+     *
+     * Pure, and separate from the delivery loop in [observeBackupRun], because delivery has one
+     * rule that has to hold across every branch — acknowledge as soon as the first message lands —
+     * and a rule spread across five `when` arms is a rule with a hole in it.
+     */
+    private fun exportReport(result: BackupRunResult): ExportReport = when (result) {
+        is BackupRunResult.Rejected -> ExportReport(listOf(result.reason.asMessage()))
+
+        // saved, not attempted: the sentence says "were saved", and an app that failed is
+        // counted by neither the folder nor the user.
+        is BackupRunResult.Cancelled -> ExportReport(
+            listOf(
+                UiText.StringResource(
+                    R.string.export_bulk_cancelled,
+                    result.saved,
+                    result.total
+                )
+            )
+        )
+
+        is BackupRunResult.Failed -> ExportReport(
+            listOf(
+                UiText.StringResource(
+                    R.string.export_bulk_failed,
+                    result.saved,
+                    result.total
+                )
+            )
+        )
+
+        // location is null exactly when nothing was written, so it is both the "did anything
+        // land?" test and the only value that could leave the sentence hanging after "to".
+        is BackupRunResult.Finished -> when (val location = result.location) {
+            null -> ExportReport(
+                listOf(UiText.StringResource(R.string.export_bulk_finished_none, result.total))
+            )
+
+            else -> ExportReport(
+                messages = buildList {
+                    // The partial run needs no string of its own: "8 of 12" and "12 of 12" read
+                    // correctly from the same sentence, so nothing here branches on `failed`.
+                    add(
+                        UiText.StringResource(
+                            R.string.export_bulk_finished,
+                            result.succeeded,
+                            result.total,
+                            location
+                        )
+                    )
+                    // A second message rather than a longer first one: the missing manifest is a
+                    // separate fact about the same folder, and only worth saying when there are
+                    // files in there for it to have described.
+                    if (!result.indexWritten) {
+                        add(UiText.StringResource(R.string.export_bulk_index_failed))
+                    }
+                },
+                asksForSupport = true
+            )
+        }
+    }
+
+    private fun BackupRejection.asMessage(): UiText = when (this) {
+        BackupRejection.NothingToExport ->
+            UiText.StringResource(R.string.export_bulk_nothing_selected)
+
+        is BackupRejection.InsufficientStagingSpace -> UiText.StringResource(
+            R.string.export_bulk_no_space,
+            formatBytes(requiredBytes),
+            formatBytes(availableBytes)
+        )
+    }
+
+    /**
+     * A byte count as a short human string.
+     *
+     * `android.text.format.Formatter.formatShortFileSize` is the usual answer and is what the
+     * details screen uses, but it needs a Context and this ViewModel deliberately has none — every
+     * other string leaves here as a [UiText] for the screen to resolve. Same SI units the platform
+     * helper has used since O, and the number goes through the default locale so the decimal
+     * separator is the user's.
+     */
+    private fun formatBytes(bytes: Long): String {
+        val units = listOf("B", "kB", "MB", "GB", "TB")
+        var value = bytes.toDouble()
+        var unit = 0
+        while (value >= 1000 && unit < units.lastIndex) {
+            value /= 1000
+            unit++
+        }
+        val pattern = if (unit == 0) "%.0f %s" else "%.1f %s"
+        return String.format(Locale.getDefault(), pattern, value, units[unit])
     }
 
     private suspend fun performLoggedMultiAction(
@@ -632,6 +839,20 @@ class MainViewModel(
         else {
             _effect.send(MainSideEffect.Message(UiText.StringResource(R.string.error_app_info_missing)))
         }
+    }
+
+    /**
+     * The declared type for a share, taken from the bundle's own file name. The builder — not the
+     * app — decides the container (a split app comes back as an `.apks` zip), so the file name is
+     * the only honest source; the FileProvider URI's last segment is that name.
+     *
+     * An unrecognised extension falls back to the non-installable type on purpose: typing a zip as
+     * a package archive is what makes an installer accept the share and then choke on it.
+     */
+    private fun mimeForBundle(uri: android.net.Uri): String {
+        val extension = uri.lastPathSegment.orEmpty().substringAfterLast('.', "")
+        return BundleFormat.entries.firstOrNull { it.extension == extension }?.mime
+            ?: BundleFormat.APKS.mime
     }
 
     private fun getSuccessMessage(action: AppClickAction, appName: String): UiText {

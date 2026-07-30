@@ -11,6 +11,7 @@ import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.room.AppDao
 import com.valhalla.thor.data.source.local.room.AppDatabase
+import com.valhalla.thor.data.source.local.room.FreezeProfileDao
 import com.valhalla.thor.data.source.local.room.FreezerDao
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -60,9 +61,14 @@ class AppModule {
     fun freezerDao(appDatabase: AppDatabase): FreezerDao = appDatabase.freezerDao()
 
     @Single
+    fun freezeProfileDao(appDatabase: AppDatabase): FreezeProfileDao =
+        appDatabase.freezeProfileDao()
+
+    @Single
     fun extensionDataDao(appDatabase: AppDatabase) = appDatabase.extensionDataDao()
 
-    // RealShellRepository lives in :suCore (com.valhalla.superuser.ktx), outside the scan scope
+    // RealShellRepository comes from the Odin library (com.valhalla.superuser.ktx), outside the
+    // scan scope — the component scan only sees com.valhalla.thor.
     @Single
     fun shellRepository(): ShellRepository = RealShellRepository()
 }

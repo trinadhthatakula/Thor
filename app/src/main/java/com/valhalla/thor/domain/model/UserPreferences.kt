@@ -42,9 +42,6 @@ data class UserPreferences(
     // Support Developer Prompt
     val hasShownSupportDeveloperPrompt: Boolean = false,
 
-    // Detailed View Mode
-    val useDetailedView: Boolean = true,
-
     // Animation Intensity
     val animationIntensity: AnimationIntensity = AnimationIntensity.MEDIUM,
 

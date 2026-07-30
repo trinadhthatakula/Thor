@@ -8,12 +8,16 @@ import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
 import com.valhalla.thor.data.launcher.FreezerShortcutManager
 import com.valhalla.thor.domain.model.DetailedAppInfo
+import com.valhalla.thor.domain.model.FreezeTier
+import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.UiText
+import com.valhalla.thor.util.UiTextException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
@@ -42,6 +46,7 @@ class AppInfoDetailsViewModel(
     private val appRepository: AppRepository,
     private val systemRepository: SystemRepository,
     private val manageAppUseCase: ManageAppUseCase,
+    private val freezeAppUseCase: FreezeAppUseCase,
     private val freezerRepository: FreezerRepository,
     private val freezerShortcutManager: FreezerShortcutManager
 ) : ViewModel() {
@@ -129,7 +134,11 @@ class AppInfoDetailsViewModel(
 
     fun toggleFreezerState(packageName: String, appName: String?, freeze: Boolean) {
         viewModelScope.launch {
-            val result = manageAppUseCase.setAppDisabled(packageName, freeze)
+            // Freezing goes through FreezeAppUseCase so the BLOCKED tier is enforced below this
+            // view model rather than by AppRiskDialog declining to render a confirm button.
+            // Unfreezing keeps the raw call: it must never be blocked.
+            val result = if (freeze) freezeAppUseCase(packageName)
+            else manageAppUseCase.setAppDisabled(packageName, false)
             result.onSuccess {
                 freezerShortcutManager.refreshAppShortcut(packageName)
                 val inFreezer = withContext(Dispatchers.IO) { freezerRepository.contains(packageName) }
@@ -144,7 +153,12 @@ class AppInfoDetailsViewModel(
                 // Refresh detail only — no privilege re-probe, no loader flash.
                 refreshDetails(packageName)
             }.onFailure { e ->
-                _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                // A UiTextException already carries the message to show (the tier refusal) and
+                // has a null `message`, which error_format would render as a bare "Error: ".
+                _events.send(
+                    if (e is UiTextException) e.uiText
+                    else UiText.StringResource(R.string.error_format, e.message ?: "")
+                )
             }
         }
     }
@@ -200,6 +214,13 @@ class AppInfoDetailsViewModel(
         }
     }
 
+    /**
+     * The freezer prompt's confirm. Deliberately not tier-gated, unlike [addOrRemoveFromFreezer]:
+     * [toggleFreezerState] only raises the prompt inside `onSuccess`, so the app is already frozen
+     * and the question is whether to track it. Tracking a frozen app can't re-freeze it
+     * (`freezableCandidates` drops blocked apps from FREEZE runs) and is what lets Unfreeze-all
+     * reach it, so refusing here would stand between the user and their own frozen app.
+     */
     fun addToFreezer(packageName: String) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { freezerRepository.add(packageName) }
@@ -221,6 +242,15 @@ class AppInfoDetailsViewModel(
                 _uiState.update { it.copy(isInFreezer = false) }
                 _events.send(UiText.PluralsResource(R.plurals.removed_from_freezer_success, 1))
             } else {
+                // Same BLOCKED gate as FreezerViewModel.toggleManaged and
+                // AppListViewModel.toggleFreezerMembership — three surfaces reach the watchlist and
+                // all three have to agree, or the answer just depends on which one you tapped.
+                // Fails closed while details are still loading: an unknown tier is not a safe tier.
+                val app = _uiState.value.detailedInfo?.appInfo
+                if (app == null || app.freezeTier == FreezeTier.BLOCKED) {
+                    _events.send(UiText.StringResource(R.string.error_unsafe_skipped))
+                    return@launch
+                }
                 freezerRepository.add(packageName)
                 _uiState.update { it.copy(isInFreezer = true) }
                 _events.send(UiText.StringResource(R.string.added_to_freezer_success))

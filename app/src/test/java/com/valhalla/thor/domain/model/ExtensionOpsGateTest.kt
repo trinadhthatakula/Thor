@@ -3,6 +3,8 @@
 
 package com.valhalla.thor.domain.model
 
+import android.content.pm.ApplicationInfo
+import com.valhalla.thor.data.provider.isFrozenAppInfo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -50,5 +52,54 @@ class ExtensionOpsGateTest {
             guarded = setOf("com.valhalla.thor")
         )
         assertEquals(listOf("com.a", "com.b"), out)
+    }
+}
+
+/**
+ * The flag arithmetic behind the extension `toggle` op's freeze/unfreeze decision.
+ * `ApplicationInfo.FLAG_*` are JLS constant variables (public static final int), so kotlinc inlines
+ * them and this needs no Android runtime — same trick TileVisualTest uses for `Tile.STATE_*`.
+ */
+class ExtensionOpsFreezeStateTest {
+
+    @Test fun `an enabled installed app is not frozen`() {
+        assertFalse(isFrozenAppInfo(enabled = true, flags = ApplicationInfo.FLAG_INSTALLED))
+    }
+
+    @Test fun `a disabled app is frozen`() {
+        // The `pm disable` half: a user app Thor froze, still installed for this user.
+        assertTrue(isFrozenAppInfo(enabled = false, flags = ApplicationInfo.FLAG_INSTALLED))
+    }
+
+    @Test fun `a system app uninstalled for this user is frozen`() {
+        // The regression. Thor freezes system apps with `pm uninstall --user N`, and under
+        // MATCH_UNINSTALLED_PACKAGES that package comes back with enabled == true — only the
+        // missing FLAG_INSTALLED says it is frozen. Reading it as active made `toggle` re-freeze
+        // an already-frozen cluster instead of thawing it.
+        assertTrue(
+            isFrozenAppInfo(enabled = true, flags = ApplicationInfo.FLAG_SYSTEM)
+        )
+    }
+
+    @Test fun `a suspended app is frozen`() {
+        assertTrue(
+            isFrozenAppInfo(
+                enabled = true,
+                flags = ApplicationInfo.FLAG_INSTALLED or ApplicationInfo.FLAG_SUSPENDED
+            )
+        )
+    }
+
+    @Test fun `unrelated flags do not make an app frozen`() {
+        // Guards the bit tests against an `and` result compared to the wrong side: a plain system
+        // app carries plenty of other flags and must still read active.
+        assertFalse(
+            isFrozenAppInfo(
+                enabled = true,
+                flags = ApplicationInfo.FLAG_INSTALLED or
+                        ApplicationInfo.FLAG_SYSTEM or
+                        ApplicationInfo.FLAG_ALLOW_BACKUP
+            )
+        )
     }
 }

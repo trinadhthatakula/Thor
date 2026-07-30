@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -93,7 +94,12 @@ fun AffirmationDialog(
 fun MultiAppAffirmationDialog(
     modifier: Modifier = Modifier,
     multiAppAction: MultiAppAction,
-    title: String = stringResource(R.string.are_you_sure),
+    // Export is the one action whose body text does not open by naming the operation, so it
+    // carries its own headline instead of the generic "Are you sure?".
+    title: String = when (multiAppAction) {
+        is MultiAppAction.Backup -> stringResource(R.string.export_bulk_confirm_title)
+        else -> stringResource(R.string.are_you_sure)
+    },
     onConfirm: () -> Unit,
     onRejected: () -> Unit
 ) {
@@ -145,6 +151,13 @@ fun MultiAppAffirmationDialog(
                     }
 
                     is MultiAppAction.Share -> "Share ${multiAppAction.appList.size} apps?"
+
+                    is MultiAppAction.Backup -> pluralStringResource(
+                        R.plurals.export_bulk_confirm_desc,
+                        multiAppAction.appList.size,
+                        multiAppAction.appList.size
+                    )
+
                     is MultiAppAction.UnFreeze -> {
                         val frozenAppsCount = multiAppAction.appList.count { !it.enabled }
                         "$frozenAppsCount of ${multiAppAction.appList.size} apps are frozen. Unfreeze them?"

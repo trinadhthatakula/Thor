@@ -102,6 +102,12 @@
     <string name="descending">Descending</string>
     <string name="filters">Filters</string>
     <string name="sort_by">Sort By</string>
+    <string name="filter_type_state">Active State</string>
+    <string name="filter_type_source">Installation Source</string>
+    <string name="filter_type_permission">Permission</string>
+    <string name="permission_filter_loading">Reading permissions…</string>
+    <string name="permission_filter_unavailable">No permission groups found on this device</string>
+    <string name="permission_filter_failed">Couldn\'t read permissions on this device</string>
 
     <!-- App Info Dialog -->
     <string name="clear_app_data_title">Clear App Data?</string>
@@ -132,7 +138,6 @@
     <string name="status_suspended">SUSPENDED</string>
 
     <!-- App Actions -->
-    <string name="action_launch">Launch</string>
     <string name="action_share">Share</string>
     <string name="action_freeze">Freeze</string>
     <string name="action_unfreeze">Unfreeze</string>
@@ -140,14 +145,15 @@
     <string name="action_unsuspend">Unsuspend</string>
     <string name="action_kill">Kill</string>
     <string name="action_cache">Cache</string>
-    <string name="action_data">Data</string>
     <string name="action_uninstall">Uninstall</string>
     <string name="action_reinstall">Reinstall</string>
 
     <!-- Export -->
     <string name="action_export">Export</string>
     <string name="export_explain_apk">Thor saves this app as a single installer file (.apk) to the folder below. Use it to back up the app or reinstall it later.</string>
-    <string name="export_explain_apks">This app ships as several split parts, so Thor packages them into one bundle (.apks) in the folder below. Reinstall it anytime with Thor\'s installer.</string>
+    <string name="export_explain_apks">This app ships as several split parts, packed into one bundle (.apks) in the folder below. Reinstall it anytime with Thor\'s installer.</string>
+    <string name="export_explain_xapk">Thor packs this app\'s parts into a single .xapk in the folder below, a format other installers understand too. Game data (OBB files) is left out because Android 11 and later stops any app from reading another app\'s OBB folder; a large game will install from this file but may not run.</string>
+    <string name="export_format">Format</string>
     <string name="export_save_to">Save to</string>
     <string name="export_change">Change</string>
     <string name="export_in_progress">Exporting…</string>
@@ -156,6 +162,28 @@
     <string name="export_failed_unknown">unknown error</string>
     <string name="export_dest_downloads">Downloads/Thor</string>
     <string name="export_dest_selected">Selected folder</string>
+
+    <!-- Bulk export (multi-select toolbox). Scope is deliberately "the apps you picked", never
+         "back up everything": the count-bearing strings below all read as composites of two
+         independent counts, so none of them is a <plurals> candidate. -->
+    <string name="action_export_selected">Export</string>
+    <string name="export_bulk_confirm_title">Export selected apps?</string>
+    <plurals name="export_bulk_confirm_desc">
+        <item quantity="one">Thor saves %1$d installer file to your export folder — one per selected app. This can take a long time and can need a lot of free storage, so keep Thor open until it finishes.</item>
+        <item quantity="other">Thor saves %1$d installer files to your export folder — one per selected app. This can take a long time and can need a lot of free storage, so keep Thor open until it finishes.</item>
+    </plurals>
+    <string name="export_bulk_progress" tools:ignore="PluralsCandidate">Exporting %1$d of %2$d</string>
+    <!-- Covers the partial outcome too — "8 of 12" is the normal result, not the exception. -->
+    <string name="export_bulk_finished" tools:ignore="PluralsCandidate">Exported %1$d of %2$d apps to %3$s</string>
+    <string name="export_bulk_finished_none" tools:ignore="PluralsCandidate">Couldn\'t export any of the %1$d selected apps</string>
+    <!-- Names no file: the manifest is thor-backup-<timestamp>.json, one per run, so there is no
+         fixed name to quote and the user does not need one to understand what is missing. -->
+    <string name="export_bulk_index_failed">Files were saved, but the list beside them couldn\'t be written</string>
+    <string name="export_bulk_cancelled" tools:ignore="PluralsCandidate">Export stopped — %1$d of %2$d apps were saved</string>
+    <string name="export_bulk_failed" tools:ignore="PluralsCandidate">Export failed — %1$d of %2$d apps were saved</string>
+    <string name="export_bulk_stop">Stop export</string>
+    <string name="export_bulk_nothing_selected">Select at least one app to export</string>
+    <string name="export_bulk_no_space">Not enough free space to export. Thor needs about %1$s free to prepare these files, but only %2$s is available. Free up space or select fewer apps.</string>
 
     <!-- Main Screen / Global -->
     <string name="cannot_launch_app">Cannot launch app</string>
@@ -174,7 +202,6 @@
     <string name="cd_suspended">Suspended</string>
     <string name="cd_selected">Selected</string>
     <string name="cd_clear">Clear</string>
-    <string name="cd_settings">Settings</string>
     <string name="select_app_details">Select an app to view details</string>
 
     <!-- Permission Manager -->
@@ -199,6 +226,9 @@
     <string name="usage_access_needed_subtitle">Needed to read app sizes for the Size sort</string>
     <string name="usage_access_needed_title">Usage Access needed</string>
     <string name="usage_access_prompt_body">Thor needs Usage Access to read app sizes. Enable it for Thor, then pick \"Size\" again. You can also manage this under Settings → Permissions.</string>
+    <string name="notification_access">Notifications</string>
+    <string name="notification_access_granted_subtitle">Bulk freeze results are shown as notifications</string>
+    <string name="notification_access_needed_subtitle">Allow notifications to see bulk freeze results</string>
     <string name="open_settings">Open settings</string>
 
     <!-- Quick Settings Tile -->
@@ -216,6 +246,12 @@
     </plurals>
     <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
     <string name="tile_freeze_partial_failure" tools:ignore="PluralsCandidate">Froze %1$d/%2$d apps (%3$d failed)</string>
+    <!-- Third result bucket: neither confirmed success nor confirmed failure — the deadline
+         fired before these packages resolved. -->
+    <string name="tile_freeze_incomplete" tools:ignore="PluralsCandidate">Froze %1$d/%2$d apps (%3$d unfinished)</string>
+    <string name="tile_checking">Checking…</string>
+    <string name="tile_freezing">Freezing…</string>
+    <string name="channel_bulk_result_name">Bulk action results</string>
 
     <!-- Freezer Settings & Actions -->
     <string name="freezer_settings">Freezer Settings</string>
@@ -311,6 +347,9 @@
     </plurals>
     <!-- Composite "x/y apps (z failed)" — no single count drives the plural, so not a <plurals>. -->
     <string name="tile_unfreeze_partial_failure" tools:ignore="PluralsCandidate">Unfroze %1$d/%2$d apps (%3$d failed)</string>
+    <!-- Unfreeze counterpart of tile_freeze_incomplete: the deadline fired before these
+         packages resolved, so they are neither confirmed done nor confirmed failed. -->
+    <string name="tile_unfreeze_incomplete" tools:ignore="PluralsCandidate">Unfroze %1$d/%2$d apps (%3$d unfinished)</string>
     <string name="error_format">Error: %1$s</string>
     <string name="failed_to_load_apps">Failed to load apps</string>
     <plurals name="removed_from_freezer_success">
@@ -386,6 +425,12 @@
     <string name="title_thor_installer">Thor Installer</string>
     <string name="install_analyzing">Analyzing Package…</string>
     <string name="install_downgrade_warning">This will downgrade the app.</string>
+    <!-- %1$s and %2$s are version codes. They are deliberately %s, not %d: %d is localised by
+         java.util.Formatter (Arabic-Indic digits under ar-EG, for example), and these same two
+         numbers are rendered elsewhere on this screen by plain Kotlin interpolation, which is
+         always ASCII. A version code is an opaque identifier the user compares against a store
+         listing or adb output, so keep it ASCII and keep it consistent. -->
+    <string name="install_downgrade_code_explainer">Version code %1$s is lower than the installed %2$s. Android orders updates by version code, not by version name — an app can look newer and still be a downgrade.</string>
     <string name="install_update_warning">This will update the existing app.</string>
     <plurals name="install_permissions">
         <item quantity="one">This package requests %1$d permission. %2$s</item>
@@ -481,18 +526,57 @@
     <string name="action_remove">Remove</string>
     <string name="biometric_unlock_title">Unlock Thor</string>
     <string name="biometric_unlock_subtitle">Authenticate to continue</string>
+    <string name="biometric_unavailable_title">This device can\'t unlock Thor</string>
+    <string name="biometric_unavailable_message">App lock is on, but this device has nothing to unlock it with. Set up a screen lock or enroll a fingerprint in system settings, then come back — Thor will let you in.</string>
+    <!-- Android 9 only: its prompt cannot accept a screen lock, so a PIN is not a way back in. -->
+    <string name="biometric_unavailable_message_biometric_only">App lock is on, but this device has no fingerprint enrolled — and on Android 9 the unlock prompt can\'t accept a screen lock. Enroll a fingerprint in system settings, then come back — Thor will let you in.</string>
+    <!-- Shown when the user taps the app-lock switch on a device with nothing enrolled. -->
+    <string name="biometric_not_enrolled_toast">Biometrics not enrolled — set up a screen lock or fingerprint first</string>
+    <!-- Android 9 only: its prompt cannot accept a screen lock, so only a fingerprint is a way in. -->
+    <string name="biometric_not_enrolled_toast_biometric_only">No fingerprint enrolled — on Android 9 a screen lock won\'t unlock Thor, so enroll one first</string>
+    <!-- Android 9 with no biometric sensor: nothing the user can enroll will ever open the lock. -->
+    <string name="biometric_lock_unavailable_toast">App lock can\'t be turned on: this device has no biometrics to unlock it with</string>
+    <!-- Shown once when Thor turns its own app lock off, because this device can never open it. -->
+    <string name="biometric_lock_disabled_no_biometric">App lock turned off: this device has no biometrics to unlock it with</string>
+    <string name="open_security_settings">Open security settings</string>
     <string name="unlock">Unlock</string>
     <string name="thank_you_support_desc">Your subscription is active. Thank you for helping support the development of Thor!</string>
 
-    <!-- Detailed View & Animation Intensity -->
+    <!-- Details & Animation Intensity -->
     <string name="action_details">Details</string>
-    <string name="detailed_view">Detailed View</string>
-    <string name="detailed_view_desc">Click directly to details screen instead of dialog</string>
     <string name="animation_intensity">Animation Intensity</string>
     <string name="animation_intensity_desc">Control navigation animations and transitions</string>
     <string name="animation_intensity_low">Low</string>
     <string name="animation_intensity_medium">Medium</string>
     <string name="animation_intensity_high">High</string>    <string name="suspended_app_dialog_title">Thor</string>
     <string name="suspended_app_dialog_message">This app has been suspended by Thor.</string>
+
+    <!-- Freeze profiles -->
+    <string name="freeze_profiles">Freeze Profiles</string>
+    <string name="profile_new">New profile</string>
+    <string name="profile_edit">Edit profile</string>
+    <string name="profile_name_label">Profile name</string>
+    <string name="profile_name_too_long">That name is too long</string>
+    <string name="profile_name_duplicate">A profile with that name already exists</string>
+    <string name="no_profiles_yet">No profiles yet</string>
+    <string name="no_profiles_yet_desc">Group the apps you freeze together, then freeze them in one tap</string>
+    <string name="profile_save_selection">Save as profile</string>
+    <string name="profile_delete_title">Delete “%1$s”?</string>
+    <string name="profile_delete_desc">Only the profile is removed. The apps in it are left exactly as they are — anything frozen stays frozen.</string>
+    <string name="profile_saved">Profile saved</string>
+    <string name="profile_deleted">Profile deleted</string>
+    <string name="profile_nothing_to_do">Nothing to do for this profile</string>
+    <string name="bulk_run_failed">That run did not finish — check the apps before relying on it</string>
+    <string name="error_profile_name_taken">That profile name is already taken</string>
+    <string name="error_profile_delete_failed">Could not delete that profile</string>
+    <string name="error_profiles_load_failed">Failed to load freeze profiles</string>
+    <string name="action_edit">Edit</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_save">Save</string>
+    <string name="more_options">More options</string>
+    <plurals name="profile_app_count">
+        <item quantity="one">%1$d app</item>
+        <item quantity="other">%1$d apps</item>
+    </plurals>
 
 </resources>

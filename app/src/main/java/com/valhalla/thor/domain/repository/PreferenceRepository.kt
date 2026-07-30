@@ -52,8 +52,7 @@ interface PreferenceRepository {
     // --- Support Developer Prompt ---
     suspend fun setHasShownSupportDeveloperPrompt(hasShown: Boolean)
 
-    // --- App Redirection & Animations ---
-    suspend fun setDetailedViewEnabled(enabled: Boolean)
+    // --- Animations ---
     suspend fun setAnimationIntensity(intensity: AnimationIntensity)
 
     // --- Grid/List View ---

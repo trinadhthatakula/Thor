@@ -49,6 +49,7 @@ fun FreezerSelectToolBox(
     isDhizuku: Boolean = false,
     onCancel: () -> Unit = {},
     onRemoveFromFreezer: () -> Unit = {},
+    onSaveAsProfile: () -> Unit = {},
     onMultiAppAction: (MultiAppAction) -> Unit = {},
     freezerMode: FreezerMode = FreezerMode.FREEZE
 ) {
@@ -93,6 +94,13 @@ fun FreezerSelectToolBox(
                 }
             }
 
+            // Needs no privilege: this only names the selection, it does not freeze it.
+            FreezerToolItem(
+                icon = R.drawable.list_alt,
+                label = stringResource(R.string.profile_save_selection),
+                onClick = onSaveAsProfile
+            )
+
             FreezerToolItem(
                 icon = R.drawable.delete,
                 label = stringResource(R.string.action_remove),
@@ -103,6 +111,12 @@ fun FreezerSelectToolBox(
                 icon = R.drawable.share,
                 label = stringResource(R.string.action_share),
                 onClick = { onMultiAppAction(MultiAppAction.Share(selected)) }
+            )
+
+            FreezerToolItem(
+                icon = R.drawable.storage,
+                label = stringResource(R.string.action_export_selected),
+                onClick = { onMultiAppAction(MultiAppAction.Backup(selected)) }
             )
 
             FreezerToolItem(

@@ -12,23 +12,26 @@ sealed interface InstallState {
     data object Idle : InstallState
     data object Parsing : InstallState
 
+    /**
+     * @param oldVersion the installed app's version *name*, or null when nothing is installed.
+     * @param oldVersionCode the installed app's version *code* — the value [isDowngrade] is
+     *   actually decided on. Carried so the UI can show it: version names routinely disagree with
+     *   version codes, and without the codes on screen a correct downgrade verdict is impossible
+     *   for a user to distinguish from a bug.
+     */
     data class ReadyToInstall(
         val meta: AppMetadata,
         val isUpdate: Boolean,
         val isDowngrade: Boolean = false,
-        val oldVersion: String? = null
+        val oldVersion: String? = null,
+        val oldVersionCode: Long? = null
     ) : InstallState {
 
-        @Suppress("unused")
-        fun getVersionInfo(): String {
-            return if (isUpdate) {
-                "Update available: ${meta.version} (current: $oldVersion)"
-            } else if (isDowngrade) {
-                "Downgrade detected: ${meta.version} (current: $oldVersion)"
-            } else {
-                "Ready to install version ${meta.version}"
-            }
-        }
+        // getVersionInfo() lived here: dead code (@Suppress("unused"), no call sites) that
+        // rendered the verdict from version NAMES only, and tested isUpdate before isDowngrade —
+        // a downgrade is always also an update, so its downgrade branch was unreachable and it
+        // reported "Update available: 1.2.5.1 (current: 1.2.4.7)" for precisely the case this
+        // class now exists to explain. Deleted rather than fixed; nothing called it.
 
         fun getActionButtonText(): com.valhalla.thor.util.UiText {
             return when {

@@ -85,6 +85,7 @@ import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.asGeneralName
+import com.valhalla.thor.domain.model.PermissionIndex
 import com.valhalla.thor.domain.model.filterTypes
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
@@ -110,6 +111,9 @@ fun AppList(
     isShizuku: Boolean = false,
     isDhizuku: Boolean = false,
     installerNameMap: Map<String, String> = emptyMap(),
+    permissionIndex: PermissionIndex = PermissionIndex(),
+    isLoadingPermissions: Boolean = false,
+    permissionIndexFailed: Boolean = false,
     onSortOrderSelected: (SortOrder) -> Unit = {},
     onSortByChanged: (SortBy) -> Unit = {},
     onFilterSelected: (String?) -> Unit,
@@ -200,6 +204,9 @@ fun AppList(
                         filterType = filterType,
                         appListType = appListType,
                         installerNameMap = installerNameMap,
+                        permissionIndex = permissionIndex,
+                        isLoadingPermissions = isLoadingPermissions,
+                        permissionIndexFailed = permissionIndexFailed,
                         onFilterSelected = onFilterSelected
                     )
                 }
@@ -287,20 +294,48 @@ private fun AppQuickFilters(
     filterType: FilterType,
     appListType: AppListType,
     installerNameMap: Map<String, String>,
+    permissionIndex: PermissionIndex,
+    isLoadingPermissions: Boolean,
+    permissionIndexFailed: Boolean,
     onFilterSelected: (String?) -> Unit
 ) {
+    // The permission chips are the only ones that have to be read off the device, so they are the
+    // only ones with a "not there yet", a "it went wrong" and a "not there at all" state to show
+    // instead. Failure is worth its own sentence: the toast that announced it is long gone by the
+    // time the user looks at the empty row, and "no groups on this device" would be a lie.
+    if (filterType == FilterType.Permission && permissionIndex.isEmpty) {
+        Text(
+            text = stringResource(
+                when {
+                    isLoadingPermissions -> R.string.permission_filter_loading
+                    permissionIndexFailed -> R.string.permission_filter_failed
+                    else -> R.string.permission_filter_unavailable
+                }
+            ),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+            // Deliberately allowed to wrap. Every one of these strings is a sentence, and the
+            // Spanish, French and Arabic translations run well past a phone's width — one line plus
+            // an ellipsis cut them in half.
+        )
+        return
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        val chips = if (filterType == FilterType.Source) installers
-        else (filterType as? FilterType.State)?.types ?: emptyList()
+        val chips: List<String?> = when (filterType) {
+            FilterType.Source -> installers
+            FilterType.State -> FilterType.State.types
+            FilterType.Permission -> listOf("All") + permissionIndex.orderedGroups
+        }
 
         chips.forEach { item ->
-            val label = when {
-                filterType == FilterType.Source -> {
+            val label = when (filterType) {
+                FilterType.Source -> {
                     when (item) {
                         "All" -> stringResource(R.string.filter_all)
                         "PLAY STORE" -> stringResource(R.string.play_store)
@@ -312,7 +347,14 @@ private fun AppQuickFilters(
                     }
                 }
 
-                else -> when (item) {
+                // The platform's own label for the group, so the chip reads exactly like the
+                // permission dialog the user has already seen — in their language, for free.
+                FilterType.Permission -> when (item) {
+                    "All" -> stringResource(R.string.filter_all)
+                    else -> permissionIndex.groupLabels[item] ?: item.orEmpty()
+                }
+
+                FilterType.State -> when (item) {
                     "All" -> stringResource(R.string.filter_all)
                     "Active" -> stringResource(R.string.active)
                     "Frozen" -> stringResource(R.string.frozen)
@@ -953,7 +995,7 @@ private fun AppFilterSheet(
                                 )
                             ) {
                                 Text(
-                                    type.asGeneralName(),
+                                    stringResource(type.asGeneralName()),
                                     maxLines = 1,
                                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )
