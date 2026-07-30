@@ -9,8 +9,9 @@ import android.content.pm.PackageManager
 import android.content.pm.PermissionInfo
 import android.os.Build
 import com.valhalla.thor.domain.model.AppPermission
+import com.valhalla.thor.domain.model.DeclaredPermission
 import com.valhalla.thor.domain.model.PermissionIndex
-import com.valhalla.thor.domain.model.PlatformPermissionGroups
+import com.valhalla.thor.domain.model.runtimeGroupFor
 import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import kotlinx.coroutines.CancellationException
@@ -156,37 +157,35 @@ class PermissionRepositoryImpl(
         }
 
     /**
-     * The permission's group if — and only if — it is a runtime permission the user can be asked
-     * about. Everything else (normal, signature, and dangerous permissions nothing will group)
-     * returns null and is left out of the index.
+     * The permission's group if — and only if — this device defines it *and* it is a runtime
+     * permission the user can be asked about. Everything else returns null and is left out of the
+     * index.
      *
-     * **The platform table is asked first, and it is not an optimisation.** Since API 29 the
-     * framework declares every dangerous platform permission with
-     * `android:permissionGroup="android.permission-group.UNDEFINED"` — grouping moved into
-     * PermissionController — so reading `PermissionInfo.group` for `android.permission.CAMERA`
-     * returns UNDEFINED on every modern device. A filter built on that field alone offers no Camera
-     * chip, no Microphone chip and no Location chip; it offers whatever custom groups third-party
-     * apps still declare. See [PlatformPermissionGroups].
-     *
-     * `PermissionInfo` is still the right answer for *custom* permissions, where `group` is honest
-     * and the protection level is the only way to know the permission is dangerous at all. An
-     * unmapped permission is dropped rather than guessed.
+     * The binder call is the whole of this method's job; the decision it feeds lives in
+     * [runtimeGroupFor], which is where the ordering rule (device first, table only for the group)
+     * is stated and where it is unit-tested. Splitting them is what makes "an APK declaring
+     * POST_NOTIFICATIONS on API 28 must not produce a Notifications chip" assertable at all —
+     * `PackageManager` is abstract and `:app` has no mocking library.
      */
-    @Suppress("DEPRECATION")
-    private fun resolveRuntimeGroup(permName: String): String? {
-        PlatformPermissionGroups.groupOf(permName)?.let { return it }
+    private fun resolveRuntimeGroup(permName: String): String? =
+        runtimeGroupFor(permName, declaredPermission(permName))
 
+    /** What this device says about [permName], or null if it does not define it. */
+    @Suppress("DEPRECATION")
+    private fun declaredPermission(permName: String): DeclaredPermission? {
         val info = try {
+            // Throws NameNotFoundException for a permission this Android version has never heard
+            // of, which is the authoritative answer and not an error worth logging: manifests
+            // routinely declare permissions for OS versions newer than the one running them.
             pm.getPermissionInfo(permName, 0)
         } catch (_: Exception) {
             return null
         }
-        val isRuntime =
-            (info.protectionLevel and PermissionInfo.PROTECTION_MASK_BASE) == PermissionInfo.PROTECTION_DANGEROUS
-        if (!isRuntime) return null
-        val group = info.group
-        // UNDEFINED is the platform's own "no group", handed back as a real string.
-        return group?.takeUnless { it.isBlank() || it == PlatformPermissionGroups.UNDEFINED }
+        return DeclaredPermission(
+            isDangerous = (info.protectionLevel and PermissionInfo.PROTECTION_MASK_BASE) ==
+                    PermissionInfo.PROTECTION_DANGEROUS,
+            group = info.group
+        )
     }
 
     override suspend fun grantPermission(

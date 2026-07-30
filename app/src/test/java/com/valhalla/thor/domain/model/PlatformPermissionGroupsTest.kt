@@ -42,12 +42,27 @@ class PlatformPermissionGroupsTest {
 
     @Test
     fun everyKeyIsAFullyQualifiedPlatformPermission() {
+        // ADD_VOICEMAIL is the platform's own exception and has to be listed as one: its constant
+        // value is "com.android.voicemail.permission.ADD_VOICEMAIL", so the android.permission.*
+        // spelling this table used to carry looked right and matched nothing.
+        val knownExceptions = setOf("com.android.voicemail.permission.ADD_VOICEMAIL")
         val malformed = PlatformPermissionGroups.knownPermissions
-            .filterNot { it.startsWith("android.permission.") }
+            .filterNot { it.startsWith("android.permission.") || it in knownExceptions }
         assertEquals(
             "keys must be the exact strings PackageInfo.requestedPermissions hands back",
             emptyList<String>(),
             malformed
+        )
+    }
+
+    @Test
+    fun addVoicemailIsKeyedOnItsRealConstantValue() {
+        // The bug this pins: android.permission.ADD_VOICEMAIL is not a permission any device
+        // declares, so the Phone chip silently skipped every voicemail app.
+        assertNull(PlatformPermissionGroups.groupOf("android.permission.ADD_VOICEMAIL"))
+        assertEquals(
+            PlatformPermissionGroups.PHONE,
+            PlatformPermissionGroups.groupOf("com.android.voicemail.permission.ADD_VOICEMAIL")
         )
     }
 

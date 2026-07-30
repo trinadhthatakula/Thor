@@ -95,7 +95,11 @@ object PlatformPermissionGroups {
         put(P + "READ_PHONE_STATE", PHONE)
         put(P + "READ_PHONE_NUMBERS", PHONE)
         put(P + "CALL_PHONE", PHONE)
-        put(P + "ADD_VOICEMAIL", PHONE)
+        // Not `android.permission.` — the platform's own odd one out. `Manifest.permission
+        // .ADD_VOICEMAIL` is the string below, so the tidy-looking android.permission.ADD_VOICEMAIL
+        // this table used to carry matched nothing any device has ever declared: exactly the silent
+        // miss the key test above exists to catch, hiding inside a key that looked right.
+        put("com.android.voicemail.permission.ADD_VOICEMAIL", PHONE)
         put(P + "USE_SIP", PHONE)
         put(P + "ANSWER_PHONE_CALLS", PHONE)
         put(P + "ACCEPT_HANDOVER", PHONE)
@@ -132,4 +136,42 @@ object PlatformPermissionGroups {
 
     /** Every group this table can produce. */
     val knownGroups: Set<String> get() = byPermission.values.toSet()
+}
+
+/**
+ * What the *running* platform says about a permission — null, at the call site, meaning it does not
+ * define that permission at all.
+ *
+ * [group] is `PermissionInfo.group` verbatim, UNDEFINED and blanks included; [runtimeGroupFor] is
+ * what decides whether either is usable.
+ */
+data class DeclaredPermission(val isDangerous: Boolean, val group: String?)
+
+/**
+ * The group [permission] should be filtered under, or null to leave it out of the index entirely.
+ *
+ * **The device is asked first, and the table only overrides the answer's *group*.** That order is
+ * the whole point: `PackageInfo.requestedPermissions` lists what a manifest *declares*, which
+ * includes permissions the Android version in front of us has never heard of. An APK declaring
+ * `POST_NOTIFICATIONS` runs fine on API 28 and an APK declaring `READ_MEDIA_IMAGES` runs fine on
+ * API 32 — the declaration is simply inert. Consulting [PlatformPermissionGroups] before the
+ * platform put both of those in a chip, so Thor offered a Notifications filter on a device with no
+ * notification permission and listed apps under it that hold no such capability. Thor's supported
+ * range starts at API 28, so this is not a hypothetical device.
+ *
+ * [declared] `== null` is that case: `getPermissionInfo` throws `NameNotFoundException` for a
+ * permission this OS does not define, and that is the authoritative "no". A permission that exists
+ * but is not `dangerous` is refused for the same reason it always was — INTERNET matching 400 apps
+ * is not a filter.
+ *
+ * Only once both hold does the table speak, and it speaks about the group alone: since Android 10
+ * `PermissionInfo.group` reads UNDEFINED for every dangerous platform permission (see
+ * [PlatformPermissionGroups]), so the field is useless for exactly the permissions this filter is
+ * about and honest for the custom ones it is not.
+ */
+fun runtimeGroupFor(permission: String, declared: DeclaredPermission?): String? {
+    if (declared == null || !declared.isDangerous) return null
+    PlatformPermissionGroups.groupOf(permission)?.let { return it }
+    return declared.group
+        ?.takeUnless { it.isBlank() || it == PlatformPermissionGroups.UNDEFINED }
 }
