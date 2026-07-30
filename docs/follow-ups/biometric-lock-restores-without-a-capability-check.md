@@ -68,16 +68,16 @@ by the user who needs it.** The guard is real and it is unreachable in precisely
 
 ### When this actually happens
 
-`BiometricHelper` allows `BIOMETRIC_STRONG or DEVICE_CREDENTIAL`, so on API 30+ a device with just a
-PIN or pattern is fine, and the lockout needs a device with **neither an enrolled biometric nor any
-screen lock**. That sounds exotic until you notice *when* Android restores: during setup wizard, on a
+From Android 10 up the prompt takes the device credential, so a device with just a PIN or pattern is
+fine and the lockout needs a device with **no enrolled biometric the prompt accepts *and* no screen
+lock**. That sounds exotic until you notice *when* Android restores: during setup wizard, on a
 brand-new or freshly-wiped device, **before** the user has been asked to set a screen lock. That is
 the single most likely moment for this to fire.
 
-**On API 28-29 the bar is higher, and it is a platform quirk rather than a Thor choice** — see
-[Resolution](#resolution). `BIOMETRIC_STRONG or DEVICE_CREDENTIAL` is not a *supported combination*
-below API 30, so a PIN does not count there: the prompt is biometric-only, and a device with a screen
-lock but no enrolled fingerprint is equally stuck.
+**On Android 9 the bar is higher, and it is a platform limit rather than a Thor choice** — see
+[Resolution](#resolution). API 28's framework prompt has no device-credential path at all
+(`setDeviceCredentialAllowed` arrives in Q), so a PIN does not count there: the prompt is
+biometric-only, and a device with a screen lock but no enrolled fingerprint is equally stuck.
 
 Also reachable without any backup at all: enable the lock, then remove the screen lock in system
 Settings. Same dead end.
@@ -157,16 +157,45 @@ because the question being asked can never be answered yes on their OS version. 
 have shown them a working prompt, since `BiometricPromptHandler` already makes the API split and
 falls back to a biometric-only prompt below API 30.
 
-Fixed by making the capability predicate ask what the prompt can actually offer:
-`promptAuthenticators(sdkInt)` returns `BIOMETRIC_STRONG or DEVICE_CREDENTIAL` on API 30+ and
-`BIOMETRIC_STRONG` below, mirroring `BiometricPromptHandler` exactly, with
-`PromptAuthenticatorsTest` pinning the split. Two consequences worth noting:
+Fixed by making the capability predicate ask what the prompt can actually offer. It also fixes the
+pre-existing Settings bug — the biometric-lock toggle was disabled on all Android 9/10 devices,
+including ones with a working enrolled fingerprint.
 
-- It also fixes the pre-existing Settings bug — the biometric-lock toggle was disabled on all
-  Android 9/10 devices, including ones with a working enrolled fingerprint.
-- The `Unavailable` copy no longer names a cause. "No fingerprint and no screen lock" is false on
-  API 28-29, where a PIN-only device is genuinely incapable; the string now says only that there is
-  nothing to unlock with, and points at both remedies.
+### Android 10, found in the review of that fix
+
+The first cut of `promptAuthenticators` asked `BIOMETRIC_STRONG` on **both** 28 and 29, on the
+grounds that neither supports the combination. True of the *question*, false of the *prompt*:
+Android 10 has `setDeviceCredentialAllowed`, the deprecated ancestor of `DEVICE_CREDENTIAL`. So the
+escape hatch told an Android 10 user to set a screen lock, and setting one changed nothing — the
+same dead end this document exists to remove, one API level narrower.
+
+What ships now is three tiers, with the prompt and the predicate cut at the same versions:
+
+| API | prompt built by `BiometricPromptHandler`     | asked of `BiometricManager`         |
+|-----|---------------------------------------------|-------------------------------------|
+| 30+ | `setAllowedAuthenticators(STRONG or CREDENTIAL)` | `BIOMETRIC_STRONG or DEVICE_CREDENTIAL` |
+| 29  | `setDeviceCredentialAllowed(true)`          | `BIOMETRIC_WEAK or DEVICE_CREDENTIAL`   |
+| 28  | biometric-only, Cancel button               | `BIOMETRIC_STRONG`                      |
+
+The `WEAK` on 29 is not a weakening of what unlocks Thor — the Q prompt still accepts a strong
+biometric or the credential — it is the only combination androidx will *answer* below R. Nor can it
+be over-permissive in practice: Android refuses to enrol a biometric without a backup credential, so
+"a credential is set" is implied by every enrolled biometric anyway.
+
+`PromptAuthenticatorsTest` pins each tier and, more importantly, pins that the set of levels which
+*ask* about a credential is exactly the set whose prompt *accepts* one. Those two halves living in
+different source files is how the first version drifted.
+
+The `Unavailable` copy is now chosen by that same boundary rather than being written to be vague:
+Android 10 and up gets "set up a screen lock or enroll a fingerprint", Android 9 gets a string that
+says a screen lock will not do it there and to enrol a fingerprint.
+
+**Residual, and genuinely unfixable without the owner's call:** an **Android 9 device with no
+biometric hardware at all** (or hardware the user cannot enrol) has no way in. Nothing it can do in
+system Settings satisfies a biometric-only prompt. Reaching that state still needs a restore or an
+enrolment removed after the fact, since the Settings toggle is gated on the same predicate — but
+once there, only options 1–3 below (fail open, self-heal, in-app disable) get that user in, and each
+is a security decision. The remaining path is EXIT, then clearing Thor's data.
 
 **Still the owner's call, untouched by this:** options 1 (fail open), 2 (self-heal by writing
 `biometric_lock=false`) and 3 (in-app disable from the error screen). Each remains implementable on
@@ -176,9 +205,10 @@ pending.
 
 ## Acceptance
 
-- ~~With `biometric_lock=true` in DataStore on a device with no enrolled biometric **and** no screen
-  lock, Thor opens to `MainScreen` (or offers a working way out) instead of cycling
-  `BiometricLockView` ↔ `BiometricErrorView`.~~ Done via the "working way out" clause —
+- ~~With `biometric_lock=true` in DataStore on a device with **no enrolled biometric that
+  `promptAuthenticators(SDK_INT)` accepts** and **no screen lock** — both, since on API 30+ either
+  one alone still unlocks — Thor opens to `MainScreen` (or offers a working way out) instead of
+  cycling `BiometricLockView` ↔ `BiometricErrorView`.~~ Done via the "working way out" clause —
   `BiometricUnavailableScreen`.
 - ~~A unit test on `SecurityViewModel` covering enabled-but-not-capable. The harness exists —
   `MainDispatcherRule` and `ViewModelTestDoubles` landed in the #16 batch, and `SecurityViewModel`
@@ -188,6 +218,9 @@ pending.
   clearing, no eviction of an unlocked session, and no gate at all while the lock is off.
 - **OUTSTANDING (needs a device).** The restore path is exercised end to end at least once:
   `bmgr backupnow` with biometric lock on → `adb uninstall` → `adb install -t -r` → launch on a
-  device with no screen lock. **`pm clear` + relaunch does not test this** — Android Auto Backup
+  device with **no screen lock and no enrolled biometric**. "No screen lock" alone does not reach
+  `Unavailable` on API 30+, and a device that has a fingerprint enrolled has a screen lock by
+  construction, so the target device has to have neither. **`pm clear` + relaunch does not test
+  this** — Android Auto Backup
   restores only at package *install* time, so a clear-and-relaunch never restores anything and will
   make a broken build look fine.
