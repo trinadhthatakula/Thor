@@ -26,6 +26,7 @@ import com.valhalla.thor.data.receivers.FreezerShortcutPinnedReceiver
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.model.FreezeState
+import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
@@ -37,13 +38,13 @@ import kotlinx.coroutines.launch
 import org.koin.core.annotation.Single
 
 /** Owns all launcher-shortcut plumbing for the Freezer feature. */
-@Single
+@Single(binds = [AppShortcutController::class])
 class FreezerShortcutManager(
     private val context: Context,
     private val freezerRepository: FreezerRepository,
     private val bulkFreezeRunner: BulkFreezeRunner,
     private val stateReader: AppFreezeStateReader,
-) {
+) : AppShortcutController {
     // App-scoped: bulk work must survive the (finishing) trampoline activity.
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -130,7 +131,7 @@ class FreezerShortcutManager(
     }
 
     /** Grey out a per-app shortcut (the ceiling — pinned icons can't be silently removed). */
-    fun disableAppShortcut(packageName: String) {
+    override fun disableAppShortcut(packageName: String) {
         ShortcutManagerCompat.disableShortcuts(
             context,
             listOf(FreezerShortcutContract.appShortcutId(packageName)),

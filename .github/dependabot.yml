@@ -21,3 +21,19 @@ updates:
       actions:
         patterns:
           - "*"
+
+  # Fastlane and its ~96 transitive gems drive every signed build and both Play
+  # uploads, so they were the one dependency surface with no update pressure at
+  # all — the lockfile had drifted far enough that a routine `bundle lock` moved
+  # 17 gems. Weekly and grouped, matching github-actions: these move together
+  # (fastlane's constraints gate excon/faraday), so per-gem PRs would mostly be
+  # unmergeable on their own.
+  - package-ecosystem: "bundler"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    target-branch: "dev"
+    groups:
+      fastlane:
+        patterns:
+          - "*"
