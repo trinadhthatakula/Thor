@@ -202,7 +202,11 @@ fun AppListScreen(
                     sortBy = state.sortBy,
                     sortOrder = state.sortOrder,
                     searchQuery = state.searchQuery,
-                    isLoading = state.isLoading || state.isComputingSizes,
+                    // isLoadingPermissions counts as loading: while the sweep runs the Permission
+                    // filter has no index, so every app is filtered out and the list would say
+                    // "No matching apps found" — a wrong answer, not a pending one.
+                    isLoading = state.isLoading || state.isComputingSizes ||
+                            state.isLoadingPermissions,
                     appList = state.displayedApps,
                     isRoot = state.isRoot,
                     isShizuku = state.isShizuku,
@@ -210,6 +214,9 @@ fun AppListScreen(
                     isGrid = state.isGrid,
                     onToggleView = viewModel::toggleGridMode,
                     installerNameMap = installerNameMap,
+                    permissionIndex = state.permissionIndex,
+                    isLoadingPermissions = state.isLoadingPermissions,
+                    permissionIndexFailed = state.permissionIndexFailed,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
                     // Actions forwarded to ViewModel

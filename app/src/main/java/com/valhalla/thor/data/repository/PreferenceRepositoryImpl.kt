@@ -98,7 +98,14 @@ class PreferenceRepositoryImpl(
 
     override suspend fun updateAppFilter(filterType: FilterType, selectedFilter: String) {
         context.dataStore.edit {
-            it[Keys.FILTER_TYPE] = if (filterType is FilterType.State) "STATE" else "SOURCE"
+            // An exhaustive `when` rather than the old `if (State) … else "SOURCE"`: that shape
+            // silently wrote SOURCE for anything new, so adding a third filter would have persisted
+            // the wrong one with nothing to catch it. This form stops compiling instead.
+            it[Keys.FILTER_TYPE] = when (filterType) {
+                FilterType.State -> "STATE"
+                FilterType.Source -> "SOURCE"
+                FilterType.Permission -> "PERMISSION"
+            }
             it[Keys.SELECTED_FILTER] = selectedFilter
         }
     }
@@ -247,8 +254,11 @@ internal fun Preferences.toUserPreferences(): UserPreferences {
         ?.let { runCatching { SortOrder.valueOf(it) }.getOrNull() }
         ?: SortOrder.ASCENDING
 
+    // Falls through to Source for an unknown token, so a preferences file written by a *newer*
+    // Thor (or a corrupted one) degrades to the default filter instead of failing to read.
     val filterType = when (prefs[Keys.FILTER_TYPE]) {
         "STATE" -> FilterType.State
+        "PERMISSION" -> FilterType.Permission
         else -> FilterType.Source
     }
 

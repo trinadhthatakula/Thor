@@ -98,6 +98,12 @@
     <string name="descending">降序</string>
     <string name="filters">过滤器</string>
     <string name="sort_by">排序方式</string>
+    <string name="filter_type_state">活动状态</string>
+    <string name="filter_type_source">安装来源</string>
+    <string name="filter_type_permission">权限</string>
+    <string name="permission_filter_loading">正在读取权限…</string>
+    <string name="permission_filter_unavailable">在此设备上未找到权限组</string>
+    <string name="permission_filter_failed">无法读取此设备上的权限</string>
 
     <!-- App Info Dialog -->
     <string name="clear_app_data_title">清除应用数据？</string>

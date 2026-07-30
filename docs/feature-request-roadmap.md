@@ -19,7 +19,7 @@
 | **#210** | Keep-in-launcher | ✅ **Achievable slice done** — the Freeze\|Suspend mode shipped via #239 (PR #241). The accessibility-based auto-refreeze remains declined, as planned |
 | #55a | Freeze profiles | ⬜ **next green** — now the top unstarted item |
 | #51 | App + data backup | ⬜ not started — but phase 1 got much cheaper once #164's SAF export landed. Also the oldest promise in `README.md` ("Upcoming Features → BackUp App Data") |
-| #285 | Filter by permission | 🆕 **new, untriaged** — opened 2026-07-28, postdates this document |
+| **#285** | Filter by permission | ✅ **Built** — `feat/permission-filter`, in review. Scope question settled: one `getInstalledPackages` sweep, no Room change. ⚠️ the GitHub issue is still **open** — close it on merge |
 | #161 | `.apks` won't open from Samsung My Files | 🐞 **bug, not a feature** — unanswered since 2026-07-18 |
 | _all others_ | | ⬜ not started |
 
@@ -30,7 +30,9 @@ timing fix (#278), the `longVersionCode` truncation fix (#277), installer downgr
 R8 fix (#265). That is where the last four weeks went — the feature backlog below barely moved
 because the work was elsewhere.
 
-**In review, not yet merged:** the unified app-info sheet (#288) and this refresh (#289).
+**In review, not yet merged:** the unified app-info sheet (#288), this refresh (#289), and the
+permission filter (`feat/permission-filter`, #285). If more than one of the open branches touches
+this file, expect a textual conflict here and in the ranking table — each edits only its own rows.
 
 ---
 
@@ -43,23 +45,23 @@ because the work was elsewhere.
 | 1 | **#164b** | `.xapk` export (the remainder of #164) | 2 | **0.5–1 d** | 2 | 🟢 **do first** — everything but the writer exists, and it was publicly promised |
 | 2 | **#55a** | Freeze **profiles** (named groups) | 3 | **2–3 d** | 4 | 🟢 quick win — reuses Room + batch-freeze *(split from #55)* |
 | 3 | **#161** | `.apks` won't open from Samsung My Files | 2 | **1–2 d** | 2 | 🟢 a real bug with a named reporter and a working comparison app — cheap goodwill |
-| 4 | **#285** | Filter app list by permission | 2–3 | **1–2 d** | 2 | 🟢 `FilterType` is an extensible sealed interface and permissions are already parsed for the info sheet — mostly UI |
-| 5 | **#51** | App **+ data backup** / transfer | **4** | APK-only **≈1 d now** · root-data **5–8 d** · P2P 12–20 d | 5 | 🟡 highest impact, root-gated — phase it; phase 1 got cheap once #164 landed |
-| 6 | **#130** | InstallWithOptions attribution + drill-down | 2 | **1–2 d** (label ≈0.25 d) | 2 | 🟡 label = trivial; attribution unreliable |
-| 7 | **#58** | **App lock** (root/Shizuku) | 3 | **8–15 d** | 5 | 🔴 differentiator but heavy build + ongoing tax |
-| 8 | **#178** | App **tagging** | 3 | **3–5 d** | 3 | 🔴 low-risk but **zero demand** |
-| 9 | **#209** | **VirusTotal** scanner | 2 | **4–7 d** | 3 | 🔴 network stack + user API key + privacy |
+| — | **#285** | Filter app list by permission | 2–3 | done | 2 | ✅ **Built**, in review — mostly UI as predicted, but the group table had to be shipped by Thor (see below) |
+| 4 | **#51** | App **+ data backup** / transfer | **4** | APK-only **≈1 d now** · root-data **5–8 d** · P2P 12–20 d | 5 | 🟡 highest impact, root-gated — phase it; phase 1 got cheap once #164 landed |
+| 5 | **#130** | InstallWithOptions attribution + drill-down | 2 | **1–2 d** (label ≈0.25 d) | 2 | 🟡 label = trivial; attribution unreliable |
+| 6 | **#58** | **App lock** (root/Shizuku) | 3 | **8–15 d** | 5 | 🔴 differentiator but heavy build + ongoing tax |
+| 7 | **#178** | App **tagging** | 3 | **3–5 d** | 3 | 🔴 low-risk but **zero demand** |
+| 8 | **#209** | **VirusTotal** scanner | 2 | **4–7 d** | 3 | 🔴 network stack + user API key + privacy |
 | — | **#55b** | Process manager (RAM/CPU) | 3 | 4–7 d | 4 | 🔴 fragile shell parsing, Shizuku/root-only, Dhizuku dead-end *(split from #55)* |
 
 ---
 
 ## Sequencing
 
-**🟢 Do first (~1 week):** **#164b** (`.xapk` writer — half a day, closes a public promise and lets #164 be closed) → **#55a** (freeze profiles) → **#161** (Samsung My Files) → **#285** (permission filter). All lean on existing infra and are low-risk — with one caveat:
-**#285's estimate is pending scope validation.** It is only a UI change if the permission data it
-filters on is already available where the list is built; if it has to be read per app at list time,
-or cached, that is a Room schema change and a different size of job. Settle that question before
-committing to the 1–2 d figure.
+**🟢 Do first (~1 week):** ~~**#285** (permission filter)~~ **built, in review** → **#164b** (`.xapk` writer — half a day, closes a public promise and lets #164 be closed) → **#55a** (freeze profiles) → **#161** (Samsung My Files). All lean on existing infra and are low-risk — with one caveat:
+~~**#285's estimate is pending scope validation.**~~ **Settled, and it was the cheap answer** — see
+#285 below. One `getInstalledPackages(GET_PERMISSIONS)` sweep, held in memory while the filter is
+selected. **No Room schema change.** The expensive surprise was elsewhere: since API 29 the platform
+no longer tells you which group a permission belongs to, so Thor ships the table itself.
 
 **🟡 High-value bets (scope carefully):**
 - **#51 backup** — highest *impact* (4), a genuine differentiator, and the **oldest unkept promise in the README**. Ship **phased**: phase 1 (APK-only backup to a SAF location) is now roughly a day, because #164's picker, remembered destination and writers already exist; root data backup is a separate 5–8 d effort; skip bespoke phone-to-phone transport (the exported file already rides the share sheet). Pair phase 1 with `.xapk` export — same code, same session.
@@ -97,11 +99,36 @@ committing to the 1–2 d figure.
 - **Risks:** over-broad filters make Thor pop up for every zip or `application/octet-stream`, which is worse than the bug. Narrow the fix to the extensions Thor actually installs.
 - **Why do it:** a named reporter with device details and a screenshot, unanswered since 2026-07-18, and a working comparison app to diff against. Cheap goodwill.
 
-### #285 — Filter the app list by permission · 🟢 · 1–2 d · impact 2–3 *(new)*
+### #285 — Filter the app list by permission · ✅ built · impact 2–3
 - **What:** filter or group the app list by a permission — "which apps can use the camera".
 - **Reuses:** `FilterType` is an extensible sealed interface and the filter chip row already renders dynamically, so the UI is additive. Permissions are already parsed per app for the info sheet's Permissions tab.
-- **The one real question:** where the data comes from. Parsing manifests for the whole device on demand is too slow for a filter, so this likely wants a permission index in the Room cache, populated on scan — which turns a UI feature into a schema change. Scope that before estimating harder.
-- **Status:** opened 2026-07-28, labelled `enhancement` + `needs triage`, zero comments. It postdates this document's original ranking.
+- ~~**The one real question:** where the data comes from … this likely wants a permission index in the Room cache, populated on scan — which turns a UI feature into a schema change.~~
+  **Answered: no schema change.** The fear was per-app parsing at list time. It isn't needed —
+  `PackageManager.getInstalledPackages(GET_PERMISSIONS)` returns every package's declared
+  permissions in a *single* call, so the whole device is indexed in one sweep. `PermissionRepository.buildPermissionIndex()`
+  runs that while the filter is selected and keeps `group -> packages` in memory on the ViewModel,
+  rebuilding when the app list itself changes. Caching it in Room would have been actively worse:
+  the index is invalidated by any install, uninstall or update, so a persisted copy buys a migration
+  and a staleness bug in exchange for nothing.
+- **Three judgement calls made while building, flagged for review:**
+  1. **Runtime permissions only, grouped.** Chips are permission *groups* (Camera, Microphone,
+     Location…), not individual permissions. `INTERNET` matching 400 apps is not a filter, and the
+     question users actually ask is about the capabilities the system itself gates behind a prompt.
+     Non-dangerous and ungrouped permissions are left out of the index entirely.
+  2. **Chip labels come from the platform,** via `PermissionGroupInfo.loadLabel` — so they are
+     already translated into every locale Android supports and read identically to the permission
+     dialogs the user has seen, instead of Thor shipping its own five translations of "Camera".
+  3. **The permission → group table is hardcoded in Thor** (`PlatformPermissionGroups`), because the
+     device will not answer the question. Since Android 10 the framework manifest declares *every*
+     dangerous platform permission with `permissionGroup="android.permission-group.UNDEFINED"` and
+     the real mapping lives inside PermissionController; verified on an API 37 emulator, where
+     `pm list permissions -g -d` shows CAMERA, LOCATION, CONTACTS and the rest all **empty**. Reading
+     `PermissionInfo.group` — the obvious implementation, and the one this feature shipped with
+     before review — produces no Camera chip, no Microphone chip and no Location chip on any modern
+     device. The *group* names are still real, so the localised labels in (2) still work. Custom
+     permissions declared by apps still go through `PermissionInfo.group`, which is where that field
+     is still honest.
+- **Status:** opened 2026-07-28, labelled `enhancement` + `needs triage`, zero comments.
 
 ### #51 — App + data backup / transfer · 🟡 · phased · impact 4
 - **What:** back up an app's APK(s) + private data to a file; transfer app+data between phones.
