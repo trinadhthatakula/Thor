@@ -88,19 +88,32 @@ class AppBundleBuilderImpl(
                 (appInfo.publicSourceDir ?: appInfo.sourceDir)?.let { allPaths.add(it) }
                 allPaths.addAll(appInfo.splitPublicSourceDirs)
 
-                val apkFiles = stagedApkNames(allPaths).mapNotNull { (path, name) ->
+                val plan = stagedApkNames(allPaths)
+                if (plan.isEmpty()) {
+                    throw IllegalStateException("No APK paths to copy")
+                }
+                // Every one, or none. A split that will not copy — no root, a protected mount —
+                // used to be dropped and the export still reported as a success, handing the user
+                // a bundle that installs missing its ABI or its resources, or refuses to install
+                // at all. There is no partial backup of a split app: an .apks/.xapk is only
+                // meaningful if it holds the whole set. Failing here reaches the catch below,
+                // which wipes the staging dir with it.
+                val apkFiles = plan.map { (path, name) ->
                     val destFile = File(tempSplitDir, name)
-                    if (copyFileSafely(path, destFile)) destFile else null
+                    if (!copyFileSafely(path, destFile)) {
+                        throw IllegalStateException("Failed to copy APK: $name")
+                    }
+                    destFile
                 }
-                if (apkFiles.isEmpty()) {
-                    throw IllegalStateException("Failed to copy any APK files")
-                }
-                // The APKs that actually make it into the zip, summed before the sidecars are
-                // staged because the XAPK manifest has to carry this number.
+                // The APKs that make it into the zip, summed before the sidecars are staged
+                // because the XAPK manifest has to carry this number.
                 val totalApkSize = apkFiles.sumOf { it.length() }
-                // ...and mapNotNull above drops any file that would not copy, so the manifest
-                // is told what is really in the zip rather than what the app claims to have.
-                val apkNames = apkFiles.map { it.name }
+                // Source path *and* staged name together: stagedApkNames renames a leaf collision,
+                // and a manifest that named the source leaf would then describe an entry the zip
+                // does not contain. See ApksMetadataGenerator.StagedApk.
+                val stagedApks = plan.map { (path, name) ->
+                    ApksMetadataGenerator.StagedApk(sourcePath = path, entryName = name)
+                }
 
                 // metadata.json is written into the .xapk too. It is the SAI/.apks descriptor,
                 // so SAI and APKPure ignore it as an unknown root entry, and carrying it means
@@ -125,11 +138,11 @@ class AppBundleBuilderImpl(
                             appInfo,
                             totalApkSize,
                             iconFile?.name,
-                            apkNames
+                            stagedApks
                         )
                     )
                 } else {
-                    apksMetadataGenerator.generateManifestJson(appInfo, manifestFile, apkNames)
+                    apksMetadataGenerator.generateManifestJson(appInfo, manifestFile, stagedApks)
                 }
 
                 val sidecars = listOfNotNull(metadataFile, manifestFile, iconFile)

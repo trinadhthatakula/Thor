@@ -26,8 +26,11 @@ class ApksMetadataGeneratorTest {
     // distinguishable in the emitted JSON.
     private val versionCodeWithMajor = (1L shl 32) or 5L // 4294967301
 
+    private val baseDir = "/data/app/com.example.app-1"
+
     private fun app(
-        splits: List<String> = emptyList()
+        splits: List<String> = emptyList(),
+        publicSourceDir: String? = "$baseDir/base.apk"
     ) = AppInfo(
         packageName = "com.example.app",
         appName = "Example",
@@ -35,8 +38,13 @@ class ApksMetadataGeneratorTest {
         versionCode = versionCodeWithMajor,
         minSdk = 28,
         targetSdk = 35,
+        publicSourceDir = publicSourceDir,
         splitPublicSourceDirs = splits
     )
+
+    /** What the builder hands over: each source path with the entry name it was written under. */
+    private fun staged(vararg paths: String) =
+        paths.map { ApksMetadataGenerator.StagedApk(it, it.substringAfterLast('/')) }
 
     @Test
     fun apksMetadata_writesTheFullLongVersionCode() {
@@ -106,23 +114,21 @@ class ApksMetadataGeneratorTest {
     }
 
     /**
-     * Copying is per-file and can fail one split at a time (no root, a protected mount), so the
-     * builder passes the entries it actually staged. Declaring the app's full split list instead
-     * would name an APK the container does not hold — which Thor's own analyzer detects and works
-     * around, but SAI and APKPure simply trust.
+     * The manifest describes the *container*, not the app. The builder passes what it staged, in
+     * the order it staged it, and `split_apks` is exactly that — which Thor's own analyzer works
+     * around when it is wrong, but SAI and APKPure simply trust.
      */
     @Test
-    fun xapkManifest_declaresOnlyTheApksThatWereActuallyStaged() {
+    fun xapkManifest_declaresTheApksTheBuilderActuallyStaged() {
         val json = ApksMetadataGenerator().generateManifestJson(
             app(
                 splits = listOf(
-                    "/data/app/com.example.app-1/split_config.arm64_v8a.apk",
-                    "/data/app/com.example.app-1/split_config.xxhdpi.apk"
+                    "$baseDir/split_config.arm64_v8a.apk",
+                    "$baseDir/split_config.xxhdpi.apk"
                 )
             ),
             totalSize = 42L,
-            // arm64_v8a would not copy.
-            entryNames = listOf("base.apk", "split_config.xxhdpi.apk")
+            staged = staged("$baseDir/base.apk", "$baseDir/split_config.xxhdpi.apk")
         )
 
         val manifest = parseXapkManifest(json)
@@ -133,19 +139,79 @@ class ApksMetadataGeneratorTest {
         )
     }
 
+    /**
+     * The regression that `StagedApk` exists for.
+     *
+     * Two source directories each holding a `base.apk` — `publicSourceDir` and a split of the same
+     * leaf name — so `stagedApkNames` writes the second as `base_2.apk`. Rebuilding the manifest
+     * from the source paths named `base.apk` twice, and then filtering by the staged names kept
+     * both of those and never mentioned `base_2.apk` at all: an APK present in the zip, absent from
+     * the manifest, and a duplicate entry in its place.
+     */
+    @Test
+    fun xapkManifest_namesARenamedApkByWhatTheZipCallsIt() {
+        val collidingSplit = "/data/app/other/base.apk"
+        val json = ApksMetadataGenerator().generateManifestJson(
+            app(splits = listOf(collidingSplit)),
+            totalSize = 42L,
+            staged = listOf(
+                ApksMetadataGenerator.StagedApk("$baseDir/base.apk", "base.apk"),
+                ApksMetadataGenerator.StagedApk(collidingSplit, "base_2.apk")
+            )
+        )
+
+        val manifest = parseXapkManifest(json)
+        assertNotNull(json, manifest)
+        assertEquals(listOf("base.apk", "base_2.apk"), manifest!!.splitApkFiles())
+        // And the id still comes from the source leaf — `base_2` is a container detail, whereas the
+        // id is what an installer matches the split on.
+        assertTrue(json, json.contains("\"id\":\"base\""))
+    }
+
+    /**
+     * The split id is the split's identity in the app, so it is derived from the source path even
+     * when the entry name differs, and `split_` is stripped the way APKPure writes it.
+     */
+    @Test
+    fun xapkManifest_derivesSplitIdsFromTheSourcePath() {
+        val json = ApksMetadataGenerator().generateManifestJson(
+            app(splits = listOf("$baseDir/split_config.arm64_v8a.apk")),
+            totalSize = 42L,
+            staged = staged("$baseDir/base.apk", "$baseDir/split_config.arm64_v8a.apk")
+        )
+
+        assertTrue(json, json.contains("\"id\":\"base\""))
+        assertTrue(json, json.contains("\"id\":\"config.arm64_v8a\""))
+    }
+
     /** No list means no claim about staging — every declared split survives. */
     @Test
     fun xapkManifest_declaresEverySplitWhenTheCallerPassesNoEntryList() {
         val json = ApksMetadataGenerator().generateManifestJson(
-            app(splits = listOf("/data/app/com.example.app-1/split_config.arm64_v8a.apk")),
+            app(splits = listOf("$baseDir/split_config.arm64_v8a.apk")),
             totalSize = 42L,
-            entryNames = null
+            staged = null
         )
 
         assertEquals(
             listOf("base.apk", "split_config.arm64_v8a.apk"),
             parseXapkManifest(json)!!.splitApkFiles()
         )
+    }
+
+    /**
+     * An app with neither `publicSourceDir` nor `sourceDir` still gets a `base.apk` entry from the
+     * no-list path — that branch is a claim about the app, and every app has a base.
+     */
+    @Test
+    fun xapkManifest_fallsBackToBaseApkWhenTheAppNamesNoSourcePath() {
+        val json = ApksMetadataGenerator().generateManifestJson(
+            app(publicSourceDir = null),
+            totalSize = 42L,
+            staged = null
+        )
+
+        assertEquals(listOf("base.apk"), parseXapkManifest(json)!!.splitApkFiles())
     }
 
     @Test
