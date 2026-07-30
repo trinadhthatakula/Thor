@@ -405,6 +405,34 @@ class MainViewModelTest {
         assertEquals(emptyList<MainSideEffect>(), secondEffects)
     }
 
+    @Test
+    fun `an outcome nobody saw is kept for the next view model`() = runTest {
+        // The other half of the same rule, and the reason acknowledgement is guarded rather than
+        // unconditional. `effect` is a rendezvous channel: with nothing collecting it, a `send`
+        // parks instead of buffering, so a run that finishes while the UI is detached has
+        // delivered exactly nothing. Consuming in a plain `finally` would still mark it seen, and
+        // the export the user started would end in silence — the failure mode the replay exists
+        // to prevent, reintroduced by the fix for the opposite one.
+        //
+        // It is also the only test here that builds a view model with a completion *already*
+        // waiting, which is the arrangement that caught `_effect` being declared below `init`:
+        // the replayed outcome reaches the collector inline during construction, before the
+        // channel field is assigned.
+        val runner = backupRunner(prefs)
+        // Deliberately no `effectsOf`: this view model is the detached UI.
+        val first = viewModel(runner = runner)
+
+        first.onMultiAppAction(MultiAppAction.Backup(listOf(userApp("com.a"))))
+        advanceUntilIdle()
+
+        val second = viewModel(runner = runner)
+        val secondEffects = effectsOf(second)
+        advanceUntilIdle()
+
+        assertEquals(1, secondEffects.size)
+        assertTrue(secondEffects.single() is MainSideEffect.Message)
+    }
+
     // --- Single-app actions ----------------------------------------------------------------
 
     @Test

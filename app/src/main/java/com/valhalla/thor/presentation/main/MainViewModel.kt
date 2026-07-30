@@ -142,6 +142,18 @@ class MainViewModel(
 
     private var pendingSupportPrompt = false
 
+    // Declared *above* `init`, and it has to stay there.
+    //
+    // `viewModelScope` runs on `Dispatchers.Main.immediate`, so a collector launched from `init`
+    // starts executing inline rather than on a later main-loop turn — and `completions` replays,
+    // so a view model built after a run finished receives that outcome *during* `init`. Every
+    // property the collector touches is therefore initialised or null at that moment, in plain
+    // declaration order. Moved back below `init`, this one is null exactly on the replay path:
+    // reopen Thor after an export that finished with no UI attached and the send NPEs inside
+    // `viewModelScope`, i.e. on the main thread, with no handler.
+    private val _effect = Channel<MainSideEffect>()
+    val effect = _effect.receiveAsFlow()
+
     init {
         observePreferences()
         observeBackupRun()
@@ -182,13 +194,29 @@ class MainViewModel(
             }
         }
         viewModelScope.launch {
-            backupRunner.completions.collect {
-                reportExportResult(it)
-                // Acknowledge it, or the replay that lets a finished run report to a UI that was
-                // not there yet also makes it report to every UI that comes after: rotate the
-                // device an hour later and the same "Exported 8 of 12" arrives again, support
-                // prompt included.
-                backupRunner.consumeCompletion()
+            backupRunner.completions.collect { result ->
+                val report = exportReport(result)
+                var shown = false
+                try {
+                    for (message in report.messages) {
+                        _effect.send(MainSideEffect.Message(message))
+                        shown = true
+                    }
+                    if (report.asksForSupport) triggerSupportPromptIfNeeded()
+                } finally {
+                    // Acknowledge once *any* of it has reached the user, and only then.
+                    //
+                    // Not acknowledging is what lets a run that finished with no UI attached report
+                    // when one arrives — so consuming an outcome nobody saw would lose it silently.
+                    // But `_effect` is a rendezvous channel and a finished run whose manifest
+                    // failed sends *twice*, so a ViewModel cleared between the two sends would
+                    // leave the outcome unconsumed and the next instance would replay the whole
+                    // thing: the "Exported 8 of 12" already read, support prompt included.
+                    //
+                    // In `finally` and non-suspending, so it still runs while this coroutine is
+                    // being cancelled — which is exactly the case it exists for.
+                    if (shown) backupRunner.consumeCompletion()
+                }
             }
         }
     }
@@ -218,9 +246,6 @@ class MainViewModel(
             }
         }
     }
-
-    private val _effect = Channel<MainSideEffect>()
-    val effect = _effect.receiveAsFlow()
 
     // --- State Management Helpers ---
 
@@ -645,76 +670,75 @@ class MainViewModel(
         backupRunner.cancel()
     }
 
+    /** What the end of an export run should say, and whether it earns the support prompt. */
+    private data class ExportReport(
+        val messages: List<UiText>,
+        val asksForSupport: Boolean = false
+    )
+
     /**
-     * Report the end of an export run as a one-shot message.
+     * The end of an export run, as data.
      *
-     * A message rather than state so it can be delivered whichever screen the user has wandered
-     * off to while the run continued — which is the normal case for a run this long.
+     * Messages rather than state so the outcome reaches whichever screen the user wandered off to
+     * while the run continued — the normal case for a run this long.
+     *
+     * Pure, and separate from the delivery loop in [observeBackupRun], because delivery has one
+     * rule that has to hold across every branch — acknowledge as soon as the first message lands —
+     * and a rule spread across five `when` arms is a rule with a hole in it.
      */
-    private suspend fun reportExportResult(result: BackupRunResult) {
-        when (result) {
-            is BackupRunResult.Rejected ->
-                _effect.send(MainSideEffect.Message(result.reason.asMessage()))
+    private fun exportReport(result: BackupRunResult): ExportReport = when (result) {
+        is BackupRunResult.Rejected -> ExportReport(listOf(result.reason.asMessage()))
 
-            // saved, not attempted: the sentence says "were saved", and an app that failed is
-            // counted by neither the folder nor the user.
-            is BackupRunResult.Cancelled -> _effect.send(
-                MainSideEffect.Message(
-                    UiText.StringResource(
-                        R.string.export_bulk_cancelled,
-                        result.saved,
-                        result.total
-                    )
+        // saved, not attempted: the sentence says "were saved", and an app that failed is
+        // counted by neither the folder nor the user.
+        is BackupRunResult.Cancelled -> ExportReport(
+            listOf(
+                UiText.StringResource(
+                    R.string.export_bulk_cancelled,
+                    result.saved,
+                    result.total
                 )
             )
+        )
 
-            is BackupRunResult.Failed -> _effect.send(
-                MainSideEffect.Message(
-                    UiText.StringResource(
-                        R.string.export_bulk_failed,
-                        result.saved,
-                        result.total
-                    )
+        is BackupRunResult.Failed -> ExportReport(
+            listOf(
+                UiText.StringResource(
+                    R.string.export_bulk_failed,
+                    result.saved,
+                    result.total
                 )
             )
+        )
 
-            is BackupRunResult.Finished -> {
-                // location is null exactly when nothing was written, so it is both the "did
-                // anything land?" test and the only value that could leave the sentence hanging
-                // after "to".
-                val location = result.location
-                if (location == null) {
-                    _effect.send(
-                        MainSideEffect.Message(
-                            UiText.StringResource(R.string.export_bulk_finished_none, result.total)
-                        )
-                    )
-                } else {
+        // location is null exactly when nothing was written, so it is both the "did anything
+        // land?" test and the only value that could leave the sentence hanging after "to".
+        is BackupRunResult.Finished -> when (val location = result.location) {
+            null -> ExportReport(
+                listOf(UiText.StringResource(R.string.export_bulk_finished_none, result.total))
+            )
+
+            else -> ExportReport(
+                messages = buildList {
                     // The partial run needs no string of its own: "8 of 12" and "12 of 12" read
                     // correctly from the same sentence, so nothing here branches on `failed`.
-                    _effect.send(
-                        MainSideEffect.Message(
-                            UiText.StringResource(
-                                R.string.export_bulk_finished,
-                                result.succeeded,
-                                result.total,
-                                location
-                            )
+                    add(
+                        UiText.StringResource(
+                            R.string.export_bulk_finished,
+                            result.succeeded,
+                            result.total,
+                            location
                         )
                     )
                     // A second message rather than a longer first one: the missing manifest is a
                     // separate fact about the same folder, and only worth saying when there are
                     // files in there for it to have described.
                     if (!result.indexWritten) {
-                        _effect.send(
-                            MainSideEffect.Message(
-                                UiText.StringResource(R.string.export_bulk_index_failed)
-                            )
-                        )
+                        add(UiText.StringResource(R.string.export_bulk_index_failed))
                     }
-                    triggerSupportPromptIfNeeded()
-                }
-            }
+                },
+                asksForSupport = true
+            )
         }
     }
 
