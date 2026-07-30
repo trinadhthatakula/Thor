@@ -3,7 +3,12 @@
 
 package com.valhalla.thor
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -15,14 +20,17 @@ import androidx.lifecycle.lifecycleScope
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.data.manager.PrivilegeManager
+import com.valhalla.thor.data.security.promptAuthenticators
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.presentation.common.ShizukuPermissionHandler
 import com.valhalla.thor.presentation.home.HomeViewModel
 import com.valhalla.thor.presentation.main.MainScreen
 import com.valhalla.thor.presentation.security.AuthState
 import com.valhalla.thor.presentation.security.BiometricScreen
+import com.valhalla.thor.presentation.security.BiometricUnavailableScreen
 import com.valhalla.thor.presentation.security.SecurityViewModel
 import com.valhalla.thor.presentation.theme.ThorTheme
+import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -75,11 +83,31 @@ class HomeActivity : ComponentActivity() {
             ) {
                 val authState by securityViewModel.authState.collectAsStateWithLifecycle()
 
+                // The only place SecurityViewModel speaks: it disarms a lock this device can never
+                // open, and that must not happen silently — the user set that lock deliberately and
+                // is entitled to know Thor took it off. Collected here rather than in a screen
+                // because the disarm lands *before* any screen: it is what decides which of the
+                // branches below composes at all.
+                ObserveAsEvents(securityViewModel.events) { event ->
+                    Toast.makeText(
+                        this@HomeActivity,
+                        event.asString(this@HomeActivity),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+
                 when (authState) {
                     AuthState.NotRequired,
                     AuthState.Unlocked -> {
                         MainScreen(
                             homeViewModel = homeViewModel,
+                            onExit = { finish() }
+                        )
+                    }
+
+                    AuthState.Unavailable -> {
+                        BiometricUnavailableScreen(
+                            onOpenSecuritySettings = { openSecuritySettings() },
                             onExit = { finish() }
                         )
                     }
@@ -104,6 +132,37 @@ class HomeActivity : ComponentActivity() {
     }
 
     /**
+     * Sends the user to where they can enroll something the prompt accepts, which is the only thing
+     * that clears [AuthState.Unavailable]. `ACTION_BIOMETRIC_ENROLL` carries the same authenticator
+     * mask [promptAuthenticators] gates on, so the enrollment page it opens is the one that will
+     * actually satisfy the check; it is API 30+, and below that (or on any OEM build that does not
+     * resolve it) security settings is the closest thing. Falling all the way back to the settings
+     * root is still better than swallowing the tap.
+     */
+    private fun openSecuritySettings() {
+        val targets = buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                add(
+                    Intent(Settings.ACTION_BIOMETRIC_ENROLL).putExtra(
+                        Settings.EXTRA_BIOMETRIC_AUTHENTICATORS_ALLOWED,
+                        promptAuthenticators(Build.VERSION.SDK_INT)
+                    )
+                )
+            }
+            add(Intent(Settings.ACTION_SECURITY_SETTINGS))
+            add(Intent(Settings.ACTION_SETTINGS))
+        }
+        for (intent in targets) {
+            try {
+                startActivity(intent)
+                return
+            } catch (e: ActivityNotFoundException) {
+                Logger.w("HomeActivity", "No activity for ${intent.action}: ${e.message}")
+            }
+        }
+    }
+
+    /**
      * Ask for Shizuku only if root did not answer — read from [PrivilegeManager], not by probing.
      *
      * This used to call `systemRepository.isRootAvailable()` directly, which made it the *second*
@@ -120,6 +179,10 @@ class HomeActivity : ComponentActivity() {
      */
     override fun onResume() {
         super.onResume()
+        // Before the Shizuku early-return, not after: this is how the user gets out of
+        // AuthState.Unavailable. They leave to set a screen lock and come back, and only a
+        // re-query turns that into an unlocked app rather than the same dead end.
+        securityViewModel.refreshCapability()
         if (hasRequestedShizuku) return
         lifecycleScope.launch {
             val privileges = privilegeManager.state.first { it.isReady }
