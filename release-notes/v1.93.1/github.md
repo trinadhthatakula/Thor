@@ -6,17 +6,17 @@ freezer's Quick Settings tile, pinned shortcuts and bulk engine substantially re
 sheet unified into a single surface, and a batch of security and correctness fixes that includes an
 **escape hatch for an app lock that could previously lock you out permanently**.
 
-> **Not** in this release, despite what an earlier draft of these notes said: **app backup**.
-> Exporting installable bundles is not a backup — no app *data* is captured, and there is no restore
-> path. #51 stays open, and the word is deliberately absent below.
+> **Not in this release: app backup.** Exporting installable bundles is not a backup — no app *data*
+> is captured, and there is no restore path. #51 stays open, and the word is deliberately absent
+> below.
 
-> 215 commits and 21 merged pull requests since **v1.93.0**.
+> 219 commits and 22 merged pull requests since **v1.93.0**.
 
 ---
 
 ## ✨ Highlights
 
-* 🧊 **Freeze Profiles** — named groups of apps you can freeze or unfreeze in one tap (#295, closes #55a).
+* 🧊 **Freeze Profiles** — named groups of apps you can freeze or unfreeze in one tap (#295, the profiles half of #55).
 * 💾 **Bulk export** — save a whole selection of apps to a folder in one run (#293).
 * 📦 **`.xapk` export** — the third bundle format, with a picker (#293, completes #164).
 * 🔎 **Filter the app list by permission** (#294, closes #285).
@@ -29,7 +29,10 @@ sheet unified into a single surface, and a batch of security and correctness fix
 
 ## What's Changed
 
-### 🧊 Freeze Profiles (#295 — closes #55a)
+### 🧊 Freeze Profiles (#295 — the profiles half of #55)
+#55 asks for two things: freeze **profiles** and a **process manager**. Profiles ship here; the
+process manager does not, so **#55 stays open**.
+
 Named groups of apps, frozen or unfrozen as a set, saved in two new Room tables via
 `@AutoMigration(5→6)` (new tables only, schema export committed).
 * **The feature**: `freeze_profiles` + `freeze_profile_apps`, a `FreezeProfileRepository`, a profiles
@@ -64,9 +67,9 @@ Export stops being one-app-at-a-time.
   bundle is named after the app rather than after the word `"null"` (`c79bcbda`), and the index name
   is stamped to the millisecond so two runs in the same second can't collide (`8aae224a`).
 * ⚠️ **This is not a backup, and is deliberately not described as one.** It captures installable
-  bundles, **not app data**, and there is **no restore path** — `RestoreRequest` exists as a domain
-  model but is wired to no UI. #51 ("App + data backup") stays **open**; the data half needs root and
-  a restore flow, and neither is in this release.
+  bundles, **not app data**, and there is **no restore path at all** — nothing in the codebase reads
+  an exported bundle back. #51 ("App + data backup") stays **open**; the data half needs root and a
+  restore flow, and neither is in this release.
 
 ### 📦 `.xapk` Export (#293 — completes #164)
 * `.xapk` joins `.apk` and `.apks` as an export format, with a format picker in the export sheet
@@ -217,7 +220,7 @@ bulk freeze engine were rebuilt around one runner and one state reader.
 ## 🛠 Commits Log (`v1.93.0...HEAD`)
 
 **Merged pull requests**
-* `2a503959` — #295 freeze profiles (#55a)
+* `2a503959` — #295 freeze profiles (#55, profiles half)
 * `4e35e0b4` — #294 filter the app list by permission (#285)
 * `1f35400b` — #299 keep the watchlist prompt flag off the backup
 * `5eb19981` — #300 shortcut match flags for frozen system apps
@@ -240,7 +243,7 @@ bulk freeze engine were rebuilt around one runner and one state reader.
 * `e10aebef` — #275 Dependabot maven group
 
 **Key commits**
-* `f2a19d87` feat(freezer): named freeze profiles (#55a)
+* `f2a19d87` feat(freezer): named freeze profiles (#55, profiles half)
 * `81f4215d` feat(app-list): filter the app list by permission (#285)
 * `0ef42564` feat: export a whole selection of apps in one run, with a written index
 * `77bfc027` feat(export): offer `.xapk` as an export format (#164)
