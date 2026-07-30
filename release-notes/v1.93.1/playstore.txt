@@ -1,6 +1,6 @@
 • 🧊 New: Freeze Profiles — save named groups of apps, freeze or unfreeze in one tap.
 
-• 💾 New: back up a whole selection of apps to a folder, with a manifest.
+• 💾 New: export several apps at once, to a folder you pick.
 
 • 📦 New: export as .xapk, alongside .apk and .apks.
 

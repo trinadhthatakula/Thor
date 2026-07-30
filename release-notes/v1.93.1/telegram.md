@@ -1,10 +1,10 @@
-🚀 **Thor v1.93.1 — profiles, backup and a much steadier freezer!**
+🚀 **Thor v1.93.1 — freeze profiles, bulk export and a much steadier freezer!**
 
 **What's New:**
 
 • 🧊 **Freeze Profiles** — save named groups of apps ("Work", "Games") and freeze or unfreeze the whole set in one tap.
 
-• 💾 **Backup** — select any number of apps and save them all to a folder, with a `thor-backup.json` manifest and a cancellable progress bar.
+• 💾 **Bulk export** — select any number of apps and save them all to a folder in one run, with a cancellable progress bar and a list of what was written.
 
 • 📦 **`.xapk` export** — now offered alongside `.apk` and `.apks`, with a format picker.
 

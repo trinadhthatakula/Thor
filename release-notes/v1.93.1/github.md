@@ -1,10 +1,14 @@
 # Thor v1.93.1 Release Notes
 
 A **feature and reliability** release on top of v1.93.0. Four things Thor has never had before —
-**freeze profiles**, **bulk app backup**, **`.xapk` export** and **filter-by-permission** — plus the
+**freeze profiles**, **bulk export**, **`.xapk` export** and **filter-by-permission** — plus the
 freezer's Quick Settings tile, pinned shortcuts and bulk engine substantially reworked, the app-info
 sheet unified into a single surface, and a batch of security and correctness fixes that includes an
 **escape hatch for an app lock that could previously lock you out permanently**.
+
+> **Not** in this release, despite what an earlier draft of these notes said: **app backup**.
+> Exporting installable bundles is not a backup — no app *data* is captured, and there is no restore
+> path. #51 stays open, and the word is deliberately absent below.
 
 > 215 commits and 21 merged pull requests since **v1.93.0**.
 
@@ -13,7 +17,7 @@ sheet unified into a single surface, and a batch of security and correctness fix
 ## ✨ Highlights
 
 * 🧊 **Freeze Profiles** — named groups of apps you can freeze or unfreeze in one tap (#295, closes #55a).
-* 💾 **Bulk backup** — save a whole selection of apps to a folder with a manifest (#293, #51 phase 1).
+* 💾 **Bulk export** — save a whole selection of apps to a folder in one run (#293).
 * 📦 **`.xapk` export** — the third bundle format, with a picker (#293, completes #164).
 * 🔎 **Filter the app list by permission** (#294, closes #285).
 * 📱 **One unified app-info sheet** — the tabbed details moved inside it (#288).
@@ -46,20 +50,23 @@ Named groups of apps, frozen or unfrozen as a set, saved in two new Room tables 
 * **A failed bulk run now says so** instead of reporting "nothing to do" (`a9ef0976`), and the
   profiles flow recovers from a transient Room failure instead of staying empty (`8d9813ec`).
 
-### 💾 Bulk Backup — phase 1 (#293 — #51 phase 1)
-The oldest promise in the README ("BackUp App Data") is now **half-kept**, and the half that shipped
-is the bundle half.
-* Multi-select → back up **every selected app** to the export target, with a
-  `thor-backup-<stamp>.json` manifest, a cancellable progress bar and a process-lifetime runner
-  (`0ef42564`). The manifest carries a `schemaVersion` with a pinned forward-compatibility test, so
-  phase 2 can add per-entry data files without breaking a phase-1 folder.
-* **A bundle missing an APK is never reported as a good backup** (`1cbbc923`) — the failure that
-  matters most in a backup feature is the one that reports success.
+### 💾 Bulk Export (#293)
+Export stops being one-app-at-a-time.
+* Multi-select → export **every selected app** to your chosen folder in a single run, with a
+  cancellable progress bar, a process-lifetime runner that survives leaving the screen, and a
+  written index of what was produced (`0ef42564`). The index carries a `schemaVersion` with a pinned
+  forward-compatibility test, so a later format can add fields without invalidating a folder written
+  today.
+* **A bundle missing an APK is never reported as a successful export** (`1cbbc923`) — in a feature
+  whose whole job is producing files you'll rely on later, the worst failure is the one that claims
+  success.
 * Names, destination and staging are decided **once per run** rather than per app (`ebe53367`), a
-  bundle is named after the app rather than after the word `"null"` (`c79bcbda`), and the manifest
-  name is stamped to the millisecond so two runs in the same second can't collide (`8aae224a`).
-* **Phase 2 (root data tar) is not in this release** — the README's promise stays half-kept until it
-  lands.
+  bundle is named after the app rather than after the word `"null"` (`c79bcbda`), and the index name
+  is stamped to the millisecond so two runs in the same second can't collide (`8aae224a`).
+* ⚠️ **This is not a backup, and is deliberately not described as one.** It captures installable
+  bundles, **not app data**, and there is **no restore path** — `RestoreRequest` exists as a domain
+  model but is wired to no UI. #51 ("App + data backup") stays **open**; the data half needs root and
+  a restore flow, and neither is in this release.
 
 ### 📦 `.xapk` Export (#293 — completes #164)
 * `.xapk` joins `.apk` and `.apks` as an export format, with a format picker in the export sheet
@@ -135,7 +142,8 @@ bulk freeze engine were rebuilt around one runner and one state reader.
 * **The refusal names a fix that actually works** (`4a57fe4f`) — three distinct messages, because a
   refusal that sends you to a Settings page which cannot help is worse than no message.
 
-### 🔐 Backup & Privacy (#290, #299)
+### 🔐 Android Cloud Backup & Privacy (#290, #299)
+*This is Android's own Auto Backup / device transfer, not a Thor feature.*
 * **Cloud backup and device transfer no longer carry Thor's internals** (`fdbeff69`). The AGP template
   rules were unedited, so the Room metadata cache and the icon cache were going up with everything
   else. Now only the user's settings are backed up — verified on-device over a local transport, and
@@ -213,7 +221,7 @@ bulk freeze engine were rebuilt around one runner and one state reader.
 * `4e35e0b4` — #294 filter the app list by permission (#285)
 * `1f35400b` — #299 keep the watchlist prompt flag off the backup
 * `5eb19981` — #300 shortcut match flags for frozen system apps
-* `e7748643` — #293 `.xapk` export (#164) + bulk app backup (#51 phase 1)
+* `e7748643` — #293 `.xapk` export (#164) + bulk multi-app export
 * `8680325b` — #292 biometric hard-lockout escape hatch
 * `55ea76b3` — #298 AGP version lint gate
 * `0b047fcd` — #297 Dependabot maven group
@@ -234,7 +242,7 @@ bulk freeze engine were rebuilt around one runner and one state reader.
 **Key commits**
 * `f2a19d87` feat(freezer): named freeze profiles (#55a)
 * `81f4215d` feat(app-list): filter the app list by permission (#285)
-* `0ef42564` feat(backup): back up a whole selection, with a manifest (#51 phase 1)
+* `0ef42564` feat: export a whole selection of apps in one run, with a written index
 * `77bfc027` feat(export): offer `.xapk` as an export format (#164)
 * `5ce7896d` / `c60d1f5e` / `1105c91f` feat(app-info): tabbed details in the sheet; retire the switch
 * `bb7c66d0` feat(freezer): add `BulkFreezeRunner` · `4c8db239` add `AppFreezeStateReader`
@@ -247,7 +255,7 @@ bulk freeze engine were rebuilt around one runner and one state reader.
 * `ee50867e` fix(gateway): target the package's own Android user when granting permissions
 * `5f260e98` fix(extensions): see both halves of a freeze when reporting frozen state
 * `c78b2a92` / `5c57ad6b` fix(permissions): ask the device before the table
-* `1cbbc923` fix(export): never report a bundle that is missing an APK as a good backup
+* `1cbbc923` fix(export): never report a bundle that is missing an APK as a successful export
 * `a9ef0976` fix(freezer): stop reporting a failed bulk run as "nothing to do"
 * `81599c46` / `a8cf5ab7` / `96129019` fix(freezer): scoped coalescing + publish every in-flight request
 * `58cd5315` / `21643400` fix(freezer): tier gate on every bulk path; fail closed when unresolvable
