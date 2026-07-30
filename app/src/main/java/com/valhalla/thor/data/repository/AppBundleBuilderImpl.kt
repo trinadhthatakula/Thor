@@ -88,8 +88,8 @@ class AppBundleBuilderImpl(
                 (appInfo.publicSourceDir ?: appInfo.sourceDir)?.let { allPaths.add(it) }
                 allPaths.addAll(appInfo.splitPublicSourceDirs)
 
-                val apkFiles = allPaths.mapNotNull { path ->
-                    val destFile = File(tempSplitDir, path.substringAfterLast("/"))
+                val apkFiles = stagedApkNames(allPaths).mapNotNull { (path, name) ->
+                    val destFile = File(tempSplitDir, name)
                     if (copyFileSafely(path, destFile)) destFile else null
                 }
                 if (apkFiles.isEmpty()) {
@@ -294,5 +294,40 @@ class AppBundleBuilderImpl(
     private companion object {
         const val FALLBACK_ICON_PX = 192
         const val COPY_BUFFER_BYTES = 8192
+    }
+}
+
+/**
+ * Each source APK path paired with the leaf name it is staged — and zipped — under.
+ *
+ * Staging keyed on the source's own leaf name is right in the ordinary case: base and splits sit in
+ * one directory with names the installer chose, so they are already distinct and worth preserving.
+ * They are not *guaranteed* distinct, though. `publicSourceDir` repeated in `splitPublicSourceDirs`
+ * is the realistic way it happens, and two directories each holding a `base.apk` is the other.
+ * Either way the second copy overwrites the first, the same [File] lands in the list twice, and
+ * `zipFiles` then throws `ZipException: duplicate entry` — one repeated path failing the whole
+ * export of an app whose APKs were all readable.
+ *
+ * So an exactly-repeated path is dropped (it is the same bytes; staging it twice would double the
+ * zip for nothing), and a genuine collision between two different paths is renamed rather than
+ * dropped, because those *are* two different APKs and a bundle missing one will not install.
+ * `_2` before the extension is enough — nothing reads a split's file name back. The installer takes
+ * the split's identity from its manifest, and Thor's own sidecars are generated from these names.
+ *
+ * Comparison is exact, not case-insensitive: this names files in the app's own cache dir on ext4
+ * and entries in a zip, both of which tell `Base.apk` and `base.apk` apart.
+ */
+internal fun stagedApkNames(paths: List<String>): List<Pair<String, String>> {
+    val taken = HashSet<String>(paths.size)
+    return paths.distinct().map { path ->
+        val leaf = path.substringAfterLast('/')
+        val dot = leaf.lastIndexOf('.')
+        // dot > 0, not >= 0: a leading dot is a hidden file's whole name, not an extension.
+        val stem = if (dot > 0) leaf.substring(0, dot) else leaf
+        val extension = if (dot > 0) leaf.substring(dot) else ""
+        var candidate = leaf
+        var suffix = 2
+        while (!taken.add(candidate)) candidate = "${stem}_${suffix++}$extension"
+        path to candidate
     }
 }

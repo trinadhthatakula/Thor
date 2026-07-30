@@ -259,6 +259,26 @@ class BackupIndexTest {
         assertEquals("com.example.alpha_1.0.apk", bundleFileNameFor(unlabelled, BundleFormat.APK))
     }
 
+    @Test
+    fun `an app that declares no version is not named after the word null`() {
+        // versionName is nullable and StringBuilder.append(Any?) writes "null", so this used to
+        // export as Alpha_null.apk. A blank one is the same defect with a trailing underscore.
+        val noVersion = AppInfo(packageName = "com.example.alpha", appName = "Alpha")
+        val blankVersion = AppInfo(
+            packageName = "com.example.beta",
+            appName = "Beta",
+            versionName = "   "
+        )
+
+        assertEquals("Alpha.apk", bundleFileNameFor(noVersion, BundleFormat.APK))
+        assertEquals("Beta.apks", bundleFileNameFor(blankVersion, BundleFormat.APKS))
+        // Still discriminated when it has to be, so the batch's uniqueness rule is unaffected.
+        assertEquals(
+            "Alpha_com.example.alpha.apk",
+            bundleFileNameFor(noVersion, BundleFormat.APK, "com.example.alpha")
+        )
+    }
+
     // --- One name per bundle, distinct within the batch ---------------------------------------
 
     @Test

@@ -42,8 +42,8 @@ sheet (#288) and the previous refresh (#289) have since merged.
 |---|-------|---------|:------:|:---------:|:----------:|----------------|
 | — | **#57** | Sort by (install) size | 3–4 | done | 2 | ✅ **Merged** (#230) — close the issue |
 | — | **#210** | Freezer "keep-in-launcher" | 3 | done | 4 | ✅ **Slice merged** (#241) — suspend mode; rest declined |
-| — | **#164b** | `.xapk` export (the remainder of #164) | 2 | done | 2 | ✅ **Merged** — the format picker shipped with it; close #164 |
-| — | **#51 ph.1** | Bulk APK/bundle backup + manifest | **4** | done | 3 | ✅ **Merged** — phase 2 (root data) is what remains |
+| — | **#164b** | `.xapk` export (the remainder of #164) | 2 | done | 2 | 🟣 **In review** (#293) — the format picker ships with it; close #164 on merge |
+| — | **#51 ph.1** | Bulk APK/bundle backup + manifest | **4** | done | 3 | 🟣 **In review** (#293) — phase 2 (root data) is what remains |
 | 1 | **#55a** | Freeze **profiles** (named groups) | 3 | **2–3 d** | 4 | 🟢 quick win — reuses Room + batch-freeze *(split from #55)* |
 | 2 | **#161** | `.apks` won't open from Samsung My Files | 2 | **1–2 d** | 2 | 🟢 a real bug with a named reporter and a working comparison app — cheap goodwill |
 | 3 | **#285** | Filter app list by permission | 2–3 | **1–2 d** | 2 | 🟢 `FilterType` is an extensible sealed interface and permissions are already parsed for the info sheet — mostly UI |

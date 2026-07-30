@@ -143,8 +143,14 @@ fun bundleFileNameFor(
 ): String {
     val stem = buildString {
         append(appInfo.formattedAppName())
-        append('_')
-        append(appInfo.versionName)
+        // Dropped entirely when the app declares no version, rather than appended: versionName is
+        // nullable and `append(Any?)` writes the four letters "null", so an app without one
+        // exported as `MyApp_null.apk`. Blank counts as absent for the same reason — a trailing
+        // underscore is the same defect wearing less.
+        appInfo.versionName?.takeIf { it.isNotBlank() }?.let {
+            append('_')
+            append(it)
+        }
         discriminator?.let {
             append('_')
             append(it)
