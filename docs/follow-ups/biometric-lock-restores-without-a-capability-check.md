@@ -1,7 +1,10 @@
 # Follow-up: a restored `biometric_lock=true` is a hard lockout with no in-app escape
 
-**Status:** OPEN, unfixed. Surfaced while device-verifying follow-up #20 (backup rules), confirmed by
-reading the auth path.
+**Status:** **FIXED in code, one acceptance item outstanding.** The closed loop is gone: the launch
+path now consults `canAuthenticate()` and the user is given a working way out. See
+[Resolution](#resolution) — the fix takes **none** of options 1/2/3, which stay open as the owner's
+call. Surfaced while device-verifying follow-up #20 (backup rules), confirmed by reading the auth
+path.
 **Severity:** **Major.** The failure mode is a hard lockout with no in-app escape — the only exits are
 "clear app data", "uninstall", or "go set up a screen lock". It is rare *and* it lands exactly on new
 users, at the worst possible moment.
@@ -65,11 +68,16 @@ by the user who needs it.** The guard is real and it is unreachable in precisely
 
 ### When this actually happens
 
-`BiometricHelper` allows `BIOMETRIC_STRONG or DEVICE_CREDENTIAL`, so a device with just a PIN or
-pattern is fine. The lockout needs a device with **neither an enrolled biometric nor any screen
-lock**. That sounds exotic until you notice *when* Android restores: during setup wizard, on a
+`BiometricHelper` allows `BIOMETRIC_STRONG or DEVICE_CREDENTIAL`, so on API 30+ a device with just a
+PIN or pattern is fine, and the lockout needs a device with **neither an enrolled biometric nor any
+screen lock**. That sounds exotic until you notice *when* Android restores: during setup wizard, on a
 brand-new or freshly-wiped device, **before** the user has been asked to set a screen lock. That is
 the single most likely moment for this to fire.
+
+**On API 28-29 the bar is higher, and it is a platform quirk rather than a Thor choice** — see
+[Resolution](#resolution). `BIOMETRIC_STRONG or DEVICE_CREDENTIAL` is not a *supported combination*
+below API 30, so a PIN does not count there: the prompt is biometric-only, and a device with a screen
+lock but no enrolled fingerprint is equally stuck.
 
 Also reachable without any backup at all: enable the lock, then remove the screen lock in system
 Settings. Same dead end.
@@ -97,15 +105,89 @@ Settings. Same dead end.
 Option 1 is the smallest correct fix and covers both routes into the state. Option 4 is listed only
 so nobody re-proposes it.
 
+## Resolution
+
+**What shipped is option 5, which nobody wrote down: keep the lock closed, but stop lying about it.**
+
+The acceptance criterion below says "Thor opens to `MainScreen` **(or offers a working way out)**".
+The second clause is what this takes, because every one of options 1–3 changes what the lock *means*
+— who gets in, and on whose say-so — and that is the security call this document reserves for the
+owner. A way out does not need that call, so it could be built now.
+
+`AuthState` gains `Unavailable`, reached only when the lock is on and `canAuthenticate()` is false.
+`HomeActivity` renders `BiometricUnavailableScreen` for it: an honest explanation, an **OPEN SECURITY
+SETTINGS** button that deep-links to `ACTION_BIOMETRIC_ENROLL` (falling back to security settings, then
+the settings root), and **EXIT**. `HomeActivity.onResume` calls `SecurityViewModel.refreshCapability()`
+*before* the Shizuku early-return, so the user who leaves, sets a lock, and comes back lands on a
+prompt that can actually succeed — no restart, no reinstall.
+
+Why `Unavailable` sits where it does in the `when`:
+
+- **Above `Error`.** The prompt fails the instant it opens on such a device, so `error` is populated
+  a moment later either way. An `Error` screen offers TRY AGAIN, and TRY AGAIN re-arms the prompt —
+  that is the loop, restated. `refreshCapability()` also clears a stale error across the transition,
+  or the user comes back to the exact complaint they just went and fixed.
+- **Below `authenticated`.** Someone who unlocked and *then* removed their screen lock is not thrown
+  out of a session they legitimately opened.
+
+Supporting change: `canAuthenticate()`/`hasHardware()` were extracted from `BiometricHelper` onto a
+new `AuthCapability` interface in `domain/repository`. `BiometricHelper` is a final class over
+`BiometricManager` and `:app` carries no mocking library by design, so the seam had to be an
+interface for the launch-path decision to be testable at all. `SettingsViewModel` now depends on
+`AuthCapability` too; nothing about its behaviour changed.
+
+### The API 28-29 trap, found in review
+
+Promoting `canAuthenticate()` from "should the Settings toggle be enabled" to "should this user be
+held at the door" made a latent bug load-bearing, and it very nearly shipped as a *second* hard
+lockout on top of the one this document is about.
+
+`BiometricHelper` asked `canAuthenticate(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)`. That is not a
+supported *combination* below API 30 — androidx's `AuthenticatorUtils.isSupportedCombination`
+rejects it outright for `SDK_INT` in `[P, Q]` and `canAuthenticate` returns
+`BIOMETRIC_ERROR_UNSUPPORTED` without looking at the device at all. Against a
+`== BIOMETRIC_SUCCESS` test that is indistinguishable from "nothing is enrolled", so
+`canAuthenticate()` was **hard-false on every Android 9 and 10 device**, whatever hardware it had
+and whatever the user had enrolled. Thor's minSdk is 28: these are shipped, supported devices.
+
+Previously that only suppressed the Settings toggle. With `Unavailable` gating the launch path it
+would have meant: any Android 9/10 user whose `biometric_lock=true` arrived by restore lands on a
+screen telling them to set up a screen lock, sets one up, comes back — and is still stuck, forever,
+because the question being asked can never be answered yes on their OS version. The old code would
+have shown them a working prompt, since `BiometricPromptHandler` already makes the API split and
+falls back to a biometric-only prompt below API 30.
+
+Fixed by making the capability predicate ask what the prompt can actually offer:
+`promptAuthenticators(sdkInt)` returns `BIOMETRIC_STRONG or DEVICE_CREDENTIAL` on API 30+ and
+`BIOMETRIC_STRONG` below, mirroring `BiometricPromptHandler` exactly, with
+`PromptAuthenticatorsTest` pinning the split. Two consequences worth noting:
+
+- It also fixes the pre-existing Settings bug — the biometric-lock toggle was disabled on all
+  Android 9/10 devices, including ones with a working enrolled fingerprint.
+- The `Unavailable` copy no longer names a cause. "No fingerprint and no screen lock" is false on
+  API 28-29, where a PIN-only device is genuinely incapable; the string now says only that there is
+  nothing to unlock with, and points at both remedies.
+
+**Still the owner's call, untouched by this:** options 1 (fail open), 2 (self-heal by writing
+`biometric_lock=false`) and 3 (in-app disable from the error screen). Each remains implementable on
+top of what shipped — `AuthState.Unavailable` is exactly the branch any of them would hang off.
+Nothing here pre-empts that decision; it only means the user is no longer trapped while it is
+pending.
+
 ## Acceptance
 
-- With `biometric_lock=true` in DataStore on a device with no enrolled biometric **and** no screen
+- ~~With `biometric_lock=true` in DataStore on a device with no enrolled biometric **and** no screen
   lock, Thor opens to `MainScreen` (or offers a working way out) instead of cycling
-  `BiometricLockView` ↔ `BiometricErrorView`.
-- A unit test on `SecurityViewModel` covering enabled-but-not-capable. The harness exists —
+  `BiometricLockView` ↔ `BiometricErrorView`.~~ Done via the "working way out" clause —
+  `BiometricUnavailableScreen`.
+- ~~A unit test on `SecurityViewModel` covering enabled-but-not-capable. The harness exists —
   `MainDispatcherRule` and `ViewModelTestDoubles` landed in the #16 batch, and `SecurityViewModel`
-  already has behaviour tests, so this is a new case in an existing file, not new scaffolding.
-- The restore path is exercised end to end at least once: `bmgr backupnow` with biometric lock on →
-  `adb uninstall` → `adb install -t -r` → launch on a device with no screen lock. **`pm clear` +
-  relaunch does not test this** — Android Auto Backup restores only at package *install* time, so a
-  clear-and-relaunch never restores anything and will make a broken build look fine.
+  already has behaviour tests, so this is a new case in an existing file, not new scaffolding.~~
+  Done — five new cases in `SecurityViewModelTest`, plus `FakeAuthCapability` in
+  `ViewModelTestDoubles`: enabled-but-not-capable, the recover-and-return transition, stale-error
+  clearing, no eviction of an unlocked session, and no gate at all while the lock is off.
+- **OUTSTANDING (needs a device).** The restore path is exercised end to end at least once:
+  `bmgr backupnow` with biometric lock on → `adb uninstall` → `adb install -t -r` → launch on a
+  device with no screen lock. **`pm clear` + relaunch does not test this** — Android Auto Backup
+  restores only at package *install* time, so a clear-and-relaunch never restores anything and will
+  make a broken build look fine.

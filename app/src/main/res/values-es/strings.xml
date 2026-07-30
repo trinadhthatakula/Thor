@@ -405,6 +405,9 @@
     <string name="action_remove">Eliminar</string>
     <string name="biometric_unlock_title">Desbloquear Thor</string>
     <string name="biometric_unlock_subtitle">Autentícate para continuar</string>
+    <string name="biometric_unavailable_title">Este dispositivo no puede desbloquear Thor</string>
+    <string name="biometric_unavailable_message">El bloqueo de la app está activado, pero este dispositivo no tiene nada con lo que desbloquearlo. Configura un bloqueo de pantalla o registra una huella en los ajustes del sistema y vuelve: Thor te dejará entrar.</string>
+    <string name="open_security_settings">Abrir ajustes de seguridad</string>
     <string name="unlock">Desbloquear</string>
     <string name="thank_you_support_desc">Tu suscripción está activa. ¡Gracias por ayudar a apoyar el desarrollo de Thor!</string>
     

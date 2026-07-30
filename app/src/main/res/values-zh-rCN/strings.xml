@@ -397,6 +397,9 @@
     <string name="action_remove">移除</string>
     <string name="biometric_unlock_title">解锁 Thor</string>
     <string name="biometric_unlock_subtitle">进行身份验证以继续</string>
+    <string name="biometric_unavailable_title">此设备无法解锁 Thor</string>
+    <string name="biometric_unavailable_message">应用锁已开启，但此设备没有可用来解锁的方式。请在系统设置中设置屏幕锁或录入指纹，然后返回 — Thor 会让你进入。</string>
+    <string name="open_security_settings">打开安全设置</string>
     <string name="unlock">解锁</string>
     <string name="thank_you_support_desc">您的订阅已生效。感谢您支持 Thor 的开发！</string>
     

@@ -405,6 +405,9 @@
     <string name="action_remove">Supprimer</string>
     <string name="biometric_unlock_title">Déverrouiller Thor</string>
     <string name="biometric_unlock_subtitle">Authentifiez-vous pour continuer</string>
+    <string name="biometric_unavailable_title">Cet appareil ne peut pas déverrouiller Thor</string>
+    <string name="biometric_unavailable_message">Le verrouillage de l\'application est activé, mais cet appareil n\'a rien qui permette de le déverrouiller. Configurez un verrouillage d\'écran ou enregistrez une empreinte dans les paramètres système, puis revenez — Thor vous laissera entrer.</string>
+    <string name="open_security_settings">Ouvrir les paramètres de sécurité</string>
     <string name="unlock">Déverrouiller</string>
     <string name="thank_you_support_desc">Votre abonnement est actif. Merci d\'aider à soutenir le développement de Thor !</string>
     

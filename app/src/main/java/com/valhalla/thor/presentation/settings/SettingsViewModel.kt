@@ -6,12 +6,12 @@ package com.valhalla.thor.presentation.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
-import com.valhalla.thor.data.security.BiometricHelper
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.domain.repository.AuthCapability
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
@@ -39,7 +39,7 @@ import org.koin.core.annotation.Named
 class SettingsViewModel(
     private val preferenceRepository: PreferenceRepository,
     private val systemRepository: SystemRepository,
-    private val biometricHelper: BiometricHelper,
+    private val biometricHelper: AuthCapability,
     private val localeManager: LocaleManager,
     private val freezerRepository: FreezerRepository,
     private val manageAppUseCase: ManageAppUseCase,
