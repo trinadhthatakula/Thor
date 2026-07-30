@@ -37,4 +37,19 @@
     -->
     <issue id="GradleDependency" severity="informational" />
     <issue id="NewerVersionAvailable" severity="informational" />
+
+    <!--
+      AndroidGradlePluginVersion is the same notice about AGP itself, and it is here for the same
+      reason with one difference worth naming: it ships at ERROR, so warningsAsErrors never entered
+      into it and the two overrides above did not cover it. AGP 9.4.0-alpha07 published on
+      2026-07-30 and every open PR went red within the hour — five branches failing build-and-test
+      on a line none of them touched.
+
+      Pinning an alpha and being told an hour later that a newer alpha exists is not news; it is the
+      cost of pinning an alpha on purpose. The bump itself stays a reviewed change, as it already
+      was: a pre-release AGP moves the toolchain under a build that has to stay reproducible for
+      IzzyOnDroid, so it is exactly the kind of thing that should arrive in its own commit rather
+      than be forced by whichever CI run happened to notice.
+    -->
+    <issue id="AndroidGradlePluginVersion" severity="informational" />
 </lint>
