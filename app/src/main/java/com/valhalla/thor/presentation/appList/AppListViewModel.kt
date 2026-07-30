@@ -11,14 +11,17 @@ import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.PermissionIndex
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.domain.model.filterApps
 import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.domain.model.sortApps
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
 import com.valhalla.thor.domain.repository.StorageStatsProvider
@@ -79,6 +82,14 @@ data class AppListUiState(
     // Installer identifiers -> display label. Resolved to a String in the screen so the
     // ViewModel stays free of a Context dependency.
     val installerNameMap: Map<String, UiText> = emptyMap(),
+    // Runtime-permission group -> declaring packages, plus the platform's own labels for the chips.
+    // Empty until FilterType.Permission is selected; see observePermissionFilter().
+    val permissionIndex: PermissionIndex = PermissionIndex(),
+    val isLoadingPermissions: Boolean = false,
+    // Distinct from "the index is empty". Both leave the chip row with nothing to show, but only one
+    // of them is Thor's fault, and the row says so. The one-off toast is gone by the time a user
+    // looks up from the empty row and wonders what happened.
+    val permissionIndexFailed: Boolean = false,
     // Detail View State
     val selectedAppDetails: AppInfo? = null,
     val isLoadingDetails: Boolean = false,
@@ -111,6 +122,7 @@ class AppListViewModel(
     private val freezerRepository: FreezerRepository,
     private val appShortcuts: AppShortcutController,
     private val appRepository: AppRepository,
+    private val permissionRepository: PermissionRepository,
     private val storageStats: StorageStatsProvider,
     private val usageAccess: UsageAccessGate,
     // Injected rather than hardcoded so a test can put every stage of this view model on one
@@ -123,6 +135,7 @@ class AppListViewModel(
     private var appsJob: Job? = null
     private var sizeJob: Job? = null
     private var refreshIndicatorJob: Job? = null
+    private var permissionIndexJob: Job? = null
     private val _rawState = MutableStateFlow(AppListUiState())
 
     // One-off UI feedback (toasts, freezer prompt). A buffered Channel fires each event exactly
@@ -156,6 +169,84 @@ class AppListViewModel(
         loadApps(deferForTransition = true)
         observeSizeSort()
         observeFreezerMembership()
+        observePermissionFilter()
+    }
+
+    /**
+     * Builds the permission index whenever [FilterType.Permission] is active *and* the set of
+     * installed apps has changed under it.
+     *
+     * Driven off the preference rather than [updateFilterType] so the persisted case is covered too
+     * — a user who left Thor on this filter gets the index built at startup instead of an empty
+     * chip row.
+     *
+     * The second input is the invalidation. The index is a snapshot of what every package declares,
+     * so an install, an uninstall or an update makes it wrong, and the filter it feeds does not
+     * degrade gracefully: a package the index has not heard of matches *no* group, so a freshly
+     * installed camera app is simply missing from the Camera chip with nothing to indicate why. The
+     * key is `packageName@lastUpdateTime`, which moves on all three of those events and stays put
+     * for the ones that do not matter (freeze, suspend, a size arriving), so a session that installs
+     * nothing pays for exactly one sweep. That the app list is *already* watching for those changes
+     * is what makes this cheap: no `PACKAGE_ADDED` receiver, no polling, just the list Thor
+     * refreshes anyway.
+     *
+     * Nothing is built until that set is non-empty, so the startup sweep waits for the first real
+     * app load rather than racing it and then immediately redoing itself. That wait reports itself
+     * as loading, because to the chip row an empty index during it is indistinguishable from a
+     * device with no permission groups, and only one of those is true.
+     */
+    private fun observePermissionFilter() {
+        viewModelScope.launch {
+            combine(
+                preferenceRepository.userPreferences.map { it.appFilterType }.distinctUntilChanged(),
+                _rawState.map { state ->
+                    (state.allUserApps + state.allSystemApps)
+                        .mapTo(HashSet()) { "${it.packageName}@${it.lastUpdateTime}" }
+                }.distinctUntilChanged()
+            ) { type, packages -> type to packages }
+                .collect { (type, packages) ->
+                    permissionIndexJob?.cancel()
+                    if (type != FilterType.Permission) {
+                        _rawState.update { it.copy(isLoadingPermissions = false) }
+                        return@collect
+                    }
+                    if (packages.isEmpty()) {
+                        // Waiting on the app list, not done with it. Both states leave
+                        // `permissionIndex` empty, and the chip row has to tell them apart: dropping
+                        // out of loading here puts "No permission groups found on this device" —
+                        // a claim about the *device* — on screen beside the main spinner, for every
+                        // returning user who left the filter here. `permissionIndexFailed` is left
+                        // alone rather than cleared; the loading state outranks it in that selector
+                        // anyway, and the very next emission re-answers it from a real build.
+                        _rawState.update { it.copy(isLoadingPermissions = true) }
+                        return@collect
+                    }
+                    permissionIndexJob = launch {
+                        _rawState.update {
+                            it.copy(isLoadingPermissions = true, permissionIndexFailed = false)
+                        }
+                        val result = permissionRepository.buildPermissionIndex()
+                        result.onFailure { e ->
+                            Logger.e("AppListViewModel", "Permission index failed: ${e.message}")
+                            _events.send(
+                                AppListEvent.ShowMessage(
+                                    UiText.StringResource(R.string.permission_filter_failed)
+                                )
+                            )
+                        }
+                        _rawState.update { state ->
+                            state.copy(
+                                // On failure the previous index is dropped rather than kept: a stale
+                                // index filters silently and wrongly, an empty one shows a
+                                // placeholder the user can act on.
+                                permissionIndex = result.getOrElse { PermissionIndex() },
+                                permissionIndexFailed = result.isFailure,
+                                isLoadingPermissions = false
+                            )
+                        }
+                    }
+                }
+        }
     }
 
     /**
@@ -571,7 +662,11 @@ class AppListViewModel(
         // AppListType is usually session-only, but we reset filter to "All" when switching
         _rawState.update { it.copy(appListType = type) }
         viewModelScope.launch {
-            preferenceRepository.updateAppFilter(FilterType.Source, "All")
+            // Keep the filter *category*, reset only the selection. This used to hardcode
+            // FilterType.Source, which was invisible while Source was the only interesting default
+            // but means "filter by Camera, then tap System apps" silently throws you back to
+            // Installation Source — reading as a bug in whichever filter you had chosen.
+            preferenceRepository.updateAppFilter(uiState.value.filterType, "All")
         }
     }
 
@@ -626,22 +721,14 @@ class AppListViewModel(
             }
         }
 
-        // 3. Filter by Source/State
-        val filtered = when (state.filterType) {
-            FilterType.Source -> {
-                if (state.selectedFilter == "All") searched
-                else searched.filter { it.installerPackageName == state.selectedFilter }
-            }
-
-            FilterType.State -> {
-                when (state.selectedFilter) {
-                    "Active" -> searched.filter { it.enabled }
-                    "Frozen" -> searched.filter { !it.enabled }
-                    "Suspended" -> searched.filter { it.isSuspended }
-                    else -> searched
-                }
-            }
-        }
+        // 3. Filter by Source/State/Permission — the rules live in domain so they are testable,
+        // the same way sorting does.
+        val filtered = filterApps(
+            apps = searched,
+            filterType = state.filterType,
+            selectedFilter = state.selectedFilter,
+            permissionIndex = state.permissionIndex
+        )
 
         // 4. Sort
         val sorted = getSortedList(filtered, state.sortBy, state.sortOrder)

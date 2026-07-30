@@ -99,6 +99,12 @@
     <string name="descending">Décroissant</string>
     <string name="filters">Filtres</string>
     <string name="sort_by">Trier par</string>
+    <string name="filter_type_state">État</string>
+    <string name="filter_type_source">Source d\'installation</string>
+    <string name="filter_type_permission">Autorisation</string>
+    <string name="permission_filter_loading">Lecture des autorisations…</string>
+    <string name="permission_filter_unavailable">Aucun groupe d\'autorisations trouvé sur cet appareil</string>
+    <string name="permission_filter_failed">Impossible de lire les autorisations sur cet appareil</string>
 
     <!-- App Info Dialog -->
     <string name="clear_app_data_title">Effacer les données ?</string>

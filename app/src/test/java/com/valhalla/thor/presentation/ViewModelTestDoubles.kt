@@ -6,10 +6,12 @@ package com.valhalla.thor.presentation
 import android.content.ContextWrapper
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.AppPermission
 import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FreezerMode
+import com.valhalla.thor.domain.model.PermissionIndex
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.PrivilegeState
 import com.valhalla.thor.domain.model.SortBy
@@ -22,6 +24,7 @@ import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.AuthCapability
 import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
 import com.valhalla.thor.domain.repository.StorageStatsProvider
@@ -351,6 +354,37 @@ class FakeUsageAccessGate(var granted: Boolean = true) : UsageAccessGate {
     }
 }
 
+/**
+ * Answers the one call the app list makes, and counts it.
+ *
+ * The index sweep is a `getPackageInfo` per installed package on a real device, so "how many times
+ * was it built" is the interesting question — the filter is driven off a preference *and* off the
+ * installed-app set, and a rebuild per app-list emission would be a binder storm.
+ */
+class FakePermissionRepository(
+    private val index: Result<PermissionIndex> = Result.success(PermissionIndex())
+) : PermissionRepository {
+
+    var indexBuilds = 0
+        private set
+
+    override suspend fun buildPermissionIndex(): Result<PermissionIndex> {
+        indexBuilds++
+        return index
+    }
+
+    override suspend fun getAppPermissions(packageName: String): Result<List<AppPermission>> =
+        Result.success(emptyList())
+
+    override suspend fun grantPermission(packageName: String, permissionName: String): Result<Unit> =
+        Result.success(Unit)
+
+    override suspend fun revokePermission(packageName: String, permissionName: String): Result<Unit> =
+        Result.success(Unit)
+
+    override suspend fun isPrivilegeActive(): Boolean = true
+}
+
 /** Records the packages whose launcher shortcut was retired. */
 class FakeAppShortcutController : AppShortcutController {
 
@@ -404,13 +438,17 @@ fun userApp(
     isSuspended: Boolean = false,
     isDebuggable: Boolean = false,
     appName: String? = null,
+    // The permission index keys its invalidation on `packageName@lastUpdateTime`, so this is how a
+    // test says "the same app, updated" as opposed to "the same app".
+    lastUpdateTime: Long = 0L,
 ): AppInfo = AppInfo(
     appName = appName,
     packageName = packageName,
     isSystem = false,
     enabled = enabled,
     isSuspended = isSuspended,
-    isDebuggable = isDebuggable
+    isDebuggable = isDebuggable,
+    lastUpdateTime = lastUpdateTime
 )
 
 /**
