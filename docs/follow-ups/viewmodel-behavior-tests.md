@@ -1,8 +1,12 @@
 # Follow-up: ViewModel behavior tests need `kotlinx-coroutines-test` + turbine
 
-**Status:** ✅ **Done.** `AppListViewModelTest` covers all five behaviours from *Sketch* §4 in 8
-tests, on virtual time, on branch `test/applist-viewmodel-behavior`. The dependencies had landed
-earlier on `chore/tier0-batch-1` and are also used by `MainViewModelTest` (24 tests) and
+**Status:** ✅ **Done, with one half-covered item named below.** `AppListViewModelTest` covers the
+four temporal behaviours from *Sketch* §4 in 8 tests on virtual time, on branch
+`test/applist-viewmodel-behavior`. The fifth — the cancelled-scan rule — is covered on the view
+model side only (the relaunch tears the previous collector down); its repository half, the
+`ensureActive()` in `AppRepositoryImpl`, is **out of reach from a JVM test** and is deliberately
+left to the instrumented story. See *Acceptance*. The dependencies had landed earlier on
+`chore/tier0-batch-1` and are also used by `MainViewModelTest` (24 tests) and
 `SecurityViewModelTest` (7).
 **Severity:** Minor (test-coverage gap; no runtime defect). **Effort:** small–medium.
 **Revised:** 2026-07-30 — twice: once when the dependencies landed, again when the tests were
@@ -114,8 +118,11 @@ Not a decision, just the shape:
 
 ## Acceptance
 
-- ✅ All five behaviors asserted under virtual time; no measurable wall-clock added to the suite
-  (the 8 tests run in ~0.2 s total; the suite went 209 → 217).
+- ✅ for four of the five, ⚠️ for the fifth. The four temporal behaviours are asserted under virtual
+  time; the cancelled-scan rule is asserted on the view model side and **not** on the repository
+  side (see the `ensureActive()` note below — the criterion as written cannot be met from
+  `testFossDebugUnitTest`). No measurable wall-clock added to the suite either way (the 8 tests run
+  in ~0.2 s total; the suite went 209 → 217).
 - **Mutation-checked**, the same way `REFRESH_INDICATOR_MIN_VISIBLE` was: deleting the
   `ensureActive()` call, or flipping the `deferForTransition` default, must make at least one test
   fail. A test that survives both mutations is not constraining the behavior it claims to.
