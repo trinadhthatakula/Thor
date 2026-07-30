@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Process
 import android.provider.Settings
 import com.valhalla.thor.domain.repository.SystemRepository
+import com.valhalla.thor.domain.repository.UsageAccessGate
 import org.koin.core.annotation.Single
 
 /**
@@ -18,11 +19,11 @@ import org.koin.core.annotation.Single
  * StorageStatsManager. Tries a silent grant through the active privilege
  * gateway; always re-verifies; exposes the Settings deep-link for the fallback.
  */
-@Single
+@Single(binds = [UsageAccessGate::class])
 class UsageAccessManager(
     private val context: Context,
     private val systemRepository: SystemRepository
-) {
+) : UsageAccessGate {
     private val appOps = context.getSystemService(AppOpsManager::class.java)
     private val pkg = context.packageName
 
@@ -30,7 +31,7 @@ class UsageAccessManager(
     private var autoGrantAttempted = false
 
     @Suppress("DEPRECATION")
-    fun isGranted(): Boolean {
+    override fun isGranted(): Boolean {
         val ops = appOps ?: return false
         val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ops.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), pkg)
@@ -41,7 +42,7 @@ class UsageAccessManager(
     }
 
     /** Best-effort silent grant via a privileged gateway; returns the verified result. */
-    suspend fun tryGrantViaPrivilege(): Boolean {
+    override suspend fun tryGrantViaPrivilege(): Boolean {
         if (isGranted()) return true
         // Harmless if no privilege is active (command just fails); may also be
         // blocked on newer Android — hence we re-verify rather than assume success.
@@ -54,7 +55,7 @@ class UsageAccessManager(
      * transient failure (e.g. the privilege gateway not fully ready yet) can still be
      * retried the next time this runs rather than being disabled for the whole process.
      */
-    suspend fun maybeAutoGrant() {
+    override suspend fun maybeAutoGrant() {
         if (autoGrantAttempted || isGranted()) return
         if (tryGrantViaPrivilege()) autoGrantAttempted = true
     }
