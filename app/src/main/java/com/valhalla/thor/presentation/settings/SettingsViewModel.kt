@@ -3,19 +3,21 @@
 
 package com.valhalla.thor.presentation.settings
 
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
-import com.valhalla.thor.data.security.BiometricHelper
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.domain.repository.AuthCapability
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
+import com.valhalla.thor.presentation.security.biometricRefusalMessage
 import com.valhalla.thor.util.LocaleManager
 import com.valhalla.thor.util.UiText
 import kotlinx.coroutines.CoroutineDispatcher
@@ -39,7 +41,7 @@ import org.koin.core.annotation.Named
 class SettingsViewModel(
     private val preferenceRepository: PreferenceRepository,
     private val systemRepository: SystemRepository,
-    private val biometricHelper: BiometricHelper,
+    private val biometricHelper: AuthCapability,
     private val localeManager: LocaleManager,
     private val freezerRepository: FreezerRepository,
     private val manageAppUseCase: ManageAppUseCase,
@@ -123,8 +125,38 @@ class SettingsViewModel(
         viewModelScope.launch { preferenceRepository.setUseAmoled(enabled) }
     }
 
+    /**
+     * Arms or disarms the app lock, refusing to arm one that could never open.
+     *
+     * The refusal is deliberately wider than the self-heal in `SecurityViewModel`: *any* device that
+     * cannot authenticate right now is refused, not only the unrecoverable API 28 case. Turning a
+     * lock **on** costs nothing to refuse — the user is standing in Settings, the toast names what is
+     * missing, and they can go enrol it and come back. Turning one **off** on their behalf is a
+     * security downgrade, so that stays confined to the case where enrolling cannot help.
+     *
+     * Asks [AuthCapability] fresh rather than reading `uiState.canUseBiometric`: that snapshot is
+     * recomputed only when the preferences flow emits, so a user who enrols a fingerprint and returns
+     * to a still-composed Settings screen would otherwise be refused on a stale `false`.
+     *
+     * The message is chosen by [biometricRefusalMessage], not fixed: a refusal that tells an
+     * Android 9 user to "set up a screen lock" sends them to do something their prompt cannot accept,
+     * which is the same mistake `BiometricUnavailableScreen` exists to avoid making.
+     */
     fun setBiometricLock(enabled: Boolean) {
-        viewModelScope.launch { preferenceRepository.setBiometricLock(enabled) }
+        viewModelScope.launch {
+            if (enabled && !biometricHelper.canAuthenticate()) {
+                _events.send(
+                    UiText.StringResource(
+                        biometricRefusalMessage(
+                            Build.VERSION.SDK_INT,
+                            biometricHelper.hasHardware()
+                        )
+                    )
+                )
+                return@launch
+            }
+            preferenceRepository.setBiometricLock(enabled)
+        }
     }
 
     fun setPrivilegeMode(mode: PrivilegeMode?) {

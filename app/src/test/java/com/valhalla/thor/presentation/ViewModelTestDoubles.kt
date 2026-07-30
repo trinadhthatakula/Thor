@@ -20,6 +20,7 @@ import com.valhalla.thor.domain.repository.AppBundleBuilder
 import com.valhalla.thor.domain.repository.AppBundleFileStore
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.AppShortcutController
+import com.valhalla.thor.domain.repository.AuthCapability
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
@@ -358,6 +359,22 @@ class FakeAppShortcutController : AppShortcutController {
     override fun disableAppShortcut(packageName: String) {
         disabled += packageName
     }
+}
+
+/**
+ * The device's ability to authenticate, as a settable value.
+ *
+ * Mutable on purpose: the interesting cases are all *transitions* — the user leaves for system
+ * Settings with no screen lock set and comes back with one — and there is no way to express that
+ * against a fixed return value. Both default to true so every test written before [AuthCapability]
+ * existed keeps its original meaning.
+ */
+class FakeAuthCapability(
+    var capable: Boolean = true,
+    var hardware: Boolean = true
+) : AuthCapability {
+    override fun canAuthenticate(): Boolean = capable
+    override fun hasHardware(): Boolean = hardware
 }
 
 /**

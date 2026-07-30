@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.presentation.security
 
+import android.os.Build
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -81,6 +82,111 @@ fun BiometricScreen(
                 onAuthenticated = onAuthenticated,
                 onError = onError,
                 handler = handler
+            )
+        }
+    }
+}
+
+/**
+ * Shown when the app lock is on but this device has nothing enrolled that the prompt would accept,
+ * so no prompt could ever succeed.
+ *
+ * The lock is **not** lifted here. This screen exists because the alternative was a closed loop:
+ * the prompt failed instantly, the error screen offered TRY AGAIN, and TRY AGAIN re-armed the same
+ * prompt — with `finish()` the only other control, and Settings (where the switch that turns the
+ * lock off lives) unreachable because MainScreen was never composed. Enrolling something the prompt
+ * accepts is the one exit that was always available and never mentioned; this says so and opens the
+ * right page.
+ *
+ * The copy is chosen by what the prompt on *this* API level accepts, not by what a modern device
+ * would accept. Android 9's framework prompt has no device-credential path, so telling a P user to
+ * "set up a screen lock" is advice that cannot work — and this screen's whole reason to exist is
+ * that it is the last thing the user is shown before they conclude Thor is broken. Q and up take
+ * the credential (see [promptAcceptsDeviceCredential]), so there the screen lock half is true.
+ */
+@Composable
+fun BiometricUnavailableScreen(
+    onOpenSecuritySettings: () -> Unit,
+    onExit: () -> Unit,
+    credentialAccepted: Boolean = promptAcceptsDeviceCredential(Build.VERSION.SDK_INT)
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        AmbientGlow()
+
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.round_key),
+                contentDescription = null,
+                modifier = Modifier.size(72.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                text = stringResource(R.string.biometric_unavailable_title),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 32.dp)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = stringResource(
+                    if (credentialAccepted) {
+                        R.string.biometric_unavailable_message
+                    } else {
+                        R.string.biometric_unavailable_message_biometric_only
+                    }
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 48.dp)
+            )
+
+            Spacer(modifier = Modifier.height(48.dp))
+
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer)
+                    .clickable { onOpenSecuritySettings() }
+                    .padding(horizontal = 32.dp, vertical = 12.dp)
+            ) {
+                Text(
+                    // labelLarge is Fira Code here — a monospace face at a flat 0.6 em, so an
+                    // uppercased translation of this label is wide enough to wrap on a 360dp
+                    // screen (French is 33 characters). Centre it so the wrap reads as layout
+                    // rather than as a label that fell off the button.
+                    text = stringResource(R.string.open_security_settings).uppercase(),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = stringResource(R.string.exit).uppercase(),
+                modifier = Modifier
+                    .clickable { onExit() }
+                    .padding(16.dp),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
