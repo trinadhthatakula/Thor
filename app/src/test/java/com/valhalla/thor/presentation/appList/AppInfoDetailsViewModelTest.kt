@@ -144,6 +144,18 @@ class AppInfoDetailsViewModelTest {
             "a failed thaw must not report itself as a successful removal",
             seen.single() is UiText.StringResource
         )
+        // The watchlist row is the only route back to a frozen app: the freezer screen lists it,
+        // and Unfreeze-all reaches it from there. Dropping the row on a failed thaw would leave the
+        // app frozen with nothing pointing at it, so the removal has to be all-or-nothing.
+        assertTrue("a failed thaw must keep the watchlist entry", freezer.contains("a"))
+        assertTrue(
+            "and the toggle must still read as tracked",
+            vm.uiState.value.isInFreezer
+        )
+        assertTrue(
+            "the launcher shortcut outlives a failed removal too",
+            shortcuts.disabled.isEmpty()
+        )
     }
 
     /**

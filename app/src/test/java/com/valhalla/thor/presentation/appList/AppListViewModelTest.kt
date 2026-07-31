@@ -403,9 +403,10 @@ class AppListViewModelTest {
     }
 
     /**
-     * A failed restore must not read as success. The app is still frozen at this point, so a
-     * "removed from freezer" toast would be a lie told at the worst moment — the watchlist entry is
-     * already gone, so the freezer screen can no longer offer a way back.
+     * A failed restore must not read as success, and must not half-apply. The app is still frozen at
+     * this point, so a "removed from freezer" toast would be a lie — and dropping the watchlist entry
+     * anyway would make it an expensive one, since the freezer screen is what offers the way back.
+     * Removal is all-or-nothing: restore first, drop the row only once it worked.
      */
     @Test
     fun `a failed restore is reported instead of the removal message`() = runTest {
@@ -429,6 +430,10 @@ class AppListViewModelTest {
                 )
             ),
             events
+        )
+        assertTrue(
+            "the watchlist entry is the only route back to a still-frozen app",
+            freezer.contains("a")
         )
     }
 }

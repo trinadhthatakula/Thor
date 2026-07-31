@@ -520,16 +520,14 @@ class AppListViewModel(
     fun toggleFreezerMembership(packageName: String) {
         viewModelScope.launch(ioDispatcher) {
             if (freezerRepository.contains(packageName)) {
-                freezerRepository.remove(packageName)
-                // Pinned launcher shortcuts can't be removed silently, only greyed out — leaving a
-                // live shortcut for an app no longer in the freezer would let it drive a freeze
-                // from the launcher.
-                appShortcuts.disableAppShortcut(packageName)
-                // Restore before reporting success. Resolved against _rawState for the same reason
-                // the add path is: a search or filter that hides the app must not decide its fate.
-                // When it can't be resolved, forceUnfreeze does both halves unconditionally — an
-                // unsuspend on a non-suspended app and an enable on an enabled one are no-ops, so
-                // the fallback is safe rather than merely tolerable.
+                // Restore before dropping the row, and before reporting success. The privileged call
+                // is the only step that can fail and the Room delete is durable, so removing first
+                // would leave a failed restore holding a frozen app with no watchlist entry to retry
+                // from — the exact stranding this method exists to prevent. Resolved against
+                // _rawState for the same reason the add path is: a search or filter that hides the
+                // app must not decide its fate. When it can't be resolved, forceUnfreeze does both
+                // halves unconditionally — an unsuspend on a non-suspended app and an enable on an
+                // enabled one are no-ops, so the fallback is safe rather than merely tolerable.
                 val app = (_rawState.value.allUserApps + _rawState.value.allSystemApps)
                     .firstOrNull { it.packageName == packageName }
                 val restored =
@@ -543,6 +541,11 @@ class AppListViewModel(
                     )
                     return@launch
                 }
+                freezerRepository.remove(packageName)
+                // Pinned launcher shortcuts can't be removed silently, only greyed out — leaving a
+                // live shortcut for an app no longer in the freezer would let it drive a freeze
+                // from the launcher.
+                appShortcuts.disableAppShortcut(packageName)
                 // Same optimistic local patch freezeApp does, so the row stops reading as frozen
                 // without waiting for a full rescan.
                 _rawState.update { state ->

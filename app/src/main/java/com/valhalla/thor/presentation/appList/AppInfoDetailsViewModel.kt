@@ -246,14 +246,16 @@ class AppInfoDetailsViewModel(
         viewModelScope.launch(ioDispatcher) {
             val currentlyIn = freezerRepository.contains(packageName)
             if (currentlyIn) {
-                freezerRepository.remove(packageName)
-                appShortcuts.disableAppShortcut(packageName)
-                _uiState.update { it.copy(isInFreezer = false) }
                 // Removing always restores, the same as FreezerViewModel.removeFromFreezer and
                 // AppListViewModel.toggleFreezerMembership. Leaving the app frozen here would strand
                 // it: the freezer screen no longer lists it, so the only route back is the
                 // import-already-disabled flow. forceUnfreeze covers the case where details haven't
                 // loaded — both of its halves are no-ops on an already-active app.
+                //
+                // Restore first, drop the watchlist row second. The privileged call is the only step
+                // that can fail, and the Room delete is durable — do it first and a failed restore
+                // leaves a frozen app with no watchlist entry to retry from, which is the exact
+                // stranding this method exists to prevent.
                 val app = _uiState.value.detailedInfo?.appInfo
                 (if (app != null) manageAppUseCase.restoreApp(packageName, app.enabled, app.isSuspended)
                 else manageAppUseCase.forceUnfreeze(packageName))
@@ -261,6 +263,11 @@ class AppInfoDetailsViewModel(
                         _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
                         return@launch
                     }
+                freezerRepository.remove(packageName)
+                appShortcuts.disableAppShortcut(packageName)
+                // refreshDetails re-reads membership, but only when details are loaded — set it here
+                // too so the toggle also flips before the first load lands.
+                _uiState.update { it.copy(isInFreezer = false) }
                 refreshDetails(packageName)
                 _events.send(UiText.PluralsResource(R.plurals.removed_from_freezer_success, 1))
             } else {
