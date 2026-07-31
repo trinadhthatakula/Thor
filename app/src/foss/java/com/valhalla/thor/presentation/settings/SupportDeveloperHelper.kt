@@ -19,13 +19,32 @@ fun SupportDeveloperHelper(
 ) {
     val context = LocalContext.current
 
+    val sponsorsTitle = stringResource(R.string.sponsor_github_title)
+    val sponsorsDesc = stringResource(R.string.sponsor_github_desc)
     val patreonTitle = stringResource(R.string.become_patreon_title)
     val patreonDesc = stringResource(R.string.become_patreon_desc)
     val paypalTitle = stringResource(R.string.donate_paypal_title)
     val paypalDesc = stringResource(R.string.donate_paypal_desc)
 
-    val actions = remember(patreonTitle, patreonDesc, paypalTitle, paypalDesc) {
+    val actions = remember(
+        sponsorsTitle, sponsorsDesc, patreonTitle, patreonDesc, paypalTitle, paypalDesc
+    ) {
         listOf(
+            // First deliberately: lowest fees of the three, and it sits beside the source, which is
+            // where a FOSS user already is.
+            SupportAction(
+                iconRes = R.drawable.brand_github,
+                title = sponsorsTitle,
+                description = sponsorsDesc,
+                onClick = {
+                    val intent = Intent(
+                        Intent.ACTION_VIEW,
+                        "https://github.com/sponsors/trinadhthatakula".toUri()
+                    )
+                    runCatching { context.startActivity(intent) }
+                    onDismiss()
+                }
+            ),
             SupportAction(
                 iconRes = R.drawable.brand_patreon,
                 title = patreonTitle,
