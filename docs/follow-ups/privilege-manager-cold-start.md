@@ -1,15 +1,24 @@
 # Follow-up: measure `PrivilegeManager`'s cold-start cost
 
-**Status:** ✅ **All 8 configurations are measured and all PASS, on release-shaped builds, as of
-2026-07-31.** Config 1 (root granted, physical hardware) —
+**Status:** ✅ **All 8 configurations are measured on release-shaped builds as of 2026-07-31, and all
+8 pass on every user-visible signal** — `ready` p90, spinner window, and the correct `active=` tier.
+⚠️ **Two stated thresholds are missed, on an emulator host only, and are recorded here as an
+exception rather than folded into the pass:** configuration 7's drift-control series B has
+`probe total` p90 **155 ms against the 150 ms Good line**, and series A has p90 ÷ median **3.28
+against the >3× "blocking or contended" line**. Both are the emulated host's bimodal `root=` mode —
+the same signature the Fold shows and physical hardware does not — rather than a property of
+configuration 7, and neither reaches the user, because the spinner window still closes before the
+first frame. Config 1 (root granted, physical hardware) —
 see [the re-measurement](#2026-07-31--config-1-re-measured-on-v1931-the-defect-is-gone): root probe
 57 ms median, bimodality gone, **spinner window zero — privilege state is published ~107 ms *before*
 the first frame, in 12 of 12 cold starts.** The projected "~579 ms of visible spinner on ~60% of
 rooted cold starts" was measured directly and **does not exist**. Config 2 (root denied, same
 physical device) — see
 [the denial series](#2026-07-31-later-still--configuration-2-root-denied-su-exits-fast-and-the-fallback-chain-works):
-a denied `su` costs 51.5 ms, i.e. **no more than a granted one** — it exits fast, nowhere near Odin's
-10 s timeout — and the chain fails over to `active=SHIZUKU` in 12 of 12 runs. Configs 4, 5, 6 and 8
+a denied `su` costs 51.5 ms and **exits fast**, nowhere near Odin's 10 s timeout, and the chain fails
+over to `active=SHIZUKU` in 12 of 12 runs. Whether a denial is cheaper, dearer or the same as a
+*grant* is **not established** — config 2 ran later than config 1 on the same machine, and under this
+document's own drift rule that comparison waits for the config-1 control re-run. Configs 4, 5, 6 and 8
 (Pixel 10 Pro Fold, Android 17) — see
 [the floor series](#2026-07-31-later--configs-4-5-and-8-on-a-pixel-10-pro-fold--android-17-the-floor-and-a-drift-trap):
 the whole probe is the root check even when there is no `su` (30–39 ms), Shizuku and Dhizuku cost
@@ -351,7 +360,7 @@ won or because Dhizuku is absent.
 **Setup, and the part that blocks you (this is §4 row 7's missing recipe).** A device owner cannot be
 set while *any* account exists on the device — the framework rejects it outright:
 
-```
+```text
 java.lang.IllegalStateException: Not allowed to set the device owner because
 there are already some accounts on the device.
   at DevicePolicyManagerService.enforceCanSetDeviceOwnerLocked(...)
@@ -381,9 +390,14 @@ measured, exactly one `probe` line per run.
 
 **Verdict: passes on the signals that describe user-visible behaviour, on the same host caveat as the
 Fold.** `ready` p90 154 / 170 ms (Good ≤400) and the spinner window is negative in 19 of 24 pooled
-runs, median −95 ms, **worst +5 ms** (Good ≤200) — no visible spinner. `probe total` p90 is 128 ms in
-series A (Good) and 155 ms in series B, a hair over the 150 ms line, and p90 ÷ median is 3.28 in
-series A. Both of those are the emulator's bimodal `root=` mode, not configuration 7 — see below.
+runs, median −95 ms, **worst +5 ms** (Good ≤200) — no visible spinner. **Two stated thresholds are
+missed here, and they are recorded as misses, not rounded into the pass:** `probe total` p90 is
+155 ms in series B against the 150 ms Good line (series A is 128 ms, Good), and p90 ÷ median is 3.28
+in series A against the >3× "blocking or contended" line. Both are the emulator's bimodal `root=`
+mode rather than a property of configuration 7 — the drift control below moves the *same*
+configuration 2.3× with nothing changed, which is larger than either miss — and neither one reaches
+the user, since the spinner window still closes before the first frame. They are the emulator-host
+caveat this document already carries, priced rather than waived.
 
 **`dhizuku=` is cheap even when it is the tier that wins:** 3 ms median pooled, 21 ms worst, **~5% of
 `probe total`**. The blocking `DhizukuAPI` binder IPC that §4 row 7 flags as the thing to watch is
@@ -471,11 +485,13 @@ used, on both the denied and the absent path.
 ⚠️ **Not a controlled comparison against configuration 1.** Config 1 was measured earlier the same
 day on this device; config 2 is a later series. By this document's own new acceptance rule, ranking
 two configurations measured at different times on one machine requires re-measuring the first one
-last, which needs the owner to re-grant root. Taken at face value the numbers are
-`root=` 51.5 ms denied vs 57 ms granted and `ready` 91.5 ms vs 96 ms — i.e. **denial is not more
-expensive than a grant**, which is the useful direction, but the gap is small enough that only the
-control would settle it. Both series are tight and unimodal, unlike the Fold, so the drift risk here
-is lower — that is a reason to believe it, not a substitute for the control.
+last, which needs the owner to re-grant root. The two series' raw numbers are `root=` 51.5 ms denied
+vs 57 ms granted and `ready` 91.5 ms vs 96 ms, but **no ranking is claimed from them** — a 5.5 ms gap
+is far smaller than the drift this document has already caught between two runs of an *unchanged*
+configuration, so the ordering alone could produce it. The useful, order-independent result is the
+absolute one: **51.5 ms is fast**, three orders of magnitude clear of the 10 s timeout. Both series
+are tight and unimodal, unlike the Fold, which lowers the drift risk here — a reason to expect the
+control to confirm it, not a substitute for running the control.
 
 ### 2026-07-31 (later) — configs 4, 5 and 8 on a Pixel 10 Pro Fold / Android 17: the floor, and a drift trap
 
@@ -561,7 +577,7 @@ probe is the root check**, and the root check is discovering that root does not 
 
 That cost is not abstract. Launching Thor on config 8 and inspecting the process tree:
 
-```
+```text
 USER           PID  PPID NAME
 u0_a229      13580   435 com.valhalla.thor
 u0_a229      13612 13580 sh          <-- Odin's fallback shell, no su on this device
@@ -971,8 +987,13 @@ numbers first.**
   config-2 session and all 45 of the config-7 session reported `LaunchState: COLD` via
   `am start -W -n`, with exactly one `probe` line per cold start.
 - A one-line verdict per configuration: within budget / investigate / bad, and if any is "bad", which
-  lever above it points at. → ✅ **all eight configurations are within budget on every signal**,
-  on release-shaped builds. **No lever needs pulling.** Levers 1 (drop the `isReady` gate) and 3
+  lever above it points at. → ✅ **all eight configurations are within budget on every user-visible
+  signal** (`ready` p90, spinner window, correct `active=` tier), on release-shaped builds, with
+  **two documented threshold exceptions on emulator hosts only**: configuration 7 series B's
+  `probe total` p90 is 155 ms against the 150 ms Good line, and series A's p90 ÷ median is 3.28
+  against the >3× line. Both are the host's bimodal `root=` mode — see the drift control in that
+  section, where the *same* configuration moved 2.3× with nothing changed — and neither reaches the
+  user. They are logged as exceptions, not counted as passes. **No lever needs pulling.** Levers 1 (drop the `isReady` gate) and 3
   (warm the probe in `ThorApplication.onCreate`) are now priced and both come out **not worth doing**
   — the gate costs nothing when the state is ready ~107–123 ms before first frame, and warming a
   30–57 ms probe earlier buys at most that much of a 210–320 ms startup while adding a cross-cutting
@@ -1012,7 +1033,8 @@ one control re-run and two open questions that more device time alone will not s
    floor passes; the *timeout* worry did not materialise, because with no `su` present libsu falls
    back to `sh` in ~35 ms rather than waiting anywhere near Odin's 10 s guard.
 5. ~~Config 2 (root denied)~~ — **done** on the physical device, N=12, root denied per-app to both
-   app ids in KernelSU Next. `su` exits fast (51.5 ms, no more than a grant) and `active=SHIZUKU` in
+   app ids in KernelSU Next. `su` exits fast (51.5 ms — the denied-vs-granted *ranking* is not
+   claimed, it awaits the config-1 control) and `active=SHIZUKU` in
    12/12 confirms the fallback chain. ~~Config 7 (Dhizuku device owner)~~ — **done**, N=12 twice on a
    purpose-built account-free Android 17 AVD. `active=DHIZUKU` in 24/24 and `dhizuku=` costs 3 ms
    median even as the winning tier. The Fold AVD did **not** qualify after all: it has accounts and
