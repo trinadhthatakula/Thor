@@ -120,12 +120,20 @@ class FakeAppRepository(initialApps: List<AppInfo> = emptyList()) : AppRepositor
     val apps = MutableStateFlow(initialApps)
     val installSizeWrites = mutableListOf<Map<String, Long>>()
 
+    /**
+     * Detail-screen answers, by package. Empty by default, so `getDetailedAppInfo` keeps returning
+     * null — which is itself a state under test: the details screen has to behave sanely before its
+     * first load lands, not only after.
+     */
+    val details = mutableMapOf<String, DetailedAppInfo>()
+
     override fun getAllApps(): Flow<List<AppInfo>> = apps
 
     override suspend fun getAppDetails(packageName: String): AppInfo? =
         apps.value.firstOrNull { it.packageName == packageName }
 
-    override suspend fun getDetailedAppInfo(packageName: String): DetailedAppInfo? = null
+    override suspend fun getDetailedAppInfo(packageName: String): DetailedAppInfo? =
+        details[packageName]
 
     override suspend fun getApkDetails(apkPath: String): AppInfo? = null
 
@@ -385,13 +393,18 @@ class FakePermissionRepository(
     override suspend fun isPrivilegeActive(): Boolean = true
 }
 
-/** Records the packages whose launcher shortcut was retired. */
+/** Records the packages whose launcher shortcut was retired, and those merely re-rendered. */
 class FakeAppShortcutController : AppShortcutController {
 
     val disabled = mutableListOf<String>()
+    val refreshed = mutableListOf<String>()
 
     override fun disableAppShortcut(packageName: String) {
         disabled += packageName
+    }
+
+    override fun refreshAppShortcut(packageName: String) {
+        refreshed += packageName
     }
 }
 

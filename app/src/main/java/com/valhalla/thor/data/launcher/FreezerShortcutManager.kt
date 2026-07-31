@@ -102,7 +102,7 @@ class FreezerShortcutManager(
 
     /** Update an already-pinned per-app shortcut so its icon reflects the app's current state.
      *  No-op if no such shortcut exists. Call after any freeze/unfreeze of the package. */
-    fun refreshAppShortcut(packageName: String) {
+    override fun refreshAppShortcut(packageName: String) {
         scope.launch { updateShortcutIcon(packageName) }
     }
 

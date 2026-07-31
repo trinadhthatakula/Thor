@@ -12,4 +12,10 @@ package com.valhalla.thor.domain.repository
 interface AppShortcutController {
     /** Disable (and hide) any shortcut targeting [packageName] — it is gone or no longer launchable. */
     fun disableAppShortcut(packageName: String)
+
+    /**
+     * Re-render an already-pinned shortcut for [packageName] so its icon matches the app's current
+     * frozen/active state. No-op when nothing is pinned. Call after any freeze or unfreeze.
+     */
+    fun refreshAppShortcut(packageName: String)
 }

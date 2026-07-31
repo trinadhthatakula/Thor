@@ -6,19 +6,19 @@ package com.valhalla.thor.presentation.appList
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
-import com.valhalla.thor.data.launcher.FreezerShortcutManager
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
 import com.valhalla.thor.domain.repository.AppRepository
+import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.UiTextException
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
+import org.koin.core.annotation.Named
 
 data class AppInfoDetailsUiState(
     val isLoading: Boolean = true,
@@ -48,7 +49,15 @@ class AppInfoDetailsViewModel(
     private val manageAppUseCase: ManageAppUseCase,
     private val freezeAppUseCase: FreezeAppUseCase,
     private val freezerRepository: FreezerRepository,
-    private val freezerShortcutManager: FreezerShortcutManager
+    // The narrow port, not the concrete FreezerShortcutManager: this screen only retires and
+    // re-renders a single app's shortcut, and the manager needs a Context, so depending on the
+    // class put the whole view model out of reach of a JVM test. Same dependency AppListViewModel
+    // already takes.
+    private val appShortcuts: AppShortcutController,
+    // Injected rather than a baked-in Dispatchers.IO, so a test can put this work on its own
+    // scheduler — otherwise every action below escapes the test dispatcher and nothing here is
+    // deterministically assertable.
+    @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AppInfoDetailsUiState())
@@ -73,7 +82,7 @@ class AppInfoDetailsViewModel(
             // potentially slow root check; run them off the Main thread. Each probe is an
             // independent round-trip, so launch them concurrently and let their latency
             // overlap (alongside the freezer lookup) instead of stacking sequentially.
-            val (probes, inFreezer) = withContext(Dispatchers.IO) {
+            val (probes, inFreezer) = withContext(ioDispatcher) {
                 val rootProbe = async { systemRepository.isRootAvailable() }
                 val shizukuProbe = async { systemRepository.isShizukuAvailable() }
                 val dhizukuProbe = async { systemRepository.isDhizukuAvailable() }
@@ -120,7 +129,7 @@ class AppInfoDetailsViewModel(
     // viewModelScope coroutine, so launching again was redundant and could let concurrent refreshes
     // complete out of order. Called directly => it serializes within the caller's coroutine.
     private suspend fun refreshDetails(packageName: String) {
-        val inFreezer = withContext(Dispatchers.IO) { freezerRepository.contains(packageName) }
+        val inFreezer = withContext(ioDispatcher) { freezerRepository.contains(packageName) }
         val details = appRepository.getDetailedAppInfo(packageName)
         if (details != null) {
             _uiState.update {
@@ -140,8 +149,8 @@ class AppInfoDetailsViewModel(
             val result = if (freeze) freezeAppUseCase(packageName)
             else manageAppUseCase.setAppDisabled(packageName, false)
             result.onSuccess {
-                freezerShortcutManager.refreshAppShortcut(packageName)
-                val inFreezer = withContext(Dispatchers.IO) { freezerRepository.contains(packageName) }
+                appShortcuts.refreshAppShortcut(packageName)
+                val inFreezer = withContext(ioDispatcher) { freezerRepository.contains(packageName) }
                 if (freeze && !inFreezer) {
                     // Don't auto-add — prompt the user to add it to the Freezer instead.
                     _uiState.update { it.copy(freezerPrompt = FreezerPrompt(packageName, appName)) }
@@ -223,7 +232,7 @@ class AppInfoDetailsViewModel(
      */
     fun addToFreezer(packageName: String) {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { freezerRepository.add(packageName) }
+            withContext(ioDispatcher) { freezerRepository.add(packageName) }
             _uiState.update { it.copy(freezerPrompt = null, isInFreezer = true) }
             refreshDetails(packageName)
         }
@@ -234,12 +243,25 @@ class AppInfoDetailsViewModel(
     }
 
     fun addOrRemoveFromFreezer(packageName: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             val currentlyIn = freezerRepository.contains(packageName)
             if (currentlyIn) {
                 freezerRepository.remove(packageName)
-                freezerShortcutManager.disableAppShortcut(packageName)
+                appShortcuts.disableAppShortcut(packageName)
                 _uiState.update { it.copy(isInFreezer = false) }
+                // Removing always restores, the same as FreezerViewModel.removeFromFreezer and
+                // AppListViewModel.toggleFreezerMembership. Leaving the app frozen here would strand
+                // it: the freezer screen no longer lists it, so the only route back is the
+                // import-already-disabled flow. forceUnfreeze covers the case where details haven't
+                // loaded — both of its halves are no-ops on an already-active app.
+                val app = _uiState.value.detailedInfo?.appInfo
+                (if (app != null) manageAppUseCase.restoreApp(packageName, app.enabled, app.isSuspended)
+                else manageAppUseCase.forceUnfreeze(packageName))
+                    .onFailure { e ->
+                        _events.send(UiText.StringResource(R.string.error_format, e.message ?: ""))
+                        return@launch
+                    }
+                refreshDetails(packageName)
                 _events.send(UiText.PluralsResource(R.plurals.removed_from_freezer_success, 1))
             } else {
                 // Same BLOCKED gate as FreezerViewModel.toggleManaged and
