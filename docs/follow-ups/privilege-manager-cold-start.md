@@ -1,7 +1,7 @@
 # Follow-up: measure `PrivilegeManager`'s cold-start cost
 
-**Status:** **Configurations 1, 2, 4, 5, 6 and 8 are measured and all PASS, on release-shaped builds,
-as of 2026-07-31.** Config 1 (root granted, physical hardware) —
+**Status:** ✅ **All 8 configurations are measured and all PASS, on release-shaped builds, as of
+2026-07-31.** Config 1 (root granted, physical hardware) —
 see [the re-measurement](#2026-07-31--config-1-re-measured-on-v1931-the-defect-is-gone): root probe
 57 ms median, bimodality gone, **spinner window zero — privilege state is published ~107 ms *before*
 the first frame, in 12 of 12 cold starts.** The projected "~579 ms of visible spinner on ~60% of
@@ -14,8 +14,14 @@ a denied `su` costs 51.5 ms, i.e. **no more than a granted one** — it exits fa
 [the floor series](#2026-07-31-later--configs-4-5-and-8-on-a-pixel-10-pro-fold--android-17-the-floor-and-a-drift-trap):
 the whole probe is the root check even when there is no `su` (30–39 ms), Shizuku and Dhizuku cost
 0 ms median, and the spinner window is again zero — **but in ~25% of runs it is zero with no headroom
-left.** **Configuration 7 (Dhizuku device owner) is the only one left unmeasured**, and needs an
-artifact plus `dpm set-device-owner` on an account-free device.
+left.** Config 7 (Dhizuku device owner, second Android 17 AVD) — see
+[the Dhizuku series](#2026-07-31-last--configuration-7-dhizuku-device-owner-the-matrix-is-complete):
+`active=DHIZUKU` in 24/24, and the `dhizuku=` binder IPC costs **3 ms median even when it is the tier
+that wins** — while `root=` is still **92% of the probe**. **The one open risk in this document is
+not a configuration**: on both emulator hosts ~25–50% of runs take a slow `root=` mode that consumes
+the entire pre-first-frame margin (worst spinner window +5 ms). It has never appeared on physical
+hardware, so it reads as a host artifact — but it wants one check on genuinely slow real hardware
+before #22 is closed.
 **Severity:** ~~Suspected moderate on rooted devices~~ → **none observed on any configuration
 measured so far.** No lever from "What to do if it is slow" needs pulling. The severity claim below
 was based on the v1.93.0 numbers and is kept only as the "before" record.
@@ -206,7 +212,7 @@ a probe that has nothing to find still has to discover that.
 | 4 | Shizuku running + granted | `adb shell sh /sdcard/Android/data/moe.shizuku.privileged.api/start.sh`, then grant in-app | `shizuku=` is two binder IPCs (`checkSelfPermission` + `pingBinder`); should be single-digit ms |
 | 5 | Shizuku installed, not running | reboot without starting Shizuku (or kill `shizuku_server`) | dead-binder path must not block |
 | 6 | Shizuku not installed | uninstall it | `pingBinder` on a missing service |
-| 7 | Dhizuku as device owner | Dhizuku set up + Thor authorised | `dhizuku=` is blocking binder IPC via `DhizukuAPI` |
+| 7 | Dhizuku as device owner | **needs a device with ZERO accounts** — `dpm set-device-owner` throws `IllegalStateException` otherwise, and a `google_apis_playstore` image refuses `adb root` so you cannot clear them headlessly. Make a fresh AVD from a **non-Play `google_apis` image**, skip sign-in, then `dpm set-device-owner com.rosan.dhizuku/.server.DhizukuDAReceiver` and authorise Thor in-app | `dhizuku=` is blocking binder IPC via `DhizukuAPI` → **measured 2026-07-31: 3 ms median, 21 ms worst, ~5% of the probe** |
 | 8 | None of the three | non-rooted, no Shizuku, no Dhizuku | the floor. Should be the **fastest** configuration |
 
 Configuration 1 vs 3 vs 8 is the whole question. **If #8 is not clearly the fastest, that is a bad
@@ -334,6 +340,100 @@ then `adb logcat`) while it is happening so the parked stack is on the record; t
 cannot show it.
 
 ## Measurements taken so far
+
+### 2026-07-31 (last) — configuration 7, Dhizuku device owner: the matrix is complete
+
+The last configuration. `active=DHIZUKU` is the only privilege state that had never been produced on
+a measured device, and it is the only one where the `dhizuku=` tier does real work instead of
+short-circuiting — on every other configuration it reports 0 ms because something upstream already
+won or because Dhizuku is absent.
+
+**Setup, and the part that blocks you (this is §4 row 7's missing recipe).** A device owner cannot be
+set while *any* account exists on the device — the framework rejects it outright:
+
+```
+java.lang.IllegalStateException: Not allowed to set the device owner because
+there are already some accounts on the device.
+  at DevicePolicyManagerService.enforceCanSetDeviceOwnerLocked(...)
+```
+
+The existing Fold AVD had two accounts (one Google, one Instagram) and runs a
+`google_apis_playstore` image, where **`adb root` is refused** (`adbd cannot run as root in
+production builds`) — so the accounts cannot even be cleared headlessly. The fix is not to delete
+anything: build a **second AVD from a non-Play `google_apis` image**, skip sign-in, and it starts
+life with zero accounts *and* a working `adb root`. `Thor_DeviceOwner_API37` — `pixel_10_pro_fold`
+profile, `system-images;android-37.0;google_apis_ps16k;arm64-v8a`, Android 17 / API 37, 4 cores,
+2 GB RAM, GPU on. Note the AVD that `avdmanager create` produces has **`hw.gpu.enabled=no`**, which
+silently puts you on software rendering and invalidates every timing — set it to `yes` before the
+first boot.
+
+Then: install Dhizuku 2.11.2, `dpm set-device-owner com.rosan.dhizuku/.server.DhizukuDAReceiver`,
+authorise Thor inside Dhizuku (a UI tap — same human-in-the-loop hazard as the Shizuku dialog above),
+and confirm with `dpm list-owners`. No `su`, no Shizuku installed, so the chain has to reach the
+third tier. 45 cold starts, all `LaunchState: COLD`, 3 warm-ups discarded per series, N = 12
+measured, exactly one `probe` line per run.
+
+| Series | first frame | `probe total` | `root=` | `shizuku=` | `dhizuku=` | `ready` | `active=` |
+|---|---:|---:|---:|---:|---:|---:|---|
+| `storeBenchmark` A | 207 ms | 39 ms | 38 ms | 0 ms | 2 ms | 63 ms | `DHIZUKU` 12/12 |
+| `storeBenchmark` B (drift control) | 205 ms | 91 ms | 90.5 ms | 0 ms | 5.5 ms | 106 ms | `DHIZUKU` 12/12 |
+| `storeRelease` (control) | 203.5 ms | — | — | — | — | — | — |
+
+**Verdict: passes on the signals that describe user-visible behaviour, on the same host caveat as the
+Fold.** `ready` p90 154 / 170 ms (Good ≤400) and the spinner window is negative in 19 of 24 pooled
+runs, median −95 ms, **worst +5 ms** (Good ≤200) — no visible spinner. `probe total` p90 is 128 ms in
+series A (Good) and 155 ms in series B, a hair over the 150 ms line, and p90 ÷ median is 3.28 in
+series A. Both of those are the emulator's bimodal `root=` mode, not configuration 7 — see below.
+
+**`dhizuku=` is cheap even when it is the tier that wins:** 3 ms median pooled, 21 ms worst, **~5% of
+`probe total`**. The blocking `DhizukuAPI` binder IPC that §4 row 7 flags as the thing to watch is
+not a cost worth a lever.
+
+**`root=` is 92% of the probe here too.** In the one configuration where Dhizuku is the answer, the
+overwhelming majority of the probe is still `su` not being found. Every configuration measured in
+this document now says the same thing: the root check dominates whether or not root exists.
+
+#### The drift control, run by design this time — and it replicated
+
+The Fold series discovered the wall-clock drift by accident. Here it was planned: measure
+configuration 7, do other work, measure the *same* configuration again last.
+
+| series | order | `root=` slow share | `root=` median (all) | `root=` median (fast only) |
+|---|---:|---:|---:|---:|
+| cfg 7 A | 1st | **33%** | 38 ms | 34.0 ms |
+| cfg 7 B | last | **50%** | 90.5 ms | 32.5 ms |
+
+Same configuration, same APK, same AVD, ~15 minutes apart: the median `probe total` moved 39 → 91 ms,
+a **2.3× swing with nothing changed**. Restricted to the fast mode the two series are 34.0 and
+32.5 ms — indistinguishable. The acceptance rule added after the Fold session holds, and it is now
+the reason this section reports a range rather than a number.
+
+#### Third independent host, same signature
+
+This AVD is a different image tag (`google_apis`, not `google_apis_playstore`) on a freshly created
+AVD, and it reproduces the Fold's numbers almost exactly:
+
+| | Fold (`google_apis_playstore`) | this AVD (`google_apis`) |
+|---|---|---|
+| `root=` fast mode | 28–39 ms | 32.5–34.0 ms |
+| `root=` slow mode | 123–168 ms | 119–169 ms |
+| slow-share drift over a session | 8% → 42% | 33% → 50% |
+| spinner window, fast mode | median −123 ms | median −117 ms |
+| spinner window, slow mode | median 0 ms, worst **+1 ms** | median −0 ms, worst **+5 ms** |
+
+Two independent emulator hosts, two system images, and the split lands in the same place both times,
+while the physical device shows none of it across 24 runs. The most economical reading remains: **the
+bimodality is a property of the emulated host, not of Thor** — but it is now replicated rather than
+observed once, and the zero-headroom slow mode is replicated with it. That is still the single open
+risk in this whole document.
+
+`storeRelease` 203.5 ms vs `storeBenchmark` 207 / 205 ms is the **fourth** independent confirmation
+of the benchmark-as-release proxy.
+
+**Not measured on this host: configuration 8.** Getting a same-host floor would mean dismantling a
+device-owner setup that was configured by hand, and the cross-host comparison is void under the drift
+rule anyway. Since `shizuku=` is 0 ms and `dhizuku=` is 3 ms here, the floor on this AVD is within a
+few ms of the `root=` figure — an inference, and labelled as one, not a measurement.
 
 ### 2026-07-31 (later still) — configuration 2, root denied: `su` exits fast, and the fallback chain works
 
@@ -860,37 +960,41 @@ numbers first.**
 ## Acceptance
 
 - The table in "What a bad result looks like" is filled in for **each** of the 8 configurations, with
-  `n`, median, p90 and max — not a single number per cell. → **7 of 8 done properly**: config 1 at
+  `n`, median, p90 and max — not a single number per cell. → ✅ **8 of 8 done properly**: config 1 at
   N=12 on both debug and release-shaped builds (physical hardware), config 2 at N=12 on a
   release-shaped build (same physical device, root denied per-app), configs 4, 5 and 8 at N=12 on a
-  release-shaped build (Pixel 10 Pro Fold / Android 17), config 6 ≡ config 8 on that device, and
+  release-shaped build (Pixel 10 Pro Fold / Android 17), config 6 ≡ config 8 on that device,
   config 3 satisfied by every Fold series (none of them has `su`) — which retires the old N=5
-  emulator baseline. **Only config 7 remains.**
+  emulator baseline — and config 7 at N=12 **twice** on a purpose-built account-free Android 17 AVD.
 - Every run in every series is confirmed cold (`LaunchState: COLD`, and one `ready` line per run).
-  → ✅ **done**: all 45 runs of the config-1 session, all 60 runs of the Fold session and all 30 runs
-  of the config-2 session reported `LaunchState: COLD` via `am start -W -n`, with exactly one `probe`
-  line per cold start.
+  → ✅ **done**: all 45 runs of the config-1 session, all 60 runs of the Fold session, all 30 of the
+  config-2 session and all 45 of the config-7 session reported `LaunchState: COLD` via
+  `am start -W -n`, with exactly one `probe` line per cold start.
 - A one-line verdict per configuration: within budget / investigate / bad, and if any is "bad", which
-  lever above it points at. → ✅ **all seven measured configurations are within budget on every signal**,
+  lever above it points at. → ✅ **all eight configurations are within budget on every signal**,
   on release-shaped builds. **No lever needs pulling.** Levers 1 (drop the `isReady` gate) and 3
   (warm the probe in `ThorApplication.onCreate`) are now priced and both come out **not worth doing**
   — the gate costs nothing when the state is ready ~107–123 ms before first frame, and warming a
   30–57 ms probe earlier buys at most that much of a 210–320 ms startup while adding a cross-cutting
-  init dependency. **One caveat carried forward, not a failure:** in ~25% of Fold runs the probe
-  consumed the *entire* pre-first-frame margin (window 0 ms, worst +1 ms). That is a pass with no
-  headroom, and it is the reason to re-check on genuinely slow hardware before closing this out.
+  init dependency. **One caveat carried forward, not a failure:** on *both* emulator hosts, 25–50% of
+  runs take a slow `root=` mode that consumes the *entire* pre-first-frame margin (window 0 ms, worst
+  +5 ms). That is a pass with no headroom, it is now replicated rather than observed once, and it is
+  the reason to re-check on genuinely slow hardware before closing this out.
 - ⚠️ **A new acceptance rule, learned the hard way:** when configurations are measured in sequence on
   one machine, **re-measure the first configuration last**. On the Fold the slow-mode share of an
   unchanged configuration went 8% → 42% over ten minutes, which is larger than every
   between-configuration difference. Without that control the run order would have been written up as
   a result. Any future series that ranks configurations must include the repeat, or must not rank.
+  → ✅ **applied by design in the config-7 session**, and it fired again: the same configuration
+  measured twice ~15 min apart moved its `probe total` median 39 → 91 ms (**2.3×, nothing changed**)
+  while the fast-mode medians stayed at 34.0 and 32.5 ms. The rule earns its place.
 - The instrumentation stays in — it is free in release and this measurement will need repeating
   after any change to the probe chain or to Odin's shell init.
 
 ### Next session, in order
 
-Items 1–5 are done as of 2026-07-31. Seven of the eight configurations are measured; what remains is
-configuration 7, one control re-run, and two open questions that device time alone will not settle.
+Items 1–5 are done as of 2026-07-31 and **the 8-configuration matrix is complete**. What remains is
+one control re-run and two open questions that more device time alone will not settle.
 
 1. ~~Instrument or delete `HomeActivity.kt:108`'s independent `isRootAvailable()` call~~ — **done**,
    §7. ~~Re-run config 1 and check the shape~~ — **done**. The prediction (unimodal near the old
@@ -909,22 +1013,29 @@ configuration 7, one control re-run, and two open questions that device time alo
    back to `sh` in ~35 ms rather than waiting anywhere near Odin's 10 s guard.
 5. ~~Config 2 (root denied)~~ — **done** on the physical device, N=12, root denied per-app to both
    app ids in KernelSU Next. `su` exits fast (51.5 ms, no more than a grant) and `active=SHIZUKU` in
-   12/12 confirms the fallback chain. **Config 7 (Dhizuku device owner) is all that is left**, and it
-   needs the Dhizuku APK plus `dpm set-device-owner` on an account-free device; the Fold AVD
-   qualifies, so this is an artifact problem, not a device problem.
+   12/12 confirms the fallback chain. ~~Config 7 (Dhizuku device owner)~~ — **done**, N=12 twice on a
+   purpose-built account-free Android 17 AVD. `active=DHIZUKU` in 24/24 and `dhizuku=` costs 3 ms
+   median even as the winning tier. The Fold AVD did **not** qualify after all: it has accounts and
+   runs a Play-Store image that refuses `adb root`, so a second AVD from a non-Play image was the
+   cheaper route than deleting anyone's Google account. **The matrix is complete.**
    - ⚠️ **One control still owed:** config 1 and config 2 were measured hours apart on the same
      device, so by the acceptance rule above they cannot be ranked against each other until config 1
      is re-run last. Re-granting root and repeating the config-1 series is ~10 minutes and would close
-     the only comparison this session left unsupported.
-6. **Re-check the zero-headroom case on genuinely slow hardware.** Every device measured so far
-   reaches first frame in 210–320 ms and the probe hides behind it. In the slow-probe mode the margin
-   is *exactly* consumed (window 0 ms, worst +1 ms). A low-end phone is the configuration where that
-   flips positive, and it is the only remaining way this turns out to be a real defect.
+     the only comparison this session left unsupported. Everything else in the matrix either has its
+     control (config 7) or is explicitly refused a ranking (configs 4/5/8).
+6. **Re-check the zero-headroom case on genuinely slow hardware — now the top of this list.** Every
+   device measured reaches first frame in 165–320 ms and the probe hides behind it. In the slow-probe
+   mode the margin is *exactly* consumed (window 0 ms, worst +5 ms), and that is **replicated on two
+   independent emulator hosts and two system images** while never appearing on physical hardware
+   across 24 runs. A low-end phone is where it flips positive, and with the matrix complete it is the
+   **only remaining way #22 turns out to be a real defect**.
 7. Explain the ~600 ms drop, or stop claiming it is explained. Two variables changed at once
    (duplicate probe removed *and* v1.93.0 → v1.93.1); a bisect on v1.93.0-with-the-fix is the only
    way to attribute it. Not urgent — the number is good either way — but the doc should not carry an
    unearned causal story. The Fold session narrows it: the same bimodal signature appears with **no
-   `su` at all**, so whatever it is, it is not root-grant handling.
+   `su` at all**, so whatever it is, it is not root-grant handling. The config-7 AVD narrows it
+   further — a different image tag on a freshly created AVD lands in the same two modes, so it tracks
+   the emulated host rather than any guest-side state.
 8. Optional, cheap: decide whether the fallback `sh` shell should be built lazily. It costs ~35 ms
    and one resident process on every non-rooted launch, and only `RootSystemGateway` can ever use it.
    **Not a `su`-existence pre-check** — KernelSU hides `su`, so that would break real rooted devices.
