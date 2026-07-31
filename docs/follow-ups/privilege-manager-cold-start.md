@@ -1,16 +1,15 @@
 # Follow-up: measure `PrivilegeManager`'s cold-start cost
 
-**Status:** Instrumentation landed. **Measurement started 2026-07-30 — 2 of 8 configurations done,
-see [Measurements taken so far](#measurements-taken-so-far).** Root-granted is **bad** on three
-signals and was bimodal in exactly the shape confound 7 predicted. **Two changes have since landed
-on the strength of that**: the duplicate root probe in `HomeActivity` is gone (§7), and a
-release-shaped `benchmark` build type now carries the trace, so the release spinner window can be
-measured instead of projected. **Both invalidate the config-1 numbers for run-for-run comparison —
-config 1 needs re-running before anything else.** The remaining six configurations still need a real
+**Status:** **Configuration 1 is measured and PASSES on every signal, on a release-shaped build, as of
+2026-07-31** — see [2026-07-31](#2026-07-31--config-1-re-measured-on-v1931-the-defect-is-gone). The
+root probe is 57 ms (median, release-shaped), the bimodality is gone, and **the spinner window is
+zero: privilege state is published ~107 ms *before* the first frame is drawn, in 12 of 12 cold
+starts.** The projected "~579 ms of visible spinner on ~60% of rooted cold starts" was measured
+directly and **does not exist**. Configurations 2 and 4–8 are still unmeasured and still need a real
 device, which CI cannot provide.
-**Severity:** Suspected moderate **on rooted devices** — which inverts the guess this doc was filed
-with. The root probe costs 627–789 ms in 6 of 10 cold starts and ~99% of `probe total`; the
-no-`su` path measured ~10× cheaper.
+**Severity:** ~~Suspected moderate on rooted devices~~ → **none observed on config 1.** No lever from
+"What to do if it is slow" needs pulling for this configuration. The severity claim below was based
+on the v1.93.0 numbers and is kept only as the "before" record.
 **Effort:** ~30 min per configuration to run; the analysis is a one-liner.
 **Raised by:** follow-up #22, approved "but it needs proper checks".
 **Related:** [`perfetto-trace-pass.md`](perfetto-trace-pass.md) is the umbrella device session that
@@ -254,13 +253,33 @@ It now reads `privilegeManager.state.first { it.isReady }` instead, so there is 
 probe per cold start and it is the traced one. (The auto-freeze path also probes all three, but only
 from its screen-off receiver, so it was never on the start path.)
 
-⚠️ **Expect this to make the numbers look *worse*, and do not treat that as a regression.** The
-duplicate was not adding work — it was *stealing* it. In the runs where `onResume` won the race,
-`PrivilegeManager` found the shell already built and reported 62-85 ms while the user still waited
-the full ~700 ms, paid off-trace by the untraced caller. With one caller left, every cold start
-should report the true cost and the distribution should collapse to **unimodal, near the old slow
-mode**. That is the measurement becoming honest, not the app becoming slower. If the fast mode
-survives the change, the race was not the cause and this section is wrong — say so and re-open it.
+⚠️ ~~**Expect this to make the numbers look *worse*, and do not treat that as a regression.** The
+duplicate was not adding work — it was *stealing* it. With one caller left, the distribution should
+collapse to **unimodal, near the old slow mode**.~~
+
+**REFUTED by measurement, 2026-07-31.** That prediction was wrong, and this section said to say so:
+*"If the fast mode survives the change, the race was not the cause and this section is wrong."* The
+fast mode did not merely survive — **it became universal.** 12 of 12 cold starts report
+`root=` 60–79 ms on debug and 51–73 ms on release-shaped, with nothing above 79 ms in 24 measured
+runs. The slow mode (627–789 ms) did not appear once.
+
+So the duplicate probe was not *stealing* work that someone else silently paid — it was **causing**
+work that now nobody pays. `probes=1` per cold start is confirmed in the trace, so there is exactly
+one caller, and that one caller is fast.
+
+**The mechanism is not established, and this section should not guess at a replacement.** A second
+caller merely losing a race on `@Synchronized MainShell.get()` would wait for the winner's ~70 ms of
+init, not ~700 ms, so simple monitor contention does not explain the old slow mode either. What the
+data supports is only the outcome: with two callers the root probe was bimodal with a 627–789 ms
+mode; with one it is uniformly ~57–70 ms. Anyone re-opening this should treat the mechanism as an
+open question, not as settled by the fix working.
+
+⚠️ **Two variables changed between the two measurements, not one.** The v1.93.0 numbers were taken
+before this change *and* on the previous release; the v1.93.1 numbers after both. Non-probe startup
+also improved over the same span (debug first frame 1152 → 881 ms), which no change to the probe
+chain can explain. So the ~600 ms improvement in `root=` is **correlated with** removing the
+duplicate probe, not proven to be caused by it in isolation. Re-running v1.93.0 with the trace would
+settle it; nothing currently depends on the answer.
 
 ## What a bad result looks like
 
@@ -293,6 +312,82 @@ then `adb logcat`) while it is happening so the parked stack is on the record; t
 cannot show it.
 
 ## Measurements taken so far
+
+### 2026-07-31 — config 1 re-measured on v1.93.1: the defect is gone
+
+Device `1da5425f` (`25053PC47G`, Android 16) — the same device as every run below. Root granted in
+KernelSU Next, Shizuku installed/running/granted, Dhizuku absent. `versionCode` 1931, built from
+`dev` @ `ec49853e`. **Three builds, three series, N = 12 each after 3 discarded warm-ups, every
+launch via `am start -W -n`, and `LaunchState: COLD` confirmed on all 45 runs.** This series meets
+§1, §2 and §3 in full, which no earlier series did.
+
+| Build | first frame (`TotalTime`) | `probe total` | `root=` | `ready sinceProcessStart` |
+|---|---:|---:|---:|---:|
+| `fossDebug` | 881 ms | 72 ms | 70 ms | 536 ms |
+| `storeRelease` | **318 ms** | — *(trace compiled out)* | — | — |
+| `storeBenchmark` (release-shaped + traced) | **316 ms** | **58 ms** | **57 ms** | **96 ms** |
+
+Medians. Full percentiles for the release-shaped build, which is the one that matters:
+
+| Series | n | median | p90 | max | min | p90 ÷ median | Verdict |
+|---|---:|---:|---:|---:|---:|---:|---|
+| `probe total` | 12 | 58 ms | 67 ms | 73 ms | 52 ms | 1.16 | **good** (≤ 150) |
+| `root=` | 12 | 57 ms | 66 ms | 73 ms | 51 ms | 1.16 | **good** (≤ 150) |
+| `shizuku=` | 12 | 1 ms | 7 ms | 8 ms | 0 ms | — | good |
+| `dhizuku=` | 12 | 0 ms | 0 ms | 5 ms | 0 ms | — | good |
+| `ready sinceProcessStart` | 12 | 96 ms | 111 ms | 118 ms | 92 ms | 1.16 | **good** (≤ 400) |
+| **spinner window** | 12 | **0 ms** | **0 ms** | — | — | — | **good** (≤ 200) |
+
+**`storeBenchmark` is a faithful proxy for `storeRelease`** — first frame 316.5 ms vs 318.0 ms
+(medians), p90 333 vs 330. That control did not exist when the benchmark build type was introduced;
+it does now, so its timings can be quoted as release timings.
+
+#### The spinner window is zero, measured rather than projected
+
+Taken by the exact method in §5.1 — both events pulled from one `-v epoch` logcat and **paired per
+run**, not compared as aggregates:
+
+```text
+ready_epoch − Displayed_epoch:  n=12  median = −107 ms  p90 = −100 ms  min = −120 ms
+```
+
+Every value is **negative**: `PrivilegeManager` publishes the privilege state ~107 ms *before* the
+first frame is drawn, in **12 of 12** cold starts. The loaders on the Apps and Freezer tabs are
+therefore already released when the first frame appears — there is no interval in which a user can
+see a spinner or disabled freeze controls.
+
+**This directly refutes [the projection below](#why-this-is-bad-news)**, which inferred ~579 ms of
+visible spinner on ~60% of rooted cold starts and called it "a user-visible defect that making the
+app faster exposes". That inference rested on the root probe still costing ~720 ms on release. It
+costs 57 ms. The projection's *arithmetic* was right and its *input* was stale — which is exactly the
+risk the section flagged about itself ("this is an inference, not a measurement").
+
+Note the shape of the win: on release-shaped builds `ready` (96 ms) is now **5.6× faster** than on
+debug (536 ms) while `root=` barely moves (57 vs 70 ms). That is the doc's own claim confirmed — the
+probe's cost is process spawn and shell handshake, which AOT cannot speed up, so nearly all of the
+`ready` improvement is the *non-probe* startup work being AOT-compiled. The probe is now a small
+fraction of a fast startup instead of the dominant term in a slow one.
+
+#### What this series still does not establish
+
+- Configurations **2 and 4–8 remain unmeasured**, including **#8, the floor the whole comparison
+  rests on**. Config 1 passing does not tell you the no-privilege path is fast — it is a *different*
+  code path, and §4's "if #8 is not clearly the fastest, that is a bad result on its own" is still an
+  open question.
+- No `drop_caches` and no `cmd package compile -m speed -f` normalization (§2's optional third
+  bullet). Consistent across all three builds in this session, so the comparisons hold, but absolute
+  figures include whatever ART state the device had.
+- Shizuku was running and granted throughout, so `shizuku=` here is the happy path only; configs 5
+  and 6 (dead binder, missing service) are the ones that could block, and neither was exercised.
+- One device, one OEM, one Android version. The root probe's cost is a `su` handshake, which is
+  root-solution-specific — KernelSU Next only. Magisk is unmeasured.
+
+### Superseded — 2026-07-30 config 1 (kept as the "before" record)
+
+⚠️ **The config-1 table immediately below is superseded by 2026-07-31 above.** It was taken on
+v1.93.0, with the duplicate `HomeActivity` root probe still present, without `LaunchState: COLD`
+confirmation and without warm-up discards. Keep it for the before/after contrast; do not cite it as
+current, and do not compare it run-for-run against anything newer.
 
 **2026-07-30 — 2 of the 8 configurations measured. This does not meet the acceptance bar below**
 (no `LaunchState: COLD` line, no warm-up discard, six configurations untouched), but the first
@@ -364,7 +459,16 @@ expectation holds in the right direction so far — the configuration with nothi
 cheaper on `probe total` than the one with root, which is the correct sign but says nothing yet
 about #8 itself.
 
-### The spinner window is not yet measured, and the debug build is hiding it
+### ~~The spinner window is not yet measured, and the debug build is hiding it~~ — MEASURED 2026-07-31
+
+> ✅ **Resolved.** This section correctly refused to call the 2026-07-30 spinner window a pass, and
+> correctly identified the method needed to settle it (§5.1, epoch timestamps, two events paired per
+> run). That method was applied on 2026-07-31 against the release-shaped `benchmark` build, which is
+> the exact build shape this section said the debug numbers could not stand in for. Result:
+> `ready_epoch − Displayed_epoch` is **negative in 12 of 12 cold starts**, median **−107 ms** — the
+> privilege state is published before the first frame is drawn, so there is no spinner window at all.
+> The concern in this section was legitimate and is now closed by measurement, not by assumption.
+> The paragraph below is the original text, kept for the record.
 
 Four unpaired `Displayed` samples on the rooted device: `+1s181ms, +1s243ms, +1s244ms, +1s413ms`.
 Against those, `ready` at 1195–1436 ms lands *at or just after* first frame in the slow mode and
@@ -376,6 +480,13 @@ window ≈ 0" here as a pass; it is an artifact of §6. Redo it with the exact e
 §5.1, with the two events paired per run.
 
 ### Release build, same device, same day — and it makes the result worse, not better
+
+> ⚠️ **Half-superseded 2026-07-31.** The *timing* half of this section still holds and was reproduced:
+> release really does reach first frame far sooner than debug (2026-07-31: 318 ms vs 881.5 ms,
+> **2.77×**; the 4.04× below was measured against a slower debug baseline on v1.93.0). The
+> *conclusion* — that release speed exposes a slow root probe as visible spinner — **is refuted.** On
+> v1.93.1 the root probe is 57 ms on the same release-shaped build, so there is nothing left for the
+> fast first frame to expose. Read the mechanism here; do not read the verdict.
 
 Run because the owner's reasonable hypothesis was "release builds are faster". They are, by a lot,
 and **that is precisely the problem.**
@@ -425,6 +536,13 @@ is that the bimodality is not in the launch path — consistent with it living i
 debug trace measures directly and this does not.
 
 #### Why this is bad news
+
+> ⚠️ **REFUTED 2026-07-31 — this whole subsection is wrong, and is kept only to show why.** It
+> projected ~579 ms of visible spinner on ~60% of rooted cold starts. Measured directly on the
+> release-shaped `benchmark` build, the spinner window is **zero in 12 of 12 cold starts**. The
+> arithmetic below is sound; its input — a ~720 ms root probe — is stale. The probe now costs 57 ms,
+> so the term this projection was built around has effectively vanished. **Do not act on any
+> conclusion in this subsection.**
 
 The privilege probe's cost is **process spawn and shell handshake** — `su` under KernelSU Next, via
 Odin — not bytecode execution. R8 and AOT do not make `fork`/`exec` faster. So the ~450–570 ms of
@@ -552,32 +670,42 @@ numbers first.**
 ## Acceptance
 
 - The table in "What a bad result looks like" is filled in for **each** of the 8 configurations, with
-  `n`, median, p90 and max — not a single number per cell. → **2 of 8 done** (config 1 at N=10,
-  config 3 at N=5).
+  `n`, median, p90 and max — not a single number per cell. → **2 of 8 done properly**: config 1 at
+  N=12 on both debug and release-shaped builds (2026-07-31), and config 3 at N=5 (below bar, still
+  needs a re-run). Configs 2, 4, 5, 6, 7, 8 untouched.
 - Every run in every series is confirmed cold (`LaunchState: COLD`, and one `ready` line per run).
-  → **half done**: the one-`ready`-line check held for all 10 config-1 runs, but the runs went
-  through `monkey`, so no `LaunchState` line exists. Re-run with `am start -W -n`.
+  → ✅ **done for config 1**: all 45 runs of the 2026-07-31 session reported `LaunchState: COLD` via
+  `am start -W -n`, and the trace showed exactly one `probe` line per cold start.
 - A one-line verdict per configuration: within budget / investigate / bad, and if any is "bad", which
-  lever above it points at. → **config 1 is bad**, and it points at **lever 5 + confound 7 first**:
-  the remaining serialization is Odin's `@Synchronized MainShell.get()`. ✅ **Confound 7 is now
-  removed** — `HomeActivity` reads `PrivilegeManager`'s result instead of probing independently, so
-  there is one caller. Lever 1 (drop the `isReady` gate) and lever 3 (warm it in
-  `ThorApplication.onCreate`) can now be priced honestly, which they could not be before.
+  lever above it points at. → ✅ **config 1: within budget on every signal** (2026-07-31, on a
+  release-shaped build). **No lever needs pulling.** Levers 1 (drop the `isReady` gate) and 3 (warm
+  the probe in `ThorApplication.onCreate`) are now priced and both come out **not worth doing for
+  this configuration** — the gate costs nothing when the state is ready 107 ms before first frame,
+  and warming a 57 ms probe earlier buys at most 57 ms of a 316 ms startup while adding a
+  cross-cutting init dependency. Reconsider only if a later configuration measures badly.
 - The instrumentation stays in — it is free in release and this measurement will need repeating
   after any change to the probe chain or to Odin's shell init.
 
 ### Next session, in order
 
-Two of the three blockers this list opened with are cleared. What remains is device time.
+Items 1–3 are done as of 2026-07-31. What remains is device time on the other seven configurations.
 
 1. ~~Instrument or delete `HomeActivity.kt:108`'s independent `isRootAvailable()` call~~ — **done**,
-   §7. **Re-run config 1 and check the shape first**: the prediction is unimodal near the old *slow*
-   mode (~700 ms), because the fast mode was the duplicate stealing the shell init, not the probe
-   being cheap. If the fast mode survives, the race was not the cause and §7 needs re-opening.
-2. Re-run with `am start -W -n` and warm-up discards so the numbers satisfy §1 and §2.
-3. ~~Build a release-shaped traced build~~ — **done**, `assembleStoreBenchmark`. Run config 1 on it
-   and read the spinner window directly (`ready sinceProcessStart` minus `TotalTime`) instead of
-   projecting it. This is the number that decides whether #22 is a real user-visible defect: the
-   projection says ~579 ms, over budget, and the projection is the weakest link in the whole doc.
-4. Run config 8 (non-rooted, no Shizuku, no Dhizuku) — the floor the whole comparison rests on.
-5. Then 2, 4, 5, 6, 7.
+   §7. ~~Re-run config 1 and check the shape~~ — **done**. The prediction (unimodal near the old
+   *slow* mode, ~700 ms) was **wrong**: the fast mode became universal at ~57 ms and the bimodality
+   vanished. Per this list's own instruction — *"If the fast mode survives, the race was not the
+   cause and §7 needs re-opening"* — §7 is re-opened and marked REFUTED. The mechanism is unexplained.
+2. ~~Re-run with `am start -W -n` and warm-up discards so the numbers satisfy §1 and §2~~ — **done**,
+   45 runs, all `LaunchState: COLD`, 3 warm-ups discarded per series, N=12 measured.
+3. ~~Build a release-shaped traced build~~ — **done**, `assembleStoreBenchmark`. ~~Read the spinner
+   window directly instead of projecting it~~ — **done**, and the projection (~579 ms, over budget)
+   was the weakest link exactly as suspected: measured directly it is **zero in 12/12 runs**
+   (`ready_epoch − Displayed_epoch` median −107 ms). **#22 is not a user-visible defect on config 1.**
+4. Run config 8 (non-rooted, no Shizuku, no Dhizuku) — the floor the whole comparison rests on. This
+   is now the top open item: config 1 passing tells you nothing about the timeout paths, where a
+   *missing* privilege source is the expensive case, not a present one.
+5. Then 2, 4, 5, 6, 7. Config 3 also needs a re-run — its N=5 emulator series is below the §3 bar.
+6. Explain the ~600 ms drop, or stop claiming it is explained. Two variables changed at once
+   (duplicate probe removed *and* v1.93.0 → v1.93.1); a bisect on v1.93.0-with-the-fix is the only
+   way to attribute it. Not urgent — the number is good either way — but the doc should not carry an
+   unearned causal story.
