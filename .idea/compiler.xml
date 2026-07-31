@@ -3,4 +3,11 @@
   <component name="CompilerConfiguration">
     <bytecodeTargetLevel target="21" />
   </component>
+  <component name="JavacSettings">
+    <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="Thor.vm-runtime" options="--patch-module jdk.unsupported=$PROJECT_DIR$/vm-runtime/src/main/java" />
+      <module name="Thor.vm-runtime.main" options="--patch-module jdk.unsupported=$PROJECT_DIR$/vm-runtime/src/main/java" />
+      <module name="Thor.vm-runtime.test" options="--patch-module jdk.unsupported=$PROJECT_DIR$/vm-runtime/src/main/java" />
+    </option>
+  </component>
 </project>
