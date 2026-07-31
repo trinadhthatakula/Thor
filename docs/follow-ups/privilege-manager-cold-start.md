@@ -1,16 +1,21 @@
 # Follow-up: measure `PrivilegeManager`'s cold-start cost
 
-**Status:** **Configurations 1, 4, 5, 6 and 8 are measured and all PASS, on release-shaped builds, as
-of 2026-07-31.** Config 1 (root granted, physical hardware) —
+**Status:** **Configurations 1, 2, 4, 5, 6 and 8 are measured and all PASS, on release-shaped builds,
+as of 2026-07-31.** Config 1 (root granted, physical hardware) —
 see [the re-measurement](#2026-07-31--config-1-re-measured-on-v1931-the-defect-is-gone): root probe
 57 ms median, bimodality gone, **spinner window zero — privilege state is published ~107 ms *before*
 the first frame, in 12 of 12 cold starts.** The projected "~579 ms of visible spinner on ~60% of
-rooted cold starts" was measured directly and **does not exist**. Configs 4, 5, 6 and 8 (Pixel 10 Pro
-Fold, Android 17) — see
+rooted cold starts" was measured directly and **does not exist**. Config 2 (root denied, same
+physical device) — see
+[the denial series](#2026-07-31-later-still--configuration-2-root-denied-su-exits-fast-and-the-fallback-chain-works):
+a denied `su` costs 51.5 ms, i.e. **no more than a granted one** — it exits fast, nowhere near Odin's
+10 s timeout — and the chain fails over to `active=SHIZUKU` in 12 of 12 runs. Configs 4, 5, 6 and 8
+(Pixel 10 Pro Fold, Android 17) — see
 [the floor series](#2026-07-31-later--configs-4-5-and-8-on-a-pixel-10-pro-fold--android-17-the-floor-and-a-drift-trap):
 the whole probe is the root check even when there is no `su` (30–39 ms), Shizuku and Dhizuku cost
 0 ms median, and the spinner window is again zero — **but in ~25% of runs it is zero with no headroom
-left.** **Configurations 2 and 7 remain unmeasured** and need hardware/artifacts CI cannot provide.
+left.** **Configuration 7 (Dhizuku device owner) is the only one left unmeasured**, and needs an
+artifact plus `dpm set-device-owner` on an account-free device.
 **Severity:** ~~Suspected moderate on rooted devices~~ → **none observed on any configuration
 measured so far.** No lever from "What to do if it is slow" needs pulling. The severity claim below
 was based on the v1.93.0 numbers and is kept only as the "before" record.
@@ -196,7 +201,7 @@ a probe that has nothing to find still has to discover that.
 | # | Configuration | How to set it up | What you are looking for |
 |---|---|---|---|
 | 1 | Root granted | Magisk/KernelSU → allow `com.valhalla.thor.debug`. **Grant it before measuring**; the superuser prompt is a human in the loop and will wreck the run | baseline; `root=` should dominate `total` |
-| 2 | Root denied | Magisk per-app policy → Deny | does `su` exit fast, or do we wait? |
+| 2 | Root denied | Magisk / KernelSU Next per-app policy → Deny. Deny **both** app ids (`com.valhalla.thor` *and* `.debug`) or the release-shaped build is still granted | does `su` exit fast, or do we wait? → **measured 2026-07-31: it exits fast, 51.5 ms, and the chain fails over to Shizuku** |
 | 3 | No `su` at all | any non-rooted device/emulator | the majority configuration. Odin still builds a fallback `sh` shell here — that is a real cost for zero benefit |
 | 4 | Shizuku running + granted | `adb shell sh /sdcard/Android/data/moe.shizuku.privileged.api/start.sh`, then grant in-app | `shizuku=` is two binder IPCs (`checkSelfPermission` + `pingBinder`); should be single-digit ms |
 | 5 | Shizuku installed, not running | reboot without starting Shizuku (or kill `shizuku_server`) | dead-binder path must not block |
@@ -210,6 +215,19 @@ the devices least able to afford it.
 
 The debug application id is a **separate app** as far as Magisk, Shizuku and Dhizuku are concerned —
 its grants are not the release app's. Set each one up explicitly rather than assuming it inherited.
+
+⚠️ **The "grant it before measuring" warning in row 1 applies to Shizuku too, and it bites harder
+because it does not look like a prompt.** The first launch of an app id that has never been granted
+`moe.shizuku.manager.permission.API_V23` raises Shizuku's approval dialog, and until someone taps it
+the probe records `shizuku=0ms/false` — a *successful, fast* check that happens to return false. On a
+configuration where root is unavailable that publishes **`active=NONE`**, which reads exactly like a
+privilege-detection bug and is not one. Observed once on 2026-07-31 and initially mis-diagnosed here
+as a binder-delivery race; it did not reproduce in 12 steady-state runs, 5 first-launch-after-install
+cycles, or 3 cross-build reinstall cycles, because by then the grant existed. **Before any series:
+launch once, clear every dialog, confirm `granted=true` in
+`dumpsys package <pkg> | sed -n '/runtime permissions:/,/^ *$/p'`, and only then start measuring.**
+Note that `dumpsys` read *after* someone taps approve looks identical to one that was never blocked —
+the grant state cannot tell you a dialog happened, so the warm-up runs are what protect you.
 
 ### 5. `am start -W` TotalTime is not time-to-`isReady`
 
@@ -316,6 +334,48 @@ then `adb logcat`) while it is happening so the parked stack is on the record; t
 cannot show it.
 
 ## Measurements taken so far
+
+### 2026-07-31 (later still) — configuration 2, root denied: `su` exits fast, and the fallback chain works
+
+The one configuration that could only be answered on rooted hardware. Owner denied root to both
+`com.valhalla.thor` and `com.valhalla.thor.debug` in KernelSU Next, leaving **everything else
+identical to configuration 1**: same device `1da5425f` (25053PC47G, Android 16), same APKs (`dev` @
+`ec49853e`, `versionCode` 1931), Shizuku 13.7.0 still running (as root) and still granted. One
+variable changed. 30 cold starts, all `LaunchState: COLD`, 3 warm-ups discarded, N = 12 per series,
+exactly one `probe` line per run.
+
+| Series | first frame | `probe total` | `root=` | `shizuku=` | `dhizuku=` | `ready` | `active=` |
+|---|---:|---:|---:|---:|---:|---:|---|
+| `storeBenchmark` | 304 ms | 51.5 ms | 51.5 ms | 1 ms | 0 ms | 91.5 ms | `SHIZUKU` 12/12 |
+| `storeRelease` (control) | 303.5 ms | — | — | — | — | — | — |
+
+**Verdict: within budget on every signal.** `probe total` p90 70 ms (Good ≤150), `ready` p90 108 ms
+(Good ≤400), p90 ÷ median 1.34 on `root=` — unimodal, range 46–70 ms, no slow mode anywhere in 15
+runs. **Spinner window negative in 12 of 12, median −103 ms.** `storeBenchmark` 304 ms vs
+`storeRelease` 303.5 ms is the third independent confirmation of the benchmark-as-release proxy, this
+time to within 0.5 ms.
+
+**The question §4 asks for this row — "does `su` exit fast, or do we wait?" — is answered: it exits
+fast.** A denied `su` costs 51.5 ms median. Nothing approaches Odin's 10 s `SHELL_INIT_TIMEOUT_MS`,
+and the hang class is not reached on the denied path.
+
+**The fallback chain does what it claims.** `active=SHIZUKU` in 12 of 12 runs: root denied, Shizuku
+selected, and the failover costs 1 ms. This is the first direct evidence in this document that
+Root → Shizuku → Dhizuku actually fails over under a real denial rather than an absence.
+
+**Denial still leaves the resident `sh`.** Same as the no-`su` case on the Fold: with `su` present
+but denied, libsu falls back and the shell survives as a child of the Thor process
+(`u0_a647 6393 29694 sh`). The cost of the root probe is paid, and the shell it produces cannot be
+used, on both the denied and the absent path.
+
+⚠️ **Not a controlled comparison against configuration 1.** Config 1 was measured earlier the same
+day on this device; config 2 is a later series. By this document's own new acceptance rule, ranking
+two configurations measured at different times on one machine requires re-measuring the first one
+last, which needs the owner to re-grant root. Taken at face value the numbers are
+`root=` 51.5 ms denied vs 57 ms granted and `ready` 91.5 ms vs 96 ms — i.e. **denial is not more
+expensive than a grant**, which is the useful direction, but the gap is small enough that only the
+control would settle it. Both series are tight and unimodal, unlike the Fold, so the drift risk here
+is lower — that is a reason to believe it, not a substitute for the control.
 
 ### 2026-07-31 (later) — configs 4, 5 and 8 on a Pixel 10 Pro Fold / Android 17: the floor, and a drift trap
 
@@ -800,16 +860,18 @@ numbers first.**
 ## Acceptance
 
 - The table in "What a bad result looks like" is filled in for **each** of the 8 configurations, with
-  `n`, median, p90 and max — not a single number per cell. → **6 of 8 done properly**: config 1 at
-  N=12 on both debug and release-shaped builds (physical hardware), configs 4, 5 and 8 at N=12 on a
+  `n`, median, p90 and max — not a single number per cell. → **7 of 8 done properly**: config 1 at
+  N=12 on both debug and release-shaped builds (physical hardware), config 2 at N=12 on a
+  release-shaped build (same physical device, root denied per-app), configs 4, 5 and 8 at N=12 on a
   release-shaped build (Pixel 10 Pro Fold / Android 17), config 6 ≡ config 8 on that device, and
   config 3 satisfied by every Fold series (none of them has `su`) — which retires the old N=5
-  emulator baseline. **Config 2 and config 7 remain.**
+  emulator baseline. **Only config 7 remains.**
 - Every run in every series is confirmed cold (`LaunchState: COLD`, and one `ready` line per run).
-  → ✅ **done**: all 45 runs of the config-1 session and all 60 runs of the Fold session reported
-  `LaunchState: COLD` via `am start -W -n`, with exactly one `probe` line per cold start.
+  → ✅ **done**: all 45 runs of the config-1 session, all 60 runs of the Fold session and all 30 runs
+  of the config-2 session reported `LaunchState: COLD` via `am start -W -n`, with exactly one `probe`
+  line per cold start.
 - A one-line verdict per configuration: within budget / investigate / bad, and if any is "bad", which
-  lever above it points at. → ✅ **all six measured configurations are within budget on every signal**,
+  lever above it points at. → ✅ **all seven measured configurations are within budget on every signal**,
   on release-shaped builds. **No lever needs pulling.** Levers 1 (drop the `isReady` gate) and 3
   (warm the probe in `ThorApplication.onCreate`) are now priced and both come out **not worth doing**
   — the gate costs nothing when the state is ready ~107–123 ms before first frame, and warming a
@@ -827,7 +889,8 @@ numbers first.**
 
 ### Next session, in order
 
-Items 1–3 are done as of 2026-07-31. What remains is device time on the other seven configurations.
+Items 1–5 are done as of 2026-07-31. Seven of the eight configurations are measured; what remains is
+configuration 7, one control re-run, and two open questions that device time alone will not settle.
 
 1. ~~Instrument or delete `HomeActivity.kt:108`'s independent `isRootAvailable()` call~~ — **done**,
    §7. ~~Re-run config 1 and check the shape~~ — **done**. The prediction (unimodal near the old
@@ -844,10 +907,15 @@ Items 1–3 are done as of 2026-07-31. What remains is device time on the other 
    Fold / Android 17, together with 4, 5 and 6, and it retires config 3's below-bar N=5 series. The
    floor passes; the *timeout* worry did not materialise, because with no `su` present libsu falls
    back to `sh` in ~35 ms rather than waiting anywhere near Odin's 10 s guard.
-5. **Config 2 (root denied) and config 7 (Dhizuku device owner) are what is left.** Config 2 needs a
-   rooted device with a per-app deny policy — not reachable on KernelSU Next, which has no request
-   mode. Config 7 needs the Dhizuku APK plus `dpm set-device-owner` on an account-free device; the
-   Fold AVD qualifies, so this is an artifact problem, not a device problem.
+5. ~~Config 2 (root denied)~~ — **done** on the physical device, N=12, root denied per-app to both
+   app ids in KernelSU Next. `su` exits fast (51.5 ms, no more than a grant) and `active=SHIZUKU` in
+   12/12 confirms the fallback chain. **Config 7 (Dhizuku device owner) is all that is left**, and it
+   needs the Dhizuku APK plus `dpm set-device-owner` on an account-free device; the Fold AVD
+   qualifies, so this is an artifact problem, not a device problem.
+   - ⚠️ **One control still owed:** config 1 and config 2 were measured hours apart on the same
+     device, so by the acceptance rule above they cannot be ranked against each other until config 1
+     is re-run last. Re-granting root and repeating the config-1 series is ~10 minutes and would close
+     the only comparison this session left unsupported.
 6. **Re-check the zero-headroom case on genuinely slow hardware.** Every device measured so far
    reaches first frame in 210–320 ms and the probe hides behind it. In the slow-probe mode the margin
    is *exactly* consumed (window 0 ms, worst +1 ms). A low-end phone is the configuration where that
