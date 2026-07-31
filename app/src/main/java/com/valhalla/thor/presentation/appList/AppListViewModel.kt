@@ -501,8 +501,13 @@ class AppListViewModel(
     }
 
     /**
-     * Freezer watchlist membership, not freeze state — this adds/removes the app from the set the
-     * freezer screen and the bulk freeze paths operate on; it never disables anything itself.
+     * Freezer watchlist membership. Adding never freezes; **removing always restores**, so an app
+     * can never be left frozen but untracked.
+     *
+     * That asymmetry is deliberate and matches [FreezerViewModel.removeFromFreezer]: leaving a
+     * removed app frozen strands it somewhere the freezer screen no longer lists, and the user's
+     * only route back is the import-already-disabled flow. Every surface that can take an app off
+     * the watchlist has to restore it, or the answer depends on which screen you tapped.
      *
      * Reads `contains()` rather than [AppListUiState.freezerPackageNames] so the decision is made
      * against the database at the moment of the tap, not against a state snapshot the observer may
@@ -515,11 +520,44 @@ class AppListViewModel(
     fun toggleFreezerMembership(packageName: String) {
         viewModelScope.launch(ioDispatcher) {
             if (freezerRepository.contains(packageName)) {
+                // Restore before dropping the row, and before reporting success. The privileged call
+                // is the only step that can fail and the Room delete is durable, so removing first
+                // would leave a failed restore holding a frozen app with no watchlist entry to retry
+                // from — the exact stranding this method exists to prevent. Resolved against
+                // _rawState for the same reason the add path is: a search or filter that hides the
+                // app must not decide its fate. When it can't be resolved, forceUnfreeze does both
+                // halves unconditionally — an unsuspend on a non-suspended app and an enable on an
+                // enabled one are no-ops, so the fallback is safe rather than merely tolerable.
+                val app = (_rawState.value.allUserApps + _rawState.value.allSystemApps)
+                    .firstOrNull { it.packageName == packageName }
+                val restored =
+                    if (app != null) manageAppUseCase.restoreApp(packageName, app.enabled, app.isSuspended)
+                    else manageAppUseCase.forceUnfreeze(packageName)
+                restored.onFailure { e ->
+                    _events.send(
+                        AppListEvent.ShowMessage(
+                            UiText.StringResource(R.string.error_format, e.message ?: "")
+                        )
+                    )
+                    return@launch
+                }
                 freezerRepository.remove(packageName)
                 // Pinned launcher shortcuts can't be removed silently, only greyed out — leaving a
                 // live shortcut for an app no longer in the freezer would let it drive a freeze
                 // from the launcher.
                 appShortcuts.disableAppShortcut(packageName)
+                // Same optimistic local patch freezeApp does, so the row stops reading as frozen
+                // without waiting for a full rescan.
+                _rawState.update { state ->
+                    fun restore(list: List<AppInfo>) = list.map {
+                        if (it.packageName == packageName) it.copy(enabled = true, isSuspended = false)
+                        else it
+                    }
+                    state.copy(
+                        allUserApps = restore(state.allUserApps),
+                        allSystemApps = restore(state.allSystemApps)
+                    )
+                }
                 _events.send(
                     AppListEvent.ShowMessage(
                         UiText.PluralsResource(R.plurals.removed_from_freezer_success, 1)
