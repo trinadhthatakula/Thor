@@ -38,3 +38,5 @@ CLAUDE.md
 /docs/enforcement
 # Generated audit reports — large, regenerable, and never worth committing
 /docs/audit
+# Website copy drafts — the published source of truth is the site itself, not this repo
+/docs/site-content
