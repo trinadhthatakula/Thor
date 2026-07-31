@@ -43,15 +43,33 @@ fun SupportDeveloperHelper(
 
     var pendingChangeProductId by remember { mutableStateOf<String?>(null) }
 
-    // "Direct" tab — Patreon + PayPal. Always available, including in the store build.
-    // Resolve strings via stringResource (configuration-aware) in composable scope, then pass them
-    // into remember as keys so the list recomputes on locale/config change.
+    // "Direct" tab — GitHub Sponsors + Patreon + PayPal. Always available, including in the store
+    // build. Resolve strings via stringResource (configuration-aware) in composable scope, then pass
+    // them into remember as keys so the list recomputes on locale/config change.
+    val sponsorsTitle = stringResource(R.string.sponsor_github_title)
+    val sponsorsDesc = stringResource(R.string.sponsor_github_desc)
     val patreonTitle = stringResource(R.string.become_patreon_title)
     val patreonDesc = stringResource(R.string.become_patreon_desc)
     val paypalTitle = stringResource(R.string.donate_paypal_title)
     val paypalDesc = stringResource(R.string.donate_paypal_desc)
-    val directActions = remember(patreonTitle, patreonDesc, paypalTitle, paypalDesc) {
+    val directActions = remember(
+        sponsorsTitle, sponsorsDesc, patreonTitle, patreonDesc, paypalTitle, paypalDesc
+    ) {
         listOf(
+            // First deliberately: lowest fees of the three, and it sits beside the source.
+            SupportAction(
+                iconRes = R.drawable.brand_github,
+                title = sponsorsTitle,
+                description = sponsorsDesc,
+                onClick = {
+                    val intent = Intent(
+                        Intent.ACTION_VIEW,
+                        "https://github.com/sponsors/trinadhthatakula".toUri()
+                    )
+                    runCatching { context.startActivity(intent) }
+                    onDismiss()
+                }
+            ),
             SupportAction(
                 iconRes = R.drawable.brand_patreon,
                 title = patreonTitle,

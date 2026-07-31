@@ -396,6 +396,8 @@
     <string name="support_developer">Soutenir le développeur</string>
     <string name="support_developer_desc">Soutenir le développement continu de Thor</string>
     <string name="support_developer_desc_detailed">Thor est open source et complètement sans publicité. S\'il vous a été utile, merci de considérer de soutenir mon travail :</string>
+    <string name="sponsor_github_title">Sponsoriser sur GitHub</string>
+    <string name="sponsor_github_desc">Ponctuel ou mensuel, au plus près du code</string>
     <string name="become_patreon_title">Devenir Patreon</string>
     <string name="become_patreon_desc">Soutenir le développement continu avec un abonnement mensuel</string>
     <string name="donate_paypal_title">Faire un don via PayPal</string>

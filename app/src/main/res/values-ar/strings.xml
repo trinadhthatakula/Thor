@@ -430,6 +430,8 @@
     <string name="support_developer">دعم المطور</string>
     <string name="support_developer_desc">دعم التطوير المستمر لـ Thor</string>
     <string name="support_developer_desc_detailed">Thor مفتوح المصدر وخالٍ تمامًا من الإعلانات. إذا كان مفيدًا لك، يرجى التفكير في دعم عملي:</string>
+    <string name="sponsor_github_title">الرعاية عبر GitHub</string>
+    <string name="sponsor_github_desc">تبرع لمرة واحدة أو شهريًا، بجانب الشيفرة المصدرية مباشرة</string>
     <string name="become_patreon_title">كن داعمًا على Patreon</string>
     <string name="become_patreon_desc">دعم التطوير المستمر باشتراك شهري</string>
     <string name="donate_paypal_title">التبرع عبر PayPal</string>
