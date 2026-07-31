@@ -27,8 +27,9 @@ today.** Two things must change in this repo first, and one of them is not a qui
 | `foss` flavour has zero proprietary dependencies | ✅ |
 | Fastlane metadata already present | ✅ mostly |
 | **AGP is a pre-release (`9.4.0-alpha07`)** | ⛔ **blocker** |
-| **Release build aborts without a keystore** | ⛔ **blocker** |
-| `-foss` versionNameSuffix, changelogs, `.DS_Store` | ⚠️ fix while you're there |
+| ~~Release build aborts without a keystore~~ | ✅ fixed in the commit that added this doc |
+| `-foss` versionNameSuffix | ⚠️ declare it in the recipe |
+| ~~Stale changelogs directory~~ | ✅ `1931.txt` added alongside this doc |
 | Extension store downloads APKs at runtime | ⚠️ raise it proactively |
 
 ---
@@ -101,7 +102,7 @@ defeats the point.
 
 ---
 
-## 4. Blocker 2 — the release build aborts without a keystore
+## 4. Blocker 2 (now fixed) — the release build aborted without a keystore
 
 This one *is* a quick fix and it is entirely in your hands.
 
@@ -127,7 +128,7 @@ On F-Droid's buildserver there is no `jks.properties` and no `KEY_ALIAS`, so the
 the assignment still stands. **I verified this empirically rather than reading it off:** I moved
 `jks.properties` aside, unset the four env vars, and ran
 
-```
+```bash
 ./gradlew :app:validateSigningFossRelease
 ```
 
@@ -135,7 +136,7 @@ which failed with `Keystore file not set for signing config release`. `assembleF
 on that task, so the F-Droid build dies before it produces an APK. (`jks.properties` was restored
 immediately.)
 
-**The fix**, in this repo:
+**The fix**, applied in the same commit that added this document:
 
 ```kotlin
 release {
@@ -147,8 +148,11 @@ release {
 }
 ```
 
-This is worth doing regardless of F-Droid: right now a fresh `git clone` cannot build a release APK
-at all, which is a poor first experience for any contributor.
+This was worth doing regardless of F-Droid: before it, a fresh `git clone` could not build a release
+APK at all, which is a poor first experience for any contributor. Verified both directions — with
+credentials present `validateSigningFossRelease` still succeeds unchanged; with `jks.properties`
+moved aside and no CI env vars, `assembleFossRelease` now succeeds and emits
+`app-foss-release-unsigned.apk`.
 
 > Worth knowing: IzzyOnDroid rebuilds Thor from source to award its reproducibility badge, which
 > means their recipe is almost certainly already patching this line out on their side. Fixing it
@@ -158,16 +162,21 @@ at all, which is a poor first experience for any contributor.
 
 ## 5. Smaller things to fix in the same pass
 
-**The `-foss` versionNameSuffix.** `app/build.gradle.kts:170` gives the flavour
+**The `-foss` versionNameSuffix.** The `foss` flavour block in `app/build.gradle.kts` sets
 `versionNameSuffix = "-foss"`, so the APK's versionName is `1.93.1-foss`, not `1.93.1`. F-Droid
 compares the `versionName` in the recipe against the built APK and errors on a mismatch. You do not
 have to remove the suffix — just declare it (see the recipe in §7). Decide deliberately, because
 changing it later churns the metadata.
 
-**The changelog directory is stale.** `fastlane/metadata/android/en-US/changelogs/` contains exactly
-one file, `1600.txt`, while `versionCode` is `1931`. F-Droid reads
-`changelogs/<versionCode>.txt` for the "What's New" text, so every release since 1600 has shipped
-without one — in IzzyOnDroid too. Add `1931.txt` now and make it part of the release checklist.
+**The changelog directory was stale.** `fastlane/metadata/android/en-US/changelogs/` held exactly one
+file, `1600.txt`, while `versionCode` is `1931`. F-Droid reads `changelogs/<versionCode>.txt` for the
+"What's New" text, so every release since 1600 shipped without one — in IzzyOnDroid too. `1931.txt`
+was added in the same commit as this document, copied from `release-notes/v1.93.1/playstore.txt`.
+
+Still open: nothing *copies* it. The release notes are written each cycle under `release-notes/vX/`
+and the fastlane changelog has to be updated by hand, which is why it drifted five releases behind
+without anyone noticing. Worth adding to the release script rather than the checklist — a checklist
+item is what already failed here.
 
 **`hi-IN` is incomplete** — title, short and full description, but no images and no changelogs. Not
 a blocker; F-Droid falls back to `en-US`.
@@ -365,16 +374,16 @@ When it builds, commit the metadata file on a branch named for the application i
 
 ## 10. Suggested order
 
-1. Make `signingConfig` conditional so a keystore-less clone can build. *(minutes — do this one
-   regardless of F-Droid)*
-2. Add `fastlane/.../changelogs/1931.txt` and put it in the release checklist. *(minutes)*
+1. ~~Make `signingConfig` conditional so a keystore-less clone can build.~~ ✅ done here.
+2. ~~Add `fastlane/.../changelogs/1931.txt`.~~ ✅ done here — but teach the release script to copy it,
+   or it drifts again. *(minutes)*
 3. Decide about the `-foss` suffix: keep it and declare it, or drop it. *(a decision, not work)*
 4. Audit the licences of the listed store extensions. *(an afternoon)*
 5. **Wait for a stable AGP.** *(the actual gate)*
 6. Write the recipe, test it in the buildserver container, open the MR.
 7. Much later, once a release has gone through cleanly: consider reproducible builds.
 
-Steps 1–4 are worth doing whether or not you ever submit. Step 5 is what sets the date.
+Steps 3–4 are worth doing whether or not you ever submit. Step 5 is what sets the date.
 
 ---
 
