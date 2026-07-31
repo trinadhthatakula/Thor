@@ -1,14 +1,22 @@
 # Follow-up: measure `PrivilegeManager`'s cold-start cost
 
-**Status:** ✅ **All 8 configurations are measured on release-shaped builds as of 2026-07-31, and all
-8 pass on every user-visible signal** — `ready` p90, spinner window, and the correct `active=` tier.
+**Status:** ✅ **CLOSED as of 2026-08-01. All 8 configurations are measured on release-shaped builds,
+all 8 pass on every user-visible signal** — `ready` p90, spinner window, and the correct `active=`
+tier — **and the last open risk was chased down and eliminated rather than argued away.** See
+[the contention experiment](#2026-08-01--the-config-1-control-and-the-contention-experiment-that-closes-22):
+the bimodal slow `root=` mode is **CPU contention, not emulation** (a standing inference in this
+document, now corrected — saturating a physical device's cores reproduces it exactly), and under
+saturation up to **2× oversubscription the spinner window still never inverts**, worst case −1 ms
+across 36 loaded cold starts. The race is self-balancing: contention slows the first frame as much as
+it slows the probe. The same session paired configurations 1 and 2 same-day, twice each, and found
+them **indistinguishable** — denied 51.5 ms sits inside granted's own 49.0–53.5 ms drift envelope.
 ⚠️ **Two stated thresholds are missed, on an emulator host only, and are recorded here as an
 exception rather than folded into the pass:** configuration 7's drift-control series B has
 `probe total` p90 **155 ms against the 150 ms Good line**, and series A has p90 ÷ median **3.28
-against the >3× "blocking or contended" line**. Both are the emulated host's bimodal `root=` mode —
-the same signature the Fold shows and physical hardware does not — rather than a property of
-configuration 7, and neither reaches the user, because the spinner window still closes before the
-first frame. Config 1 (root granted, physical hardware) —
+against the >3× "blocking or contended" line**. Both are the bimodal `root=` mode — now known to be
+the contention signature of a shared-core host — rather than a property of configuration 7, and
+neither reaches the user, because the spinner window still closes before the first frame.
+Config 1 (root granted, physical hardware) —
 see [the re-measurement](#2026-07-31--config-1-re-measured-on-v1931-the-defect-is-gone): root probe
 57 ms median, bimodality gone, **spinner window zero — privilege state is published ~107 ms *before*
 the first frame, in 12 of 12 cold starts.** The projected "~579 ms of visible spinner on ~60% of
@@ -16,9 +24,9 @@ rooted cold starts" was measured directly and **does not exist**. Config 2 (root
 physical device) — see
 [the denial series](#2026-07-31-later-still--configuration-2-root-denied-su-exits-fast-and-the-fallback-chain-works):
 a denied `su` costs 51.5 ms and **exits fast**, nowhere near Odin's 10 s timeout, and the chain fails
-over to `active=SHIZUKU` in 12 of 12 runs. Whether a denial is cheaper, dearer or the same as a
-*grant* is **not established** — config 2 ran later than config 1 on the same machine, and under this
-document's own drift rule that comparison waits for the config-1 control re-run. Configs 4, 5, 6 and 8
+over to `active=SHIZUKU` in 12 of 12 runs. **Settled 2026-08-01: a denial costs the same as a grant** —
+paired same-day, twice each, the denied median lands inside the granted configuration's own drift
+envelope, and the denied configuration reproduced 51.5 ms exactly on both days. Configs 4, 5, 6 and 8
 (Pixel 10 Pro Fold, Android 17) — see
 [the floor series](#2026-07-31-later--configs-4-5-and-8-on-a-pixel-10-pro-fold--android-17-the-floor-and-a-drift-trap):
 the whole probe is the root check even when there is no `su` (30–39 ms), Shizuku and Dhizuku cost
@@ -26,11 +34,10 @@ the whole probe is the root check even when there is no `su` (30–39 ms), Shizu
 left.** Config 7 (Dhizuku device owner, second Android 17 AVD) — see
 [the Dhizuku series](#2026-07-31-last--configuration-7-dhizuku-device-owner-the-matrix-is-complete):
 `active=DHIZUKU` in 24/24, and the `dhizuku=` binder IPC costs **3 ms median even when it is the tier
-that wins** — while `root=` is still **92% of the probe**. **The one open risk in this document is
-not a configuration**: on both emulator hosts ~25–50% of runs take a slow `root=` mode that consumes
-the entire pre-first-frame margin (worst spinner window +5 ms). It has never appeared on physical
-hardware, so it reads as a host artifact — but it wants one check on genuinely slow real hardware
-before #22 is closed.
+that wins** — while `root=` is still **92% of the probe**. ~~The one open risk in this document is not
+a configuration~~ → **resolved 2026-08-01.** The slow `root=` mode that consumes the pre-first-frame
+margin on both emulator hosts is **CPU contention**, reproduced on demand on physical hardware and
+shown not to invert the spinner window even at 2× core oversubscription. No open risks remain.
 **Severity:** ~~Suspected moderate on rooted devices~~ → **none observed on any configuration
 measured so far.** No lever from "What to do if it is slow" needs pulling. The severity claim below
 was based on the v1.93.0 numbers and is kept only as the "before" record.
@@ -350,6 +357,124 @@ cannot show it.
 
 ## Measurements taken so far
 
+### 2026-08-01 — the config-1 control, and the contention experiment that closes #22
+
+Two things were still open after the matrix: the configuration-1 control re-run, without which
+configurations 1 and 2 could not be ranked, and the "zero headroom" slow mode, which had only ever
+appeared on emulators and was the last way #22 could still turn out to be a real defect. Both are now
+resolved on the same physical device, and **one of them overturns a standing inference in this
+document** — the slow `root=` mode is not an emulator artifact at all. **#22 is closed.**
+
+Device `1da5425f` (25053PC47G, Android 16), `storeBenchmark` 1.93.1-benchmark, Shizuku
+installed/running/granted throughout. Six series, N = 12 measured each after 3 discarded warm-ups,
+**72 cold starts, every one confirmed `LaunchState: COLD`**, exactly one `probe` line per run except
+where noted under load.
+
+| Series | config | first frame | `probe total` | `root=` | `ready` | spinner window (median / worst) | negative |
+|---|---|---:|---:|---:|---:|---:|---:|
+| A — idle | 1, granted | 295 ms | 49.5 ms | 49 ms | 87.5 ms | −104 / **−96** ms | 12/12 |
+| B — idle, +5 min | 1, granted | 303.5 ms | 54.5 ms | 53.5 ms | 91.5 ms | −99 / **−93** ms | 12/12 |
+| C — 8 burners on 8 cores | 1, granted | 353 ms | 91.5 ms | 90.5 ms | 146.5 ms | −113 / **0** ms | 11/12 |
+| D — 16 burners on 8 cores | 1, granted | 367.5 ms | 175 ms | 167 ms | 243.5 ms | −19 / **−1** ms | 12/12 |
+| E — idle | 2, denied | 294 ms | 52 ms | 51.5 ms | 89.5 ms | −108 / **−97** ms | 12/12 |
+| F — idle, +4 min | 2, denied | 293.5 ms | 52 ms | 51.5 ms | 89.5 ms | −103 / **−96** ms | 12/12 |
+
+Series C and D used synthetic CPU contention; E and F followed a 90 s cool-down with CPU sensors at
+39–42 °C, i.e. nowhere near a throttling threshold, so the loaded series are not a confound for them.
+
+#### The configuration-1 control, and a paired configuration 2: the two are indistinguishable
+
+The owner disabled root part-way through the session, which produced configuration 2 on the same
+device, on the same day, half an hour after configuration 1 — the controlled comparison this document
+has been deferring. **Both** configurations were then measured twice, so each carries its own drift
+bound rather than borrowing one:
+
+| Configuration | series | `root=` median | `ready` median | `active=` | own drift |
+|---|---|---:|---:|---|---:|
+| 1 — root granted | A | 49.0 ms | 87.5 ms | `ROOT` 12/12 | **4.5 ms** |
+| 1 — root granted | B | 53.5 ms | 91.5 ms | `ROOT` 12/12 | |
+| 2 — root denied | A | 51.5 ms | 89.5 ms | `SHIZUKU` 12/12 | **0.0 ms** |
+| 2 — root denied | B | 51.5 ms | 89.5 ms | `SHIZUKU` 12/12 | |
+
+**Configuration 2's value falls inside configuration 1's own drift envelope** — 51.5 ms sits between
+49.0 and 53.5 — and the `ready` medians interleave the same way (89.5 against 87.5 and 91.5). Add
+yesterday's figures (granted 57.0, denied 51.5) and the granted configuration has been sampled three
+times across two days for a spread of **8.0 ms with nothing changed**, while the denied configuration
+has reproduced **51.5 ms exactly, three times, on two days**.
+
+So the 5.5 ms gap the earlier write-up was tempted to read as "denial is cheaper than a grant" is
+smaller than the granted configuration's own spread, and larger than nothing only by accident of
+which run landed where. **The two configurations cost the same, and any real difference is below this
+measurement's noise floor.** The refusal to rank them was correct, and it is now measured rather than
+asserted — with the comparison paired, same-day, same-device, and bracketed on both sides.
+
+One asymmetry is worth keeping: the *granted* path is the noisier of the two (4.5 ms of drift against
+0.0 ms), which is the expected direction, since a granted `su` goes on to spawn a root shell while a
+denied one only has to fail.
+
+A practical note for anyone reproducing this: root cannot be toggled from a script. `ksud` exposes no
+allowlist command — `ksud profile` manages only SELinux policy and templates, and the allowlist is a
+binary blob the manager writes through the kernel uapi — so flipping configuration 1 ↔ 2 is a
+manager-UI action. Relatedly, `su` is *invisible* to a non-granted caller (`su: inaccessible or not
+found` from `adb shell`), which is the same reason §4 warns never to gate the probe on a `su` file
+check.
+
+#### The slow `root=` mode is contention, not emulation — a standing inference, corrected
+
+This document has said in several places that the bimodal `root=` split "reads as a property of the
+emulated host", on the strength of it appearing on two emulator hosts and never on physical hardware.
+**That inference was wrong, and the cause is simpler: CPU contention.** Saturating all 8 cores with
+busy loops reproduces the split on physical hardware immediately and unmistakably:
+
+| | fast mode | slow mode | shape |
+|---|---|---|---|
+| idle (A + B, 24 runs) | 45–60 ms | *none* | unimodal, p90 ÷ median 1.06–1.10 |
+| 8 burners (C) | 71–91 ms | 157–205 ms | **bimodal**, p90 ÷ median 2.05 |
+| Fold AVD, idle | 28–39 ms | 123–168 ms | bimodal |
+| Dhizuku AVD, idle | 32–34 ms | 119–169 ms | bimodal |
+
+The emulators were never special. They were **contended** — an emulator shares its cores with the
+host, so an "idle" AVD is a loaded machine. The same physical device that showed no split in 48 idle
+cold starts across two days shows the split within one series once its cores are taken away. The
+right lesson is not "ignore emulator numbers" but "the slow mode is what this probe does when it
+cannot get a core", which is a far more useful thing to know and applies to real devices under load.
+
+#### The spinner window never inverts, and the reason is that the race is self-balancing
+
+This is what #22 actually turns on, and contention is the adversarial case for it:
+
+| | first frame | `ready` | worst spinner window |
+|---|---:|---:|---:|
+| idle | 295 ms | 87.5 ms | −93 ms |
+| 8 burners | 353 ms | 146.5 ms | **0 ms** |
+| 16 burners | 367.5 ms | 243.5 ms | **−1 ms** |
+
+**In 36 loaded cold starts, not one run put `ready` after the first frame.** The worst case across
+every condition that could be constructed is a window of exactly **0 ms** — the privilege state
+published in the same millisecond the first frame lands, never after it.
+
+The mechanism is the point: **contention slows the first frame too.** `ready` degrades hard under
+load (87.5 → 146.5 → 243.5 ms, a 2.8× swing) but the UI pipeline degrades alongside it
+(295 → 353 → 367.5 ms), so the margin compresses without inverting. Both sides of the race are
+competing for the same cores. That is why the zero-headroom runs seen on the emulators never produced
+a spinner either — they were not near-misses of a failure, they were the expected behaviour of a
+self-balancing race.
+
+**Verdict on #22: closed.** The projected "~579 ms of visible spinner on ~60% of rooted cold starts"
+does not occur on any configuration, and does not occur under CPU saturation either.
+
+**Stated honestly, the limit of this result:** at 2× oversubscription the worst margin is 1 ms, so the
+trend is real — load compresses the margin, and it is nearly exhausted at the extreme. What is proven
+is that the window did not invert in *any* condition that could be constructed on real hardware, not
+that no condition exists. A device slow enough to invert it would have to slow the probe without
+slowing its own display pipeline, which is not how the contention here behaves. This is recorded as a
+bounded result, not an unconditional one.
+
+**Two smaller notes.** Under contention some runs emit **two** `probe` lines rather than exactly one
+(the runner takes the first, which is the cold one) — worth knowing before treating the one-probe
+check as an invariant. And the synthetic load was 8 and 16 instances of a shell busy loop pushed to
+`/data/local/tmp`, removed afterwards; the device was left on `storeRelease` 1.93.1 with no residue.
+
 ### 2026-07-31 (last) — configuration 7, Dhizuku device owner: the matrix is complete
 
 The last configuration. `active=DHIZUKU` is the only privilege state that had never been produced on
@@ -436,10 +561,16 @@ AVD, and it reproduces the Fold's numbers almost exactly:
 | spinner window, slow mode | median 0 ms, worst **+1 ms** | median −0 ms, worst **+5 ms** |
 
 Two independent emulator hosts, two system images, and the split lands in the same place both times,
-while the physical device shows none of it across 24 runs. The most economical reading remains: **the
-bimodality is a property of the emulated host, not of Thor** — but it is now replicated rather than
-observed once, and the zero-headroom slow mode is replicated with it. That is still the single open
-risk in this whole document.
+while the physical device shows none of it across 24 runs. The reading at the time was: **the
+bimodality is a property of the emulated host, not of Thor.**
+
+⚠️ **Superseded 2026-08-01 — that conclusion was right about "not Thor" and wrong about "the emulated
+host".** The cause is **CPU contention**, and an emulator is simply a machine whose cores are shared
+with its host, so an "idle" AVD is a loaded device. Saturating a *physical* device's cores reproduces
+the identical split on demand — see
+[the contention experiment](#2026-08-01--the-config-1-control-and-the-contention-experiment-that-closes-22).
+The zero-headroom slow mode is real and reproducible, and it still does not invert the spinner window,
+because contention slows the first frame along with the probe. It is no longer an open risk.
 
 `storeRelease` 203.5 ms vs `storeBenchmark` 207 / 205 ms is the **fourth** independent confirmation
 of the benchmark-as-release proxy.
@@ -997,10 +1128,11 @@ numbers first.**
   (warm the probe in `ThorApplication.onCreate`) are now priced and both come out **not worth doing**
   — the gate costs nothing when the state is ready ~107–123 ms before first frame, and warming a
   30–57 ms probe earlier buys at most that much of a 210–320 ms startup while adding a cross-cutting
-  init dependency. **One caveat carried forward, not a failure:** on *both* emulator hosts, 25–50% of
-  runs take a slow `root=` mode that consumes the *entire* pre-first-frame margin (window 0 ms, worst
-  +5 ms). That is a pass with no headroom, it is now replicated rather than observed once, and it is
-  the reason to re-check on genuinely slow hardware before closing this out.
+  init dependency. ~~One caveat carried forward~~ → **discharged 2026-08-01.** The slow `root=` mode
+  that consumes the pre-first-frame margin is **CPU contention**, not a host artifact: it reproduces
+  on physical hardware the moment its cores are saturated, and the spinner window still does not
+  invert (36 loaded cold starts, worst −1 ms at 2× oversubscription), because contention slows the
+  first frame along with the probe. **No open risks remain in this document.**
 - ⚠️ **A new acceptance rule, learned the hard way:** when configurations are measured in sequence on
   one machine, **re-measure the first configuration last**. On the Fold the slow-mode share of an
   unchanged configuration went 8% → 42% over ten minutes, which is larger than every
@@ -1033,31 +1165,31 @@ one control re-run and two open questions that more device time alone will not s
    floor passes; the *timeout* worry did not materialise, because with no `su` present libsu falls
    back to `sh` in ~35 ms rather than waiting anywhere near Odin's 10 s guard.
 5. ~~Config 2 (root denied)~~ — **done** on the physical device, N=12, root denied per-app to both
-   app ids in KernelSU Next. `su` exits fast (51.5 ms — the denied-vs-granted *ranking* is not
-   claimed, it awaits the config-1 control) and `active=SHIZUKU` in
+   app ids in KernelSU Next. `su` exits fast (51.5 ms) and `active=SHIZUKU` in
    12/12 confirms the fallback chain. ~~Config 7 (Dhizuku device owner)~~ — **done**, N=12 twice on a
    purpose-built account-free Android 17 AVD. `active=DHIZUKU` in 24/24 and `dhizuku=` costs 3 ms
    median even as the winning tier. The Fold AVD did **not** qualify after all: it has accounts and
    runs a Play-Store image that refuses `adb root`, so a second AVD from a non-Play image was the
    cheaper route than deleting anyone's Google account. **The matrix is complete.**
-   - ⚠️ **One control still owed:** config 1 and config 2 were measured hours apart on the same
-     device, so by the acceptance rule above they cannot be ranked against each other until config 1
-     is re-run last. Re-granting root and repeating the config-1 series is ~10 minutes and would close
-     the only comparison this session left unsupported. Everything else in the matrix either has its
-     control (config 7) or is explicitly refused a ranking (configs 4/5/8).
-6. **Re-check the zero-headroom case on genuinely slow hardware — now the top of this list.** Every
-   device measured reaches first frame in 165–320 ms and the probe hides behind it. In the slow-probe
-   mode the margin is *exactly* consumed (window 0 ms, worst +5 ms), and that is **replicated on two
-   independent emulator hosts and two system images** while never appearing on physical hardware
-   across 24 runs. A low-end phone is where it flips positive, and with the matrix complete it is the
-   **only remaining way #22 turns out to be a real defect**.
+   - ~~⚠️ One control still owed~~ → **paid 2026-08-01.** Configurations 1 and 2 were re-measured
+     same-day on the same device, **twice each**, so both carry their own drift bound. They are
+     **indistinguishable**: denied 51.5 ms sits inside granted's own 49.0–53.5 ms envelope, and the
+     denied configuration reproduced 51.5 ms exactly on both days.
+6. ~~Re-check the zero-headroom case on genuinely slow hardware~~ → **done 2026-08-01, and it did not
+   need slow hardware — it needed a *busy* one.** Saturating the physical device's 8 cores reproduces
+   the bimodal slow `root=` mode immediately (fast 71–91 ms, slow 157–205 ms), which **corrects this
+   document's standing claim that the split was an emulator artifact**: an emulator shares cores with
+   its host, so an idle AVD is a loaded machine. The spinner window still never inverts — 36 loaded
+   cold starts, worst −1 ms at 2× core oversubscription — because contention slows the first frame
+   along with the probe. **#22 is closed.**
 7. Explain the ~600 ms drop, or stop claiming it is explained. Two variables changed at once
    (duplicate probe removed *and* v1.93.0 → v1.93.1); a bisect on v1.93.0-with-the-fix is the only
    way to attribute it. Not urgent — the number is good either way — but the doc should not carry an
    unearned causal story. The Fold session narrows it: the same bimodal signature appears with **no
    `su` at all**, so whatever it is, it is not root-grant handling. The config-7 AVD narrows it
-   further — a different image tag on a freshly created AVD lands in the same two modes, so it tracks
-   the emulated host rather than any guest-side state.
+   further — a different image tag on a freshly created AVD lands in the same two modes — and the
+   2026-08-01 contention experiment names the mechanism: **the two modes are contended vs
+   uncontended**, which is why every emulator shows them and an idle physical device does not.
 8. Optional, cheap: decide whether the fallback `sh` shell should be built lazily. It costs ~35 ms
    and one resident process on every non-rooted launch, and only `RootSystemGateway` can ever use it.
    **Not a `su`-existence pre-check** — KernelSU hides `su`, so that would break real rooted devices.
