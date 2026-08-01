@@ -411,8 +411,8 @@ class RootSystemGateway(
             Logger.w(
                 "RootSystemGateway",
                 "freeze $packageName: rung 1 `pm disable` had no effect; fell back to rung 2 " +
-                    "`pm uninstall -k --user $currentUser` — the app's data directories and its " +
-                    "runtime permission grants both survive the round trip"
+                    "`pm uninstall -k --user $currentUser` — data directories survive; the package " +
+                    "stops resolving without MATCH_UNINSTALLED_PACKAGES"
             )
             return Result.success(Unit)
         }

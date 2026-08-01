@@ -161,8 +161,8 @@ class ShizukuSystemGateway(
         return if (isFrozen(packageName)) {
             Logger.w(
                 "ShizukuSystemGateway",
-                "freeze($packageName): frozen by uninstall-for-user with -k — data directories and " +
-                    "runtime permission grants both survive the round trip (measured on API 36)"
+                "freeze($packageName): frozen by uninstall-for-user with -k — data directories " +
+                    "survive; the package stops resolving without MATCH_UNINSTALLED_PACKAGES"
             )
             Result.success(Unit)
         } else {
