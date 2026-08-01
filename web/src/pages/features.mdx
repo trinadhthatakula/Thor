@@ -216,8 +216,10 @@ place as well — the package stays installed and its data stays on disk. Some O
 let anything but root disable their own preinstalled packages; where Thor meets that refusal under
 Shizuku, it falls back to removing the app for your Android user with `pm uninstall -k --user`. The
 `-k` is the whole point: it is `DELETE_KEEP_DATA`, and the app's data directories keep their inodes
-across the round trip, along with its runtime permission grants. That fallback is reached only where
-the platform actually refused. Under Root it is never reached at all.
+across the round trip. A runtime permission measured across the same round trip came back granted
+with its flags unchanged — one permission, granted from the shell rather than by tapping Allow, on
+one platform build, and app-ops were never measured, so read it for the scope it has. That fallback
+is reached only where the platform actually refused. Under Root it is never reached at all.
 
 <Callout tone="warning" title="What the fallback does change">
   <p>Removing an app for your user clears its installed flag, so while it is frozen that way the app reads as not installed for you to anything that asks Android the plain question. Its files are still there, and unfreezing reinstalls the same system APK and reattaches them, but a third-party app that enumerates packages will not see it in the meantime.</p>

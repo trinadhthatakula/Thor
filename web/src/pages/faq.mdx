@@ -129,7 +129,9 @@ Almost always.
 - **System apps, the fallback** — a few devices refuse to let a preinstalled app be switched off at
   all. There Thor removes it for your Android user while keeping its data on disk, and unfreezing
   reinstalls the same APK from the system partition and reattaches that data. Your files and
-  settings survive the round trip; the app may have to ask for its runtime permissions again.
+  settings survive the round trip. A runtime permission checked across the same round trip came
+  back granted too, but that is one measurement on one Android version, so treat it as likely
+  rather than promised.
 - **What the fallback does change** — while the app is frozen that way, Android reports it as not
   installed for you. Anything that asks "is this app present?" without also asking about uninstalled
   packages will answer no, which is why a few third-party tools show the app as gone.
