@@ -1,0 +1,45 @@
+---
+/**
+ * The only place the site prints a number about the app.
+ *
+ * `name` is typed as `keyof typeof repoFacts`, so a typo is an `astro check`
+ * error rather than a literal `{minSdk}` rendered into production. Grep for
+ * `<Fact />` to find every derived number on the site; grep for a typed version
+ * string and you should find none.
+ *
+ * Two ways that guarantee has already been lost silently, both worth knowing
+ * because neither produces an error anywhere:
+ *
+ *   1. **An unbalanced `<` anywhere in this frontmatter — including inside a
+ *      comment.** The compiler's props scanner treats it as an unterminated
+ *      type argument list, gives up, and emits `_props: Record<string, any>`
+ *      for the whole component. Every call site then accepts anything: a typo,
+ *      a number, even a missing `name`. This exact header used to contain a
+ *      bare ``<Fact`` and did precisely that. `props-detection.test.ts` now
+ *      asserts the generated signature for every component in the site, which
+ *      is the only place this failure is visible.
+ *   2. **A type-only import.** `import type { RepoFacts }` is erased before the
+ *      props type is generated, so `Props` would reference a name that no
+ *      longer resolves. `typeof repoFacts` survives erasure because the value
+ *      is needed at runtime anyway.
+ */
+import { repoFacts } from '../lib/repo-facts/index.ts'
+
+interface Props {
+  name: keyof typeof repoFacts
+}
+
+const { name } = Astro.props
+const value = repoFacts[name]
+---
+<span class="fact" data-fact={name}>{value}</span>
+
+<style>
+  /* Tabular figures keep a version number from reflowing its line when the
+     minor bumps from 9 to 10. */
+  .fact {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.95em;
+  }
+</style>

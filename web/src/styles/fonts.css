@@ -1,0 +1,125 @@
+/*
+ * Self-hosted faces for Thor's two families.
+ *
+ * Self-hosted rather than linked from Google Fonts, and that is not a preference:
+ * a <link> to fonts.googleapis.com sends every visitor's IP to Google, on a site
+ * whose privacy stance is the argument it is making. See the spec, §5.3 and §7.
+ *
+ * The sources are the exact files the APK ships, under app/src/main/res/font/,
+ * subset to Latin and converted to WOFF2. src/fonts/README.md has the pipeline and
+ * src/fonts/OFL.txt the licence that self-hosting obliges us to redistribute.
+ *
+ * WHICH FACES SHIP. Type.kt's AppTypography asks for Outfit at 400, 500, 600, 700,
+ * 800 and 900, and for Fira Code on the three label roles. The three remaining
+ * Outfit weights in res/font — Thin 100, ExtraLight 200, Light 300 — are declared in
+ * the FontFamily and referenced by no typography role, so they are not shipped.
+ *
+ * NO ITALIC, ANYWHERE. Type.kt maps every italic style back to the same file as its
+ * upright, so Thor has no real italic. There is deliberately not one @font-face with
+ * `font-style: italic` below, which means a stray <em> renders as a synthesised
+ * oblique rather than silently looking fine. `check:markup` fails the build on <em>
+ * and <i> for the same reason.
+ *
+ * PRELOADING is not done here — a @font-face is not a preload, and Astro emits these
+ * files under a content hash, so the <link> needs the hashed URL. In BaseLayout:
+ *
+ *     import outfit400 from '@/fonts/outfit-latin-400.woff2'
+ *     import outfit900 from '@/fonts/outfit-latin-900.woff2'
+ *     import firacode  from '@/fonts/firacode-latin-var.woff2'
+ *     ...
+ *     <link rel="preload" as="font" type="font/woff2" href={outfit400} crossorigin />
+ *
+ * Preload exactly those three and no more: body copy, the hero display weight, and
+ * the Fira Code nav labels are the only faces above the fold on any route. Every
+ * extra preload competes for bandwidth with the ones that are actually blocking.
+ * `crossorigin` is required even same-origin — fonts are always fetched in CORS mode,
+ * and without it the browser downloads the file twice.
+ */
+
+/* The nominal Latin subset: Google Fonts' `latin` range plus U+2190-2193, because the
+ * stock range carries only the up and down arrows and the copy uses -> and <-. */
+
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/outfit-latin-400.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2190-2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('../fonts/outfit-latin-500.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2190-2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../fonts/outfit-latin-600.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2190-2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../fonts/outfit-latin-700.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2190-2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('../fonts/outfit-latin-800.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2190-2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+  src: url('../fonts/outfit-latin-900.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2190-2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+
+/* One variable face covers the whole label range. The shipped firacode_variable.ttf
+ * has a single `wght` axis spanning 300-700 whose default is 300 — so a `font-weight`
+ * the browser cannot honour clamps to 300, not to 400. The label roles ask for 500
+ * and 400, both inside the axis.
+ *
+ * Its internal family name is "Fira Code Light", an artefact of that 300 default. The
+ * `font-family` descriptor below is what CSS matches on, so the name in the file is
+ * irrelevant — but it is why `fontace` reports the family that way. */
+@font-face {
+  font-family: 'Fira Code';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('../fonts/firacode-latin-var.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2190-2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}

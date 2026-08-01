@@ -1,0 +1,108 @@
+---
+/**
+ * The layout every MDX content page uses.
+ *
+ * It owns the page's single <h1>, taken from frontmatter, so a content page
+ * starts at `##`. That is not a style preference: it makes "exactly one h1, no
+ * heading level skipped" something a writer cannot get wrong by pasting a draft
+ * that opened with its own title.
+ *
+ * `index` in frontmatter turns on the sticky section index. It is declared
+ * rather than scraped so that a reworded heading fails the link check instead of
+ * silently moving an anchor other people have bookmarked.
+ */
+import BaseLayout from './BaseLayout.astro'
+import SectionIndex from '../components/SectionIndex.astro'
+
+interface IndexEntry {
+  id: string
+  label: string
+}
+
+interface Frontmatter {
+  title: string
+  description: string
+  /** Rendered as the page's lead paragraph, above the index. */
+  lead?: string
+  index?: IndexEntry[]
+  noindex?: boolean
+}
+
+interface Props {
+  frontmatter: Frontmatter
+}
+
+const { frontmatter } = Astro.props
+const { title, description, lead, index, noindex } = frontmatter
+const hasIndex = Array.isArray(index) && index.length > 0
+---
+<BaseLayout title={title} description={description} noindex={noindex}>
+  <article class:list={['page', hasIndex && 'page--indexed']}>
+    <header class="page-header">
+      <h1>{title}</h1>
+      {lead && <p class="lead">{lead}</p>}
+    </header>
+
+    {hasIndex && <SectionIndex entries={index!} />}
+
+    <div class="prose"><slot /></div>
+  </article>
+</BaseLayout>
+
+<style>
+  .page {
+    max-width: var(--content-max);
+    margin-inline: auto;
+    padding: var(--space-xl) var(--space-s);
+  }
+
+  .page--indexed {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 16rem;
+    grid-template-areas:
+      'header header'
+      'body   index';
+    gap: var(--space-m) var(--space-l);
+    align-items: start;
+  }
+
+  .page--indexed .page-header {
+    grid-area: header;
+  }
+
+  .page--indexed :global(.section-index) {
+    grid-area: index;
+  }
+
+  .page--indexed .prose {
+    grid-area: body;
+  }
+
+  /* Single column below the breakpoint. `maxHorizontalPartitions > 1` is the
+     app's equivalent question — "is there room for a detail pane?" — and the
+     answer here is the same: not on a phone. */
+  @media (max-width: 60rem) {
+    .page--indexed {
+      grid-template-columns: 1fr;
+      grid-template-areas:
+        'header'
+        'index'
+        'body';
+    }
+  }
+
+  h1 {
+    font-size: var(--text-headline-large);
+    line-height: var(--leading-headline-large);
+    letter-spacing: -0.02em;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  .lead {
+    max-width: var(--measure);
+    margin-block-start: var(--space-s);
+    font-size: var(--text-body-large);
+    color: var(--on-surface-variant);
+  }
+</style>

@@ -1,0 +1,279 @@
+/*
+ * Reset, prose defaults, skip link, focus ring, reduced motion. Nothing else.
+ *
+ * Component styles do not belong here — they live with the component that owns them,
+ * so deleting a component deletes its CSS. The only class in this file is
+ * `.skip-link`, which has no component of its own because it is the first focusable
+ * thing in <body> and BaseLayout renders it directly.
+ *
+ * Importing this file alone is enough: it pulls in the tokens and the @font-face
+ * rules in the right order, so a layout never has to remember three imports.
+ */
+@import './tokens.css';
+@import './fonts.css';
+
+/* ── Reset ─────────────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+}
+
+html {
+  /* iOS Safari inflates text in landscape without this. */
+  -webkit-text-size-adjust: 100%;
+  /* Honours prefers-reduced-motion on its own; no media query needed. */
+  scroll-behavior: smooth;
+  /* Anchor targets land under the sticky nav rather than behind it. */
+  scroll-padding-block-start: var(--space-2xl);
+}
+
+body {
+  min-height: 100svh;
+  background-color: var(--background);
+  color: var(--on-surface);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-medium);
+  font-weight: var(--weight-body-medium);
+  line-height: var(--leading-body-medium);
+  letter-spacing: var(--tracking-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+img,
+picture,
+svg,
+video {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+input,
+button,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+::selection {
+  background-color: var(--primary);
+  color: var(--on-primary);
+}
+
+/* ── Prose defaults ────────────────────────────────────────────────────────── */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-sans);
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: var(--text-display-small);
+  font-weight: var(--weight-display-small);
+  line-height: var(--leading-display-small);
+  letter-spacing: var(--tracking-display);
+}
+
+h2 {
+  font-size: var(--text-headline-large);
+  font-weight: var(--weight-headline-large);
+  line-height: var(--leading-headline-large);
+  letter-spacing: var(--tracking-headline);
+}
+
+h3 {
+  font-size: var(--text-headline-small);
+  font-weight: var(--weight-headline-small);
+  line-height: var(--leading-headline-small);
+  letter-spacing: var(--tracking-headline);
+}
+
+h4,
+h5,
+h6 {
+  font-size: var(--text-title-large);
+  font-weight: var(--weight-title-large);
+  line-height: var(--leading-title-large);
+}
+
+p,
+ul,
+ol,
+dl,
+blockquote,
+table,
+pre,
+figure {
+  max-inline-size: var(--measure);
+}
+
+p {
+  /* Prevents a one-word last line without needing a component. */
+  text-wrap: pretty;
+}
+
+/* Flow spacing. A margin only between siblings means a section's first child never
+ * pushes its own container open, which is the usual cause of a doubled gap. */
+:where(p, ul, ol, dl, blockquote, pre, figure, table, hr) + * {
+  margin-block-start: var(--space-s);
+}
+
+:where(h2, h3, h4, h5, h6) {
+  margin-block-start: var(--space-l);
+}
+
+ul,
+ol {
+  padding-inline-start: var(--space-m);
+}
+
+li + li {
+  margin-block-start: var(--space-3xs);
+}
+
+a {
+  color: var(--primary);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+a:hover {
+  text-decoration-thickness: 2px;
+}
+
+hr {
+  border: 0;
+  /* Decorative only. --outline-variant is 1.62:1 in light and 2.11:1 in dark: fine
+   * for a separator, nowhere near the 3:1 a control boundary needs. Use --outline
+   * for anything a user can interact with. */
+  border-block-start: 1px solid var(--outline-variant);
+}
+
+code,
+kbd,
+samp,
+pre {
+  font-family: var(--font-mono);
+  font-size: var(--text-label-large);
+}
+
+:not(pre) > code {
+  background-color: var(--surface-container);
+  border-radius: var(--radius-xs);
+  padding: 0.1em 0.35em;
+}
+
+pre {
+  /* Not --surface-container-lowest: that token is #ffffff in light but #000000 in
+   * dark, so a code block using it vanishes into an AMOLED page. */
+  background-color: var(--surface-container);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-m);
+  padding: var(--space-s);
+  overflow-x: auto;
+  max-inline-size: 100%;
+}
+
+blockquote {
+  border-inline-start: 2px solid var(--outline);
+  padding-inline-start: var(--space-s);
+  color: var(--on-surface-variant);
+}
+
+table {
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: start;
+  padding: var(--space-2xs) var(--space-s);
+  border-block-end: 1px solid var(--outline-variant);
+}
+
+th {
+  font-family: var(--font-mono);
+  font-size: var(--text-label-medium);
+  font-weight: var(--weight-label-large);
+  letter-spacing: var(--tracking-label);
+  color: var(--on-surface-variant);
+  text-transform: uppercase;
+}
+
+/* There is no italic face. Type.kt maps every italic style back to its upright, so
+ * Thor has no real italic and the site does not invent one — `check:markup` fails the
+ * build on <em>/<i>, and this rule is the belt to that braces if one ever slips in
+ * through raw HTML. */
+em,
+i {
+  font-style: normal;
+  font-weight: var(--weight-title-medium);
+}
+
+/* ── Skip link ─────────────────────────────────────────────────────────────── */
+
+.skip-link {
+  position: absolute;
+  inset-block-start: var(--space-2xs);
+  inset-inline-start: var(--space-2xs);
+  z-index: 100;
+  /* Off-screen rather than display:none — a hidden element is not focusable. */
+  transform: translateY(-200%);
+  background-color: var(--primary-container);
+  color: var(--on-primary-container);
+  font-family: var(--font-mono);
+  font-size: var(--text-label-large);
+  letter-spacing: var(--tracking-label);
+  padding: var(--space-2xs) var(--space-s);
+  border-radius: var(--radius-s);
+  text-decoration: none;
+  transition: transform var(--motion-duration) var(--motion-easing);
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+/* ── Focus ─────────────────────────────────────────────────────────────────── */
+
+/* :focus-visible only, so a mouse click does not leave a ring behind. The second,
+ * page-coloured ring gives the offset something solid to sit on when the focused
+ * element is over a card or an image. */
+:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: 0 0 0 var(--focus-ring-offset) var(--background);
+}
+
+/* ── Reduced motion ────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  /* Collapse the tokens as well as the declarations, so a component that reads
+   * --motion-duration in JS or in an inline style is covered too. */
+  :root {
+    --motion-duration-fast: 0.01ms;
+    --motion-duration: 0.01ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Build an extension</title>
+  </head>
+  <body>
+    <main>
+      <h1>Build an extension</h1>
+      <p>
+        Point <code>&lt;meta-data android:name="thor.extension.class" ... /&gt;</code> at your
+        ThorExtension implementation. That is the only manifest key ExtensionManager reads.
+      </p>
+      <!--
+        The fully-qualified action name shares the `thor.extension.` prefix and is real. The
+        rule's lookbehind is what keeps it out; without one, documenting the configure intent
+        would be a build failure.
+      -->
+      <p>
+        The configure intent action is
+        <code>com.valhalla.thor.extension.action.CONFIGURE</code>.
+      </p>
+    </main>
+  </body>
+</html>

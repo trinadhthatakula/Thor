@@ -1,0 +1,401 @@
+---
+layout: ../layouts/PageLayout.astro
+title: Frequently asked questions
+description: What Thor needs, what freezing actually does to an app, what it collects, and where the official builds come from.
+lead: Most of these come from questions that keep recurring on the issue tracker. The last section is the opposite — things the app does that surprise people before anyone thinks to ask.
+index:
+  - id: getting-started
+    label: Getting started
+  - id: freezing
+    label: Freezing and debloating
+  - id: installing
+    label: Installing apps
+  - id: privacy-licence-distribution
+    label: Privacy, licence, distribution
+  - id: worth-knowing
+    label: Worth knowing
+  - id: still-stuck
+    label: Still stuck?
+---
+
+import Callout from '../components/Callout.astro'
+import CodeBlock from '../components/CodeBlock.astro'
+import Fact from '../components/Fact.astro'
+
+<h2 id="getting-started">Getting started</h2>
+
+<h3 id="do-i-need-root">Do I need root to use Thor?</h3>
+
+No. Thor works with any one of three privilege engines:
+
+- **Root** — Magisk, KernelSU, KernelSU Next or APatch. Thor asks for `su` through the standard
+  root interface rather than looking for the binary on disk, which is why it works with the
+  managers that hide it.
+- **Shizuku** — no root, no unlocked bootloader; started over ADB or wireless debugging.
+- **Dhizuku** — Device Owner mode on a stock device.
+
+Shizuku is the usual choice for an unrooted device. Root was the only option when Thor launched;
+Shizuku support was added by request ([#46](https://github.com/trinadhthatakula/Thor/issues/46))
+and is fully supported now.
+
+<h3 id="what-works-unprivileged">What can Thor do with no privilege at all?</h3>
+
+More than you would expect. Browse every installed app, search it, sort by any of eight keys,
+filter by install source, state or declared permission, see the home dashboard and the
+install-source chart, open the app info sheet, launch apps, install APKs and split bundles through
+the system installer, and use every theme, layout and language option.
+
+What needs a privilege engine is changing an app's **state** — freezing, suspending, force-stopping,
+clearing data, uninstalling system apps.
+
+<h3 id="set-up-shizuku">How do I set up Shizuku?</h3>
+
+Install the Shizuku app, then start its server — over ADB from a computer, or with wireless
+debugging pairing on Android 11 and newer without one. Open Thor and grant permission when asked.
+Thor notices the Shizuku service appearing on its own, so you do not need to restart it.
+
+<h3 id="set-up-dhizuku">How do I set up Dhizuku?</h3>
+
+Dhizuku is the most demanding option. Your device must have **zero accounts** on it when you enrol —
+Android refuses to set a Device Owner otherwise, and signing into Google afterwards breaks it. Then
+install Dhizuku, make it Device Owner over ADB, and authorise Thor from inside Dhizuku. In practice
+that means doing it on a freshly set-up or wiped device.
+
+<h3 id="supported-android-versions">Which Android versions are supported?</h3>
+
+<Fact name="minSdkAndroidName" /> (API <Fact name="minSdk" />) and newer.
+
+<h3 id="languages">What languages does Thor speak?</h3>
+
+English, Arabic, Chinese (Simplified), French and Spanish, plus a "System default" option. You can
+set Thor's language independently of your device language. Translation contributions are welcome.
+
+<h2 id="freezing">Freezing, suspending and debloating</h2>
+
+<h3 id="freeze-vs-suspend-vs-force-stop">What's the difference between Freeze, Suspend and Force stop?</h3>
+
+| | What you see | Survives reboot? |
+|---|---|---|
+| **Force stop** | Nothing changes | No — the app comes back on its next alarm, job or notification |
+| **Freeze** | The app vanishes from the launcher | Yes |
+| **Suspend** | The icon stays but greys out; tapping shows Android's "app paused" dialog | Yes |
+
+Force stop is a momentary kill. Freeze and Suspend are persistent. Freeze is more thorough; Suspend
+leaves a visible reminder that the app exists, which many people prefer
+([#90](https://github.com/trinadhthatakula/Thor/issues/90)).
+
+<h3 id="tap-to-unfreeze">Can I tap a frozen app to unfreeze and open it?</h3>
+
+Three ways, depending on how much you want to install:
+
+- **Pin a home-screen shortcut** — built in, no extension needed. Turn on **Add Freezer to
+  launcher** in Settings first; **Add to Home screen** then appears on the info sheet of any user
+  app, on a launcher that accepts pinned shortcuts. You get a shortcut carrying that app's own icon,
+  desaturated to grey while it is frozen, and tapping it unfreezes and opens the app in one motion.
+  This is the answer for most people.
+- **Suspend mode.** Tapping the greyed original icon brings up Android's own "app paused" dialog —
+  two taps to get in, and the icon stays where it always was.
+- **One tap on the original icon**, with nothing greyed and no dialog, needs the **Stormbringer**
+  extension, which requires root and LSPosed.
+
+Automatically re-freezing when you swipe the app out of recents is not possible: Android has no
+public API for recents-removal events, and the workarounds — an accessibility service, or a polling
+foreground service — cost battery, demand alarming permissions and would jeopardise the Play
+listing ([#210](https://github.com/trinadhthatakula/Thor/issues/210)).
+
+<h3 id="can-i-brick-my-phone">Can I brick my phone by freezing the wrong system app?</h3>
+
+Thor bundles the Universal Android Debloater database and checks it before freezing any system app.
+Anything UAD rates **Unsafe** is blocked outright, with no override anywhere in the app. **Expert**
+shows a loud warning you can choose to pass. **Recommended** and **Advanced** proceed normally.
+
+The gate fails closed: if the UAD data cannot be read at all, every system app is treated as unsafe
+and blocked rather than waved through.
+
+<Callout tone="warning" title="Still your device">
+  <p>
+    No database is complete, and OEM system apps vary. Freeze one thing at a time and check your
+    device still does what you need before doing the next.
+  </p>
+</Callout>
+
+<h3 id="can-i-undo-it">Can I undo it?</h3>
+
+Almost always.
+
+- **User apps** — unfreezing always works, with no data loss.
+- **System apps, the normal case** — Thor switches them off in place. The app keeps its data,
+  nothing is removed, so there is nothing to restore.
+- **System apps, the fallback** — a few devices refuse to let a preinstalled app be switched off at
+  all. There Thor removes it for your Android user while keeping its data on disk, and unfreezing
+  reinstalls the same APK from the system partition and reattaches that data. Your files and
+  settings survive the round trip; the app may have to ask for its runtime permissions again.
+- **What the fallback does change** — while the app is frozen that way, Android reports it as not
+  installed for you. Anything that asks "is this app present?" without also asking about uninstalled
+  packages will answer no, which is why a few third-party tools show the app as gone.
+- **Where it cannot be undone** — if a system update removes an app from the system partition while
+  it is frozen, there is nothing left to reinstall from.
+- **The one case Thor refuses** — on API 37 the platform will not let a shell-level caller remove a
+  system app for a single user at all. So if you are on Shizuku, on that release, and your device
+  also refuses to switch the app off, Thor cannot freeze it and will tell you so rather than
+  half-doing it. Root is unaffected.
+
+<Callout tone="warning" title="A note on Dhizuku">
+  <p>
+    The Dhizuku engine has not been converted to this chain yet: it still removes a system app for
+    your Android user, and it does not keep the data. If you freeze preinstalled apps and care about
+    what is inside them, use Root or Shizuku until that lands.
+  </p>
+</Callout>
+
+<h3 id="cross-privilege-unsuspend">I switched from Root to Shizuku and now some apps won't unsuspend.</h3>
+
+Known limitation. Android only lets the package that suspended an app lift that suspension, and the
+three privilege engines register under different identities. The workaround is to switch back to the
+mode you used when you suspended them, and unsuspend there.
+
+Root's unsuspend is the broadest of the three: it clears through the privileged call and through a
+shell `pm unsuspend`, so it covers more of those identities than the other two do. That is not a
+guaranteed rescue for a suspension another mode recorded. Making every unsuspend path clear all
+known suspender identities is tracked as an open follow-up.
+
+<h3 id="remove-from-freezer">If I remove an app from the Freezer, does it stay frozen?</h3>
+
+No. Taking an app off the watchlist from the Freezer screen restores it first — unsuspended and
+re-enabled — so you never end up with an app that is frozen but no longer tracked. Its home-screen
+shortcut is disabled at the same time and carries a **No longer frozen** message: Android does not
+let an app quietly remove a shortcut you pinned yourself, so greying it out is as far as Thor can
+go.
+
+If you have apps that are disabled but not on the list — frozen by another tool, or by an earlier
+version of Thor — the Freezer screen offers to import already-disabled apps, so you can find them
+and restore them.
+
+<h3 id="freeze-profiles">Can I freeze a group of apps at once?</h3>
+
+Yes — **Freeze Profiles**. Create named groups, put apps in them (an app can be in several), and
+freeze or unfreeze the whole group in one tap. There is also the main watchlist, which the Quick
+Settings tile and the launcher shortcuts operate on.
+
+<h3 id="quick-settings-tile">What does the Quick Settings tile do?</h3>
+
+Freezes everything on your watchlist, in one tap from the notification shade. On Android 10 and
+newer, opening the shade shows how many apps are currently freezable; the tile subtitle that count
+sits in does not exist before that. The tile only freezes — unfreeze from the app or from a
+launcher shortcut.
+
+<h2 id="installing">Installing apps</h2>
+
+<h3 id="supported-file-types">Which file types can Thor install?</h3>
+
+`.apk`, plus every common split-bundle format: `.xapk` (APKPure), `.apkm` (APKMirror), `.apks`
+(bundletool) and `.apkp`. Thor works out which one it is holding from the archive's contents as
+well as its extension, then installs all the right pieces as a single session. No manual
+extraction.
+
+<h3 id="xapk-wont-install">My .xapk wouldn't install.</h3>
+
+Two separate causes, both fixed. Any APK containing a nested APK was being mistaken for a bundle
+([#207](https://github.com/trinadhthatakula/Thor/issues/207)), and APKPure's `.xapk` files use a zip
+layout that streaming readers cannot parse. Update to the current version.
+
+<h3 id="apks-samsung-my-files">I can't open a .apks file from Samsung My Files.</h3>
+
+Known and diagnosed, not yet fixed
+([#161](https://github.com/trinadhthatakula/Thor/issues/161)). Samsung's file URIs carry no filename
+in the path, and the filter that matches by extension needs one to match. Workaround: open the file
+from a different file manager. Sharing it to Thor is not a way round it — Thor registers no share
+target at all.
+
+<h3 id="fix-store">What is "Fix Store"?</h3>
+
+It makes Android believe an app came from the Play Store.
+
+Thor reads the app's own installed APK paths — the single APK, or every split if it is a bundle —
+straight off the device, then reinstalls those exact files with the installer record set to
+`com.android.vending`. Nothing is downloaded and nothing is replaced: it is the same app you already
+have, reinstalled from itself with a different name on the receipt.
+
+That matters because plenty of apps ask Android who installed them and behave differently when the
+answer is not Play — licence checks fail, expansion files will not download, some DRM refuses to
+start, some apps simply decline to update. Fix Store makes the system record say what those checks
+expect.
+
+It works in all three privilege modes. Thor refuses to do it to itself.
+
+<h3 id="install-without-privilege">Can Thor install without root or Shizuku?</h3>
+
+Yes, through Android's standard installer — you will see the usual confirmation dialog. The one
+thing that is not possible unprivileged is downgrading, because the OS refuses it outright. Thor
+tells you that rather than failing mysteriously.
+
+<h2 id="privacy-licence-distribution">Privacy, licence and distribution</h2>
+
+<h3 id="data-collection">Does Thor collect any data?</h3>
+
+No. No analytics, no crash reporting service, no telemetry, no ads, no trackers. Everything Thor
+does happens on your device.
+
+That is checkable rather than a promise: exactly one file in Thor's own code opens a network
+connection, `data/repository/StoreRepositoryImpl.kt`, and it belongs to the Extension Store. The
+`store` build also carries Google Play Billing, which is Google's code rather than mine and opens a
+connection to Play when the app opens — the `foss` build has no such library.
+
+<h3 id="internet-permission">Then why does Thor ask for INTERNET permission?</h3>
+
+For the Extension Store — downloading its catalog and the extension APKs, over HTTPS from GitHub. If
+you never open the Extension Manager, the `foss` build makes no network request at all. Nothing
+about you, your device or your installed apps is put into the request — though GitHub, like any web
+server, sees the IP address it arrived from.
+
+The Play (`store`) build does one more thing: it opens a Google Play Billing connection when you
+open the app, to fetch the support tiers and check whether you already hold one. That runs through
+the Play Store app rather than through Thor's own code, and none of it reaches me. The
+[privacy policy](/privacy#play-billing) has the detail.
+
+<h3 id="query-all-packages">Why does Thor need to see all my installed apps?</h3>
+
+`QUERY_ALL_PACKAGES` is what makes Thor an app manager. It cannot list, freeze or install apps
+without it. The list never leaves your device.
+
+<h3 id="licence">What licence is Thor under?</h3>
+
+GPL-3.0-or-later. The complete source is
+[on GitHub](https://github.com/trinadhthatakula/Thor). You can read it, build it, audit it, fork it.
+
+<h3 id="official-channels">Where can I get Thor officially?</h3>
+
+Three channels:
+
+- [Google Play](https://play.google.com/store/apps/details?id=com.valhalla.thor)
+- [IzzyOnDroid](https://apt.izzysoft.de/fdroid/index/apk/com.valhalla.thor)
+- [GitHub Releases](https://github.com/trinadhthatakula/Thor/releases)
+
+<h3 id="f-droid">Is Thor on F-Droid?</h3>
+
+Not yet. Thor is on **IzzyOnDroid**, which is a **separate** repository you add to an F-Droid
+client — not the main F-Droid repo. The two are easy to confuse, so to be exact: if you search
+F-Droid's default repository for Thor, you will not find it until you have added IzzyOnDroid's repo.
+
+Adding it takes one step. In your F-Droid client, add this repository, then search for Thor.
+
+<CodeBlock title="F-Droid repository URL">
+
+```text
+https://apt.izzysoft.de/fdroid/repo
+```
+
+</CodeBlock>
+
+A listing in the main F-Droid repository is planned.
+
+<h3 id="play-vs-foss">What's the difference between the Play version and the FOSS version?</h3>
+
+One functional difference: the Support Developer flow. The Play (`store`) build includes Google Play
+Billing; the `foss` build ships a stub with billing permanently unavailable. Every app-management
+feature is the same in both.
+
+They are not byte-for-byte twins otherwise — the FOSS flavour also carries a `-foss` suffix in its
+version name and a narrower set of bundled locales — but nothing you can do with one is missing from
+the other. If you are on the FOSS build, or you would simply rather not send a cut to a payment
+processor, [the direct routes are below](#support-development).
+
+<h3 id="reproducible-builds">Are the builds reproducible?</h3>
+
+For the `foss` build, IzzyOnDroid rebuilds it from this source and publishes it with their
+reproducible-build badge when the result matches the APK on the release page. Their check, not my
+claim — and that is the whole point of the flavour: you do not have to take my word that the binary
+matches the code.
+
+The `store` build is not reproducible, by design. CI uploads an app bundle to Play, and Play
+generates the install for your device from it and signs what it generates — so what Play installs is
+not a file that was built here.
+
+Baseline profiles are deliberately kept out of the build entirely. They change the emitted bytecode
+and would break that verification.
+
+<h3 id="is-this-build-official">Is this build official?</h3>
+
+Official Thor comes from the three channels above. Anywhere else — a mirror, an aggregator, a
+repackager — check the signing certificate against the APK attached to the GitHub release before
+you trust it. Thor's name and logo are trademarked even though the code is free software — anyone
+may fork the code, nobody may ship it under Thor's identity. An unofficial build using the name
+could have anything added to it.
+
+<h3 id="support-development">Can I support development?</h3>
+
+Yes, and it is appreciated. Thor is written by one person in their own time. None of these routes
+change anything about the app: there is no paid tier, no unlocked feature, and no difference in what
+you get.
+
+- [GitHub Sponsors](https://github.com/sponsors/trinadhthatakula) — the one I would point you at
+  first. Lowest fees, recurring or one-off, and it sits next to the code.
+- [Patreon](https://www.patreon.com/trinadh)
+- [Ko-fi](https://ko-fi.com/trinadh)
+- [Buy Me a Coffee](https://www.buymeacoffee.com/trinadh)
+- [PayPal](https://www.paypal.me/trinadhthatakula)
+
+Thor's own **Support Developer** screen carries three of them — GitHub Sponsors, Patreon and
+PayPal — and opens each in your browser rather than through in-app billing. Both builds show those
+three; the Play build adds a second tab with its billing tiers.
+
+<h2 id="worth-knowing">Things worth knowing before they surprise you</h2>
+
+<h3 id="permission-filter">Does the permission filter show what an app has, or what it can ask for?</h3>
+
+What it can ask for. The filter reads declared permissions, so an app appears under "Camera" even if
+you denied it. That is the useful question when you are auditing a device — what on here could ask
+for my camera? — but it is not the same question as what has access right now.
+
+<h3 id="cache-size-zero">Why does per-app cache size show 0 under Shizuku?</h3>
+
+Thor measures it by reading the app's own cache directory, which needs root. Shizuku and Dhizuku
+read zero rather than guess. Clearing the cache still works in every mode.
+
+<h3 id="reboot-under-shizuku">Why can't Thor reboot my device under Shizuku?</h3>
+
+Rebooting needs root. Shizuku and Dhizuku return an explicit error rather than pretending to
+succeed.
+
+<h3 id="biometric-lockout">Will the biometric lock ever lock me out?</h3>
+
+No. Thor refuses to arm the lock on a device that cannot satisfy it, and tells you exactly what is
+missing. If a restored backup brings the setting back to a device that could never satisfy it — API
+<Fact name="minSdk" /> with no fingerprint sensor, where no enrolment would help — Thor turns it off
+itself. Where enrolling a screen lock or a fingerprint would fix it, the lock stays armed and Thor
+sends you to enrol one instead.
+
+One thing to know on the oldest supported release: on <Fact name="minSdkAndroidName" /> the lock
+accepts **fingerprint only**, because the API <Fact name="minSdk" /> prompt has no PIN fallback. A
+device without a fingerprint sensor cannot use it there at all.
+
+<h3 id="process-manager">Is there a process manager showing what's running and using RAM?</h3>
+
+Not yet, and it is harder than it looks. Since Android 8 an app can only see its own process. A real
+process manager would have to parse `dumpsys` or `top` output, which is brittle and varies by OEM,
+and it would not work under Dhizuku at all. It is being considered as an extension
+([#55](https://github.com/trinadhthatakula/Thor/issues/55)).
+
+<h3 id="virustotal">Will Thor scan APKs with VirusTotal?</h3>
+
+It is in development as an **extension**, not as part of Thor itself
+([#209](https://github.com/trinadhthatakula/Thor/issues/209)).
+
+That is deliberate. Scanning means sending a file hash to a third party, which is exactly the kind
+of thing this app exists not to do quietly. Keeping it in an extension means it ships only if you
+choose to install it, the network access belongs to the extension rather than to Thor, and anyone
+who wants none of it is unaffected by default.
+
+<h3 id="app-data-backup">Can Thor back up app data?</h3>
+
+Not yet — it is planned. Exporting APKs and split bundles works today; backing up actual app data,
+the root-only copy of an app's private storage, is the part still being built.
+
+<h2 id="still-stuck">Still stuck?</h2>
+
+- **Bug or feature request** — [GitHub Issues](https://github.com/trinadhthatakula/Thor/issues),
+  with your Android version, device and privilege mode. Those three answer most of a bug report
+  before anyone has to ask.
+- **Extensions** — read the [extensions policy](/extensions-policy) first.
+- **Everything else** — the [Telegram channel](https://t.me/thorAppDev). Release announcements go
+  out there, and it is the fastest way to reach me about anything that is not a bug worth tracking.

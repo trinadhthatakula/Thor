@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Flavours and signing</title>
+  </head>
+  <body>
+    <main>
+      <h1>Flavours and signing</h1>
+      <!--
+        The sentence this rule was written for. It attributes the signature to the flavour, which
+        is a build-type property, and it invents a re-signing step that never happens.
+      -->
+      <p>
+        One functional difference: the <code>store</code> build is signed by Google and is not
+        reproducible; the <code>foss</code> build is signed by me and is.
+      </p>
+      <p>
+        Google re-signs everything it distributes, so the APK Play installs is not the file I
+        built.
+      </p>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Writing an extension</title>
+  </head>
+  <body>
+    <main>
+      <h1>Writing an extension</h1>
+      <p>
+        <code>AutomationExtension</code> still ships in the contract, in both the classes jar and
+        the sources jar, and the template's entry class still implements it. What changed is that
+        Thor no longer dispatches to it.
+      </p>
+      <p>
+        The old path broadcast to <code>onTrigger</code>, which coupled an extension's classloader
+        to Thor's own process. A content provider replaced it, and Thor now casts a loaded entry
+        class to <code>ThorExtension</code>.
+      </p>
+      <p>
+        So implement <code>ThorExtension</code> for anything you want Thor to load, and treat the
+        automation interface as inert rather than absent.
+      </p>
+    </main>
+  </body>
+</html>

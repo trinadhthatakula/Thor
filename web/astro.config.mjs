@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from 'astro/config'
 import mdx from '@astrojs/mdx'
+import sitemap from '@astrojs/sitemap'
 
 // The landing page for Thor. Static output, no adapter, no SSR.
 //
@@ -20,7 +21,18 @@ export default defineConfig({
   build: { format: 'directory' },
   trailingSlash: 'never',
 
-  integrations: [mdx()],
+  integrations: [
+    mdx(),
+
+    // `filter` receives the absolute URL of each emitted page, not a route, so the
+    // predicate has to match on the path fragment. /styleguide is excluded because
+    // it is a design surface, not content: it exists so an AMOLED regression is
+    // catchable by eye, and listing it would put a token dump in search results.
+    // It emits nothing in a production build anyway (getStaticPaths returns [] when
+    // import.meta.env.PROD) — this is the second line of defence, matching the
+    // Disallow rule in public/robots.txt.
+    sitemap({ filter: (page) => !page.includes('/styleguide') }),
+  ],
 
   markdown: {
     // `css-variables` keeps syntax highlighting inside our own palette. Importing a

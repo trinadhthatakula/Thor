@@ -47,7 +47,12 @@ export function parseJavaProperties(text: string): Record<string, string> {
   const logical: string[] = []
   let pending: string | null = null
   for (const raw of physical) {
-    const line = pending === null ? raw.replace(/^[ \t\f]+/, '') : raw.replace(/^[ \t\f]+/, '')
+    // Leading whitespace is stripped from *every* physical line, continuation
+    // lines included — `Properties.LineReader` sets `skipWhiteSpace = true`
+    // again after each backslash. So there is deliberately no branch on
+    // `pending` here; one would also make `line` and `pending` mutually
+    // dependent and leave `line` inferred as `any`.
+    const line = raw.replace(/^[ \t\f]+/, '')
     if (pending === null && (line === '' || line.startsWith('#') || line.startsWith('!'))) continue
 
     // An odd number of trailing backslashes continues onto the next line.

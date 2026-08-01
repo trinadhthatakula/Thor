@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Flavours and signing</title>
+  </head>
+  <body>
+    <main>
+      <h1>Flavours and signing</h1>
+      <p>
+        Signing is a build type property, not a flavour one. The release build type assigns the
+        release signing config, and neither flavour block mentions signing at all, so the two
+        release APKs I build are signed with the same key.
+      </p>
+      <p>
+        The channel is what differs. CI uploads an app bundle to Play and skips the APK upload
+        entirely, so Play generates the device APKs itself and signs those. That is why an install
+        from Play carries a certificate that is not the one on the file attached to a GitHub
+        release.
+      </p>
+      <p>
+        The reproducibility contrast does survive: the foss build is the one IzzyOnDroid rebuilds
+        and checks against what I shipped.
+      </p>
+    </main>
+  </body>
+</html>

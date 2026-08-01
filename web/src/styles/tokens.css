@@ -1,0 +1,459 @@
+/*
+ * Thor design tokens.
+ *
+ * ── Where the colours come from ────────────────────────────────────────────────
+ * Every colour below is transcribed, by hand, from the two hand-authored schemes in
+ * app/src/main/java/com/valhalla/thor/presentation/theme/Color.kt as they are wired
+ * up in Theme.kt. Each custom property is named after the Material 3 token that
+ * Theme.kt passes it to, so this file can be diffed against Color.kt line by line.
+ *
+ * Four rules, all of which have already cost someone an afternoon:
+ *
+ * 1. Never derive one scheme from the other. `AsgardianLightColorScheme` and
+ *    `AsgardianDarkColorScheme` are separately hand-authored and are not hue-matched:
+ *    the light accent is a dark olive (#354e15), the dark accent a pale lime
+ *    (#f0ffd7). Inverting or filtering one to make the other looks wrong.
+ *
+ * 2. Never take "whatever the app resolves at runtime". Both schemes omit
+ *    `onErrorContainer`, and the light scheme additionally omits `inversePrimary`,
+ *    `inverseSurface`, `inverseOnSurface` and `surfaceTint`. Those fall through to
+ *    Material 3's *purple* baselines (`inversePrimary` resolves to #d0bcff), which
+ *    would import Material You colour into a palette whose whole point is not being
+ *    Material You. Only values Color.kt literally sets appear here.
+ *
+ * 3. Never alias one token to another because they happen to be equal. In dark,
+ *    `--surface-variant` and `--surface-container-highest` are both #262626; in light,
+ *    `--surface-variant` and `--surface-container` are both #edefe8. Both are
+ *    coincidences of two independently drawn schemes, and the AMOLED block below
+ *    splits the dark one. An alias looks correct in every mode a reviewer checks and
+ *    ships a bug in the one that is off by default.
+ *
+ * 4. Color.kt writes its hexes lowercase behind an `0xff` prefix (e.g. `0xff4c662b`).
+ *    This file writes them lowercase behind `#`. Any checker that compares the two
+ *    must be case-insensitive and strip the `0xff` — see
+ *    src/lib/tokens/contrast.test.ts, which does exactly that.
+ *
+ * ── Why the scopes are shaped like this ───────────────────────────────────────
+ * `prefers-color-scheme: no-preference` was dropped from Media Queries Level 5, so
+ * "default to no preference" is literally unimplementable: a machine that has
+ * expressed no preference reports `light`. Dark-first is the stated intent (the owner
+ * named the scheme by its dark name and every screenshot is dark), so dark lives on
+ * bare `:root` and light is applied by the media query. `[data-theme='dark']` then
+ * forces dark back on for a visitor whose OS says light but who chose dark.
+ *
+ * `:root`, `[data-theme='light']` and `[data-theme='dark']` all have specificity
+ * (0,1,0), so **source order is what resolves them**. Do not reorder these blocks.
+ *
+ * ── Site-only tokens ──────────────────────────────────────────────────────────
+ * The app has no Dimens.kt: there is no spacing, radius, elevation or motion scale to
+ * inherit, and Type.kt sets only family and weight. Everything under "SITE-ONLY"
+ * below is a placeholder awaiting the owner's values, and is deliberately collected
+ * in this one file so overriding it is a one-file edit.
+ */
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * PALETTE — DARK (Asgardian Terminal). Theme.kt :: AsgardianDarkColorScheme
+ * The default: bare `:root`, no media query.
+ * ══════════════════════════════════════════════════════════════════════════════ */
+:root {
+  color-scheme: dark;
+
+  --primary: #f0ffd7;
+  --on-primary: #4c672c;
+  --primary-container: #d5f6ab;
+  --on-primary-container: #445e25;
+
+  --secondary: #c7c4dd;
+  --on-secondary: #3f3e52;
+  --secondary-container: #242436;
+  --on-secondary-container: #a4a1b9;
+
+  --tertiary: #c8bfff;
+  --on-tertiary: #3f3386;
+  --tertiary-container: #baafff;
+  --on-tertiary-container: #35287c;
+
+  /* No `--on-error-container`. Color.kt declares OnErrorContainer and Theme.kt never
+   * passes it to either scheme, so the app has no such colour. Danger callouts put
+   * body text in `--on-surface` on `--error-container` (7.43:1 dark, 13.31:1 light)
+   * and reserve `--error` for the heading and icon — see the note under DANGER. */
+  --error: #fe7453;
+  --on-error: #450900;
+  --error-container: #881f05;
+
+  --background: #0e0e0e;
+  --on-background: #e5e5e5;
+  --surface: #0e0e0e;
+  --on-surface: #e5e5e5;
+  --surface-variant: #262626;
+  --on-surface-variant: #ababab;
+
+  --outline: #757575;
+  --outline-variant: #484848;
+
+  /* Dark-only. The light scheme omits all four; see `[data-theme='light']`. */
+  --inverse-surface: #f9f9f9;
+  --inverse-on-surface: #555555;
+  --inverse-primary: #4c672c;
+  --surface-tint: #f0ffd7;
+
+  --surface-container-lowest: #000000;
+  --surface-container-low: #131313;
+  --surface-container: #191919;
+  --surface-container-high: #1f1f1f;
+  --surface-container-highest: #262626;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * PALETTE — LIGHT (Asgardian Technical Alchemist). Theme.kt :: AsgardianLightColorScheme
+ *
+ * This palette appears twice, and it has to: a media condition cannot be folded into
+ * a selector, so "the OS says light" and "the visitor chose light" are two separate
+ * rules. contrast.test.ts asserts the two copies are identical, so they cannot drift.
+ * ══════════════════════════════════════════════════════════════════════════════ */
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+
+    --primary: #354e15;
+    --on-primary: #ffffff;
+    --primary-container: #4c662b;
+    --on-primary-container: #f0ffd7;
+
+    --secondary: #55624c;
+    --on-secondary: #ffffff;
+    --secondary-container: #d9e7cb;
+    --on-secondary-container: #131f0d;
+
+    --tertiary: #66355d;
+    --on-tertiary: #ffffff;
+    --tertiary-container: #f8d8ee;
+    --on-tertiary-container: #2d112b;
+
+    --error: #ba1a1a;
+    --on-error: #ffffff;
+    --error-container: #ffdad6;
+
+    --background: #f8faf3;
+    --on-background: #191c18;
+    --surface: #f8faf3;
+    --on-surface: #191c18;
+    /* Theme.kt passes LightSurfaceContainer here, not LightSurfaceContainerHighest.
+     * That is not a typo and not the mirror of the dark scheme. */
+    --surface-variant: #edefe8;
+    --on-surface-variant: #43493e;
+
+    --outline: #74796d;
+    --outline-variant: #c3c8bc;
+
+    /* `initial` makes a custom property guaranteed-invalid, which blocks the dark
+     * values above from inheriting into a light page. The light scheme genuinely has
+     * no value for these four — do not invent one, and do not use them anywhere a
+     * light page can reach. */
+    --inverse-surface: initial;
+    --inverse-on-surface: initial;
+    --inverse-primary: initial;
+    --surface-tint: initial;
+
+    --surface-container-lowest: #ffffff;
+    --surface-container-low: #f2f4ed;
+    --surface-container: #edefe8;
+    --surface-container-high: #e7e9e2;
+    --surface-container-highest: #e1e3dd;
+  }
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+
+  --primary: #354e15;
+  --on-primary: #ffffff;
+  --primary-container: #4c662b;
+  --on-primary-container: #f0ffd7;
+
+  --secondary: #55624c;
+  --on-secondary: #ffffff;
+  --secondary-container: #d9e7cb;
+  --on-secondary-container: #131f0d;
+
+  --tertiary: #66355d;
+  --on-tertiary: #ffffff;
+  --tertiary-container: #f8d8ee;
+  --on-tertiary-container: #2d112b;
+
+  --error: #ba1a1a;
+  --on-error: #ffffff;
+  --error-container: #ffdad6;
+
+  --background: #f8faf3;
+  --on-background: #191c18;
+  --surface: #f8faf3;
+  --on-surface: #191c18;
+  --surface-variant: #edefe8;
+  --on-surface-variant: #43493e;
+
+  --outline: #74796d;
+  --outline-variant: #c3c8bc;
+
+  --inverse-surface: initial;
+  --inverse-on-surface: initial;
+  --inverse-primary: initial;
+  --surface-tint: initial;
+
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #f2f4ed;
+  --surface-container: #edefe8;
+  --surface-container-high: #e7e9e2;
+  --surface-container-highest: #e1e3dd;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * PALETTE — DARK, forced.
+ * Same specificity as the media query's `:root`, so this must stay *after* it: it is
+ * what puts dark back for a visitor whose OS reports light and who chose dark.
+ * ══════════════════════════════════════════════════════════════════════════════ */
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --primary: #f0ffd7;
+  --on-primary: #4c672c;
+  --primary-container: #d5f6ab;
+  --on-primary-container: #445e25;
+
+  --secondary: #c7c4dd;
+  --on-secondary: #3f3e52;
+  --secondary-container: #242436;
+  --on-secondary-container: #a4a1b9;
+
+  --tertiary: #c8bfff;
+  --on-tertiary: #3f3386;
+  --tertiary-container: #baafff;
+  --on-tertiary-container: #35287c;
+
+  --error: #fe7453;
+  --on-error: #450900;
+  --error-container: #881f05;
+
+  --background: #0e0e0e;
+  --on-background: #e5e5e5;
+  --surface: #0e0e0e;
+  --on-surface: #e5e5e5;
+  --surface-variant: #262626;
+  --on-surface-variant: #ababab;
+
+  --outline: #757575;
+  --outline-variant: #484848;
+
+  --inverse-surface: #f9f9f9;
+  --inverse-on-surface: #555555;
+  --inverse-primary: #4c672c;
+  --surface-tint: #f0ffd7;
+
+  --surface-container-lowest: #000000;
+  --surface-container-low: #131313;
+  --surface-container: #191919;
+  --surface-container-high: #1f1f1f;
+  --surface-container-highest: #262626;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * PALETTE — AMOLED. Theme.kt :: ThorTheme, the `amoledMode` branch.
+ *
+ * The app's override is `AsgardianDarkColorScheme.copy(background, surface,
+ * surfaceVariant = Color.Black)` — exactly three tokens, and the whole
+ * surface-container ramp is deliberately left alone. A #191919 card on a #000000 page
+ * IS the intended look; flattening the containers to black too is wrong.
+ *
+ * AMOLED is off by default. `ThorTheme` declares `amoledMode: Boolean = true`, but
+ * both call sites pass `prefs.useAmoled`, which defaults false — so #0e0e0e, not
+ * black, is the dark background users actually see. ThemeScript.astro mirrors that.
+ *
+ * If you are adding a fourth line to this block, you are changing what the app does.
+ * ══════════════════════════════════════════════════════════════════════════════ */
+[data-theme='dark'][data-amoled='true'] {
+  --background: #000000;
+  --surface: #000000;
+  --surface-variant: #000000;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * ACCESSIBILITY NOTES ON THE PALETTE ABOVE
+ * Ratios recomputed from these exact values by src/lib/tokens/contrast.test.ts,
+ * which fails if any of them moves.
+ *
+ * HAIRLINES. `--outline-variant` against the page is 1.62:1 in light and 2.11:1 in
+ * dark. That is correct for a *decorative* separator and is nowhere near the 3:1
+ * WCAG 1.4.11 floor for a control boundary. The sole visible boundary of a button,
+ * input, focus target or data-table rule must use `--outline` (4.25:1 light,
+ * 4.19:1 dark against the page; never below 3.28:1 anywhere on the surface ramp).
+ *
+ * DANGER. `--error` on `--error-container` is 3.49:1 in dark — below AA for normal
+ * text. Both values are fixed by the design spec, so this is a constraint, not a bug
+ * to fix: that pairing is restricted to large text (>=18.66px bold / >=24px) and to
+ * icons. Body copy inside a danger callout uses `--on-surface`.
+ *
+ * SURFACE-CONTAINER-LOWEST FLIPS ENDS. It is #ffffff in light and #000000 in dark, so
+ * a code block or card painted with it disappears into an AMOLED page. Use
+ * `--surface-container` for anything that has to stay visible against the background.
+ * ══════════════════════════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * SITE-ONLY — TYPOGRAPHY
+ *
+ * Families and weights are the app's. Sizes and line heights are not: Type.kt sets
+ * only `fontFamily` and `fontWeight` and copies every size from `Typography()`, the
+ * untouched Material 3 *phone* baseline. displayLarge there is 57sp, which reads
+ * small as a desktop hero, so the sizes below are a site-only scale and the owner
+ * should expect to change them. Role names mirror Type.kt so the two can be compared.
+ *
+ * Fira Code is label-role only — nav labels, badges, chips, table headers, version
+ * strings and code. That monospace-labels-only split is the most distinctive thing
+ * about Thor's typography; spreading Fira Code into body copy destroys it.
+ *
+ * There is no italic anywhere in this file, and there must not be: Type.kt maps every
+ * italic style to the same file as its upright, so Thor has no real italic and the
+ * site does not invent one. fonts.css ships no italic face.
+ * ══════════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* Families: the app's two, plus site-only fallback stacks. */
+  --font-sans: 'Outfit', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', roboto, sans-serif;
+  --font-mono: 'Fira Code', ui-monospace, 'SF Mono', 'Cascadia Mono', menlo, consolas, monospace;
+
+  /* Weights — transcribed from Type.kt's AppTypography, not site-only. */
+  --weight-display-large: 900; /* FontWeight.Black */
+  --weight-display-medium: 800; /* FontWeight.ExtraBold */
+  --weight-display-small: 700; /* FontWeight.Bold */
+  --weight-headline-large: 700;
+  --weight-headline-medium: 700;
+  --weight-headline-small: 500; /* FontWeight.Medium */
+  --weight-title-large: 600; /* FontWeight.SemiBold */
+  --weight-title-medium: 500;
+  --weight-title-small: 400;
+  --weight-body-large: 400; /* Type.kt overrides only the family for body roles */
+  --weight-body-medium: 400;
+  --weight-body-small: 400;
+  --weight-label-large: 500;
+  --weight-label-medium: 400;
+  --weight-label-small: 400;
+
+  /* Sizes — SITE-ONLY. The display and headline roles are fluid because the app's
+   * fixed phone sizes have no desktop equivalent. clamp() bounds are min / preferred
+   * / max; the min is roughly the app's own sp value. */
+  --text-display-large: clamp(2.75rem, 1.9rem + 4.2vw, 4.75rem);
+  --text-display-medium: clamp(2.25rem, 1.7rem + 2.8vw, 3.5rem);
+  --text-display-small: clamp(1.875rem, 1.5rem + 1.9vw, 2.75rem);
+  --text-headline-large: clamp(1.625rem, 1.4rem + 1.2vw, 2.25rem);
+  --text-headline-medium: clamp(1.5rem, 1.35rem + 0.75vw, 1.875rem);
+  --text-headline-small: clamp(1.3125rem, 1.24rem + 0.38vw, 1.5rem);
+  --text-title-large: 1.375rem;
+  --text-title-medium: 1.0625rem;
+  --text-title-small: 0.9375rem;
+  --text-body-large: 1.0625rem;
+  --text-body-medium: 1rem;
+  --text-body-small: 0.875rem;
+  --text-label-large: 0.875rem;
+  --text-label-medium: 0.8125rem;
+  --text-label-small: 0.75rem;
+
+  /* Line heights — SITE-ONLY, unitless so they scale with the fluid sizes. */
+  --leading-display-large: 1.02;
+  --leading-display-medium: 1.06;
+  --leading-display-small: 1.12;
+  --leading-headline-large: 1.18;
+  --leading-headline-medium: 1.22;
+  --leading-headline-small: 1.28;
+  --leading-title-large: 1.3;
+  --leading-title-medium: 1.4;
+  --leading-title-small: 1.45;
+  --leading-body-large: 1.65;
+  --leading-body-medium: 1.65;
+  --leading-body-small: 1.55;
+  --leading-label-large: 1.4;
+  --leading-label-medium: 1.35;
+  --leading-label-small: 1.35;
+
+  /* Tracking — SITE-ONLY. Outfit is geometric and tightens well at display sizes;
+   * Fira Code labels get positive tracking so all-caps chips stay legible. */
+  --tracking-display: -0.02em;
+  --tracking-headline: -0.01em;
+  --tracking-body: 0;
+  --tracking-label: 0.04em;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * SITE-ONLY — SPACING
+ * There is no Dimens.kt. A 4px base is the least-invented choice available: it is the
+ * grid Compose's own Material 3 defaults are drawn on, which is what the screenshots
+ * this site frames were laid out against.
+ * ══════════════════════════════════════════════════════════════════════════════ */
+:root {
+  --space-3xs: 0.25rem; /* 4px  */
+  --space-2xs: 0.5rem; /* 8px  */
+  --space-xs: 0.75rem; /* 12px */
+  --space-s: 1rem; /* 16px */
+  --space-m: 1.5rem; /* 24px */
+  --space-l: 2rem; /* 32px */
+  --space-xl: 3rem; /* 48px */
+  --space-2xl: 4rem; /* 64px */
+  --space-3xl: 6rem; /* 96px */
+
+  /* SITE-ONLY — measure and page width. 68ch is a ~66-character line at Outfit's
+   * average advance width, which is the middle of the 45–75 readability band. */
+  --measure: 68ch;
+  --content-max: 72rem;
+  --gutter: var(--space-m);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * SITE-ONLY — RADIUS
+ * Mirrors Material 3's shape scale, which is what the app's components use by
+ * default, but nothing in the app names these numbers so they are ours to change.
+ * ══════════════════════════════════════════════════════════════════════════════ */
+:root {
+  --radius-xs: 4px;
+  --radius-s: 8px;
+  --radius-m: 12px;
+  --radius-l: 16px;
+  --radius-xl: 28px;
+  --radius-full: 9999px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * SITE-ONLY — ELEVATION
+ * The app expresses depth with the surface-container ramp, not with shadows, and on a
+ * dark page a shadow is nearly invisible anyway. Prefer a ramp step; these exist for
+ * the few places (a sticky nav over scrolled content) where a ramp step is not enough.
+ * ══════════════════════════════════════════════════════════════════════════════ */
+:root {
+  --elevation-0: none;
+  --elevation-1: 0 1px 2px rgb(0 0 0 / 0.3), 0 1px 3px 1px rgb(0 0 0 / 0.15);
+  --elevation-2: 0 1px 2px rgb(0 0 0 / 0.3), 0 2px 6px 2px rgb(0 0 0 / 0.15);
+  --elevation-3: 0 4px 8px 3px rgb(0 0 0 / 0.15), 0 1px 3px rgb(0 0 0 / 0.3);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * SITE-ONLY — FOCUS RING
+ * `--primary` is the ring colour in both schemes: 8.86:1 against the light page and
+ * 18.38:1 against the dark one, so it clears the 3:1 non-text floor by a wide margin
+ * on every surface in the ramp. contrast.test.ts asserts that.
+ * The offset needs a solid backdrop to sit on, hence the second, page-coloured ring.
+ * ══════════════════════════════════════════════════════════════════════════════ */
+:root {
+  --focus-ring-color: var(--primary);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --focus-ring: var(--focus-ring-width) solid var(--focus-ring-color);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * SITE-ONLY — MOTION
+ * Nothing to inherit: the app uses `MotionScheme.expressive()`, whose values are
+ * spring specifications (stiffness/damping), not a duration/easing pair, and there is
+ * no honest way to transcribe one into the other. These are conventional web values.
+ * base.css zeroes both durations under `prefers-reduced-motion: reduce`.
+ * ══════════════════════════════════════════════════════════════════════════════ */
+:root {
+  --motion-duration-fast: 120ms;
+  --motion-duration: 220ms;
+  --motion-easing: cubic-bezier(0.2, 0, 0, 1);
+}
