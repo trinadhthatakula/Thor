@@ -33,6 +33,8 @@ index:
 import Callout from '../components/Callout.astro'
 import CodeBlock from '../components/CodeBlock.astro'
 import DeviceFrame from '../components/DeviceFrame.astro'
+// Raw device capture. DeviceFrame draws the bezel, so this must stay unframed.
+import extensionManager from '../assets/screenshots/06-extension-manager.png'
 import Fact from '../components/Fact.astro'
 
 Thor is written and maintained by one independent developer, **Trinadh Thatakula**. There is no
@@ -103,6 +105,7 @@ request — not at startup, not while it scans your apps, and not while it freez
 anything. In the FOSS build that is the whole of Thor's network behaviour.
 
 <DeviceFrame
+  src={extensionManager}
   alt="The Extension Manager, the one screen in Thor whose own code reaches the network."
   caption="This screen is the only place Thor's own code makes a network request."
 />

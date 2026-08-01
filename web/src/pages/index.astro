@@ -11,6 +11,13 @@ import DeviceFrame from '../components/DeviceFrame.astro'
 import Fact from '../components/Fact.astro'
 import { SITE } from '../lib/site.ts'
 
+/* Raw device captures. DeviceFrame draws the bezel, so these must stay unframed. */
+import homeBento from '../assets/screenshots/01-home-bento.png'
+import freezerMixed from '../assets/screenshots/02-freezer-active-and-frozen.png'
+import unsafeRefusal from '../assets/screenshots/03-refusal-unsafe-system-app.png'
+import permissionChips from '../assets/screenshots/04-app-list-permission-chips.png'
+import workMode from '../assets/screenshots/05-settings-work-mode.png'
+
 const description =
   'Thor freezes the apps your phone will not let you uninstall. Free software, no trackers, ' +
   'and it works through root, Shizuku or Dhizuku.'
@@ -30,7 +37,7 @@ const description =
       Source: <a href={SITE.repo}>github.com/trinadhthatakula/Thor</a>
     </p>
 
-    <DeviceFrame slot="media" alt="Thor's home screen, showing the active, frozen and suspended app counts above the action tiles." />
+    <DeviceFrame slot="media" src={homeBento} alt="Thor's home screen, showing the active, frozen and suspended app counts above the action tiles." />
   </Hero>
 
   <FeatureBand id="freeze-it-and-it-stops" title="Freeze it, and it stops.">
@@ -64,6 +71,7 @@ const description =
 
     <DeviceFrame
       slot="media"
+      src={freezerMixed}
       alt="The Freezer, listing the watchlist with the frozen apps' icons greyed out."
     />
   </FeatureBand>
@@ -81,6 +89,7 @@ const description =
 
     <DeviceFrame
       slot="media"
+      src={unsafeRefusal}
       alt="Thor refusing to freeze a system app rated Unsafe, with no way to continue."
     />
   </FeatureBand>
@@ -95,7 +104,8 @@ const description =
 
     <DeviceFrame
       slot="media"
-      alt="The app list with the permission filter chips expanded, on a device with no privilege mode enabled."
+      src={permissionChips}
+      alt="The app list filtered by the Camera permission chip, on a device with no privilege mode enabled."
     />
   </FeatureBand>
 
@@ -125,6 +135,7 @@ const description =
 
     <DeviceFrame
       slot="media"
+      src={workMode}
       alt="Settings, showing the Work Mode selector with more than one privilege engine available."
     />
   </FeatureBand>

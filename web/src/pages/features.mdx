@@ -32,6 +32,11 @@ import Fact from '../components/Fact.astro'
 import Callout from '../components/Callout.astro'
 import CodeBlock from '../components/CodeBlock.astro'
 import DeviceFrame from '../components/DeviceFrame.astro'
+// Raw device captures. DeviceFrame draws the bezel, so these must stay unframed.
+import homeBento from '../assets/screenshots/01-home-bento.png'
+import freezerMixed from '../assets/screenshots/02-freezer-active-and-frozen.png'
+import unsafeRefusal from '../assets/screenshots/03-refusal-unsafe-system-app.png'
+import workMode from '../assets/screenshots/05-settings-work-mode.png'
 
 | At a glance | |
 |---|---|
@@ -86,6 +91,7 @@ trigger a re-probe. The Work Mode selector only appears in Settings when more th
 actually available — there is nothing to choose between otherwise.
 
 <DeviceFrame
+  src={workMode}
   alt="Settings, showing the Work Mode selector with more than one privilege engine available."
   caption="Work Mode is only offered when there is a real choice to make."
 />
@@ -234,6 +240,7 @@ a launcher shortcut, or the Quick Settings tile. Up to five apps are processed a
 progress counter.
 
 <DeviceFrame
+  src={freezerMixed}
   alt="The Freezer, with active apps and frozen apps listed side by side."
   caption="The watchlist is the unit most of the Freezer acts on."
 />
@@ -318,6 +325,7 @@ cannot be read at all, every system app is treated as Unsafe and blocked rather 
 bad data file would strand every frozen system app on the device.
 
 <DeviceFrame
+  src={unsafeRefusal}
   alt="Thor refusing to freeze a system app rated Unsafe, with no way to continue."
   caption="Unsafe is blocked, not warned about."
 />
@@ -410,7 +418,8 @@ Live counts of active, frozen and suspended apps, plus anything from an unknown 
 install-source distribution chart; the current privilege mode; and quick-action tiles.
 
 <DeviceFrame
-  alt="Thor's home screen, showing the bento grid of device and app counts."
+  src={homeBento}
+  alt="Thor's home screen: the active, frozen and suspended counts, the bento grid of quick actions below them, and the install-source chart below that."
   caption="The dashboard reads from the same cache the list does, so it is on screen at launch."
 />
 

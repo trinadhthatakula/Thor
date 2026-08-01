@@ -68,7 +68,7 @@ gate which exits 0 for the wrong reason looks identical to one that passes.
       `/styleguide` is also kept out of the sitemap, and out of `robots.txt`, independently of this
       exclusion. `check:sitemap` asserts all three agree, so it needs no manual step here.
 
-- [ ] Five screenshots in place and no `DeviceFrame` placeholder left in `dist`:
+- [ ] All six screenshots in place and no `DeviceFrame` placeholder left in `dist`:
 
       cd web && REQUIRE_SCREENSHOTS=1 npm run check:screenshots
 
