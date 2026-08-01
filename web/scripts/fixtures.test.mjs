@@ -110,6 +110,8 @@ describe('the other checkers have fixtures too', () => {
       'missing-child',
       'missing-index',
       'pass',
+      'phantom-url',
+      'unlisted-page',
     ])
   })
 })

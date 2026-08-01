@@ -5,8 +5,18 @@
  *
  * It cycles system → light → dark rather than toggling two states, so a visitor
  * who lands in the wrong mode can always get back to "whatever my OS says"
- * without clearing site data. `data-theme` absent means "follow the OS", which
- * is exactly what the CSS in tokens.css keys on.
+ * without clearing site data.
+ *
+ * "System" is `thor-theme` absent from storage — NOT `data-theme` absent from the
+ * DOM. The two look equivalent, because `:root` plus the `prefers-color-scheme`
+ * query resolve the same colours either way, but tokens.css keys AMOLED on
+ * `[data-theme='dark'][data-amoled='true']` and that selector cannot match
+ * without a concrete `data-theme`. ThemeScript.astro documents this as the one
+ * thing a toggle must not do. So `paint` resolves the OS preference itself and
+ * always writes a concrete value — which then makes this component responsible
+ * for keeping up with an OS change while in system mode, because the CSS media
+ * query no longer gets the chance to. ThemeScript runs once, before paint, and
+ * never again; the `change` listener below is the other half of that contract.
  */
 ---
 <button
@@ -28,6 +38,10 @@
     var label = document.getElementById('theme-toggle-label')
     var root = document.documentElement
     var order = ['system', 'light', 'dark']
+    // Asking for light and defaulting everything else to dark, exactly as
+    // ThemeScript does: `no-preference` was dropped from Media Queries Level 5,
+    // so a machine with no preference answers `light` to a dark query.
+    var media = window.matchMedia('(prefers-color-scheme: light)')
 
     function current() {
       var stored = null
@@ -41,12 +55,35 @@
     }
 
     function paint(mode) {
-      if (mode === 'system') root.removeAttribute('data-theme')
-      else root.setAttribute('data-theme', mode)
+      var theme = mode === 'system' ? (media.matches ? 'light' : 'dark') : mode
+      root.setAttribute('data-theme', theme)
+      // AMOLED is nested under dark, mirroring the app, so leaving a stale
+      // 'true' set while the page is light would switch black back on the
+      // moment the visitor cycles to dark — from a preference they never
+      // expressed in this session.
+      var amoled = null
+      try {
+        amoled = localStorage.getItem('thor-amoled')
+      } catch (_) {
+        // Same storage refusal as above; AMOLED off is the safe answer.
+      }
+      root.setAttribute('data-amoled', theme === 'dark' && amoled === 'true' ? 'true' : 'false')
       if (label) label.textContent = btn.getAttribute('data-label-' + mode) || 'Theme'
     }
 
     paint(current())
+
+    // Only while following the system: in light or dark the visitor has made an
+    // explicit choice and an OS change must not override it.
+    function onSystemChange() {
+      if (current() === 'system') paint('system')
+    }
+    // No addListener fallback. Safari shipped addEventListener on MediaQueryList
+    // in 14, and base.css already uses `aspect-ratio`, which is Safari 15 — so
+    // anything old enough to need the deprecated call cannot lay the page out
+    // anyway, and the fallback would only be dead code drawing a deprecation
+    // warning out of `astro check`.
+    media.addEventListener('change', onSystemChange)
 
     btn.addEventListener('click', function () {
       var next = order[(order.indexOf(current()) + 1) % order.length]

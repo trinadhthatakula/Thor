@@ -107,6 +107,39 @@ describe('extractText', () => {
       'second line',
     ])
   })
+
+  it('reads the description meta tags, which no reader sees on the page', () => {
+    // For as long as this walk started at `document.body`, a claim written into
+    // a description was unreachable by every rule in claims.mjs — and that is
+    // the sentence Google prints under the search result and Telegram prints in
+    // the unfurl card, so it is read by more people than the page body is.
+    const html =
+      '<html><head><meta name="description" content="A claim in the description."></head>' +
+      '<body><p>Body text.</p></body></html>'
+    expect(toSentences(text(html))).toEqual(['A claim in the description.', 'Body text.'])
+  })
+
+  it('checks a differing og:description separately but does not repeat a copy of it', () => {
+    // og:description is normally a duplicate of description, and reporting one
+    // authoring mistake three times buries every other finding. Two that differ
+    // are two claims, and both have to be checked.
+    const meta = (attr, value, content) =>
+      `<meta ${attr}="${value}" content="${content}">`
+    const html =
+      '<html><head>' +
+      meta('name', 'description', 'Shared sentence.') +
+      meta('property', 'og:description', 'Shared sentence.') +
+      meta('name', 'twitter:description', 'A different sentence.') +
+      '</head><body><p>Body.</p></body></html>'
+    expect(toSentences(text(html))).toEqual(['Shared sentence.', 'A different sentence.', 'Body.'])
+  })
+
+  it('leaves the title alone', () => {
+    // A title is a label, not a claim the reader can act on, and a rule that
+    // matched a five-word title would fire on the nav too.
+    const html = '<html><head><title>Thor</title></head><body><p>Body.</p></body></html>'
+    expect(toSentences(text(html))).toEqual(['Body.'])
+  })
 })
 
 describe('globToRegExp', () => {

@@ -50,7 +50,13 @@ export const PROJECT_LINKS: ExternalLink[] = [
   { href: SITE.repo, label: 'Source on GitHub' },
   { href: `${SITE.repo}/issues`, label: 'Issue tracker' },
   { href: `${SITE.repo}/releases`, label: 'Releases' },
-  { href: 'https://t.me/thor_app_updates', label: 'Telegram' },
+  // thorAppDev, not thor_app_updates. The whole repo agrees on this handle —
+  // README, shizu_store.json, the issue-template chooser, both in-app links, and
+  // three pages of this site's own prose — and the footer was the one place that
+  // did not. No gate here can catch that: check-links resolves internal paths
+  // only, and an unknown t.me handle answers 200 with a generic page, so even the
+  // scheduled external sweep would have called it healthy.
+  { href: 'https://t.me/thorAppDev', label: 'Telegram' },
 ]
 
 /**

@@ -298,6 +298,42 @@
  * ══════════════════════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════════════════════════════════════════════════════════
+ * SITE-ONLY — SYNTAX HIGHLIGHTING
+ *
+ * `astro.config.mjs` sets `shikiConfig.theme = 'css-variables'`, which makes Shiki
+ * emit `color: var(--astro-code-token-function)` and friends as inline styles on
+ * the highlighted spans. Astro declares none of them outside its dev error
+ * overlay, and emits them without a fallback — so until this block existed, all
+ * 121 references in `dist` were invalid at computed-value time, fell back to
+ * `inherit`, and every code sample on the site rendered in one flat colour.
+ *
+ * That failure is invisible from inside the repo. `token-usage.test.ts` walks
+ * `src/`, and these `var()`s are generated at build time, so the gate written to
+ * catch exactly this could not see them; the a11y and markup checks do not care
+ * about colour. It looked like a theme choice rather than a bug.
+ *
+ * Every value below is an existing palette token rather than a new hex. Two
+ * reasons: the palette is transcribed from Color.kt and inventing a sixth accent
+ * here would be a site-only colour pretending to be the app's, and these tokens
+ * are the ones `contrast.test.ts` already measures. All five foregrounds clear
+ * WCAG AA against `--surface-container` — the `pre` background — in light, dark
+ * and AMOLED; the floor is 5.59:1 (`--secondary` in light). `contrast.test.ts`
+ * asserts that, so a palette change cannot quietly make code unreadable.
+ *
+ * These are declared once, unscoped: custom properties substitute at computed-value
+ * time, so `var(--primary)` resolves against whichever palette block is in effect
+ * on the element. One declaration, three themes.
+ * ══════════════════════════════════════════════════════════════════════════════ */
+:root {
+  --astro-code-background: var(--surface-container);
+  --astro-code-foreground: var(--on-surface);
+  --astro-code-token-punctuation: var(--on-surface-variant);
+  --astro-code-token-function: var(--primary);
+  --astro-code-token-string: var(--tertiary);
+  --astro-code-token-string-expression: var(--secondary);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
  * SITE-ONLY — TYPOGRAPHY
  *
  * Families and weights are the app's. Sizes and line heights are not: Type.kt sets

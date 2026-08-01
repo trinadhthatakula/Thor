@@ -36,15 +36,58 @@ export function parseHtml(html) {
 }
 
 /**
- * The page's visible prose, with block elements separated by newlines.
+ * `<meta>` names that hold a sentence somebody wrote, in the order they are
+ * emitted. Every one of these is prose shown to a reader — in a search result,
+ * or in the card a link unfurls into on Telegram, Slack or Mastodon — and it is
+ * frequently the *only* text a person reads before deciding whether to install.
+ *
+ * `og:title` and the page `<title>` are excluded on purpose: they are labels, and
+ * a claims rule matching a five-word title would fire on the nav as well.
+ */
+const PROSE_META = [
+  'meta[name="description"]',
+  'meta[property="og:description"]',
+  'meta[name="twitter:description"]',
+]
+
+/**
+ * Description text from `<head>`, deduplicated, each entry its own block.
+ *
+ * Deduplicated because `og:description` is normally a copy of `description`, and
+ * reporting one authoring mistake three times buries the other findings. Exact
+ * string match only — two descriptions that differ at all are two separate
+ * claims and both get checked.
+ */
+function extractMetaProse(document) {
+  const seen = new Set()
+  for (const selector of PROSE_META) {
+    for (const el of document.querySelectorAll(selector)) {
+      const content = (el.getAttribute('content') ?? '').replace(/\s+/g, ' ').trim()
+      if (content) seen.add(content)
+    }
+  }
+  return [...seen]
+}
+
+/**
+ * The page's reader-facing prose, with block elements separated by newlines.
  *
  * `alt` text is included: a claim is no less wrong for being in an alt
  * attribute, and alt text is read aloud to exactly the users least able to
- * cross-check it. `title` is not, because Astro puts the page title in `<head>`
- * and a `<title>` is not prose the reader can act on.
+ * cross-check it.
+ *
+ * `<head>` is skipped by the walk (it is in NON_PROSE) but the description
+ * meta tags are pulled out of it first. Those are the sentences Google prints
+ * under the result and Telegram prints in the unfurl card, so they reach far
+ * more people than the page body does — and they were invisible to the claims
+ * gate for as long as this function started at `document.body`. The site's own
+ * privacy description already carries network and flavour claims of exactly the
+ * kind the C14 rules exist to police. `<title>` stays out: it is a label, not a
+ * claim the reader can act on.
  */
 export function extractText(document) {
   const parts = []
+  for (const description of extractMetaProse(document)) parts.push(`\n${description}\n`)
 
   const visit = (node, preformatted) => {
     if (node.nodeType === 3) {

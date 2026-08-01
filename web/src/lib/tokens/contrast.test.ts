@@ -188,6 +188,79 @@ describe('the contrast maths itself', () => {
   })
 })
 
+describe('syntax highlighting stays readable', () => {
+  /**
+   * Shiki's `css-variables` theme emits `var(--astro-code-*)` inline on every
+   * highlighted span, with no fallback. Astro declares none of them in a
+   * production build, so before tokens.css did, all 121 references in `dist`
+   * were invalid at computed-value time and code samples rendered in one flat
+   * inherited colour. Nothing could see it: the `var()`s are generated at build
+   * time, and `token-usage.test.ts` walks `src/`.
+   */
+  const syntaxRule = rootRules.find((r) => '--astro-code-background' in r.declarations)
+
+  it('declares every token Shiki actually emits', () => {
+    expect(syntaxRule, 'tokens.css declares no --astro-code-* block').toBeDefined()
+    // Pinned to what Shiki emits for the languages used on this site. A new
+    // language introducing a seventh token would go undeclared and monochrome, so
+    // this list is checked against `dist` by scripts/check-markup.mjs.
+    expect(Object.keys(syntaxRule!.declarations).sort()).toEqual([
+      '--astro-code-background',
+      '--astro-code-foreground',
+      '--astro-code-token-function',
+      '--astro-code-token-punctuation',
+      '--astro-code-token-string',
+      '--astro-code-token-string-expression',
+    ])
+  })
+
+  it('maps each one onto a palette token rather than a new hex', () => {
+    // A literal here would be a site-only colour posing as the app's. It would
+    // also escape every assertion in this file, since they all read the palette.
+    for (const [token, value] of Object.entries(syntaxRule!.declarations)) {
+      const referenced = /^var\((--[a-z-]+)\)$/.exec(value.trim())
+      expect(referenced, `${token} is not a plain var() reference: ${value}`).not.toBeNull()
+      expect(PALETTE_TOKENS, `${token} points at a token no palette declares`).toContain(
+        referenced![1],
+      )
+    }
+  })
+
+  it('clears AA against the code-block background in all three themes', () => {
+    // base.css paints `pre` with --surface-container, and the inline
+    // --astro-code-background resolves to the same token, so that is the
+    // background every one of these is read against. Code is normal-size copy:
+    // the bar is 4.5:1, not 3:1.
+    const resolve = (scheme: Record<string, string>, token: string) =>
+      scheme[/^var\((--[a-z-]+)\)$/.exec(syntaxRule!.declarations[token]!.trim())![1]]!
+
+    const foregrounds = Object.keys(syntaxRule!.declarations).filter(
+      (t) => t !== '--astro-code-background',
+    )
+
+    for (const [name, scheme] of [
+      ['dark', dark],
+      ['light', light],
+      ['amoled', amoled],
+    ] as const) {
+      const background = resolve(scheme, '--astro-code-background')
+      for (const token of foregrounds) {
+        expect(
+          contrastRatio(resolve(scheme, token), background),
+          `${token} on the code background in ${name}`,
+        ).toBeGreaterThanOrEqual(4.5)
+      }
+    }
+  })
+
+  it('keeps the roles visually distinct from one another', () => {
+    // Six tokens all resolving to --on-surface would satisfy every assertion
+    // above and still be exactly the monochrome bug this block was added to fix.
+    const distinct = new Set(Object.values(syntaxRule!.declarations).map((v) => v.trim()))
+    expect(distinct.size).toBe(Object.keys(syntaxRule!.declarations).length)
+  })
+})
+
 describe('tokens.css structure', () => {
   it('has exactly the five palette scopes, in the order the cascade needs', () => {
     // `:root`, `[data-theme='light']` and `[data-theme='dark']` all have specificity

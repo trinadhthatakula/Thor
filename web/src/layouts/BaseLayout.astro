@@ -16,6 +16,21 @@ import '../styles/fonts.css'
 import '../styles/tokens.css'
 import '../styles/base.css'
 
+/**
+ * The three faces above the fold on every route, imported for their hashed URLs.
+ * A @font-face is not a preload: the browser only discovers those files after it
+ * has parsed the CSS, which is one round trip too late for text the visitor is
+ * already looking at. fonts.css explains why it is these three and not the other
+ * four. The imports are what make the hash available — the filenames in `dist`
+ * are content-addressed, so a hand-written href would go stale on any change to
+ * the subset.
+ */
+import outfit400 from '../fonts/outfit-latin-400.woff2'
+import outfit700 from '../fonts/outfit-latin-700.woff2'
+import firaCode from '../fonts/firacode-latin-var.woff2'
+
+const PRELOAD_FONTS = [outfit400, outfit700, firaCode]
+
 interface Props {
   title: string
   description: string
@@ -41,6 +56,13 @@ const ogImage = new URL('/og-image.png', SITE.origin).href
     <meta name="description" content={description} />
     <link rel="canonical" href={url} />
     {noindex && <meta name="robots" content="noindex, follow" />}
+
+    {/* crossorigin is required even same-origin: fonts are always fetched in CORS
+        mode, and without it the preload and the @font-face request are two
+        different requests, so the browser downloads each file twice. */}
+    {PRELOAD_FONTS.map((href) => (
+      <link rel="preload" as="font" type="font/woff2" href={href} crossorigin />
+    ))}
 
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
