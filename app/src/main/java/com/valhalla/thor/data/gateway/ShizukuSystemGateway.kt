@@ -124,7 +124,8 @@ class ShizukuSystemGateway(
         // Rung 3, gated on the platform having actually refused — not on the Android version.
         // A stock AOSP API 36 emulator disables system apps from the shell uid without complaint,
         // so a version test would uninstall the package for the user on every device that never
-        // needed this rung — losing its permission grants for no reason — while still missing the
+        // needed this rung — clearing FLAG_INSTALLED, and with it the package's visibility to every
+        // query that omits MATCH_UNINSTALLED_PACKAGES, for no reason — while still missing the
         // OEM builds (Xiaomi HyperOS, reported on Android 14) that do. isSystem
         // is true by construction here, but it is passed explicitly so the gate — not this call
         // site — owns the whole rule.

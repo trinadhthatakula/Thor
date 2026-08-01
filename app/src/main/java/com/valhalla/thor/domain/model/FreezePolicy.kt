@@ -84,12 +84,18 @@ fun isBlockedFromFreeze(app: AppInfo?): Boolean =
  * partition. **Without `-k` this mechanic destroys the app's data**, which is what every build
  * before this one did, for every system app, on every release.
  *
- * The residual cost of [UNINSTALL] is not data but per-user package state: runtime permission
- * grants and app-ops are expected not to survive the round trip, so an unfrozen app may have to ask
- * for its permissions again. That is why [DISABLE] is still preferred everywhere it works — which,
- * measurably, is everywhere stock Android runs. [UNINSTALL] exists because some OEM builds refuse
- * to let the shell uid disable their own system packages at all, and it is reached *only* where the
- * platform actually refused, which is what [uninstallFreezeFallbackAllowed] decides.
+ * The residual cost of [UNINSTALL] is narrower than it looks, and narrower than this comment used
+ * to claim: `-k` retains the whole `PackageUserState`, so runtime permission grants and app-ops
+ * survive the round trip too — measured at uid 2000 on a stock API 36 emulator, where a granted
+ * permission came back granted with its flags unchanged. What [UNINSTALL] really costs is
+ * `FLAG_INSTALLED`: the package stops resolving for this user unless the caller passes
+ * `MATCH_UNINSTALLED_PACKAGES`, which is why every query in the freeze path has to.
+ *
+ * [DISABLE] is still preferred everywhere it works — which, measurably, is everywhere stock Android
+ * runs — because it costs none of that. [UNINSTALL] exists because some OEM builds refuse to let
+ * the shell uid disable their own system packages at all, and it is reached *only* where the
+ * platform actually refused, which is what [uninstallFreezeFallbackAllowed] decides. On API 37 it
+ * does not exist at shell uid at all; see [UNINSTALL].
  */
 enum class FreezeMechanic {
     /** `pm disable`, or the equivalent `setApplicationEnabledSetting` reflection. Keeps data. */
