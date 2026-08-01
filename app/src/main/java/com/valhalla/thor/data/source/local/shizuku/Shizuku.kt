@@ -245,7 +245,9 @@ object Shizuku {
      *
      * Only the preinstalled-app freeze needs this. It is the one caller whose next move depends on
      * the difference between "the platform refused" and "that did not work", because its next move
-     * is `pm uninstall --user N` and that deletes the user's data.
+     * is `pm uninstall -k --user N` — which keeps the app's data, but clears its installed-for-this-user
+     * bit and its runtime permission grants, and so is worth reaching only where the platform left
+     * no alternative.
      */
     fun setAppDisabledDetailed(
         context: Context,
