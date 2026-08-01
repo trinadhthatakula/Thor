@@ -141,9 +141,31 @@ issuance. Verified correct on 1 August 2026 via Google and Cloudflare DoH resolv
 
 Two similar-looking problems that want **opposite** answers:
 
-- **Vercel: skip builds when `web/` is untouched.** Most commits to this repo are Android changes.
-  Set an Ignored Build Step (`git diff --quiet HEAD^ HEAD -- .` from the root directory) so those
-  don't burn a site build.
+- **Vercel: skip builds when nothing the site reads has changed.** Most commits to this repo are
+  Android changes. Set this as the Ignored Build Step:
+
+  ```sh
+  git diff --quiet HEAD^ HEAD -- . ':/gradle.properties' ':/gradle/libs.versions.toml'
+  ```
+
+  Exit 0 skips the build, non-zero builds it — so a git failure fails toward building, which is the
+  right direction.
+
+  **`web/` alone is the wrong trigger.** §5.5 derives the version number and the SDK levels from
+  files *outside* `web/`. A `versionCode` bump lands in `gradle.properties` and touches nothing under
+  `web/`, so a plain `-- .` filter would skip the rebuild and leave a stale version on the site —
+  precisely the content drift §5.5 exists to prevent. The pathspec list here and the file list in
+  §5.5 are the same list; adding a third derived fact means editing both.
+
+  **The `:/` prefix is load-bearing.** The Ignored Build Step runs in the Root Directory, where a
+  bare `gradle.properties` pathspec resolves to `web/gradle.properties`, matches nothing, and exits
+  0 — for *every* commit, so the site would never rebuild at all, silently. `:/` is git's
+  top-of-tree pathspec magic and is immune to where the command runs. `../gradle.properties` works
+  today but breaks if the Root Directory ever moves.
+
+  **This assumes `dev` advances by merge commits**, which it does — PRs land with
+  `gh pr merge --merge`, so `HEAD^` is the previous `dev` tip and the diff spans the whole PR.
+  A fast-forward push of several commits would only diff the last one.
 - **GitHub Actions: do *not* path-filter the Android workflows.** The tempting move is
   `paths-ignore: ['web/**']` so a site-only PR skips the ~7-minute Android build. Don't.
   `build-and-test` is a **required check**, and a required check that never runs leaves the PR stuck
@@ -162,7 +184,7 @@ UI change a one-step job.
 
 ### 4.5 `.gitignore` additions
 
-```
+```text
 web/node_modules/
 web/dist/
 web/.astro/
@@ -186,11 +208,26 @@ commit on `dev` makes the site **stale**, never **down**.
 
 ### 5.2 Build-time gates
 
-These run inside the Vercel build, so a failure blocks the bad deploy:
+These run inside the Vercel build, so a failure blocks the bad deploy. Wire them into the `build`
+script rather than into Vercel's UI, so they also run locally and are visible in the repo. Vercel's
+Build Command stays the default `npm run build`:
 
-- `astro check` — type errors
-- Astro's internal-link validation — a typo'd `/faq` link fails the build rather than 404-ing in
-  production
+```json
+{
+  "scripts": {
+    "build": "astro check && astro build && lychee --offline dist"
+  }
+}
+```
+
+- **`astro check`** — type errors. `astro build` does **not** type-check on its own; chaining
+  `astro check` in front of it is how Astro's own docs recommend gating a build.
+- **Internal-link validation** — a typo'd `/faq` link should fail the build rather than 404 in
+  production. **Astro has no built-in link checker.** That was checked against the docs rather than
+  assumed, and it means the check has to be added deliberately or it silently doesn't exist.
+  Recommendation: `lychee --offline dist`, which resolves links against the built output and makes
+  no network requests — the same tool §5.3 then runs weekly *with* the network for external links.
+  One tool, two modes, one set of results to learn to read.
 
 ### 5.3 External links — scheduled, not per-build
 
@@ -215,11 +252,18 @@ is wrong is worse than one that doesn't exist.
 |---|---|
 | Version name | `gradle.properties` → `versionCode`, using the documented `1900 → 1.90.0` derivation |
 | minSdk / targetSdk / compileSdk | `gradle/libs.versions.toml` |
-| Extension API version | the extensions catalog |
+| Extension API version | `gradle/libs.versions.toml` → `thorExtensionApi` |
 
-This is why **"Include files outside the Root Directory" must stay enabled** in Vercel (§4.1) — `web/`
-reads `../gradle.properties`. It is on by default and is exactly the kind of setting that gets
-switched off during unrelated cleanup, so it is recorded here.
+**Deliberately not the extensions catalog.** The catalog lives in the separate `Thor-Extensions`
+repo, so reading it would put a cross-repo network fetch inside the build. The version Thor is
+actually compiled against is already in the version catalog, one directory up, and is the more
+truthful number anyway.
+
+This is why **"Include files outside the Root Directory" must stay enabled** in Vercel (§4.1).
+`web/` reads exactly two files from outside its Root Directory — `../gradle.properties` and
+`../gradle/libs.versions.toml` — and the same two appear in §4.3's Ignored Build Step. The setting
+is on by default and is exactly the kind of thing that gets switched off during unrelated cleanup,
+so it is recorded here.
 
 ### 5.6 Lighthouse — warning, not gate
 
@@ -245,8 +289,26 @@ Therefore:
 
 - **No analytics at all**, including Vercel's own. The app has no telemetry; the site matching that is
   both consistent and one less thing to disclose.
-- **Add an "About this website" section** to `/privacy` stating that the site is static, sets no
-  cookies, runs no analytics, and that Vercel — like any host — sees request IPs.
+- **Add an "About this website" section** to `/privacy`, stating that the site is static, sets no
+  cookies, and runs no analytics.
+
+  On the IP question, *"Vercel sees request IPs"* is not enough on its own — it names the fact and
+  omits everything a sceptical reader actually wants, which is the same shape of disclosure this
+  rewrite exists to correct. The section must answer four things:
+
+  - **Why it is collected** — the IP is the address the response is sent back to. It is inherent to
+    answering an HTTP request, not a choice anyone made.
+  - **Who sees it** — Vercel, as the host. **I never receive it.** No log drain is configured, no
+    analytics is enabled, and there is no server-side code, so nothing forwards request data
+    anywhere.
+  - **How long it is kept** — by Vercel, under Vercel's retention, not under anything I set. Link
+    [Vercel's privacy notice](https://vercel.com/legal/privacy-notice) rather than paraphrasing a
+    retention period that can change without notice and would then be a false claim on a page whose
+    whole value is being accurate.
+  - **What Cloudflare does and does not see** — the record is DNS-only (§4.2), so Cloudflare answers
+    the DNS query — normally from the visitor's resolver, not the visitor — and never sees the HTTP
+    request at all. Worth stating, because a reader who checks the DNS will otherwise assume the
+    site sits behind Cloudflare's proxy.
 
 ---
 
