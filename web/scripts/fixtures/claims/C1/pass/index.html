@@ -10,8 +10,9 @@
       <p>Freezing a system app keeps its data.</p>
       <p>
         Thor asks the platform to disable the package first, and on the rare device that refuses,
-        the fallback passes -k so the data directories and the runtime permission grants both
-        survive the round trip.
+        the fallback passes -k so the data directories survive the round trip. One runtime
+        permission was measured across the same trip and came back granted; app-ops were not
+        measured, so that is as far as the claim goes.
       </p>
     </main>
   </body>

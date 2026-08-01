@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Home</title>
+  </head>
+  <body>
+    <main>
+      <h1>Home</h1>
+      <p>
+        Shizuku mode removes it for your Android user instead, with the keep-data flag — the app's
+        files and settings stay, so unfreezing brings it back with its data attached. Permissions
+        are the part I can only tell you about narrowly: one runtime permission was measured across
+        that round trip and came back granted, on one platform build, and app-ops were never
+        measured, so I will not promise more than that.
+      </p>
+      <p>
+        The measurement was of a single permission granted from the shell rather than by tapping
+        Allow. A permission you granted yourself in Settings was not measured, and neither was any
+        app-op, so read the result for the scope it has.
+      </p>
+      <p>
+        What the keep-data flag does establish is about files: the data directories keep their
+        inodes across the round trip, which is why unfreezing reattaches the app to the state you
+        left it in rather than to an empty one.
+      </p>
+    </main>
+  </body>
+</html>

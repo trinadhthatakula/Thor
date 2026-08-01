@@ -439,6 +439,42 @@ export const claimRules = [
       'parameter, so that connection opens when the app opens rather than on demand.',
     allow: [],
   },
+
+  {
+    id: 'C15',
+    kind: 'forbid',
+    appliesTo: '**',
+    patterns: [
+      // "granted permissions all stay", "every permission survives", "keeps its
+      // permissions" — the quantifier is the violation, not the verb.
+      /\b(?:all|every|any|each|its|their|your|the)\s+(?:granted\s+|runtime\s+)?permissions?\b[\s\S]{0,40}?\b(?:all\s+)?(?:stay|survive|survives|are\s+(?:kept|preserved|retained|intact)|remain|is\s+(?:kept|preserved|retained))\b/i,
+      /\bpermissions?\s+(?:all\s+)?(?:stay|survive|are\s+preserved|are\s+kept|remain\s+granted)\b/i,
+      /\b(?:keeps?|keeping|preserves?|preserving|retains?|retaining)\s+(?:all\s+|every\s+)?(?:its|their|your|the)?\s*(?:granted\s+|runtime\s+)?permissions?\b/i,
+    ],
+    // Satisfied by a scope in the same clause: a count ("one permission"), the
+    // measurement ("was measured", "came back granted"), or the named limits
+    // ("one build", "app-ops were never measured").
+    unless:
+      /\b(?:one|single|a\s+runtime)\s+permission\b|\bmeasured\b|\bapp-?ops\b|\bone\s+(?:platform\s+)?build\b|\bnot\s+measured\b|\bshell-?granted\b/i,
+    rationale:
+      'The evidence is one runtime permission, granted from the shell rather than by tapping ' +
+      'Allow, measured across one `pm uninstall -k` round trip on one API 36 build. App-ops were ' +
+      'never measured at all, and neither were user-granted permissions. "Granted permissions all ' +
+      'stay" turns that single observation into a guarantee about every grant on every supported ' +
+      'platform.\n\n' +
+      'This is the same failure mode as C14 and it shipped for the same reason: the rules test ' +
+      'claims about behaviour, and a quantifier is not behaviour. The features page had the ' +
+      'scoping exactly right — "one permission ... on one platform build, and app-ops were never ' +
+      'measured, so read it for the scope it has" — and the homepage, which far more people read, ' +
+      'promised the unqualified version. One deployment, both sentences, every gate green.\n\n' +
+      'A reader acts on this one: it is the sentence that decides whether they freeze a banking ' +
+      'or authenticator app. Scope it or drop it; do not round it up.',
+    source:
+      'ShizukuSystemGateway.freezeSystemApp (rung 3 `pm uninstall -k`, DELETE_KEEP_DATA); ' +
+      'the API 36 measurement recorded in web/src/pages/features.mdx under "the fallback", which ' +
+      'states its own scope. No app-op or user-granted-permission measurement exists.',
+    allow: [],
+  },
 ]
 
 export default claimRules
