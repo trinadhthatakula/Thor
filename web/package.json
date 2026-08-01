@@ -1,0 +1,33 @@
+{
+  "name": "thor-landing-page",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Static landing page for Thor, served at thor.trinadhthatakula.com",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "preview": "astro preview",
+    "check:types": "astro check",
+    "check:links": "node scripts/check-links.mjs dist",
+    "check:claims": "node scripts/check-claims.mjs dist",
+    "check:a11y": "node scripts/check-a11y.mjs dist",
+    "test": "vitest run",
+    "build": "npm run check:types && astro build && npm run check:links && npm run check:claims"
+  },
+  "dependencies": {
+    "@astrojs/mdx": "^7.0.5",
+    "astro": "^7.1.6"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@types/node": "^26.1.2",
+    "axe-core": "^4.12.1",
+    "jsdom": "^30.0.1",
+    "smol-toml": "^1.7.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  }
+}
