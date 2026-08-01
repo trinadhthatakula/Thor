@@ -32,14 +32,15 @@ const themeToggle = read('ThemeToggle')
 /**
  * Only the `<script>` body, so a prohibition quoted in a comment is not a violation.
  *
- * Case-insensitive because a tag filter that only matches lower case is the wrong
- * shape even where it happens to be safe. Here it would have failed loudly — the
- * assertion below demands exactly one match, so `<SCRIPT>` would have thrown
- * rather than quietly waved a violation through — but the habit is what CodeQL's
- * js/bad-tag-filter is about, and the fix is one flag.
+ * Case-insensitive, and `\s*` before the closing `>`, because `<SCRIPT>` and
+ * `</script >` are both valid HTML that the obvious regex misses. Neither can
+ * fail quietly here — the assertion below demands exactly one match, so either
+ * would throw rather than wave a violation through — but a filter that matches
+ * one spelling of a tag is the wrong shape wherever it is written, which is what
+ * CodeQL's js/bad-tag-filter is for.
  */
 function scriptBody(source: string): string {
-  const blocks = [...source.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1])
+  const blocks = [...source.matchAll(/<script[^>]*>([\s\S]*?)<\/script\s*>/gi)].map((m) => m[1])
   expect(blocks.length, 'expected exactly one inline script').toBe(1)
   return blocks[0].replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
 }

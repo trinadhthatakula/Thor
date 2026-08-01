@@ -131,10 +131,15 @@ export function checkCustomProperties(dir) {
     // In HTML, only `<style>` blocks and `style="…"` attributes are CSS. Scanning
     // the whole document would read prose about a token as a declaration of it —
     // and this site's pages quote token names in running text.
+    //
+    // `</style >` with whitespace before the `>` is valid HTML, so the end tag
+    // takes `\s*`. Astro's compressor does not emit that form today, but a missed
+    // <style> block here means every property it declares reads as undeclared,
+    // and the gate reports a failure for correct CSS.
     const css = isCss
       ? [text]
       : [
-          ...[...text.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]),
+          ...[...text.matchAll(/<style[^>]*>([\s\S]*?)<\/style\s*>/gi)].map((m) => m[1]),
           ...[...text.matchAll(/style="([^"]*)"/gi)].map((m) => m[1]),
         ]
 
