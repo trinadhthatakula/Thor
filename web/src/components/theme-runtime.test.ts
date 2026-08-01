@@ -29,9 +29,17 @@ const read = (name: string) =>
 const themeScript = read('ThemeScript')
 const themeToggle = read('ThemeToggle')
 
-/** Only the `<script>` body, so a prohibition quoted in a comment is not a violation. */
+/**
+ * Only the `<script>` body, so a prohibition quoted in a comment is not a violation.
+ *
+ * Case-insensitive because a tag filter that only matches lower case is the wrong
+ * shape even where it happens to be safe. Here it would have failed loudly — the
+ * assertion below demands exactly one match, so `<SCRIPT>` would have thrown
+ * rather than quietly waved a violation through — but the habit is what CodeQL's
+ * js/bad-tag-filter is about, and the fix is one flag.
+ */
 function scriptBody(source: string): string {
-  const blocks = [...source.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1])
+  const blocks = [...source.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1])
   expect(blocks.length, 'expected exactly one inline script').toBe(1)
   return blocks[0].replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
 }
