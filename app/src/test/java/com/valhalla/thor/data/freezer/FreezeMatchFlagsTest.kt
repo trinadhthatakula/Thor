@@ -21,15 +21,18 @@ class FreezeMatchFlagsTest {
 
     /**
      * Thor freezes with two different mechanics and the flags have to cover both, because the
-     * failure is asymmetric: without MATCH_UNINSTALLED_PACKAGES the lookup **throws** for a frozen
-     * system app, and every caller's catch turns that into "not frozen" rather than into an error.
+     * failure is asymmetric: without MATCH_UNINSTALLED_PACKAGES the lookup **throws** for a system
+     * app frozen by removal for this user, and every caller's catch turns that into "not frozen"
+     * rather than into an error. Preferring to disable narrows when that mechanic is *chosen*
+     * (`FreezePolicy.kt`); it does not retire it, and it does nothing for the system apps already
+     * frozen that way on devices in the field.
      * That is how extensions were told an already-frozen app was thawed, and how `Unfreeze all`
      * silently found nothing to do.
      */
     @Test
     fun `both freeze mechanics are covered`() {
         assertNotEquals(
-            "a system app frozen with `pm uninstall --user N` is not installed for this user, " +
+            "a system app frozen by removal for the current user is not installed for this user, " +
                 "so it is invisible without MATCH_UNINSTALLED_PACKAGES",
             0,
             MATCH_FLAGS and PackageManager.MATCH_UNINSTALLED_PACKAGES

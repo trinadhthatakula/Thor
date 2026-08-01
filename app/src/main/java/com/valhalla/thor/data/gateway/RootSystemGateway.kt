@@ -15,7 +15,10 @@ import com.valhalla.thor.rootservice.IThorRootService
 import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.superuser.ktx.ShellResult
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.data.source.local.shizuku.isPolicyRefusal
 import com.valhalla.thor.domain.gateway.SystemGateway
+import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.Dispatchers
@@ -220,6 +223,36 @@ class RootSystemGateway(
         return@withContext Result.failure(Exception("Root clear app data failed. Shell command and AIDL both failed."))
     }
 
+    /**
+     * Freeze ([isDisabled] = true) or unfreeze a package.
+     *
+     * **User apps** keep the single `pm disable` / `pm enable` rung they always had, with the
+     * unprivileged `setApplicationEnabledSetting` as a last resort. It works; it is untouched.
+     *
+     * **System apps** run a two-rung chain, in this order — the order matters because the two rungs
+     * have wildly different consequences for the user's data:
+     *
+     *  1. `pm disable` — the *data-preserving* rung, and the whole reason this chain exists. The
+     *     package stays installed for the user, so app data, accounts and permissions all survive
+     *     and unfreezing hands the app back exactly as it was. With root this should almost always
+     *     be the rung that takes; it was simply never tried before.
+     *  2. `pm uninstall --user N` — the historical rung, kept but **gated behind
+     *     [uninstallFreezeFallbackAllowed]**, which answers `false` for [PrivilegeMode.ROOT] on
+     *     every release: root can disable any package, so a refusal to disable is a real failure
+     *     worth surfacing, not a platform gap worth working around by deleting the user's data.
+     *     Under root this rung is therefore unreachable today and a failed rung 1 returns
+     *     `Result.failure`. The code stays because the gate — not this gateway — owns that decision,
+     *     and a device check could legitimately flip the root branch later.
+     *
+     * Unfreeze has to undo **both** mechanics, in the order install-existing → enable. Devices in
+     * the field carry apps frozen by the uninstall-only builds and must still thaw after this ships;
+     * and a single freeze can even leave a package *both* disabled (rung 1 took but was not observed
+     * to) *and* uninstalled (rung 2 ran anyway). `pm install-existing` restores the per-user
+     * installed bit but does not clear a disabled enabled-setting, so `pm enable` has to follow it.
+     *
+     * Every rung is verified by **re-reading `ApplicationInfo`**, never by the shell exit code: `pm`
+     * happily prints Success for a no-op and returns non-zero from commands that did take effect.
+     */
     override suspend fun setAppDisabled(packageName: String, isDisabled: Boolean): Result<Unit> {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
@@ -227,26 +260,20 @@ class RootSystemGateway(
         val appInfo = getApplicationInfoCompat(packageName)
         val isSystem = appInfo != null && (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
         val escapedPackage = packageName.escapeForShell()
-        val currentUser = getCurrentUserId()
 
-        val shellResult = if (isSystem) {
-            if (isDisabled) {
-                runCommand("pm uninstall --user $currentUser $escapedPackage")
+        if (isSystem) {
+            // Only the system path needs a user id, so the `am get-current-user` round trip stays
+            // off the user-app path entirely.
+            val currentUser = getCurrentUserId()
+            return if (isDisabled) {
+                freezeSystemApp(packageName, escapedPackage, currentUser)
             } else {
-                @Suppress("SENSELESS_COMPARISON")
-                if (appInfo != null) {
-                    val currentInstalled = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0
-                    val currentEnabled = appInfo.enabled && currentInstalled
-                    if (currentInstalled && !currentEnabled) {
-                        runCommand("pm enable $escapedPackage")
-                    }
-                }
-                runCommand("pm install-existing --user $currentUser $escapedPackage")
+                unfreezeSystemApp(packageName, escapedPackage, currentUser)
             }
-        } else {
-            val state = if (isDisabled) "disable" else "enable"
-            runCommand("pm $state $escapedPackage")
         }
+
+        val state = if (isDisabled) "disable" else "enable"
+        val shellResult = runCommand("pm $state $escapedPackage")
 
         if (shellResult.isSuccess) return shellResult
 
@@ -258,29 +285,226 @@ class RootSystemGateway(
             if (currentDisabled == isDisabled) return Result.success(Unit)
         }
 
-        // Try unprivileged API as fallback (only for non-system apps)
-        if (!isSystem) {
-            val newState = if (isDisabled) {
-                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED
-            } else {
-                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-            }
-            val unprivilegedResult = runCatching {
-                context.packageManager.setApplicationEnabledSetting(packageName, newState, 0)
-            }
-            if (unprivilegedResult.isSuccess) {
-                val postAppInfo = getApplicationInfoCompat(packageName)
-                if (postAppInfo != null) {
-                    val postInstalled = (postAppInfo.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0
-                    val postEnabled = postAppInfo.enabled && postInstalled
-                    val postDisabled = !postEnabled
-                    if (postDisabled == isDisabled) return Result.success(Unit)
-                }
+        // Try unprivileged API as fallback. Still "only for non-system apps" — that used to be an
+        // `if (!isSystem)` here; system apps now return above, before this point, so the guard is
+        // the early return rather than a second test of the same flag.
+        val newState = if (isDisabled) {
+            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+        } else {
+            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+        }
+        val unprivilegedResult = runCatching {
+            context.packageManager.setApplicationEnabledSetting(packageName, newState, 0)
+        }
+        if (unprivilegedResult.isSuccess) {
+            val postAppInfo = getApplicationInfoCompat(packageName)
+            if (postAppInfo != null) {
+                val postInstalled = (postAppInfo.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0
+                val postEnabled = postAppInfo.enabled && postInstalled
+                val postDisabled = !postEnabled
+                if (postDisabled == isDisabled) return Result.success(Unit)
             }
         }
 
         return Result.failure(Exception("Root setAppDisabled failed."))
     }
+
+    /**
+     * Rung 1 → (gated) rung 2 of the system-app freeze, with a state re-read between them.
+     *
+     * Rung 1 (`pm disable`) preserves the app's data; rung 2 (`pm uninstall --user`) deletes it, and
+     * is only reached when [uninstallFreezeFallbackAllowed] says this privilege mode has no other
+     * way to freeze a system app — which for root is never. Nothing here trusts a shell exit code:
+     * the rung that "succeeded" is the one the platform agrees changed the package state.
+     */
+    private suspend fun freezeSystemApp(
+        packageName: String,
+        escapedPackage: String,
+        currentUser: String,
+    ): Result<Unit> {
+        // Already frozen — by us, by an older build, or by another tool. Short-circuit before any
+        // rung runs: re-freezing a package that is merely disabled must never walk down into the
+        // destructive rung just because the first command reported nothing to do.
+        if (readEffectivelyEnabled(packageName) == false) {
+            Logger.i("RootSystemGateway", "freeze $packageName: already frozen, no rung run")
+            return Result.success(Unit)
+        }
+
+        // --- Rung 1: pm disable. Keeps the package installed for the user, so its data survives.
+        // The result is kept rather than discarded because the gate below turns on *why* a rung
+        // failed: runCommand folds stderr into the exception message, which is where a
+        // PackageManagerService SecurityException lands.
+        val disableResult = runCommand("pm disable --user $currentUser $escapedPackage")
+        when (readEffectivelyEnabled(packageName)) {
+            false -> {
+                Logger.i(
+                    "RootSystemGateway",
+                    "freeze $packageName: rung 1 `pm disable --user $currentUser` took effect — app data preserved"
+                )
+                return Result.success(Unit)
+            }
+
+            null -> {
+                // The package resolved a moment ago (isSystem was derived from it) and `pm disable`
+                // cannot make it unresolvable — getApplicationInfoCompat carries
+                // MATCH_UNINSTALLED_PACKAGES, and a disabled application is still returned. So this
+                // is a failed *read*, not a known state, and the next rung deletes user data. Fail
+                // closed: a retry re-reads and, if rung 1 actually landed, short-circuits above.
+                val e = java.io.IOException(
+                    "Root freeze of $packageName: `pm disable --user $currentUser` ran but the package " +
+                        "state could no longer be read, so `pm uninstall --user $currentUser` was NOT " +
+                        "attempted — it would destroy app data on a state we cannot confirm."
+                )
+                Logger.e("RootSystemGateway", e.message.orEmpty(), e)
+                return Result.failure(e)
+            }
+
+            true -> Unit // Rung 1 did not take. Consider the destructive rung — see the gate below.
+        }
+
+        // --- Rung 2: pm uninstall --user. DESTROYS the app's data; `pm install-existing` brings the
+        // package back factory-fresh. Gated, not merely last: the policy — not this gateway — owns
+        // the question of whether a privilege mode has any other way to freeze a system app.
+        // Passing PrivilegeMode.ROOT literally is correct rather than lazy: this class *is* the root
+        // implementation, and reading the user's configured mode here would let a fallback chain
+        // that landed on root apply Shizuku's escalation rules. Under root the gate answers false
+        // whatever the refusal flag says — every refusal observed in the wild, AOSP's own and
+        // Xiaomi's alike, keys on the shell uid (2000), and root is uid 0 — so the rung below is
+        // unreachable today and the failure is surfaced instead. The flag is still computed and
+        // passed honestly rather than hardcoded to false, so the two gateways call the gate the
+        // same way and a future decision to let root escalate is a change in the policy, not here.
+        if (!uninstallFreezeFallbackAllowed(
+                isSystem = true,
+                privilegeMode = PrivilegeMode.ROOT,
+                disableRefusedByPolicy = isPolicyRefusal(
+                    disableResult.exceptionOrNull()?.message
+                ),
+            )
+        ) {
+            val refused = java.io.IOException(
+                "Root freeze of $packageName failed: `pm disable --user $currentUser` did not take " +
+                    "effect and the package is still enabled. Root can disable any package, so this is " +
+                    "a real refusal rather than a platform limit — the `pm uninstall -k --user " +
+                    "$currentUser` fallback is not permitted here, and the package was left installed."
+            )
+            Logger.e("RootSystemGateway", refused.message.orEmpty(), refused)
+            return Result.failure(refused)
+        }
+
+        // `-k` (DELETE_KEEP_DATA) is not optional here: without it this line deletes
+        // /data/user/N/<pkg> and an unfreeze returns the app factory-fresh, which is the bug this
+        // whole change exists to remove. With it, the data directories keep the same inodes across
+        // uninstall → install-existing (measured).
+        runCommand("pm uninstall -k --user $currentUser $escapedPackage")
+        // Nothing is left to try, so anything but "definitely still enabled" is the state we asked
+        // for: a null read can now only mean the package is no longer resolvable for this user,
+        // which is precisely what `pm uninstall --user` produces.
+        if (readEffectivelyEnabled(packageName) != true) {
+            Logger.w(
+                "RootSystemGateway",
+                "freeze $packageName: rung 1 `pm disable` had no effect; fell back to rung 2 " +
+                    "`pm uninstall -k --user $currentUser` — the app's data directories and its " +
+                    "runtime permission grants both survive the round trip"
+            )
+            return Result.success(Unit)
+        }
+
+        val failure = java.io.IOException(
+            "Root freeze of $packageName failed: neither `pm disable --user $currentUser` nor " +
+                "`pm uninstall -k --user $currentUser` changed the package's state."
+        )
+        Logger.e("RootSystemGateway", failure.message.orEmpty(), failure)
+        return Result.failure(failure)
+    }
+
+    /**
+     * Undoes *either* freeze mechanic, install-existing first and enable second.
+     *
+     * The two are not alternatives to choose between — a package can need both, because a freeze
+     * that escalated to the uninstall rung on top of a `pm disable` that had already landed is
+     * left disabled *and* uninstalled-for-user. Root no longer produces that state, but it is asked
+     * to undo states it did not create: everything the uninstall-only builds froze, and anything
+     * Shizuku froze on a device that refuses to disable system packages. So this walks the state
+     * machine ([RootFreezeChain.unfreezeStep]) instead of branching once: not installed → restore
+     * it; installed but disabled → enable it; installed and enabled → done.
+     */
+    private suspend fun unfreezeSystemApp(
+        packageName: String,
+        escapedPackage: String,
+        currentUser: String,
+    ): Result<Unit> {
+        val tried = mutableListOf<String>()
+
+        fun unreadable(): Result<Unit> {
+            val e = java.io.IOException(
+                "Root unfreeze of $packageName failed: the package could not be read back" +
+                    (if (tried.isEmpty()) "." else " after ${tried.joinToString(", ") { "`$it`" }}.")
+            )
+            Logger.e("RootSystemGateway", e.message.orEmpty(), e)
+            return Result.failure(e)
+        }
+
+        var step = readUnfreezeStep(packageName) ?: return unreadable()
+
+        // --- Rung 1: the app was frozen by uninstalling it for this user (every build before the
+        // `pm disable` rung existed, plus any package that still falls back to it). FLAG_INSTALLED
+        // is clear, so put the package back for the user first.
+        if (step == RootFreezeChain.UnfreezeStep.INSTALL_EXISTING) {
+            runCommand("pm install-existing --user $currentUser $escapedPackage")
+            tried += "pm install-existing --user $currentUser"
+            step = readUnfreezeStep(packageName) ?: return unreadable()
+        }
+
+        // --- Rung 2: the app is installed but disabled — either frozen with `pm disable`, or just
+        // restored above with its old disabled enabled-setting intact. install-existing does not
+        // clear that setting, which is why this runs *after* rung 1 rather than instead of it.
+        if (step == RootFreezeChain.UnfreezeStep.ENABLE) {
+            runCommand("pm enable --user $currentUser $escapedPackage")
+            tried += "pm enable --user $currentUser"
+            step = readUnfreezeStep(packageName) ?: return unreadable()
+        }
+
+        // --- Rung 3: verify the end state is installed *and* enabled, from the platform's answer.
+        if (step == RootFreezeChain.UnfreezeStep.VERIFIED) {
+            Logger.i(
+                "RootSystemGateway",
+                "unfreeze $packageName: installed and enabled" +
+                    (if (tried.isEmpty()) " already, no rung run"
+                    else " via ${tried.joinToString(", ") { "`$it`" }}")
+            )
+            return Result.success(Unit)
+        }
+
+        val failure = java.io.IOException(
+            "Root unfreeze of $packageName failed: still ${
+                when (step) {
+                    RootFreezeChain.UnfreezeStep.INSTALL_EXISTING -> "not installed for user $currentUser"
+                    else -> "disabled"
+                }
+            } after ${tried.joinToString(", ") { "`$it`" }.ifBlank { "no command" }}."
+        )
+        Logger.e("RootSystemGateway", failure.message.orEmpty(), failure)
+        return Result.failure(failure)
+    }
+
+    /**
+     * The app's effective enabled state as the platform reports it *now*, or `null` when the package
+     * could not be resolved at all.
+     *
+     * `null` is deliberately distinct from `false`. The freeze chain's second rung deletes user data,
+     * so "I could not read it" must never collapse into either "not frozen yet" (→ delete) or
+     * "frozen" (→ report a success that never happened).
+     */
+    private fun readEffectivelyEnabled(packageName: String): Boolean? =
+        getApplicationInfoCompat(packageName)?.let {
+            RootFreezeChain.isEffectivelyEnabled(it.enabled, it.flags)
+        }
+
+    /** The next unfreeze rung for the package's live state, or `null` if it cannot be read. */
+    private fun readUnfreezeStep(packageName: String): RootFreezeChain.UnfreezeStep? =
+        getApplicationInfoCompat(packageName)?.let {
+            RootFreezeChain.unfreezeStep(it.enabled, it.flags)
+        }
 
     override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
@@ -653,5 +877,57 @@ class RootSystemGateway(
         } else {
             "0"
         }
+    }
+}
+
+/**
+ * The state arithmetic behind the system-app freeze chain, taken as `(enabled, flags)` so it stays a
+ * plain JVM unit under test: a `PackageManager` cannot be faked in a unit test, and *which rung the
+ * chain picks* — one of which deletes the user's data — is the half worth pinning. Same shape as
+ * [com.valhalla.thor.data.provider.isFrozenAppInfo], which exists for the same reason.
+ *
+ * Namespaced in an object rather than left as top-level functions: `com.valhalla.thor.data.gateway`
+ * holds three gateways that all reason about these same flags, and a top-level `isEffectivelyEnabled`
+ * here would be a redeclaration the moment the next one wants the same name.
+ */
+object RootFreezeChain {
+
+    /**
+     * Thor's one definition of "this app is up and running", the fold
+     * `AppFreezeStateReader.candidateOf` applies and that `AppInfoMapper` and `AppRepositoryImpl`
+     * repeat: FLAG_INSTALLED is not optional once MATCH_UNINSTALLED_PACKAGES is in the query flags,
+     * because the lookup then *succeeds* for a package uninstalled for this user and reports
+     * `enabled == true`.
+     */
+    fun isEffectivelyEnabled(enabled: Boolean, flags: Int): Boolean =
+        enabled && (flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0
+
+    /** The rungs of an unfreeze, in the order they have to be attempted. */
+    enum class UnfreezeStep {
+        /** Not installed for this user — frozen with `pm uninstall --user N`. */
+        INSTALL_EXISTING,
+
+        /** Installed but disabled — frozen with `pm disable`, or just restored by rung 1. */
+        ENABLE,
+
+        /** Installed *and* enabled: nothing left to do. */
+        VERIFIED,
+    }
+
+    /**
+     * The next rung for a package in state `(enabled, flags)`.
+     *
+     * Installed-ness is tested first on purpose. A package can be both uninstalled-for-user *and*
+     * disabled: any freeze that escalated to the uninstall rung on top of a `pm disable` that had
+     * already landed — an older build, or Shizuku on a device that refuses to disable system
+     * packages, both of which root may be the privilege asked to undo. `pm enable` on a package that is not
+     * installed for the user does not bring it back, while
+     * `pm install-existing` on a disabled package does not enable it. Only install → enable clears
+     * both; the caller re-reads between the two, so this being called twice is the normal path.
+     */
+    fun unfreezeStep(enabled: Boolean, flags: Int): UnfreezeStep = when {
+        (flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) == 0 -> UnfreezeStep.INSTALL_EXISTING
+        !enabled -> UnfreezeStep.ENABLE
+        else -> UnfreezeStep.VERIFIED
     }
 }

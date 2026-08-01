@@ -21,7 +21,9 @@ import org.koin.core.annotation.Single
  *
  * [MATCH_FLAGS] covers both of Thor's freeze mechanics — MATCH_DISABLED_COMPONENTS for a
  * disabled package, MATCH_UNINSTALLED_PACKAGES for a system package uninstalled for the user —
- * and FLAG_SUSPENDED (API 24+) catches the suspend-mode case.
+ * and FLAG_SUSPENDED (API 24+) catches the suspend-mode case. Both mechanics are live: a system
+ * app is frozen with `pm disable` where the platform allows it and with `pm uninstall --user N`
+ * where it does not, and packages frozen the second way by earlier builds are still out there.
  */
 @Single
 class AppFreezeStateReader(
@@ -41,13 +43,17 @@ class AppFreezeStateReader(
      */
     fun candidateOf(packageName: String, uad: UadSnapshot): FreezeCandidate = try {
         val info = packageManager.getApplicationInfo(packageName, MATCH_FLAGS)
-        // MATCH_UNINSTALLED_PACKAGES is not optional. Thor freezes *system* apps with
-        // `pm uninstall --user N`, not `pm disable`, so a frozen system app is not installed
-        // for this user and the lookup throws NameNotFoundException without it — the app then
-        // reads ABSENT and freezableCandidates drops it, which silently emptied the
-        // Unfreeze-all target list. FLAG_INSTALLED then has to be folded into `enabled`, the
-        // same way AppInfoMapper and AppRepositoryImpl already do it, or the package comes
-        // back looking ACTIVE instead of FROZEN.
+        // MATCH_UNINSTALLED_PACKAGES is not optional. A *system* app is frozen with `pm disable`
+        // where that works and with `pm uninstall --user N` where it does not — the gated
+        // destructive fallback (`uninstallFreezeFallbackAllowed`), plus every package the
+        // uninstall-only builds froze and that is still frozen today. A package in that second
+        // state is not installed for this user, so the lookup throws NameNotFoundException without
+        // the flag — the app then reads ABSENT and freezableCandidates drops it, which silently
+        // emptied the Unfreeze-all target list. FLAG_INSTALLED then has to be folded into
+        // `enabled`, the same way AppInfoMapper and AppRepositoryImpl already do it, or the
+        // package comes back looking ACTIVE instead of FROZEN. One conjunction, one mechanic each:
+        // `info.enabled` is what catches the `pm disable` half (that package *is* installed),
+        // FLAG_INSTALLED is what catches the uninstall half (that package reports enabled == true).
         val enabled = info.enabled && (info.flags and ApplicationInfo.FLAG_INSTALLED) != 0
         val suspended = (info.flags and ApplicationInfo.FLAG_SUSPENDED) != 0
         // FLAG_SYSTEM alone, never OR'd with FLAG_UPDATED_SYSTEM_APP — that is what isSystem
@@ -88,10 +94,19 @@ class AppFreezeStateReader(
          * The query flags any lookup of a possibly-frozen package needs, and the one definition of
          * them.
          *
-         * MATCH_UNINSTALLED_PACKAGES for a *system* app frozen with `pm uninstall --user N`, whose
-         * lookup throws `NameNotFoundException` without it; MATCH_DISABLED_COMPONENTS for a user
-         * app frozen with `pm disable`, which is belt-and-braces rather than load-bearing —
-         * `getApplicationInfo` does not filter on the enabled setting.
+         * MATCH_UNINSTALLED_PACKAGES for a package frozen with `pm uninstall --user N`, whose
+         * lookup throws `NameNotFoundException` without it; MATCH_DISABLED_COMPONENTS for one
+         * frozen with `pm disable`, which is belt-and-braces rather than load-bearing —
+         * `getApplicationInfo` does not filter on the *application's* enabled setting, so a
+         * disabled package resolves either way.
+         *
+         * Both mechanics are live, and neither flag can be dropped. `pm disable` is now what
+         * freezes a system app wherever the platform permits it, and `pm uninstall --user N` is
+         * what freezes one where it does not — the gated destructive fallback, see
+         * `uninstallFreezeFallbackAllowed`. Even if that gate closed everywhere tomorrow,
+         * MATCH_UNINSTALLED_PACKAGES would stay load-bearing: devices carry system apps that the
+         * uninstall-only builds froze, and they read as ABSENT without it, which is precisely how
+         * `Unfreeze all` would lose the packages that most need unfreezing.
          *
          * Public because the *copies* are what went wrong. `ExtensionOpsProvider` reported a frozen
          * system app as not-frozen to extensions until it grew its own pair, and

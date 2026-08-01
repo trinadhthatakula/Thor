@@ -25,8 +25,9 @@ private const val PKG = "com.some.system.app"
  * Everything that reached the privilege gateway, in order.
  *
  * The load-bearing assertion in most of these tests is that [calls] is **empty**: a gate that
- * returned a refusal *after* running `pm uninstall --user` would satisfy any assertion made on
- * the returned `Result` alone, and the app would still be gone.
+ * returned a refusal *after* the freeze had already reached the gateway would satisfy any assertion
+ * made on the returned `Result` alone, and the app would already be frozen — disabled, or, where
+ * disabling is unavailable, removed for this user with its data.
  */
 private class RecordingSystemRepository : SystemRepository {
     val calls = mutableListOf<String>()

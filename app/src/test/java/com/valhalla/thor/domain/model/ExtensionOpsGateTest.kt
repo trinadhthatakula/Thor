@@ -72,10 +72,11 @@ class ExtensionOpsFreezeStateTest {
     }
 
     @Test fun `a system app uninstalled for this user is frozen`() {
-        // The regression. Thor freezes system apps with `pm uninstall --user N`, and under
-        // MATCH_UNINSTALLED_PACKAGES that package comes back with enabled == true — only the
-        // missing FLAG_INSTALLED says it is frozen. Reading it as active made `toggle` re-freeze
-        // an already-frozen cluster instead of thawing it.
+        // The regression. A system app frozen by removal for this user — what FreezePolicy still
+        // permits, and what every system app frozen before Thor preferred disabling is in — comes
+        // back under MATCH_UNINSTALLED_PACKAGES with enabled == true; only the missing
+        // FLAG_INSTALLED says it is frozen. Reading it as active made `toggle` re-freeze an
+        // already-frozen cluster instead of thawing it.
         assertTrue(
             isFrozenAppInfo(enabled = true, flags = ApplicationInfo.FLAG_SYSTEM)
         )

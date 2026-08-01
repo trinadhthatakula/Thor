@@ -570,6 +570,45 @@ private fun AppListContent(
     }
 }
 
+/**
+ * The one status badge an app row shows, or nothing when the app is in its ordinary state.
+ *
+ * Extracted because the list and the grid carried near-identical copies of this `if` chain, and
+ * "near-identical" is what let them drift: both copies tested `isSystem && !isInstalled` *first*
+ * and painted a red "Uninstalled" danger icon for it, so one frozen system app looked different
+ * from another depending only on which mechanic had frozen it. The two call sites differ in their
+ * modifier and nothing else, so that is the only thing they still pass in.
+ *
+ * The `!isInstalled` branch is gone rather than merged, because it was unreachable once `!enabled`
+ * is tested first: [AppInfo.enabled] folds `FLAG_INSTALLED` in (see `AppInfoMapper` and
+ * `AppRepositoryImpl`), so a package that is not installed for this user *always* reads as not
+ * enabled. It could never describe a state this branch does not already cover — and it could not be
+ * kept as a distinct one either, since a system app removed with `pm uninstall --user N` is
+ * indistinguishable from one the vendor shipped removed. `FreezerMode.isFrozen` has always treated
+ * both as the same thing; this is the list agreeing with it.
+ *
+ * Order matters: an app can be disabled *and* suspended (a freezer mode switch does that), and
+ * "frozen" is the more fundamental of the two, so it wins.
+ */
+@Composable
+private fun AppStatusBadge(app: AppInfo, modifier: Modifier = Modifier) {
+    when {
+        !app.enabled -> Icon(
+            painterResource(R.drawable.frozen),
+            stringResource(R.string.cd_frozen),
+            modifier = modifier,
+            tint = MaterialTheme.colorScheme.primary
+        )
+
+        app.isSuspended -> Icon(
+            painterResource(R.drawable.bolt),
+            stringResource(R.string.cd_suspended),
+            modifier = modifier,
+            tint = MaterialTheme.colorScheme.secondary
+        )
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun AppItemList(
@@ -646,34 +685,12 @@ internal fun AppItemList(
                     .weight(1f, fill = false)
                     .then(textSharedModifier)
             )
-            if (app.isSystem && !app.isInstalled) {
-                Icon(
-                    painterResource(R.drawable.danger),
-                    stringResource(R.string.cd_uninstalled),
-                    modifier = Modifier
-                        .size(16.dp)
-                        .padding(start = 4.dp),
-                    tint = MaterialTheme.colorScheme.error
-                )
-            } else if (!app.enabled) {
-                Icon(
-                    painterResource(R.drawable.frozen),
-                    stringResource(R.string.cd_frozen),
-                    modifier = Modifier
-                        .size(16.dp)
-                        .padding(start = 4.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            } else if (app.isSuspended) {
-                Icon(
-                    painterResource(R.drawable.bolt),
-                    stringResource(R.string.cd_suspended),
-                    modifier = Modifier
-                        .size(16.dp)
-                        .padding(start = 4.dp),
-                    tint = MaterialTheme.colorScheme.secondary
-                )
-            }
+            AppStatusBadge(
+                app = app,
+                modifier = Modifier
+                    .size(16.dp)
+                    .padding(start = 4.dp)
+            )
         }
     }
 }
@@ -725,41 +742,17 @@ internal fun AppItemGrid(
                         .background(MaterialTheme.colorScheme.surface, CircleShape)
                 )
             } else {
-                // Status Indicator
-                if (app.isSystem && !app.isInstalled) {
-                    Icon(
-                        painterResource(R.drawable.danger),
-                        stringResource(R.string.cd_uninstalled),
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .size(16.dp)
-                            .background(MaterialTheme.colorScheme.surface, CircleShape)
-                            .padding(2.dp)
-                    )
-                } else if (!app.enabled) {
-                    Icon(
-                        painterResource(R.drawable.frozen),
-                        stringResource(R.string.cd_frozen),
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .size(16.dp)
-                            .background(MaterialTheme.colorScheme.surface, CircleShape)
-                            .padding(2.dp)
-                    )
-                } else if (app.isSuspended) {
-                    Icon(
-                        painterResource(R.drawable.bolt),
-                        stringResource(R.string.cd_suspended),
-                        tint = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .size(16.dp)
-                            .background(MaterialTheme.colorScheme.surface, CircleShape)
-                            .padding(2.dp)
-                    )
-                }
+                // Status Indicator. The badge is the direct child of this Box, so `align` still
+                // reaches the Icon that AppStatusBadge emits — parent data travels with the
+                // modifier, not with the call site.
+                AppStatusBadge(
+                    app = app,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(16.dp)
+                        .background(MaterialTheme.colorScheme.surface, CircleShape)
+                        .padding(2.dp)
+                )
             }
         }
         Spacer(Modifier.height(8.dp))

@@ -63,13 +63,36 @@ class ShizukuReflector(
         }
     }
 
-    fun setAppEnabled(packageName: String, enabled: Boolean): Boolean {
+    /**
+     * [rungOrder] is passed straight through to [Shizuku.setAppDisabled] and defaults to the
+     * historical shell-first order, so every existing call site keeps its behaviour. Only the
+     * preinstalled-app freeze in `ShizukuSystemGateway` asks for [EnableRungOrder.REFLECTION_FIRST].
+     */
+    fun setAppEnabled(
+        packageName: String,
+        enabled: Boolean,
+        rungOrder: EnableRungOrder = EnableRungOrder.SHELL_FIRST
+    ): Boolean = setAppEnabledDetailed(packageName, enabled, rungOrder).succeeded
+
+    /**
+     * [setAppEnabled], plus whether the platform *refused* rather than merely failed.
+     *
+     * A thrown exception is reported as `refusedByPolicy = false`: everything that reaches this
+     * catch got past the per-rung handling inside [Shizuku.setAppDisabledDetailed], so it is a
+     * Shizuku-binder or reflection-plumbing problem rather than `PackageManagerService` saying no.
+     * Guessing "refused" here would let a dead binder authorise deleting an app's data.
+     */
+    fun setAppEnabledDetailed(
+        packageName: String,
+        enabled: Boolean,
+        rungOrder: EnableRungOrder = EnableRungOrder.SHELL_FIRST
+    ): DisableOutcome {
         return try {
-            Shizuku.setAppDisabled(context, packageName, !enabled)
+            Shizuku.setAppDisabledDetailed(context, packageName, !enabled, rungOrder)
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
                 Logger.e("ShizukuReflector", "setAppEnabled failed", e)
-            false
+            DisableOutcome(succeeded = false, refusedByPolicy = false)
         }
     }
 
@@ -116,6 +139,17 @@ class ShizukuReflector(
 
     fun setAppSuspended(packageName: String, suspended: Boolean): Boolean =
         Shizuku.setAppSuspended(context, packageName, suspended)
+
+    /**
+     * The last rung of the system-app freeze: remove for this user, **keep the data**.
+     *
+     * Shell-only, with no reflection fallback, and that is the point. The `PackageInstaller`
+     * fallback in [uninstallApp] cannot express `DELETE_KEEP_DATA` from here, so falling back to it
+     * would silently turn a data-preserving freeze into a data-destroying one — precisely the bug
+     * this whole change exists to remove. If the shell rung cannot do it, the freeze fails.
+     */
+    fun freezeSystemAppForUser(packageName: String): Boolean =
+        Shizuku.freezeSystemAppForUser(packageName)
 
     suspend fun uninstallApp(packageName: String, resetToFactory: Boolean = false): Boolean {
         // 1. Try shell first
