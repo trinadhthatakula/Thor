@@ -87,7 +87,7 @@ fun isBlockedFromFreeze(app: AppInfo?): Boolean =
  * The residual cost of [UNINSTALL] is narrower than it looks, and narrower than this comment used
  * to claim. What it costs unconditionally is `FLAG_INSTALLED`: `-k` still sets the user's installed
  * state to false, so the package stops resolving for this user unless the caller passes
- * `MATCH_UNINSTALLED_PACKAGES` — which is why every query in the freeze path has to.
+ * `MATCH_UNINSTALLED_PACKAGES` — which is why every query in the freeze path must pass that flag.
  *
  * It does *not* cost the runtime permission grants, which this comment used to assert it did. That
  * assertion was a guess, and it measured false: at uid 2000 on a stock API 36 emulator, a permission
