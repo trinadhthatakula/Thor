@@ -79,10 +79,11 @@ fun isBlockedFromFreeze(app: AppInfo?): Boolean =
  * `pm install-existing` brings the app back factory-fresh, with its logins, settings and local
  * content gone.
  *
- * Thor prefers [DISABLE] everywhere it works. [UNINSTALL] exists because on some platform and
- * privilege combinations disabling a system app is not permitted at all, and a freeze that cannot
- * happen is worse than one that costs data the user was warned about — but *only* on those
- * combinations, which is what [destructiveFreezeFallbackAllowed] decides.
+ * Thor prefers [DISABLE] everywhere it works, which — measurably — is everywhere stock Android
+ * runs. [UNINSTALL] exists because some OEM builds refuse to let the shell uid disable their own
+ * system packages at all, and on those devices a freeze that cannot happen is worse than one that
+ * costs data the user was warned about. It is reached *only* where the platform actually refused,
+ * which is what [destructiveFreezeFallbackAllowed] decides.
  */
 enum class FreezeMechanic {
     /** `pm disable`, or the equivalent `setApplicationEnabledSetting` reflection. Keeps data. */
@@ -93,54 +94,79 @@ enum class FreezeMechanic {
 }
 
 /**
- * Android 16 (Baklava). Named rather than inlined because this one number is the entire reason
- * [destructiveFreezeFallbackAllowed] exists, and a bare `36` at a call site reads like a typo.
- *
- * `data/source/local/shizuku/Targets.B` is the data-layer mirror of this check. The duplication is
- * deliberate: `domain` must not import from `data`, and the alternative — passing `Targets.B` down
- * as a boolean — would hide *which* version boundary a caller meant.
- */
-const val ANDROID_16_BAKLAVA = 36
-
-/**
  * May a failed [FreezeMechanic.DISABLE] escalate to [FreezeMechanic.UNINSTALL] for this package?
  *
  * This gate is the difference between a fallback chain and a data-loss bug. Without it, *any*
- * transient failure to disable — a busy PackageManager, a binder timeout, an OEM refusing one
- * specific package — silently escalates to destroying that app's data, and the user is told the
- * freeze succeeded. With it, escalation is confined to the one combination where disabling a
- * system app is genuinely not available, and everywhere else a failure to disable stays a
- * *failure*, visible and reportable.
+ * failure to disable — a busy PackageManager, a binder timeout, a package that happened to be
+ * mid-update — silently escalates to destroying that app's data, and the user is told the freeze
+ * succeeded. With it, escalation is confined to the case where the platform has *refused* to
+ * disable the package, and everywhere else a failure to disable stays a *failure*, visible and
+ * reportable.
  *
- * Failing loudly is the deliberate choice here. A freeze that reports an error costs the user an
+ * Failing loudly is the deliberate choice. A freeze that reports an error costs the user an
  * annoyance and Thor a bug report; a freeze that quietly wipes an app's data costs the user
  * something they cannot get back and produces no report at all, because from the outside it looked
  * like it worked.
  *
- * @param sdkInt injected rather than read from `Build.VERSION.SDK_INT` so this stays a pure
- *   function that unit tests can drive across the version boundary — the boundary being the whole
- *   point, it is the one thing that must be testable.
+ * ### Why this is not a version check
+ *
+ * It was, briefly: `sdkInt >= 36`, on the report that shell-uid disabling of system apps "stopped
+ * working on Android 16". That boundary does not exist, and the measurement is not close:
+ *
+ *  - On a **stock AOSP Android 16 (API 36) emulator**, as uid 2000, `pm disable-user --user 0`
+ *    succeeds on system apps — verified on `com.android.egg`, `com.android.printspooler`,
+ *    `com.android.wallpaper.livepicker` and `com.android.traceur`, each landing on `enabled=3`
+ *    with `installed=true`, and each reversed by `pm enable`.
+ *  - AOSP's shell guard in `PackageManagerService.setEnabledSettings` is **byte-identical** across
+ *    android14-, android15-, android16-, android16-qpr1- and android16-qpr2-release. The 15→16
+ *    diff of that method contains tracing and metrics changes and no security logic at all.
+ *  - The restriction users actually hit is **Xiaomi's**, not Android's: a vendor
+ *    `PackageManagerServiceImpl.canBeDisabled` — a class that does not exist in AOSP — throws
+ *    `SecurityException("Cannot disable system packages.")` for `callingUid == 2000` on a system
+ *    package. It was first reported on HyperOS running **Android 14**, roughly a year before
+ *    Android 16 shipped, and is not tied to an API level in either direction.
+ *
+ * So a version test is wrong in *both* directions at once: it would destroy data on a Pixel that
+ * could have disabled the app, and it would refuse to freeze at all on the Xiaomi devices that are
+ * the entire reason the fallback exists. What actually distinguishes the two cases is not which
+ * release the device runs but whether the platform refused — so that is what this asks.
+ *
+ * One thing the shell uid genuinely cannot do, on every release since API 25 and still true on 17:
+ * set `COMPONENT_ENABLED_STATE_DISABLED` (state 2, what `pm disable` sends). It may only set
+ * `DEFAULT`, `ENABLED` or `DISABLED_USER`. That is a *command* constraint, not a version one, and
+ * Thor already satisfies it by sending `pm disable-user` from the Shizuku path.
+ *
+ * @param disableRefusedByPolicy true only when a privileged rung was refused by the platform —
+ *   a `SecurityException` from `PackageManagerService`, not merely a non-zero exit or a read that
+ *   came back unreadable. Passed in rather than inferred so this stays a pure function, and so the
+ *   one decision that can cost a user their data is reachable from a plain JVM test.
  */
 fun destructiveFreezeFallbackAllowed(
     isSystem: Boolean,
     privilegeMode: PrivilegeMode,
-    sdkInt: Int,
+    disableRefusedByPolicy: Boolean,
 ): Boolean = when {
-    // A user app disables with `pm enable`/`pm disable` on every supported release, so there is
-    // no platform gap to work around and no reason to ever reach for the destructive mechanic.
+    // A user app disables under every privilege mode on every supported release, so there is no
+    // platform gap to work around and no reason to ever reach for the destructive mechanic.
     !isSystem -> false
 
-    else -> when (privilegeMode) {
-        // The reported gap. Under the shell uid, disabling a *system* app stopped being available
-        // on Android 16, so uninstall-for-user is the only remaining way to freeze one and
-        // refusing to escalate would mean Shizuku users on 16+ simply cannot freeze system apps.
-        PrivilegeMode.SHIZUKU -> sdkInt >= ANDROID_16_BAKLAVA
+    // Nothing refused us, so nothing is unavailable. Whatever went wrong is a failure to report,
+    // not a restriction to work around — and this is the branch that stops a binder timeout from
+    // costing someone their app data.
+    !disableRefusedByPolicy -> false
 
-        // Root can disable any package on any release, so a failure here is a real failure worth
-        // surfacing rather than a platform restriction worth working around. This is a behaviour
-        // change: root used to freeze system apps by uninstalling them unconditionally, so a
-        // package that root cannot disable now reports an error where it previously "worked" by
-        // destroying data.
+    else -> when (privilegeMode) {
+        // The real gap, and the only one measured: an OEM that refuses to let the shell uid
+        // disable its system packages. Uninstall-for-user is then the only remaining way to
+        // freeze one, and refusing to escalate would mean those users cannot freeze system apps
+        // at all — which is the state this whole change is trying to get *out* of.
+        PrivilegeMode.SHIZUKU -> true
+
+        // Root is uid 0, and every refusal found in the wild — AOSP's own and Xiaomi's alike —
+        // keys on the *shell* uid (2000). Root has no observed platform restriction to work
+        // around, so a refusal here is a genuine anomaly worth surfacing rather than an
+        // invitation to delete the user's data. This is a behaviour change: root used to freeze
+        // system apps by uninstalling them unconditionally.
         PrivilegeMode.ROOT -> false
 
         // Dhizuku does not consult this policy yet — DhizukuSystemGateway still uninstalls system

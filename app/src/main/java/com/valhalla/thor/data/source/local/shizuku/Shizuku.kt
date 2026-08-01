@@ -37,33 +37,101 @@ import com.valhalla.thor.util.Logger
  */
 enum class EnableRungOrder { SHELL_FIRST, REFLECTION_FIRST }
 
+/**
+ * The outcome of a privileged enable/disable attempt.
+ *
+ * [refusedByPolicy] is the field that exists for exactly one caller: the preinstalled-app freeze,
+ * whose fallback is `pm uninstall --user N` and therefore costs the user their data. It separates
+ * "this device refuses to disable system packages" — an OEM restriction there is no way around —
+ * from "that did not work just now", which is a bug report, not a licence to delete anything.
+ *
+ * It is only ever meaningful when [succeeded] is false.
+ */
+data class DisableOutcome(val succeeded: Boolean, val refusedByPolicy: Boolean)
+
+/**
+ * What a rung reported about *itself*. Only [REFUSED_BY_POLICY] ever changes a decision; whether a
+ * rung believes it succeeded is not evidence of anything (see [firstRungThatSticks]).
+ */
+internal enum class RungResult {
+    /** The rung ran without complaint. Proves nothing on its own — the post-read decides. */
+    RAN,
+
+    /** The rung failed in a way that carries no information: non-zero exit, timeout, null binder. */
+    FAILED,
+
+    /**
+     * `PackageManagerService` **refused**. This is the one outcome that means "this device will
+     * not let us do this", as opposed to "that did not work just now", and it is what
+     * `destructiveFreezeFallbackAllowed` keys the destructive fallback on.
+     */
+    REFUSED_BY_POLICY,
+}
+
+/**
+ * Did this failure come from the platform refusing, rather than from anything transient?
+ *
+ * Matches both refusals Thor can actually meet: AOSP's own
+ * `SecurityException("Shell cannot change component state for <pkg> to 2")` and Xiaomi's vendor
+ * `SecurityException("Cannot disable system packages.")` out of `PackageManagerServiceImpl`. The
+ * shell rung only ever sees these as text on stderr, so text is what this reads.
+ */
+internal fun isPolicyRefusal(text: String?): Boolean =
+    text != null && text.contains("SecurityException", ignoreCase = true)
+
+/** As [isPolicyRefusal], for a rung that threw instead of printing. Walks the whole cause chain. */
+internal fun isPolicyRefusal(error: Throwable?): Boolean {
+    var e = error
+    var hops = 0
+    while (e != null && hops++ < 10) {
+        if (e is SecurityException) return true
+        if (e.javaClass.name.endsWith("SecurityException")) return true
+        e = e.cause
+    }
+    return false
+}
+
 /** One privileged attempt, plus the label that names it in the log line when it is the one that stuck. */
-internal class EnableRung(val label: String, val attempt: () -> Boolean)
+internal class EnableRung(val label: String, val attempt: () -> RungResult)
 
 internal const val RUNG_REFLECTION = "IPackageManager reflection"
 internal const val RUNG_SHELL = "pm shell"
 internal const val RUNG_UNPRIVILEGED = "unprivileged PackageManager"
 
 /**
- * Runs [rungs] in order and returns the label of the first one after which [verify] reports the
- * state has actually changed — or null if none of them moved it.
+ * The result of running the whole chain: which rung (if any) actually moved the state, and whether
+ * anything along the way was refused by the platform rather than merely failing.
+ */
+internal data class ChainOutcome(val winner: String?, val refusedByPolicy: Boolean)
+
+/**
+ * Runs [rungs] in order and reports the first one after which [verify] says the state has actually
+ * changed — or a null winner if none of them moved it.
  *
- * Each rung's own return value is deliberately ignored. `pm` exits 0 for a disable that
+ * A rung's claim to have *succeeded* is deliberately ignored. `pm` exits 0 for a disable that
  * `PackageManagerService` refused, and a `Bypass.invoke` that threw nothing has still proven
  * nothing, so the post-read is the only evidence that counts. It is equally deliberate that a rung
- * reporting *failure* is still verified before moving on: `Shizuku.execute` returns -1 whenever it
+ * reporting failure is still verified before moving on: `Shizuku.execute` returns -1 whenever it
  * cannot read an exit code at all (null binder, timeout), and that is not the same as "the state
  * did not change".
  *
- * Pure on purpose — no Android types, no logging — so the ordering and the short-circuit rule are
- * reachable from a plain JVM unit test. The caller does the logging.
+ * A rung's claim to have been *refused* is the one thing that is carried out, because it is the
+ * only outcome that distinguishes "this device will not do this" from "that did not work just
+ * now" — and the caller spends that distinction on whether it may destroy the user's data.
+ * [refusedByPolicy][ChainOutcome.refusedByPolicy] is sticky across rungs: a refusal from the
+ * reflection rung still counts when a later rung merely fails, since the refusal is a fact about
+ * the device either way.
+ *
+ * Pure on purpose — no Android types, no logging — so the ordering, the short-circuit and the
+ * refusal bookkeeping are all reachable from a plain JVM unit test. The caller does the logging.
  */
-internal fun firstRungThatSticks(rungs: List<EnableRung>, verify: () -> Boolean): String? {
+internal fun firstRungThatSticks(rungs: List<EnableRung>, verify: () -> Boolean): ChainOutcome {
+    var refused = false
     for (rung in rungs) {
-        rung.attempt()
-        if (verify()) return rung.label
+        if (rung.attempt() == RungResult.REFUSED_BY_POLICY) refused = true
+        if (verify()) return ChainOutcome(rung.label, refused)
     }
-    return null
+    return ChainOutcome(null, refused)
 }
 
 /**
@@ -170,9 +238,24 @@ object Shizuku {
         packageName: String,
         disabled: Boolean,
         rungOrder: EnableRungOrder = EnableRungOrder.SHELL_FIRST
-    ): Boolean {
+    ): Boolean = setAppDisabledDetailed(context, packageName, disabled, rungOrder).succeeded
+
+    /**
+     * [setAppDisabled], plus *why* it failed when it did.
+     *
+     * Only the preinstalled-app freeze needs this. It is the one caller whose next move depends on
+     * the difference between "the platform refused" and "that did not work", because its next move
+     * is `pm uninstall --user N` and that deletes the user's data.
+     */
+    fun setAppDisabledDetailed(
+        context: Context,
+        packageName: String,
+        disabled: Boolean,
+        rungOrder: EnableRungOrder = EnableRungOrder.SHELL_FIRST
+    ): DisableOutcome {
         val pkgs = Packages(context)
-        pkgs.getApplicationInfoOrNull(packageName) ?: return false
+        pkgs.getApplicationInfoOrNull(packageName)
+            ?: return DisableOutcome(succeeded = false, refusedByPolicy = false)
         val userId = pkgs.myUserId
         // Escaped for the shell rung only; the reflection rung passes the raw name over binder.
         val escapedPackage = packageName.escapeForShell()
@@ -192,19 +275,31 @@ object Shizuku {
             !(it.enabled && (it.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0)
         } ?: true // stopped resolving entirely: gone is at least as disabled as disabled
 
+        // `pm disable-user` (COMPONENT_ENABLED_STATE_DISABLED_USER) and not `pm disable`: since
+        // API 25 and still on 37, a shell-uid caller may only move a whole package between DEFAULT,
+        // ENABLED and DISABLED_USER, so `pm disable` throws SecurityException on every release.
+        // Verified on an AOSP API 36 emulator: `pm disable` → "Shell cannot change component state
+        // for null to 2"; `pm disable-user` → exit 0, enabled=3, installed=true.
         val shellRung = EnableRung(RUNG_SHELL) {
             val command = if (disabled) {
                 "pm disable-user --user $userId $escapedPackage"
             } else {
                 "pm enable --user $userId $escapedPackage"
             }
-            execute(command).first == 0
+            val (code, output) = execute(command)
+            when {
+                code == 0 -> RungResult.RAN
+                // `pm` reports a refusal by printing the SecurityException and exiting non-zero,
+                // so the exit code alone cannot tell a refusal from a timeout.
+                isPolicyRefusal(output) -> RungResult.REFUSED_BY_POLICY
+                else -> RungResult.FAILED
+            }
         }
 
         val reflectionRung = EnableRung(RUNG_REFLECTION) {
             runCatching {
                 setApplicationEnabledSettingViaBypass(context, packageName, disabled, userId)
-                true
+                RungResult.RAN
             }.getOrElse { e ->
                 // Logged rather than swallowed (it used to be a bare getOrDefault(false)): when
                 // this rung is the one that is supposed to work, its SecurityException/
@@ -214,7 +309,9 @@ object Shizuku {
                     "setApplicationEnabledSetting reflection failed for $packageName (disabled=$disabled)",
                     e
                 )
-                false
+                // Bypass.invoke reflects, so the platform's SecurityException arrives wrapped in an
+                // InvocationTargetException — hence the cause walk rather than an `is` check.
+                if (isPolicyRefusal(e)) RungResult.REFUSED_BY_POLICY else RungResult.FAILED
             }
         }
 
@@ -230,25 +327,31 @@ object Shizuku {
             }
             runCatching {
                 context.packageManager.setApplicationEnabledSetting(packageName, newState, 0)
-            }.isSuccess
+                RungResult.RAN
+            // FAILED and never REFUSED_BY_POLICY, however loudly this throws. Thor holds no
+            // CHANGE_COMPONENT_ENABLED_STATE, so for any package but its own this rung throws
+            // SecurityException on *every* device — reporting that as a policy refusal would hand
+            // the destructive fallback a permanent green light and undo the whole gate.
+            }.getOrElse { RungResult.FAILED }
         }
 
         val ordered = orderRungs(rungOrder, shellRung, reflectionRung, unprivilegedRung)
 
-        val winner = firstRungThatSticks(ordered) { isDisabledNow() == disabled }
-        return if (winner != null) {
+        val outcome = firstRungThatSticks(ordered) { isDisabledNow() == disabled }
+        return if (outcome.winner != null) {
             Logger.d(
                 "Shizuku",
-                "setAppDisabled($packageName, disabled=$disabled): $winner changed the state"
+                "setAppDisabled($packageName, disabled=$disabled): ${outcome.winner} changed the state"
             )
-            true
+            DisableOutcome(succeeded = true, refusedByPolicy = false)
         } else {
             Logger.e(
                 "Shizuku",
                 "setAppDisabled($packageName, disabled=$disabled): all rungs ran " +
-                    "(${ordered.joinToString { it.label }}) and the state did not change"
+                    "(${ordered.joinToString { it.label }}) and the state did not change" +
+                    if (outcome.refusedByPolicy) " — the platform REFUSED (SecurityException)" else ""
             )
-            false
+            DisableOutcome(succeeded = false, refusedByPolicy = outcome.refusedByPolicy)
         }
     }
 

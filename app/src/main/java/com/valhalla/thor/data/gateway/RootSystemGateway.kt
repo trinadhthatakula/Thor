@@ -15,6 +15,7 @@ import com.valhalla.thor.rootservice.IThorRootService
 import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.superuser.ktx.ShellResult
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.data.source.local.shizuku.isPolicyRefusal
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.destructiveFreezeFallbackAllowed
@@ -312,9 +313,9 @@ class RootSystemGateway(
      * Rung 1 → (gated) rung 2 of the system-app freeze, with a state re-read between them.
      *
      * Rung 1 (`pm disable`) preserves the app's data; rung 2 (`pm uninstall --user`) deletes it, and
-     * is only reached when [destructiveFreezeFallbackAllowed] says this privilege/version pair has
-     * no other way to freeze a system app — which for root is never. Nothing here trusts a shell
-     * exit code: the rung that "succeeded" is the one the platform agrees changed the package state.
+     * is only reached when [destructiveFreezeFallbackAllowed] says this privilege mode has no other
+     * way to freeze a system app — which for root is never. Nothing here trusts a shell exit code:
+     * the rung that "succeeded" is the one the platform agrees changed the package state.
      */
     private suspend fun freezeSystemApp(
         packageName: String,
@@ -330,7 +331,10 @@ class RootSystemGateway(
         }
 
         // --- Rung 1: pm disable. Keeps the package installed for the user, so its data survives.
-        runCommand("pm disable --user $currentUser $escapedPackage")
+        // The result is kept rather than discarded because the gate below turns on *why* a rung
+        // failed: runCommand folds stderr into the exception message, which is where a
+        // PackageManagerService SecurityException lands.
+        val disableResult = runCommand("pm disable --user $currentUser $escapedPackage")
         when (readEffectivelyEnabled(packageName)) {
             false -> {
                 Logger.i(
@@ -360,15 +364,21 @@ class RootSystemGateway(
 
         // --- Rung 2: pm uninstall --user. DESTROYS the app's data; `pm install-existing` brings the
         // package back factory-fresh. Gated, not merely last: the policy — not this gateway — owns
-        // the question of whether a privilege/version pair has any other way to freeze a system app.
+        // the question of whether a privilege mode has any other way to freeze a system app.
         // Passing PrivilegeMode.ROOT literally is correct rather than lazy: this class *is* the root
         // implementation, and reading the user's configured mode here would let a fallback chain
-        // that landed on root apply Shizuku's escalation rules. Under root the gate answers false on
-        // every release, so the rung below is unreachable today and the failure is surfaced instead.
+        // that landed on root apply Shizuku's escalation rules. Under root the gate answers false
+        // whatever the refusal flag says — every refusal observed in the wild, AOSP's own and
+        // Xiaomi's alike, keys on the shell uid (2000), and root is uid 0 — so the rung below is
+        // unreachable today and the failure is surfaced instead. The flag is still computed and
+        // passed honestly rather than hardcoded to false, so the two gateways call the gate the
+        // same way and a future decision to let root escalate is a change in the policy, not here.
         if (!destructiveFreezeFallbackAllowed(
                 isSystem = true,
                 privilegeMode = PrivilegeMode.ROOT,
-                sdkInt = android.os.Build.VERSION.SDK_INT,
+                disableRefusedByPolicy = isPolicyRefusal(
+                    disableResult.exceptionOrNull()?.message
+                ),
             )
         ) {
             val refused = java.io.IOException(

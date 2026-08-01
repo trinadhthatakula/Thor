@@ -20,63 +20,73 @@ class DestructiveFreezeFallbackTest {
     private fun allowed(
         isSystem: Boolean = true,
         mode: PrivilegeMode = PrivilegeMode.SHIZUKU,
-        sdkInt: Int = ANDROID_16_BAKLAVA,
-    ) = destructiveFreezeFallbackAllowed(isSystem, mode, sdkInt)
+        refused: Boolean = true,
+    ) = destructiveFreezeFallbackAllowed(isSystem, mode, refused)
 
     // --- The one combination that is allowed to escalate -------------------------------------
 
     @Test
-    fun `shizuku on android 16 may escalate for a system app`() {
-        assertTrue(allowed(mode = PrivilegeMode.SHIZUKU, sdkInt = ANDROID_16_BAKLAVA))
+    fun `shizuku refused by the platform may escalate for a system app`() {
+        assertTrue(allowed(mode = PrivilegeMode.SHIZUKU, refused = true))
     }
 
-    @Test
-    fun `shizuku above android 16 may escalate for a system app`() {
-        assertTrue(allowed(mode = PrivilegeMode.SHIZUKU, sdkInt = ANDROID_16_BAKLAVA + 1))
-        assertTrue(allowed(mode = PrivilegeMode.SHIZUKU, sdkInt = 99))
-    }
-
-    // --- The boundary itself -------------------------------------------------------------------
+    // --- The discriminator: refusal, not failure ----------------------------------------------
 
     /**
-     * Off-by-one here is not a cosmetic bug in either direction: one release too low destroys data
-     * on devices that could have disabled the app, one too high leaves Shizuku users on 16 unable
-     * to freeze system apps at all.
+     * This is the branch the whole gate exists for. A busy PackageManager, a binder timeout or a
+     * package caught mid-update all fail to disable without the platform having refused anything;
+     * escalating on those is how a transient error turns into permanent data loss that nobody ever
+     * reports, because from the outside it looked like the freeze worked.
      */
     @Test
-    fun `shizuku one release below the boundary may not escalate`() {
-        assertFalse(allowed(mode = PrivilegeMode.SHIZUKU, sdkInt = ANDROID_16_BAKLAVA - 1))
+    fun `shizuku that merely failed may not escalate`() {
+        assertFalse(allowed(mode = PrivilegeMode.SHIZUKU, refused = false))
     }
 
+    /**
+     * Guards against the version gate coming back. It was `sdkInt >= 36` on the report that
+     * shell-uid disabling broke on Android 16; a stock AOSP API 36 emulator disables system apps
+     * from uid 2000 without complaint, and the restriction that does exist is Xiaomi's, first seen
+     * on Android 14. Nothing about the answer may depend on the release — only on the refusal.
+     */
     @Test
-    fun `shizuku on older releases may not escalate`() {
-        // 28 is Thor's minSdk; 35 is the release immediately before the restriction landed.
-        for (sdk in listOf(28, 29, 30, 31, 33, 34, 35)) {
-            assertFalse("sdk $sdk must not escalate", allowed(mode = PrivilegeMode.SHIZUKU, sdkInt = sdk))
+    fun `the answer depends only on the refusal, never on anything version-like`() {
+        for (mode in PrivilegeMode.entries) {
+            val refusedAnswer = destructiveFreezeFallbackAllowed(true, mode, true)
+            val failedAnswer = destructiveFreezeFallbackAllowed(true, mode, false)
+            assertFalse("$mode escalated without a refusal", failedAnswer)
+            // Called twice with identical arguments the answer must be identical — the function is
+            // pure, so there is no ambient SDK_INT, Build field or clock it could be reading.
+            assertTrue(
+                "$mode is not deterministic",
+                refusedAnswer == destructiveFreezeFallbackAllowed(true, mode, true),
+            )
         }
     }
 
-    // --- Every other privilege mode fails closed, at every version -----------------------------
+    // --- Every other privilege mode fails closed, refused or not -------------------------------
 
+    /**
+     * Root is uid 0. Every refusal observed in the wild — AOSP's own shell guard and Xiaomi's
+     * vendor `canBeDisabled` alike — keys on the shell uid (2000), so a refusal reaching root is an
+     * anomaly worth surfacing, not a licence to delete the user's data.
+     */
     @Test
-    fun `root never escalates at any version`() {
-        for (sdk in listOf(28, 35, ANDROID_16_BAKLAVA, ANDROID_16_BAKLAVA + 1, 99)) {
-            assertFalse("root at sdk $sdk", allowed(mode = PrivilegeMode.ROOT, sdkInt = sdk))
-        }
+    fun `root never escalates, refused or not`() {
+        assertFalse("root refused", allowed(mode = PrivilegeMode.ROOT, refused = true))
+        assertFalse("root failed", allowed(mode = PrivilegeMode.ROOT, refused = false))
     }
 
     @Test
-    fun `dhizuku never escalates at any version`() {
-        for (sdk in listOf(28, 35, ANDROID_16_BAKLAVA, ANDROID_16_BAKLAVA + 1, 99)) {
-            assertFalse("dhizuku at sdk $sdk", allowed(mode = PrivilegeMode.DHIZUKU, sdkInt = sdk))
-        }
+    fun `dhizuku never escalates, refused or not`() {
+        assertFalse("dhizuku refused", allowed(mode = PrivilegeMode.DHIZUKU, refused = true))
+        assertFalse("dhizuku failed", allowed(mode = PrivilegeMode.DHIZUKU, refused = false))
     }
 
     @Test
-    fun `no privilege never escalates at any version`() {
-        for (sdk in listOf(28, 35, ANDROID_16_BAKLAVA, ANDROID_16_BAKLAVA + 1, 99)) {
-            assertFalse("none at sdk $sdk", allowed(mode = PrivilegeMode.NONE, sdkInt = sdk))
-        }
+    fun `no privilege never escalates, refused or not`() {
+        assertFalse("none refused", allowed(mode = PrivilegeMode.NONE, refused = true))
+        assertFalse("none failed", allowed(mode = PrivilegeMode.NONE, refused = false))
     }
 
     // --- User apps are never in scope, whatever else is true -----------------------------------
@@ -87,12 +97,12 @@ class DestructiveFreezeFallbackTest {
      * distinction and is one failed `pm disable` away from wiping a user-installed app.
      */
     @Test
-    fun `a user app never escalates under any mode or version`() {
+    fun `a user app never escalates under any mode, even when refused`() {
         for (mode in PrivilegeMode.entries) {
-            for (sdk in listOf(28, 35, ANDROID_16_BAKLAVA, 99)) {
+            for (refused in listOf(true, false)) {
                 assertFalse(
-                    "user app under $mode at sdk $sdk",
-                    allowed(isSystem = false, mode = mode, sdkInt = sdk),
+                    "user app under $mode, refused=$refused",
+                    allowed(isSystem = false, mode = mode, refused = refused),
                 )
             }
         }
@@ -102,7 +112,11 @@ class DestructiveFreezeFallbackTest {
     @Test
     fun `only shizuku can ever escalate`() {
         val escalating = PrivilegeMode.entries.filter {
-            destructiveFreezeFallbackAllowed(isSystem = true, privilegeMode = it, sdkInt = 99)
+            destructiveFreezeFallbackAllowed(
+                isSystem = true,
+                privilegeMode = it,
+                disableRefusedByPolicy = true,
+            )
         }
         assertTrue(
             "unexpected modes may destroy data: $escalating",

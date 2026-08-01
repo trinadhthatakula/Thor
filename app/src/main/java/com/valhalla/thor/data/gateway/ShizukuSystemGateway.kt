@@ -5,7 +5,6 @@ package com.valhalla.thor.data.gateway
 
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.os.Build
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.shizuku.EnableRungOrder
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
@@ -101,9 +100,16 @@ class ShizukuSystemGateway(
      * deleted its data" actually happened.
      */
     private suspend fun freezeSystemApp(packageName: String): Result<Unit> {
-        // Rungs 1 + 2. setAppEnabled already re-reads ApplicationInfo after each rung and returns
-        // true only when the package really is disabled, so an exit code alone never satisfies it.
-        if (reflector.setAppEnabled(packageName, false, EnableRungOrder.REFLECTION_FIRST)) {
+        // Rungs 1 + 2. setAppEnabledDetailed already re-reads ApplicationInfo after each rung and
+        // reports success only when the package really is disabled, so an exit code alone never
+        // satisfies it. The detailed variant is used because rung 3 below turns on *why* this
+        // failed, not merely that it did.
+        val disable = reflector.setAppEnabledDetailed(
+            packageName,
+            false,
+            EnableRungOrder.REFLECTION_FIRST,
+        )
+        if (disable.succeeded) {
             Logger.d(
                 "ShizukuSystemGateway",
                 "freeze($packageName): disabled in place; app data kept"
@@ -111,25 +117,28 @@ class ShizukuSystemGateway(
             return Result.success(Unit)
         }
 
-        // Rung 3, gated. The shared predicate is consulted rather than an inline SDK_INT check so
-        // both gateways move together if device testing puts the boundary somewhere else. isSystem
-        // is true by construction here — freezeSystemApp is only reached from the isSystem branch —
-        // but it is passed explicitly so the gate, not this call site, owns the whole rule.
+        // Rung 3, gated on the platform having actually refused — not on the Android version.
+        // A stock AOSP API 36 emulator disables system apps from the shell uid without complaint,
+        // so a version test would destroy data on every device that never needed this rung, while
+        // still missing the OEM builds (Xiaomi HyperOS, reported on Android 14) that do. isSystem
+        // is true by construction here, but it is passed explicitly so the gate — not this call
+        // site — owns the whole rule.
         if (!destructiveFreezeFallbackAllowed(
                 isSystem = true,
                 privilegeMode = PrivilegeMode.SHIZUKU,
-                sdkInt = Build.VERSION.SDK_INT
+                disableRefusedByPolicy = disable.refusedByPolicy,
             )
         ) {
             Logger.e(
                 "ShizukuSystemGateway",
                 "freeze($packageName): reflection and `pm disable-user` both left the package " +
-                    "enabled, and uninstall-for-user is not permitted on this release — failing " +
-                    "rather than destroying the app's data"
+                    "enabled, and nothing refused us — this is a failure to report, not a platform " +
+                    "limit to work around, so the app's data was left intact"
             )
             return Result.failure(
                 Exception(
-                    "Shizuku could not disable the system app $packageName, and freezing it by " +
+                    "Shizuku could not disable the system app $packageName. Nothing refused the " +
+                        "request, so this is not a device restriction, and freezing it by " +
                         "uninstalling it for this user would delete its data. Refusing."
                 )
             )

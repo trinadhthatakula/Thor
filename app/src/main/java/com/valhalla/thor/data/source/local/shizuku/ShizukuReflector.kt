@@ -72,13 +72,27 @@ class ShizukuReflector(
         packageName: String,
         enabled: Boolean,
         rungOrder: EnableRungOrder = EnableRungOrder.SHELL_FIRST
-    ): Boolean {
+    ): Boolean = setAppEnabledDetailed(packageName, enabled, rungOrder).succeeded
+
+    /**
+     * [setAppEnabled], plus whether the platform *refused* rather than merely failed.
+     *
+     * A thrown exception is reported as `refusedByPolicy = false`: everything that reaches this
+     * catch got past the per-rung handling inside [Shizuku.setAppDisabledDetailed], so it is a
+     * Shizuku-binder or reflection-plumbing problem rather than `PackageManagerService` saying no.
+     * Guessing "refused" here would let a dead binder authorise deleting an app's data.
+     */
+    fun setAppEnabledDetailed(
+        packageName: String,
+        enabled: Boolean,
+        rungOrder: EnableRungOrder = EnableRungOrder.SHELL_FIRST
+    ): DisableOutcome {
         return try {
-            Shizuku.setAppDisabled(context, packageName, !enabled, rungOrder)
+            Shizuku.setAppDisabledDetailed(context, packageName, !enabled, rungOrder)
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
                 Logger.e("ShizukuReflector", "setAppEnabled failed", e)
-            false
+            DisableOutcome(succeeded = false, refusedByPolicy = false)
         }
     }
 

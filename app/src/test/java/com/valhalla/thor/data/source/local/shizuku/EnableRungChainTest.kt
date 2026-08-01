@@ -4,8 +4,11 @@
 package com.valhalla.thor.data.source.local.shizuku
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
 
 /**
  * The rung chain behind `Shizuku.setAppDisabled`.
@@ -13,13 +16,17 @@ import org.junit.Test
  * The rungs themselves cannot be tested here — every one of them needs a live Shizuku binder, a
  * `PackageManager`, or both, and no gateway in Thor has a unit test for exactly that reason. What
  * *is* reachable is the part that changed and the part that is easy to get wrong later: which rung
- * runs first, and the rule that a rung is judged by re-reading the state rather than by what it
- * reported. [orderRungs] and [firstRungThatSticks] are pure for this purpose.
+ * runs first, the rule that a rung is judged by re-reading the state rather than by what it
+ * reported, and whether the platform refusing is carried back out of the chain. [orderRungs] and
+ * [firstRungThatSticks] are pure for this purpose.
  */
 class EnableRungChainTest {
 
-    private fun rung(label: String, reports: Boolean = true, onRun: (String) -> Unit = {}) =
-        EnableRung(label) { onRun(label); reports }
+    private fun rung(
+        label: String,
+        reports: RungResult = RungResult.RAN,
+        onRun: (String) -> Unit = {},
+    ) = EnableRung(label) { onRun(label); reports }
 
     private val shell = rung(RUNG_SHELL)
     private val reflection = rung(RUNG_REFLECTION)
@@ -75,7 +82,7 @@ class EnableRungChainTest {
             rung("third", onRun = { ran += it }),
         )
 
-        assertEquals("second", firstRungThatSticks(rungs) { stateChanged })
+        assertEquals("second", firstRungThatSticks(rungs) { stateChanged }.winner)
         assertEquals(listOf("first", "second"), ran)
     }
 
@@ -90,11 +97,11 @@ class EnableRungChainTest {
         val ran = mutableListOf<String>()
         var stateChanged = false
         val rungs = listOf(
-            rung("liar", reports = true, onRun = { ran += it }),
-            rung("worker", reports = true, onRun = { ran += it; stateChanged = true }),
+            rung("liar", reports = RungResult.RAN, onRun = { ran += it }),
+            rung("worker", reports = RungResult.RAN, onRun = { ran += it; stateChanged = true }),
         )
 
-        assertEquals("worker", firstRungThatSticks(rungs) { stateChanged })
+        assertEquals("worker", firstRungThatSticks(rungs) { stateChanged }.winner)
         assertEquals(listOf("liar", "worker"), ran)
     }
 
@@ -107,27 +114,131 @@ class EnableRungChainTest {
     fun `a rung that reports failure still wins if the state changed`() {
         var stateChanged = false
         val rungs = listOf(
-            rung("silent-worker", reports = false, onRun = { stateChanged = true }),
-            rung("never-reached", reports = true),
+            rung("silent-worker", reports = RungResult.FAILED, onRun = { stateChanged = true }),
+            rung("never-reached", reports = RungResult.RAN),
         )
 
-        assertEquals("silent-worker", firstRungThatSticks(rungs) { stateChanged })
+        assertEquals("silent-worker", firstRungThatSticks(rungs) { stateChanged }.winner)
     }
 
     /**
-     * Null is what escalates the system-app freeze to its destructive rung, so "nothing stuck" has
-     * to mean every rung genuinely ran and was verified — not that the loop gave up early.
+     * A null winner is what escalates the system-app freeze to its destructive rung, so "nothing
+     * stuck" has to mean every rung genuinely ran and was verified — not that the loop gave up
+     * early.
      */
     @Test
-    fun `returns null only after every rung has run`() {
+    fun `returns a null winner only after every rung has run`() {
         val ran = mutableListOf<String>()
         val rungs = listOf(
-            rung("a", reports = true, onRun = { ran += it }),
-            rung("b", reports = false, onRun = { ran += it }),
-            rung("c", reports = true, onRun = { ran += it }),
+            rung("a", reports = RungResult.RAN, onRun = { ran += it }),
+            rung("b", reports = RungResult.FAILED, onRun = { ran += it }),
+            rung("c", reports = RungResult.RAN, onRun = { ran += it }),
         )
 
-        assertNull(firstRungThatSticks(rungs) { false })
+        assertNull(firstRungThatSticks(rungs) { false }.winner)
         assertEquals(listOf("a", "b", "c"), ran)
+    }
+
+    // --- The refusal flag: the bit that costs a user their data ---------------------------------
+
+    /**
+     * The default. Everything failing without the platform having said no must leave the flag
+     * clear, because the caller spends a set flag on `pm uninstall --user N`.
+     */
+    @Test
+    fun `plain failures never set the refusal flag`() {
+        val rungs = listOf(
+            rung("a", reports = RungResult.FAILED),
+            rung("b", reports = RungResult.FAILED),
+            rung("c", reports = RungResult.RAN),
+        )
+
+        assertFalse(firstRungThatSticks(rungs) { false }.refusedByPolicy)
+    }
+
+    /**
+     * Sticky across rungs. A refusal from the reflection rung is a fact about the *device*, so a
+     * later rung merely failing must not erase it — otherwise the flag would report whatever the
+     * last rung happened to say, and the OEM devices this fallback exists for would never reach it.
+     */
+    @Test
+    fun `a refusal on any rung survives later rungs that merely fail`() {
+        val rungs = listOf(
+            rung("refused", reports = RungResult.REFUSED_BY_POLICY),
+            rung("failed", reports = RungResult.FAILED),
+            rung("failed too", reports = RungResult.FAILED),
+        )
+
+        assertTrue(firstRungThatSticks(rungs) { false }.refusedByPolicy)
+    }
+
+    /**
+     * A refused rung whose state nonetheless moved reports both: the winner is real (the caller
+     * returns success and never consults the flag), but the refusal is not fabricated away.
+     */
+    @Test
+    fun `a chain that wins after a refusal reports the winner and the refusal`() {
+        var stateChanged = false
+        val rungs = listOf(
+            rung("refused", reports = RungResult.REFUSED_BY_POLICY),
+            rung("worker", reports = RungResult.RAN, onRun = { stateChanged = true }),
+        )
+
+        val outcome = firstRungThatSticks(rungs) { stateChanged }
+        assertEquals("worker", outcome.winner)
+        assertTrue(outcome.refusedByPolicy)
+    }
+
+    // --- Recognising a refusal ------------------------------------------------------------------
+
+    /**
+     * The shell rung only ever sees a refusal as text on stderr. Both refusals Thor can actually
+     * meet are covered: AOSP's, verified verbatim on a stock API 36 emulator, and Xiaomi's vendor
+     * one out of `PackageManagerServiceImpl.canBeDisabled`.
+     */
+    @Test
+    fun `recognises both real refusal messages`() {
+        assertTrue(
+            isPolicyRefusal(
+                "java.lang.SecurityException: Shell cannot change component state for null to 2"
+            )
+        )
+        assertTrue(
+            isPolicyRefusal("java.lang.SecurityException: Cannot disable system packages.")
+        )
+    }
+
+    @Test
+    fun `ordinary shell failures are not refusals`() {
+        assertFalse(isPolicyRefusal(null as String?))
+        assertFalse(isPolicyRefusal(""))
+        assertFalse(isPolicyRefusal("Error: java.lang.IllegalArgumentException: Unknown package: x"))
+        assertFalse(isPolicyRefusal("Shell command failed with code 1: pm disable-user --user 0 x"))
+    }
+
+    /** The reflection rung throws rather than printing, so the throwable overload must agree. */
+    @Test
+    fun `recognises a thrown SecurityException through its cause chain`() {
+        assertTrue(isPolicyRefusal(SecurityException("nope")))
+        assertTrue(
+            isPolicyRefusal(
+                RuntimeException("reflection failed", IOException("io", SecurityException("nope")))
+            )
+        )
+        assertFalse(isPolicyRefusal(null as Throwable?))
+        assertFalse(isPolicyRefusal(IllegalStateException("binder is dead")))
+    }
+
+    /**
+     * A self-referential cause chain is what a badly-wrapped reflection failure can produce, and an
+     * unbounded walk would hang the freeze rather than fail it.
+     */
+    @Test
+    fun `a cyclic cause chain terminates`() {
+        val a = RuntimeException("a")
+        val b = RuntimeException("b", a)
+        a.initCause(b)
+
+        assertFalse(isPolicyRefusal(a))
     }
 }
