@@ -88,11 +88,16 @@ for the presentation layer.
 - **Advanced Insights**: Installer source (resolved from package labels, not hardcoded), split APK
   indicators, version codes, SDK targets, `isSuspended`, `isDebuggable`.
 - **System App Support**: Uninstall or freeze system apps (requires any privilege mode). A freeze
-  disables the package and keeps its data; it removes the package for the current user
-  (`pm uninstall -k`, so the data directories survive) only where the platform actually *refused*
-  the disable — an OEM restriction, not an Android version, plus Dhizuku, whose gateway is not yet
-  converted. `domain/model/FreezePolicy.kt` owns that rule; every reader of freeze state must
-  handle both, since devices carry system apps frozen the old way, when the fallback ran first,
+  disables the package and keeps its data. Only where the platform actually *refused* the disable
+  does it fall back to `pm uninstall -k --user N` — a **per-user removal, not a real uninstall**:
+  the APK stays on the read-only partition, the package record survives, and `-k` keeps both the
+  data directories and the runtime permission grants, so `pm install-existing --user N` restores
+  the app intact. That refusal is an OEM restriction, not an Android version. Dhizuku is the one
+  exception still on the old path: its gateway is not yet converted, so it removes for the current
+  user unconditionally and without `-k`. Note the fallback is unavailable to Shizuku at shell uid
+  on API 37, which answers it with `only root can delete system app for a particular user`.
+  `domain/model/FreezePolicy.kt` owns the rule; every reader of freeze state must handle both
+  mechanics, since devices carry system apps frozen the old way, when the removal ran first,
   unconditionally, and without `-k`.
 - **Security**: Biometric/device-credential lock for app access. Per-session authentication state.
 - **App Metadata Caching**: Room DB cache for `AppInfo`, invalidated via `lastUpdateTime`.

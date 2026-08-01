@@ -29,7 +29,8 @@ for the current user**. `PackageInfoUtils.generateApplicationInfo` → `checkUse
 A *disabled* package is unaffected, system or user. `getApplicationInfo` does **not** filter on the
 enabled setting — `ComputerEngine.getApplicationInfoInternalBody` carries the literal comment *"Note:
 isEnabledLP() does not apply here - always return info"* — so it still resolves with flags `0`, and
-comes back with `enabled == false`. That is why `AutoFreezeManager.kt:129` works.
+comes back with `enabled == false`. That is why the `pm.getApplicationInfo(pkg, 0)` lookup in
+`AutoFreezeManager`'s `screenReceiver` works (`data/service/AutoFreezeManager.kt:141`).
 
 ## Why it is unreachable today
 
@@ -102,7 +103,7 @@ be resolved without the info the icon also uses) is what stands in for it until 
   the follow-ups README), and now reads the shared constant rather than its own copy.
 - `FreezerLaunchActivity.kt:168` (`isSuspended`) — benign; the `||` at `:137` short-circuits so it
   is only evaluated once `getLaunchIntentForPackage` has already resolved.
-- `AutoFreezeManager.kt:129` (flags `0`) — still benign, but the reason changed with the mechanic.
+- `data/service/AutoFreezeManager.kt:141` (flags `0`) — still benign, but the reason changed with the mechanic.
   A system app *removed for this user* throws and is logged "not found, skipping", as before. A
   system app *disabled in place* resolves instead — `getApplicationInfo` ignores the enabled
   setting — and comes back with `enabled == false`, so the `if (appInfo.enabled && !alreadySuspended)`

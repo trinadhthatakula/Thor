@@ -17,6 +17,7 @@ import com.valhalla.thor.data.manager.ExtensionManager
 import com.valhalla.thor.domain.model.isAuthorizedExtensionCaller
 import com.valhalla.thor.domain.model.isFrozen
 import com.valhalla.thor.domain.model.opTargets
+import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.TimeoutCancellationException
@@ -35,9 +36,15 @@ import org.koin.core.component.inject
  * Security (mirrors [FreezerBridgeProvider]): the caller is UID-attested via getCallingPackage() and must
  * be a pinned-signer extension; the privileged work runs under Thor's OWN identity
  * (Binder.clearCallingIdentity()); Thor's own package and the caller are never operated on.
+ *
+ * Attestation is not the whole story, though: a *legitimately* pinned extension still supplies an
+ * arbitrary package list, so freezes additionally go through [FreezeAppUseCase], which refuses a
+ * `FreezeTier.BLOCKED` package. Being a trusted caller buys the right to ask, not the right to
+ * freeze something that stops the device booting.
  */
 class ExtensionOpsProvider : ContentProvider(), KoinComponent {
     private val manageAppUseCase: ManageAppUseCase by inject()
+    private val freezeAppUseCase: FreezeAppUseCase by inject()
     private val extensionManager: ExtensionManager by inject()
 
     private enum class Op { FREEZE, UNFREEZE, TOGGLE }
@@ -88,7 +95,21 @@ class ExtensionOpsProvider : ContentProvider(), KoinComponent {
                     } else op
                     targets.count { pkg ->
                         when (effective) {
-                            Op.FREEZE -> manageAppUseCase.setAppDisabled(pkg, true)
+                            // FreezeAppUseCase, not the raw ManageAppUseCase primitive: it resolves
+                            // the package's FreezeTier and refuses a BLOCKED one. Its KDoc names
+                            // "an extension trigger" as exactly the caller it exists to backstop,
+                            // and this provider was the one such caller still going around it — an
+                            // extension's package list is attacker-chosen relative to the user, and
+                            // freezing an Unsafe system app can disable something the device needs
+                            // to boot. The batch paths skip this gate because they classify their
+                            // whole target list against one shared snapshot first; an extension
+                            // does no such filtering, so that exemption does not apply here.
+                            //
+                            // Default mode (FreezerMode.FREEZE) is deliberate and preserves the
+                            // disable-only rule above — it maps to setAppDisabled, never suspend.
+                            Op.FREEZE -> freezeAppUseCase(pkg)
+                            // Unfreeze stays ungated on purpose: it is the way *out* of a bad
+                            // freeze, so a block that caught it would trap the app it protects.
                             Op.UNFREEZE -> manageAppUseCase.forceUnfreeze(pkg)
                             Op.TOGGLE -> Result.failure(IllegalStateException()) // resolved above
                         }.isSuccess
