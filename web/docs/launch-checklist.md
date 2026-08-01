@@ -70,10 +70,17 @@ gate which exits 0 for the wrong reason looks identical to one that passes.
 
 - [ ] Five screenshots in place and no `DeviceFrame` placeholder left in `dist`:
 
-      grep -ric 'Screenshot pending' web/dist
+      cd web && REQUIRE_SCREENSHOTS=1 npm run check:screenshots
 
       See `web/docs/screenshot-checklist.md`. The build is green with placeholders by design; this
       is the check that stops "green" from meaning "finished".
+
+      **This one is now enforced, not just listed.** `check:screenshots` runs in the `build` chain
+      on every build, but it only *fails* when `VERCEL_ENV=production` — so placeholders stay green
+      locally, in CI and on preview deploys, and a production deploy carrying one is refused. That
+      matters because the production branch is `dev`: merging the release PR **is** the deploy, so
+      there is no window in which a human runs this list first. Run the command above to see the
+      strict verdict early; a green production deploy has already asserted it.
 
 ## 5. Deploy configuration — verify visually in the Vercel dashboard
 

@@ -16,8 +16,9 @@
     "check:markup": "node scripts/check-markup.mjs dist",
     "check:a11y": "node scripts/check-a11y.mjs dist",
     "check:sitemap": "node scripts/check-sitemap.mjs dist",
+    "check:screenshots": "node scripts/check-screenshots.mjs dist",
     "test": "vitest run",
-    "build": "npm run check:types && astro build && npm run check:links && npm run check:claims && npm run check:markup && npm run check:sitemap"
+    "build": "npm run check:types && astro build && npm run check:links && npm run check:claims && npm run check:markup && npm run check:sitemap && npm run check:screenshots"
   },
   "dependencies": {
     "@astrojs/mdx": "^7.0.5",

@@ -21,6 +21,8 @@ So every rule is proved in **both** directions:
 | `claims/<id>/pass` | The corrected phrasing for the same fact. The test asserts **zero** violations from **any** rule, which is what catches a rule that over-triggers on correct copy. |
 | `markup/*` | One structural defect each, plus a clean page. |
 | `a11y/*` | Proves the axe-in-jsdom plumbing actually runs, before `dist` exists. |
+| `screenshots/pending` | The same input twice: green on a local or preview build, refused on a production one. A gate that only ever fails would have broken every build since the day `DeviceFrame` was written. |
+| `screenshots/captured` | A filled frame passes even in strict mode — and so does a paragraph that quotes "Screenshot pending" while explaining the mechanism. |
 
 `fixtures.test.mjs` asserts that every rule id in `src/content/claims.mjs` has
 both a `fail` and a `pass` directory. Adding a rule without fixtures fails the

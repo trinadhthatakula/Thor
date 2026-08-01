@@ -102,6 +102,13 @@ describe('the other checkers have fixtures too', () => {
     ])
   })
 
+  it('covers a screenshot gate that must pass and fail on the same input', () => {
+    // The pair is the whole gate: `pending` has to be green locally and red on
+    // a production deploy, so a fixture family with only one side of it could
+    // not tell those two apart.
+    expect(subdirs('screenshots').sort()).toEqual(['captured', 'pending'])
+  })
+
   it('covers each sitemap failure mode plus the agreeing case', () => {
     // Every one of these is invisible on the rendered site, so the fixtures are
     // the only place these rules are ever seen to fire.
