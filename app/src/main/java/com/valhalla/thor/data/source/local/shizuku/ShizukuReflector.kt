@@ -63,9 +63,18 @@ class ShizukuReflector(
         }
     }
 
-    fun setAppEnabled(packageName: String, enabled: Boolean): Boolean {
+    /**
+     * [rungOrder] is passed straight through to [Shizuku.setAppDisabled] and defaults to the
+     * historical shell-first order, so every existing call site keeps its behaviour. Only the
+     * preinstalled-app freeze in `ShizukuSystemGateway` asks for [EnableRungOrder.REFLECTION_FIRST].
+     */
+    fun setAppEnabled(
+        packageName: String,
+        enabled: Boolean,
+        rungOrder: EnableRungOrder = EnableRungOrder.SHELL_FIRST
+    ): Boolean {
         return try {
-            Shizuku.setAppDisabled(context, packageName, !enabled)
+            Shizuku.setAppDisabled(context, packageName, !enabled, rungOrder)
         } catch (e: Exception) {
             if (BuildConfig.DEBUG)
                 Logger.e("ShizukuReflector", "setAppEnabled failed", e)

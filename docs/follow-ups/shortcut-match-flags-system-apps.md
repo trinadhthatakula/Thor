@@ -15,18 +15,20 @@ Two lookups in `FreezerShortcutManager` resolve a package without the match flag
 | `appLabel` (`FreezerShortcutManager.kt:281`) | `getApplicationInfo(pkg, MATCH_DISABLED_COMPONENTS)` | `MATCH_UNINSTALLED_PACKAGES` |
 | `appIcon` (`FreezerShortcutManager.kt:293`) | `getApplicationIcon(pkg)` | everything — the `String` overload resolves via `getApplicationInfo(pkg, sDefaultFlags)`, and `sDefaultFlags` is `GET_SHARED_LIBRARY_FILES` |
 
-Thor freezes system apps with `pm uninstall --user N`, not `pm disable`, so a frozen system app
-is **not installed for the current user**. `PackageInfoUtils.generateApplicationInfo` →
-`checkUseInstalledOrHidden` → `PackageUserStateUtils.isAvailable` then returns false without
-`MATCH_UNINSTALLED_PACKAGES` / `MATCH_KNOWN_PACKAGES`, and `getApplicationInfo` throws
-`NameNotFoundException`.
+A system app is frozen by disabling it where the platform allows that, and by removing it for the
+current user where it does not (`domain/model/FreezePolicy.kt`). Under the second mechanic — the
+only one Thor used when this was written, and still what Shizuku on Android 16+ and Dhizuku do, plus
+what every system app frozen before the split is already sitting in — the package is **not installed
+for the current user**. `PackageInfoUtils.generateApplicationInfo` → `checkUseInstalledOrHidden` →
+`PackageUserStateUtils.isAvailable` then returns false without `MATCH_UNINSTALLED_PACKAGES` /
+`MATCH_KNOWN_PACKAGES`, and `getApplicationInfo` throws `NameNotFoundException`.
 
 `AppFreezeStateReader.MATCH_FLAGS` is the correct reference pattern; these two sites predate it.
 
-User apps are unaffected. `getApplicationInfo` does **not** filter on the enabled setting —
-`ComputerEngine.getApplicationInfoInternalBody` carries the literal comment *"Note: isEnabledLP()
-does not apply here - always return info"* — so a `pm disable`d package still resolves with flags
-`0`. That is why `AutoFreezeManager.kt:122` works.
+A *disabled* package is unaffected, system or user. `getApplicationInfo` does **not** filter on the
+enabled setting — `ComputerEngine.getApplicationInfoInternalBody` carries the literal comment *"Note:
+isEnabledLP() does not apply here - always return info"* — so it still resolves with flags `0`, and
+comes back with `enabled == false`. That is why `AutoFreezeManager.kt:129` works.
 
 ## Why it is unreachable today
 
@@ -99,5 +101,12 @@ be resolved without the info the icon also uses) is what stands in for it until 
   the follow-ups README), and now reads the shared constant rather than its own copy.
 - `FreezerLaunchActivity.kt:168` (`isSuspended`) — benign; the `||` at `:137` short-circuits so it
   is only evaluated once `getLaunchIntentForPackage` has already resolved.
-- `AutoFreezeManager.kt:122` (flags `0`) — benign; a frozen system app throws, is logged
-  "not found, skipping", and skipping an already-frozen app is the desired outcome anyway.
+- `AutoFreezeManager.kt:129` (flags `0`) — still benign, but the reason changed with the mechanic.
+  A system app *removed for this user* throws and is logged "not found, skipping", as before. A
+  system app *disabled in place* resolves instead — `getApplicationInfo` ignores the enabled
+  setting — and comes back with `enabled == false`, so the `if (appInfo.enabled && !alreadySuspended)`
+  guard four lines down skips it. Both routes end at "already frozen, do nothing"; the exception is
+  simply no longer the thing doing the skipping. Note that widening these flags to
+  `AppFreezeStateReader.MATCH_FLAGS` would *break* this: under `MATCH_UNINSTALLED_PACKAGES` a
+  package uninstalled for this user resolves with `enabled == true`, so the guard would pass and
+  auto-freeze would act on an app it can already see is frozen. Flags `0` is load-bearing here.

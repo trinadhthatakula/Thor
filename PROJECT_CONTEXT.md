@@ -87,7 +87,11 @@ for the presentation layer.
   with multi-user support.
 - **Advanced Insights**: Installer source (resolved from package labels, not hardcoded), split APK
   indicators, version codes, SDK targets, `isSuspended`, `isDebuggable`.
-- **System App Support**: Uninstall or freeze system apps (requires any privilege mode).
+- **System App Support**: Uninstall or freeze system apps (requires any privilege mode). A freeze
+  disables the package and keeps its data; it removes the package for the current user only where
+  disabling is unavailable — Shizuku on Android 16+, and Dhizuku, whose gateway is not yet
+  converted. `domain/model/FreezePolicy.kt` owns that rule; every reader of freeze state must
+  handle both, since devices carry system apps frozen the old way.
 - **Security**: Biometric/device-credential lock for app access. Per-session authentication state.
 - **App Metadata Caching**: Room DB cache for `AppInfo`, invalidated via `lastUpdateTime`.
 - **Preferences** (`UserPreferences`): theme, AMOLED, dynamic color, biometric lock, sort/filter

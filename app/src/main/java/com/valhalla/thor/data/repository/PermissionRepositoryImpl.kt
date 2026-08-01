@@ -84,9 +84,12 @@ class PermissionRepositoryImpl(
     /**
      * One pass over every installed package, bucketing them by runtime-permission group.
      *
-     * The match flags mirror `AppRepositoryImpl`'s sweep, and that is not optional. Thor freezes
-     * *system* apps with `pm uninstall --user N`, so a frozen system app is not installed for this
-     * user and a default `getInstalledPackages` drops it. The app list keeps those rows — showing
+     * The match flags mirror `AppRepositoryImpl`'s sweep, and that is not optional. A *system* app
+     * frozen by removal for the current user — what `FreezePolicy.destructiveFreezeFallbackAllowed`
+     * still permits, and what every system app frozen before Thor preferred disabling is already
+     * in — is not installed for this user, and a default `getInstalledPackages` drops it. The
+     * disabled mechanic needs no flag of its own here, which is exactly why the pair must stay
+     * whole: the half that is doing the work is the invisible one. The app list keeps those rows — showing
      * them is a headline Thor capability — and `filterApps` intersects the list with this index, so
      * two different package universes would make every frozen app silently fall out of every chip.
      *

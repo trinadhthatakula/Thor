@@ -18,6 +18,73 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 import com.valhalla.thor.util.Logger
 
+/**
+ * Which privileged rung `Shizuku.setAppDisabled` tries first. (Plain text, not a KDoc link: the
+ * explicit `rikka.shizuku.Shizuku` import at the top of this file outranks the same-named object
+ * declared below it, so `[Shizuku]` here would point at the wrong class.)
+ *
+ * [SHELL_FIRST] is the historical order and stays the default. For an ordinary user app
+ * `pm disable --user N` is the cheapest thing that works, and that is not the path that broke.
+ *
+ * [REFLECTION_FIRST] exists for *preinstalled* apps. Both rungs end up inside the same
+ * `PackageManagerService.setEnabledSetting`, but they do not arrive there identically: the shell
+ * rung pays for a `newProcess` + `pm` round trip and can only report `pm`'s exit code, and `pm` is
+ * ordinary userspace that an OEM is free to modify or lock down, whereas the reflection rung calls
+ * `IPackageManager` straight through the Shizuku binder and names its target state
+ * (`COMPONENT_ENABLED_STATE_DISABLED_USER`) and its caller ("com.android.shell") explicitly rather
+ * than inheriting whatever this device's `pm` chose. Flipping the order costs nothing when both
+ * work and gives the direct call the first attempt when one of them does not.
+ */
+enum class EnableRungOrder { SHELL_FIRST, REFLECTION_FIRST }
+
+/** One privileged attempt, plus the label that names it in the log line when it is the one that stuck. */
+internal class EnableRung(val label: String, val attempt: () -> Boolean)
+
+internal const val RUNG_REFLECTION = "IPackageManager reflection"
+internal const val RUNG_SHELL = "pm shell"
+internal const val RUNG_UNPRIVILEGED = "unprivileged PackageManager"
+
+/**
+ * Runs [rungs] in order and returns the label of the first one after which [verify] reports the
+ * state has actually changed — or null if none of them moved it.
+ *
+ * Each rung's own return value is deliberately ignored. `pm` exits 0 for a disable that
+ * `PackageManagerService` refused, and a `Bypass.invoke` that threw nothing has still proven
+ * nothing, so the post-read is the only evidence that counts. It is equally deliberate that a rung
+ * reporting *failure* is still verified before moving on: `Shizuku.execute` returns -1 whenever it
+ * cannot read an exit code at all (null binder, timeout), and that is not the same as "the state
+ * did not change".
+ *
+ * Pure on purpose — no Android types, no logging — so the ordering and the short-circuit rule are
+ * reachable from a plain JVM unit test. The caller does the logging.
+ */
+internal fun firstRungThatSticks(rungs: List<EnableRung>, verify: () -> Boolean): String? {
+    for (rung in rungs) {
+        rung.attempt()
+        if (verify()) return rung.label
+    }
+    return null
+}
+
+/**
+ * The rung order itself, as a pure function so the one decision this change is actually about is
+ * reachable from a test.
+ *
+ * [unprivileged] is always last and is never reordered: it is the only rung that cannot possibly
+ * outrank a privileged one (Thor holds no `CHANGE_COMPONENT_ENABLED_STATE`, so for any package but
+ * its own it can only throw), and putting it anywhere else would spend a `SecurityException` before
+ * trying something that works.
+ */
+internal fun orderRungs(
+    rungOrder: EnableRungOrder,
+    shell: EnableRung,
+    reflection: EnableRung,
+    unprivileged: EnableRung,
+): List<EnableRung> = when (rungOrder) {
+    EnableRungOrder.SHELL_FIRST -> listOf(shell, reflection, unprivileged)
+    EnableRungOrder.REFLECTION_FIRST -> listOf(reflection, shell, unprivileged)
+}
+
 object Shizuku {
 
     /**
@@ -88,69 +155,153 @@ object Shizuku {
         return pkgs.isAppStopped(packageName)
     }
 
-    fun setAppDisabled(context: Context, packageName: String, disabled: Boolean): Boolean {
+    /**
+     * Enable/disable a package for the current user, trying every mechanism Shizuku can reach.
+     *
+     * [rungOrder] chooses which privileged rung goes first; see [EnableRungOrder]. The default is
+     * the historical shell-first order, so existing callers are untouched — only the preinstalled-app
+     * freeze path in `ShizukuSystemGateway` asks for [EnableRungOrder.REFLECTION_FIRST].
+     *
+     * Every rung is verified by re-reading `ApplicationInfo`, never by its own exit code; see
+     * [firstRungThatSticks]. Returns true only when the package really is in the requested state.
+     */
+    fun setAppDisabled(
+        context: Context,
+        packageName: String,
+        disabled: Boolean,
+        rungOrder: EnableRungOrder = EnableRungOrder.SHELL_FIRST
+    ): Boolean {
         val pkgs = Packages(context)
         pkgs.getApplicationInfoOrNull(packageName) ?: return false
         val userId = pkgs.myUserId
+        // Escaped for the shell rung only; the reflection rung passes the raw name over binder.
+        val escapedPackage = packageName.escapeForShell()
 
-        // 1. Try shell first
-        val command = if (disabled) {
-            "pm disable-user --user $userId $packageName"
-        } else {
-            "pm enable --user $userId $packageName"
-        }
-        val result = execute(command)
-        if (result.first == 0 && pkgs.isAppDisabled(packageName) == disabled) {
-            return true
-        }
+        // The canonical freeze test, the same one AppFreezeStateReader.candidateOf uses: a package
+        // is "not disabled" only when it is BOTH enabled AND installed for this user. `enabled` on
+        // its own — which is all this function used to check, via Packages.isAppDisabled — is wrong
+        // in the direction that matters here. The gateway's last-resort `pm uninstall --user N`
+        // clears FLAG_INSTALLED and leaves `enabled` true, so an app frozen by an older build reads
+        // back as "not disabled" and an unfreeze could never be verified as complete.
+        //
+        // MATCH_UNINSTALLED_PACKAGES (the Packages default) is what makes such a package readable
+        // at all. MATCH_DISABLED_COMPONENTS is deliberately NOT added: getApplicationInfo does not
+        // filter on the enabled setting, which AppFreezeStateReader.MATCH_FLAGS documents for the
+        // same reason, so it would buy nothing here while changing a default other callers share.
+        fun isDisabledNow(): Boolean = pkgs.getApplicationInfoOrNull(packageName)?.let {
+            !(it.enabled && (it.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED) != 0)
+        } ?: true // stopped resolving entirely: gone is at least as disabled as disabled
 
-        // 2. Fallback to Bypass reflection
-        val reflectionResult = runCatching {
-            val pm = asInterface("android.content.pm.IPackageManager", "package")
-            val newState = when {
-                !disabled -> android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-                isRoot -> android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED
-                else -> android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
+        val shellRung = EnableRung(RUNG_SHELL) {
+            val command = if (disabled) {
+                "pm disable-user --user $userId $escapedPackage"
+            } else {
+                "pm enable --user $userId $escapedPackage"
             }
-            val caller = if (isRoot) context.packageName else "com.android.shell"
-            Bypass.invoke<Any?>(
-                pm.javaClass,
-                pm,
-                "setApplicationEnabledSetting",
-                arrayOf(
-                    String::class.java,
-                    Int::class.javaPrimitiveType!!,
-                    Int::class.javaPrimitiveType!!,
-                    Int::class.javaPrimitiveType!!,
-                    String::class.java
-                ),
-                packageName,
-                newState,
-                0,
-                userId,
-                caller
+            execute(command).first == 0
+        }
+
+        val reflectionRung = EnableRung(RUNG_REFLECTION) {
+            runCatching {
+                setApplicationEnabledSettingViaBypass(context, packageName, disabled, userId)
+                true
+            }.getOrElse { e ->
+                // Logged rather than swallowed (it used to be a bare getOrDefault(false)): when
+                // this rung is the one that is supposed to work, its SecurityException/
+                // NoSuchMethodException is the single most useful line in a bug report.
+                Logger.e(
+                    "Shizuku",
+                    "setApplicationEnabledSetting reflection failed for $packageName (disabled=$disabled)",
+                    e
+                )
+                false
+            }
+        }
+
+        // Always last, and barely a rung: Thor holds no CHANGE_COMPONENT_ENABLED_STATE (see
+        // AndroidManifest.xml), so for any package but its own this throws SecurityException and is
+        // swallowed. It stays because it is free on the rare device that does grant it, and because
+        // reaching it at all still buys one more post-read before we give up.
+        val unprivilegedRung = EnableRung(RUNG_UNPRIVILEGED) {
+            val newState = if (disabled) {
+                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+            } else {
+                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            }
+            runCatching {
+                context.packageManager.setApplicationEnabledSetting(packageName, newState, 0)
+            }.isSuccess
+        }
+
+        val ordered = orderRungs(rungOrder, shellRung, reflectionRung, unprivilegedRung)
+
+        val winner = firstRungThatSticks(ordered) { isDisabledNow() == disabled }
+        return if (winner != null) {
+            Logger.d(
+                "Shizuku",
+                "setAppDisabled($packageName, disabled=$disabled): $winner changed the state"
             )
             true
-        }.getOrDefault(false)
-
-        if (reflectionResult && pkgs.isAppDisabled(packageName) == disabled) {
-            return true
-        }
-
-        // 3. Unprivileged fallback (re-query PM to observe post-mutation state)
-        if (pkgs.isAppDisabled(packageName) == disabled) {
-            return true
-        }
-        val newState = if (disabled) {
-            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED
         } else {
-            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            Logger.e(
+                "Shizuku",
+                "setAppDisabled($packageName, disabled=$disabled): all rungs ran " +
+                    "(${ordered.joinToString { it.label }}) and the state did not change"
+            )
+            false
         }
-        runCatching {
-            context.packageManager.setApplicationEnabledSetting(packageName, newState, 0)
-        }
+    }
 
-        return pkgs.isAppDisabled(packageName) == disabled
+    /**
+     * The one and only copy of the `IPackageManager.setApplicationEnabledSetting` reflection.
+     *
+     * Both conditionals are load-bearing and must not be "simplified":
+     *
+     * - **newState.** `COMPONENT_ENABLED_STATE_DISABLED` (2) is the framework's "an admin turned
+     *   this off" state; `COMPONENT_ENABLED_STATE_DISABLED_USER` (3) is "the user turned this off",
+     *   and it is the state a shell-uid caller is allowed to set on somebody else's package — it is
+     *   also exactly what `pm disable-user` sets. A root Shizuku runs as uid 0 and may use the
+     *   stronger one.
+     * - **caller.** `PackageManagerService` validates the callingPackage argument against the
+     *   calling uid and throws SecurityException when the name does not belong to it. The call
+     *   arrives with the *Shizuku process's* uid: 2000 under the ordinary shell-uid Shizuku, whose
+     *   package is "com.android.shell", and 0 under a root Shizuku, which owns no package at all —
+     *   hence Thor's own name there.
+     *
+     * Returns Unit and throws on failure rather than returning a boolean: "the reflection did not
+     * blow up" is not evidence that the state moved, and a boolean here would invite a caller to
+     * treat it as one instead of doing the post-read.
+     */
+    private fun setApplicationEnabledSettingViaBypass(
+        context: Context,
+        packageName: String,
+        disabled: Boolean,
+        userId: Int
+    ) {
+        val pm = asInterface("android.content.pm.IPackageManager", "package")
+        val newState = when {
+            !disabled -> android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            isRoot -> android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+            else -> android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
+        }
+        val caller = if (isRoot) context.packageName else "com.android.shell"
+        Bypass.invoke<Any?>(
+            pm.javaClass,
+            pm,
+            "setApplicationEnabledSetting",
+            arrayOf(
+                String::class.java,
+                Int::class.javaPrimitiveType!!,
+                Int::class.javaPrimitiveType!!,
+                Int::class.javaPrimitiveType!!,
+                String::class.java
+            ),
+            packageName,
+            newState,
+            0,
+            userId,
+            caller
+        )
     }
 
     // Hidden-API reflection (SuspendDialogInfo) is intentional: it is the core privilege mechanism,

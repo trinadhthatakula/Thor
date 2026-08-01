@@ -44,7 +44,7 @@
 - **Extension Manager** — an in-app catalog of optional add-ons, each signature-verified and SHA-256 checked before install
 - **Redesigned Home** — an adaptive bento grid with one-tap access to the Extension Manager
 - **Universal Android Debloater (UAD) Integration** — safety recommendation chips (Recommended, Advanced, Expert, Unsafe) dynamically shown for system packages
-- **Safe System App Debloating & Freezing** — uninstalls system apps for the current user (`pm uninstall --user`) and restores them (`pm install-existing`) to support modern Android versions safely
+- **Safe System App Debloating & Freezing** — freezes a system app by disabling it (`pm disable`), which keeps its data, and only removes it for the current user (`pm uninstall --user`, which does not) where the platform allows nothing else: Shizuku on Android 16+, and Dhizuku. Unfreezing undoes either mechanic (`pm install-existing`, then `pm enable`)
 - **Adaptive UI Layouts** — vertical navigation rail for tablets/foldables, optimized viewport layouts, and split landscape detail screens
 - **Safety Gating** — blocks freezing of system apps marked as **Unsafe** by UAD to prevent bootloops, and warns on **Expert** packages
 - Root Support

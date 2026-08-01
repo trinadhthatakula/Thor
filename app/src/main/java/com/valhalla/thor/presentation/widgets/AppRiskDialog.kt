@@ -26,7 +26,10 @@ import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 
 /** Which of the two risky things [AppRiskDialog] is asking about. */
 enum class AppRiskAction {
-    /** `pm disable` for user apps, `pm uninstall --user` for system ones. */
+    /**
+     * `pm disable` for a user app. For a system app, disabling it where the platform allows that
+     * and removing it for the current user where it does not — `FreezePolicy.kt` owns which.
+     */
     Freeze,
 
     /** A real uninstall. */
@@ -50,8 +53,10 @@ enum class AppRiskAction {
  * a backstop underneath it. See docs/follow-ups/single-app-freeze-tier-gate.md.
  *
  * [AppRiskAction.Freeze] is only ever confirmed for system apps — freezing a user app is a
- * reversible `pm disable`, so every caller acts on it directly without asking. The freeze wording
- * therefore only covers the system case.
+ * reversible `pm disable` with nothing to warn about, so every caller acts on it directly without
+ * asking. The freeze wording therefore only covers the system case, and what it warns about is the
+ * device, not the mechanic: `freeze_system_app_desc` is about reboot loops and broken services, so
+ * it stays correct now that a system freeze usually disables the package and keeps its data.
  *
  * [onConfirm] owns the action *and* the dismissal: the dialog does not close itself, so callers
  * can uninstall by intent or by privileged command, and can close the surface underneath, as each

@@ -112,11 +112,13 @@ class ExtensionOpsProvider : ContentProvider(), KoinComponent {
     /**
      * True if any of [pkgs] is currently frozen — disabled, uninstalled for this user, or suspended.
      *
-     * MATCH_DISABLED_COMPONENTS alone only saw the `pm disable` half of a freeze. A system app is
-     * frozen with `pm uninstall --user N`, so it is not installed for this user and the lookup threw
-     * NameNotFoundException: an all-system-app target list read as *not* frozen, and `toggle` then
-     * re-froze apps that were already frozen instead of thawing them. A package still missing under
-     * [AppFreezeStateReader.MATCH_FLAGS] genuinely is not there, so it stays "not frozen".
+     * MATCH_DISABLED_COMPONENTS alone only saw the disabled half of a freeze. A system app frozen
+     * by removal for the current user — what `FreezePolicy.destructiveFreezeFallbackAllowed` still
+     * permits, and what every system app frozen before Thor preferred disabling is already in — is
+     * not installed for this user, so the lookup threw NameNotFoundException: an all-system-app
+     * target list read as *not* frozen, and `toggle` then re-froze apps that were already frozen
+     * instead of thawing them. A package still missing under [AppFreezeStateReader.MATCH_FLAGS]
+     * genuinely is not there, so it stays "not frozen".
      */
     private fun anyFrozen(pm: PackageManager, pkgs: List<String>): Boolean = pkgs.any { pkg ->
         runCatching {

@@ -66,6 +66,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.importableDisabledApps
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
 import com.valhalla.asgard.components.ConnectedButtonGroup
@@ -123,12 +124,12 @@ fun FreezerScreen(
     // survive a config change.
     var freezerPrompt by remember { mutableStateOf<FreezerPrompt?>(null) }
 
+    // Candidates for the import prompt below. The rule lives in the domain rather than inline here
+    // because it is pure list logic that was silently wrong — a blanket `!isSystem` clause skipped
+    // every system app Thor had frozen — and a filter written inside a Composable has nowhere to be
+    // tested from. See importableDisabledApps for why each of its four conditions is there.
     val disabledAppsNotInFreezer = remember(state.allInstalledApps, state.freezerPackageNames) {
-        state.allInstalledApps.filter {
-            !it.enabled &&
-                    it.packageName !in state.freezerPackageNames &&
-                    !it.isSystem
-        }
+        importableDisabledApps(state.allInstalledApps, state.freezerPackageNames)
     }
 
     LaunchedEffect(state.isLoading, state.hasShownDisabledAppsPrompt, disabledAppsNotInFreezer) {
