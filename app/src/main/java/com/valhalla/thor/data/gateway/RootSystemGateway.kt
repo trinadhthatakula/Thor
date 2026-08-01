@@ -236,13 +236,16 @@ class RootSystemGateway(
      *     package stays installed for the user, so app data, accounts and permissions all survive
      *     and unfreezing hands the app back exactly as it was. With root this should almost always
      *     be the rung that takes; it was simply never tried before.
-     *  2. `pm uninstall --user N` — the historical rung, kept but **gated behind
+     *  2. `pm uninstall -k --user N` — the historical rung, kept but **gated behind
      *     [uninstallFreezeFallbackAllowed]**, which answers `false` for [PrivilegeMode.ROOT] on
      *     every release: root can disable any package, so a refusal to disable is a real failure
-     *     worth surfacing, not a platform gap worth working around by deleting the user's data.
-     *     Under root this rung is therefore unreachable today and a failed rung 1 returns
-     *     `Result.failure`. The code stays because the gate — not this gateway — owns that decision,
-     *     and a device check could legitimately flip the root branch later.
+     *     worth surfacing, not a platform gap worth working around. `-k` is `DELETE_KEEP_DATA`, so
+     *     this rung keeps the app's files, settings and granted permissions too; what it does *not*
+     *     keep is the per-user installed bit, which is why a package frozen this way reads as gone
+     *     to anything querying without `MATCH_UNINSTALLED_PACKAGES`. Under root this rung is
+     *     unreachable today and a failed rung 1 returns `Result.failure`. The code stays because
+     *     the gate — not this gateway — owns that decision, and a device check could legitimately
+     *     flip the root branch later.
      *
      * Unfreeze has to undo **both** mechanics, in the order install-existing → enable. Devices in
      * the field carry apps frozen by the uninstall-only builds and must still thaw after this ships;
@@ -312,10 +315,12 @@ class RootSystemGateway(
     /**
      * Rung 1 → (gated) rung 2 of the system-app freeze, with a state re-read between them.
      *
-     * Rung 1 (`pm disable`) preserves the app's data; rung 2 (`pm uninstall --user`) deletes it, and
-     * is only reached when [uninstallFreezeFallbackAllowed] says this privilege mode has no other
-     * way to freeze a system app — which for root is never. Nothing here trusts a shell exit code:
-     * the rung that "succeeded" is the one the platform agrees changed the package state.
+     * Rung 1 (`pm disable`) preserves the app's data and leaves it installed. Rung 2
+     * (`pm uninstall -k --user`) preserves the data too — `-k` is `DELETE_KEEP_DATA` — but clears
+     * the per-user installed bit, so it is the rung with the visible consequence, and it is only
+     * reached when [uninstallFreezeFallbackAllowed] says this privilege mode has no other way to
+     * freeze a system app — which for root is never. Nothing here trusts a shell exit code: the
+     * rung that "succeeded" is the one the platform agrees changed the package state.
      */
     private suspend fun freezeSystemApp(
         packageName: String,
@@ -324,7 +329,7 @@ class RootSystemGateway(
     ): Result<Unit> {
         // Already frozen — by us, by an older build, or by another tool. Short-circuit before any
         // rung runs: re-freezing a package that is merely disabled must never walk down into the
-        // destructive rung just because the first command reported nothing to do.
+        // uninstall rung just because the first command reported nothing to do.
         if (readEffectivelyEnabled(packageName) == false) {
             Logger.i("RootSystemGateway", "freeze $packageName: already frozen, no rung run")
             return Result.success(Unit)
@@ -348,23 +353,26 @@ class RootSystemGateway(
                 // The package resolved a moment ago (isSystem was derived from it) and `pm disable`
                 // cannot make it unresolvable — getApplicationInfoCompat carries
                 // MATCH_UNINSTALLED_PACKAGES, and a disabled application is still returned. So this
-                // is a failed *read*, not a known state, and the next rung deletes user data. Fail
-                // closed: a retry re-reads and, if rung 1 actually landed, short-circuits above.
+                // is a failed *read*, not a known state, and the next rung would uninstall the
+                // package for this user on a state nobody can confirm. Fail closed: a retry
+                // re-reads and, if rung 1 actually landed, short-circuits above.
                 val e = java.io.IOException(
                     "Root freeze of $packageName: `pm disable --user $currentUser` ran but the package " +
-                        "state could no longer be read, so `pm uninstall --user $currentUser` was NOT " +
-                        "attempted — it would destroy app data on a state we cannot confirm."
+                        "state could no longer be read, so `pm uninstall -k --user $currentUser` was NOT " +
+                        "attempted — it would uninstall the package for this user on a state we cannot confirm."
                 )
                 Logger.e("RootSystemGateway", e.message.orEmpty(), e)
                 return Result.failure(e)
             }
 
-            true -> Unit // Rung 1 did not take. Consider the destructive rung — see the gate below.
+            true -> Unit // Rung 1 did not take. Consider the uninstall rung — see the gate below.
         }
 
-        // --- Rung 2: pm uninstall --user. DESTROYS the app's data; `pm install-existing` brings the
-        // package back factory-fresh. Gated, not merely last: the policy — not this gateway — owns
-        // the question of whether a privilege mode has any other way to freeze a system app.
+        // --- Rung 2: pm uninstall -k --user. `-k` is DELETE_KEEP_DATA, so the app's data survives
+        // and `pm install-existing` hands it back as it was; what does not survive is the per-user
+        // installed bit, which is the whole visible consequence of this rung. Gated, not merely
+        // last: the policy — not this gateway — owns the question of whether a privilege mode has
+        // any other way to freeze a system app.
         // Passing PrivilegeMode.ROOT literally is correct rather than lazy: this class *is* the root
         // implementation, and reading the user's configured mode here would let a fallback chain
         // that landed on root apply Shizuku's escalation rules. Under root the gate answers false
@@ -398,13 +406,13 @@ class RootSystemGateway(
         runCommand("pm uninstall -k --user $currentUser $escapedPackage")
         // Nothing is left to try, so anything but "definitely still enabled" is the state we asked
         // for: a null read can now only mean the package is no longer resolvable for this user,
-        // which is precisely what `pm uninstall --user` produces.
+        // which is precisely what `pm uninstall -k --user` produces.
         if (readEffectivelyEnabled(packageName) != true) {
             Logger.w(
                 "RootSystemGateway",
                 "freeze $packageName: rung 1 `pm disable` had no effect; fell back to rung 2 " +
-                    "`pm uninstall -k --user $currentUser` — the app's data directories and its " +
-                    "runtime permission grants both survive the round trip"
+                    "`pm uninstall -k --user $currentUser` — data directories survive; the package " +
+                    "stops resolving without MATCH_UNINSTALLED_PACKAGES"
             )
             return Result.success(Unit)
         }

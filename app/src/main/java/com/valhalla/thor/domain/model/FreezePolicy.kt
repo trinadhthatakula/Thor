@@ -84,21 +84,34 @@ fun isBlockedFromFreeze(app: AppInfo?): Boolean =
  * partition. **Without `-k` this mechanic destroys the app's data**, which is what every build
  * before this one did, for every system app, on every release.
  *
- * The residual cost of [UNINSTALL] is not data but per-user package state: runtime permission
- * grants and app-ops are expected not to survive the round trip, so an unfrozen app may have to ask
- * for its permissions again. That is why [DISABLE] is still preferred everywhere it works — which,
- * measurably, is everywhere stock Android runs. [UNINSTALL] exists because some OEM builds refuse
- * to let the shell uid disable their own system packages at all, and it is reached *only* where the
- * platform actually refused, which is what [uninstallFreezeFallbackAllowed] decides.
+ * The residual cost of [UNINSTALL] is narrower than it looks, and narrower than this comment used
+ * to claim. What it costs unconditionally is `FLAG_INSTALLED`: `-k` still sets the user's installed
+ * state to false, so the package stops resolving for this user unless the caller passes
+ * `MATCH_UNINSTALLED_PACKAGES` — which is why every query in the freeze path must pass that flag.
+ *
+ * It does *not* cost the runtime permission grants, which this comment used to assert it did. That
+ * assertion was a guess, and it measured false: at uid 2000 on a stock API 36 emulator, a permission
+ * granted before the round trip came back granted with its flags unchanged. Read that for the scope
+ * it has — one permission, granted by `pm grant` from the shell rather than by a user tapping Allow,
+ * on one platform build. It retires the old blanket claim without earning the opposite one, and it
+ * says nothing about app-ops, which were never measured. Nor is `-k` "keep the whole
+ * `PackageUserState`": AOSP still clears per-user state on this path regardless of the flag.
+ *
+ * [DISABLE] is still preferred everywhere it works — which, measurably, is everywhere stock Android
+ * runs — because it costs none of that. [UNINSTALL] exists because some OEM builds refuse to let
+ * the shell uid disable their own system packages at all, and it is reached *only* where the
+ * platform actually refused, which is what [uninstallFreezeFallbackAllowed] decides. On API 37 it
+ * does not exist at shell uid at all; see [UNINSTALL].
  */
 enum class FreezeMechanic {
     /** `pm disable`, or the equivalent `setApplicationEnabledSetting` reflection. Keeps data. */
     DISABLE,
 
     /**
-     * `pm uninstall -k --user N`. Keeps the app's data directories *and* its runtime permission
-     * grants — `-k` retains the whole `PackageUserState`, not just the data. What it does change is
-     * `FLAG_INSTALLED`, so the package stops resolving for this user without `MATCH_UNINSTALLED_PACKAGES`.
+     * `pm uninstall -k --user N`. Keeps the app's data directories, and — measured once, on a
+     * shell-granted permission at API 36 — its runtime permission grants with them. What it changes
+     * unconditionally is `FLAG_INSTALLED`, so the package stops resolving for this user without
+     * `MATCH_UNINSTALLED_PACKAGES`.
      *
      * Not reachable at shell uid on API 37: Android 17 answers this command with
      * `Failure [only root can delete system app for a particular user]` where API 36 answers
@@ -119,8 +132,9 @@ enum class FreezeMechanic {
  * Failing loudly is the deliberate choice. A freeze that reports an error costs the user an
  * annoyance and Thor a bug report; a freeze that quietly swaps one mechanic for another produces no
  * report at all, because from the outside it looked like it worked. Before `-k` was added to the
- * fallback the price of getting this wrong was the user's data; it is now their per-user permission
- * grants, which is smaller but still not something to spend on a binder timeout.
+ * fallback the price of getting this wrong was the user's data; it is now the package silently
+ * vanishing from every query that omits `MATCH_UNINSTALLED_PACKAGES`, which is smaller but still
+ * not something to spend on a binder timeout.
  *
  * ### Why this is not a version check
  *

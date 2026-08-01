@@ -123,8 +123,10 @@ class ShizukuSystemGateway(
 
         // Rung 3, gated on the platform having actually refused — not on the Android version.
         // A stock AOSP API 36 emulator disables system apps from the shell uid without complaint,
-        // so a version test would destroy data on every device that never needed this rung, while
-        // still missing the OEM builds (Xiaomi HyperOS, reported on Android 14) that do. isSystem
+        // so a version test would uninstall the package for the user on every device that never
+        // needed this rung — clearing FLAG_INSTALLED, and with it the package's visibility to every
+        // query that omits MATCH_UNINSTALLED_PACKAGES, for no reason — while still missing the
+        // OEM builds (Xiaomi HyperOS, reported on Android 14) that do. isSystem
         // is true by construction here, but it is passed explicitly so the gate — not this call
         // site — owns the whole rule.
         if (!uninstallFreezeFallbackAllowed(
@@ -159,8 +161,8 @@ class ShizukuSystemGateway(
         return if (isFrozen(packageName)) {
             Logger.w(
                 "ShizukuSystemGateway",
-                "freeze($packageName): frozen by uninstall-for-user with -k — data directories and " +
-                    "runtime permission grants both survive the round trip (measured on API 36)"
+                "freeze($packageName): frozen by uninstall-for-user with -k — data directories " +
+                    "survive; the package stops resolving without MATCH_UNINSTALLED_PACKAGES"
             )
             Result.success(Unit)
         } else {

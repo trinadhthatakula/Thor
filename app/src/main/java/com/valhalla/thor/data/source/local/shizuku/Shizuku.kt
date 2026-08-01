@@ -245,7 +245,9 @@ object Shizuku {
      *
      * Only the preinstalled-app freeze needs this. It is the one caller whose next move depends on
      * the difference between "the platform refused" and "that did not work", because its next move
-     * is `pm uninstall --user N` and that deletes the user's data.
+     * is `pm uninstall -k --user N` — which keeps the app's data, but clears its installed-for-this-user
+     * bit and its runtime permission grants, and so is worth reaching only where the platform left
+     * no alternative.
      */
     fun setAppDisabledDetailed(
         context: Context,
@@ -684,12 +686,15 @@ object Shizuku {
      * goes away, because the APK is still on the read-only partition and `pm uninstall --user` only
      * clears `PackageUserState.installed` for one user.
      *
-     * **Runtime permission grants survive too.** This was previously documented here as a likely
-     * cost — "the app may come back having to ask for its permissions again" — and that guess was
-     * wrong. Measured on a stock AOSP API 36 emulator at uid 2000: `pm grant` a revocable runtime
-     * permission, round-trip through `pm uninstall -k` / `pm install-existing`, and the permission
-     * returns `granted=true` with its flags unchanged. `-k` retains the whole `PackageUserState`,
-     * not just the data directories.
+     * **Runtime permission grants survived the round trip that was measured.** This was previously
+     * documented here as a likely cost — "the app may come back having to ask for its permissions
+     * again" — and that guess measured false. On a stock AOSP API 36 emulator at uid 2000: `pm
+     * grant` a revocable runtime permission, round-trip through `pm uninstall -k` /
+     * `pm install-existing`, and the permission returns `granted=true` with its flags unchanged.
+     * The grant was made from the shell rather than by a user tapping Allow, and app-ops were not
+     * tested, so this retires the old claim without establishing its opposite. Note what `-k` does
+     * *not* do: it keeps the data directories, not the whole `PackageUserState` — `installed` still
+     * goes false, which is the sentence two paragraphs above.
      *
      * **This rung does not exist at shell uid on API 37.** Measured on an Android 17 emulator
      * (`CP31.260623.005`), the identical command that succeeds on API 36 fails:
