@@ -17,7 +17,8 @@ Two lookups in `FreezerShortcutManager` resolve a package without the match flag
 
 A system app is frozen by disabling it where the platform allows that, and by removing it for the
 current user where it does not (`domain/model/FreezePolicy.kt`). Under the second mechanic — the
-only one Thor used when this was written, and still what Shizuku on Android 16+ and Dhizuku do, plus
+only one Thor used when this was written, and still what Shizuku does on devices that refuse to
+disable system packages and what Dhizuku does everywhere, plus
 what every system app frozen before the split is already sitting in — the package is **not installed
 for the current user**. `PackageInfoUtils.generateApplicationInfo` → `checkUseInstalledOrHidden` →
 `PackageUserStateUtils.isAvailable` then returns false without `MATCH_UNINSTALLED_PACKAGES` /

@@ -41,9 +41,9 @@ enum class EnableRungOrder { SHELL_FIRST, REFLECTION_FIRST }
  * The outcome of a privileged enable/disable attempt.
  *
  * [refusedByPolicy] is the field that exists for exactly one caller: the preinstalled-app freeze,
- * whose fallback is `pm uninstall --user N` and therefore costs the user their data. It separates
- * "this device refuses to disable system packages" — an OEM restriction there is no way around —
- * from "that did not work just now", which is a bug report, not a licence to delete anything.
+ * whose fallback removes the package for the current user. It separates "this device refuses to
+ * disable system packages" — an OEM restriction there is no way around — from "that did not work
+ * just now", which is a bug report, not a licence to change mechanic behind the user's back.
  *
  * It is only ever meaningful when [succeeded] is false.
  */
@@ -63,7 +63,7 @@ internal enum class RungResult {
     /**
      * `PackageManagerService` **refused**. This is the one outcome that means "this device will
      * not let us do this", as opposed to "that did not work just now", and it is what
-     * `destructiveFreezeFallbackAllowed` keys the destructive fallback on.
+     * `uninstallFreezeFallbackAllowed` keys the uninstall-for-user fallback on.
      */
     REFUSED_BY_POLICY,
 }
@@ -117,7 +117,7 @@ internal data class ChainOutcome(val winner: String?, val refusedByPolicy: Boole
  *
  * A rung's claim to have been *refused* is the one thing that is carried out, because it is the
  * only outcome that distinguishes "this device will not do this" from "that did not work just
- * now" — and the caller spends that distinction on whether it may destroy the user's data.
+ * now" — and the caller spends that distinction on whether it may switch freeze mechanic.
  * [refusedByPolicy][ChainOutcome.refusedByPolicy] is sticky across rungs: a refusal from the
  * reflection rung still counts when a later rung merely fails, since the refusal is a fact about
  * the device either way.
@@ -670,6 +670,37 @@ object Shizuku {
         } catch (_: Exception) {
             false
         }
+    }
+
+    /**
+     * Removes a **preinstalled** app for the current user *without* deleting its data — the last
+     * rung of the system-app freeze, and deliberately not the same function as [uninstallApp].
+     *
+     * `-k` sets `DELETE_KEEP_DATA`, which leaves `/data/user/N/<pkg>` and `/data/user_de/N/<pkg>`
+     * in place instead of having `installd` destroy them. Measured on the HyperOS device that
+     * refuses to disable system packages at all: `pm uninstall -k --user 0` then
+     * `pm install-existing --user 0` returned the app with **byte-identical `ceDataInode` and
+     * `deDataInode`**. For a system app the data survives indefinitely — the package record never
+     * goes away, because the APK is still on the read-only partition and `pm uninstall --user` only
+     * clears `PackageUserState.installed` for one user.
+     *
+     * Known caveat, not yet measured: runtime permission grants and app-ops are per-user package
+     * state and are likely reset by the removal and *not* restored by `pm install-existing`, so the
+     * app may come back having to ask for its permissions again. That is a prompt, not data loss.
+     *
+     * The adb client's scary "there is no way to remove the remaining data" warning about `-k` is
+     * about orphaned data left behind by a *full* uninstall of a user app. It does not apply here,
+     * and it did not appear on the device.
+     *
+     * Kept separate from [uninstallApp] on purpose: adding `-k` there would silently make the
+     * user-facing "uninstall this app" feature leave data behind on every app it removes.
+     */
+    fun freezeSystemAppForUser(packageName: String): Boolean = try {
+        val currentUser = getCurrentUserId()
+        execute("pm uninstall -k --user $currentUser ${packageName.escapeForShell()}").first == 0
+    } catch (e: Exception) {
+        Logger.e("Shizuku", "freezeSystemAppForUser($packageName) failed", e)
+        false
     }
 
     fun reinstallApp(packageName: String): Boolean {

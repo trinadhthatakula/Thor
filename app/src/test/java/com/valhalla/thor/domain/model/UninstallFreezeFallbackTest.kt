@@ -15,13 +15,13 @@ import org.junit.Test
  * interesting branch. The failure mode being guarded against is someone adding a mode, or relaxing
  * a branch to make a freeze "work", without noticing that the branch's price is the user's data.
  */
-class DestructiveFreezeFallbackTest {
+class UninstallFreezeFallbackTest {
 
     private fun allowed(
         isSystem: Boolean = true,
         mode: PrivilegeMode = PrivilegeMode.SHIZUKU,
         refused: Boolean = true,
-    ) = destructiveFreezeFallbackAllowed(isSystem, mode, refused)
+    ) = uninstallFreezeFallbackAllowed(isSystem, mode, refused)
 
     // --- The one combination that is allowed to escalate -------------------------------------
 
@@ -52,14 +52,14 @@ class DestructiveFreezeFallbackTest {
     @Test
     fun `the answer depends only on the refusal, never on anything version-like`() {
         for (mode in PrivilegeMode.entries) {
-            val refusedAnswer = destructiveFreezeFallbackAllowed(true, mode, true)
-            val failedAnswer = destructiveFreezeFallbackAllowed(true, mode, false)
+            val refusedAnswer = uninstallFreezeFallbackAllowed(true, mode, true)
+            val failedAnswer = uninstallFreezeFallbackAllowed(true, mode, false)
             assertFalse("$mode escalated without a refusal", failedAnswer)
             // Called twice with identical arguments the answer must be identical — the function is
             // pure, so there is no ambient SDK_INT, Build field or clock it could be reading.
             assertTrue(
                 "$mode is not deterministic",
-                refusedAnswer == destructiveFreezeFallbackAllowed(true, mode, true),
+                refusedAnswer == uninstallFreezeFallbackAllowed(true, mode, true),
             )
         }
     }
@@ -112,7 +112,7 @@ class DestructiveFreezeFallbackTest {
     @Test
     fun `only shizuku can ever escalate`() {
         val escalating = PrivilegeMode.entries.filter {
-            destructiveFreezeFallbackAllowed(
+            uninstallFreezeFallbackAllowed(
                 isSystem = true,
                 privilegeMode = it,
                 disableRefusedByPolicy = true,

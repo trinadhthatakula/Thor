@@ -140,6 +140,17 @@ class ShizukuReflector(
     fun setAppSuspended(packageName: String, suspended: Boolean): Boolean =
         Shizuku.setAppSuspended(context, packageName, suspended)
 
+    /**
+     * The last rung of the system-app freeze: remove for this user, **keep the data**.
+     *
+     * Shell-only, with no reflection fallback, and that is the point. The `PackageInstaller`
+     * fallback in [uninstallApp] cannot express `DELETE_KEEP_DATA` from here, so falling back to it
+     * would silently turn a data-preserving freeze into a data-destroying one — precisely the bug
+     * this whole change exists to remove. If the shell rung cannot do it, the freeze fails.
+     */
+    fun freezeSystemAppForUser(packageName: String): Boolean =
+        Shizuku.freezeSystemAppForUser(packageName)
+
     suspend fun uninstallApp(packageName: String, resetToFactory: Boolean = false): Boolean {
         // 1. Try shell first
         val shellResult = runCatching {

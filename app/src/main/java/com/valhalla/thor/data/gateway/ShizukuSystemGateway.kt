@@ -10,7 +10,7 @@ import com.valhalla.thor.data.source.local.shizuku.EnableRungOrder
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.PrivilegeMode
-import com.valhalla.thor.domain.model.destructiveFreezeFallbackAllowed
+import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -83,7 +83,7 @@ class ShizukuSystemGateway(
      *
      *  1. **Bypass reflection** straight at `IPackageManager.setApplicationEnabledSetting`.
      *  2. **Shell** — `pm disable-user --user N <pkg>`.
-     *  3. **Uninstall for this user** — only where [destructiveFreezeFallbackAllowed] permits it.
+     *  3. **Uninstall for this user** — only where [uninstallFreezeFallbackAllowed] permits it.
      *
      * Rungs 1 and 2 both live inside `Shizuku.setAppDisabled` so the reflection block has
      * exactly one copy in the codebase; [EnableRungOrder.REFLECTION_FIRST] flips its default order
@@ -91,13 +91,13 @@ class ShizukuSystemGateway(
      * simply re-enables it. Neither is version-gated — Shizuku users on Android 15 and below freeze
      * system apps exactly as before, they just do it without ever reaching rung 3.
      *
-     * Rung 3 is not reversible. `pm uninstall --user N` carries no `-k`, so the app's data is
-     * deleted and an unfreeze brings it back factory-fresh. It ran *first* and *unconditionally*
-     * before this change, which is why freezing a preinstalled app silently cost the user their
-     * data. It now runs only on the one combination where disabling a system app is reported to be
-     * unavailable — Shizuku on Android 16+ — and everywhere else a failure to disable stays a
-     * failure. The log lines exist so a bug report can say which of "we disabled it" and "we
-     * deleted its data" actually happened.
+     * Rung 3 removes the package for this user. It ran *first* and *unconditionally* before this
+     * change, and without `-k`, which is why freezing a preinstalled app silently cost the user
+     * their data. It now carries `-k` ([ShizukuReflector.freezeSystemAppForUser]) so the data
+     * directories survive, and it is reached only where the platform actually refused to disable —
+     * everywhere else a failure to disable stays a failure. It is still last: it is the only rung
+     * that changes what the app looks like to the rest of the system (`FLAG_INSTALLED` clears), and
+     * the per-user permission grants are expected not to survive the round trip.
      */
     private suspend fun freezeSystemApp(packageName: String): Result<Unit> {
         // Rungs 1 + 2. setAppEnabledDetailed already re-reads ApplicationInfo after each rung and
@@ -123,7 +123,7 @@ class ShizukuSystemGateway(
         // still missing the OEM builds (Xiaomi HyperOS, reported on Android 14) that do. isSystem
         // is true by construction here, but it is passed explicitly so the gate — not this call
         // site — owns the whole rule.
-        if (!destructiveFreezeFallbackAllowed(
+        if (!uninstallFreezeFallbackAllowed(
                 isSystem = true,
                 privilegeMode = PrivilegeMode.SHIZUKU,
                 disableRefusedByPolicy = disable.refusedByPolicy,
@@ -133,31 +133,31 @@ class ShizukuSystemGateway(
                 "ShizukuSystemGateway",
                 "freeze($packageName): reflection and `pm disable-user` both left the package " +
                     "enabled, and nothing refused us — this is a failure to report, not a platform " +
-                    "limit to work around, so the app's data was left intact"
+                    "limit to work around"
             )
             return Result.failure(
                 Exception(
                     "Shizuku could not disable the system app $packageName. Nothing refused the " +
-                        "request, so this is not a device restriction, and freezing it by " +
-                        "uninstalling it for this user would delete its data. Refusing."
+                        "request, so this is not a device restriction — reporting the failure " +
+                        "rather than removing the app for this user."
                 )
             )
         }
 
         Logger.w(
             "ShizukuSystemGateway",
-            "freeze($packageName): reflection and `pm disable-user` both left the package enabled; " +
-                "falling back to uninstall-for-user, which DELETES this app's data"
+            "freeze($packageName): this device refuses to let the shell uid disable system " +
+                "packages; falling back to `pm uninstall -k --user N`, which keeps the app's data"
         )
-        val reported = runCancellableAction { reflector.uninstallApp(packageName) }
-        // Verify by re-reading rather than trusting uninstallApp's own verdict: its shell rung
-        // reports `pm`'s exit code and its reflection rung reports a PackageInstaller broadcast,
-        // and neither is the same question as "is this package still installed for me".
+        val reported = runCancellableAction { reflector.freezeSystemAppForUser(packageName) }
+        // Verify by re-reading rather than trusting the shell's exit code: `pm` is not a reliable
+        // narrator of whether the package is still installed for this user.
         return if (isFrozen(packageName)) {
             Logger.w(
                 "ShizukuSystemGateway",
-                "freeze($packageName): frozen by uninstall-for-user — its data is gone, and an " +
-                    "unfreeze will reinstall it factory-fresh"
+                "freeze($packageName): frozen by uninstall-for-user with -k — the data directories " +
+                    "survive, but per-user permission grants are expected not to, so the app may " +
+                    "re-prompt after an unfreeze"
             )
             Result.success(Unit)
         } else {
@@ -184,7 +184,7 @@ class ShizukuSystemGateway(
      * test `AppFreezeStateReader.candidateOf` applies, so "unfrozen" here means what "not frozen"
      * means everywhere else.
      *
-     * [destructiveFreezeFallbackAllowed] is deliberately **not** consulted anywhere below. It is a
+     * [uninstallFreezeFallbackAllowed] is deliberately **not** consulted anywhere below. It is a
      * freeze-only gate; an Android 15 device that was frozen by the old unconditional-uninstall
      * build is carrying a state this build would now refuse to create, and it still has to be able
      * to unfreeze it. Gating the thaw on the same predicate would strand exactly those users.

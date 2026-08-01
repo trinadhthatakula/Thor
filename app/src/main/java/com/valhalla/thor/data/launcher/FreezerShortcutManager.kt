@@ -328,7 +328,7 @@ class FreezerShortcutManager(
      *
      * [AppFreezeStateReader.MATCH_FLAGS] rather than MATCH_DISABLED_COMPONENTS alone: a system app
      * frozen by removal for the current user — the mechanic
-     * `FreezePolicy.destructiveFreezeFallbackAllowed` still permits, and the one every system app
+     * `FreezePolicy.uninstallFreezeFallbackAllowed` still permits, and the one every system app
      * frozen before Thor preferred disabling is already in — is not installed for this user, and
      * the lookup throws `NameNotFoundException` without MATCH_UNINSTALLED_PACKAGES. Unreachable
      * while per-app pins are gated to user apps, which is exactly what makes it worth fixing before

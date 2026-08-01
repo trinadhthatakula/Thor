@@ -70,43 +70,49 @@ fun isBlockedFromFreeze(app: AppInfo?): Boolean =
     app == null || app.freezeTier == FreezeTier.BLOCKED
 
 /**
- * How a freeze was actually carried out. The two are not interchangeable, and what separates them
- * is the user's data.
+ * How a freeze was actually carried out. The two are not interchangeable.
  *
  * [DISABLE] is reversible in the sense users expect: the package stays installed, keeps its data,
- * and `pm enable` returns it exactly as it was. [UNINSTALL] is `pm uninstall --user N` *without*
- * `-k`, which removes the package for the current user and takes its data with it —
- * `pm install-existing` brings the app back factory-fresh, with its logins, settings and local
- * content gone.
+ * and `pm enable` returns it exactly as it was.
  *
- * Thor prefers [DISABLE] everywhere it works, which — measurably — is everywhere stock Android
- * runs. [UNINSTALL] exists because some OEM builds refuse to let the shell uid disable their own
- * system packages at all, and on those devices a freeze that cannot happen is worse than one that
- * costs data the user was warned about. It is reached *only* where the platform actually refused,
- * which is what [destructiveFreezeFallbackAllowed] decides.
+ * [UNINSTALL] is `pm uninstall -k --user N` — it clears `FLAG_INSTALLED` for the current user, so
+ * the package disappears from launchers and from most `PackageManager` queries, and `-k`
+ * (`DELETE_KEEP_DATA`) is what keeps `/data/user/N/<pkg>` and `/data/user_de/N/<pkg>` from being
+ * destroyed. Measured on a HyperOS device: uninstall-with-`-k` then `pm install-existing` returned
+ * the app with byte-identical `ceDataInode` and `deDataInode`. For a system app the data survives
+ * indefinitely, because the package record never goes away — the APK is still on the read-only
+ * partition. **Without `-k` this mechanic destroys the app's data**, which is what every build
+ * before this one did, for every system app, on every release.
+ *
+ * The residual cost of [UNINSTALL] is not data but per-user package state: runtime permission
+ * grants and app-ops are expected not to survive the round trip, so an unfrozen app may have to ask
+ * for its permissions again. That is why [DISABLE] is still preferred everywhere it works — which,
+ * measurably, is everywhere stock Android runs. [UNINSTALL] exists because some OEM builds refuse
+ * to let the shell uid disable their own system packages at all, and it is reached *only* where the
+ * platform actually refused, which is what [uninstallFreezeFallbackAllowed] decides.
  */
 enum class FreezeMechanic {
     /** `pm disable`, or the equivalent `setApplicationEnabledSetting` reflection. Keeps data. */
     DISABLE,
 
-    /** `pm uninstall --user N`, no `-k`. Destroys the app's data for the current user. */
+    /** `pm uninstall -k --user N`. Keeps the app's data; loses its per-user permission grants. */
     UNINSTALL,
 }
 
 /**
  * May a failed [FreezeMechanic.DISABLE] escalate to [FreezeMechanic.UNINSTALL] for this package?
  *
- * This gate is the difference between a fallback chain and a data-loss bug. Without it, *any*
- * failure to disable — a busy PackageManager, a binder timeout, a package that happened to be
- * mid-update — silently escalates to destroying that app's data, and the user is told the freeze
- * succeeded. With it, escalation is confined to the case where the platform has *refused* to
- * disable the package, and everywhere else a failure to disable stays a *failure*, visible and
- * reportable.
+ * Without this gate, *any* failure to disable — a busy PackageManager, a binder timeout, a package
+ * that happened to be mid-update — silently escalates to removing the package for the user, who is
+ * told the freeze succeeded. With it, escalation is confined to the case where the platform has
+ * *refused* to disable the package, and everywhere else a failure to disable stays a *failure*,
+ * visible and reportable.
  *
  * Failing loudly is the deliberate choice. A freeze that reports an error costs the user an
- * annoyance and Thor a bug report; a freeze that quietly wipes an app's data costs the user
- * something they cannot get back and produces no report at all, because from the outside it looked
- * like it worked.
+ * annoyance and Thor a bug report; a freeze that quietly swaps one mechanic for another produces no
+ * report at all, because from the outside it looked like it worked. Before `-k` was added to the
+ * fallback the price of getting this wrong was the user's data; it is now their per-user permission
+ * grants, which is smaller but still not something to spend on a binder timeout.
  *
  * ### Why this is not a version check
  *
@@ -121,15 +127,20 @@ enum class FreezeMechanic {
  *    android14-, android15-, android16-, android16-qpr1- and android16-qpr2-release. The 15→16
  *    diff of that method contains tracing and metrics changes and no security logic at all.
  *  - The restriction users actually hit is **Xiaomi's**, not Android's: a vendor
- *    `PackageManagerServiceImpl.canBeDisabled` — a class that does not exist in AOSP — throws
+ *    `PackageManagerServiceImpl.shouldRestrictEnabledSettingsChange` — a class that does not exist
+ *    in AOSP, and which 404s at every `android.googlesource.com` tag from 13 to 17 — throws
  *    `SecurityException("Cannot disable system packages.")` for `callingUid == 2000` on a system
  *    package. It was first reported on HyperOS running **Android 14**, roughly a year before
- *    Android 16 shipped, and is not tied to an API level in either direction.
+ *    Android 16 shipped, and is not tied to an API level in either direction. Reproduced on
+ *    `25053PC47G` (HyperOS OS3.0, build `BP2A.250605.031.A3`): `pm disable-user --user 0` exits 255
+ *    on `/system/app`, `/system/priv-app`, `/product/app` and `UPDATED_SYSTEM_APP` packages alike,
+ *    while third-party packages disable normally.
  *
- * So a version test is wrong in *both* directions at once: it would destroy data on a Pixel that
- * could have disabled the app, and it would refuse to freeze at all on the Xiaomi devices that are
- * the entire reason the fallback exists. What actually distinguishes the two cases is not which
- * release the device runs but whether the platform refused — so that is what this asks.
+ * So a version test is wrong in *both* directions at once: it would strip the wrong mechanic onto a
+ * Pixel that could have disabled the app, and it would refuse to freeze at all on the Xiaomi
+ * devices that are the entire reason the fallback exists. What actually distinguishes the two cases
+ * is not which release the device runs but whether the platform refused — so that is what this
+ * asks.
  *
  * One thing the shell uid genuinely cannot do, on every release since API 25 and still true on 17:
  * set `COMPONENT_ENABLED_STATE_DISABLED` (state 2, what `pm disable` sends). It may only set
@@ -141,7 +152,7 @@ enum class FreezeMechanic {
  *   came back unreadable. Passed in rather than inferred so this stays a pure function, and so the
  *   one decision that can cost a user their data is reachable from a plain JVM test.
  */
-fun destructiveFreezeFallbackAllowed(
+fun uninstallFreezeFallbackAllowed(
     isSystem: Boolean,
     privilegeMode: PrivilegeMode,
     disableRefusedByPolicy: Boolean,
@@ -162,11 +173,18 @@ fun destructiveFreezeFallbackAllowed(
         // at all — which is the state this whole change is trying to get *out* of.
         PrivilegeMode.SHIZUKU -> true
 
-        // Root is uid 0, and every refusal found in the wild — AOSP's own and Xiaomi's alike —
-        // keys on the *shell* uid (2000). Root has no observed platform restriction to work
-        // around, so a refusal here is a genuine anomaly worth surfacing rather than an
-        // invitation to delete the user's data. This is a behaviour change: root used to freeze
-        // system apps by uninstalling them unconditionally.
+        // Root is uid 0, and the two refusals this fallback was built for — AOSP's shell guard and
+        // Xiaomi's vendor one — both key on the *shell* uid (2000), so neither can reach root.
+        //
+        // One refusal genuinely can: `ProtectedPackages` (device provisioning package, device or
+        // profile owner, DPM owner-protected) throws `Cannot disable a protected package: <pkg>`
+        // and is *not* uid-gated, so it refuses root identically. Reported on Amazon Fire and on
+        // Infinix XOS. That case still answers false, and deliberately: a package the platform
+        // protects this hard is one where "uninstall it for the user instead" is the wrong reading
+        // of the refusal, not a workaround for it. Surface it and let the user decide.
+        //
+        // This is a behaviour change either way: root used to freeze system apps by uninstalling
+        // them unconditionally.
         PrivilegeMode.ROOT -> false
 
         // Dhizuku does not consult this policy yet — DhizukuSystemGateway still uninstalls system

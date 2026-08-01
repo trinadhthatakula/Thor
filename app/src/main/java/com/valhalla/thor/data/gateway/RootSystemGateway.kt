@@ -18,7 +18,7 @@ import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.shizuku.isPolicyRefusal
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.PrivilegeMode
-import com.valhalla.thor.domain.model.destructiveFreezeFallbackAllowed
+import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.Dispatchers
@@ -237,7 +237,7 @@ class RootSystemGateway(
      *     and unfreezing hands the app back exactly as it was. With root this should almost always
      *     be the rung that takes; it was simply never tried before.
      *  2. `pm uninstall --user N` — the historical rung, kept but **gated behind
-     *     [destructiveFreezeFallbackAllowed]**, which answers `false` for [PrivilegeMode.ROOT] on
+     *     [uninstallFreezeFallbackAllowed]**, which answers `false` for [PrivilegeMode.ROOT] on
      *     every release: root can disable any package, so a refusal to disable is a real failure
      *     worth surfacing, not a platform gap worth working around by deleting the user's data.
      *     Under root this rung is therefore unreachable today and a failed rung 1 returns
@@ -313,7 +313,7 @@ class RootSystemGateway(
      * Rung 1 → (gated) rung 2 of the system-app freeze, with a state re-read between them.
      *
      * Rung 1 (`pm disable`) preserves the app's data; rung 2 (`pm uninstall --user`) deletes it, and
-     * is only reached when [destructiveFreezeFallbackAllowed] says this privilege mode has no other
+     * is only reached when [uninstallFreezeFallbackAllowed] says this privilege mode has no other
      * way to freeze a system app — which for root is never. Nothing here trusts a shell exit code:
      * the rung that "succeeded" is the one the platform agrees changed the package state.
      */
@@ -373,7 +373,7 @@ class RootSystemGateway(
         // unreachable today and the failure is surfaced instead. The flag is still computed and
         // passed honestly rather than hardcoded to false, so the two gateways call the gate the
         // same way and a future decision to let root escalate is a change in the policy, not here.
-        if (!destructiveFreezeFallbackAllowed(
+        if (!uninstallFreezeFallbackAllowed(
                 isSystem = true,
                 privilegeMode = PrivilegeMode.ROOT,
                 disableRefusedByPolicy = isPolicyRefusal(
@@ -384,15 +384,18 @@ class RootSystemGateway(
             val refused = java.io.IOException(
                 "Root freeze of $packageName failed: `pm disable --user $currentUser` did not take " +
                     "effect and the package is still enabled. Root can disable any package, so this is " +
-                    "a real refusal rather than a platform limit — the destructive " +
-                    "`pm uninstall --user $currentUser` fallback is not permitted here, and the app's " +
-                    "data was left intact."
+                    "a real refusal rather than a platform limit — the `pm uninstall -k --user " +
+                    "$currentUser` fallback is not permitted here, and the package was left installed."
             )
             Logger.e("RootSystemGateway", refused.message.orEmpty(), refused)
             return Result.failure(refused)
         }
 
-        runCommand("pm uninstall --user $currentUser $escapedPackage")
+        // `-k` (DELETE_KEEP_DATA) is not optional here: without it this line deletes
+        // /data/user/N/<pkg> and an unfreeze returns the app factory-fresh, which is the bug this
+        // whole change exists to remove. With it, the data directories keep the same inodes across
+        // uninstall → install-existing (measured).
+        runCommand("pm uninstall -k --user $currentUser $escapedPackage")
         // Nothing is left to try, so anything but "definitely still enabled" is the state we asked
         // for: a null read can now only mean the package is no longer resolvable for this user,
         // which is precisely what `pm uninstall --user` produces.
@@ -400,15 +403,15 @@ class RootSystemGateway(
             Logger.w(
                 "RootSystemGateway",
                 "freeze $packageName: rung 1 `pm disable` had no effect; fell back to rung 2 " +
-                    "`pm uninstall --user $currentUser` — the app's DATA WAS DESTROYED and unfreezing " +
-                    "will restore it factory-fresh"
+                    "`pm uninstall -k --user $currentUser` — the app's data directories survive, " +
+                    "but its per-user permission grants are expected not to"
             )
             return Result.success(Unit)
         }
 
         val failure = java.io.IOException(
             "Root freeze of $packageName failed: neither `pm disable --user $currentUser` nor " +
-                "`pm uninstall --user $currentUser` changed the package's state."
+                "`pm uninstall -k --user $currentUser` changed the package's state."
         )
         Logger.e("RootSystemGateway", failure.message.orEmpty(), failure)
         return Result.failure(failure)
@@ -418,10 +421,10 @@ class RootSystemGateway(
      * Undoes *either* freeze mechanic, install-existing first and enable second.
      *
      * The two are not alternatives to choose between — a package can need both, because a freeze
-     * that escalated to the destructive rung on top of a `pm disable` that had already landed is
+     * that escalated to the uninstall rung on top of a `pm disable` that had already landed is
      * left disabled *and* uninstalled-for-user. Root no longer produces that state, but it is asked
      * to undo states it did not create: everything the uninstall-only builds froze, and anything
-     * Shizuku froze on Android 16+ where the gate still permits escalation. So this walks the state
+     * Shizuku froze on a device that refuses to disable system packages. So this walks the state
      * machine ([RootFreezeChain.unfreezeStep]) instead of branching once: not installed → restore
      * it; installed but disabled → enable it; installed and enabled → done.
      */
@@ -915,9 +918,9 @@ object RootFreezeChain {
      * The next rung for a package in state `(enabled, flags)`.
      *
      * Installed-ness is tested first on purpose. A package can be both uninstalled-for-user *and*
-     * disabled: any freeze that escalated to the destructive rung on top of a `pm disable` that had
-     * already landed — an older build, or Shizuku on Android 16+ where the gate still permits it,
-     * both of which root may be the privilege asked to undo. `pm enable` on a package that is not
+     * disabled: any freeze that escalated to the uninstall rung on top of a `pm disable` that had
+     * already landed — an older build, or Shizuku on a device that refuses to disable system
+     * packages, both of which root may be the privilege asked to undo. `pm enable` on a package that is not
      * installed for the user does not bring it back, while
      * `pm install-existing` on a disabled package does not enable it. Only install → enable clears
      * both; the caller re-reads between the two, so this being called twice is the normal path.

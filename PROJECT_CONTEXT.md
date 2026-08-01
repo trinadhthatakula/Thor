@@ -88,10 +88,12 @@ for the presentation layer.
 - **Advanced Insights**: Installer source (resolved from package labels, not hardcoded), split APK
   indicators, version codes, SDK targets, `isSuspended`, `isDebuggable`.
 - **System App Support**: Uninstall or freeze system apps (requires any privilege mode). A freeze
-  disables the package and keeps its data; it removes the package for the current user only where
-  disabling is unavailable — Shizuku on Android 16+, and Dhizuku, whose gateway is not yet
+  disables the package and keeps its data; it removes the package for the current user
+  (`pm uninstall -k`, so the data directories survive) only where the platform actually *refused*
+  the disable — an OEM restriction, not an Android version, plus Dhizuku, whose gateway is not yet
   converted. `domain/model/FreezePolicy.kt` owns that rule; every reader of freeze state must
-  handle both, since devices carry system apps frozen the old way.
+  handle both, since devices carry system apps frozen the old way, when the fallback ran first,
+  unconditionally, and without `-k`.
 - **Security**: Biometric/device-credential lock for app access. Per-session authentication state.
 - **App Metadata Caching**: Room DB cache for `AppInfo`, invalidated via `lastUpdateTime`.
 - **Preferences** (`UserPreferences`): theme, AMOLED, dynamic color, biometric lock, sort/filter

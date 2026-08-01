@@ -45,7 +45,7 @@ class AppFreezeStateReader(
         val info = packageManager.getApplicationInfo(packageName, MATCH_FLAGS)
         // MATCH_UNINSTALLED_PACKAGES is not optional. A *system* app is frozen with `pm disable`
         // where that works and with `pm uninstall --user N` where it does not — the gated
-        // destructive fallback (`destructiveFreezeFallbackAllowed`), plus every package the
+        // destructive fallback (`uninstallFreezeFallbackAllowed`), plus every package the
         // uninstall-only builds froze and that is still frozen today. A package in that second
         // state is not installed for this user, so the lookup throws NameNotFoundException without
         // the flag — the app then reads ABSENT and freezableCandidates drops it, which silently
@@ -103,7 +103,7 @@ class AppFreezeStateReader(
          * Both mechanics are live, and neither flag can be dropped. `pm disable` is now what
          * freezes a system app wherever the platform permits it, and `pm uninstall --user N` is
          * what freezes one where it does not — the gated destructive fallback, see
-         * `destructiveFreezeFallbackAllowed`. Even if that gate closed everywhere tomorrow,
+         * `uninstallFreezeFallbackAllowed`. Even if that gate closed everywhere tomorrow,
          * MATCH_UNINSTALLED_PACKAGES would stay load-bearing: devices carry system apps that the
          * uninstall-only builds froze, and they read as ABSENT without it, which is precisely how
          * `Unfreeze all` would lose the packages that most need unfreezing.
