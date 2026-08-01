@@ -96,8 +96,12 @@ class ShizukuSystemGateway(
      * their data. It now carries `-k` ([ShizukuReflector.freezeSystemAppForUser]) so the data
      * directories survive, and it is reached only where the platform actually refused to disable —
      * everywhere else a failure to disable stays a failure. It is still last: it is the only rung
-     * that changes what the app looks like to the rest of the system (`FLAG_INSTALLED` clears), and
-     * the per-user permission grants are expected not to survive the round trip.
+     * that changes what the app looks like to the rest of the system (`FLAG_INSTALLED` clears).
+     *
+     * Rung 3 is also **unavailable at shell uid on API 37**: `pm uninstall -k --user N` on a system
+     * app returns `Failure [only root can delete system app for a particular user]` on Android 17,
+     * where the identical command succeeds on API 36. The package is left untouched, so the chain
+     * ends in an honest failure rather than a wrong state.
      */
     private suspend fun freezeSystemApp(packageName: String): Result<Unit> {
         // Rungs 1 + 2. setAppEnabledDetailed already re-reads ApplicationInfo after each rung and
@@ -155,9 +159,8 @@ class ShizukuSystemGateway(
         return if (isFrozen(packageName)) {
             Logger.w(
                 "ShizukuSystemGateway",
-                "freeze($packageName): frozen by uninstall-for-user with -k — the data directories " +
-                    "survive, but per-user permission grants are expected not to, so the app may " +
-                    "re-prompt after an unfreeze"
+                "freeze($packageName): frozen by uninstall-for-user with -k — data directories and " +
+                    "runtime permission grants both survive the round trip (measured on API 36)"
             )
             Result.success(Unit)
         } else {

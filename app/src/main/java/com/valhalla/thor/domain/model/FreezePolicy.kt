@@ -95,7 +95,15 @@ enum class FreezeMechanic {
     /** `pm disable`, or the equivalent `setApplicationEnabledSetting` reflection. Keeps data. */
     DISABLE,
 
-    /** `pm uninstall -k --user N`. Keeps the app's data; loses its per-user permission grants. */
+    /**
+     * `pm uninstall -k --user N`. Keeps the app's data directories *and* its runtime permission
+     * grants — `-k` retains the whole `PackageUserState`, not just the data. What it does change is
+     * `FLAG_INSTALLED`, so the package stops resolving for this user without `MATCH_UNINSTALLED_PACKAGES`.
+     *
+     * Not reachable at shell uid on API 37: Android 17 answers this command with
+     * `Failure [only root can delete system app for a particular user]` where API 36 answers
+     * `Success`.
+     */
     UNINSTALL,
 }
 

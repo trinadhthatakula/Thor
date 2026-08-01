@@ -684,9 +684,24 @@ object Shizuku {
      * goes away, because the APK is still on the read-only partition and `pm uninstall --user` only
      * clears `PackageUserState.installed` for one user.
      *
-     * Known caveat, not yet measured: runtime permission grants and app-ops are per-user package
-     * state and are likely reset by the removal and *not* restored by `pm install-existing`, so the
-     * app may come back having to ask for its permissions again. That is a prompt, not data loss.
+     * **Runtime permission grants survive too.** This was previously documented here as a likely
+     * cost — "the app may come back having to ask for its permissions again" — and that guess was
+     * wrong. Measured on a stock AOSP API 36 emulator at uid 2000: `pm grant` a revocable runtime
+     * permission, round-trip through `pm uninstall -k` / `pm install-existing`, and the permission
+     * returns `granted=true` with its flags unchanged. `-k` retains the whole `PackageUserState`,
+     * not just the data directories.
+     *
+     * **This rung does not exist at shell uid on API 37.** Measured on an Android 17 emulator
+     * (`CP31.260623.005`), the identical command that succeeds on API 36 fails:
+     * ```
+     * pm uninstall -k --user 0 com.android.egg
+     *   API 36 -> Success, exit 0
+     *   API 37 -> Failure [only root can delete system app for a particular user], exit 1
+     * ```
+     * The package is left untouched, so the caller sees an honest failure rather than a wrong
+     * state. On Android 17 a Shizuku running at uid 2000 therefore ends the chain at "could not
+     * disable" instead of escalating; a Shizuku started as root (uid 0) is unaffected. This is a
+     * platform restriction, not something to work around — do not add a rung below it.
      *
      * The adb client's scary "there is no way to remove the remaining data" warning about `-k` is
      * about orphaned data left behind by a *full* uninstall of a user app. It does not apply here,
