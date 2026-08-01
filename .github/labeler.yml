@@ -55,6 +55,14 @@
           - "app/src/**/res/drawable*/**"
           - "app/src/**/res/layout*/**"
 
+# The landing page at thor.trinadhthatakula.com. Scoped to web/ and nothing else:
+# the site also derives facts from gradle.properties and gradle/libs.versions.toml,
+# but those are Android files first and already carry `dependencies`.
+"area: website":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "web/**"
+
 "dependencies":
   - changed-files:
       - any-glob-to-any-file:

@@ -1,0 +1,100 @@
+name: Web CI
+
+# Gates for the landing page in web/. Deliberately a workflow of its own rather
+# than a job inside pr-ci.yml, and deliberately path-filtered.
+#
+# The filter is only safe BECAUSE this workflow must never become a required
+# status check. `on.<event>.paths` filters the whole workflow, and GitHub reports
+# a path-skipped required check as "Expected — Waiting for status" forever, so an
+# Android-only PR would sit unmergeable. That is the exact reason pr-ci.yml has no
+# filter at all: `build-and-test` IS required on the dev and master rulesets.
+# If anyone ever adds `web-ci` to a ruleset, the filter below has to come out in
+# the same change — the two decisions are one decision.
+#
+# gradle.properties and gradle/libs.versions.toml are in the filter because the
+# site derives its version name and SDK levels from them (web/src/lib/repo-facts).
+# A `chore(release)` commit touches nothing under web/ and still changes what the
+# site renders; without these two paths the derivation would go untested on the
+# only commit that ever moves it. That list is the same list as the Ignored Build
+# Step in web/vercel.json — a third derived fact means editing both.
+
+on:
+  pull_request:
+    branches: [ "master", "dev" ]
+    paths:
+      - 'web/**'
+      - 'gradle.properties'
+      - 'gradle/libs.versions.toml'
+      - '.github/workflows/web-ci.yml'
+  push:
+    branches: [ "master", "dev" ]
+    paths:
+      - 'web/**'
+      - 'gradle.properties'
+      - 'gradle/libs.versions.toml'
+      - '.github/workflows/web-ci.yml'
+
+# Least-privilege token — this workflow only reads the repo.
+permissions:
+  contents: read
+
+concurrency:
+  group: web-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: web
+    runs-on: ubuntu-latest
+    # The whole chain is a type-check, a static build and two Node scripts. A run
+    # that reaches double digits is hung, not slow, and the 6-hour default would
+    # hide that.
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      # `defaults.run.working-directory` does not apply to `uses:` steps, so both
+      # paths here are repo-relative on purpose.
+      #
+      # node-version-file reads engines.node from web/package.json (>=22.12.0,
+      # matching Astro's own floor) instead of pinning a version here. One place
+      # to bump, and the version CI uses cannot drift from the one the manifest
+      # claims to support.
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: 'web/package.json'
+          cache: 'npm'
+          cache-dependency-path: 'web/package-lock.json'
+
+      # ci, not install: the lockfile is the contract, and `npm install` would
+      # happily resolve a newer typescript than the @astrojs/check peer range
+      # allows and turn a red build into a green one for the wrong reason.
+      - name: Install dependencies
+        run: npm ci
+
+      # Run ahead of the build even though `npm run build` starts with the same
+      # step. A type error is the most common failure here and this reports it as
+      # its own red step instead of burying it in a build log.
+      - name: Type check
+        run: npm run check:types
+
+      # The build is itself the gate stack: astro check, astro build, the offline
+      # link checker and the claims blocklist. This is the same command Vercel
+      # runs, so a green run here means the deploy will not fail on content.
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: npm test
+
+      # CI-only, and after the build, because it walks dist/. axe-core over jsdom
+      # cannot evaluate colour contrast (no layout, no CSSOM cascade), so that
+      # rule is off in the script and contrast is covered by an arithmetic test
+      # over the token values instead.
+      - name: Accessibility check
+        run: npm run check:a11y

@@ -15,6 +15,12 @@ on:
     paths-ignore:
       - '*.md'
       - 'docs/**'
+      # The landing page in web/ adds no Gradle module — settings.gradle.kts includes
+      # only :app, :bypass and :vm-runtime — so it cannot change a byte of the APK, and
+      # web-ci.yml already gates it. Its own build reads gradle.properties and
+      # gradle/libs.versions.toml, which are deliberately NOT ignored here, so a
+      # chore(release) bump still runs everything.
+      - 'web/**'
       - 'LICENSE'
       - '.gitignore'
       - '.github/**/*.md'

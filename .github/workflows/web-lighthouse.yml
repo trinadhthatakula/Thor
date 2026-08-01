@@ -1,0 +1,170 @@
+name: Web Lighthouse
+
+# ADVISORY ONLY, and structurally incapable of becoming a gate:
+#   - every assertion in `web/lighthouserc.json` is at `warn`, never `error`;
+#   - the job is `continue-on-error`;
+#   - it is path-filtered, so it must never be added to a branch ruleset —
+#     GitHub reports a path-skipped required check as pending forever, which
+#     would leave every Android-only PR unmergeable.
+#
+# Spec §6.6: run Lighthouse as a warning first and promote it to a gate once the
+# real baseline is known. A performance budget guessed in advance mostly teaches
+# people to ignore it, so the numbers in `lighthouserc.json` are provisional.
+on:
+  pull_request:
+    # Scoped to the same branches as pr-ci.yml so a PR between two feature
+    # branches does not trigger a preview score nobody reads.
+    branches: [master, dev]
+    paths:
+      - 'web/**'
+      - '.github/workflows/web-lighthouse.yml'
+
+permissions:
+  contents: read
+  # Read-only: the preview URL is discovered by polling the Deployments API that
+  # Vercel writes to. Nothing here creates or updates a deployment.
+  deployments: read
+
+concurrency:
+  group: web-lighthouse-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  lighthouse:
+    # A forked PR gets no repository secrets, so the bypass secret below would be
+    # empty and the run would score Vercel's login wall — or fail on a missing
+    # secret, which reads like a broken workflow rather than an unsupported one.
+    # Skipping the whole job is the honest outcome; the job simply does not
+    # appear on the PR.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    # Bounded by the ~10-minute preview wait plus three Lighthouse runs.
+    timeout-minutes: 25
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Check for the preview protection bypass secret
+        id: bypass
+        env:
+          BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          set -uo pipefail
+          # ────────────────────────────────────────────────────────────────────
+          # THE TRAP THIS STEP EXISTS FOR — read before changing anything here.
+          #
+          # Vercel puts preview deployments behind Deployment Protection. Without
+          # the `x-vercel-protection-bypass` header, Lighthouse does not fail: it
+          # cheerfully scores Vercel's SSO authentication page, which is tiny,
+          # fast and accessible, and reports a completely plausible number for a
+          # page no visitor will ever load. That is months of meaningless green,
+          # and it is the single easiest way to get worthless data out of this
+          # workflow.
+          #
+          # So the rule is absolute: no secret, no run. Never fall back to
+          # running without the header, and never fail the workflow because the
+          # secret is missing — a missing secret is a configuration state, not a
+          # regression in the site.
+          # ────────────────────────────────────────────────────────────────────
+          if [ -z "${BYPASS:-}" ]; then
+            echo "::notice::VERCEL_AUTOMATION_BYPASS_SECRET is not set, so Lighthouse would score Vercel's authentication wall instead of the site. Skipping. Set the secret (Vercel → Project → Settings → Deployment Protection → Protection Bypass for Automation) to enable it."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Wait for the Vercel preview deployment
+        id: preview
+        if: steps.bypass.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -uo pipefail
+          # Polling the Deployments API rather than triggering the workflow on
+          # `deployment_status`: that event supports no `paths` filter (GitHub
+          # allows one only on push and pull_request) and carries no head-repo
+          # field, so neither the "can never become a gate" path filter nor the
+          # fork guard above could be expressed. Polling keeps both, at the cost
+          # of this loop.
+          #
+          # The failure mode is a SKIP, never a hang: 40 tries at 15s is a hard
+          # ~10 minute ceiling, after which the URL is empty and every later step
+          # no-ops with a notice.
+          url=""
+          for _ in $(seq 1 40); do
+            # `environment_url` is only filled in on a successful deployment
+            # status. The *.vercel.app anchor is deliberate — a production
+            # deployment reports the custom domain, and scoring production from a
+            # PR would be measuring the wrong commit.
+            url="$(gh api "repos/$GH_REPO/deployments?sha=$HEAD_SHA&per_page=100" --jq '.[].id' 2>/dev/null \
+                   | while read -r id; do
+                       gh api "repos/$GH_REPO/deployments/$id/statuses?per_page=100" \
+                         --jq '.[] | select(.state == "success") | .environment_url // empty' 2>/dev/null
+                     done \
+                   | grep -m1 -E '^https://[A-Za-z0-9.-]+\.vercel\.app$' || true)"
+            [ -n "$url" ] && break
+            sleep 15
+          done
+
+          if [ -z "$url" ]; then
+            echo "::notice::No successful Vercel preview deployment appeared for $HEAD_SHA within ~10 minutes. Skipping the Lighthouse run — a slow or skipped preview build is not a site regression."
+          else
+            echo "Scoring preview deployment: $url"
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node
+        if: steps.preview.outputs.url != ''
+        uses: actions/setup-node@v7
+        with:
+          # Matches web/package.json's `engines.node`, which in turn matches
+          # Astro's own floor.
+          node-version: 22
+
+      - name: Install Lighthouse CI
+        if: steps.preview.outputs.url != ''
+        # Pinned exactly: an LHCI minor can change how a category score is
+        # computed, and an advisory number that moves for tooling reasons is
+        # worse than no number.
+        run: npm install -g @lhci/cli@0.15.1
+
+      - name: Run Lighthouse against the preview
+        if: steps.preview.outputs.url != ''
+        working-directory: web
+        env:
+          BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          PREVIEW_URL: ${{ steps.preview.outputs.url }}
+        run: |
+          set -euo pipefail
+          # Built with jq so the secret never appears in this file, and so a
+          # secret containing a quote cannot break out of the JSON. Lighthouse
+          # sends `extraHeaders` on every request it makes, subresources
+          # included, which is what makes the bypass cover the whole page load
+          # rather than just the document.
+          headers="$(jq -nc --arg v "$BYPASS" '{"x-vercel-protection-bypass": $v}')"
+
+          # `--config` is explicit rather than relying on LHCI's config
+          # discovery, and `working-directory: web` means the same command works
+          # verbatim from a local `web/` checkout.
+          #
+          # Do not add a `preset` to lighthouserc.json: `lighthouse:recommended`
+          # sets its assertions to `error`, which would turn this advisory job
+          # into the gate the spec says it must not be yet.
+          lhci autorun \
+            --config=./lighthouserc.json \
+            --collect.url="$PREVIEW_URL" \
+            --collect.settings.extraHeaders="$headers"
+
+      - name: Upload the Lighthouse reports
+        # `always()` because a run that failed is the one whose report is worth
+        # reading.
+        if: always() && steps.preview.outputs.url != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: lighthouse-report
+          path: web/.lighthouseci
+          retention-days: 14
+          if-no-files-found: ignore
