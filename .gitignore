@@ -40,3 +40,10 @@ CLAUDE.md
 /docs/audit
 # Website copy drafts — the published source of truth is the site itself, not this repo
 /docs/site-content
+
+# Landing page (web/). The repo's /build and /*/build rules are anchored and match
+# none of these, so they need their own entries.
+web/node_modules/
+web/dist/
+web/.astro/
+.vercel
