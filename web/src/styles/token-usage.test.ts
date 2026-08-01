@@ -116,10 +116,10 @@ export function cssRegions(source: string, extension: string): string {
     const keep: Array<readonly [number, number]> = []
 
     // `<style>`, `<style is:global>`, `<style define:vars={…}>` — body only.
-    // Case-insensitive, and `\s*` before the closing `>`: `</style >` is valid and
-    // a missed block is not a loud failure here, it is a stylesheet this gate
-    // silently stops reading.
-    for (const block of matches(/<style[^>]*>([\s\S]*?)<\/style\s*>/gi, source)) {
+    // End tag `<\/style\b[^>]*>`, matching every form a parser closes on —
+    // `</STYLE>`, `</style >`, `</style foo>`. A missed block is not a loud
+    // failure here, it is a stylesheet this gate silently stops reading.
+    for (const block of matches(/<style[^>]*>([\s\S]*?)<\/style\b[^>]*>/gi, source)) {
       const open = block.index + block[0].indexOf('>') + 1
       keep.push([open, open + block[1].length])
     }

@@ -32,15 +32,18 @@ const themeToggle = read('ThemeToggle')
 /**
  * Only the `<script>` body, so a prohibition quoted in a comment is not a violation.
  *
- * Case-insensitive, and `\s*` before the closing `>`, because `<SCRIPT>` and
- * `</script >` are both valid HTML that the obvious regex misses. Neither can
- * fail quietly here — the assertion below demands exactly one match, so either
- * would throw rather than wave a violation through — but a filter that matches
- * one spelling of a tag is the wrong shape wherever it is written, which is what
- * CodeQL's js/bad-tag-filter is for.
+ * The end tag is `<\/script\b[^>]*>`, not `<\/script>`. An HTML parser closes on
+ * `</SCRIPT>`, on `</script >`, and on `</script foo=bar>` — an end tag may carry
+ * attribute junk, which is discarded — so all three have to match, while `\b`
+ * still rejects `</scriptfoo>`, which is a different tag. Nothing can fail
+ * quietly here (the assertion below demands exactly one match, so a miss throws)
+ * but a filter that recognises one spelling of a tag is the wrong shape wherever
+ * it is written, which is what CodeQL's js/bad-tag-filter is for.
  */
 function scriptBody(source: string): string {
-  const blocks = [...source.matchAll(/<script[^>]*>([\s\S]*?)<\/script\s*>/gi)].map((m) => m[1])
+  const blocks = [...source.matchAll(/<script[^>]*>([\s\S]*?)<\/script\b[^>]*>/gi)].map(
+    (m) => m[1],
+  )
   expect(blocks.length, 'expected exactly one inline script').toBe(1)
   return blocks[0].replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
 }

@@ -132,14 +132,16 @@ export function checkCustomProperties(dir) {
     // the whole document would read prose about a token as a declaration of it —
     // and this site's pages quote token names in running text.
     //
-    // `</style >` with whitespace before the `>` is valid HTML, so the end tag
-    // takes `\s*`. Astro's compressor does not emit that form today, but a missed
-    // <style> block here means every property it declares reads as undeclared,
-    // and the gate reports a failure for correct CSS.
+    // The end tag is `<\/style\b[^>]*>`: a browser closes on `</STYLE>`, on
+    // `</style >` and on `</style foo>`, since an end tag may carry attribute
+    // junk that is then discarded. Astro's compressor emits none of those today,
+    // but a missed <style> block cannot fail loudly — it means every property
+    // that block declares reads as undeclared, so the gate reports failures
+    // against correct CSS.
     const css = isCss
       ? [text]
       : [
-          ...[...text.matchAll(/<style[^>]*>([\s\S]*?)<\/style\s*>/gi)].map((m) => m[1]),
+          ...[...text.matchAll(/<style[^>]*>([\s\S]*?)<\/style\b[^>]*>/gi)].map((m) => m[1]),
           ...[...text.matchAll(/style="([^"]*)"/gi)].map((m) => m[1]),
         ]
 
