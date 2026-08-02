@@ -114,8 +114,13 @@ can only report on it afterwards.
   System Environment Variables". `check:screenshots` is strict only when `VERCEL_ENV=production`, and
   Vercel injects that variable. If the box is off, `VERCEL_ENV` is empty, `isProductionDeploy()`
   returns false, and the screenshot gate silently downgrades from gate to advisory **on the
-  production build**. Vercel does not document whether it is on by default for a portal import.
-  Verify it once, in one click.
+  production build**. Vercel does not document whether it is on by default for a portal import, so it
+  was checked rather than assumed: **confirmed on, 2026-08-02** (UTC). Note what that does and does
+  not establish — the setting is on; no production build has run since, so `VERCEL_ENV` reaching the
+  build has not been observed. A passing production build will not establish it either: with no
+  placeholders left there is nothing for the strict path to fail on, so it exits 0 either way. The
+  evidence is the `check-screenshots` line in the build log — `0 placeholders (strict: production)`
+  means the variable arrived, `0 placeholders (advisory)` means it did not and the gate downgraded.
 - **Deployment Protection.** A protected preview URL returns 401 with no notice explaining why. Every
   branch and every PR now gets a preview URL posted by the Vercel bot, so this is more visible than
   it was.
