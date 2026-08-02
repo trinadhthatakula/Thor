@@ -74,48 +74,41 @@ ceiling and hand you a green local build for the wrong reason.
 
 ## Deploying
 
-**Deploys run from `.github/workflows/web-deploy.yml`, not from Vercel's Git integration.**
-`master` publishes and `dev` stages: a push to `master` touching the site deploys production, a push
-to `dev` deploys a preview of the integrated site, and a PR into either deploys a preview and
-comments the URL. Site work therefore merges to `dev` like everything else, and the live site changes
-only when `dev` is merged to `master`.
+**Deploys run from Vercel's Git integration**, on a project created by importing this repository
+from the Vercel dashboard. `master` publishes and `dev` stages: a push to `master` touching the site
+deploys production, a push to any other branch deploys a preview, and a pull request gets a preview
+URL commented by Vercel's own bot. Site work therefore merges to `dev` like everything else, and the
+live site changes only when `dev` is merged to `master`.
 
-A PR based on `master` additionally builds with `REQUIRE_SCREENSHOTS=1`, so `check:screenshots` is
-strict on the release PR's preview rather than first becoming strict on the deploy that is already
-live.
+Nothing in this repository triggers the deploy. Four settings in the Vercel dashboard do, and they
+are listed in `web/docs/deploy.md` — that file is the reference for project settings, the domain and
+rollback. What follows is only the part you need in order not to break it from inside this directory.
 
-Both PR cases mean a PR from a branch in this repository. A **forked** PR gets no repository secrets,
-so the deploy job skips itself rather than failing on an empty token — no preview, no comment, no
-strict check. The `master` push re-gates everything before it uploads, so that costs coverage, not
-safety. `web/docs/deploy.md` is the reference — secrets, project settings, rollback. What follows is
-only the part you need in order not to break it from inside this directory.
+`check:screenshots` becomes strict by itself here: it hard-fails on `VERCEL_ENV=production`, which
+Vercel injects on production builds, so placeholders stay green on previews and stop the publish.
 
-The trade is deliberate: under the Git integration, four dashboard settings decide whether the gates
-above run at all, none of them is visible in a diff, and every one produces **no error when wrong**.
-Driving the CLI from Actions puts those decisions in `vercel.json` and the workflow, where they get
-reviewed.
+`.github/workflows/web-deploy.yml` is a second, CLI-driven deploy path that is **dormant** — it has
+no credentials, so it prints a notice and skips. Do not read its green tick as a deploy. Turning it
+on means turning the Git integration off in the same change; see
+`docs/follow-ups/vercel-actions-deploy.md` for why, and for the interlock that makes it one change
+rather than two.
 
-### The Vercel project is not connected to the repository
+### What holds the gates on
 
-That is the actual guarantee that the site deploys once per commit, and it is a property of the
-Vercel project, not of anything in this directory. Create the project with `cd web && vercel link`;
-importing the repository from `vercel.com/new` connects it *and* sets Root Directory to `web`, which
-resolves to `web/web` once the workflow runs the CLI from inside `web/`.
-
-```json
-"git": { "deploymentEnabled": false }
-```
-
-That flag is defence in depth for the case where the repository gets connected anyway, and it lives
-in **two** files: here in `vercel.json`, and in `/vercel.json` at the repository root. Vercel does
-not document which one its Git integration reads — the setting is evaluated at webhook time, before
-a build container exists, so the CLI's resolution rules do not apply. Two copies remove the guess;
-delete neither. It is also not fully dependable even when placed correctly, so treat a connected
-repository as something to verify by counting deployments, not something the flag has handled.
-
-`vercel.json` also carries `buildCommand`, `installCommand` and `outputDirectory`, and it takes
-precedence over the dashboard's fields — which is what stops a dashboard edit from silently
+`web/vercel.json` carries `buildCommand`, `installCommand` and `outputDirectory`, and it takes
+precedence over the dashboard's equivalent fields. That is what stops a dashboard edit from silently
 dropping `npm run build`, and with it all six gates, off the deploy path.
+
+The backstop is `web-ci.yml`, which runs `npm ci && npm test && npm run build` on every push and
+every PR touching the paths below, on both branches, from a file in git. A dashboard change cannot
+reach it. What it cannot do is stop a deploy — it can only turn the commit red afterwards.
+
+Two dashboard settings have no in-repo equivalent and no error when wrong:
+
+- **Root Directory must be `web`.** Vercel otherwise builds from the repository root, where there is
+  no `package.json`.
+- **"Include files outside the Root Directory" must stay on.** The build reads `../gradle.properties`
+  and `../gradle/libs.versions.toml`; with it off, `repo-facts` fails at build time.
 
 ### The path list lives in four places
 
@@ -139,14 +132,15 @@ One file is read that is deliberately *not* in the list: `findRepoRoot()` reads 
 to locate the repository root. Only its existence matters, never its contents, so a change to it
 cannot change a rendered fact and must not trigger a rebuild.
 
-`ignoreCommand` is a Git-integration feature and the Git integration is off, so it should do nothing
-today — but do not treat it as provably inert. `vercel deploy` sends
-`projectSettings.commandForIgnoringBuildStep`, derived from `vercel.json`, on the same payload as
-`--prebuilt`, and Vercel has previously shipped (then rolled back) a build in which the Ignored Build
-Step cancelled `--prebuilt` deploys. If that recurs the job goes red rather than silently green.
-Its `:/` prefixes are load-bearing whenever it does run: the command executes inside the Root
-Directory, where a bare `gradle.properties` pathspec resolves to `web/gradle.properties`, matches
-nothing, and exits 0 for *every* commit — the site would show "Build skipped", correctly, forever.
+`ignoreCommand` is the fourth place, and it is **live** — it is a Git-integration feature and the Git
+integration is what deploys the site. It is the reason an Android-only commit does not rebuild the
+site: exit 0 means "nothing the site reads has changed, skip the build".
+
+Its `:/` prefixes are load-bearing. The command executes inside the Root Directory, so a bare
+`gradle.properties` pathspec would resolve to `web/gradle.properties`, match nothing, and exit 0 for
+*every* commit — the site would report "Build skipped", correctly, forever, and no check would go
+red. Test a change to it by pushing a `versionCode` bump and confirming the site rebuilds, not by
+reading it.
 
 ### GitHub Actions, and why the asymmetry
 

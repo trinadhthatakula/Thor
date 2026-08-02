@@ -11,9 +11,9 @@
  * captured one, instead of failing `astro build` from the day it is written.
  *
  * What the checklist cannot do is choose its moment. Vercel's production branch
- * is `dev`, so merging the PR **is** the production deploy — there is no window
- * between "merged" and "live" in which a human runs a checklist. A manual gate in
- * front of an automatic action is a gate in front of an open door.
+ * is `master`, so merging the release PR **is** the production deploy — there is
+ * no window between "merged" and "live" in which a human runs a checklist. A
+ * manual gate in front of an automatic action is a gate in front of an open door.
  *
  * So: placeholders stay green everywhere they are useful — local builds, `npm run
  * build`, CI, and Vercel *preview* deploys, where seeing the unfilled slots on a
