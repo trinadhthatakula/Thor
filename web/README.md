@@ -103,7 +103,7 @@ dropping `npm run build`, and with it all six gates, off the deploy path.
 Most commits here are Android changes, so the site does not rebuild unless something it *reads* has
 moved. That list is:
 
-```
+```text
 web/**   gradle.properties   gradle/libs.versions.toml
 ```
 
@@ -146,7 +146,7 @@ would run inside the Root Directory, where a bare `gradle.properties` pathspec r
 **No DNS change is needed.** `thor.trinadhthatakula.com` already exists in Cloudflare as a
 **DNS-only (grey cloud)** `CNAME` to `cname.vercel-dns.com`, and resolves through to Vercel anycast:
 
-```
+```console
 $ dig +short thor.trinadhthatakula.com @8.8.8.8
 cname.vercel-dns.com.
 76.76.21.98
@@ -159,7 +159,7 @@ cloud" and "Vercel has claimed the hostname" are expected.
 **The zone has a proxied `*` wildcard.** Every subdomain of `trinadhthatakula.com` resolves,
 including names that were never configured:
 
-```
+```console
 $ dig +short definitely-not-configured-xyz.trinadhthatakula.com @8.8.8.8
 172.67.176.17
 104.21.72.68        # Cloudflare, not Vercel

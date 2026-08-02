@@ -25,9 +25,14 @@ name: Web Deploy
 # Path filter: identical to web-ci.yml's, and for the same reason. The site
 # derives its version name and SDK levels from gradle.properties and
 # gradle/libs.versions.toml (web/src/lib/repo-facts), so a chore(release) commit
-# touches nothing under web/ and still changes what the site renders. That list
-# now lives in three places — here, web-ci.yml, and the (inert) ignoreCommand in
-# web/vercel.json. A fourth derived fact means editing all three.
+# touches nothing under web/ and still changes what the site renders.
+#
+# That list lives in FOUR places: here, web-ci.yml's paths:, the (inert)
+# ignoreCommand in web/vercel.json, and — as GRADLE_PROPERTIES and
+# VERSION_CATALOG — web/src/lib/repo-facts/read.ts. Deriving a new fact from a
+# new file means editing all four in the same commit. Edit read.ts alone and the
+# site renders a value that no longer triggers a rebuild when it changes, which
+# is the precise drift the whole derivation exists to prevent.
 #
 # Like web-ci.yml and web-lighthouse.yml before it, this workflow is
 # path-filtered and therefore MUST NEVER become a required status check:
@@ -249,14 +254,24 @@ jobs:
           fi
 
           # dist/ may or may not survive the Vercel builder, so its absence is
-          # not an error — but when it is there, a count mismatch means the tree
-          # being uploaded is not the tree that was gated.
+          # not an error — but when it is there, a page missing from the staged
+          # tree means the artifact is a subset of what was gated.
+          #
+          # Deliberately asymmetric. Fewer staged than built is a truncated
+          # artifact and must stop the deploy. MORE staged than built is the
+          # builder having added something of its own, which is its prerogative
+          # and not evidence of anything wrong — failing on it would be a check
+          # that blocks releases to report a non-problem, and the fastest way to
+          # get a gate deleted is for it to cry wolf once.
           if [ -d dist ]; then
             built=$(find dist -name '*.html' | wc -l | tr -d ' ')
             shipped=$(find "$out" -name '*.html' | wc -l | tr -d ' ')
-            if [ "$built" != "$shipped" ]; then
-              echo "::error::astro emitted $built HTML pages into dist/ but $shipped are staged in $out. The artifact is not the build that was gated."
+            if [ "$shipped" -lt "$built" ]; then
+              echo "::error::astro emitted $built HTML pages into dist/ but only $shipped are staged in $out. The artifact is a subset of the build that was gated."
               exit 1
+            fi
+            if [ "$shipped" -gt "$built" ]; then
+              echo "::notice::$shipped HTML pages staged against $built built — the Vercel builder added $((shipped - built)). Not an error; noted so it is visible if it ever starts mattering."
             fi
           fi
 
@@ -432,10 +447,17 @@ jobs:
       - name: Upload the Lighthouse reports
         # `always()` because a run that failed is the one whose report is worth
         # reading.
+        #
+        # `include-hidden-files` is not optional here: `.lighthouseci` is a
+        # hidden directory, upload-artifact skips hidden files by default, and
+        # `if-no-files-found: ignore` means the step would then pass having
+        # uploaded nothing at all. Green, empty, and no way to tell from the
+        # check list — carried over unnoticed from web-lighthouse.yml.
         if: always() && steps.bypass.outputs.present == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: lighthouse-report
+          include-hidden-files: true
           path: web/.lighthouseci
           retention-days: 14
           if-no-files-found: ignore

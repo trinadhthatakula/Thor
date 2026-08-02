@@ -130,7 +130,7 @@ is `warn`, the job is `continue-on-error`, and the workflow is path-filtered.
 
 Actions is not in the loop for a rollback — Vercel keeps every deployment.
 
-```
+```sh
 vercel rollback              # to the previous production deployment
 vercel promote <deploy-url>  # to a specific one
 ```
