@@ -75,14 +75,21 @@ gate which exits 0 for the wrong reason looks identical to one that passes.
       See `web/docs/screenshot-checklist.md`. The build is green with placeholders by design; this
       is the check that stops "green" from meaning "finished".
 
-      **Whether this is enforced or only advisory is currently unconfirmed.** `check:screenshots`
-      runs in the `build` chain on every build, but it only *fails* when `VERCEL_ENV=production` or
-      `REQUIRE_SCREENSHOTS=1` — so placeholders stay green locally, in CI and on `dev` previews by
-      design, and the intent is that a production deploy carrying one is refused. That intent rests
-      entirely on Vercel injecting `VERCEL_ENV`, which it does only when **"Enable access to System
-      Environment Variables" is on** — the §5 item that is still unticked. With that box off,
-      `isProductionDeploy()` returns false and the production build downgrades silently to advisory
-      placeholder checking. Treat this as unresolved until that setting has been inspected in Vercel.
+      **This one is enforced, not just listed** — as of 2026-08-03, when the setting it depends on
+      was confirmed. `check:screenshots` runs in the `build` chain on every build, but it only
+      *fails* when `VERCEL_ENV=production` or `REQUIRE_SCREENSHOTS=1`, so placeholders stay green
+      locally, in CI and on `dev` previews by design, and a production deploy carrying one is
+      refused. That last half rests entirely on Vercel injecting `VERCEL_ENV`, which it does only
+      when **"Enable access to System Environment Variables" is on** — now ticked in §5. With that
+      box off, `isProductionDeploy()` returns false and the production build would downgrade silently
+      to advisory placeholder checking.
+
+      One honest limit: the setting is confirmed, the *behaviour* is not. No production build has run
+      since it was turned on, so nothing has yet observed `VERCEL_ENV=production` reaching
+      `check-screenshots.mjs`. The first release merge is what proves it, and it proves it by
+      passing — which is indistinguishable from the downgraded case unless a placeholder is present.
+      Running `REQUIRE_SCREENSHOTS=1 npm run build` locally is still the only way to see the strict
+      verdict on demand.
 
       Nothing sets `REQUIRE_SCREENSHOTS=1` on a pull request into `master` any more — that was the
       Actions pipeline, which is dormant. So the release PR's preview is *not* held to the production
@@ -110,11 +117,13 @@ confirming because **none of them is visible in a diff and most fail without an 
       `../gradle.properties` and `../gradle/libs.versions.toml`. This one fails *loudly*
       (`RepoFactsError`), and it is currently correct — `/download` renders "Android 9 (API 28)",
       which is derived from `gradle/libs.versions.toml`.
-- [ ] **Confirm "Enable access to System Environment Variables" is on**, Settings → Environment
-      Variables. `check:screenshots` is strict only when `VERCEL_ENV=production`, and Vercel is what
-      injects it. If the box is off the gate silently downgrades to advisory **on the production
-      build**, which is the one place it is supposed to bite. Vercel does not document the default
-      for a portal import, so this is a one-click check worth actually doing.
+- [x] **"Enable access to System Environment Variables" is on** — confirmed by the owner in the
+      dashboard, 2026-08-03. Settings → Environment Variables. `check:screenshots` is strict only
+      when `VERCEL_ENV=production`, and Vercel is what injects it, so with the box off the gate would
+      silently downgrade to advisory **on the production build** — the one place it is supposed to
+      bite. Vercel does not document the default for a portal import, which is why this needed
+      checking rather than assuming. **It has not yet been exercised**: no production build has run
+      since, so the injection is confirmed at the setting, not at the artifact.
 - [ ] **Set no Build / Install / Output override in the dashboard.** `web/vercel.json` carries all
       three and takes precedence over project settings — that precedence is the only thing keeping a
       dashboard edit from silently removing the gate chain.
