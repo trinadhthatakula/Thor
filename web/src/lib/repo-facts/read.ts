@@ -44,10 +44,11 @@ export function findRepoRoot(startDir: string = process.cwd()): string {
   throw new RepoFactsError(
     `Could not find the Thor repository root above ${resolve(startDir)} — no ancestor ` +
       'directory contains settings.gradle.kts.\n\n' +
-      'On Vercel this almost always means "Include files outside of the Root Directory in ' +
-      'the Build Step" is OFF. The site derives its version and SDK numbers from ' +
-      'gradle.properties and gradle/libs.versions.toml, which live above web/, so that ' +
-      'setting has to stay ON.',
+      'The site derives its version and SDK numbers from gradle.properties and ' +
+      'gradle/libs.versions.toml, which live above web/, so the build needs the whole ' +
+      'repository present and not just this directory. In CI that means the checkout: a ' +
+      'sparse checkout excluding the root, or building from an extracted web/ tarball, ' +
+      'produces exactly this error. See web/docs/deploy.md.',
   )
 }
 
@@ -58,8 +59,9 @@ function read(root: string, relative: string): string {
   } catch (cause) {
     throw new RepoFactsError(
       `Could not read ${relative} at ${path}: ${(cause as Error).message}\n\n` +
-        'On Vercel this almost always means "Include files outside of the Root Directory in ' +
-        'the Build Step" is OFF.',
+        'The repository root was found, so this is the file itself: it has been moved, ' +
+        'renamed, or excluded from the checkout. If it moved, the same path is named in ' +
+        'three other places — see "The path list lives in four places" in web/README.md.',
     )
   }
 }
