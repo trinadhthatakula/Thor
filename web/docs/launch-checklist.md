@@ -3,6 +3,10 @@
 Run top to bottom before pointing the domain at the deployment. Everything in "Owner action" needs a
 person; everything else is a command whose output is the evidence.
 
+Dates here are **UTC**, anchored to the certificate timestamps quoted in §6. The launch work ran past
+local midnight in the owner's timezone, so a `git log` timestamp for the commit that recorded an item
+can read a day later than the item's date. That is the timezone, not a gap in the timeline.
+
 ## 1. Owner action — two external claims that the new site contradicts
 
 The homepage trust note says Thor declares `INTERNET` and names the one file that uses it. Two
@@ -75,7 +79,7 @@ gate which exits 0 for the wrong reason looks identical to one that passes.
       See `web/docs/screenshot-checklist.md`. The build is green with placeholders by design; this
       is the check that stops "green" from meaning "finished".
 
-      **This one is enforced, not just listed** — as of 2026-08-03, when the setting it depends on
+      **This one is enforced, not just listed** — as of 2026-08-02, when the setting it depends on
       was confirmed. `check:screenshots` runs in the `build` chain on every build, but it only
       *fails* when `VERCEL_ENV=production` or `REQUIRE_SCREENSHOTS=1`, so placeholders stay green
       locally, in CI and on `dev` previews by design, and a production deploy carrying one is
@@ -86,10 +90,27 @@ gate which exits 0 for the wrong reason looks identical to one that passes.
 
       One honest limit: the setting is confirmed, the *behaviour* is not. No production build has run
       since it was turned on, so nothing has yet observed `VERCEL_ENV=production` reaching
-      `check-screenshots.mjs`. The first release merge is what proves it, and it proves it by
-      passing — which is indistinguishable from the downgraded case unless a placeholder is present.
-      Running `REQUIRE_SCREENSHOTS=1 npm run build` locally is still the only way to see the strict
-      verdict on demand.
+      `check-screenshots.mjs`.
+
+      A **passing production build is not the proof**. All six screenshots have landed, so there are
+      zero placeholders; the strict path has nothing to fail on and exits 0 whether or not the
+      variable arrived. The exit code carries no information. What separates the two cases is the
+      line `report()` prints on success as well as failure:
+
+      ```console
+      check-screenshots: OK — 8 pages checked, 0 placeholders (strict: production)
+      check-screenshots: OK — 8 pages checked, 0 placeholders (advisory)
+      ```
+
+      The first says `VERCEL_ENV=production` arrived and the gate is armed; the second says it did
+      not and the gate silently downgraded. On Vercel the reading is unambiguous, because
+      `REQUIRE_SCREENSHOTS` is the only other input to `isProductionDeploy()` and nothing sets it
+      there — so `strict: production` in a Vercel build log can only have come from `VERCEL_ENV`.
+      **Read that line in the build log of the first `master` deploy.** That is the observation that
+      closes this out; a green checkmark is not.
+
+      Locally, `REQUIRE_SCREENSHOTS=1 npm run build` prints the same strict line on demand, which is
+      how to see the strict verdict without waiting for a deploy.
 
       Nothing sets `REQUIRE_SCREENSHOTS=1` on a pull request into `master` any more — that was the
       Actions pipeline, which is dormant. So the release PR's preview is *not* held to the production
@@ -118,12 +139,13 @@ confirming because **none of them is visible in a diff and most fail without an 
       (`RepoFactsError`), and it is currently correct — `/download` renders "Android 9 (API 28)",
       which is derived from `gradle/libs.versions.toml`.
 - [x] **"Enable access to System Environment Variables" is on** — confirmed by the owner in the
-      dashboard, 2026-08-03. Settings → Environment Variables. `check:screenshots` is strict only
+      dashboard, 2026-08-02. Settings → Environment Variables. `check:screenshots` is strict only
       when `VERCEL_ENV=production`, and Vercel is what injects it, so with the box off the gate would
       silently downgrade to advisory **on the production build** — the one place it is supposed to
       bite. Vercel does not document the default for a portal import, which is why this needed
       checking rather than assuming. **It has not yet been exercised**: no production build has run
-      since, so the injection is confirmed at the setting, not at the artifact.
+      since, so the injection is confirmed at the setting, not at the artifact. §4 names the one log
+      line that settles it, and why the build going green does not.
 - [ ] **Set no Build / Install / Output override in the dashboard.** `web/vercel.json` carries all
       three and takes precedence over project settings — that precedence is the only thing keeping a
       dashboard edit from silently removing the gate chain.
