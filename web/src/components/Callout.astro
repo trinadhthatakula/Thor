@@ -1,0 +1,96 @@
+---
+/**
+ * A boxed aside. Three tones, and the tone is carried by a text label rather
+ * than by colour alone — the difference between the note and warning surfaces is
+ * under 2:1, which is fine as a background and useless as the only signal.
+ *
+ * Every tone puts its text in `--on-surface`, `danger` included. There is no
+ * `--on-error-container`: Color.kt declares `OnErrorContainer`, Theme.kt passes
+ * it to neither scheme, so the app has no such colour and tokens.css declares
+ * none rather than fall through to a Material You baseline. `--on-surface` on
+ * `--error-container` is the documented stand-in — 7.43:1 dark, 13.31:1 light.
+ *
+ * The palette's dark danger pair (`#fe7453` on `#881f05`) measures 3.49:1: past
+ * the 3:1 large-text/non-text threshold, short of the 4.5:1 normal-text one, and
+ * both values are fixed by the spec. The label here is 17px, which is *not* WCAG
+ * large text (that starts at 18.66px bold), so `--error` is spent on the rule
+ * down the side and on nothing that has to be read.
+ */
+interface Props {
+  tone?: 'note' | 'warning' | 'danger'
+  /** Overrides the default label; the label is what conveys the tone. */
+  title?: string
+}
+
+const { tone = 'note', title } = Astro.props
+
+const DEFAULT_TITLE: Record<string, string> = {
+  note: 'Note',
+  warning: 'Worth knowing',
+  danger: 'Read this first',
+}
+
+const label = title ?? DEFAULT_TITLE[tone]
+---
+<aside class:list={['callout', `callout--${tone}`]}>
+  <p class="callout-label">{label}</p>
+  <div class="callout-body"><slot /></div>
+</aside>
+
+<style>
+  .callout {
+    margin-block: var(--space-m);
+    padding: var(--space-s) var(--space-m);
+    border-radius: var(--radius-m);
+    border-inline-start: 3px solid var(--outline);
+    background: var(--surface-container);
+  }
+
+  /* Label role, not body: Fira Code is label-only in this palette (see tokens.css),
+     and base.css spells the same pairing on `th` and `.skip-link`. */
+  .callout-label {
+    font-family: var(--font-mono);
+    font-size: var(--text-label-large);
+    font-weight: var(--weight-label-large);
+    margin: 0 0 var(--space-2xs);
+  }
+
+  .callout-body {
+    color: var(--on-surface);
+  }
+
+  .callout-body :global(> :last-child) {
+    margin-block-end: 0;
+  }
+
+  .callout--note {
+    border-inline-start-color: var(--primary);
+  }
+
+  .callout--note .callout-label {
+    color: var(--primary);
+  }
+
+  .callout--warning {
+    border-inline-start-color: var(--tertiary, var(--outline));
+    background: var(--surface-container-high);
+  }
+
+  .callout--danger {
+    border-inline-start-color: var(--error);
+    background: var(--error-container);
+  }
+
+  .callout--danger .callout-label {
+    /* Bigger than the other tones' labels, but 17px is still normal-size text by
+       WCAG, so this cannot be `--error` (3.49:1 in dark). See the header. */
+    font-size: var(--text-body-large);
+    color: var(--on-surface);
+  }
+
+  .callout--danger .callout-body {
+    /* Same as the base rule, and stated anyway: this is the one place where
+       reaching for the tone's own colour would fail AA. */
+    color: var(--on-surface);
+  }
+</style>

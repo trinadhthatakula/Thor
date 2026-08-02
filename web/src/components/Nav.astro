@@ -1,0 +1,90 @@
+---
+/**
+ * Header navigation. Reads HEADER_LINKS so a route rename lands here and in the
+ * footer at once.
+ *
+ * No hamburger and no disclosure widget: five links fit on a phone if they wrap,
+ * and a menu button would be the second piece of client JavaScript on a site
+ * whose argument is that it runs almost none.
+ */
+import { HEADER_LINKS, SITE } from '../lib/site.ts'
+import ThemeToggle from './ThemeToggle.astro'
+
+// trailingSlash is 'never', but the dev server still hands '/' for the index.
+const path = Astro.url.pathname.replace(/(.)\/$/, '$1')
+---
+<header class="site-header">
+  <nav class="nav" aria-label="Primary">
+    <a class="wordmark" href="/">{SITE.name}</a>
+
+    <ul class="nav-links">
+      {
+        HEADER_LINKS.filter((link) => link.href !== '/').map((link) => (
+          <li>
+            <a href={link.href} aria-current={path === link.href ? 'page' : undefined}>
+              {link.label}
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+
+    <ThemeToggle />
+  </nav>
+</header>
+
+<style>
+  .site-header {
+    border-bottom: 1px solid var(--outline-variant);
+    background: var(--surface);
+  }
+
+  .nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-s);
+    max-width: var(--content-max);
+    margin-inline: auto;
+    padding: var(--space-xs) var(--space-s);
+  }
+
+  .wordmark {
+    font-family: var(--font-mono);
+    font-weight: var(--weight-title-medium);
+    font-size: var(--text-title-medium);
+    letter-spacing: 0.02em;
+    color: var(--on-surface);
+    text-decoration: none;
+    margin-inline-end: auto;
+  }
+
+  .nav-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-s);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .nav-links a {
+    font-family: var(--font-mono);
+    font-size: var(--text-label-large);
+    color: var(--on-surface-variant);
+    text-decoration: none;
+    padding-block: var(--space-3xs);
+  }
+
+  .nav-links a:hover {
+    color: var(--on-surface);
+  }
+
+  /* The underline, not the colour, is what marks the current page: a colour
+     shift alone is a 1.x:1 difference against its neighbours and disappears for
+     anyone who cannot separate those two greens. */
+  .nav-links a[aria-current='page'] {
+    color: var(--primary);
+    border-bottom: 2px solid var(--primary);
+  }
+</style>

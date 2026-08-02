@@ -1,0 +1,18 @@
+# Thor — https://thor.trinadhthatakula.com
+#
+# Everything on this site is public documentation and marketing copy, so the
+# default is "crawl it all". The one exception is /styleguide, which is a
+# development-only surface: per the plan it renders under `astro dev` and its
+# getStaticPaths returns [] when import.meta.env.PROD, so it is not in a
+# production build at all. The rule below is belt and braces — if the PROD guard
+# ever regresses, a token dump should still not be an entry point from search.
+
+User-agent: *
+Allow: /
+Disallow: /styleguide
+
+# Emitted by @astrojs/sitemap, which filters /styleguide out a second time. This
+# is the one line here that can be silently wrong — a 404 sitemap reads to a
+# crawler as no sitemap at all, with no error anywhere — so the filename is
+# asserted against dist by `sitemap.test.ts` rather than trusted.
+Sitemap: https://thor.trinadhthatakula.com/sitemap-index.xml

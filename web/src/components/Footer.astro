@@ -1,0 +1,97 @@
+---
+/**
+ * Every route the header does not show, plus the project links and all five
+ * funding routes from .github/FUNDING.yml.
+ *
+ * The licence line is a statement of fact about the repository, not a claim
+ * about the binary a visitor downloaded — the Play Store build is the same
+ * source re-signed by Google, and saying "the app you have is GPL" would be
+ * asserting something about a file this site never touched.
+ */
+import { ROUTES, PROJECT_LINKS, FUNDING_LINKS, SITE } from '../lib/site.ts'
+---
+<footer class="site-footer">
+  <div class="footer-inner">
+    <nav class="footer-col" aria-label="Pages">
+      <h2>Pages</h2>
+      <ul>
+        {ROUTES.map((link) => <li><a href={link.href}>{link.label}</a></li>)}
+      </ul>
+    </nav>
+
+    <nav class="footer-col" aria-label="Project">
+      <h2>Project</h2>
+      <ul>
+        {PROJECT_LINKS.map((link) => <li><a href={link.href}>{link.label}</a></li>)}
+      </ul>
+    </nav>
+
+    <nav class="footer-col" aria-label="Support">
+      <h2>Support the work</h2>
+      <ul>
+        {FUNDING_LINKS.map((link) => <li><a href={link.href}>{link.label}</a></li>)}
+      </ul>
+    </nav>
+  </div>
+
+  <p class="colophon">
+    {SITE.name} is free software under GPL-3.0-or-later. This site is static, serves no cookies,
+    and runs no analytics.
+  </p>
+</footer>
+
+<style>
+  .site-footer {
+    border-top: 1px solid var(--outline-variant);
+    background: var(--surface-container-low);
+    margin-block-start: var(--space-xl);
+    padding: var(--space-l) var(--space-s) var(--space-m);
+  }
+
+  .footer-inner {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    gap: var(--space-m);
+    max-width: var(--content-max);
+    margin-inline: auto;
+  }
+
+  .footer-col h2 {
+    font-family: var(--font-mono);
+    font-size: var(--text-label-small);
+    /* --weight-label-large, not --weight-label-small: 400 would erase the
+       emphasis this heading is carrying. Same pairing base.css gives <th>, the
+       site's other uppercase mono label. */
+    font-weight: var(--weight-label-large);
+    line-height: var(--leading-label-small);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--on-surface-variant);
+    margin: 0 0 var(--space-xs);
+  }
+
+  .footer-col ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: var(--space-2xs);
+  }
+
+  .footer-col a {
+    color: var(--on-surface);
+    text-decoration: none;
+    font-size: var(--text-label-large);
+  }
+
+  .footer-col a:hover {
+    text-decoration: underline;
+  }
+
+  .colophon {
+    max-width: var(--content-max);
+    margin: var(--space-l) auto 0;
+    font-size: var(--text-body-small);
+    color: var(--on-surface-variant);
+  }
+</style>

@@ -1,0 +1,3 @@
+Not a real font. The link checker resolves paths and never opens the file; this
+stands in for the hashed woff2 that BaseLayout preloads, so the preload href is
+covered by the same regression as the stylesheet next to it.

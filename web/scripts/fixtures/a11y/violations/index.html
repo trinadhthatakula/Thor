@@ -1,0 +1,23 @@
+<!doctype html>
+<!--
+  Four defects axe can decide from markup alone, with no layout and no CSSOM: no lang, no title,
+  a link with no accessible name, and an image with no alt. They are here to prove the
+  axe-in-jsdom plumbing actually reports something — a harness that silently audits nothing looks
+  exactly like a clean site.
+
+  Nothing here needs a rendered colour. That is the whole reason color-contrast is disabled: in
+  jsdom it can only ever answer "incomplete", so it would add noise and no signal.
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  </head>
+  <body>
+    <main>
+      <h1>Thor</h1>
+      <a href="/download"></a>
+      <img src="/screenshot.png" />
+    </main>
+  </body>
+</html>

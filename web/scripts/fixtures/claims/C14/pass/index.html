@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Privacy</title>
+  </head>
+  <body>
+    <main>
+      <h1>Privacy</h1>
+      <p>
+        The FOSS build has no third-party SDK that processes your data. Thor's own code makes
+        exactly one kind of network request, only when you ask for it by opening the extension
+        store, and if you never open it the foss build makes no network request at all.
+      </p>
+      <p>
+        The Google Play build additionally bundles Google Play Billing, which is Google's code
+        rather than mine and talks to Google's servers on its own schedule. That is the honest
+        difference between the two, and it is why the sentence above names a build instead of
+        claiming something about the app in general.
+      </p>
+      <p>
+        You can confirm the first half in a checkout: exactly one source file in Thor's own code
+        opens a connection at all, and it is the one that fetches the extension catalog. The grep
+        that shows you this covers my sources and says nothing about the libraries either build
+        links against.
+      </p>
+      <p>
+        Neither build contains an analytics SDK, a crash reporting service, an advertising library
+        or an attribution framework. That part needs no qualifier because it is true of both.
+      </p>
+    </main>
+  </body>
+</html>

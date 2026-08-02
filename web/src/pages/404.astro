@@ -1,0 +1,64 @@
+---
+/**
+ * Astro emits this as dist/404.html and Vercel serves it for any unmatched path
+ * on a static deployment — no config needed.
+ *
+ * It lists the real routes rather than offering a search box: seven pages is
+ * fewer than a search index is worth, and a search box would be client
+ * JavaScript on the one page a visitor reaches by accident.
+ */
+import BaseLayout from '../layouts/BaseLayout.astro'
+import { ROUTES } from '../lib/site.ts'
+---
+<BaseLayout
+  title="Page not found"
+  description="That page does not exist on thor.trinadhthatakula.com."
+  noindex
+>
+  <div class="not-found">
+    <p class="code">404</p>
+    <h1>That page isn't here.</h1>
+    <p class="lead">
+      It may have moved, or the link may have been wrong to begin with. Everything on this site is
+      one of these:
+    </p>
+    <ul>
+      {ROUTES.map((r) => <li><a href={r.href}>{r.label}</a></li>)}
+    </ul>
+  </div>
+</BaseLayout>
+
+<style>
+  .not-found {
+    max-width: var(--content-max);
+    margin-inline: auto;
+    padding: var(--space-xl) var(--space-s);
+  }
+
+  .code {
+    font-family: var(--font-mono);
+    font-size: var(--text-label-large);
+    letter-spacing: 0.15em;
+    color: var(--on-surface-variant);
+    margin: 0 0 var(--space-xs);
+  }
+
+  h1 {
+    font-size: var(--text-headline-large);
+    line-height: var(--leading-headline-large);
+    margin: 0 0 var(--space-s);
+  }
+
+  .lead {
+    max-width: var(--measure);
+    color: var(--on-surface-variant);
+  }
+
+  ul {
+    margin-block-start: var(--space-m);
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: var(--space-2xs);
+  }
+</style>

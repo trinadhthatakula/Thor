@@ -1,0 +1,336 @@
+---
+layout: ../layouts/PageLayout.astro
+title: Privacy Policy
+description: Thor collects nothing about you. The FOSS build reaches the network only when you open the Extension Manager; the Google Play build also carries Google Play Billing. This page describes both in full.
+lead: Thor is an app manager for Android. This policy covers what the app does with the information on your device — and what this website does with the fact that you visited it.
+index:
+  - id: open-source
+    label: Free and open source
+  - id: what-thor-collects
+    label: What Thor collects
+  - id: network
+    label: When Thor uses the network
+  - id: on-your-device
+    label: What Thor stores locally
+  - id: other-apps
+    label: What Thor does to other apps
+  - id: backup
+    label: Android's backup
+  - id: permissions
+    label: Permissions, and why
+  - id: third-parties
+    label: Third parties
+  - id: this-website
+    label: About this website
+  - id: children
+    label: Children
+  - id: changes
+    label: Changes to this policy
+  - id: contact
+    label: Contact
+---
+
+import Callout from '../components/Callout.astro'
+import CodeBlock from '../components/CodeBlock.astro'
+import DeviceFrame from '../components/DeviceFrame.astro'
+// Raw device capture. DeviceFrame draws the bezel, so this must stay unframed.
+import extensionManager from '../assets/screenshots/06-extension-manager.png'
+import Fact from '../components/Fact.astro'
+
+Thor is written and maintained by one independent developer, **Trinadh Thatakula**. There is no
+company and no team behind it, so where this policy says "I", that is who it means. **Thor** and
+**the App** mean the same thing throughout: the Thor Android application.
+
+The short version: **Thor collects nothing about you.** There is no analytics, no crash reporting
+service, no advertising library and no telemetry of any kind. Thor's own code makes exactly one kind
+of network request, only when you ask for it. The Google Play build additionally bundles Google Play
+Billing, which opens a connection to Play when the app opens. Both are described in full below.
+
+<Callout tone="warning" title="This replaces the policy at rxspectra.web.app">
+  <p>
+    The older policy, still linked from some listings, says Thor never reaches the network. That was
+    accurate when it was written and it is out of date now: the Extension Store ships in both builds,
+    and it makes HTTPS requests to GitHub when you open the Extension Manager — and the Google Play
+    build carries Google Play Billing on top of that. A policy that overstates the case is worse
+    than one that admits a narrow exception, because the first thing a sceptical reader does is
+    check. Everything else in the old policy still holds and is carried over here.
+  </p>
+</Callout>
+
+<h2 id="open-source">Free and open source</h2>
+
+Thor is released under the GNU General Public Licence v3.0 or later, so every claim on this page can
+be checked against the source rather than taken on trust:
+[github.com/trinadhthatakula/Thor](https://github.com/trinadhthatakula/Thor).
+
+If you find anything in the code that contradicts this document, that is a bug and I want to hear
+about it.
+
+<h2 id="what-thor-collects">What Thor collects</h2>
+
+Nothing.
+
+Thor contains no analytics SDK, no crash reporting service, no advertising library, no attribution
+framework and no telemetry. I do not know how many people use Thor, which features they use, what is
+installed on their devices, or that any particular device exists.
+
+Thor sends nothing to me. The one request its own code makes goes to GitHub, and all it asks for is
+a public file. The Google Play build's billing client talks to Google Play, and nothing in it
+reaches me either.
+
+<h2 id="network">When Thor uses the network</h2>
+
+Thor declares the `INTERNET` permission in `app/src/main/AndroidManifest.xml`, so both builds have
+it. In Thor's own code it is there for one feature: the optional **Extension Store**, which fetches
+a catalog of add-on packages and downloads the one you choose.
+
+Exactly one source file in Thor's own code opens a connection itself, and you can confirm that
+yourself in a checkout:
+
+<CodeBlock title="Every network call site in Thor's own source">
+```sh
+$ grep -rl openConnection app/src
+app/src/main/java/com/valhalla/thor/data/repository/StoreRepositoryImpl.kt
+```
+</CodeBlock>
+
+That grep covers Thor's code and says nothing about its libraries, which is why the Google Play
+build gets [a section of its own below](#play-billing). The FOSS build has nothing beyond what the
+grep shows.
+
+<h3 id="when-it-happens">When it happens</h3>
+
+Only when you open the Extension Manager. If you never open it, the Extension Store makes no
+request — not at startup, not while it scans your apps, and not while it freezes or installs
+anything. In the FOSS build that is the whole of Thor's network behaviour.
+
+<DeviceFrame
+  src={extensionManager}
+  alt="The Extension Manager, the one screen in Thor whose own code reaches the network."
+  caption="This screen is the only place Thor's own code makes a network request."
+/>
+
+<h3 id="what-is-sent">What is sent</h3>
+
+An ordinary HTTPS `GET`. Thor sends no identifiers, no device information, no account details and
+nothing about the apps installed on your device. There is nothing in the request that describes you.
+
+<h3 id="who-receives-it">Who receives it</h3>
+
+GitHub. The catalog is a public file at `raw.githubusercontent.com`, and an extension package is
+downloaded from `github.com` or its `githubusercontent.com` asset CDN. Thor refuses any other host,
+refuses any URL that is not HTTPS, and re-checks the host at every redirect hop rather than only on
+the first request.
+
+As with any request to any website, GitHub's servers can see your IP address and the request itself.
+That is inherent to how the internet works rather than something Thor adds, and it is governed by
+GitHub's own privacy policy. It never reaches me.
+
+<h3 id="what-is-checked">What is downloaded, and what is checked</h3>
+
+Before an extension package can reach the installer it has to pass all of these, in order:
+
+1. It must have a download URL.
+2. That URL must be HTTPS.
+3. The host must be GitHub — re-checked at every redirect, so neither the catalog nor a rogue
+   redirect can steer the download somewhere else.
+4. It is downloaded and SHA-256 hashed in a single streaming pass.
+5. Where the catalog pins a hash, the hash must match it.
+6. The package's signing certificate must match a key pinned inside Thor. This check is
+   unconditional and has no bypass.
+7. Only then is it handed to the installer.
+
+Anything that fails is thrown away rather than installed. Signatures are checked again each time an
+extension is loaded, not only when it was installed; one that fails is shown as **Untrusted
+(Blocked)** and never loaded.
+
+An extension is a separate application with its own behaviour and its own responsibilities, and it
+is not covered by this policy. The [Extensions policy](/extensions-policy) covers what you are
+agreeing to when you use one.
+
+<h3 id="play-billing">The Google Play build, and Play Billing</h3>
+
+The `store` flavour — the build on Google Play — bundles Google Play Billing
+(`"storeImplementation"(libs.play.billing)` in `app/build.gradle.kts`) and declares a tenth
+permission, `com.android.vending.BILLING`, in `app/src/store/AndroidManifest.xml`. It is there for
+one feature: the optional support-the-developer subscription in Settings.
+
+The part worth stating plainly is when it runs. `BillingProcessorImpl` is a singleton whose
+constructor calls `connectToBilling()`, and `MainScreen` — the root screen — injects it. So the
+connection to Google Play opens when you open the app, not when you go looking for the Support
+screen. Once Play answers, Thor asks it for the four subscription products and for any subscription
+you already hold. Neither call carries an identifier Thor invented, and no result of either is sent
+to me. The file is
+`app/src/store/java/com/valhalla/thor/presentation/settings/BillingProcessorImpl.kt`.
+
+The FOSS build — GitHub Releases and IzzyOnDroid — has none of this. Its copy of that same file is
+a stub: the billing library is not on its classpath, every method is empty, and `isBillingAvailable`
+is a constant `false`. There is no `app/src/foss/AndroidManifest.xml` at all, so the `BILLING`
+permission is not in that build either. Its Support screen is three links — GitHub Sponsors, Patreon
+and PayPal — and each one opens your browser only if you tap it.
+
+<h2 id="on-your-device">What Thor stores on your device</h2>
+
+Thor keeps a few things locally, and only locally:
+
+| What | Why |
+|---|---|
+| A cache of your installed apps' metadata | So the app list appears at once instead of rescanning at every launch |
+| One cached icon per installed app, under `files/app_icons/` | So icons load without repeated decoding |
+| Your Freezer watchlist and your freeze profiles | So Thor knows what you have switched off, and what a profile contains |
+| Your settings — theme, language, layout, privilege mode and so on | So Thor stays how you left it |
+
+The metadata cache, the watchlist and the profiles live in a Room database called `thor_database`;
+the icons are PNG files under `files/app_icons/`; the settings live in a DataStore file called
+`thor_preferences`. Uninstalling Thor takes all of it with it.
+
+One exception to "only locally" is Android's own backup, which is described [below](#backup).
+
+<h2 id="other-apps">What Thor does to other apps</h2>
+
+Freezing switches an app off in place. The package stays installed and keeps its data — Thor is
+disabling it, not removing it, and unfreezing brings it back the way you left it. That is true for
+your own apps and for preinstalled system apps alike.
+
+A small number of devices, mostly some OEM builds, refuse to let a preinstalled app be switched off
+at all. On the Shizuku path only, and only where the platform actually refused, Thor falls back to
+removing the app for your Android user with the flag that means **keep the data**. The data
+directories survive the round trip with their inodes intact, and a runtime permission grant measured
+across the same round trip came back unchanged. What the flag does not do is leave the per-user
+record alone: while the app is frozen this way it reads as not installed for your user to anything
+that does not explicitly ask about uninstalled packages. Where neither approach works, Thor reports the failure rather than quietly
+doing something else.
+
+<Callout tone="warning" title="Dhizuku is the exception">
+  <p>
+    Under Dhizuku there is no disable step and no keep-the-data flag. Freezing a preinstalled app
+    removes it for your Android user outright, and its data does not survive that. Do not treat the
+    Dhizuku path as the data-preserving one; root and Shizuku are.
+  </p>
+</Callout>
+
+Everything else Thor can do to an app — force stop, clear cache, clear the app's storage, uninstall,
+reinstall — happens only when you choose it. Thor never runs a package-management command you did
+not ask for. The one thing that runs without a fresh tap is auto-freeze, which is off by default:
+switch it on and Thor freezes the apps already on your watchlist each time the screen goes off.
+
+<h2 id="backup">Android's backup, and the one file it copies</h2>
+
+Thor allows Android's Auto Backup. That is a platform feature rather than something Thor implements:
+if you have backup turned on in your device's settings, Android may copy some of an app's data to
+your Google account, and to a new phone during a device-to-device transfer.
+
+Thor's backup rules are an allowlist with exactly one entry — the settings file, `thor_preferences`.
+Theme, sort and filter, layout, privilege mode, freezer mode, biometric lock and friends. Flags and
+enum names, and nothing else.
+
+Deliberately left out, so they never leave your device this way:
+
+- The Room database, which is where the app metadata cache, the Freezer watchlist and the freeze
+  profiles live.
+- The cached app icons, one image per installed app.
+- Everything in the cache directory, which is installer scratch space.
+- The second DataStore file, `thor_local_state`, which records facts about the database above
+  rather than anything you chose.
+
+The rules are in `app/src/main/res/xml/backup_rules.xml` and
+`app/src/main/res/xml/data_extraction_rules.xml` — two files, because Android changed the format
+partway through the range of releases Thor supports, and they say the same thing. What Google's
+backup service does with what it holds is governed by your device's backup settings, which you can
+turn off in Android's own settings.
+
+<h2 id="permissions">Permissions Thor requests, and why</h2>
+
+| Permission | Why |
+|---|---|
+| `QUERY_ALL_PACKAGES` | To list the apps installed on your device. This is the core function of an app manager and Thor cannot work without it. The list never leaves your device. |
+| `INTERNET` | Declared for the Extension Store described above, in both builds. The manifest comment directly above the line says so. |
+| `REQUEST_INSTALL_PACKAGES` | To hand an APK to Android's package installer when you install one. |
+| `REQUEST_DELETE_PACKAGES` | To uninstall an app when you ask. |
+| `RECEIVE_BOOT_COMPLETED` | So Thor starts after a restart and re-arms auto-freeze if you have it switched on. `BootReceiver` itself only writes a log line; `ThorApplication` does the arming. |
+| `POST_NOTIFICATIONS` | To report the result of a batch operation from the quick-settings tile or a launcher shortcut, neither of which has a screen to report it on. |
+| `PACKAGE_USAGE_STATS` | To read per-app storage and cache sizes, which Android only reports to an app holding Usage Access. You can grant it in Android's settings; where you have already granted root or Shizuku, Thor grants itself the app-op instead, with the one `appops` command in `UsageAccessManager.kt`. The figures are shown to you and go nowhere else. Thor reads no usage history. |
+| `WRITE_EXTERNAL_STORAGE` | Legacy file writing on the oldest release Thor supports. |
+| Shizuku and Dhizuku API permissions | To talk to those services, when you have chosen one as your privilege mode. |
+| `com.android.vending.BILLING` — Google Play build only | For the optional support-the-developer subscription. It is declared in `app/src/store/AndroidManifest.xml`, which is merged into the Google Play build and not into the FOSS one. |
+
+`WRITE_EXTERNAL_STORAGE` carries a `maxSdkVersion` equal to Thor's `minSdk`, so it is requested on
+<Fact name="minSdkAndroidName" /> and on nothing newer.
+
+Root access, where you grant it, is used to run the package-management commands that correspond to
+actions you took in the app, and the one `appops` command that grants Thor its own Usage Access. It
+is not used for anything else.
+
+<h2 id="third-parties">Third parties</h2>
+
+The FOSS build has no third-party SDK that processes your data.
+
+The Google Play build has one: **Google Play Billing**, described [above](#play-billing). It is
+Google's code rather than mine, it talks to Google Play, and it is there for the optional
+subscription. Nothing in it reports to me.
+
+Neither build contains an analytics SDK, a crash reporting service, an advertising library or an
+attribution framework. You can check that against `gradle/libs.versions.toml` and the `dependencies`
+block of `app/build.gradle.kts`, which is the whole list.
+
+Thor's **distribution channels** are a separate matter from Thor. If you install Thor from Google
+Play, Google's own data practices apply to that transaction — that is Google Play's behaviour rather
+than Thor's, and it applies equally to every app you install from there. Downloading Thor from
+GitHub Releases or from IzzyOnDroid avoids it entirely.
+
+<h2 id="this-website">About this website</h2>
+
+Everything above is about the Thor app. The page you are reading is a different thing, and it would
+be dishonest to describe the app's network behaviour this carefully and then say nothing about the
+site making the claim.
+
+`thor.trinadhthatakula.com` is a static site. There is no backend, no database, no accounts and no
+forms. It **sets no cookies** and **runs no analytics** — not Google's, not the host's own, not a
+self-hosted one. Nothing here tries to work out who you are or whether you have been here before.
+The configuration that builds it has no server adapter and no analytics integration, and it sits in
+the Thor repository next to the app it describes.
+
+It is hosted by **Vercel**, which has a consequence worth stating plainly rather than leaving you to
+discover it:
+
+- **Why your IP address is involved at all.** It is the address the page is sent back to. Answering
+  an HTTP request requires it, so this is not a choice anyone made.
+- **Who sees it.** Vercel, as the host, in its own server logs. I never receive it: there is no log
+  drain configured, no analytics enabled, and no server-side code on this site, so nothing forwards
+  a request anywhere.
+- **How long it is kept.** By Vercel, under Vercel's retention, not under anything I set. Their
+  handling is described in [Vercel's privacy notice](https://vercel.com/legal/privacy-notice). I
+  would rather link the authoritative document than paraphrase a retention period that can change
+  without this page noticing — which is how the last policy went stale.
+- **What Cloudflare does and does not see.** Cloudflare answers the DNS query for this domain and
+  nothing else. The record is set to DNS-only, so Cloudflare is not proxying the site: it never sees
+  your request for this page, only the lookup that turns the name into an address — and that lookup
+  normally reaches it from your resolver rather than from you.
+
+None of this changes the app's position. Thor still sends nothing to me, and installing Thor does
+not require visiting this site.
+
+<h2 id="children">Children</h2>
+
+Thor is a system utility for advanced users. It is not directed at children, and it collects no data
+from anyone, children included.
+
+<h2 id="changes">Changes to this policy</h2>
+
+If Thor's behaviour changes in a way that affects this policy, this document is what gets updated,
+and the date at the bottom changes with it. Because Thor is open source, you can also watch any such
+change land in the commit history.
+
+I would rather correct this document than let it drift — which is exactly why this version exists.
+
+<h2 id="contact">Contact</h2>
+
+Thor is written and maintained by **Trinadh Thatakula**. If you have a question, a concern or a
+request about this policy, or about what Thor does with anything on your device, any of these
+reaches me directly:
+
+- **Email:** [trinadh.thatakula@gmail.com](mailto:trinadh.thatakula@gmail.com)
+- **Source and issue tracker:** [github.com/trinadhthatakula/Thor](https://github.com/trinadhthatakula/Thor)
+- **Telegram:** [t.me/thorAppDev](https://t.me/thorAppDev)
+
+**Last updated:** 1 August 2026.
