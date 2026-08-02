@@ -84,15 +84,23 @@ above run at all, none of them is visible in a diff, and every one produces **no
 Driving the CLI from Actions puts those decisions in `vercel.json` and the workflow, where they get
 reviewed.
 
-### `git.deploymentEnabled: false` is load-bearing
+### The Vercel project is not connected to the repository
+
+That is the actual guarantee that the site deploys once per commit, and it is a property of the
+Vercel project, not of anything in this directory. Create the project with `cd web && vercel link`;
+importing the repository from `vercel.com/new` connects it *and* sets Root Directory to `web`, which
+resolves to `web/web` once the workflow runs the CLI from inside `web/`.
 
 ```json
 "git": { "deploymentEnabled": false }
 ```
 
-Remove that while `web-deploy.yml` exists and every web commit deploys **twice** — Vercel's Git
-integration and the workflow, racing for the same production alias. The symptom is the site
-intermittently serving the older of two commits, and nothing reports it. The two are one decision.
+That flag is defence in depth for the case where the repository gets connected anyway, and it lives
+in **two** files: here in `vercel.json`, and in `/vercel.json` at the repository root. Vercel does
+not document which one its Git integration reads — the setting is evaluated at webhook time, before
+a build container exists, so the CLI's resolution rules do not apply. Two copies remove the guess;
+delete neither. It is also not fully dependable even when placed correctly, so treat a connected
+repository as something to verify by counting deployments, not something the flag has handled.
 
 `vercel.json` also carries `buildCommand`, `installCommand` and `outputDirectory`, and it takes
 precedence over the dashboard's fields — which is what stops a dashboard edit from silently
@@ -120,12 +128,14 @@ One file is read that is deliberately *not* in the list: `findRepoRoot()` reads 
 to locate the repository root. Only its existence matters, never its contents, so a change to it
 cannot change a rendered fact and must not trigger a rebuild.
 
-`ignoreCommand` is currently **inert** — it is a Git-integration feature and the Git integration is
-off. It is kept as defence in depth for the case where someone flips `deploymentEnabled` back on
-without reading `docs/deploy.md`. Its `:/` prefixes are still load-bearing on that path: the command
-would run inside the Root Directory, where a bare `gradle.properties` pathspec resolves to
-`web/gradle.properties`, matches nothing, and exits 0 for *every* commit — the site would show
-"Build skipped", correctly, forever.
+`ignoreCommand` is a Git-integration feature and the Git integration is off, so it should do nothing
+today — but do not treat it as provably inert. `vercel deploy` sends
+`projectSettings.commandForIgnoringBuildStep`, derived from `vercel.json`, on the same payload as
+`--prebuilt`, and Vercel has previously shipped (then rolled back) a build in which the Ignored Build
+Step cancelled `--prebuilt` deploys. If that recurs the job goes red rather than silently green.
+Its `:/` prefixes are load-bearing whenever it does run: the command executes inside the Root
+Directory, where a bare `gradle.properties` pathspec resolves to `web/gradle.properties`, matches
+nothing, and exits 0 for *every* commit — the site would show "Build skipped", correctly, forever.
 
 ### GitHub Actions, and why the asymmetry
 
@@ -156,6 +166,15 @@ cname.vercel-dns.com.
 Add the domain in the Vercel project and let Vercel issue the certificate. Errors between "grey
 cloud" and "Vercel has claimed the hostname" are expected.
 
+**The error you will actually see is an expired certificate, not a Cloudflare one.** Vercel's edge
+already answers for this hostname and, with no project claiming it, falls back to a stale
+`*.trinadhthatakula.com` certificate that expired on 11 May 2026 (`x-vercel-error:
+DEPLOYMENT_NOT_FOUND`, `server: Vercel`). Vercel cannot renew a wildcard without a DNS-01 record and
+the zone is on Cloudflare nameservers, so it will not self-heal. It also serves a two-year HSTS
+header and 308s plain HTTP to HTTPS, so a browser cannot be clicked through. `ERR_CERT_DATE_INVALID`
+here means *unclaimed hostname*, not *broken DNS* — verify with `vercel domains inspect` and
+`vercel certs ls`, never a browser, until the certificate exists.
+
 **The zone has a proxied `*` wildcard.** Every subdomain of `trinadhthatakula.com` resolves,
 including names that were never configured:
 
@@ -173,10 +192,14 @@ Two consequences:
   to the wildcard and serves the wrong thing, or a TLS error. Ordinary DNS smoke tests will not
   catch it.
 
-**Never fix a Cloudflare 526 by switching the SSL mode to Flexible.** It appears to work, and it
-serves the origin hop unencrypted — on a site whose privacy stance is the entire argument. A 526
-during setup means the Vercel project has not claimed the hostname yet. The correct order is grey
-cloud → create the Vercel project → add the domain → Vercel issues the certificate.
+**A Cloudflare 526 cannot occur while the record stays grey.** 526 requires Cloudflare to be in the
+request path, which means an orange cloud; this record is DNS-only. If one is ever orange-clouded and
+a 526 appears, **never fix it by switching the SSL mode to Flexible** — it appears to work, and it
+serves the origin hop unencrypted, on a site whose privacy stance is the entire argument.
+
+The correct order is grey cloud → create the Vercel project → first production deploy → add the
+domain → Vercel issues the certificate. Adding the domain before a production deployment exists
+leaves it attached to nothing, which is indistinguishable from "still issuing".
 
 ---
 
