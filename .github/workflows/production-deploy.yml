@@ -59,7 +59,7 @@ jobs:
       #
       # It does NOT catch the other half. dev-check.yml still publishes from master when the code
       # moves, and the same chore(release) commit reaches both branches, so master can take a code
-      # on `internal` before production asks for it on `alpha` — Play's uniqueness is per app, not
+      # on `alpha` before production asks for it on `beta` — Play's uniqueness is per app, not
       # per track. That collision is real, pre-existing, and out of scope here; it is tracked in
       # docs/follow-ups/two-branches-one-play-version-code.md. Do not "fix" it by widening this
       # check, which cannot see what master did.
@@ -101,14 +101,14 @@ jobs:
           echo "versionCode ${OLD:-<none>} -> $NEW"
 
       - name: Setup JDK 21
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v5.6.0
         with:
           distribution: 'zulu'
           java-version: '21'
           cache: 'gradle'
 
       - name: Setup Ruby
-        uses: ruby/setup-ruby@003a5c4d8d6321bd302e38f6f0ec593f77f06600 # v1
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
         with:
           ruby-version: '3.3'
           bundler-cache: true
@@ -127,8 +127,8 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      # --- FASTLANE (CLOSED TESTING) ---
-      # One of the repo's two Play uploads — this one to `alpha`, dev-check.yml's to `internal`.
+      # --- FASTLANE (OPEN TESTING) ---
+      # One of the repo's two Play uploads — this one to `beta`, dev-check.yml's to `alpha`.
       # Play rejects the second upload of a version code regardless of track, so when the same
       # chore(release) commit reaches master and production, exactly one of the two runs can
       # succeed. Which one wins is currently a race, and that is the open problem in
@@ -141,7 +141,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEYSTORE_FILE_PATH: ${{ github.workspace }}/app/release.jks
-        # Updated to use the production lane (Closed Track)
+        # The production lane: open testing (`beta`). Promotion to production is manual, in the Console.
         run: bundle exec fastlane android distribute_production
 
       # --- PREPARE RELEASE NOTES ---

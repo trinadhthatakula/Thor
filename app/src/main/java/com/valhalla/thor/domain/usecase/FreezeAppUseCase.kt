@@ -20,8 +20,10 @@ import org.koin.core.annotation.Factory
  * renders no confirm button for `BLOCKED`, so on the three single-app paths there was simply
  * nothing tappable wired to the freeze. That covered every surface that existed and nothing that
  * did not — a shortcut, an extension trigger, an automation intent or a widget would reach for the
- * obvious entry point and hand a `packageName` straight to `pm uninstall --user`. The dialog is
- * still the front door; this is the backstop under it.
+ * obvious entry point and hand a `packageName` straight to the freeze, which on an Unsafe system
+ * app means disabling a package the device needs to boot, or removing it for this user where
+ * disabling is not available (`FreezePolicy.kt`). The dialog is still the front door; this is the
+ * backstop under it.
  *
  * Freeze-only on purpose. Unfreezing keeps calling [ManageAppUseCase] directly, because it is the
  * way *out* of a bad state — a block that caught it too would trap the very app it protects.

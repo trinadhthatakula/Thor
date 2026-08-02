@@ -52,14 +52,15 @@ import java.nio.file.Files
  * - a `BLOCKED` app must not be frozen or uninstalled by a batch, and the *count the user sees*
  *   must describe what the run will actually attempt;
  * - unfreeze must never be gated — it is the way out of a bad freeze;
- * - a system app uninstalled through Thor must land on the freezer watchlist, because
- *   `pm uninstall --user` is how Thor freezes system apps and the watchlist row is the only record
- *   that the app is recoverable;
+ * - a system app uninstalled through Thor must land on the freezer watchlist, because a system app
+ *   can only be removed for the current user (`pm uninstall --user`) and so is recoverable with
+ *   `pm install-existing` — the watchlist row is the only record that it is;
  * - a refusal that carries its own message must be shown as that message.
  *
  * Every assertion is made against [FakeSystemRepository.calls] — the list of commands that reached
- * the privilege layer — rather than against the returned `Result`. A gate that refuses *after*
- * running `pm uninstall` satisfies any assertion on the result alone, and the app is still gone.
+ * the privilege layer — rather than against the returned `Result`. A gate that refuses *after* the
+ * command has reached that layer satisfies any assertion on the result alone, and the app is
+ * already frozen or already gone.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class MainViewModelTest {
@@ -171,9 +172,10 @@ class MainViewModelTest {
         )
         advanceUntilIdle()
 
-        // Not "the result was a failure" — the package must never appear in a command at all.
-        // Thor freezes a system app with `pm uninstall --user`, so a leaked call is not recoverable
-        // by retrying with the right answer.
+        // Not "the result was a failure" — the package must never appear in a command at all. A
+        // leaked call disables a package UAD says the device needs, or removes it for this user
+        // where disabling is not available; neither is recoverable by retrying with the right
+        // answer, and the first can cost the boot.
         assertEquals(listOf("setAppDisabled:com.ok:true"), system.calls)
     }
 
@@ -311,9 +313,10 @@ class MainViewModelTest {
         advanceUntilIdle()
 
         assertEquals(listOf("uninstallApp:com.sys", "uninstallApp:com.user"), system.calls)
-        // `pm uninstall --user` on a system app is Thor's freeze; the watchlist row is the only
-        // record that it can be brought back, so losing it strands the app. A user app is really
-        // gone, and a row for it would offer a restore that cannot work.
+        // Uninstalling a system app can only remove it for the current user (`pm uninstall --user`),
+        // so `pm install-existing` can bring it back — and the watchlist row is the only record
+        // that it can be, so losing it strands the app. A user app is really gone, and a row for it
+        // would offer a restore that cannot work.
         assertEquals(listOf("com.sys"), freezer.added)
     }
 

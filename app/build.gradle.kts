@@ -39,6 +39,12 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+// Whether this machine can sign a release at all: a local jks.properties, or the CI env vars.
+// Single-sourced here because both the signingConfig block and the release build type need the
+// same answer — see the comment on `signingConfig` below for why the build type has to ask.
+val hasSigningCredentials: Boolean =
+    keystorePropertiesFile.exists() || System.getenv("KEY_ALIAS") != null
+
 // --- VERSIONING HELPERS (Private & Modernized) ---
 
 // 1. Resolve Code: Checks property 'versionCode' first, falls back to 'initialVersionCode'
@@ -129,7 +135,14 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("release")
+            // Only assign the config when credentials actually exist. The `release` signingConfig
+            // above leaves every field unset in the no-credentials case, and an assigned-but-empty
+            // config fails validateSigning<Flavour>Release with "Keystore file not set for signing
+            // config release" — so a fresh clone (and anyone rebuilding from source, F-Droid's
+            // buildserver included) cannot produce a release APK at all. Unsigned output is the
+            // correct result there; signing happens downstream. CI and local signing are unchanged,
+            // because both satisfy the condition.
+            signingConfig = signingConfigs.getByName("release").takeIf { hasSigningCredentials }
         }
         debug {
             isMinifyEnabled = false

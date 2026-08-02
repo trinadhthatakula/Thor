@@ -350,4 +350,90 @@ class AppListViewModelTest {
         assertFalse("a failure ends the wait too", vm.uiState.value.isLoadingPermissions)
         assertTrue("the stale index is dropped, not kept", vm.uiState.value.permissionIndex.isEmpty)
     }
+
+    // --- Leaving the watchlist ------------------------------------------------------------------
+
+    /**
+     * Taking an app off the watchlist has to restore it. It is the asymmetric half of the toggle —
+     * adding never freezes — and the reason is that this surface is the *only* one that can drop an
+     * app the freezer screen then stops listing. Leave it frozen and the app is stranded: invisible
+     * in the launcher, absent from the freezer, recoverable only through import-already-disabled.
+     *
+     * Asserted against the recorded privilege calls rather than the resulting state, because the
+     * bug this pins was that no privileged call happened at all.
+     */
+    @Test
+    fun `removing a suspended app from the watchlist unsuspends and enables it`() = runTest {
+        freezer.add("a")
+        val vm = viewModel(AnimationIntensity.LOW)
+        runCurrent()
+        appRepository.apps.value = listOf(userApp("a", enabled = false, isSuspended = true))
+        runCurrent()
+        system.calls.clear()
+
+        vm.toggleFreezerMembership("a")
+        runCurrent()
+
+        assertEquals(
+            "both halves of the mixed disabled+suspended state have to be undone",
+            listOf("setAppSuspended:a:false", "setAppDisabled:a:false"),
+            system.calls
+        )
+        assertFalse("and it leaves the watchlist", freezer.contains("a"))
+    }
+
+    /**
+     * The optimistic patch matters as much as the privileged call: without it the row keeps reading
+     * as frozen until the next full rescan, which is exactly long enough for someone to tap it again.
+     */
+    @Test
+    fun `the row stops reading as frozen without waiting for a rescan`() = runTest {
+        freezer.add("a")
+        val vm = viewModel(AnimationIntensity.LOW)
+        runCurrent()
+        appRepository.apps.value = listOf(userApp("a", enabled = false, isSuspended = true))
+        runCurrent()
+
+        vm.toggleFreezerMembership("a")
+        runCurrent()
+
+        val app = vm.uiState.value.allUserApps.first { it.packageName == "a" }
+        assertTrue("enabled again", app.enabled)
+        assertFalse("and not suspended", app.isSuspended)
+    }
+
+    /**
+     * A failed restore must not read as success, and must not half-apply. The app is still frozen at
+     * this point, so a "removed from freezer" toast would be a lie — and dropping the watchlist entry
+     * anyway would make it an expensive one, since the freezer screen is what offers the way back.
+     * Removal is all-or-nothing: restore first, drop the row only once it worked.
+     */
+    @Test
+    fun `a failed restore is reported instead of the removal message`() = runTest {
+        freezer.add("a")
+        val vm = viewModel(AnimationIntensity.LOW)
+        val events = mutableListOf<AppListEvent>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { events += it } }
+        runCurrent()
+        appRepository.apps.value = listOf(userApp("a", enabled = false))
+        runCurrent()
+        events.clear()
+        system.failWith("setAppDisabled:a:false", IllegalStateException("no privilege"))
+
+        vm.toggleFreezerMembership("a")
+        runCurrent()
+
+        assertEquals(
+            listOf(
+                AppListEvent.ShowMessage(
+                    UiText.StringResource(R.string.error_format, "no privilege")
+                )
+            ),
+            events
+        )
+        assertTrue(
+            "the watchlist entry is the only route back to a still-frozen app",
+            freezer.contains("a")
+        )
+    }
 }

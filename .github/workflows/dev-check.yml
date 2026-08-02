@@ -58,7 +58,7 @@ jobs:
           fetch-depth: 0 # full history + tags so the release-notes changelog fallback works
 
       - name: Setup JDK 21
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v5.6.0
         with:
           distribution: 'zulu'
           java-version: '21'
@@ -66,7 +66,7 @@ jobs:
 
       # Added Ruby for Fastlane in Dev
       - name: Setup Ruby
-        uses: ruby/setup-ruby@003a5c4d8d6321bd302e38f6f0ec593f77f06600 # v1
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
         with:
           ruby-version: '3.3'
           bundler-cache: true
@@ -132,7 +132,7 @@ jobs:
 
       # --- 3. BUILD (FASTLANE) ---
       # One step, two lanes, so the env block is not duplicated. distribute_dev builds and uploads
-      # to the internal track; build_release_candidates runs the same copyStoreReleaseApk /
+      # to the `alpha` (closed testing) track; build_release_candidates runs the same copyStoreReleaseApk /
       # copyFossReleaseApk tasks and writes the same version_name.txt / version_code.txt, but skips
       # upload_to_play_store and bundleStoreRelease. A non-release push therefore still proves
       # master compiles and signs — it just publishes nothing.
@@ -221,8 +221,25 @@ jobs:
           fi
 
           echo "Sending $APK_PATH to Telegram..."
-          
-          CAPTION=$(printf "🚀 *Thor (Valhalla) Dev Build*\n\nBranch: %s\nAuthor: %s\nTrack: Internal Testing\nStatus: Uploaded to Play Store & GitHub" "$GITHUB_REF_NAME" "$GITHUB_ACTOR")
+
+          # Read the track fastlane actually uploaded to rather than restating it. This line used to
+          # be the literal "Internal Testing" and stayed that way after the lane moved, which nothing
+          # in the repo could catch — there is no actionlint or shellcheck over .github/workflows.
+          # The default arm prints whatever key it got instead of inventing a friendly name for it.
+          TRACK=$(cat track.txt 2>/dev/null || echo "")
+          case "$TRACK" in
+            internal)   TRACK_LABEL="Internal Testing" ;;
+            alpha)      TRACK_LABEL="Closed Testing" ;;
+            beta)       TRACK_LABEL="Open Testing" ;;
+            production) TRACK_LABEL="Production" ;;
+            "")         TRACK_LABEL="unknown" ;;
+            *)          TRACK_LABEL="$TRACK" ;;
+          esac
+
+          # "& GitHub" was a lie of ordering: Create GitHub Pre-Release is a later step in this job,
+          # so the caption asserted a release that had not been attempted yet and would still say so
+          # if it failed. Claim only what has actually happened by the time this message is sent.
+          CAPTION=$(printf "🚀 *Thor (Valhalla) Dev Build*\n\nBranch: %s\nAuthor: %s\nTrack: %s\nStatus: Uploaded to Play Store — GitHub pre-release next" "$GITHUB_REF_NAME" "$GITHUB_ACTOR" "$TRACK_LABEL")
 
           if [ "$HAS_TELEGRAM_NOTES" = "true" ] && [ -r "$TELEGRAM_NOTES_PATH" ]; then
             CAPTION=$(printf "%s\n\n%s" "$CAPTION" "$(cat "$TELEGRAM_NOTES_PATH")")

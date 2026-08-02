@@ -102,7 +102,7 @@ class FreezerShortcutManager(
 
     /** Update an already-pinned per-app shortcut so its icon reflects the app's current state.
      *  No-op if no such shortcut exists. Call after any freeze/unfreeze of the package. */
-    fun refreshAppShortcut(packageName: String) {
+    override fun refreshAppShortcut(packageName: String) {
         scope.launch { updateShortcutIcon(packageName) }
     }
 
@@ -326,8 +326,10 @@ class FreezerShortcutManager(
     /**
      * One `ApplicationInfo` read, with the flags a *frozen* package needs.
      *
-     * [AppFreezeStateReader.MATCH_FLAGS] rather than MATCH_DISABLED_COMPONENTS alone: Thor freezes
-     * a system app with `pm uninstall --user N`, so that package is not installed for this user and
+     * [AppFreezeStateReader.MATCH_FLAGS] rather than MATCH_DISABLED_COMPONENTS alone: a system app
+     * frozen by removal for the current user — the mechanic
+     * `FreezePolicy.uninstallFreezeFallbackAllowed` still permits, and the one every system app
+     * frozen before Thor preferred disabling is already in — is not installed for this user, and
      * the lookup throws `NameNotFoundException` without MATCH_UNINSTALLED_PACKAGES. Unreachable
      * while per-app pins are gated to user apps, which is exactly what makes it worth fixing before
      * that gate moves rather than after.

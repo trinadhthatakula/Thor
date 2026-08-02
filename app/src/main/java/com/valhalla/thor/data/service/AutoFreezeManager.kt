@@ -115,8 +115,10 @@ class AutoFreezeManager(
                                     // every Exception and returns null (AppRepositoryImpl.kt:245),
                                     // so null means "could not classify" — a transient binder
                                     // failure looks identical to an absent package. Freezing on
-                                    // an unknown tier is how an Unsafe system app reaches
-                                    // `pm uninstall --user`. Skipping costs one cycle; the next
+                                    // an unknown tier is how an Unsafe system app gets frozen at
+                                    // all — disabled, or removed for this user where disabling is
+                                    // not available (FreezePolicy.kt) — and neither is something
+                                    // the next boot forgives. Skipping costs one cycle; the next
                                     // screen-off re-reads the whole Freezer list anyway.
                                     val detailedApp = appRepository.getAppDetails(pkg)
                                     if (detailedApp == null || detailedApp.freezeTier == FreezeTier.BLOCKED) {
@@ -126,6 +128,16 @@ class AutoFreezeManager(
                                         )
                                         return@launch
                                     }
+                                    // Flags `0` is deliberate, and both freeze mechanics land on
+                                    // "skip" through it. A system app removed for this user throws
+                                    // NameNotFoundException and is caught below; a package disabled
+                                    // in place resolves — getApplicationInfo does not filter on the
+                                    // enabled setting — and is skipped by the `appInfo.enabled`
+                                    // test. Do *not* widen this to AppFreezeStateReader.MATCH_FLAGS
+                                    // without folding FLAG_INSTALLED into `enabled` as that class
+                                    // does: under MATCH_UNINSTALLED_PACKAGES a package uninstalled
+                                    // for this user comes back `enabled == true`, and auto-freeze
+                                    // would start acting on apps it can already see are frozen.
                                     val appInfo = pm.getApplicationInfo(pkg, 0)
                                     val alreadySuspended = (appInfo.flags and ApplicationInfo.FLAG_SUSPENDED) != 0
                                     // Only act on ACTIVE apps (enabled & not suspended) so auto-freeze

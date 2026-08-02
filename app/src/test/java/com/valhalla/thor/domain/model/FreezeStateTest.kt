@@ -75,7 +75,8 @@ class FreezeStateTest {
     //
     // The QS tile and the launcher Freeze-all shortcut act on the watchlist with no dialog in
     // front of them, so this filter is the only thing standing between a stored watchlist entry
-    // and a `pm uninstall --user` on a package the in-app dialog refuses to freeze at all.
+    // and a freeze — disable, or removal for this user where disabling is not available — on a
+    // package the in-app dialog refuses to freeze at all.
 
     private fun blocked(state: FreezeState) = FreezeCandidate(state, blockedFromFreeze = true)
 

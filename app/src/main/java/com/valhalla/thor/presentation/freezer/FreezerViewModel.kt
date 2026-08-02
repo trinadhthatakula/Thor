@@ -518,9 +518,16 @@ class FreezerViewModel(
     /**
      * The "you have disabled apps that aren't in the Freezer — import them?" dialog.
      *
-     * Not tier-gated for the same reason as [addToFreezer] — these apps are already disabled — and
-     * it could not matter anyway: `disabledAppsNotInFreezer` filters on `!isSystem`, and
-     * `freezeTierOf` opens with `!isSystem -> NORMAL`, so nothing blocked can reach this list.
+     * Not tier-gated here, for the same reason as [addToFreezer]: every app in this list is already
+     * frozen, so importing records a freeze that has happened rather than performing one.
+     *
+     * The *list* is tier-gated, by `importableDisabledApps`, and that is no longer incidental. This
+     * doc used to argue the gate could not matter because the candidate filter dropped every system
+     * app and `freezeTierOf` opens with `!isSystem -> NORMAL`. Both halves of that are gone: a
+     * system app frozen with `pm disable` is exactly what the filter now exists to offer, and a
+     * BLOCKED one must not reach the watchlist — `freezableCandidates` would refuse to re-freeze it
+     * while `Unfreeze all` would happily enable it, which is a one-way door out of a frozen state
+     * the user chose.
      */
     fun addAppsToFreezer(packageNames: List<String>) {
         viewModelScope.launch(Dispatchers.IO) {

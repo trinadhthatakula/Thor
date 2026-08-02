@@ -3,8 +3,23 @@ default_platform(:android)
 platform :android do
 
   # --- HELPER: Common Build Logic ---
-  # UPDATED: Now accepts 'track' to distinguish between Internal (Dev) and Alpha/Closed (Prod)
-  def prepare_release_artifacts(upload_to_store: false, track: 'internal', version_code: nil)
+  # Takes the Play track as a parameter: master's lane publishes to closed testing ('alpha'),
+  # production's to open testing ('beta'). There is deliberately no default — a lane that uploads
+  # must name where, and a lane that does not upload passes nothing.
+  def prepare_release_artifacts(upload_to_store: false, track: nil, version_code: nil)
+    # A lane that uploads must name a track, and it must be one this repo is allowed to write.
+    # 'production' is deliberately off the list: promoting a build to production is a manual Play
+    # Console action and that manual step is the release gate, so a lane able to reach it from CI
+    # would quietly remove the gate. A typo lands on the wrong side of this check too, which is the
+    # point — upload_to_play_store would otherwise *create* a track by that name rather than fail.
+    if upload_to_store
+      allowed_tracks = %w[internal alpha beta]
+      track = track.to_s.strip
+      unless allowed_tracks.include?(track)
+        UI.user_error!("❌ upload_to_store: true needs track: one of #{allowed_tracks.join(', ')} — got #{track.inspect}")
+      end
+    end
+
     # 1. PREPARATION
     fastlane_dir = Dir.pwd
     project_root = File.expand_path("..", fastlane_dir)
@@ -41,11 +56,16 @@ platform :android do
       new_version_name = sh("./gradlew -q app:printVersionName -PversionCode=#{final_version_code}").strip
     end
 
-    UI.message("📦 Build Target: v#{new_version_name} (#{final_version_code}) - Track: #{track}")
+    UI.message("📦 Build Target: v#{new_version_name} (#{final_version_code}) - Track: #{track || 'none (not uploading)'}")
 
     # Save for GitHub Actions steps
     File.write(File.join(project_root, "version_name.txt"), new_version_name)
     File.write(File.join(project_root, "version_code.txt"), final_version_code.to_s)
+    # The Telegram step announces the track, and until this file existed it announced a hardcoded
+    # one — it still read "Internal Testing" after the lane had been pointed somewhere else, with
+    # nothing in the repo able to notice. Deriving it here means the announcement cannot drift from
+    # the upload again. Empty for a lane that uploads nothing.
+    File.write(File.join(project_root, "track.txt"), track.to_s)
 
     # 5. BUILD ARTIFACTS
     # We build APKs (for GitHub/Telegram) AND Bundle (for Play Store)
@@ -93,10 +113,12 @@ platform :android do
         UI.important("⚠️  No Play Store release notes found at: #{playstore_notes_path}. Skipping changelog upload.")
       end
 
-      # Upload to specific track (internal or alpha/closed)
+      # Upload to the track the lane asked for ('alpha' = closed testing, 'beta' = open testing).
+      # Nothing here ever writes 'production': promoting a build to production is a manual step in
+      # the Play Console, and that manual step is the release gate.
       upload_to_play_store(
         track: track,
-        release_status: 'completed', # Draft or completed? usually completed for internal/alpha
+        release_status: 'completed', # live on that test track immediately; production stays manual
         aab: generated_aab_path,
         skip_upload_metadata: true,
         skip_upload_changelogs: skip_changelogs,
@@ -112,15 +134,19 @@ platform :android do
 
   # --- LANES ---
 
-  desc "Dev: Build -> Play Store (Internal) -> Telegram -> GitHub Pre-release"
+  desc "Dev: Build -> Play Store (Closed testing) -> Telegram -> GitHub Pre-release"
   lane :distribute_dev do
-    prepare_release_artifacts(upload_to_store: true, track: 'internal')
+    # 'alpha' is the de-facto track key for "Closed testing" in the Play Console. Google's own
+    # track table documents only 'production', 'beta' and 'qa'; 'alpha' is fastlane/GPP convention,
+    # and it is the key the production lane published to before 2026-08-02, so it is known to work
+    # against this app's Play listing.
+    prepare_release_artifacts(upload_to_store: true, track: 'alpha')
   end
 
-  desc "Prod: Build -> Play Store (Closed/Alpha) -> GitHub Release"
+  desc "Prod: Build -> Play Store (Open testing) -> GitHub Release"
   lane :distribute_production do
-    # 'alpha' is the standard track key for "Closed Testing" in Google Play Console
-    prepare_release_artifacts(upload_to_store: true, track: 'alpha')
+    # 'beta' is Google's documented track key for "Open testing"
+    prepare_release_artifacts(upload_to_store: true, track: 'beta')
   end
 
   # Helper for manual triggering

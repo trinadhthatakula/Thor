@@ -198,7 +198,6 @@
     <string name="cd_config">Config</string>
     <string name="cd_close">Close</string>
     <string name="cd_frozen">Frozen</string>
-    <string name="cd_uninstalled">Uninstalled</string>
     <string name="cd_suspended">Suspended</string>
     <string name="cd_selected">Selected</string>
     <string name="cd_clear">Clear</string>
@@ -511,6 +510,8 @@
     <string name="support_developer">Support Developer</string>
     <string name="support_developer_desc">Support ongoing development of Thor</string>
     <string name="support_developer_desc_detailed">Thor is open source and completely ad-free. If it has been helpful to you, please consider supporting my work:</string>
+    <string name="sponsor_github_title">Sponsor on GitHub</string>
+    <string name="sponsor_github_desc">One-off or monthly, right next to the code</string>
     <string name="become_patreon_title">Become a Patreon</string>
     <string name="become_patreon_desc">Support ongoing development with a monthly subscription</string>
     <string name="donate_paypal_title">Donate via PayPal</string>
