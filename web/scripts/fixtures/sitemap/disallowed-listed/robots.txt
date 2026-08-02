@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /styleguide
+
+Sitemap: https://thor.trinadhthatakula.com/sitemap-index.xml

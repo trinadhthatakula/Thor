@@ -1,5 +1,17 @@
 name: PR CI
 
+# This workflow has no `paths` / `paths-ignore` filter at any level, and must never
+# gain one. `build-and-test` below is the required status context on both the dev and
+# the master ruleset, `on.pull_request.paths` filters the WHOLE workflow, and GitHub
+# reports a path-skipped required check as "Expected — Waiting for status" for as long
+# as the PR is open. A site-only or docs-only PR would therefore become unmergeable
+# with nothing in the UI explaining why.
+#
+# The cost is real and will keep inviting the change: a PR that only touches web/ still
+# pays the ~7 minutes of Android build, unit tests and lint below. Seven minutes of CI
+# is cheaper than a PR that cannot merge. dev-check.yml, production-deploy.yml and
+# web-ci.yml do filter — all three are safe to filter precisely because none of them is
+# a required check.
 on:
   pull_request:
     branches: [ "master", "dev" ]

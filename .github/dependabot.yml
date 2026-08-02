@@ -37,3 +37,27 @@ updates:
       fastlane:
         patterns:
           - "*"
+
+  # The landing page in web/ is this repo's first npm surface, and until it appears
+  # here web/package-lock.json has no update pressure at all — the same condition
+  # that let Gemfile.lock drift 17 gems. Weekly and grouped, matching the two above:
+  # Astro's integrations are versioned against the core package, so a lone
+  # @astrojs/mdx PR would usually be unmergeable on its own.
+  - package-ecosystem: "npm"
+    directory: "/web"
+    schedule:
+      interval: "weekly"
+    target-branch: "dev"
+    groups:
+      web:
+        patterns:
+          - "*"
+    ignore:
+      # typescript is pinned to ^6 deliberately. @astrojs/check 0.9.10 declares
+      # `"typescript": "^5.0.0 || ^6.0.0"` as a peer, and npm's `latest` is already
+      # 7.x — so a routine major bump breaks `astro check`, which is the first gate
+      # in `npm run build`. That is the Vercel build command, not just CI, so the
+      # blast radius is a stale site rather than a red PR. Drop this rule only
+      # alongside an @astrojs/check release that widens the range.
+      - dependency-name: "typescript"
+        update-types: [ "version-update:semver-major" ]

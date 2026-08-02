@@ -1,0 +1,60 @@
+---
+/**
+ * A titled wrapper around a fenced code block.
+ *
+ * Shiki runs with the `css-variables` theme (see astro.config.mjs), so the
+ * highlighting resolves to our palette instead of injecting a foreign theme's
+ * hexes into `dist` — which would defeat the "every colour on this site traces
+ * back to Color.kt" assertion at the exact moment nobody was looking at it.
+ *
+ * The surface is `--surface-container`, never `--surface-container-lowest`:
+ * that token is #FFFFFF in light and #000000 in dark, so a code block using it
+ * is invisible against an AMOLED page.
+ */
+interface Props {
+  /** Usually a filename or a shell prompt label. */
+  title?: string
+}
+
+const { title } = Astro.props
+---
+<div class="code">
+  {title && <p class="code-title">{title}</p>}
+  <div class="code-body"><slot /></div>
+</div>
+
+<style>
+  .code {
+    margin-block: var(--space-m);
+    border: 1px solid var(--outline-variant);
+    border-radius: var(--radius-m);
+    overflow: hidden;
+    background: var(--surface-container);
+  }
+
+  .code-title {
+    margin: 0;
+    /* Inline padding matches the <pre>'s below, so the title sits on the same
+       optical margin as the first column of code. */
+    padding: var(--space-2xs) var(--space-s);
+    font-family: var(--font-mono);
+    font-size: var(--text-label-small);
+    color: var(--on-surface-variant);
+    background: var(--surface-container-high);
+    border-block-end: 1px solid var(--outline-variant);
+  }
+
+  .code-body :global(pre) {
+    margin: 0;
+    padding: var(--space-s);
+    overflow-x: auto;
+    background: transparent !important;
+  }
+
+  .code-body :global(code) {
+    font-family: var(--font-mono);
+    /* base.css already gives `code, kbd, samp, pre` this exact pair; repeated
+       here because Shiki's own `<code>` is inside a scoped `:global`. */
+    font-size: var(--text-label-large);
+  }
+</style>

@@ -1,0 +1,178 @@
+---
+/**
+ * The homepage. Composed rather than authored in MDX, because it is the one page
+ * whose structure is the design — four short bands, each answering a different
+ * objection — rather than a document with headings.
+ */
+import BaseLayout from '../layouts/BaseLayout.astro'
+import Hero from '../components/Hero.astro'
+import FeatureBand from '../components/FeatureBand.astro'
+import DeviceFrame from '../components/DeviceFrame.astro'
+import Fact from '../components/Fact.astro'
+import { SITE } from '../lib/site.ts'
+
+/* Raw device captures. DeviceFrame draws the bezel, so these must stay unframed. */
+import homeBento from '../assets/screenshots/01-home-bento.png'
+import freezerMixed from '../assets/screenshots/02-freezer-active-and-frozen.png'
+import unsafeRefusal from '../assets/screenshots/03-refusal-unsafe-system-app.png'
+import permissionChips from '../assets/screenshots/04-app-list-permission-chips.png'
+import workMode from '../assets/screenshots/05-settings-work-mode.png'
+
+const description =
+  'Thor freezes the apps your phone will not let you uninstall. Free software, no trackers, ' +
+  'and it works through root, Shizuku or Dhizuku.'
+---
+<BaseLayout title={SITE.tagline} description={description} bareTitle>
+  <Hero
+    title="Turn off the apps your phone won't let you uninstall."
+    primary={{ href: '/download', label: 'Download Thor' }}
+    secondary={{ href: '#you-may-not-need-root', label: 'Do I need root?' }}
+  >
+    <p>
+      Thor freezes them: they stop running, stop starting at boot, and leave the launcher. Unfreeze
+      whenever you want. It works through root — or through Shizuku or Dhizuku, neither of which
+      needs root. <strong>You will need one of the three.</strong>
+    </p>
+    <p class="source-line">
+      Source: <a href={SITE.repo}>github.com/trinadhthatakula/Thor</a>
+    </p>
+
+    <DeviceFrame slot="media" src={homeBento} alt="Thor's home screen, showing the active, frozen and suspended app counts above the action tiles." />
+  </Hero>
+
+  <FeatureBand id="freeze-it-and-it-stops" title="Freeze it, and it stops.">
+    <p>
+      A frozen app doesn't run in the background, doesn't start at boot, and doesn't appear in your
+      launcher. It isn't hidden, and wherever the platform lets Thor disable it, it isn't
+      uninstalled either — it is switched off, and you can switch it back on.
+    </p>
+    <p>
+      Freeze one app, or select forty and freeze them together. Save a group as a profile and put the
+      whole thing behind one tap. Thor keeps a watchlist of what you've frozen, so nothing quietly
+      stays off without your knowing.
+    </p>
+    <p>
+      And a home-screen shortcut Thor pinned for an app doesn't vanish when you freeze it — the icon
+      turns grey, and tapping it unfreezes the app and opens it.
+    </p>
+    <p>
+      Your data stays where it is. Freezing switches an app off; it doesn't take anything away. On
+      the handful of devices that refuse to let a preinstalled app be switched off, Shizuku mode
+      removes it for your Android user instead, with the keep-data flag — the app's files and
+      settings stay, so unfreezing brings it back with its data attached. Permissions are the part
+      I can only tell you about narrowly: one runtime permission was measured across that round
+      trip and came back granted, on one platform build, and app-ops were never measured, so I
+      won't promise more than that. Root has no such fallback: a refusal is reported as a failure
+      and the app is left installed. Dhizuku is
+      the exception, and the one to avoid for preinstalled apps — it freezes them by removing them
+      for your user in every case, and without that flag. Where nothing the platform allows will
+      switch an app off, Thor tells you it couldn't, rather than doing something else.
+    </p>
+
+    <DeviceFrame
+      slot="media"
+      src={freezerMixed}
+      alt="The Freezer, listing the watchlist with the frozen apps' icons greyed out."
+    />
+  </FeatureBand>
+
+  <FeatureBand id="the-ones-that-would-break-your-phone" title="The ones that would break your phone, it refuses." flip>
+    <p>
+      Thor ships the Universal Android Debloater safety data: 5,364 packages, each rated Recommended,
+      Advanced, Expert or Unsafe. Freezing a system app rated <strong>Unsafe</strong> is blocked
+      outright — not warned about, blocked, with no confirm button on the dialog. Expert-rated ones
+      warn first. If the list fails to load at all, every system app is blocked until it does.
+    </p>
+    <p>
+      Thor does not make debloating safe. It makes the dangerous cases visible before you touch them.
+    </p>
+
+    <DeviceFrame
+      slot="media"
+      src={unsafeRefusal}
+      alt="Thor refusing to freeze a system app rated Unsafe, with no way to continue."
+    />
+  </FeatureBand>
+
+  <FeatureBand id="grant-nothing-and-look-around-first" title="Grant nothing, and look around first.">
+    <p>
+      With no root, no Shizuku and no Dhizuku, Thor still lists every app on your device, searches
+      and sorts it, filters by declared permission group using Android's own localised labels, shows
+      you which store installed what, and exports an installed app's APK.
+    </p>
+    <p>You can decide whether you want Thor before you give it anything.</p>
+
+    <DeviceFrame
+      slot="media"
+      src={permissionChips}
+      alt="The app list filtered by the Camera permission chip, on a device with no privilege mode enabled."
+    />
+  </FeatureBand>
+
+  <FeatureBand id="you-may-not-need-root" title="You may not need root." flip>
+    <p>Thor runs on three privilege engines, and you pick which one is active:</p>
+    <ul>
+      <li><strong>Root</strong> — everything, including the operations below.</li>
+      <li><strong>Shizuku</strong> — no root. Runs Thor's commands through Shizuku's service, which
+        holds the shell user's privilege when you start it over ADB.</li>
+      <li><strong>Dhizuku</strong> — no root. Uses Android's Device Owner API.</li>
+    </ul>
+    <p>
+      <strong>The honest part:</strong> Shizuku and Dhizuku don't need root, but they aren't
+      zero-setup either. Each is a separate app with its own setup, from developer options and an ADB
+      or wireless-debugging step, and Shizuku has to be started again after a reboot unless it was
+      started with root.
+    </p>
+    <p>
+      Root-only work is named rather than faked. Rebooting the device returns an explicit failure
+      without root; per-app cache size simply reads zero.
+    </p>
+    <p>
+      Batch uninstalls, reinstalls, cache and data clears print a line per app as they run, so a
+      failure names the app and the reason; a batch freeze reports a running count of how many were
+      done and how many failed. <Fact name="minSdkAndroidName" /> or newer.
+    </p>
+
+    <DeviceFrame
+      slot="media"
+      src={workMode}
+      alt="Settings, showing the Work Mode selector with more than one privilege engine available."
+    />
+  </FeatureBand>
+
+  <FeatureBand id="trust-note" title="What you're trusting.">
+    <p>
+      Thor is free software under GPL-3.0-or-later, written in the open and almost entirely by one
+      developer.
+    </p>
+    <p>
+      There is no analytics, no crash reporter, and no advertising — not disabled, not present.
+      Exactly one file in Thor's own code opens a network connection,
+      <code>data/repository/StoreRepositoryImpl.kt</code>, so a grep for <code>openConnection</code>
+      over <code>app/src</code> finds it and nothing else. It runs when you open the Extension
+      Store, and again when you install an extension from it — nowhere else. Thor declares
+      <code>INTERNET</code>, and the manifest comment directly above it says why.
+    </p>
+    <p>
+      The Play Store build additionally bundles Google's billing library for the in-app support
+      option, and declares <code>com.android.vending.BILLING</code>. It connects to Play when the app
+      opens, not when you go looking for the support option, so that build talks to Google before you
+      have touched anything. The <code>foss</code> build has neither — its billing class is a no-op.
+    </p>
+    <p>
+      The <code>foss</code> build is reproducible, and IzzyOnDroid publishes it with their own
+      reproducible-build badge — their check, not my claim.
+    </p>
+    <p>
+      <a href="/privacy">What the app stores, and where</a> ·
+      <a href="/features">Everything it does</a>
+    </p>
+  </FeatureBand>
+</BaseLayout>
+
+<style>
+  .source-line {
+    margin-block-start: var(--space-xs);
+    font-size: var(--text-body-small);
+  }
+</style>

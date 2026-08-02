@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Home</title>
+  </head>
+  <body>
+    <main>
+      <h1>Home</h1>
+      <!-- What DeviceFrame emits once `src` is supplied. -->
+      <figure class="device">
+        <div class="bezel">
+          <img
+            src="/_astro/01-home-bento.abc123.png"
+            alt="Thor's home screen, showing the app counts."
+            loading="lazy"
+            decoding="async"
+          />
+        </div>
+      </figure>
+      <!--
+        Prose naming the placeholder is not a placeholder. The gate matches the
+        aria-label DeviceFrame emits, not the words, so a page that documents the
+        mechanism does not fail it.
+      -->
+      <p>
+        A frame with no capture yet renders a dashed box labelled "Screenshot pending", which is
+        deliberate: the build stays green and the gap is visible on the page.
+      </p>
+    </main>
+  </body>
+</html>

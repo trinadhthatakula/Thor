@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Thor</title>
+    <link rel="canonical" href="https://thor.trinadhthatakula.com/" />
+    <!--
+      The two references every real page carries and no fixture originally did.
+      Astro emits both into dist/_astro/, and a walker that skipped that directory
+      reported them broken on all eight pages of a perfectly good build.
+    -->
+    <link rel="stylesheet" href="/_astro/PageLayout.CAFEB4BE.css" />
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      crossorigin
+      href="/_astro/outfit-latin-400.D1Q2W3E4.woff2"
+    />
+  </head>
+  <body>
+    <a href="#main">Skip to content</a>
+    <main id="main">
+      <h1>Thor</h1>
+      <p>
+        A correct directory-format route: <a href="/faq">Questions</a>. A correct same-page
+        fragment: <a href="#you-may-not-need-root">Do I need root?</a>. A cross-page fragment:
+        <a href="/faq#still-stuck">Still stuck?</a>.
+      </p>
+      <p>
+        An absolute URL on this site's own origin, which must be treated as internal and checked:
+        <a href="https://thor.trinadhthatakula.com/features">Features</a>. A relative one:
+        <a href="features">Features again</a>. The site root:
+        <a href="/">Home</a>. A non-HTML asset: <a href="/robots.txt">robots.txt</a>.
+      </p>
+      <p>
+        Skipped without checking: <a href="https://github.com/trinadhthatakula/Thor">the repo</a>,
+        <a href="mailto:hello@example.com">an address</a>,
+        <a href="tel:+10000000000">a number</a>, and
+        <a href="#top">the top of the page</a>, which every browser resolves without an element.
+      </p>
+      <h2 id="you-may-not-need-root">You may not need root</h2>
+      <p>Shizuku and Dhizuku both work.</p>
+    </main>
+  </body>
+</html>

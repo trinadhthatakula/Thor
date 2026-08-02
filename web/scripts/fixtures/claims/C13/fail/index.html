@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Writing an extension</title>
+  </head>
+  <body>
+    <main>
+      <h1>Writing an extension</h1>
+      <!--
+        Actionable in the wrong direction: an author who believes this deletes a class the
+        template still implements, and the build failure looks unrelated to the sentence.
+      -->
+      <p>
+        If you are porting an extension written against an earlier contract, note that
+        <code>AutomationExtension</code> is gone and you should implement
+        <code>ThorExtension</code> instead.
+      </p>
+      <p>
+        The interface was removed from the contract, so a template that still references it will
+        not compile against the current artefact.
+      </p>
+    </main>
+  </body>
+</html>

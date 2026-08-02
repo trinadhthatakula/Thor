@@ -13,6 +13,11 @@ on:
     paths-ignore:
       - '*.md'
       - 'docs/**'
+      # Same reasoning as the entries around it: web/ is the landing page, adds no
+      # Gradle module, and cannot reach the APK or the Play upload. It has its own
+      # gate in web-ci.yml and its own deploy in Vercel. gradle.properties stays out
+      # of this list, so a release push still builds.
+      - 'web/**'
       - 'LICENSE'
       - '.gitignore'
       - '.github/**/*.md'

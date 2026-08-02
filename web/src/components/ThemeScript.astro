@@ -1,0 +1,64 @@
+---
+/**
+ * The pre-paint half of the theme runtime, and one of only two scripts the site
+ * ships — the other is ThemeToggle.astro, the control a visitor actually clicks.
+ * Nothing else on the site runs client JavaScript.
+ *
+ * Render it inside <head>. Anywhere in <head> is correct, because a render-blocking
+ * stylesheet <link> holds off the first paint too; what matters is that it never
+ * moves to <body>, where the browser can paint a head-styled document before
+ * reaching it. Early in <head> is nonetheless the faster spot: a classic script
+ * placed after a still-downloading stylesheet is blocked on that stylesheet.
+ *
+ * It has to be BLOCKING and INLINE. Blocking, because the attributes it writes decide
+ * which palette tokens.css resolves; if the browser paints before it runs, a visitor
+ * who chose light gets a black flash and a visitor who chose dark gets a white one.
+ * Inline, because an external file — even a cached one — is a separate fetch that can
+ * lose that race, and a `type="module"` script (which is what Astro emits without
+ * `is:inline`) is deferred by definition and would always lose it.
+ *
+ * Storage contract, shared with whatever renders the theme toggle:
+ *   `thor-theme`  — 'light' | 'dark'. ABSENT means "follow the system", which is how
+ *                   the app's three-state ThemeMode is represented here.
+ *   `thor-amoled` — 'true' | 'false'. Only meaningful while the resolved theme is
+ *                   dark, mirroring the app, where AMOLED is nested under dark.
+ *
+ * A toggle that switches back to "follow the system" must remove `thor-theme` rather
+ * than write a third value, and is also what owns listening for OS changes while in
+ * that state — this script runs once, before paint, and never again.
+ *
+ * What a toggle must NOT do is remove the `data-theme` *attribute* to mean "system".
+ * It looks equivalent, because `:root` plus the `prefers-color-scheme` media query
+ * resolve the same colours with the attribute absent — but tokens.css keys AMOLED on
+ * `[data-theme='dark'][data-amoled='true']`, and that selector cannot match without a
+ * concrete `data-theme`. Dropping the attribute therefore switches AMOLED off again
+ * immediately after this script switched it on, which reads as a #000000 → #0e0e0e
+ * flash. "Follow the system" is `thor-theme` absent from storage and `data-theme`
+ * still resolved to 'light' or 'dark' in the DOM, exactly as it is written below.
+ */
+---
+
+<script is:inline>
+  ;(function () {
+    var root = document.documentElement
+    var theme, amoled
+    try {
+      theme = localStorage.getItem('thor-theme')
+      amoled = localStorage.getItem('thor-amoled')
+    } catch (e) {
+      // Private mode and blocked storage both throw on read. Fall through to the OS.
+    }
+    if (theme !== 'light' && theme !== 'dark') {
+      // Dark-first: `prefers-color-scheme: no-preference` was dropped from Media
+      // Queries Level 5, so a machine with no preference reports `light`. Asking for
+      // light explicitly, and defaulting everything else to dark, is the closest a
+      // browser can get to "dark unless you asked otherwise".
+      theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+    }
+    root.dataset.theme = theme
+    // AMOLED defaults FALSE. ThorTheme declares `amoledMode: Boolean = true`, but both
+    // call sites pass `prefs.useAmoled`, which is false — so false is what the app
+    // actually renders, and #0e0e0e, not black, is the dark page a user sees.
+    root.dataset.amoled = theme === 'dark' && amoled === 'true' ? 'true' : 'false'
+  })()
+</script>

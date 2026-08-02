@@ -1,0 +1,108 @@
+---
+/**
+ * A screenshot in a phone-shaped bezel, drawn in CSS.
+ *
+ * The `src`-less branch is not a convenience. `<Image>` resolves its import at
+ * build time, so a missing screenshot is a hard `astro build` failure, and git
+ * carries no empty directories — which means every page that reserves a
+ * screenshot slot would break the build from the moment it was written until
+ * the day someone captured five screenshots on two devices. This renders a
+ * labelled placeholder instead, so the build stays green and the gap is visible
+ * on the page rather than hidden in a stack trace.
+ *
+ * Captures are committed RAW. All framing happens here, so a pre-framed
+ * screenshot would come out double-framed.
+ */
+import { Image } from 'astro:assets'
+import type { ImageMetadata } from 'astro'
+
+interface Props {
+  src?: ImageMetadata
+  /** Required even for the placeholder: it is also the placeholder's label. */
+  alt: string
+  caption?: string
+  /** Phone screenshots are tall; this keeps two of them side by side on desktop. */
+  size?: 'default' | 'wide'
+}
+
+const { src, alt, caption, size = 'default' } = Astro.props
+---
+<figure class:list={['device', size === 'wide' && 'device--wide']}>
+  <div class="bezel">
+    {
+      src ? (
+        <Image src={src} alt={alt} loading="lazy" decoding="async" />
+      ) : (
+        <div class="placeholder" role="img" aria-label={`Screenshot pending: ${alt}`}>
+          <span class="placeholder-tag">Screenshot pending</span>
+          <span class="placeholder-alt">{alt}</span>
+        </div>
+      )
+    }
+  </div>
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>
+
+<style>
+  .device {
+    margin: 0;
+    max-width: 20rem;
+  }
+
+  .device--wide {
+    max-width: 34rem;
+  }
+
+  .bezel {
+    border: 1px solid var(--outline);
+    border-radius: var(--radius-l);
+    background: var(--surface-container);
+    padding: var(--space-2xs);
+    overflow: hidden;
+  }
+
+  .bezel :global(img) {
+    display: block;
+    width: 100%;
+    height: auto;
+    /* One step inside the bezel's radius, which is what makes the 8px frame read
+       as concentric rather than as a border that happens to be there. */
+    border-radius: var(--radius-m);
+  }
+
+  .placeholder {
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: var(--space-2xs);
+    /* Roughly a modern phone's 19.5:9, so the reserved space matches the real
+       capture and the page does not reflow when the screenshot lands. */
+    aspect-ratio: 9 / 19.5;
+    padding: var(--space-s);
+    text-align: center;
+    border-radius: var(--radius-m);
+    background: var(--surface-container-high);
+    /* Dashed, so nobody mistakes an unfilled slot for a design choice. */
+    border: 1px dashed var(--outline);
+  }
+
+  .placeholder-tag {
+    font-family: var(--font-mono);
+    font-size: var(--text-label-small);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--on-surface-variant);
+  }
+
+  /* Prose, not a label: this is the alt text read as a sentence. */
+  .placeholder-alt {
+    font-size: var(--text-body-small);
+    color: var(--on-surface);
+  }
+
+  figcaption {
+    margin-block-start: var(--space-xs);
+    font-size: var(--text-label-large);
+    color: var(--on-surface-variant);
+  }
+</style>

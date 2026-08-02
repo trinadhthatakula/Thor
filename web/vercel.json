@@ -1,0 +1,7 @@
+{
+  "framework": "astro",
+  "outputDirectory": "dist",
+  "buildCommand": "npm run build",
+  "trailingSlash": false,
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ':/gradle.properties' ':/gradle/libs.versions.toml'"
+}

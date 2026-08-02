@@ -1,0 +1,252 @@
+---
+layout: ../layouts/PageLayout.astro
+title: Download Thor
+description: Where to get Thor, which channel to pick, what an uninstall costs you, and how to check the APK you downloaded is the one I built.
+lead: Thor is free on every channel and stays free. Most people want IzzyOnDroid — but read the box below before you download anything, because Thor needs one more thing before most of it is useful.
+index:
+  - id: before-you-pick-a-channel
+    label: Before you pick a channel
+  - id: thirty-seconds
+    label: Thirty seconds, then go
+  - id: uninstall-cost
+    label: What an uninstall costs
+  - id: channels
+    label: The channels
+  - id: foss-and-store
+    label: The two builds
+  - id: reproducible-builds
+    label: What reproducibility proves
+  - id: verify
+    label: Verify what you downloaded
+  - id: build-from-source
+    label: Build it from source
+  - id: support
+    label: Supporting the project
+---
+
+import Callout from '../components/Callout.astro'
+import CodeBlock from '../components/CodeBlock.astro'
+import Fact from '../components/Fact.astro'
+
+<h2 id="before-you-pick-a-channel">Before you pick a channel</h2>
+
+<Callout tone="warning" title="Thor needs Root, Shizuku or Dhizuku">
+  <p>
+    <strong>Freezing, debloating, force-stop, clearing cache and clearing data all go through one
+    of those three.</strong> Without any of them Thor still installs and runs: you can browse,
+    search, filter and export apps, install an APK, and uninstall an ordinary app through Android's
+    own uninstall dialog. Nothing else that changes an app will work.
+  </p>
+  <p>
+    Shizuku and Dhizuku do not require root. They do require developer options and an ADB or
+    wireless-debugging step, and Shizuku has to be re-armed after most reboots. If none of that is
+    something you want to set up, Thor is not the app for you, and that is better to know now than
+    after four downloads.
+  </p>
+</Callout>
+
+Thor runs on <Fact name="minSdkAndroidName" /> (API <Fact name="minSdk" />) and newer.
+
+<h2 id="thirty-seconds">Thirty seconds, then go</h2>
+
+- **Most people → IzzyOnDroid.** Add `https://apt.izzysoft.de/fdroid/repo` to an F-Droid client.
+  The FOSS build, automatic updates, and a rebuild-from-source check that is not mine. Some clients
+  already carry that repository, so look through your client's repository list before adding it by
+  hand. If you have no client yet, [Neo Store](https://github.com/NeoApplications/Neo-Store) and
+  [Droid-ify](https://github.com/Droid-ify/client) both work — but **not** `f-droid.org`, where Thor
+  is not listed.
+- **No F-Droid client, or you want a release the day it lands → GitHub.**
+  [`foss-release.apk`](https://github.com/trinadhthatakula/Thor/releases/latest/download/foss-release.apk)
+  is the same file IzzyOnDroid republishes. You update it by hand.
+- **You want Play to handle updates → [Google Play](https://play.google.com/store/apps/details?id=com.valhalla.thor).**
+  Not reproducible, and signed with a key you should assume differs from the others.
+- **You want the newest code, breakage included → the GitHub pre-releases.** Look for GitHub's
+  **Pre-release** badge, not the tag name. A tag that looks like a development build is not the
+  signal; the badge is.
+- **Skip** the `.aab` attached to every stable GitHub release — Android cannot install one — and
+  skip `f-droid.org`, where Thor is not published.
+
+<Callout tone="note" title="Two moves need an uninstall first">
+  <p>Everything installs over everything else in place, with two exceptions.</p>
+  <p>
+    <strong>Moving between Play and any other channel, in either direction.</strong> I have never
+    obtained the certificate Play signs with, so assume it does not match mine — and Android refuses
+    to install a package whose signing certificate does not match the one already installed. That is
+    how Android package signing works and it is protecting you — it is a property of the platform,
+    not a penalty for changing your mind, and it costs exactly the same going to Play as coming from
+    it.
+  </p>
+  <p>
+    <strong>Going from a pre-release back to an older stable.</strong> Android will not install an
+    older build over a newer one.
+  </p>
+  <p>
+    Both mean uninstalling first, and an uninstall costs you what the next section describes — so
+    read that before you start, not after.
+  </p>
+</Callout>
+
+<h2 id="uninstall-cost">What an uninstall costs you</h2>
+
+This is not a switching-channels problem. It applies to **any** uninstall — a new phone, a factory
+reset, or "I'll put it back later."
+
+**Frozen apps stay frozen.** Removing Thor undoes neither freeze mechanic. Thor switches the package
+off in place; on the devices that refuse to allow that, the Shizuku path removes it for your Android
+user while keeping its data. Dhizuku is the exception: it removes a preinstalled package for your
+user every time, refusal or not, and does not keep its data. Android has no reason to undo any of
+that just because Thor is gone.
+
+**Suspended apps are not in that position.** The Freezer's optional Suspend mode is a different
+mechanic, and Android only lets the package that recorded a suspension lift it again. Under root
+Thor records its own package as the suspender, so a suspension is tied to this install of Thor in a
+way a freeze is not. Unsuspend before you uninstall.
+
+<Callout tone="danger" title="Unfreeze everything you still want, first">
+  <p>
+    Ten seconds of work before you uninstall, and none of the rest of this section applies to you.
+  </p>
+</Callout>
+
+**What you get back.** The apps themselves. Reinstall Thor and the Freezer offers to import the
+disabled apps it finds. That prompt covers the disabled shape only, because nothing in a package
+read distinguishes "Thor removed this for your user" from "the vendor shipped it that way" — but
+the app list enumerates those packages too, so both shapes of frozen app are still reachable.
+
+**What you do not get back.** Your Freezer watchlist and your saved profiles. Both live in Thor's
+database, and Thor's Auto Backup ruleset covers one file — the preferences store holding your
+settings — so the database is out of scope by design. There is no export for either. **Screenshot
+them before you uninstall.** That is the entire mitigation.
+
+**If you have already uninstalled with apps still frozen:** reinstall Thor, accept the Import
+Disabled Apps prompt, and use the app list, which shows packages uninstalled for your user too. You
+can unfreeze from there. You have not lost them.
+
+<h2 id="channels">The channels</h2>
+
+| | Build | Signed by | Reproducible | Updates |
+|---|---|---|---|---|
+| **IzzyOnDroid** | `foss` | me | yes, checked by IzzyOnDroid | automatic, once IzzyOnDroid has picked the release up |
+| **GitHub Releases** | `foss` and `store` | me | yes for `foss` — the same file | manual |
+| **Google Play** | `store` | Google | no, by design | automatic; promotion is manual and Play review adds an unbounded delay |
+
+<h3 id="izzyondroid">IzzyOnDroid — recommended</h3>
+
+The `foss` APK, republished by [IzzyOnDroid](https://apt.izzysoft.de/fdroid/index/apk/com.valhalla.thor),
+who rebuild it from the published source and check that the result matches what I shipped. Their
+check, not my claim — which is the entire point of it.
+
+If you would rather verify than take it on trust, the listing links the build **Recipe** and the
+**Log** for each verified build. The file they hash is the same `foss-release.apk` attached to the
+GitHub release.
+
+<h3 id="github-releases">GitHub Releases</h3>
+
+The identical APK, direct. No client, no repository to add, and no automatic updates — you check
+back yourself, watch the repository's releases feed, or follow the
+[Telegram channel](https://t.me/thorAppDev), where builds get announced.
+
+A stable release carries three files: `foss-release.apk`, `store-release.apk` and an `.aab`. The
+`.aab` is for Play. Android cannot install one, so it is not a download for you. A pre-release
+carries the two APKs and no `.aab`.
+
+<h3 id="google-play">Google Play</h3>
+
+The `store` build. CI uploads an Android App Bundle to Play's closed-testing track, and Play
+generates the install for your device from it and signs what it generates — so the file Play
+installs is not a file I built, and it is not reproducible. That is Play working as designed, not a
+shortcoming of the build.
+
+I have never obtained the certificate Play actually signs with, so assume it differs from mine
+rather than treating the two as the same. Either way, plan for the uninstall described above when
+you move on or off Play.
+
+<h3 id="mirrors">Other places you may see Thor</h3>
+
+Mirror sites and APK aggregators repackage GitHub releases, and some of them strip or replace the
+signature. Check the certificate yourself — if it does not match the one on the file attached to the
+GitHub release, it is not my build, whatever the page says.
+
+<h3 id="not-on-f-droid">Not available: F-Droid</h3>
+
+Thor is not on `f-droid.org`, and there is no date to promise. IzzyOnDroid is the FOSS channel.
+
+<h2 id="foss-and-store">The two builds: <code>foss</code> and <code>store</code></h2>
+
+One **functional** difference, and it is the support sheet. The `store` build links Play Billing,
+declares `com.android.vending.BILLING`, and puts four support subscription tiers in a Play Store tab
+beside the direct links. Play Billing is scoped to `store` with `storeImplementation`, so the `foss`
+build never links it: it compiles a no-op billing implementation instead, and its sheet offers
+GitHub Sponsors, Patreon and PayPal and nothing else.
+
+Three others worth knowing, all of them in `app/build.gradle.kts`:
+
+- **Locales.** The `foss` build ships five — English, Arabic, Spanish, French and Chinese — because
+  it is one universal APK, and trimming the unused library translations out of `resources.arsc`
+  saves real size. The `store` build keeps them all, because Play serves per-locale splits anyway.
+  This is a **flavour** difference and not a Play-versus-GitHub one: the `store-release.apk` on the
+  same GitHub release also carries the full set.
+- **Version string.** The `foss` build carries a `-foss` suffix, which is how you tell the two apart
+  on-device.
+- **An extra ProGuard file** for the `foss` flavour.
+
+Everything else is the same code in both: the same privilege engines, the same app-management
+actions, the same behaviour. Which key an APK carries is a property of the channel, not of the
+flavour — the `store-release.apk` attached to a GitHub release is signed with my key, the same one
+the `foss` APK carries.
+
+<h2 id="reproducible-builds">What reproducible builds prove — and what they do not</h2>
+
+**They prove** the APK you downloaded was built from the source in this repository, unmodified.
+Nobody inserted anything between the code you can read and the file you installed.
+
+**They do not prove** that the source is good, that I am trustworthy, or that there are no bugs.
+Reproducibility removes one specific attack — a compromised build — and nothing else.
+
+<h2 id="verify">Verify what you downloaded</h2>
+
+<CodeBlock title="Print the signing certificate">
+
+```sh
+apksigner verify --print-certs -v foss-release.apk
+```
+
+</CodeBlock>
+
+That prints the certificate the file is actually signed with. The APK on IzzyOnDroid and the APK
+attached to the GitHub release are the same file, so they print the same certificate; anything from
+a mirror that prints something else is not my build.
+
+This does not apply to a Play install. Play signs what it generates, so what you would see there is
+Play's certificate rather than mine.
+
+<h2 id="build-from-source">Build it from source</h2>
+
+<CodeBlock title="Build the FOSS release">
+
+```sh
+git clone https://github.com/trinadhthatakula/Thor.git
+cd Thor
+./gradlew assembleFossRelease
+```
+
+</CodeBlock>
+
+You will need JDK 21 — Zulu, to match CI — and the build pulls Android SDK <Fact name="compileSdk" />
+and an alpha Android Gradle Plugin, so expect the first sync to take a while.
+
+The APK lands in `app/build/outputs/apk/foss/release/`. Run `./gradlew copyFossReleaseApk` instead
+and you also get a copy renamed `foss-release.apk` in `app/build/distribution/foss/` — that is the
+task CI runs, and that file is what gets attached to the release. An unsigned local build will not
+match the published certificate. That is expected: you signed it, or did not, and I signed mine.
+
+<h2 id="support">Supporting the project</h2>
+
+Thor is free on every channel and stays free. If you want to support it, the in-app support
+subscription in the Play build is one route and not the only one —
+[GitHub Sponsors](https://github.com/sponsors/trinadhthatakula),
+[Patreon](https://www.patreon.com/trinadh), [Ko-fi](https://ko-fi.com/trinadh),
+[Buy Me a Coffee](https://www.buymeacoffee.com/trinadh) and
+[PayPal](https://www.paypal.me/trinadhthatakula) all work regardless of where you installed from.
+Choosing Play for that reason alone would be choosing an install you have to uninstall to leave, for
+something you can do from any channel.

@@ -1,0 +1,72 @@
+---
+/**
+ * One homepage section: a heading, prose, and an optional screenshot beside it.
+ *
+ * `id` is required rather than derived from the heading. The homepage's
+ * secondary CTA anchors into a band, and `/extensions-policy`'s anchors are the
+ * in-app Extension Manager's intended deep-link target — a slug silently
+ * regenerated from reworded prose breaks an APK-side link with a green build,
+ * because the link checker only ever sees links that live inside `dist`.
+ */
+interface Props {
+  id: string
+  title: string
+  /** Alternates the media side so a run of bands does not read as a list. */
+  flip?: boolean
+}
+
+const { id, title, flip = false } = Astro.props
+const hasMedia = Astro.slots.has('media')
+---
+<section class:list={['band', flip && 'band--flip', !hasMedia && 'band--solo']} id={id}>
+  <div class="band-copy">
+    <h2>{title}</h2>
+    <slot />
+  </div>
+  {hasMedia && <div class="band-media"><slot name="media" /></div>}
+</section>
+
+<style>
+  .band {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-l);
+    align-items: center;
+    max-width: var(--content-max);
+    margin-inline: auto;
+    padding: var(--space-xl) var(--space-s);
+    border-top: 1px solid var(--outline-variant);
+    /* Scroll-margin, not scroll-padding on the root: the sticky header only
+       overlaps an anchored heading, and this is where that heading lives. */
+    scroll-margin-block-start: var(--space-m);
+  }
+
+  .band--solo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .band--flip .band-copy {
+    order: 2;
+  }
+
+  @media (max-width: 48rem) {
+    .band,
+    .band--flip .band-copy {
+      grid-template-columns: 1fr;
+      order: 0;
+    }
+  }
+
+  h2 {
+    font-size: var(--text-headline-medium);
+    line-height: var(--leading-headline-medium);
+    letter-spacing: -0.01em;
+    margin: 0 0 var(--space-s);
+    text-wrap: balance;
+  }
+
+  .band-copy :global(p) {
+    max-width: var(--measure);
+    color: var(--on-surface-variant);
+  }
+</style>
