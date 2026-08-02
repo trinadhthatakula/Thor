@@ -3,31 +3,42 @@ name: Web Deploy
 # Deploys web/ to Vercel from GitHub Actions, using the Vercel CLI rather than
 # Vercel's built-in Git integration.
 #
-# WHY THIS EXISTS AT ALL, given the Git integration would do it for free:
-# because with the Git integration the gates run *inside Vercel*, where a
-# failure is a red box on vercel.com that nobody is watching, and the four
-# settings that control whether they run at all (Root Directory, "Include files
-# outside the Root Directory", Build Command, Ignored Build Step) live in a
-# dashboard, are invisible to review, and produce no error when wrong. Moving
-# the build here puts every one of those decisions in this file, under review,
-# in git. See web/docs/deploy.md.
-#
 # ────────────────────────────────────────────────────────────────────────────
-# THE ONE THING THAT MUST STAY TRUE: the Vercel project is NOT connected to the
-# GitHub repository. Create it with `cd web && vercel link`, never by importing
-# the repo — importing also sets Root Directory to `web`, which resolves to
-# `web/web` because this workflow already runs the CLI from inside web/.
+# THIS WORKFLOW IS DORMANT. IT IS NOT WHAT DEPLOYS THE SITE.
 #
-# `"git": { "deploymentEnabled": false }` is defence in depth, and it is in TWO
-# files — web/vercel.json and /vercel.json — because Vercel does not document
-# which one its Git integration reads. Delete neither.
+# The site deploys from Vercel's Git integration, on a project imported from the
+# Vercel dashboard with Root Directory `web`. This workflow has never deployed:
+# its first step looks for VERCEL_TOKEN / VERCEL_ORG_ID / VERCEL_PROJECT_ID,
+# finds none,
+# prints a notice and skips everything after it. Every green "Web Deploy" tick in
+# this repo's history is that skip — read the notice, not the tick.
 #
-# If the repo does get connected, the consequence is now a genuine race, not a
-# theoretical one. Vercel's default production branch is `master`, which is also
-# this workflow's production branch, so one master push fires two production
-# deploys at the same alias: this one, carrying a gated artifact, and a
-# Git-sourced Vercel build started from the Gradle repository root — which has no
-# package.json. Whichever finishes last wins the alias.
+# It is kept, not deleted, because it is a complete and reviewed alternative.
+# docs/follow-ups/vercel-actions-deploy.md is the reactivation procedure and an
+# honest account of what it would and would not buy.
+#
+# REACTIVATING IS ONE CHANGE, NOT TWO. Setting the three secrets while Vercel's
+# Git integration is still connected fires two production deploys at the same
+# alias on every master push — Vercel's, and this one — with no error anywhere
+# and no symptom except the live site intermittently serving the older build.
+# Vercel's Production Branch resolved to `master` at import (its rule order is
+# main, then master, then the default branch), which is also this workflow's
+# production branch. So: disconnect the repository FIRST, clear Root Directory to
+# empty (this workflow already runs the CLI from inside web/, so a Root Directory
+# of `web` resolves to web/web), and only then add the secrets.
+#
+# `"git": { "deploymentEnabled": false }` used to live in web/vercel.json and in
+# /vercel.json. Both are gone — that flag is the kill switch for THIS pipeline,
+# and keeping it while relying on the Git integration is what would stop the site
+# deploying. DISCONNECTING THE REPOSITORY IS THE INTERLOCK; the flag is not, for
+# two reasons. Which vercel.json Vercel reads follows Root Directory, and the
+# step above clears Root Directory to empty — so the file a reconnected
+# integration would read is /vercel.json, the copy that was deleted, not
+# web/vercel.json. And vercel/vercel#11176 has reported it ignored since
+# 19 February 2024, while Vercel's docs still describe it as disabling
+# commit-triggered deploys; which behaviour this project gets is unverified. If
+# it is restored at all, put it in whichever file matches the Root Directory then
+# in force, and prove it with one no-op commit before relying on it.
 # ────────────────────────────────────────────────────────────────────────────
 #
 # Path filter: identical to web-ci.yml's, and for the same reason. The site
@@ -294,7 +305,7 @@ jobs:
           out=".vercel/output/static"
 
           if [ ! -f "$out/index.html" ]; then
-            echo "::error::$out/index.html is missing, so the artifact about to be deployed is not the site. The usual cause is a Root Directory mismatch — this job already runs inside web/, so the Vercel project's Root Directory must be UNSET, not 'web'. Note that this check is not the first thing a Root Directory mismatch trips: if the project was created by importing the repo, its pulled settings carry framework=astro and the Build step dies earlier with 'Command \"astro build\" exited with 127', which names nothing about paths. See web/docs/deploy.md."
+            echo "::error::$out/index.html is missing, so the artifact about to be deployed is not the site. The usual cause is a Root Directory mismatch — this job already runs inside web/, so for THIS pipeline the Vercel project's Root Directory must be UNSET, not 'web'. That is the opposite of what the live Git-integration project needs, which is why reactivating this workflow means clearing it. Note that this check is not the first thing a Root Directory mismatch trips: a project created by importing the repo carries framework=astro in its pulled settings and the Build step dies earlier with 'Command \"astro build\" exited with 127', which names nothing about paths. See docs/follow-ups/vercel-actions-deploy.md."
             ls -la .vercel/output 2>/dev/null || echo "(no .vercel/output at all)"
             exit 1
           fi

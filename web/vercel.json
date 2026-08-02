@@ -4,8 +4,5 @@
   "buildCommand": "npm run build",
   "installCommand": "npm ci",
   "trailingSlash": false,
-  "git": {
-    "deploymentEnabled": false
-  },
   "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ':/gradle.properties' ':/gradle/libs.versions.toml'"
 }
