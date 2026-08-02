@@ -82,27 +82,43 @@ gate which exits 0 for the wrong reason looks identical to one that passes.
       there is no window in which a human runs this list first. Run the command above to see the
       strict verdict early; a green production deploy has already asserted it.
 
-## 5. Deploy configuration — verify visually in the Vercel dashboard
+## 5. Deploy configuration — create the Vercel project and wire the secrets
 
-Four settings that produce no error when wrong.
+Deploys run from `.github/workflows/web-deploy.yml`, not from Vercel's Git integration, so almost
+nothing here is a dashboard setting. `web/docs/deploy.md` is the full reference; this is the launch
+sequence.
 
-- [ ] **Root Directory** = `web/`
-- [ ] **Production Branch** = `dev`
-- [ ] **"Include files outside of the Root Directory in the Build Step"** = ON. Off breaks
-      `repo-facts` with a file-not-found deep in the build, because it reads `gradle.properties` from
-      the repo root.
-- [ ] **Build Command** = default, *not* overridden. `@vercel/static-build`'s `getCommand()` returns
-      null when `package.json` has a `build` script, so `npm run build` wins and the gates run.
-      Overriding it to the preset's `astro build` makes all four gates disappear from the deploy path
-      with no error at all.
+- [ ] Create the Vercel project, then `cd web && npx vercel link` locally. That writes
+      `.vercel/project.json` — gitignored, so it stays local.
+- [ ] Add three repository secrets (Settings → Secrets and variables → Actions):
+      **`VERCEL_TOKEN`** (Vercel → Account Settings → Tokens), **`VERCEL_ORG_ID`** and
+      **`VERCEL_PROJECT_ID`** (the `orgId` and `projectId` fields of that file).
 
-Then confirm the Ignored Build Step still reads:
+      Until all three exist the workflow exits **green** with a notice naming what is missing, so
+      web PRs stay mergeable in the meantime. A green `web-deploy` run before this step is done has
+      deployed nothing — check the notice, not the tick.
 
-    git diff --quiet HEAD^ HEAD -- . ':/gradle.properties' ':/gradle/libs.versions.toml'
+- [ ] **Leave Root Directory at the repository root.** The workflow already runs the CLI from inside
+      `web/`; setting it to `web` as well risks resolving to `web/web`. If it is wrong, the "Gate the
+      staged artifact" step fails naming this cause rather than shipping an empty tree.
+- [ ] **Set no Build / Install / Output override in the dashboard.** `web/vercel.json` carries all
+      three and takes precedence over project settings — that precedence is the only thing keeping a
+      dashboard edit from silently removing the gate chain.
+- [ ] **Confirm `web/vercel.json` still contains `"git": { "deploymentEnabled": false }`.** Removing
+      it while this workflow exists makes every web commit deploy twice — Git integration and Actions
+      racing for the same production alias — and the only symptom is the site intermittently serving
+      the older of two commits.
+- [ ] Optional, for the advisory Lighthouse job only: **`VERCEL_AUTOMATION_BYPASS_SECRET`**
+      (Vercel → Project → Settings → Deployment Protection → Protection Bypass for Automation).
+      Without it that job skips with a notice; nothing else is affected.
 
-The `:/` prefixes are load-bearing. The step runs inside the Root Directory, so a bare
-`gradle.properties` pathspec resolves to `web/gradle.properties`, matches nothing, and exits 0 for
-every commit — the site would simply stop rebuilding, silently.
+"Production Branch" and "Include files outside of the Root Directory" no longer matter: which deploy
+is production is decided by the workflow (`--prod` only for `dev`), and the whole repository is
+checked out in Actions, so `repo-facts` reading `gradle.properties` from the root just works.
+
+The Ignored Build Step is likewise obsolete — the path filter now lives in the workflow's `paths:`
+list. `ignoreCommand` remains in `vercel.json` as inert defence in depth; see `web/docs/deploy.md`
+before touching it.
 
 ## 6. Domain and certificate
 
@@ -117,5 +133,8 @@ every commit — the site would simply stop rebuilding, silently.
 ## 7. After launch
 
 - [ ] Weekly external link check runs against the live site and opens an issue on failure.
-- [ ] Lighthouse workflow reports as a warning only. If it ever becomes a required check, the site
-      cannot ship a legitimate large screenshot.
+- [ ] The Lighthouse job (now the second job in `web-deploy.yml`) reports as a warning only. If it
+      ever becomes a required check, the site cannot ship a legitimate large screenshot.
+- [ ] Neither `web-ci.yml` nor `web-deploy.yml` has been added to a branch ruleset. Both are
+      path-filtered, and GitHub reports a path-skipped required check as "Expected — Waiting for
+      status" forever, which would leave every Android-only PR unmergeable.

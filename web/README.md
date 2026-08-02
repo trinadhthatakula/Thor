@@ -35,19 +35,23 @@ too — `findRepoRoot()` walks up to `settings.gradle.kts` rather than trusting 
 | `npm run check:types` | `astro check`. **`astro build` does not type-check on its own** — without this, a type error reaches production. |
 | `npm run check:links` | Offline internal-link and `#fragment` checker over `dist/`. Astro has no built-in link validation, so a typo'd `/faq` would 404 in production instead of failing the build. |
 | `npm run check:claims` | The claims blocklist from spec §3.6, run against the **built HTML** so copy assembled from components and `<Fact>` is covered. |
-| `npm run check:a11y` | axe-core over jsdom. CI-only, because it needs `dist/` and adds nothing to the deploy decision. `color-contrast` is disabled in it — jsdom has no layout, so that rule can only ever answer "incomplete", and a rule that can only answer "incomplete" is worse than no rule. Contrast is covered by an arithmetic test over the token values. |
+| `npm run check:markup` | No `<em>`/`<i>` in any built page. The app has no real italic — `Type.kt` maps every italic style to the same file as its upright — so italic copy on the site describes a typeface that does not exist. |
+| `npm run check:sitemap` | Asserts the sitemap, `robots.txt` and the built page set agree, and that `/styleguide` is in none of them. |
+| `npm run check:screenshots` | Every `DeviceFrame` resolves to a real image. Green with placeholders everywhere *except* a production deploy, where it fails — see `docs/launch-checklist.md` §4. |
+| `npm run check:a11y` | axe-core over jsdom. Not in the `build` chain, because it needs `dist/` and jsdom, but the deploy workflow runs it against the staged artifact anyway. `color-contrast` is disabled in it — jsdom has no layout, so that rule can only ever answer "incomplete", and a rule that can only answer "incomplete" is worse than no rule. Contrast is covered by an arithmetic test over the token values. |
 | `npm test` | Vitest. Mostly `src/lib/repo-facts/`. |
-| `npm run build` | The deploy gate stack, in order: `check:types` → `astro build` → `check:links` → `check:claims`. |
+| `npm run build` | The deploy gate stack, in order: `check:types` → `astro build` → `check:links` → `check:claims` → `check:markup` → `check:sitemap` → `check:screenshots`. |
 
-The checkers themselves live in `web/scripts/`. One of them is **written but not armed**:
-`scripts/check-markup.mjs` is plan decision D4's fourth gate (no `<em>`/`<i>` in any built page,
-since the app has no real italic — `Type.kt` maps every italic style to the same file as its
-upright), and nothing invokes it — there is no `check:markup` npm script and `build` does not call
-it. Wiring it up means adding the script *and* appending it to the `build` chain; adding only the
-script leaves a checker that exists and never runs, which is worse than not having one.
+The checkers themselves live in `web/scripts/`. Each takes the directory to scan as its first
+argument and defaults to `dist`, which is what lets the deploy workflow re-run all six against
+`.vercel/output/static` — the tree that is actually uploaded — rather than trusting that it matches
+the one that was gated. Each also **fails on an empty or missing directory** rather than reporting
+success over nothing, which is the property that makes that second pass an assertion instead of a
+formality.
 
-**`npm run build` is what Vercel runs.** Every gate above is therefore a deploy gate, not a CI
-courtesy — which is the whole point of putting them in the npm script rather than in Vercel's UI.
+**`npm run build` is the whole deploy gate.** `vercel build` runs it verbatim, so every gate above
+is a deploy gate rather than a CI courtesy — which is the point of putting them in the npm script
+instead of in Vercel's UI.
 
 ## Pinned versions
 
@@ -70,82 +74,64 @@ ceiling and hand you a green local build for the wrong reason.
 
 ## Deploying
 
-`vercel.json` holds everything that can be versioned. Three settings cannot be, and live only in the
-Vercel dashboard.
+**Deploys run from `.github/workflows/web-deploy.yml`, not from Vercel's Git integration.** A push to
+`dev` touching the site deploys production; a PR into `dev` or `master` deploys a preview and
+comments the URL. `web/docs/deploy.md` is the reference — secrets, project settings, rollback. What
+follows is only the part you need in order not to break it from inside this directory.
 
-### Dashboard-only settings
+The trade is deliberate: under the Git integration, four dashboard settings decide whether the gates
+above run at all, none of them is visible in a diff, and every one produces **no error when wrong**.
+Driving the CLI from Actions puts those decisions in `vercel.json` and the workflow, where they get
+reviewed.
 
-| Setting | Value | What breaks if it is wrong |
-|---|---|---|
-| Root Directory | `web` | Nothing builds. |
-| Production Branch | `dev` | The site only updates at release time and is permanently behind the app. `dev` is the integration branch; `master` only moves on release. |
-| Include files outside of the Root Directory in the Build Step | **ON** | `repo-facts` cannot read `../gradle.properties`, and the build dies with a file-not-found deep in the log. |
-| Build Command Override | **empty** | See below. This one fails *silently*. |
+### `git.deploymentEnabled: false` is load-bearing
 
-The "include files outside the Root Directory" toggle is on by default and is exactly the kind of
-thing that gets switched off during unrelated cleanup. `read.ts` names it in every `ENOENT` message
-for that reason.
-
-### Do not override the Build Command
-
-Leave Vercel's Build Command field empty. `@vercel/static-build`'s `getCommand()` returns `null`
-when `package.json` has a `build` script and the framework entry does not set
-`ignorePackageJsonScript` — which Astro's does not — so `npm run build` wins over the preset's bare
-`astro build`. That fall-through is what puts the four gates above on the deploy path.
-
-Typing `astro build` into the dashboard looks like a harmless clarification and **removes all four
-gates from the deploy with no error anywhere**. The build goes green, faster than before, and the
-first wrong claim or broken link ships. `vercel.json` sets `"buildCommand": "npm run build"`
-explicitly so the intent is at least written down in the repo; the dashboard field still takes
-precedence over it, so the field has to stay empty.
-
-### The Ignored Build Step
-
-Most commits to this repository are Android changes, so the site skips its own build unless
-something it reads has moved. `vercel.json`:
-
-```
-git diff --quiet HEAD^ HEAD -- . ':/gradle.properties' ':/gradle/libs.versions.toml'
+```json
+"git": { "deploymentEnabled": false }
 ```
 
-Exit 0 skips the build, non-zero builds it — so a git failure fails *toward* building, which is the
-right direction. JSON has no comments, which is why the three things you need to know about that
-line are here instead of next to it.
+Remove that while `web-deploy.yml` exists and every web commit deploys **twice** — Vercel's Git
+integration and the workflow, racing for the same production alias. The symptom is the site
+intermittently serving the older of two commits, and nothing reports it. The two are one decision.
 
-**1. The `:/` prefixes are load-bearing.** The Ignored Build Step runs in the Root Directory. A bare
-`gradle.properties` pathspec therefore resolves to `web/gradle.properties`, which does not exist,
-matches nothing, and exits 0 — for *every* commit. The site would never rebuild at all, and nothing
-would report it: Vercel would just keep showing "Build skipped", correctly, forever. `:/` is git's
-top-of-tree pathspec magic and is immune to where the command runs. `../gradle.properties` happens
-to work today and breaks the moment the Root Directory moves.
+`vercel.json` also carries `buildCommand`, `installCommand` and `outputDirectory`, and it takes
+precedence over the dashboard's fields — which is what stops a dashboard edit from silently
+dropping `npm run build`, and with it all six gates, off the deploy path.
 
-**2. `web/` alone is the wrong trigger.** The leading `.` covers everything under `web/`, but the
-version name and the SDK levels are derived from files *outside* it. A `chore(release)` commit bumps
-`versionCode` in `gradle.properties` and touches nothing under `web/`, so a plain `-- .` filter would
-skip the rebuild and leave a stale number on the site — precisely the content drift the derivation
-exists to prevent.
+### The path list lives in four places
 
-**3. That pathspec list and `src/lib/repo-facts/read.ts` are the same list.** `read.ts` exports
-exactly two constants — `GRADLE_PROPERTIES` (`gradle.properties`) and `VERSION_CATALOG`
-(`gradle/libs.versions.toml`) — and they must stay in step with the pathspec above. **Adding a third
-derived fact from a third file means editing both**, in the same commit, or the site starts serving
-a value that no longer rebuilds when it changes.
+Most commits here are Android changes, so the site does not rebuild unless something it *reads* has
+moved. That list is:
 
-One file is read that is deliberately *not* in the list: `findRepoRoot()` reads
-`settings.gradle.kts` to locate the repository root. Only its existence matters, never its contents,
-so a change to it cannot change a rendered fact and must not trigger a rebuild.
+```text
+web/**   gradle.properties   gradle/libs.versions.toml
+```
 
-**This assumes `dev` advances by merge commits**, which it does — PRs land with
-`gh pr merge --merge`, so `HEAD^` is the previous `dev` tip and the diff spans the whole PR. A
-fast-forward push of several commits would only diff the last one.
+and it appears in **`web-ci.yml`**'s `paths:`, **`web-deploy.yml`**'s `paths:`, `vercel.json`'s
+`ignoreCommand`, and — as the two constants `GRADLE_PROPERTIES` and `VERSION_CATALOG` — in
+`src/lib/repo-facts/read.ts`. **Adding a third derived fact from a third file means editing all
+four**, in the same commit, or the site serves a value that no longer rebuilds when it changes.
+
+`web/**` alone is the wrong trigger, which is why the two Gradle files are there: a `chore(release)`
+commit bumps `versionCode` and touches nothing under `web/`, yet changes the version name the site
+renders.
+
+One file is read that is deliberately *not* in the list: `findRepoRoot()` reads `settings.gradle.kts`
+to locate the repository root. Only its existence matters, never its contents, so a change to it
+cannot change a rendered fact and must not trigger a rebuild.
+
+`ignoreCommand` is currently **inert** — it is a Git-integration feature and the Git integration is
+off. It is kept as defence in depth for the case where someone flips `deploymentEnabled` back on
+without reading `docs/deploy.md`. Its `:/` prefixes are still load-bearing on that path: the command
+would run inside the Root Directory, where a bare `gradle.properties` pathspec resolves to
+`web/gradle.properties`, matches nothing, and exits 0 for *every* commit — the site would show
+"Build skipped", correctly, forever.
 
 ### GitHub Actions, and why the asymmetry
 
-Vercel skips builds when nothing the site reads changed. GitHub Actions deliberately does the
-opposite for `pr-ci.yml`:
-
-- **`web-ci.yml`** — path-filtered on `web/**` plus the two derived-fact files, and it must never be
-  added to a branch ruleset. The filter is only safe because it is not a required check.
+- **`web-ci.yml` / `web-deploy.yml`** — path-filtered on `web/**` plus the two derived-fact files,
+  and **neither may ever be added to a branch ruleset**. The filter is only safe because they are not
+  required checks.
 - **`pr-ci.yml`** — **no path filter, ever.** `build-and-test` is the required status context on the
   `dev` and `master` rulesets, `on.pull_request.paths` filters the whole workflow, and GitHub reports
   a path-skipped required check as pending forever. A site-only PR would be unmergeable. The ~7
@@ -160,7 +146,7 @@ opposite for `pr-ci.yml`:
 **No DNS change is needed.** `thor.trinadhthatakula.com` already exists in Cloudflare as a
 **DNS-only (grey cloud)** `CNAME` to `cname.vercel-dns.com`, and resolves through to Vercel anycast:
 
-```
+```console
 $ dig +short thor.trinadhthatakula.com @8.8.8.8
 cname.vercel-dns.com.
 76.76.21.98
@@ -173,7 +159,7 @@ cloud" and "Vercel has claimed the hostname" are expected.
 **The zone has a proxied `*` wildcard.** Every subdomain of `trinadhthatakula.com` resolves,
 including names that were never configured:
 
-```
+```console
 $ dig +short definitely-not-configured-xyz.trinadhthatakula.com @8.8.8.8
 172.67.176.17
 104.21.72.68        # Cloudflare, not Vercel
@@ -215,8 +201,11 @@ To add one:
 4. **A test in `parse.test.ts`** pinned to values fixed by *documentation*, not by current repo
    state. `contract.test.ts` asserts shape only, never values, so that a `chore(release)` commit —
    the one commit that must never be blocked by the website — cannot redden it.
-5. **If the value comes from a file that is not already read**, add that file to *both*
-   `read.ts` and the `ignoreCommand` pathspec in `vercel.json`. See "The Ignored Build Step" above.
+5. **If the value comes from a file that is not already read**, add that file in all four places:
+   `read.ts`, the `paths:` filter of `web-ci.yml` *and* of `web-deploy.yml`, and the `ignoreCommand`
+   pathspec in `vercel.json`. See "The path list lives in four places" above. Miss the workflow
+   filters and the site keeps serving a value that no longer triggers a rebuild when it changes —
+   which is the exact failure the derivation exists to prevent, arrived at from the other side.
 
 Render it with `<Fact name="…" />`, never by importing `repoFacts` into a page. `name` is typed as
 `keyof RepoFacts`, so a typo is an `astro check` error rather than a literal `{{minSdk}}` in
