@@ -76,11 +76,12 @@ gate which exits 0 for the wrong reason looks identical to one that passes.
       is the check that stops "green" from meaning "finished".
 
       **This one is now enforced, not just listed.** `check:screenshots` runs in the `build` chain
-      on every build, but it only *fails* when `VERCEL_ENV=production` — so placeholders stay green
-      locally, in CI and on preview deploys, and a production deploy carrying one is refused. That
-      matters because the production branch is `dev`: merging the release PR **is** the deploy, so
-      there is no window in which a human runs this list first. Run the command above to see the
-      strict verdict early; a green production deploy has already asserted it.
+      on every build, but it only *fails* when `VERCEL_ENV=production` or `REQUIRE_SCREENSHOTS=1` —
+      so placeholders stay green locally, in CI and on `dev` previews, and a production deploy
+      carrying one is refused. The workflow also sets `REQUIRE_SCREENSHOTS=1` on any pull request
+      based on `master`, so the release PR's preview is held to the production standard *before* the
+      merge that publishes rather than at it. Running the command above still has a point — it is the
+      only way to see the strict verdict without opening a PR.
 
 ## 5. Deploy configuration — create the Vercel project and wire the secrets
 
@@ -90,6 +91,12 @@ sequence.
 
 **The order matters more than any individual step.** Each of these is what stops the next one from
 failing in a way that does not look like a failure.
+
+- [ ] **Get `web/` onto `master` first.** Production is a push to `master`, and GitHub only offers
+      the Run-workflow button for workflows on the **default branch** — so until `web-deploy.yml`
+      exists on `master` there is no production deploy and no manual trigger, only `dev` previews.
+      This is safe to do before the Vercel project exists: with no secrets set, the workflow prints a
+      notice naming what is missing and exits green.
 
 - [ ] **Create the project from the CLI. Do not use `vercel.com/new` → Import Git Repository.**
 
@@ -115,19 +122,22 @@ failing in a way that does not look like a failure.
       step is complete deployed nothing. Read the notice, or the run duration — the credential-less
       runs finish in under ten seconds.
 
-- [ ] **Make the first credentialed run a push to `dev`, not a test PR.** Vercel makes the first
-      deployment of a new project a production deployment regardless of `--prod`. A PR run would be
-      built with `VERCEL_ENV=preview` — screenshot gate advisory, preview environment variables —
-      and would still be the deployment the domain attaches to, while the PR comment calls it a
-      preview.
+- [ ] **Make the first credentialed run a `workflow_dispatch` from `master`, not a test PR.** Vercel
+      makes the first deployment of a new project a production deployment regardless of `--prod`, so
+      whatever runs first after the secrets land is the one the domain will attach to. A test PR
+      would be built with `VERCEL_ENV=preview` — preview environment variables, and the screenshot
+      gate advisory unless its base is `master` — and would become that deployment anyway, while the
+      PR comment calls it a preview. Add the secrets when no web PR is open and no web push is
+      imminent, then dispatch straight away.
 - [ ] **Confirm Root Directory is empty** in Settings → Build & Deployment, whichever way the
       project was made.
 - [ ] **Set no Build / Install / Output override in the dashboard.** `web/vercel.json` carries all
       three and takes precedence over project settings — that precedence is the only thing keeping a
       dashboard edit from silently removing the gate chain.
-- [ ] **Leave Production Branch alone, and never set it to `dev`.** It defaults to `master` here,
-      which is harmless. Pointing it at `dev` is the one edit that would make a connected Git
-      integration race this workflow for the production alias.
+- [ ] **Ignore Production Branch. There is no safe value for it.** It only takes effect on a
+      connected project, and its default — `master` — is now this workflow's production branch too,
+      so on a connected project the default is what causes the race. Do not go looking for a setting
+      that makes connecting the repository safe; the next item is the answer.
 - [ ] **Confirm both copies of the kill switch survive**: `"git": { "deploymentEnabled": false }` in
       `web/vercel.json` *and* in `/vercel.json` at the repository root. Two copies because Vercel
       does not document which one its Git integration reads. Neither is a substitute for leaving the
@@ -136,11 +146,11 @@ failing in a way that does not look like a failure.
       (Vercel → Project → Settings → Deployment Protection → Protection Bypass for Automation).
       Without it that job skips with a notice; nothing else is affected. Set it before the first PR
       run or it skips invisibly on every one.
-- [ ] **Before the first `dev` → `master` release merge**, confirm the project is still not
-      connected to the repository. That merge is what puts `web/` on `master`, and on a connected
-      project a `master` push is a real Vercel production deploy built from the Gradle repo root,
-      with no Actions run competing. Getting this wrong breaks the site at release time, not at
-      setup time.
+- [ ] **Before every `dev` → `master` merge**, confirm the project is still not connected to the
+      repository. On a connected project a `master` push starts a Vercel production build from the
+      Gradle repo root — no `package.json` — at the same moment this workflow deploys a gated
+      artifact to the same alias, and whichever finishes last wins. It breaks the site at release
+      time, not at setup time, which is why it is worth re-checking rather than assuming.
 
 "Include files outside of the Root Directory" no longer matters: the whole repository is checked out
 in Actions, so `repo-facts` reading `gradle.properties` from the root just works.
@@ -211,9 +221,11 @@ project has claimed this hostname yet" — it does not mean the DNS record is wr
 
 - [ ] Weekly external link check runs against the live site and opens an issue on failure. It is
       dormant today: `schedule` and the Run-workflow button only exist for workflows on the **default
-      branch**, and `web-link-check.yml` is on `dev`. The first `dev` → `master` release merge arms
-      it — so if that merge lands before the site is deployed, it files an issue every Tuesday until
-      it is. Deploy first, or expect the noise.
+      branch**, and `web-link-check.yml` is on `dev`. Putting `web/` on `master` arms it — the same
+      merge that makes production deploys possible at all — so the window between "armed" and
+      "deployed" is however long the Vercel setup in §5 takes. It runs Tuesdays at 06:00 UTC and
+      files an issue against a site that is not up yet; finish §5 and §6 inside that window, or
+      expect one issue and close it.
 - [ ] The Lighthouse job (now the second job in `web-deploy.yml`) reports as a warning only. If it
       ever becomes a required check, the site cannot ship a legitimate large screenshot.
 - [ ] Neither `web-ci.yml` nor `web-deploy.yml` has been added to a branch ruleset. Both are

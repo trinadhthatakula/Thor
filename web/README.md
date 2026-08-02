@@ -1,7 +1,7 @@
 # Thor landing page
 
 The static site at **<https://thor.trinadhthatakula.com>** — seven routes plus a 404, built with
-Astro, deployed on Vercel from the `dev` branch. No backend, no forms, no analytics, and no client
+Astro, deployed on Vercel from the `master` branch. No backend, no forms, no analytics, and no client
 JavaScript except the theme toggle.
 
 It lives inside the app repository on purpose: a feature and the page that describes it move in one
@@ -74,10 +74,16 @@ ceiling and hand you a green local build for the wrong reason.
 
 ## Deploying
 
-**Deploys run from `.github/workflows/web-deploy.yml`, not from Vercel's Git integration.** A push to
-`dev` touching the site deploys production; a PR into `dev` or `master` deploys a preview and
-comments the URL. `web/docs/deploy.md` is the reference — secrets, project settings, rollback. What
-follows is only the part you need in order not to break it from inside this directory.
+**Deploys run from `.github/workflows/web-deploy.yml`, not from Vercel's Git integration.**
+`master` publishes and `dev` stages: a push to `master` touching the site deploys production, a push
+to `dev` deploys a preview of the integrated site, and a PR into either deploys a preview and
+comments the URL. Site work therefore merges to `dev` like everything else, and the live site changes
+only when `dev` is merged to `master`.
+
+A PR based on `master` additionally builds with `REQUIRE_SCREENSHOTS=1`, so `check:screenshots` is
+strict on the release PR's preview rather than first becoming strict on the deploy that is already
+live. `web/docs/deploy.md` is the reference — secrets, project settings, rollback. What follows is
+only the part you need in order not to break it from inside this directory.
 
 The trade is deliberate: under the Git integration, four dashboard settings decide whether the gates
 above run at all, none of them is visible in a diff, and every one produces **no error when wrong**.

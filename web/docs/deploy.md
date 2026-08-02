@@ -6,16 +6,33 @@ Vercel.
 
 | Trigger | Target | Result |
 |---|---|---|
-| push to `dev` touching the web paths | production | live at `thor.trinadhthatakula.com` |
-| pull request into `dev` or `master` touching the web paths | preview | URL commented on the PR |
-| `workflow_dispatch` from `dev` | production | same as a push |
+| push to `master` touching the web paths | production | live at `thor.trinadhthatakula.com` |
+| push to `dev` touching the web paths | preview | staging URL for the integrated site, in the run summary |
+| pull request into `master` touching the web paths | preview, production-strict | URL commented on the PR |
+| pull request into `dev` touching the web paths | preview | URL commented on the PR |
+| `workflow_dispatch` from `master` | production | same as a push to `master` |
 | `workflow_dispatch` from any other branch | preview | escape hatch, deploys nothing live |
 
-**The two `workflow_dispatch` rows do not work yet.** GitHub only offers the Run-workflow button for
-workflows that exist on the **default branch**, and `web-deploy.yml` is on `dev`, not `master`. Until
-the first `dev` → `master` release merge there is no manual trigger at all: the only ways to deploy
-are a push to `dev` or a pull request. Do not plan the first deploy around a button that is not
-there.
+## The branch model: `master` publishes, `dev` stages
+
+Site work merges to `dev` like everything else. The live site changes only when `dev` is merged to
+`master`, which is a deliberate act rather than a side effect of pushing — that is the whole reason
+production is not `dev`.
+
+Three consequences worth stating, because each is the kind of thing that is obvious once and then
+forgotten:
+
+- **A `dev` push still deploys**, as a preview. That is on purpose. A per-PR preview only ever shows
+  one branch; the `dev` preview is the only URL that shows several merged site PRs *together*, which
+  is the state the release merge is about to publish.
+- **A pull request into `master` is built to the production standard.** The workflow sets
+  `REQUIRE_SCREENSHOTS=1` when `github.base_ref` is `master`, which makes `check:screenshots` refuse a
+  placeholder frame on a *preview* build. Without it, the first build ever held to the production
+  standard would be the one already serving on the live domain.
+- **`workflow_dispatch` needs this file on `master`**, because GitHub only offers the Run-workflow
+  button for workflows on the **default branch**. That is the same condition production deploys need,
+  so the two arrive together: until `web/` reaches `master` there is no production deploy and no
+  manual trigger, and after it there are both.
 
 "the web paths" is `web/**`, `gradle.properties`, `gradle/libs.versions.toml` and the workflow file
 itself. The two Gradle files are in the list because `web/src/lib/repo-facts` derives the site's
@@ -105,11 +122,12 @@ Far fewer matter than under the Git integration, because the build no longer hap
   `web/vercel.json` sets `buildCommand`, `installCommand` and `outputDirectory`, and `vercel.json`
   takes precedence over project settings. That precedence is what keeps a dashboard edit from
   silently removing the gate chain.
-- **Production Branch — leave it alone, and specifically never set it to `dev`.** Which deploy is
-  production is decided by `web-deploy.yml` (`--prod` only for `dev`), not by Vercel. The default is
-  `main` if it exists, otherwise `master`; this repo has `master` and no `main`. Setting it to `dev`
-  is the one edit that would make a connected Git integration race this workflow for the production
-  alias — the exact failure the section below is about.
+- **Production Branch — it does nothing here, and there is no safe value for it.** Which deploy is
+  production is decided by `web-deploy.yml` (`--prod` only for a `master` push), not by Vercel. The
+  setting only becomes live if the repository is connected, and then the *default* is the dangerous
+  one: Vercel defaults to `main` if it exists, otherwise `master`, and `master` is now this
+  workflow's production branch too. Do not look for a setting that makes a connected project safe —
+  there isn't one. Leave the repository disconnected; see the section below.
 - **Deployment Protection** — a team-level default can protect preview deployments. That does not
   break the deploy, but the URL commented on a PR then returns 401 to anyone outside the team, with
   no notice explaining why.
@@ -124,16 +142,15 @@ Far fewer matter than under the Git integration, because the build no longer hap
 `vercel.json` kill switch below is defence in depth, and it is worth having, but it is not the thing
 being relied on.
 
-If the project *is* connected while `web-deploy.yml` exists, the consequences are not the ones this
-file used to claim. Vercel's production branch would be `master`, so a `dev` push would produce a
-Git-sourced **preview** — no alias race. The real hazards are worse and quieter:
+If the project *is* connected while `web-deploy.yml` exists, two things go wrong:
 
 - every commit deploys, Android-only ones included, because the path filter lives in a file that may
   not be read (below);
-- once `web/` reaches `master` at the first release merge, a push to `master` is a genuine Vercel
-  **production** deploy built from the repository root — which is a Gradle project with no
-  `package.json` — and `web-deploy.yml` has no `master` push trigger, so nothing competes with it.
-  That is not a race. It is an uncontested overwrite of the production alias by a broken build.
+- a push to `master` produces **two production deploys racing for the same alias**. Vercel's default
+  production branch is `master`, which is also this workflow's, so the release merge fires both a
+  Git-sourced Vercel build — started from the repository root, a Gradle project with no
+  `package.json` — and this workflow's gated one. Whichever finishes last wins. Nothing in either
+  system reports the collision; the only symptom is the live site sometimes being the wrong thing.
 
 The kill switch is:
 
@@ -166,12 +183,17 @@ to silently green. Leave the dashboard's Ignored Build Step on "Automatic".
 
 ## What the pipeline checks before it uploads
 
-**Make the first credentialed run a push to `dev`, not a test pull request.** Vercel documents that
-"the first deployment of a new project is always a production deployment", including when the CLI is
-run without `--prod`. A PR run would be built with `VERCEL_ENV=preview` — `check:screenshots` in
-advisory mode, preview environment variables pulled — and would still become the deployment the
-domain later attaches to, while the PR comment calls it a preview. Testing on a PR is the natural
-instinct and it is the one that puts a non-strict build on the production alias.
+**Make the first credentialed run a `workflow_dispatch` from `master`, not a test pull request.**
+Vercel documents that "the first deployment of a new project is always a production deployment",
+including when the CLI is run without `--prod`. Whatever runs first after the three secrets land is
+therefore the production deployment, and the domain will later attach to it — so it should be a run
+that *knew* it was production. A dispatch from `master` builds with `VERCEL_ENV=production`,
+`--prod`, and the strict screenshot gate.
+
+The trap is the natural instinct: add the secrets, then push a test PR to see whether it works. That
+run is built with `VERCEL_ENV=preview` and preview environment variables, becomes the production
+deployment anyway, and the PR comment calls it a preview. Add the secrets when no web pull request is
+open and no web push is about to land, and dispatch immediately.
 
 `vercel build` runs `npm run build`, which is the gate chain: `check:types`, `astro build`,
 `check:links`, `check:claims`, `check:markup`, `check:sitemap`, `check:screenshots`. `npm test` runs
@@ -190,6 +212,12 @@ vacuously.
 `vercel build` the build runs outside Vercel's infrastructure, where Vercel's documentation warns
 that System Environment Variables are not injected. Letting `--prod` imply it would have quietly
 downgraded that gate to advisory.
+
+`REQUIRE_SCREENSHOTS` is set on the same two steps and is the other half of that switch — the check
+is strict when `VERCEL_ENV=production` **or** `REQUIRE_SCREENSHOTS=1`. The workflow sets it to `1` on
+a pull request whose base is `master`, so the release PR's preview is held to the production standard
+before the merge that publishes, and it is empty everywhere else, because work in progress is allowed
+to carry a placeholder.
 
 ## Lighthouse
 
@@ -216,7 +244,8 @@ vercel promote <deploy-url>  # to a specific one
 ```
 
 or Vercel → Project → Deployments → "…" → Promote to Production. Rolling back does not revert git,
-so follow it with a revert commit or the next push to `dev` will put the bad build straight back.
+so follow it with a revert commit on `master` or the next `master` push will put the bad build
+straight back.
 
 ## Path filters and required checks
 
