@@ -12,6 +12,15 @@ Vercel.
 | pull request into `dev` touching the web paths | preview | URL commented on the PR |
 | `workflow_dispatch` from `master` | production | same as a push to `master` |
 | `workflow_dispatch` from any other branch | preview | escape hatch, deploys nothing live |
+| **pull request from a fork** | **nothing** | job skipped — see below |
+
+The two pull-request rows mean a pull request **from a branch in this repository**. A forked PR gets
+no repository secrets, so the deploy job would fail on an empty token — a red check the contributor
+cannot fix and did not cause — and the job skips itself instead. A fork PR therefore gets no preview
+URL, no comment, and no strict screenshot check. Nothing is silently weakened by that: the `master`
+push re-runs every gate, strictly, *before* it uploads, so a placeholder that slipped through a fork
+PR turns the deploy red and leaves the previous deployment serving. It is caught after the merge
+rather than before it.
 
 ## The branch model: `master` publishes, `dev` stages
 
@@ -25,10 +34,12 @@ forgotten:
 - **A `dev` push still deploys**, as a preview. That is on purpose. A per-PR preview only ever shows
   one branch; the `dev` preview is the only URL that shows several merged site PRs *together*, which
   is the state the release merge is about to publish.
-- **A pull request into `master` is built to the production standard.** The workflow sets
-  `REQUIRE_SCREENSHOTS=1` when `github.base_ref` is `master`, which makes `check:screenshots` refuse a
-  placeholder frame on a *preview* build. Without it, the first build ever held to the production
-  standard would be the one already serving on the live domain.
+- **A pull request into `master` is built to the production standard**, as long as it comes from this
+  repository rather than a fork. The workflow sets `REQUIRE_SCREENSHOTS=1` when `github.base_ref` is
+  `master`, which makes `check:screenshots` refuse a placeholder frame on a *preview* build. Without
+  it, the first build ever held to the production standard would be the one already serving on the
+  live domain. The release PR comes from `dev`, so in the flow this was written for it always
+  applies.
 - **`workflow_dispatch` needs this file on `master`**, because GitHub only offers the Run-workflow
   button for workflows on the **default branch**. That is the same condition production deploys need,
   so the two arrive together: until `web/` reaches `master` there is no production deploy and no
@@ -73,10 +84,20 @@ npx vercel@58 link      # answer "create a new project" when it offers
 | Framework in the pulled settings | `astro`, auto-detected inside `web/` | `null` |
 
 The import flow produces the one combination that is confirmed broken. `vercel build` computes its
-work path as `join(cwd, rootDirectory)`, and this workflow already runs the CLI from inside `web/`,
-so Root Directory `web` resolves to `web/web`
-(`packages/cli/src/commands/build/index.ts`; `vercel/vercel#16749` documents the same double-append
-as a live bug). Worse, it does not fail the way this repo advertises: with `framework: "astro"` in
+work path as `join(cwd, rootDirectory)` (`packages/cli/src/commands/build/index.ts`), so the breakage
+needs both halves: the CLI running from `web/`, *and* a Root Directory of `web`. This workflow does
+the first unconditionally, which is why the second must stay unset — `join('…/web', 'web')` is
+`web/web`, a path that does not exist. Either half alone is fine.
+
+That is the behaviour of **`vercel@58.4.4`**, read from source; `vercel@58` resolves to exactly that
+today, and it is what the workflow installs. Vercel has a fix in flight for the general monorepo case
+— `vercel/vercel#16749`, which re-anchors per-directory links to the repository root — but it is
+closed unmerged and its `VERCEL_RESOLVE_ROOT_DIRECTORY` guard does not appear anywhere in the
+published 58.4.4 tarball. If a later CLI does land it, this stops being a build failure and starts
+being silently fine, which changes nothing about the advice and everything about what the tripwire
+below catches.
+
+Worse, it does not fail the way this repo advertises: with `framework: "astro"` in
 the pulled settings the build dies first at `Command "astro build" exited with 127`, which reads as a
 broken toolchain and says nothing about paths. The "Gate the staged artifact" tripwire only fires
 when the pulled settings are all null — that is, only when the project was made with the CLI.
@@ -167,7 +188,7 @@ repo-root copy is the one that is plausibly read, and the `web/` copy plausibly 
 cost nothing and remove the guess. Do not delete either.
 
 Even correctly placed, the flag is not a dependable kill switch: `vercel/vercel#11176`
-("deploymentEnabled option in vercel.json is ignored") has been open since November 2024 with
+("deploymentEnabled option in vercel.json is ignored") has been open since **19 February 2024** with
 independent confirmations, and the file must exist on the branch being pushed for it to apply at
 all. Set it, then **verify by observation** — push one no-op commit under `web/` and count the
 deployments the Vercel project creates. If there is more than one, disconnect the repository.
