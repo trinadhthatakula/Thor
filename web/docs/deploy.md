@@ -14,8 +14,11 @@ run**. It is not the deployer; see "The dormant Actions pipeline" at the end, an
 | push to `master` touching nothing the site reads | starts, then aborts | `ignoreCommand` exits 0, the deployment is `CANCELED`, the previous production deployment keeps serving |
 | push to `dev` touching the web paths | preview build | staging URL, on the commit status |
 | push to any other branch touching the web paths | preview build | same |
-| pull request from a branch in this repository | preview build | URL commented on the PR by the Vercel bot |
+| pull request from a branch in this repository | preview build | aliased at `thor-git-<branch>-…vercel.app`, `success` commit status, URL commented by the Vercel bot |
 | pull request from a fork | not yet observed here | Vercel documents a deployment and a comment per PR; confirm on the first fork PR rather than assuming |
+
+Preview URLs sit behind Deployment Protection, so the alias answers 302 rather than serving. That is
+the protected state, not a broken deploy — a nonexistent alias 404s.
 
 A failed or cancelled build does not replace what is serving. Vercel swaps the alias only on success,
 so the worst case is a **stale** site, never a wrong one. That property is the reason several of the

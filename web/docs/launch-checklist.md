@@ -122,14 +122,19 @@ confirming because **none of them is visible in a diff and most fail without an 
       Those three being unset is what keeps `web-deploy.yml` dormant. Setting them without first
       disconnecting the Git integration starts two production deployments racing for the same alias
       on every `master` push, with no error anywhere. See the follow-up for the interlock.
-- [ ] **The first real push is still untested.** The live deployment was started from the dashboard
-      at import; no commit has been pushed to any branch since the project existed. So the first
-      `master` push touching `web/` is the first time the trigger path runs at all — watch the
-      Deployments list for it, and confirm exactly one row appears.
+- [x] **Push-triggered deploys work.** Verified 2026-08-02 on the first branch push after the import:
+      Vercel built it, posted a `success` commit status, and aliased it at
+      `thor-git-<branch>-…vercel.app` (302 — Deployment Protection, so the alias exists but is not
+      publicly readable). The build succeeding is itself the proof that Root Directory is `web` and
+      that reading outside it works — `/download` renders the `minSdk` fact derived from
+      `gradle/libs.versions.toml`.
+- [ ] **The first *production* push is still unobserved.** Everything above was a preview. Watch the
+      Deployments list on the first `master` merge that touches `web/` and confirm exactly one row.
 
-Two traps that will corrupt that first test if the commit does not touch `web/`: `ignoreCommand` will
-cancel the build, and Vercel's "Skipping unaffected projects" setting can skip it before that. Test
-with a commit that touches `web/`.
+Two traps that corrupt that test if the commit does not touch `web/`: `ignoreCommand` cancels the
+build, and Vercel's "Skipping unaffected projects" setting can skip it before that. Test with a
+commit that touches `web/`. A row in state `Canceled` means `ignoreCommand` fired — that is a
+different thing from no row at all.
 
 Optional, for the dormant Lighthouse job only: **`VERCEL_AUTOMATION_BYPASS_SECRET`** (Vercel →
 Project → Settings → Deployment Protection → Protection Bypass for Automation). Nothing needs it
