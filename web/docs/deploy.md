@@ -5,7 +5,7 @@ repository from the Vercel dashboard, its Root Directory is `web`, and every bui
 Vercel. `web/vercel.json` is the only part of that pipeline that lives in git.
 
 `.github/workflows/web-deploy.yml` is a complete, reviewed, CLI-driven alternative that has **never
-run**. It is not the deployer; see "The dormant Actions pipeline" at the end, and
+deployed anything**. It is not the deployer; see "The dormant Actions pipeline" at the end, and
 `docs/follow-ups/vercel-actions-deploy.md` for the reactivation procedure.
 
 | Trigger | What Vercel does | Result |
@@ -68,8 +68,13 @@ git diff --quiet HEAD^ HEAD -- . ':/gradle.properties' ':/gradle/libs.versions.t
 - **The window is one commit, not one push.** Vercel clones with `git clone --depth=10`, so `HEAD^`
   is always available, but `HEAD^ HEAD` examines only the tip commit — where GitHub's `paths:` filter
   examines a whole PR diff. A three-commit push to `dev` in which only the first touches `web/` is
-  skipped. A release merge into `master` is safe: `HEAD^` on a merge commit is the previous `master`
-  tip, so the diff spans everything merged.
+  skipped. **What that costs is a missing preview, not a stale production site.** A release merge
+  into `master` is safe by construction: `HEAD^` on a merge commit is the previous `master` tip, so
+  the diff spans everything merged — and nothing pushes to `master` except merges, so the gap cannot
+  reach production while that holds. Closing it properly would need the push's base commit, which
+  Vercel does not expose to `ignoreCommand`; the alternative of building unconditionally rebuilds the
+  site on every Android commit, which is the thing this filter exists to stop. The gap is accepted
+  knowingly. If `master` ever takes a direct multi-commit push, this becomes real.
 - **A skipped build still costs a deployment record and a build slot.** It is fast, not free.
 - `vercel.json`'s `ignoreCommand` **overrides** the dashboard's Ignored Build Step, so leave that
   dashboard field empty and let the reviewed copy win.
@@ -123,10 +128,15 @@ that touches `web/` and count the deployments the project creates.
 
 ## Where a failure shows up
 
-Vercel posts a GitHub commit status for every commit it deploys — success, failure, or skipped — and
-comments the preview URL on pull requests. Both are on by default. So a failed Git-integration build
-is visible on the commit and on the PR without any Actions job; this is not a red box on a dashboard
-nobody has open.
+Vercel posts a GitHub commit status for every commit it creates a deployment for, and comments the
+preview URL on pull requests. Both are on by default. So a failed Git-integration build is visible on
+the commit and on the PR without any Actions job; this is not a red box on a dashboard nobody has
+open.
+
+Success and failure have both been observed here. What a commit *skipped* by `ignoreCommand` reports
+— a status GitHub treats as passing, or no status at all — has not been, which is why the required-
+checks section below says not to make Vercel's status required until an Android-only commit has been
+watched through.
 
 ## What is gated, and what is not
 
@@ -157,9 +167,10 @@ intermittently serving the older build.
 `web/vercel.json` no longer carries `"git": { "deploymentEnabled": false }`, and the repository-root
 `/vercel.json` that held a second copy has been deleted. That flag was the kill switch for the
 opposite arrangement; keeping it while relying on the Git integration is what would stop the site
-deploying. If the Actions path is ever reactivated, restore it to `web/vercel.json` only — with Root
-Directory set to `web`, that is the copy Vercel reads — and treat it as defence in depth rather than
-the guarantee. Disconnecting the repository is the guarantee.
+deploying. If the Actions path is ever reactivated, note that reactivation *also* clears Root
+Directory to empty, and which `vercel.json` Vercel reads follows Root Directory — so the flag would
+belong at `/vercel.json`, not in `web/vercel.json`. Either way it is defence in depth.
+**Disconnecting the repository is the guarantee.**
 `docs/follow-ups/vercel-actions-deploy.md` carries the full interlock.
 
 ## Rolling back

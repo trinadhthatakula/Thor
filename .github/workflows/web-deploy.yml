@@ -7,8 +7,9 @@ name: Web Deploy
 # THIS WORKFLOW IS DORMANT. IT IS NOT WHAT DEPLOYS THE SITE.
 #
 # The site deploys from Vercel's Git integration, on a project imported from the
-# Vercel dashboard with Root Directory `web`. This file has never run: the first
-# step looks for VERCEL_TOKEN / VERCEL_ORG_ID / VERCEL_PROJECT_ID, finds none,
+# Vercel dashboard with Root Directory `web`. This workflow has never deployed:
+# its first step looks for VERCEL_TOKEN / VERCEL_ORG_ID / VERCEL_PROJECT_ID,
+# finds none,
 # prints a notice and skips everything after it. Every green "Web Deploy" tick in
 # this repo's history is that skip — read the notice, not the tick.
 #
@@ -29,10 +30,15 @@ name: Web Deploy
 # `"git": { "deploymentEnabled": false }` used to live in web/vercel.json and in
 # /vercel.json. Both are gone — that flag is the kill switch for THIS pipeline,
 # and keeping it while relying on the Git integration is what would stop the site
-# deploying. Restore it to web/vercel.json only (with Root Directory `web` that
-# is the copy Vercel reads) if this path is ever turned back on, and treat it as
-# defence in depth: vercel/vercel#11176 has it reported as ignored since
-# 19 February 2024. Disconnecting is the guarantee.
+# deploying. DISCONNECTING THE REPOSITORY IS THE INTERLOCK; the flag is not, for
+# two reasons. Which vercel.json Vercel reads follows Root Directory, and the
+# step above clears Root Directory to empty — so the file a reconnected
+# integration would read is /vercel.json, the copy that was deleted, not
+# web/vercel.json. And vercel/vercel#11176 has reported it ignored since
+# 19 February 2024, while Vercel's docs still describe it as disabling
+# commit-triggered deploys; which behaviour this project gets is unverified. If
+# it is restored at all, put it in whichever file matches the Root Directory then
+# in force, and prove it with one no-op commit before relying on it.
 # ────────────────────────────────────────────────────────────────────────────
 #
 # Path filter: identical to web-ci.yml's, and for the same reason. The site

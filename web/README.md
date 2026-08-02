@@ -75,10 +75,16 @@ ceiling and hand you a green local build for the wrong reason.
 ## Deploying
 
 **Deploys run from Vercel's Git integration**, on a project created by importing this repository
-from the Vercel dashboard. `master` publishes and `dev` stages: a push to `master` touching the site
-deploys production, a push to any other branch deploys a preview, and a pull request gets a preview
-URL commented by Vercel's own bot. Site work therefore merges to `dev` like everything else, and the
-live site changes only when `dev` is merged to `master`.
+from the Vercel dashboard. `master` publishes and `dev` stages. Every trigger below is additionally
+conditional on the commit touching the deploy paths — anything under `web/`, plus `gradle.properties`
+and `gradle/libs.versions.toml`, the two files the site derives facts from. A commit touching none of
+them is aborted by `web/vercel.json`'s `ignoreCommand` and lands as a `CANCELED` deployment, which is
+correct and is most Android commits.
+
+Given a commit that does touch them: a push to `master` deploys production, a push to any other
+branch deploys a preview, and a pull request gets a preview URL commented by Vercel's own bot. Site
+work therefore merges to `dev` like everything else, and the live site changes only when `dev` is
+merged to `master`.
 
 Nothing in this repository triggers the deploy. Four settings in the Vercel dashboard do, and they
 are listed in `web/docs/deploy.md` — that file is the reference for project settings, the domain and

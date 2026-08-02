@@ -75,11 +75,14 @@ gate which exits 0 for the wrong reason looks identical to one that passes.
       See `web/docs/screenshot-checklist.md`. The build is green with placeholders by design; this
       is the check that stops "green" from meaning "finished".
 
-      **This one is enforced, not just listed.** `check:screenshots` runs in the `build` chain on
-      every build, but it only *fails* when `VERCEL_ENV=production` or `REQUIRE_SCREENSHOTS=1` — so
-      placeholders stay green locally, in CI and on `dev` previews, and a production deploy carrying
-      one is refused. Vercel injects `VERCEL_ENV` itself, which is why the "Enable access to System
-      Environment Variables" item in §5 matters: with it off, the strict half never runs.
+      **Whether this is enforced or only advisory is currently unconfirmed.** `check:screenshots`
+      runs in the `build` chain on every build, but it only *fails* when `VERCEL_ENV=production` or
+      `REQUIRE_SCREENSHOTS=1` — so placeholders stay green locally, in CI and on `dev` previews by
+      design, and the intent is that a production deploy carrying one is refused. That intent rests
+      entirely on Vercel injecting `VERCEL_ENV`, which it does only when **"Enable access to System
+      Environment Variables" is on** — the §5 item that is still unticked. With that box off,
+      `isProductionDeploy()` returns false and the production build downgrades silently to advisory
+      placeholder checking. Treat this as unresolved until that setting has been inspected in Vercel.
 
       Nothing sets `REQUIRE_SCREENSHOTS=1` on a pull request into `master` any more — that was the
       Actions pipeline, which is dormant. So the release PR's preview is *not* held to the production
@@ -180,9 +183,14 @@ wildcard would pass a date check and still not be this project's certificate.
 
 **Do not diagnose this in a browser first.** Vercel serves a two-year HSTS header and 308s plain HTTP
 to HTTPS, so a browser that ever saw the valid certificate will not let you click through, and there
-is no HTTP fallback to test with. `ERR_CERT_DATE_INVALID` on this host means "no project has claimed
-this hostname" — it does not mean the DNS record is wrong, and the obvious fix breaks a working
-record.
+is no HTTP fallback to test with. `ERR_CERT_DATE_INVALID` says only that the certificate presented
+failed date validation. On this host that is *consistent* with "no project has claimed this
+hostname" — that is what it turned out to be pre-launch, the edge falling back to the expired
+wildcard — but it is equally consistent with a certificate that failed to provision or renew, or
+with DNS pointing somewhere else entirely. Establish which before acting: read the SAN, dates and
+issuer with the `openssl` command above, confirm the DNS record, and check the domain's state in
+Vercel. **Do not change DNS on the strength of the browser error alone** — pre-launch, the record was
+already correct and the obvious "fix" would have broken it.
 
 If it ever needs re-doing:
 

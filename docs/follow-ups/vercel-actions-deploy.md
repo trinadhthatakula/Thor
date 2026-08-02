@@ -69,7 +69,10 @@ so this is a smaller gap than it was before the project existed.
 
 ## The interlock: this is one change, not two
 
-**Turning the Actions path on requires turning Vercel's Git integration off in the same commit.**
+**Turning the Actions path on requires turning Vercel's Git integration off in the same activation
+change.** Not the same commit — disconnecting is a dashboard operation (Vercel → Project → Settings →
+Git → Disconnect), so this is one coordinated change spanning a pull request and a dashboard action,
+and the dashboard half has to land first.
 
 Vercel resolved this project's Production Branch to `master` at import time, by the second of its
 four documented rules — a branch named `main`, else a branch named `master`, else (Bitbucket only)
@@ -81,21 +84,30 @@ checkout, and the workflow's, carrying the gated artifact. Whichever finishes la
 system reports the collision. The only symptom is the live site intermittently being the wrong build,
 which is the failure mode that looks least like a failure.
 
-There are two ways to turn the Git integration off, and the second is the one to rely on:
+There are two ways to turn the Git integration off, and only the second is an interlock:
 
-1. Restore `"git": { "deploymentEnabled": false }` to `web/vercel.json` — and only there. With Root
-   Directory set to `web`, that is the copy Vercel reads, which is why the repository-root
-   `/vercel.json` that used to hold a second copy was deleted rather than kept. Treat it as defence
-   in depth rather than the guarantee:
+1. Restore `"git": { "deploymentEnabled": false }`. **Defence in depth, not the guarantee** — and if
+   you restore it, put it in the file the *reactivated* configuration will read. That is not
+   `web/vercel.json`: which `vercel.json` Vercel reads follows Root Directory, and step 2 of the
+   procedure below clears Root Directory to empty, so a reconnected integration would read
+   `/vercel.json` at the repository root — the copy deleted when this model was adopted. Getting that
+   backwards puts the kill switch in a file nothing reads.
+
+   Whether it fires at all is an open compatibility risk rather than a settled bug. Vercel's current
+   documentation still says the flag disables automatic Git deployments;
    [`vercel/vercel#11176`](https://github.com/vercel/vercel/issues/11176) ("deploymentEnabled option
    in vercel.json is ignored") has been open since 19 February 2024 with three independent
-   confirmations, no labels and no Vercel response; the file has to exist on the branch being pushed
-   for it to apply at all; and Vercel scopes it only to deployments triggered *upon commits*, saying
-   nothing about dashboard, CLI or deploy-hook deployments.
+   confirmations, no labels and no Vercel response. Both can be true — the bug may be conditional on
+   settings this project does not share. Two further limits are documented rather than disputed: the
+   file has to exist on the branch being pushed for it to apply at all, and Vercel scopes it to
+   deployments triggered *upon commits*, saying nothing about dashboard, CLI or deploy-hook
+   deployments. So keep it if you like, but observe one no-op commit and confirm no deployment is
+   created before treating it as load-bearing.
 2. Vercel → Project → Settings → Git → **Disconnect**. This is the guarantee.
 
-Then verify by observation rather than by reading the setting back: push one no-op commit under
-`web/` and count the deployments the project creates. One is correct. Two means the switch did not
+Then verify by observation rather than by reading the setting back: push one no-op commit that
+changes a file under `web/` — an empty commit has no path for the filter to match, so it proves
+nothing — and count the deployments the project creates. One is correct. Two means the switch did not
 take.
 
 ## The Root Directory inversion
@@ -129,8 +141,9 @@ look like a failure.
 
 1. **Decide it is worth it.** Nothing below is reversible in one click, and the current setup works.
 2. **Disconnect the repository** in Vercel → Settings → Git, and clear **Root Directory** to empty in
-   Settings → Build & Deployment. Restore the `git.deploymentEnabled` block to `web/vercel.json` in
-   the same pull request.
+   Settings → Build & Deployment. Disconnecting is what makes this safe; if you also restore the
+   `git.deploymentEnabled` block, it belongs in `/vercel.json` at the repository root, because
+   clearing Root Directory is what decides which file Vercel would read.
 3. **Get the project id and org id**: `cd web && npx vercel@58 login && npx vercel@58 link`, then read
    `orgId` and `projectId` out of `.vercel/project.json`. That file is gitignored, so it stays local.
 4. **Add all three secrets in one sitting** (Settings → Secrets and variables → Actions). A partial
@@ -161,8 +174,16 @@ Any one of these turns this from an improvement into a fix:
 
 ## Acceptance
 
-- A push to `master` produces exactly **one** production deployment, and it is the one carrying the
-  artifact `web-deploy.yml` gated.
-- A push to `dev` produces exactly one preview deployment.
+The counts below apply **only to pushes that touch the deploy paths** — anything under `web/`, plus
+`gradle.properties` and `gradle/libs.versions.toml`. Test with a real one-line change under `web/`,
+not an empty commit: an empty commit matches no path and would pass the test by doing nothing.
+
+- A push to `master` **touching those paths** produces exactly **one** production deployment, and it
+  is the one carrying the artifact `web-deploy.yml` gated.
+- A push to `dev` touching those paths produces exactly one preview deployment.
+- A push touching **none** of them produces either no deployment at all or one `CANCELED` deployment,
+  and nothing is published. Which of the two depends on the model in force: `web-deploy.yml`'s
+  `paths:` filter means the job never starts, where the Git integration starts a build and aborts it
+  in `ignoreCommand`. Either is a pass; a *successful* deployment is not.
 - `web/docs/deploy.md`, `web/docs/launch-checklist.md` and `web/README.md` describe the model that is
   actually running, with no sentence left over from the other one.
