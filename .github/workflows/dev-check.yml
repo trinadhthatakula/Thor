@@ -20,7 +20,15 @@ on:
       # web-ci.yml already gates it. Its own build reads gradle.properties and
       # gradle/libs.versions.toml, which are deliberately NOT ignored here, so a
       # chore(release) bump still runs everything.
+      #
+      # The site's plumbing is listed alongside it because 'web/**' alone does not
+      # cover it, and a push carrying only site plumbing would therefore still run
+      # this whole workflow. That is not hypothetical: the merge that first puts the
+      # landing page on master carries all four of these.
       - 'web/**'
+      - 'vercel.json'
+      - '.github/workflows/web-*.yml'
+      - '.github/labeler.yml'
       - 'LICENSE'
       - '.gitignore'
       - '.github/**/*.md'

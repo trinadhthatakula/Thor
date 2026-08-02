@@ -17,7 +17,14 @@ on:
       # Gradle module, and cannot reach the APK or the Play upload. It has its own
       # gate in web-ci.yml and its own deploy in Vercel. gradle.properties stays out
       # of this list, so a release push still builds.
+      #
+      # The three entries after 'web/**' are the site's plumbing, which that glob
+      # does not cover — without them a push carrying only site plumbing would run
+      # a full build and a Play upload to prove nothing.
       - 'web/**'
+      - 'vercel.json'
+      - '.github/workflows/web-*.yml'
+      - '.github/labeler.yml'
       - 'LICENSE'
       - '.gitignore'
       - '.github/**/*.md'

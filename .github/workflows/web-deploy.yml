@@ -13,13 +13,21 @@ name: Web Deploy
 # in git. See web/docs/deploy.md.
 #
 # ────────────────────────────────────────────────────────────────────────────
-# THE ONE THING THAT MUST STAY TRUE: `web/vercel.json` sets
-#   "git": { "deploymentEnabled": false }
-# If that is ever removed while this workflow exists, EVERY web commit deploys
-# twice — once by Vercel's Git integration and once by this workflow — and the
-# two race for the production alias. The loser is whichever finishes first, so
-# the symptom is the site intermittently serving the older of two commits.
-# Nothing reports this. The two settings are one decision.
+# THE ONE THING THAT MUST STAY TRUE: the Vercel project is NOT connected to the
+# GitHub repository. Create it with `cd web && vercel link`, never by importing
+# the repo — importing also sets Root Directory to `web`, which resolves to
+# `web/web` because this workflow already runs the CLI from inside web/.
+#
+# `"git": { "deploymentEnabled": false }` is defence in depth, and it is in TWO
+# files — web/vercel.json and /vercel.json — because Vercel does not document
+# which one its Git integration reads. Delete neither.
+#
+# If the repo does get connected, the consequence is now a genuine race, not a
+# theoretical one. Vercel's default production branch is `master`, which is also
+# this workflow's production branch, so one master push fires two production
+# deploys at the same alias: this one, carrying a gated artifact, and a
+# Git-sourced Vercel build started from the Gradle repository root — which has no
+# package.json. Whichever finishes last wins the alias.
 # ────────────────────────────────────────────────────────────────────────────
 #
 # Path filter: identical to web-ci.yml's, and for the same reason. The site
@@ -27,7 +35,7 @@ name: Web Deploy
 # gradle/libs.versions.toml (web/src/lib/repo-facts), so a chore(release) commit
 # touches nothing under web/ and still changes what the site renders.
 #
-# That list lives in FOUR places: here, web-ci.yml's paths:, the (inert)
+# That list lives in FOUR places: here, web-ci.yml's paths:, the
 # ignoreCommand in web/vercel.json, and — as GRADLE_PROPERTIES and
 # VERSION_CATALOG — web/src/lib/repo-facts/read.ts. Deriving a new fact from a
 # new file means editing all four in the same commit. Edit read.ts alone and the
@@ -39,9 +47,21 @@ name: Web Deploy
 # GitHub reports a path-skipped required check as "Expected — Waiting for
 # status" forever, which would leave every Android-only PR unmergeable.
 
+# BRANCH MODEL: `master` publishes, `dev` stages. Both are push triggers, and the
+# difference between them is the `--prod` flag resolved below, not the trigger
+# list. Site work is merged to `dev` like everything else and gets a real,
+# deployed preview URL for the integrated state; the live site changes only when
+# `dev` is merged to `master`. That merge is a deliberate act, which is the whole
+# point — "we are sure" is a decision someone makes, not a side effect of pushing.
+#
+# `dev` is kept as a push trigger on purpose. Dropping it would mean the only
+# deployed artifact between releases is a per-PR preview, and no URL would ever
+# show the merged state of several site PRs together — which is exactly the state
+# the release merge is about to publish.
+
 on:
   push:
-    branches: [ "dev" ]
+    branches: [ "master", "dev" ]
     paths:
       - 'web/**'
       - 'gradle.properties'
@@ -118,10 +138,22 @@ jobs:
             echo "present=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # Production is a push to `dev` — that is the site's production branch, as
-      # the design has said throughout. Everything else, including a manual
-      # dispatch from another branch, is a preview. A dispatch is treated as an
-      # explicit request to publish only when it is aimed at `dev`.
+      # Production is a push to `master`, and nothing else is. A push to `dev`, a
+      # pull request, and a manual dispatch from any branch other than `master`
+      # are all previews. A dispatch counts as a request to publish only when it
+      # is aimed at `master`, which is also the only branch GitHub offers the
+      # Run-workflow button from, since it is the default branch.
+      #
+      # `strict` is the third output and it is the one that is easy to miss.
+      # `check:screenshots` refuses a placeholder frame when VERCEL_ENV=production
+      # OR when REQUIRE_SCREENSHOTS=1 (web/scripts/check-screenshots.mjs). Setting
+      # it on pull requests based on `master` is what makes the release PR's
+      # preview assert production strictness BEFORE the merge that publishes.
+      # Without it the first build ever held to the production standard would be
+      # the one already serving on the live domain, and a placeholder would be
+      # found by a visitor rather than by a check. It stays off for PRs into `dev`
+      # and for `dev` pushes: work in progress is allowed to carry a placeholder,
+      # which is the entire reason the gate is conditional.
       - name: Resolve the target environment
         id: target
         if: steps.creds.outputs.present == 'true'
@@ -129,15 +161,23 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
+          BASE: ${{ github.base_ref }}
         run: |
           set -euo pipefail
-          if [ "$EVENT" != "pull_request" ] && [ "$REF" = "refs/heads/dev" ]; then
+          if [ "$EVENT" != "pull_request" ] && [ "$REF" = "refs/heads/master" ]; then
             echo "env=production" >> "$GITHUB_OUTPUT"
             echo "flag=--prod" >> "$GITHUB_OUTPUT"
+            echo "strict=1" >> "$GITHUB_OUTPUT"
             echo "Target: production (thor.trinadhthatakula.com)"
+          elif [ "$EVENT" = "pull_request" ] && [ "$BASE" = "master" ]; then
+            echo "env=preview" >> "$GITHUB_OUTPUT"
+            echo "flag=" >> "$GITHUB_OUTPUT"
+            echo "strict=1" >> "$GITHUB_OUTPUT"
+            echo "Target: preview, held to production strictness (base is master)"
           else
             echo "env=preview" >> "$GITHUB_OUTPUT"
             echo "flag=" >> "$GITHUB_OUTPUT"
+            echo "strict=" >> "$GITHUB_OUTPUT"
             echo "Target: preview"
           fi
 
@@ -205,6 +245,10 @@ jobs:
       # strictness a property of this file instead of a property of Vercel's
       # internals.
       #
+      # REQUIRE_SCREENSHOTS rides alongside it and is empty except on a pull
+      # request into `master`, where it holds a preview build to the production
+      # screenshot standard — see the target step for why.
+      #
       # The build itself is `npm run build` (web/vercel.json's buildCommand),
       # which is the whole gate chain: check:types, astro build, check:links,
       # check:claims, check:markup, check:sitemap, check:screenshots.
@@ -213,6 +257,7 @@ jobs:
         if: steps.creds.outputs.present == 'true'
         env:
           VERCEL_ENV: ${{ steps.target.outputs.env }}
+          REQUIRE_SCREENSHOTS: ${{ steps.target.outputs.strict }}
         run: vercel build ${{ steps.target.outputs.flag }} --token="${{ secrets.VERCEL_TOKEN }}"
 
       # ──────────────────────────────────────────────────────────────────────
@@ -243,12 +288,13 @@ jobs:
         if: steps.creds.outputs.present == 'true'
         env:
           VERCEL_ENV: ${{ steps.target.outputs.env }}
+          REQUIRE_SCREENSHOTS: ${{ steps.target.outputs.strict }}
         run: |
           set -euo pipefail
           out=".vercel/output/static"
 
           if [ ! -f "$out/index.html" ]; then
-            echo "::error::$out/index.html is missing, so the artifact about to be deployed is not the site. The usual cause is a Root Directory mismatch — this job already runs inside web/, so the Vercel project's Root Directory must not also be 'web'. See web/docs/deploy.md."
+            echo "::error::$out/index.html is missing, so the artifact about to be deployed is not the site. The usual cause is a Root Directory mismatch — this job already runs inside web/, so the Vercel project's Root Directory must be UNSET, not 'web'. Note that this check is not the first thing a Root Directory mismatch trips: if the project was created by importing the repo, its pulled settings carry framework=astro and the Build step dies earlier with 'Command \"astro build\" exited with 127', which names nothing about paths. See web/docs/deploy.md."
             ls -la .vercel/output 2>/dev/null || echo "(no .vercel/output at all)"
             exit 1
           fi
@@ -283,6 +329,13 @@ jobs:
       # `--archive=tgz` compresses the upload into a single tarball. The site
       # ships six PNG screenshots plus a font set; archiving keeps the deploy
       # well clear of Vercel's per-request file-count limits.
+      #
+      # NEVER add `--no-wait` here. The CLI uploads a commandForIgnoringBuildStep
+      # derived from vercel.json even on a --prebuilt deploy, and Vercel has
+      # shipped (then rolled back) a build where the Ignored Build Step cancelled
+      # prebuilt deployments. Waiting is what makes that loud: `vercel deploy`
+      # prints "The deployment has been canceled." and exits 1 under `set -e`.
+      # With --no-wait the same cancellation is a green job that shipped nothing.
       - name: Deploy
         id: deploy
         if: steps.creds.outputs.present == 'true'
