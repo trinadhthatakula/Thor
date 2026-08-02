@@ -10,7 +10,7 @@ a reason that has nothing to do with the code.
 **Raised by:** the CI half of the `chore/tier0-batch-1` batch (2026-07-30).
 
 Files: `.github/workflows/dev-check.yml`, `.github/workflows/production-deploy.yml`,
-`fastlane/Fastfile:116 (lane :distribute_dev)`, `fastlane/Fastfile:121 (lane :distribute_production)`
+`fastlane/Fastfile (lane :distribute_dev)`, `fastlane/Fastfile (lane :distribute_production)`
 
 ## Problem
 
@@ -23,8 +23,13 @@ Thor uploads from two places:
 
 | Workflow | Branch | Lane | Track |
 |---|---|---|---|
-| `dev-check.yml` | `master` | `distribute_dev` | `internal` |
-| `production-deploy.yml` | `production` | `distribute_production` | `alpha` |
+| `dev-check.yml` | `master` | `distribute_dev` | `alpha` (closed testing) |
+| `production-deploy.yml` | `production` | `distribute_production` | `beta` (open testing) |
+
+(Both tracks moved up one rung in PR #320 — `internal`→`alpha` and `alpha`→`beta`. Neither lane
+has ever written `production`: promoting a build to the production track is a manual Play Console
+action, and that manual step is the release gate. The collision below is unaffected by the move,
+because Play's uniqueness is per app, not per track.)
 
 Both branches are fed from `dev` by merge — the 2026-07-22 run history shows the *same* commit
 (`Merge pull request #274 from trinadhthatakula/dev`) triggering both workflows. So a `chore(release)`
@@ -50,20 +55,20 @@ claimed the code an hour ago.
 Not a recommendation — this is the owner's call about how Thor releases.
 
 1. **Promote instead of re-uploading.** The correct Play-native answer. master uploads the artifact
-   to `internal`; production promotes that same code from `internal` to `alpha` rather than uploading
-   a second time (`upload_to_play_store(track_promote_to:)`, or `supply --track internal
-   --track_promote_to alpha` with no AAB). One artifact, one code, two tracks, and the tracks then
-   genuinely mean "this build has been through internal testing" rather than "this build was built
+   to `alpha`; production promotes that same code from `alpha` to `beta` rather than uploading
+   a second time (`upload_to_play_store(track_promote_to:)`, or `supply --track alpha
+   --track_promote_to beta` with no AAB). One artifact, one code, two tracks, and the tracks then
+   genuinely mean "this build has been through closed testing" rather than "this build was built
    twice". Costs a Fastfile lane change.
 
 2. **One publisher, one branch.** Pick master or production as the only lane that talks to Play and
    make the other build-and-verify only. Simplest to implement, and it was this batch's first draft —
-   the owner rejected it, on the grounds that master publishing to `internal` is a wanted behaviour,
-   not an accident.
+   the owner rejected it, on the grounds that master publishing to a Play test track is a wanted
+   behaviour, not an accident (as of 2026-08 that track is `alpha`, not `internal`).
 
 3. **Two codes per release.** Bump again between master and production. Honest and trivially correct,
-   but it doubles the version-code churn and means the artifact users get on `alpha` is not
-   bit-identical to the one that passed `internal` — which defeats the point of having an internal
+   but it doubles the version-code churn and means the artifact users get on `beta` is not
+   bit-identical to the one that passed `alpha` — which defeats the point of having a closed
    track.
 
 Option 1 is the only one that keeps both tracks *and* keeps the artifact identical across them.
@@ -72,7 +77,7 @@ Option 1 is the only one that keeps both tracks *and* keeps the artifact identic
 
 - A single `chore(release)` merged into `dev` and then into both `master` and `production` results in
   zero `Version code NNNN has already been used` failures.
-- The artifact on `alpha` is the same build that went to `internal`, or the docs say plainly why it
+- The artifact on `beta` is the same build that went to `alpha`, or the docs say plainly why it
   is not.
 - Whatever is chosen is written down in the workflow comments, which currently describe the shape of
   the problem but not the intended flow.
