@@ -144,8 +144,9 @@ failing in a way that does not look like a failure.
       repository disconnected; see `web/docs/deploy.md`.
 - [ ] Optional, for the advisory Lighthouse job only: **`VERCEL_AUTOMATION_BYPASS_SECRET`**
       (Vercel → Project → Settings → Deployment Protection → Protection Bypass for Automation).
-      Without it that job skips with a notice; nothing else is affected. Set it before the first PR
-      run or it skips invisibly on every one.
+      Without it that job skips with a notice on the run — `::notice::VERCEL_AUTOMATION_BYPASS_SECRET
+      is not set…`, which names the exact dashboard path to fix it. Nothing else is affected. Set it
+      before the first PR run, or every PR carries that notice and no Lighthouse number.
 - [ ] **Before every `dev` → `master` merge**, confirm the project is still not connected to the
       repository. On a connected project a `master` push starts a Vercel production build from the
       Gradle repo root — no `package.json` — at the same moment this workflow deploys a gated
@@ -171,8 +172,10 @@ answers like this:
 
 ```console
 $ openssl s_client -connect thor.trinadhthatakula.com:443 \
-    -servername thor.trinadhthatakula.com </dev/null 2>/dev/null | openssl x509 -noout -subject -dates
-subject=CN=*.trinadhthatakula.com
+    -servername thor.trinadhthatakula.com </dev/null 2>/dev/null \
+    | openssl x509 -noout -ext subjectAltName -dates
+X509v3 Subject Alternative Name:
+    DNS:*.trinadhthatakula.com, DNS:trinadhthatakula.com
 notBefore=Feb 10 12:08:05 2026 GMT
 notAfter=May 11 12:08:04 2026 GMT        # expired
 
@@ -200,11 +203,19 @@ project has claimed this hostname yet" — it does not mean the DNS record is wr
       npx vercel@58 domains inspect thor.trinadhthatakula.com   # expect Valid Configuration
       npx vercel@58 certs ls                                    # expect a cert for the exact host
       openssl s_client -connect thor.trinadhthatakula.com:443 \
-        -servername thor.trinadhthatakula.com </dev/null 2>/dev/null | openssl x509 -noout -subject -dates
+        -servername thor.trinadhthatakula.com </dev/null 2>/dev/null \
+        | openssl x509 -noout -ext subjectAltName -dates
 
-      The `openssl` step must show `CN=thor.trinadhthatakula.com`, **not** the
-      `*.trinadhthatakula.com` wildcard. Seeing the wildcard means the hostname is still unclaimed,
-      whatever the dashboard says.
+      Read the **SAN**, not the subject. The identity of a modern certificate lives in
+      `subjectAltName`; the CN is legacy and may be absent or may not be the name you connected to.
+      The step passes when the SAN lists `thor.trinadhthatakula.com` **explicitly** and `notAfter` is
+      in the future.
+
+      A SAN of only `*.trinadhthatakula.com` is the failing case even though that wildcard does
+      technically match the host — it is the stale certificate Vercel's edge already falls back to,
+      and seeing it means the hostname is still unclaimed whatever the dashboard says. Checking the
+      dates alone is not enough either: a renewed wildcard would pass a date check and still not be
+      this project's certificate.
 
 - [ ] If `vercel certs ls` shows nothing after about 15 minutes, the domain is not attached —
       re-run `domains inspect`. **Do not touch Cloudflare.**

@@ -82,7 +82,12 @@ only when `dev` is merged to `master`.
 
 A PR based on `master` additionally builds with `REQUIRE_SCREENSHOTS=1`, so `check:screenshots` is
 strict on the release PR's preview rather than first becoming strict on the deploy that is already
-live. `web/docs/deploy.md` is the reference — secrets, project settings, rollback. What follows is
+live.
+
+Both PR cases mean a PR from a branch in this repository. A **forked** PR gets no repository secrets,
+so the deploy job skips itself rather than failing on an empty token — no preview, no comment, no
+strict check. The `master` push re-gates everything before it uploads, so that costs coverage, not
+safety. `web/docs/deploy.md` is the reference — secrets, project settings, rollback. What follows is
 only the part you need in order not to break it from inside this directory.
 
 The trade is deliberate: under the Git integration, four dashboard settings decide whether the gates
