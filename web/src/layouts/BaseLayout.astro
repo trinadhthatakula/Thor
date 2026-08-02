@@ -1,0 +1,90 @@
+---
+/**
+ * The document shell. Every route renders through this, including 404.
+ *
+ * Owns <html>, the head, the skip link, the nav and the footer. Pages own their
+ * own <main> content and nothing else, so a page cannot accidentally ship a
+ * second <h1>, a missing lang attribute, or a canonical URL that disagrees with
+ * the one in the sitemap.
+ */
+import ThemeScript from '../components/ThemeScript.astro'
+import Nav from '../components/Nav.astro'
+import Footer from '../components/Footer.astro'
+import { SITE, canonical } from '../lib/site.ts'
+
+import '../styles/fonts.css'
+import '../styles/tokens.css'
+import '../styles/base.css'
+
+/**
+ * The three faces above the fold on every route, imported for their hashed URLs.
+ * A @font-face is not a preload: the browser only discovers those files after it
+ * has parsed the CSS, which is one round trip too late for text the visitor is
+ * already looking at. fonts.css explains why it is these three and not the other
+ * four. The imports are what make the hash available — the filenames in `dist`
+ * are content-addressed, so a hand-written href would go stale on any change to
+ * the subset.
+ */
+import outfit400 from '../fonts/outfit-latin-400.woff2'
+import outfit700 from '../fonts/outfit-latin-700.woff2'
+import firaCode from '../fonts/firacode-latin-var.woff2'
+
+const PRELOAD_FONTS = [outfit400, outfit700, firaCode]
+
+interface Props {
+  title: string
+  description: string
+  /** Set on `/` so the title is the tagline rather than "Home — Thor". */
+  bareTitle?: boolean
+  /** Keeps /styleguide and /404 out of search results without a robots.txt entry per page. */
+  noindex?: boolean
+}
+
+const { title, description, bareTitle = false, noindex = false } = Astro.props
+
+const pageTitle = bareTitle ? title : `${title} — ${SITE.name}`
+const url = canonical(Astro.url.pathname)
+const ogImage = new URL('/og-image.png', SITE.origin).href
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>{pageTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={url} />
+    {noindex && <meta name="robots" content="noindex, follow" />}
+
+    {/* crossorigin is required even same-origin: fonts are always fetched in CORS
+        mode, and without it the preload and the @font-face request are two
+        different requests, so the browser downloads each file twice. */}
+    {PRELOAD_FONTS.map((href) => (
+      <link rel="preload" as="font" type="font/woff2" href={href} crossorigin />
+    ))}
+
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={SITE.name} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={url} />
+    <meta property="og:image" content={ogImage} />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <ThemeScript />
+  </head>
+
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <Nav />
+    <main id="main" tabindex="-1">
+      <slot />
+    </main>
+    <Footer />
+  </body>
+</html>

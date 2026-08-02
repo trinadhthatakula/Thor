@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- /handbook was renamed and the sitemap kept the old URL. Nothing in this
+     build links to it any more, so the link checker never sees it and the only
+     thing that meets the dead URL is a crawler. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://thor.trinadhthatakula.com</loc></url>
+  <url><loc>https://thor.trinadhthatakula.com/handbook</loc></url>
+</urlset>

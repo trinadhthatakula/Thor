@@ -1,0 +1,200 @@
+---
+/**
+ * Every token, type role and component, rendered together — the only practical
+ * way to catch an AMOLED regression, since AMOLED is off by default and nobody
+ * browses the site with it on.
+ *
+ * It is a rest route whose `getStaticPaths` returns `[]` in a production build.
+ * Astro has no per-page build-exclusion API, and an `_`-prefixed filename would
+ * hide the page from `astro dev` too, which defeats the point of having it. This
+ * shape renders at /styleguide during development and emits nothing at all into
+ * `dist`.
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro'
+import Callout from '../../components/Callout.astro'
+import CodeBlock from '../../components/CodeBlock.astro'
+import DeviceFrame from '../../components/DeviceFrame.astro'
+import SectionIndex from '../../components/SectionIndex.astro'
+import Fact from '../../components/Fact.astro'
+
+export function getStaticPaths() {
+  if (import.meta.env.PROD) return []
+  return [{ params: { slug: undefined } }]
+}
+
+const COLOUR_TOKENS = [
+  ['--primary', '--on-primary'],
+  ['--primary-container', '--on-primary-container'],
+  ['--secondary', '--on-secondary'],
+  ['--secondary-container', '--on-secondary-container'],
+  ['--tertiary', '--on-tertiary'],
+  ['--tertiary-container', '--on-tertiary-container'],
+  ['--error', '--on-error'],
+  /* Not `--on-error-container`: Theme.kt never passes one, so the app has no such
+   * colour and tokens.css deliberately omits it. Body text on this container is
+   * `--on-surface` (7.43:1 dark, 13.31:1 light) — this row shows what is real. */
+  ['--error-container', '--on-surface'],
+  ['--background', '--on-background'],
+  ['--surface', '--on-surface'],
+  ['--surface-variant', '--on-surface-variant'],
+  ['--surface-container-lowest', '--on-surface'],
+  ['--surface-container-low', '--on-surface'],
+  ['--surface-container', '--on-surface'],
+  ['--surface-container-high', '--on-surface'],
+  ['--surface-container-highest', '--on-surface'],
+  ['--outline', '--on-surface'],
+  ['--outline-variant', '--on-surface'],
+]
+
+const TYPE_ROLES = [
+  '--text-display-large',
+  '--text-headline-large',
+  '--text-headline-medium',
+  '--text-headline-small',
+  '--text-body-large',
+  '--text-body-medium',
+  '--text-body-small',
+  '--text-label-small',
+]
+
+const FACT_KEYS = [
+  'versionCode',
+  'versionName',
+  'fossVersionName',
+  'minSdk',
+  'targetSdk',
+  'compileSdk',
+  'minSdkAndroidName',
+  'extensionApiVersion',
+] as const
+---
+<BaseLayout title="Style guide" description="Development-only token and component reference." noindex>
+  <div class="sg">
+    <h1>Style guide</h1>
+    <Callout tone="warning" title="Development only">
+      <p>
+        This route is excluded from production builds by <code>getStaticPaths</code>. If you are
+        reading it on thor.trinadhthatakula.com, that exclusion has broken.
+      </p>
+      <p>
+        Check every block below in all three modes: light, dark, and dark + AMOLED. AMOLED overrides
+        exactly three tokens, so a component that looks right in dark can still be invisible there.
+      </p>
+    </Callout>
+
+    <h2>Colour tokens</h2>
+    <div class="swatches">
+      {
+        COLOUR_TOKENS.map(([bg, fg]) => (
+          <div class="swatch" style={`background: var(${bg}); color: var(${fg});`}>
+            <span class="swatch-name">{bg}</span>
+            <span class="swatch-on">{fg}</span>
+          </div>
+        ))
+      }
+    </div>
+
+    <h2>Type scale</h2>
+    <div class="type">
+      {
+        TYPE_ROLES.map((role) => (
+          <p style={`font-size: var(${role});`}>
+            <span class="type-name">{role}</span> Turn off the apps your phone won't let you uninstall.
+          </p>
+        ))
+      }
+      <p class="mono">--font-mono · 0123456789 · pm disable --user 0 com.example.app</p>
+    </div>
+
+    <h2>Derived facts</h2>
+    <ul class="facts">
+      {FACT_KEYS.map((k) => <li><code>{k}</code> → <Fact name={k} /></li>)}
+    </ul>
+
+    <h2>Callouts</h2>
+    <Callout tone="note"><p>The neutral tone. Used for asides that add context.</p></Callout>
+    <Callout tone="warning"><p>Something that will surprise a reader who skips it.</p></Callout>
+    <Callout tone="danger">
+      <p>
+        Reserved for the consequences that cannot be undone. Body text here uses the container's
+        foreground token; the danger colour itself is spent on the label, which is large enough for
+        the 3:1 threshold.
+      </p>
+    </Callout>
+
+    <h2>Code block</h2>
+    <CodeBlock title="Terminal">
+      <pre><code>adb shell pm list packages -d</code></pre>
+    </CodeBlock>
+
+    <h2>Device frame</h2>
+    <div class="frames">
+      <DeviceFrame alt="A screenshot that has not been captured yet." caption="The no-image branch." />
+    </div>
+
+    <h2>Section index</h2>
+    <SectionIndex
+      entries={[
+        { id: 'a', label: 'First section' },
+        { id: 'b', label: 'Second section' },
+      ]}
+    />
+  </div>
+</BaseLayout>
+
+<style>
+  .sg {
+    max-width: var(--content-max);
+    margin-inline: auto;
+    padding: var(--space-xl) var(--space-s);
+  }
+
+  .sg h2 {
+    margin-block: var(--space-xl) var(--space-s);
+    font-size: var(--text-headline-medium);
+    line-height: var(--leading-headline-medium);
+  }
+
+  .swatches {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+    gap: var(--space-2xs);
+  }
+
+  .swatch {
+    display: grid;
+    gap: var(--space-3xs);
+    padding: var(--space-s);
+    border: 1px solid var(--outline);
+    border-radius: var(--radius-s);
+    font-family: var(--font-mono);
+    font-size: var(--text-label-small);
+  }
+
+  .swatch-on {
+    opacity: 0.8;
+  }
+
+  .type p {
+    margin-block: var(--space-xs);
+    line-height: 1.15;
+  }
+
+  .type-name {
+    font-family: var(--font-mono);
+    font-size: var(--text-label-small);
+    color: var(--on-surface-variant);
+    margin-inline-end: var(--space-xs);
+  }
+
+  .mono {
+    font-family: var(--font-mono);
+  }
+
+  .facts {
+    display: grid;
+    gap: var(--space-2xs);
+    padding: 0;
+    list-style: none;
+  }
+</style>

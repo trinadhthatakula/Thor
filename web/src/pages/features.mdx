@@ -1,0 +1,543 @@
+---
+layout: ../layouts/PageLayout.astro
+title: Features
+description: Every feature in Thor — three privilege engines, the installer, the freezer and its safety gate, batch operations, and what each mode can do.
+lead: Eight areas, in the order they matter. Each one says what works, what does not, and which privilege mode you need for it.
+index:
+  - id: privilege-engines
+    label: Privilege engines
+  - id: installer
+    label: App installer
+  - id: freezer
+    label: Freezer and debloat
+  - id: batch-operations
+    label: Batch operations
+  - id: app-list
+    label: App list and search
+  - id: extensions
+    label: Extensions
+  - id: personalisation
+    label: Personalisation and security
+  - id: trust
+    label: Trust, licence, distribution
+---
+
+{/* Headings carry explicit HTML ids rather than the "{#anchor}" shorthand. MDX
+    reads braces as a JS expression, and no rehype plugin here rewrites them
+    first, so a heading written that way fails to compile: "Could not parse
+    expression with acorn". The ids are an external contract, so they live where
+    a reworded heading cannot silently move them. */}
+
+import Fact from '../components/Fact.astro'
+import Callout from '../components/Callout.astro'
+import CodeBlock from '../components/CodeBlock.astro'
+import DeviceFrame from '../components/DeviceFrame.astro'
+// Raw device captures. DeviceFrame draws the bezel, so these must stay unframed.
+import homeBento from '../assets/screenshots/01-home-bento.png'
+import freezerMixed from '../assets/screenshots/02-freezer-active-and-frozen.png'
+import unsafeRefusal from '../assets/screenshots/03-refusal-unsafe-system-app.png'
+import workMode from '../assets/screenshots/05-settings-work-mode.png'
+
+| At a glance | |
+|---|---|
+| Minimum Android | <Fact name="minSdkAndroidName" /> (API <Fact name="minSdk" />) |
+| Targets | API <Fact name="targetSdk" /> for `targetSdk`, API <Fact name="compileSdk" /> for `compileSdk` |
+| Licence | GPL-3.0-or-later |
+| Languages | English, Arabic, Chinese (Simplified), French, Spanish |
+| Network access | `foss`: one surface only — the optional Extension Store. `store` also links Google Play Billing |
+| Trackers, ads, telemetry | None |
+
+<h2 id="privilege-engines">Privilege engines</h2>
+
+Thor never talks to the system directly. Every privileged action goes through one `SystemGateway`
+interface with three interchangeable implementations, so a feature either works in your chosen mode
+or fails honestly. It never silently does something different.
+
+<h3 id="three-engines">Three ways to grant power</h3>
+
+**Root** — Thor talks to your root shell through Odin, its own maintained fork of libsu. Works with
+Magisk, KernelSU, KernelSU Next and APatch. Your root manager shows the usual grant prompt the
+first time.
+
+<Callout tone="note" title="Why Thor never looks for the su binary">
+  <p>Thor deliberately never checks whether <code>/system/bin/su</code> exists, because KernelSU Next hides the <code>su</code> binary from apps it has not granted. It runs a real shell command and reads the result instead. Any guide that tells you to check for the su binary gives the wrong answer on those devices.</p>
+</Callout>
+
+**Shizuku** — no root required. Install the Shizuku app, start its server over ADB or wireless
+debugging (Android 11 and newer can pair without a computer), then grant Thor permission when it
+asks. Thor runs as the `shell` user: everything `adb shell` can do, Thor can do.
+
+**Dhizuku** — Device Owner mode, for people who want elevated control on a stock, unrooted,
+unpaired device. This is the most demanding setup: the device must have **zero accounts** on it when
+you enrol, because Android refuses `dpm set-device-owner` if even one account exists. Signing into
+Google afterwards also breaks it.
+
+<h3 id="automatic-fallback">Automatic fallback</h3>
+
+You can pin a preferred mode in Settings, or leave it on auto. Either way the resolution order is
+fixed:
+
+<CodeBlock title="Resolution order">
+
+```
+your preference (if available) → Root → Shizuku → Dhizuku → no privilege
+```
+
+</CodeBlock>
+
+Thor re-probes when Shizuku's binder arrives and when you answer its permission prompt, so granting
+Shizuku permission takes effect without restarting Thor. A binder that dies is logged but does not
+trigger a re-probe. The Work Mode selector only appears in Settings when more than one mode is
+actually available — there is nothing to choose between otherwise.
+
+<DeviceFrame
+  src={workMode}
+  alt="Settings, showing the Work Mode selector with more than one privilege engine available."
+  caption="Work Mode is only offered when there is a real choice to make."
+/>
+
+<h3 id="mode-capabilities">What each mode can do</h3>
+
+| Action | Root | Shizuku | Dhizuku |
+|---|---|---|---|
+| Freeze and unfreeze | Yes | Yes | Yes |
+| Suspend and unsuspend | Yes | Yes | Yes |
+| Force stop | Yes | Yes | Yes |
+| Clear cache | Yes | Yes | Yes |
+| Clear app data | Yes | Yes | Yes |
+| Restrict background activity | Yes | Yes | Yes |
+| Uninstall | Yes | Yes | Yes |
+| Install and sideload | Yes | Yes | Yes |
+| Fix Store (reinstall as Play) | Yes | Yes | Yes |
+| Grant and revoke permissions | Yes | Yes | Limited |
+| Custom shell for extensions | Yes | Yes | Yes |
+| **Reboot device** | Yes | No | No |
+| **Show per-app cache size** | Yes | No | No |
+| **Export split APKs** | Yes | No | No |
+
+Four rows are not uniform, and those are the ones worth stating plainly rather than burying:
+
+- **Reboot is Root-only.** Shizuku and Dhizuku return an explicit error rather than pretending.
+- **Cache size reads as 0 under Shizuku and Dhizuku.** Measuring it needs `du` on the app's private
+  directory, which only root can reach. The number is honest but useless in those modes.
+- **Split-APK export and privileged file copy are Root-only** and fail with "Root required" rather
+  than producing a partial file.
+- **Dhizuku permission grants can be refused on multi-user devices**, because the Device Owner runs
+  as user 0 and may not hold `INTERACT_ACROSS_USERS`. Thor surfaces the real failure rather than
+  silently mutating the wrong user's copy.
+
+<h3 id="hidden-api-bypass">The hidden-API bypass</h3>
+
+Shizuku and Dhizuku need Android's hidden APIs (`IPackageManager`, `IActivityManager`,
+`IAppOpsService`) when a shell command is not enough. Thor unseals them with a small `bypass` module
+built on `VMRuntime.setHiddenApiExemptions`, scoped to four package prefixes and no more. Root does
+not need it at all.
+
+Most privileged actions are shell-first with a reflection fallback, which is why Thor keeps working
+across OEM builds that move or remove framework internals. Two exceptions are deliberate: Shizuku
+tries reflection first when freezing a preinstalled app, because `pm` is ordinary userspace an OEM
+can lock down while the binder call names its target state explicitly; and Root suspends only
+through reflection, never through `pm suspend`, because a root-shell suspension records the
+suspender as a package that does not exist and the paused-app dialog then crashes.
+
+<h2 id="installer">App installer</h2>
+
+Thor registers as an installer, so you can share or open a package file from anywhere — a browser, a
+file manager, another app — and Thor's bottom sheet takes over.
+
+<h3 id="bundle-formats">Every bundle format, handled</h3>
+
+| You hand it | Thor does |
+|---|---|
+| `.apk` | Installs it directly |
+| `.xapk` (APKPure) | Reads `manifest.json`, picks the right splits, installs them as one session |
+| `.apkm` (APKMirror) | Extracts every inner APK, base first, installs as one session |
+| `.apks` (bundletool) | Sorts entries base-first and installs as one session |
+| `.apkp` | Recognised as a bundle and handled the same way |
+
+Bundle detection does not trust the file extension alone. Thor looks inside the zip for a top-level
+`AndroidManifest.xml` and for bundle sidecars, so an `.apk` that happens to contain a nested APK is
+not mistaken for a bundle, and a mislabelled bundle still installs.
+
+<Callout tone="note" title="Two details that took real work">
+  <p>APKPure's <code>.xapk</code> files store their inner APKs uncompressed, with the data-descriptor flag set and zero sizes in the local header — a shape streaming zip readers cannot parse, because there is no way to tell where such an entry ends. Thor reads the central directory instead, which is authoritative for both names and sizes.</p>
+  <p>And when a <code>.xapk</code> manifest is stale, splits that are present in the archive but missing from the manifest are added to the install set anyway, so nothing gets silently dropped.</p>
+</Callout>
+
+<h3 id="install-options">Install options</h3>
+
+- **Downgrade** — install an older version over a newer one. Requires a privilege mode, and is
+  blocked with a clear message on a plain unprivileged install, because the OS will simply refuse it.
+- **Play attribution** — with Auto Reinstall switched on, a privileged install records
+  `com.android.vending` as the installing app. There is no free-text chooser; the switch is the
+  whole control.
+- **External installer** — hand the file to any other installer app instead. This is the escape
+  hatch when you have no privilege and want the system dialog.
+- **No privilege at all** — Thor still installs through the standard `PackageInstaller`. You just
+  get Android's own confirmation dialog, and no downgrade.
+
+<h3 id="fix-store">Fix Store</h3>
+
+Fix Store makes Android believe an app came from the Play Store.
+
+Thor reads the app's own installed APK paths — the single APK, or every split if it is a bundle —
+straight off the device, then reinstalls those exact files with the installer record set to
+`com.android.vending`. Nothing is downloaded and nothing is replaced. It is the same app you already
+have, reinstalled from itself with a different name on the receipt.
+
+Why that matters: plenty of apps ask Android who installed them and behave differently when the
+answer is not Play. Licence verification fails, expansion files will not download, some DRM refuses
+to start, and some apps simply decline to update. Fix Store makes the system record say what those
+checks expect.
+
+It works in all three privilege modes. Thor refuses to do it to itself.
+
+<h3 id="auto-reinstall">Auto Reinstall</h3>
+
+Optional. When it is on, Thor watches for package installs and updates and reassigns the installer
+record to Play in the background — a lighter operation than Fix Store, since it only touches the
+record and never the APK. It needs a privilege mode, and it skips packages already attributed to
+Play.
+
+<h2 id="freezer">Freezer and debloat</h2>
+
+The part of Thor that does the most good and carries the most risk, so it is also the part with the
+most guardrails.
+
+<h3 id="freeze-suspend-force-stop">Freeze, suspend and force-stop are three different things</h3>
+
+This is the single most common confusion, so here it is in a table:
+
+| Action | What you see | Survives reboot | How to undo |
+|---|---|---|---|
+| **Force stop** | Nothing. The icon is unchanged | No — the app restarts on its next trigger | It undoes itself |
+| **Freeze** | The app disappears from the launcher entirely | Yes | Unfreeze |
+| **Suspend** | The icon stays, greyed out; tapping shows Android's "app paused" dialog | Yes | Unfreeze |
+
+Force-stop is momentary: an alarm, a job or a push message brings the app straight back. Freeze and
+Suspend are persistent states. Which of the two Thor uses is a single global Freezer setting.
+
+Under the hood, freezing a **user app** disables it. Freezing a **system app** switches it off in
+place as well — the package stays installed and its data stays on disk. Some OEM builds refuse to
+let anything but root disable their own preinstalled packages; where Thor meets that refusal under
+Shizuku, it falls back to removing the app for your Android user with `pm uninstall -k --user`. The
+`-k` is the whole point: it is `DELETE_KEEP_DATA`, and the app's data directories keep their inodes
+across the round trip. A runtime permission measured across the same round trip came back granted
+with its flags unchanged — one permission, granted from the shell rather than by tapping Allow, on
+one platform build, and app-ops were never measured, so read it for the scope it has. That fallback
+is reached only where the platform actually refused. Under Root it is never reached at all.
+
+<Callout tone="warning" title="What the fallback does change">
+  <p>Removing an app for your user clears its installed flag, so while it is frozen that way the app reads as not installed for you to anything that asks Android the plain question. Its files are still there, and unfreezing reinstalls the same system APK and reattaches them, but a third-party app that enumerates packages will not see it in the meantime.</p>
+  <p>On API 37 the shell user is refused <code>pm uninstall -k --user N</code> on a system app outright, where the identical command succeeded a release earlier. So a Shizuku user on API 37 whose device also refuses to disable that package cannot freeze it at all. Thor reports the failure rather than doing something else. Root is unaffected.</p>
+  <p>Dhizuku is the exception on both counts: it still removes a system app for your user unconditionally, and it does so without <code>-k</code>, so it does not preserve the app's data. If you freeze system apps, do not use Dhizuku for it.</p>
+</Callout>
+
+<h3 id="watchlist">The watchlist</h3>
+
+Add apps to the Freezer watchlist, then freeze or unfreeze the whole set in one action from the app,
+a launcher shortcut, or the Quick Settings tile. Up to five apps are processed at once, with a live
+progress counter.
+
+<DeviceFrame
+  src={freezerMixed}
+  alt="The Freezer, with active apps and frozen apps listed side by side."
+  caption="The watchlist is the unit most of the Freezer acts on."
+/>
+
+<h3 id="freeze-profiles">Freeze profiles</h3>
+
+Named groups of apps that freeze and unfreeze together, independently of the main watchlist. An app
+can belong to several profiles. Useful for "work", "games", or "the stuff that eats my battery on a
+trip".
+
+<h3 id="auto-freeze">Auto-freeze on screen off</h3>
+
+When this is enabled, Thor freezes the whole watchlist as soon as the screen turns off **and** the
+lock screen is engaged. The keyguard check is deliberate: freezing apps while you are still using
+the device would be actively harmful. While a run is still going, further screen-off events are
+ignored rather than stacked, so rapid on and off cycles cannot pile several batches onto the same
+privileged shell.
+
+<h3 id="quick-settings-tile">Quick Settings tile</h3>
+
+A one-tap freeze in the notification shade. Opening the shade counts how many watchlist apps are
+currently freezable and shows the number as the tile subtitle; tapping freezes them. The states are
+Checking, No privilege, Nothing to freeze, Ready and Working. The tile freezes only — unfreezing is
+done from the app or from a launcher shortcut.
+
+<h3 id="home-screen-shortcuts">Home-screen shortcuts</h3>
+
+Freezing an app makes it vanish from the launcher. That is the point, and it is also the annoying
+part, because getting back into it means opening Thor, finding the app, unfreezing it, then finding
+it in the launcher again.
+
+Pin a shortcut instead and that whole sequence becomes one tap.
+
+**How it works.** From any user app's info sheet, choose **Add to Home screen**. You get a normal
+launcher shortcut carrying that app's own icon and name — no Thor badge, nothing to learn. Tap it
+and Thor unfreezes the app and opens it in one motion. There is no dialog and no visible Thor
+screen; the launching activity is transparent, so what you see is the app coming up.
+
+Some details worth knowing:
+
+- **The icon tells you the state.** While the app is frozen its shortcut icon is drawn in greyscale.
+  Once it is running again the colour comes back. The grey is not a broken icon — it is the app's
+  real icon, desaturated.
+- **It does not re-freeze afterwards.** Tapping a shortcut thaws the app and leaves it thawed. If
+  you want it to go back on its own, that is what **auto-freeze on screen off** is for, and the
+  shortcut icon greys itself again when that happens.
+- **It works on unfrozen apps too.** If the app is not frozen, the shortcut just launches it, with
+  no privileged call at all.
+- **Any user app can be pinned.** It does not have to be on the Freezer watchlist. System apps
+  cannot be pinned this way.
+- **Two bulk shortcuts** are available as well, **Freeze all** and **Unfreeze all**, which act on
+  your whole watchlist. They sit on the same long-press menu as Thor's own icon and can be pinned to
+  the home screen too. They carry their own coloured tiles — blue for freeze, orange for unfreeze —
+  so they are not mistaken for an app.
+- **Remove an app from the watchlist** and its shortcut is greyed out and deactivated, because
+  Android will not let an app delete a shortcut you pinned. A live shortcut for an app Thor no
+  longer manages could otherwise still drive a freeze from your home screen.
+- **Turning the feature on** is a single switch in Settings, **Add Freezer to launcher**, and it
+  needs a privilege engine, since the whole point is unfreezing on tap.
+
+The one requirement outside Thor's control is your launcher. Pinning is a launcher capability, and a
+launcher that does not support it simply will not be offered the option.
+
+<h3 id="safety-gating">Safety gating</h3>
+
+Thor bundles the Universal Android Debloater package database and consults it before any freeze or
+uninstall of a **system** app:
+
+| UAD rating | What Thor does |
+|---|---|
+| Recommended | Proceeds normally |
+| Advanced | Proceeds normally |
+| Expert | Loud warning dialog; you can continue |
+| **Unsafe** | **Blocked outright — no override anywhere in the app** |
+| Not listed | Proceeds normally |
+
+The gate is enforced at all six places a freeze can start: single-app tap, adding to the watchlist,
+batch runs, profile runs, auto-freeze, and batch uninstall. It **fails closed** — if the UAD data
+cannot be read at all, every system app is treated as Unsafe and blocked rather than waved through.
+
+**Unfreezing is never gated.** That is deliberate: if a failed UAD load blocked unfreezing too, one
+bad data file would strand every frozen system app on the device.
+
+<DeviceFrame
+  src={unsafeRefusal}
+  alt="Thor refusing to freeze a system app rated Unsafe, with no way to continue."
+  caption="Unsafe is blocked, not warned about."
+/>
+
+<h3 id="getting-things-back">Getting things back</h3>
+
+- **User app, frozen** — always recoverable, no data loss.
+- **System app, frozen** — switched off in place, so nothing is removed and nothing is lost. On
+  devices that refuse to switch a preinstalled app off, Thor removes it for your Android user with
+  the data kept on disk, and unfreezing reinstalls the same system APK and reattaches it. Under Root
+  that fallback is never used at all; under Shizuku it is used only where the platform actually
+  refused. Dhizuku has not been converted yet and still removes without keeping data.
+- **System app, debloated** — recoverable with `pm install-existing`, as long as the APK is still on
+  the system partition. It is the same file that shipped with your phone, so this is the normal
+  case.
+- **The one real trap** — an app **suspended** in one privilege mode cannot always be unsuspended in
+  another. Android only lets the package that suspended an app lift that suspension, and the three
+  engines register under different identities. If you suspend under Root and later switch to
+  Shizuku, those apps may be stuck; switching back and unsuspending there clears it. Root's
+  unsuspend already clears several known identities, while Shizuku's and Dhizuku's clear only their
+  own. **This is a known limitation with an open follow-up.** The candidate fix is to have every
+  unsuspend path clear all known suspender identities, but no approach has been settled on and no
+  release carries it yet.
+
+<h2 id="batch-operations">Batch operations</h2>
+
+Anything Thor does to one app, it does to many.
+
+- **Multi-select** — long-press to enter selection mode anywhere in the app list or the Freezer.
+- **Batch actions** — freeze, unfreeze, suspend, unsuspend, force-stop, clear cache, uninstall, Fix
+  Store, share APKs and export. In the Freezer the selection can also be saved as a profile. Clear
+  data and background restriction are single-app actions only.
+- **Live terminal log** — most batch runs stream a real-time log that names each app with an X-of-Y
+  counter, so you can see exactly which package failed instead of getting one summary toast. A clean
+  run dismisses itself after two seconds; a run with failures stays open until you close it. Bulk
+  freeze and unfreeze use a compact processed-of-total counter instead, which names no apps at all.
+- **Reinstall All** — a home-screen card offering to re-attribute, in one pass, every user app whose
+  installer record is neither Play nor Android's own package installer. Dismissible.
+- **Concurrency and conflict handling** — bulk freeze and unfreeze run five workers at a time.
+  Starting a freeze while an unfreeze is running cancels the unfreeze first, rather than interleaving
+  two contradictory operations. Multi-select batches from the app list run one app after another.
+
+Blocked (UAD Unsafe) apps are filtered out **before** the total is counted, so the progress counter
+reflects what will actually be attempted.
+
+<h2 id="app-list">App list, search and insight</h2>
+
+Everything in this section works with **no privilege at all**. That is a selling point worth making
+loudly: install Thor, grant nothing, and it is still a better app browser than Settings.
+
+<h3 id="fast-by-construction">Fast by construction</h3>
+
+App metadata lives in a local Room database, so the list is on screen immediately at launch instead
+of waiting on a full `PackageManager` scan. A background reconciler diffs installs, uninstalls and
+updates, then applies surgical changes. Install sizes are cached so the expensive storage query does
+not repeat.
+
+Icons get the same treatment: the full-resolution icon is written to disk once, keyed by package, and
+later loads decode that file in two passes down to the size actually being drawn instead of asking
+`PackageManager` to render the icon again — unless the app has been updated since the file was
+written.
+
+<h3 id="finding-things">Finding things</h3>
+
+- **Search** as you type, matching both display name and package name.
+- **Sort** by name, size, install date, last updated, version code, version name, target SDK or
+  minimum SDK. Each one is reversible.
+- **Filter** by:
+  - **Source** — chips generated from the installers actually present on your device (Play Store,
+    F-Droid, sideloaded, and so on).
+  - **State** — active, frozen, suspended.
+  - **Permission** — every runtime permission group present on the device, so you can ask what here
+    can request your camera. Permissions the platform does not treat as dangerous have no group and
+    no chip.
+- **Grid or list**, remembered separately for the app list and the Freezer.
+
+<Callout tone="note" title="What the permission filter answers">
+  <p>It matches <strong>declared</strong> permissions, not granted ones. That answers "what could this app ask for", which is the question that actually matters when you are auditing a device.</p>
+</Callout>
+
+<h3 id="status-chips">Status at a glance</h3>
+
+Chips and icons mark apps that are frozen, suspended, split-APK installs, debuggable builds, and
+packages UAD flags as bloat. A system app that a freeze removed for your Android user reads as
+frozen rather than as a separate state, because Thor folds the installed flag into the same answer.
+
+<h3 id="home-dashboard">Home dashboard</h3>
+
+Live counts of active, frozen and suspended apps, plus anything from an unknown installer; an
+install-source distribution chart; the current privilege mode; and quick-action tiles.
+
+<DeviceFrame
+  src={homeBento}
+  alt="Thor's home screen: the active, frozen and suspended counts, the bento grid of quick actions below them, and the install-source chart below that."
+  caption="The dashboard reads from the same cache the list does, so it is on screen at launch."
+/>
+
+<h3 id="app-info-sheet">Unified app info sheet</h3>
+
+Tap any app anywhere and the same sheet appears: icon, name, package, size, status chips, and the
+actions valid for that app in your current privilege mode. Frozen apps offer to thaw and launch in
+one tap, so you never land on the "app paused" dialog by accident.
+
+<h2 id="extensions">Extensions</h2>
+
+Thor can be extended by separate, signed APKs. **This is the only Thor feature that uses the network,
+and only when you open it** — the `store` build additionally links Google Play Billing, which
+connects to Play on its own. The [extensions policy](/extensions-policy) has the full terms.
+
+- **In-app store** — browse a catalog of published extensions with author, version, description and
+  verified or LSPosed badges.
+- **Verification chain** — every downloaded extension passes a fixed sequence of checks before it
+  can even reach the installer: the URL must be non-empty, it must be HTTPS, its host must be one
+  GitHub actually serves releases from, the APK is streamed to disk while its SHA-256 is computed,
+  that hash must match the catalog whenever the catalog pins one, and the APK's signing certificate
+  must match Thor's pinned RSA-4096 key. Only then is it handed to the installer. The signer is
+  checked again every time an extension is loaded.
+- **Update detection** — compares the installed version code against the catalog and offers updates.
+- **Per-extension storage** — each extension gets an isolated key-value store; extensions cannot
+  read each other's data.
+- **Consent gate** — the Extension Manager is locked behind a one-time disclaimer you have to
+  actively acknowledge, including a small arithmetic check, so it cannot be tapped through.
+- **Source-only entries** — extensions published without a binary show "build it yourself" and have
+  no install button.
+
+Extensions that fail the signature check are listed but never loaded, and provide no functionality.
+
+<h2 id="personalisation">Personalisation and security</h2>
+
+| Feature | Notes |
+|---|---|
+| **Asgardian theme** | Thor's own palette: green on near-black, a terminal aesthetic. The default. Ships in dark and light. |
+| **Material You** | Optional wallpaper-derived colours. Android 12 and newer. |
+| **Dark, light or system** | Applied instantly, no restart. |
+| **AMOLED mode** | Forces true `#000000` backgrounds. Dark theme only — it has no effect in light. |
+| **Adaptive layout** | Bottom bar on phones; navigation rail from 600 dp; two-pane list-detail at 840 dp and above. Landscape phones get their own layout. |
+| **Grid or list** | Remembered independently per screen. |
+| **In-app language** | Switch Thor's language without changing the device language. |
+| **Biometric lock** | Optional lock over the whole app — nothing inside is visible until you authenticate. |
+
+<h3 id="biometric-lock">The biometric lock, precisely</h3>
+
+It gates app launch, not individual actions, and the session lasts until the process ends. What
+counts as authentication depends on your Android version. Android 11 and newer accept a strong
+biometric or your PIN, pattern or password. Android 10 accepts a weak biometric or a device
+credential. <Fact name="minSdkAndroidName" /> accepts **a biometric only**, because the API
+<Fact name="minSdk" /> prompt has no device-credential path at all — a screen lock on its own will
+not unlock Thor there.
+
+Thor refuses to arm the lock on a device that cannot satisfy it and tells you exactly what is
+missing. If a restored backup ever brings the setting back to a device where nothing you could enrol
+would satisfy the prompt — API <Fact name="minSdk" /> with no biometric sensor is the case that
+exists — Thor turns the lock off itself rather than locking you out. Where enrolling a fingerprint or
+a screen lock would fix it, the lock stays armed and Thor sends you to enrol instead, because
+silently dropping a lock you can still open would be a downgrade.
+
+<h2 id="trust">Trust, licence and distribution</h2>
+
+- **GPL-3.0-or-later.** The full source is the app: no proprietary blob, no hidden module.
+- **No ads, no trackers, no telemetry, no analytics SDK.** Verifiable in Thor's own code: exactly one
+  file opens a network connection, and it is the extension store. The `store` build links Google Play
+  Billing on top of that; the `foss` build ships a no-op stub in its place.
+- **`QUERY_ALL_PACKAGES`** is used for the one thing Thor exists to do — list your installed apps.
+- **`INTERNET`** is declared for the extension store, and the manifest comment directly above it
+  says so. Thor's own code uses it when you open the Extension Manager and at no other time.
+
+<h3 id="where-to-get-it">Where to get it</h3>
+
+| Channel | Build |
+|---|---|
+| Google Play | `store` flavour |
+| IzzyOnDroid | `foss-release.apk` |
+| GitHub Releases | `foss-release.apk` |
+
+Thor is **not** in the main F-Droid repository yet. IzzyOnDroid is a separate repository you add to
+an F-Droid client, which is a common point of confusion and not something this page will blur. An
+F-Droid listing is planned. The [download page](/download) has the details for each channel.
+
+**What differs between `foss` and `store`:** in what the app does, the Support Developer flow. The
+`store` build carries Google Play Billing; the `foss` build ships a no-op stub with billing
+permanently unavailable and opens the donation links in a browser instead. The packaging differs too:
+`foss` takes a `-foss` version-name suffix, an extra ProGuard rules file, and a locale filter
+trimming it to the five languages Thor is translated into, while the benchmark build type exists only
+for `store`. Every app-management feature is the same code in both.
+
+<h3 id="reproducible-builds">Reproducible builds</h3>
+
+The `foss` variant is built to be reproducible, and IzzyOnDroid rebuilds it from this source to award
+its reproducibility badge. That is their check, not my claim. What Play distributes cannot be checked
+the same way: CI uploads an app bundle rather than an APK, so Play generates and signs the device
+APKs itself and there is no file of mine to compare against. Baseline profiles are deliberately kept
+out of the build entirely, because they change the emitted bytecode and would break that
+verification.
+
+<h3 id="supporting-development">Supporting development</h3>
+
+Thor is written by one person. Nothing here unlocks a feature, removes a limit or changes the app in
+any way. The `store` build lists four Play subscription tiers alongside the links below; they are
+donations too, and they unlock nothing either.
+
+- [GitHub Sponsors](https://github.com/sponsors/trinadhthatakula) — preferred: lowest fees, and it
+  sits next to the code
+- [Ko-fi](https://ko-fi.com/trinadh)
+- [Patreon](https://www.patreon.com/trinadh)
+- [Buy Me a Coffee](https://www.buymeacoffee.com/trinadh)
+- [PayPal](https://www.paypal.me/trinadhthatakula)
+
+The in-app support sheet offers **three** of these — GitHub Sponsors, Patreon and PayPal — in both
+the `foss` and `store` builds. Ko-fi and Buy Me a Coffee are web-only on purpose: a page can afford
+five near-identical rows, and a bottom sheet the user opened to do one thing cannot.
+
+<h3 id="forks">Forks</h3>
+
+Thor's name and logo are trademarks; the code is free to fork, the identity is not. An unofficial
+build carrying Thor's name could contain anything.

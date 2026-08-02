@@ -1,0 +1,171 @@
+---
+layout: ../layouts/PageLayout.astro
+title: Build an extension
+description: How to build a Thor extension — the published API contract, a config UI in your own process, the operations bridge, and how to submit one.
+lead: Thor's extension system is open. The contract is published to Maven Central, there is a working template repository, and submitting one is a pull request.
+index:
+  - id: where-things-live
+    label: Where things live
+  - id: depend-on-the-contract
+    label: Depend on the contract
+  - id: configuration-ui
+    label: Configuration UI
+  - id: submit-it
+    label: Submit it
+  - id: privileged-operations
+    label: Privileged operations
+  - id: checklist
+    label: Checklist
+---
+
+import Callout from '../components/Callout.astro'
+import CodeBlock from '../components/CodeBlock.astro'
+import Fact from '../components/Fact.astro'
+
+This is the short version. The longer one lives next to the code it describes, in
+[`Thor-Extensions/CONTRIBUTING.md`](https://github.com/trinadhthatakula/Thor-Extensions/blob/main/CONTRIBUTING.md).
+
+Read the [extensions policy](/extensions-policy) first if you have not: it covers what an extension
+is allowed to do, and what a user is agreeing to when they install one.
+
+<h2 id="where-things-live">Where things live</h2>
+
+- **Template** — [`thor-extension-template`](https://github.com/trinadhthatakula/thor-extension-template).
+  A starter project on the current contract: the `compileOnly` dependency, the manifest meta-data
+  and a config activity in its own process. Start here.
+- **Extensions repo** — [`Thor-Extensions`](https://github.com/trinadhthatakula/Thor-Extensions).
+  Source for every published extension, the catalog, and the release CI.
+- **The contract** — `com.trinadhthatakula:thor-extension-api` on Maven Central.
+- **Thor itself** — [`Thor`](https://github.com/trinadhthatakula/Thor), GPL-3.0-or-later.
+
+<h2 id="depend-on-the-contract">Depend on the contract</h2>
+
+Add the API as a `compileOnly` dependency:
+
+<CodeBlock title="build.gradle.kts (your extension)">
+```kotlin
+dependencies {
+    compileOnly("com.trinadhthatakula:thor-extension-api:VERSION")
+}
+```
+</CodeBlock>
+
+`VERSION` is <Fact name="extensionApiVersion" />, the version of the contract Thor is currently
+built against.
+
+<Callout tone="warning" title="compileOnly, not implementation">
+  <p>Thor supplies the API at runtime: your entry class is loaded with Thor's own class loader as its parent, and Thor's ProGuard rules keep these types unrenamed, so they resolve to Thor's copies. A copy bundled into your APK is dead weight at best — and once your own R8 renames it, the cast to <code>ThorExtension</code> fails and Thor drops your extension.</p>
+</Callout>
+
+Implement one of:
+
+- **`ThorExtension`** — metadata only: name, description, version, author. Thor loads this class
+  **in its own process** to list your extension, so keep it trivial. No Compose, no Asgard, no
+  privileged calls in here.
+- **`DebloatExtension : ThorExtension`** — a manufacturer debloat list. Pure data.
+
+<Callout tone="note" title="AutomationExtension is retired">
+  <p><code>AutomationExtension</code> is still in the published contract, and the template's sample class still implements it — but nothing in Thor calls <code>onTrigger</code> any more, so an implementation of it never runs. It used to run your code inside Thor's process, and Thor no longer does that. Use the operations bridge below instead.</p>
+</Callout>
+
+Declare your class in the manifest, and start your package id with `com.valhalla.thor.ext.` — that
+prefix is what Thor scans for, and a package outside it is never looked at.
+
+<CodeBlock title="AndroidManifest.xml">
+```xml
+<meta-data android:name="thor.extension.class"
+    android:value="com.valhalla.thor.ext.example.ExampleExtension" />
+```
+</CodeBlock>
+
+That is the only meta-data key Thor reads. `ExtensionManager` looks up `thor.extension.class` and
+nothing else, so any other key you declare under that namespace is inert. Your API level is fixed by
+the version of `thor-extension-api` you compile against, not by anything in the manifest.
+
+<h2 id="configuration-ui">Your configuration UI runs in your own process</h2>
+
+Ship an exported activity with an intent filter for
+`com.valhalla.thor.extension.action.CONFIGURE`. Thor launches it when the user taps **Configure**.
+
+<CodeBlock title="AndroidManifest.xml">
+```xml
+<activity android:name=".ConfigActivity" android:exported="true"
+    android:theme="@android:style/Theme.Translucent.NoTitleBar">
+    <intent-filter>
+        <action android:name="com.valhalla.thor.extension.action.CONFIGURE" />
+        <category android:name="android.intent.category.DEFAULT" />
+    </intent-filter>
+</activity>
+```
+</CodeBlock>
+
+Because it is your process, bundle your own Compose and UI libraries — `implementation` this time,
+not `compileOnly` — and set `android.enableR8.fullMode=false` in your own `gradle.properties`, since
+R8's full mode mis-optimises Compose default arguments. Thor passes its current theme as intent
+extras, so you can match its look without guessing. Persist your settings in your own storage, not
+Thor's.
+
+<Callout tone="note" title="The boundary is the point">
+  <p>Thor does not execute your UI code. An extension whose UI crashes, hangs or misbehaves takes down its own process, not the app managing the user's device. That is the single most important design decision in the extension system, and it is worth understanding rather than working around.</p>
+</Callout>
+
+<h2 id="submit-it">Submit it</h2>
+
+Open a pull request against [`Thor-Extensions`](https://github.com/trinadhthatakula/Thor-Extensions)
+adding your source under **`unverified/<name>/`**, with a `LICENSE` in your folder. That is the only
+entry point — `verified/` is not a tier you submit to.
+
+Every pull request is reviewed by AI review agents **and** by the maintainer. Both have to be
+satisfied.
+
+Once it is reviewed and accepted, the maintainer moves it to `verified/`, builds it, and signs it
+with the project key — at which point it appears in the in-app catalog and loads on a stock Thor.
+Nothing can be self-signed into that tier; that is the whole meaning of the badge.
+
+Until then your extension carries no pinned signature, and Thor relaxes its signature check on debug
+builds only. So it loads on a Thor built from source in debug, and users have to build it
+themselves.
+
+What each tier means is set out in the [extensions policy](/extensions-policy).
+
+<h2 id="privileged-operations">Asking Thor to do privileged things</h2>
+
+Extensions do not run privileged code inside Thor. To act on a package, call Thor's operations
+provider over a content URI; the call cold-starts Thor if it is not already running.
+
+- **URI** — `content://<thorPackage>.extensionops`. Try `com.valhalla.thor`, then
+  `com.valhalla.thor.debug`.
+- **Methods** — `freeze`, `unfreeze`, `toggle`.
+- **Extras** — a `Bundle` with a `packages` string array.
+- **Returns** — a `Bundle` with `ok: Boolean` and `count: Int`.
+
+Thor verifies the caller is a pinned-signer extension before doing anything, and refuses to operate
+on its own package or on yours. A debug Thor relaxes that to any package under the extension prefix,
+which is how you test yours before it is verified. Being trusted buys the right to ask, not the
+right to freeze anything: a freeze still goes through the same safety-tier check the app itself
+uses, so a package rated Unsafe is refused no matter who asked. Extension-driven freezes always
+disable and enable — Thor's Suspend mode does not apply to them.
+
+Call it **off the main thread**: `ContentResolver.call` is a synchronous IPC. You need no special
+permission, only package visibility.
+
+<CodeBlock title="AndroidManifest.xml">
+```xml
+<queries>
+    <package android:name="com.valhalla.thor" />
+    <package android:name="com.valhalla.thor.debug" />
+</queries>
+```
+</CodeBlock>
+
+The verified `thor-automation-extension` in the extensions repo is a working reference client.
+
+<h2 id="checklist">Checklist</h2>
+
+- `compileOnly` on `com.trinadhthatakula:thor-extension-api`, version <Fact name="extensionApiVersion" />
+- package id starts with `com.valhalla.thor.ext.`
+- `thor.extension.class` meta-data declared
+- config UI in your own exported activity, not in Thor
+- `android.enableR8.fullMode=false`
+- a `LICENSE` in your folder
+- the pull request adds your source under `unverified/<name>/`

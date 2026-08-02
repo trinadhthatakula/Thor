@@ -1,0 +1,230 @@
+---
+layout: ../layouts/PageLayout.astro
+title: Extensions policy
+description: What extensions are, how Thor verifies them, and what you take on by installing one — the same agreement Thor shows the first time you open the Extension Manager.
+lead: Extensions are optional add-ons for Thor, distributed as separate signed applications. This page is the agreement the app already shows you, published so you can read it before you install Thor rather than after.
+index:
+  - id: the-agreement
+    label: The agreement
+  - id: what-an-extension-can-do
+    label: What an extension can do
+  - id: how-thor-decides-an-extension-is-trustworthy
+    label: How Thor decides trust
+  - id: what-is-and-is-not-vouched-for
+    label: What is vouched for
+  - id: privacy
+    label: Privacy
+  - id: building-and-publishing-an-extension
+    label: Building and publishing
+---
+
+import Callout from '../components/Callout.astro'
+import Fact from '../components/Fact.astro'
+
+**You do not need extensions to use Thor.** Every core feature works without one, and nothing on
+the rest of this site depends on them.
+
+They are also the only reason Thor's own code opens a network connection. One file,
+`data/repository/StoreRepositoryImpl.kt`, does it: it fetches the catalog when you open the
+Extension Store, and downloads an APK when you install or update one. Thor declares `INTERNET` for
+exactly that, and the manifest comment above the declaration says so. The Google Play build carries
+one more network user that is not Thor's code — Google Play Billing, which opens a connection to
+Play when the app opens; [the privacy page covers it](/privacy#play-billing).
+
+<h2 id="the-agreement">The agreement</h2>
+
+The first time you open the Extension Manager, Thor shows you this. It will not let you past it
+until you actively acknowledge it — including a small arithmetic question, so the sheet cannot be
+dismissed by reflex. Swiping it away leaves the Extension Manager instead of entering it.
+
+<Callout tone="danger" title="Before you continue">
+  <p>
+    Extensions are powerful add-ons that can change how apps and the system behave on your device.
+    They are not always made by us — anyone can build one. We verify and sign the extensions we
+    distribute, but this is inherently risky territory.
+  </p>
+  <p>
+    By continuing you accept that you alone are responsible for what you install and enable here,
+    and that Thor and its developers are <strong>NOT</strong> liable for any data loss,
+    malfunction, or damage caused by an extension or any change you make through it.
+  </p>
+</Callout>
+
+That is the app's own wording, carried over from Thor's string resources without a rewrite. Reading
+it here, on my recommendation, does not change the agreement — it is the same one, stated in a place
+you can reach before you have installed anything.
+
+<h2 id="what-an-extension-can-do">What an extension can do</h2>
+
+An extension is an ordinary Android application that Thor has agreed to talk to. Through Thor, it
+can:
+
+- **Ask Thor to freeze, unfreeze or toggle packages.** Thor performs the operation itself, under its
+  own identity, with whatever privilege it currently holds — root, Shizuku or Dhizuku.
+- **Contribute manufacturer debloat entries**, which are merged into the safety ratings Thor already
+  ships and shown the same way. An entry for a package Thor already rates replaces Thor's rating for
+  it.
+- **Present its own configuration screen**, which runs in the extension's own process rather than
+  inside Thor.
+- **Ask Thor to unfreeze one app as you tap its launcher icon.** An Xposed module runs inside the
+  launcher's process rather than its own, so Thor cannot check that caller's signature. This request
+  goes to a second, narrower provider instead, bounded two other ways: the caller has to be the
+  device's default launcher, and the app has to already be on your Freezer watchlist or in one of
+  your freeze profiles.
+
+Separately from any of that, an extension is an installed app in its own right, with whatever
+permissions its own manifest declares. That part is between you and it; Thor is not in the middle of
+it. Some extensions additionally require **LSPosed or Xposed**, which means root — the store marks
+those **Requires LSPosed**.
+
+**Where the boundary actually sits.** Thor does load a verified extension's entry-point class into
+its own process, which is how it reads the extension's name and description and any debloat list it
+contributes; the contributor guide tells authors to keep that class trivial for precisely that
+reason. Everything privileged goes the other way. The extension asks over a content URI and Thor
+does the work, so the privilege never crosses to the extension's side. The older design, which ran
+an extension's code inside Thor to carry out actions, has been retired.
+
+Thor refuses to operate on its own package or on the calling extension's, and a freeze request from
+an extension goes through the same safety gate as one you tap yourself: a package rated **Unsafe** is
+refused, trusted caller or not. Being trusted buys the right to ask.
+
+An extension cannot reach the operations provider at all unless it passes the signature check below.
+
+<h2 id="how-thor-decides-an-extension-is-trustworthy">How Thor decides an extension is trustworthy</h2>
+
+Every extension downloaded from the in-app store passes all of these, in order, before it reaches
+the installer:
+
+1. **The catalog entry must be marked verified and carry a download URL.** An entry missing either is
+   shown as **Source only — build it yourself**, with no install button.
+2. **The URL must be HTTPS.** Plain HTTP is refused outright.
+3. **The host must be GitHub** — `github.com`, or GitHub's asset CDN under `githubusercontent.com`.
+   Nothing else is accepted.
+4. **The download is hashed as it streams.** SHA-256 is computed in the same pass as the download,
+   so there is no window where an unverified file sits on disk unhashed. Redirects are followed by
+   hand rather than by the HTTP stack, at most five times, and every hop is re-checked against the
+   same two rules — not just a downgrade to HTTP, but any host outside that allowlist.
+5. **The hash must match the catalog**, where the catalog pins one. A mismatch aborts the install and
+   the file is deleted.
+6. **The signing certificate must match the pinned key.** Thor reads the APK's signing certificate
+   and compares its SHA-256 fingerprint against the one pinned inside Thor itself. This is the check
+   that matters most: even a compromised catalog cannot make Thor install something I did not sign.
+   There is no debug relaxation on this path — a downloaded APK is always matched against a pin.
+7. **Only then** is the file handed to the installer.
+
+And then, continuously: **signatures are checked again at load time, not only at install.** Thor
+reuses an already-loaded extension only while both its version code and its on-disk path are
+unchanged, so an update, a reinstall or a downgrade forces a fresh check. An extension that stops
+matching the pinned key stops being loaded, and provides no functionality from that point on.
+
+The verification fails closed. If any step cannot be completed — a malformed APK, an unreadable
+certificate, an unexpected error — the answer is "not trusted", never "probably fine".
+
+An extension that fails the check is dropped at that point, so it never appears in the Extension
+Manager's list — that list is built from the extensions that loaded. It is still an ordinary
+installed app, so you uninstall it the way you uninstall anything else.
+
+<h2 id="what-is-and-is-not-vouched-for">What is and is not vouched for</h2>
+
+**Vouched for:** any extension distributed through Thor's in-app store carrying the **Verified**
+badge. Those are signed with the project's own extension key, and the store will not install
+anything that is not.
+
+**Not vouched for:** anything you install from anywhere else. Extensions are ordinary Android
+packages — you can build one yourself and sideload it. If you do, a release build of Thor refuses to
+load it and it does not show up in the Extension Manager at all, unless you are running a debug build
+of Thor, where that check is relaxed so developers can test their own work. That relaxation applies
+only to an extension already installed on the device; it never applies to one downloaded from the
+store.
+
+**Nobody vouches for what an extension does with the reach you give it.** Verification proves an
+extension is the file that was published, unmodified. It is not an audit of that extension's
+behaviour. Every extension in the catalog is published with its source in the Thor-Extensions repo;
+if you are about to let one ask for privileged operations, reading it first is time well spent.
+
+<h2 id="privacy">Privacy</h2>
+
+- The extension catalog is fetched from GitHub over HTTPS **only when you open the Extension
+  Store**. Opening the Extension Manager alone does not fetch it.
+- Thor adds nothing to that request — no identifiers, no account, no list of your installed apps, and
+  no headers of its own. It is a plain GET for a JSON file.
+- As with any web request, GitHub's servers see your IP address and whatever the platform's own HTTP
+  stack sends by default. That request goes to GitHub and stops there — it does not come to me, and
+  nothing in it identifies you to me.
+- An extension's own settings belong in the extension's own app, not in Thor: the contributor guide
+  tells authors to persist them there. Uninstalling the extension takes them with it, the way
+  uninstalling any Android app does.
+
+**Extensions are separate applications with their own behaviour.** [Thor's privacy
+policy](/privacy) covers Thor. It does not cover what a third-party extension does once you have
+installed and enabled it.
+
+<h2 id="building-and-publishing-an-extension">Building and publishing an extension</h2>
+
+Yes, anyone can — the in-app notice says "anyone can build one" and it means that literally. The
+contract is published, the process is documented, and there are two tiers depending on how much
+trust you are asking users to extend to you.
+
+[**Build an extension**](/build-an-extension) is the full walkthrough. The short version:
+
+**Start here.** [`thor-extension-template`](https://github.com/trinadhthatakula/thor-extension-template)
+is a working example of everything below, and
+[`Thor-Extensions/CONTRIBUTING.md`](https://github.com/trinadhthatakula/Thor-Extensions/blob/main/CONTRIBUTING.md)
+is the authoritative version of this summary.
+
+**The contract** is `com.trinadhthatakula:thor-extension-api`, version <Fact name="extensionApiVersion" />, on Maven Central.
+Depend on it `compileOnly` — Thor supplies it at runtime, so bundling it is a mistake. Your package
+id must start with `com.valhalla.thor.ext.`, and you declare your entry-point class in your
+manifest.
+
+**Configuration UI runs in your process, not Thor's.** You ship an exported activity answering
+`com.valhalla.thor.extension.action.CONFIGURE`; Thor launches it and passes its theme as optional
+extras so you can match the look. Thor does not render your UI inside itself — that boundary is
+deliberate, and is most of why extensions are survivable at all.
+
+<h3 id="how-to-submit-one">How to submit one</h3>
+
+**There is one entry point: `unverified/`.** Open a pull request against
+[Thor-Extensions](https://github.com/trinadhthatakula/Thor-Extensions) adding your extension's source
+under `unverified/<name>/`. That is the whole submission process — you do not need permission first,
+and you do not propose yourself into the verified tier.
+
+**Every pull request is reviewed twice:** by AI review agents, and by me. Both have to be satisfied
+before it merges. That is how I work rather than something a workflow file enforces — what CI runs on
+a pull request is a CodeQL scan of the repository plus a build and unit-test pass over the two
+verified extensions, from a list written into the workflow by hand. It does not yet build what a
+submission adds under `unverified/`, so read your own build logs before you open the pull request.
+
+**Promotion to `verified/` is mine to do, not yours to request.** Once a submission has been reviewed
+and I am satisfied with it, I move it to `verified/`, build it, and sign it with the dedicated Thor
+Extensions key so it can be listed in the catalog. **Nothing can be self-signed into the verified
+tier** — that is the entire meaning of the badge. The release pipeline enforces it mechanically: it
+rejects any APK whose signer certificate does not equal the pin, and it hard-fails a release for a
+verified extension with no catalog entry, so nothing can end up released but uncatalogued.
+
+<h3 id="what-each-tier-means-for-the-person-installing-it">What each tier means for the person installing it</h3>
+
+| What you get | Unverified | Verified |
+|---|---|---|
+| Reviewed | Yes — AI agents and the maintainer | Yes, the same review |
+| Signed by the project | No | Yes, dedicated key |
+| Listed in the in-app catalog | No | Yes |
+| Loads on a release build of Thor | **No** — a debug build, or your own build with your key pinned | Yes |
+| You have to build it yourself | Yes | No |
+
+The gap is deliberate. An unverified extension has been read, but nobody has staked the project's
+signing key on it, so a stock Thor install refuses to load it. To run one you need a debug build of
+Thor, or your own build with your own key added to Thor's pin list — either way you built it, which
+means you are in a position to read the source first.
+
+Two extensions carry the Verified badge today, and `unverified/` is empty. If you build one, you
+would be the first.
+
+<h3 id="privileged-operations">Privileged operations</h3>
+
+To act on a package, an extension calls Thor's extension operations provider over a content URI with
+`freeze`, `unfreeze` or `toggle`. Thor attests the caller, requires it to be a pinned-signer
+extension, and refuses to operate on its own package or the caller's. A debug build of Thor accepts
+any package named `com.valhalla.thor.ext.` something instead of a pinned one, which is how you test
+your own before it is signed. The work then runs on Thor's side of the boundary, under Thor's
+identity, bounded by a timeout and failing closed if it expires. The extension is asking, not doing.

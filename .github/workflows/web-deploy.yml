@@ -1,0 +1,516 @@
+name: Web Deploy
+
+# Deploys web/ to Vercel from GitHub Actions, using the Vercel CLI rather than
+# Vercel's built-in Git integration.
+#
+# WHY THIS EXISTS AT ALL, given the Git integration would do it for free:
+# because with the Git integration the gates run *inside Vercel*, where a
+# failure is a red box on vercel.com that nobody is watching, and the four
+# settings that control whether they run at all (Root Directory, "Include files
+# outside the Root Directory", Build Command, Ignored Build Step) live in a
+# dashboard, are invisible to review, and produce no error when wrong. Moving
+# the build here puts every one of those decisions in this file, under review,
+# in git. See web/docs/deploy.md.
+#
+# ────────────────────────────────────────────────────────────────────────────
+# THE ONE THING THAT MUST STAY TRUE: the Vercel project is NOT connected to the
+# GitHub repository. Create it with `cd web && vercel link`, never by importing
+# the repo — importing also sets Root Directory to `web`, which resolves to
+# `web/web` because this workflow already runs the CLI from inside web/.
+#
+# `"git": { "deploymentEnabled": false }` is defence in depth, and it is in TWO
+# files — web/vercel.json and /vercel.json — because Vercel does not document
+# which one its Git integration reads. Delete neither.
+#
+# If the repo does get connected, the consequence is now a genuine race, not a
+# theoretical one. Vercel's default production branch is `master`, which is also
+# this workflow's production branch, so one master push fires two production
+# deploys at the same alias: this one, carrying a gated artifact, and a
+# Git-sourced Vercel build started from the Gradle repository root — which has no
+# package.json. Whichever finishes last wins the alias.
+# ────────────────────────────────────────────────────────────────────────────
+#
+# Path filter: identical to web-ci.yml's, and for the same reason. The site
+# derives its version name and SDK levels from gradle.properties and
+# gradle/libs.versions.toml (web/src/lib/repo-facts), so a chore(release) commit
+# touches nothing under web/ and still changes what the site renders.
+#
+# That list lives in FOUR places: here, web-ci.yml's paths:, the
+# ignoreCommand in web/vercel.json, and — as GRADLE_PROPERTIES and
+# VERSION_CATALOG — web/src/lib/repo-facts/read.ts. Deriving a new fact from a
+# new file means editing all four in the same commit. Edit read.ts alone and the
+# site renders a value that no longer triggers a rebuild when it changes, which
+# is the precise drift the whole derivation exists to prevent.
+#
+# Like web-ci.yml and web-lighthouse.yml before it, this workflow is
+# path-filtered and therefore MUST NEVER become a required status check:
+# GitHub reports a path-skipped required check as "Expected — Waiting for
+# status" forever, which would leave every Android-only PR unmergeable.
+
+# BRANCH MODEL: `master` publishes, `dev` stages. Both are push triggers, and the
+# difference between them is the `--prod` flag resolved below, not the trigger
+# list. Site work is merged to `dev` like everything else and gets a real,
+# deployed preview URL for the integrated state; the live site changes only when
+# `dev` is merged to `master`. That merge is a deliberate act, which is the whole
+# point — "we are sure" is a decision someone makes, not a side effect of pushing.
+#
+# `dev` is kept as a push trigger on purpose. Dropping it would mean the only
+# deployed artifact between releases is a per-PR preview, and no URL would ever
+# show the merged state of several site PRs together — which is exactly the state
+# the release merge is about to publish.
+
+on:
+  push:
+    branches: [ "master", "dev" ]
+    paths:
+      - 'web/**'
+      - 'gradle.properties'
+      - 'gradle/libs.versions.toml'
+      - '.github/workflows/web-deploy.yml'
+  pull_request:
+    branches: [ "master", "dev" ]
+    paths:
+      - 'web/**'
+      - 'gradle.properties'
+      - 'gradle/libs.versions.toml'
+      - '.github/workflows/web-deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A superseded commit must not deploy. Cancelling mid-flight is safe because a
+# Vercel deployment is atomic: the production alias only moves when the upload
+# completes, so a cancelled run leaves the previous deployment serving.
+concurrency:
+  group: web-deploy-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    # A forked PR gets no repository secrets, so every Vercel command below
+    # would fail on an empty token — a red check the contributor cannot fix and
+    # did not cause. Skipping the whole job is the honest outcome.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # Only for the preview-URL comment on pull requests.
+      pull-requests: write
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+      target: ${{ steps.target.outputs.env }}
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      # ──────────────────────────────────────────────────────────────────────
+      # Same rule as web-lighthouse.yml's bypass check: a missing secret is a
+      # configuration state, not a regression in the site. Until the Vercel
+      # project exists and its three secrets are set, this workflow announces
+      # what is missing and exits green. It must not redden every web PR in the
+      # window between this file landing and the project being created.
+      # ──────────────────────────────────────────────────────────────────────
+      - name: Check for the Vercel credentials
+        id: creds
+        env:
+          TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          ORG: ${{ secrets.VERCEL_ORG_ID }}
+          PROJECT: ${{ secrets.VERCEL_PROJECT_ID }}
+        # This job has no checkout yet, so it cannot use `working-directory: web`.
+        working-directory: .
+        run: |
+          set -uo pipefail
+          missing=""
+          [ -z "${TOKEN:-}" ]   && missing="$missing VERCEL_TOKEN"
+          [ -z "${ORG:-}" ]     && missing="$missing VERCEL_ORG_ID"
+          [ -z "${PROJECT:-}" ] && missing="$missing VERCEL_PROJECT_ID"
+
+          if [ -n "$missing" ]; then
+            echo "::notice::Vercel deploy skipped — missing repository secret(s):$missing. See web/docs/deploy.md for where each value comes from. This is a configuration state, not a failure."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Production is a push to `master`, and nothing else is. A push to `dev`, a
+      # pull request, and a manual dispatch from any branch other than `master`
+      # are all previews. A dispatch counts as a request to publish only when it
+      # is aimed at `master`, which is also the only branch GitHub offers the
+      # Run-workflow button from, since it is the default branch.
+      #
+      # `strict` is the third output and it is the one that is easy to miss.
+      # `check:screenshots` refuses a placeholder frame when VERCEL_ENV=production
+      # OR when REQUIRE_SCREENSHOTS=1 (web/scripts/check-screenshots.mjs). Setting
+      # it on pull requests based on `master` is what makes the release PR's
+      # preview assert production strictness BEFORE the merge that publishes.
+      # Without it the first build ever held to the production standard would be
+      # the one already serving on the live domain, and a placeholder would be
+      # found by a visitor rather than by a check. It stays off for PRs into `dev`
+      # and for `dev` pushes: work in progress is allowed to carry a placeholder,
+      # which is the entire reason the gate is conditional.
+      - name: Resolve the target environment
+        id: target
+        if: steps.creds.outputs.present == 'true'
+        working-directory: .
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != "pull_request" ] && [ "$REF" = "refs/heads/master" ]; then
+            echo "env=production" >> "$GITHUB_OUTPUT"
+            echo "flag=--prod" >> "$GITHUB_OUTPUT"
+            echo "strict=1" >> "$GITHUB_OUTPUT"
+            echo "Target: production (thor.trinadhthatakula.com)"
+          elif [ "$EVENT" = "pull_request" ] && [ "$BASE" = "master" ]; then
+            echo "env=preview" >> "$GITHUB_OUTPUT"
+            echo "flag=" >> "$GITHUB_OUTPUT"
+            echo "strict=1" >> "$GITHUB_OUTPUT"
+            echo "Target: preview, held to production strictness (base is master)"
+          else
+            echo "env=preview" >> "$GITHUB_OUTPUT"
+            echo "flag=" >> "$GITHUB_OUTPUT"
+            echo "strict=" >> "$GITHUB_OUTPUT"
+            echo "Target: preview"
+          fi
+
+      - name: Checkout code
+        if: steps.creds.outputs.present == 'true'
+        uses: actions/checkout@v7
+
+      # node-version-file reads engines.node from web/package.json, the same as
+      # web-ci.yml, so the version that builds the deployed artifact cannot
+      # drift from the version the manifest claims to support.
+      - name: Setup Node
+        if: steps.creds.outputs.present == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: 'web/package.json'
+          cache: 'npm'
+          cache-dependency-path: 'web/package-lock.json'
+
+      # Major-pinned, not floating. A Vercel CLI major has changed flag
+      # behaviour before, and the three commands below are the whole deploy;
+      # patches within a major are wanted (they are usually upload fixes),
+      # a major bump is not something to discover during a release.
+      - name: Install the Vercel CLI
+        if: steps.creds.outputs.present == 'true'
+        working-directory: .
+        run: npm install --global vercel@58
+
+      # ci, not install: the lockfile is the contract. `npm install` would
+      # happily resolve a newer typescript than @astrojs/check's peer range
+      # allows and turn a red build green for the wrong reason — and `astro
+      # check` is the first link in the gate chain. Run before `vercel build` so
+      # the tree the build uses is the one the lockfile describes.
+      - name: Install dependencies
+        if: steps.creds.outputs.present == 'true'
+        run: npm ci
+
+      # Ahead of the build because a failing test should not wait on one, and
+      # because these are the gates that are NOT in the build chain — so they
+      # are the ones a deploy could otherwise skip. They run here rather than
+      # being taken on trust from web-ci.yml: that is a separate workflow with
+      # its own triggers, and "the deploy assumed a check that never ran" is not
+      # a reachable state worth having.
+      - name: Unit tests
+        if: steps.creds.outputs.present == 'true'
+        run: npm test
+
+      # `vercel pull` writes the project settings and environment variables into
+      # web/.vercel/ so that `vercel build` runs offline against the real
+      # project config rather than guessing it.
+      - name: Pull the Vercel project settings
+        if: steps.creds.outputs.present == 'true'
+        run: vercel pull --yes --environment=${{ steps.target.outputs.env }} --token="${{ secrets.VERCEL_TOKEN }}"
+
+      # ──────────────────────────────────────────────────────────────────────
+      # VERCEL_ENV is set here EXPLICITLY, and that is load-bearing.
+      #
+      # `check:screenshots` hard-fails on a placeholder frame only when
+      # VERCEL_ENV=production — that is the switch which stops a production
+      # deploy shipping a dashed grey box where a screenshot should be. Under
+      # `vercel build`, the build runs outside Vercel's infrastructure, and
+      # Vercel's own documentation warns that System Environment Variables are
+      # not injected in that mode. Relying on `--prod` to imply VERCEL_ENV would
+      # therefore silently downgrade a gate to advisory — the exact failure
+      # shape the gate was written to prevent. Setting it here makes the
+      # strictness a property of this file instead of a property of Vercel's
+      # internals.
+      #
+      # REQUIRE_SCREENSHOTS rides alongside it and is empty except on a pull
+      # request into `master`, where it holds a preview build to the production
+      # screenshot standard — see the target step for why.
+      #
+      # The build itself is `npm run build` (web/vercel.json's buildCommand),
+      # which is the whole gate chain: check:types, astro build, check:links,
+      # check:claims, check:markup, check:sitemap, check:screenshots.
+      # ──────────────────────────────────────────────────────────────────────
+      - name: Build
+        if: steps.creds.outputs.present == 'true'
+        env:
+          VERCEL_ENV: ${{ steps.target.outputs.env }}
+          REQUIRE_SCREENSHOTS: ${{ steps.target.outputs.strict }}
+        run: vercel build ${{ steps.target.outputs.flag }} --token="${{ secrets.VERCEL_TOKEN }}"
+
+      # ──────────────────────────────────────────────────────────────────────
+      # Re-run every checker against the STAGED ARTIFACT rather than against
+      # dist/, because those are not the same claim.
+      #
+      # `npm run build` gates dist/. What gets uploaded is .vercel/output/static,
+      # which the Vercel builder produces *from* dist/. Everything the gates
+      # proved is therefore a statement about an intermediate — and a build
+      # succeeding does not prove the right directory was built at all. The CLI
+      # resolves its source from the working directory and the project's Root
+      # Directory setting, and those two can disagree: a Root Directory of `web`
+      # on top of this job's `working-directory: web` points at `web/web`. That
+      # kind of misconfiguration need not throw; it can simply stage a tree that
+      # is empty, or is not the site.
+      #
+      # This is cheap to make airtight because every checker takes the directory
+      # as argv[2] and fails on an empty or missing scan by design — verified
+      # against both an empty and a nonexistent path. So a wrong directory here
+      # reports itself instead of passing vacuously, which is the only property
+      # that makes this step worth having.
+      #
+      # VERCEL_ENV is re-stated for the same reason as on the build step: it is
+      # what makes check:screenshots refuse a production deploy carrying a
+      # placeholder frame.
+      # ──────────────────────────────────────────────────────────────────────
+      - name: Gate the staged artifact
+        if: steps.creds.outputs.present == 'true'
+        env:
+          VERCEL_ENV: ${{ steps.target.outputs.env }}
+          REQUIRE_SCREENSHOTS: ${{ steps.target.outputs.strict }}
+        run: |
+          set -euo pipefail
+          out=".vercel/output/static"
+
+          if [ ! -f "$out/index.html" ]; then
+            echo "::error::$out/index.html is missing, so the artifact about to be deployed is not the site. The usual cause is a Root Directory mismatch — this job already runs inside web/, so the Vercel project's Root Directory must be UNSET, not 'web'. Note that this check is not the first thing a Root Directory mismatch trips: if the project was created by importing the repo, its pulled settings carry framework=astro and the Build step dies earlier with 'Command \"astro build\" exited with 127', which names nothing about paths. See web/docs/deploy.md."
+            ls -la .vercel/output 2>/dev/null || echo "(no .vercel/output at all)"
+            exit 1
+          fi
+
+          # dist/ may or may not survive the Vercel builder, so its absence is
+          # not an error — but when it is there, a page missing from the staged
+          # tree means the artifact is a subset of what was gated.
+          #
+          # Deliberately asymmetric. Fewer staged than built is a truncated
+          # artifact and must stop the deploy. MORE staged than built is the
+          # builder having added something of its own, which is its prerogative
+          # and not evidence of anything wrong — failing on it would be a check
+          # that blocks releases to report a non-problem, and the fastest way to
+          # get a gate deleted is for it to cry wolf once.
+          if [ -d dist ]; then
+            built=$(find dist -name '*.html' | wc -l | tr -d ' ')
+            shipped=$(find "$out" -name '*.html' | wc -l | tr -d ' ')
+            if [ "$shipped" -lt "$built" ]; then
+              echo "::error::astro emitted $built HTML pages into dist/ but only $shipped are staged in $out. The artifact is a subset of the build that was gated."
+              exit 1
+            fi
+            if [ "$shipped" -gt "$built" ]; then
+              echo "::notice::$shipped HTML pages staged against $built built — the Vercel builder added $((shipped - built)). Not an error; noted so it is visible if it ever starts mattering."
+            fi
+          fi
+
+          for check in check-links check-claims check-markup check-sitemap check-screenshots check-a11y; do
+            echo "--- $check ($out) ---"
+            node "scripts/$check.mjs" "$out"
+          done
+
+      # `--archive=tgz` compresses the upload into a single tarball. The site
+      # ships six PNG screenshots plus a font set; archiving keeps the deploy
+      # well clear of Vercel's per-request file-count limits.
+      #
+      # NEVER add `--no-wait` here. The CLI uploads a commandForIgnoringBuildStep
+      # derived from vercel.json even on a --prebuilt deploy, and Vercel has
+      # shipped (then rolled back) a build where the Ignored Build Step cancelled
+      # prebuilt deployments. Waiting is what makes that loud: `vercel deploy`
+      # prints "The deployment has been canceled." and exits 1 under `set -e`.
+      # With --no-wait the same cancellation is a green job that shipped nothing.
+      - name: Deploy
+        id: deploy
+        if: steps.creds.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          raw=$(vercel deploy --prebuilt --archive=tgz ${{ steps.target.outputs.flag }} --token="${{ secrets.VERCEL_TOKEN }}")
+
+          # The CLI writes progress to stderr and the deployment URL to stdout, so
+          # `url=$raw` would usually be right — but that is an assumption about a
+          # tool that ships a new version most weeks, and getting it wrong fails in
+          # the worst available way: a multi-line value appended to $GITHUB_OUTPUT
+          # is not an error, it corrupts the file, and the next job reads whatever
+          # the corruption happens to spell. Extract the URL instead of trusting the
+          # shape of the output, and refuse to continue if there isn't exactly one.
+          url=$(printf '%s\n' "$raw" | grep -oE 'https://[^[:space:]]+' | tail -n 1 || true)
+          if [ -z "$url" ]; then
+            echo "::error::vercel deploy reported no deployment URL. Its full output follows."
+            printf '%s\n' "$raw"
+            exit 1
+          fi
+
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Deployed ${{ steps.target.outputs.env }}: $url"
+          {
+            echo "### Web deploy — ${{ steps.target.outputs.env }}"
+            echo ""
+            echo "$url"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Replaces the PR comment Vercel's Git integration would have posted.
+      # Written with `gh` rather than a third-party action so the deploy path
+      # takes no dependency outside GitHub's and Vercel's own tooling.
+      #
+      # Edits one marked comment rather than appending: a PR that is pushed to
+      # ten times should carry one comment showing the current preview, not ten
+      # showing nine dead ones.
+      - name: Comment the preview URL on the pull request
+        if: steps.creds.outputs.present == 'true' && github.event_name == 'pull_request'
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          URL: ${{ steps.deploy.outputs.url }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          marker="<!-- web-preview-deployment -->"
+          body=$(printf '%s\n**Web preview:** %s\n\nBuilt from `%s` by `web-deploy.yml`. Updated in place on every push.' "$marker" "$URL" "${SHA:0:7}")
+
+          id=$(gh api "repos/$GH_REPO/issues/$PR/comments?per_page=100" \
+                 --jq "[.[] | select(.body | contains(\"$marker\"))] | .[0].id // empty")
+
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$GH_REPO/issues/comments/$id" -f body="$body" --silent
+            echo "Updated comment $id."
+          else
+            gh api --method POST "repos/$GH_REPO/issues/$PR/comments" -f body="$body" --silent
+            echo "Posted a new preview comment."
+          fi
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # ADVISORY ONLY, and structurally incapable of becoming a gate:
+  #   - every assertion in `web/lighthouserc.json` is at `warn`, never `error`;
+  #   - the job is `continue-on-error`;
+  #   - the workflow is path-filtered, so it must never be added to a ruleset.
+  #
+  # Spec §6.6: run Lighthouse as a warning first, promote it to a gate once the
+  # real baseline is known. A performance budget guessed in advance mostly
+  # teaches people to ignore it.
+  #
+  # This used to be web-lighthouse.yml, which found the preview URL by polling
+  # the GitHub Deployments API for ~10 minutes. That only ever worked because
+  # Vercel's Git integration writes those deployment records — Vercel's own
+  # documentation is explicit that CLI deployments do not carry full gitSource
+  # metadata. Left alone it would not have failed; it would have polled for ten
+  # minutes, found nothing, and skipped with a notice on every PR forever. Now
+  # the job that did the deploying hands over the URL directly, and the polling
+  # loop is gone rather than quietly broken.
+  # ──────────────────────────────────────────────────────────────────────────
+  lighthouse:
+    name: lighthouse (advisory)
+    needs: deploy
+    if: github.event_name == 'pull_request' && needs.deploy.outputs.url != ''
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Check for the preview protection bypass secret
+        id: bypass
+        env:
+          BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          set -uo pipefail
+          # ────────────────────────────────────────────────────────────────────
+          # THE TRAP THIS STEP EXISTS FOR — read before changing anything here.
+          #
+          # Vercel puts preview deployments behind Deployment Protection.
+          # Without the `x-vercel-protection-bypass` header, Lighthouse does not
+          # fail: it cheerfully scores Vercel's SSO authentication page, which is
+          # tiny, fast and accessible, and reports a completely plausible number
+          # for a page no visitor will ever load. That is months of meaningless
+          # green, and it is the single easiest way to get worthless data out of
+          # this job.
+          #
+          # So the rule is absolute: no secret, no run. Never fall back to
+          # running without the header, and never fail because the secret is
+          # missing — a missing secret is a configuration state, not a
+          # regression in the site.
+          # ────────────────────────────────────────────────────────────────────
+          if [ -z "${BYPASS:-}" ]; then
+            echo "::notice::VERCEL_AUTOMATION_BYPASS_SECRET is not set, so Lighthouse would score Vercel's authentication wall instead of the site. Skipping. Set the secret (Vercel → Project → Settings → Deployment Protection → Protection Bypass for Automation) to enable it."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node
+        if: steps.bypass.outputs.present == 'true'
+        uses: actions/setup-node@v7
+        with:
+          # Matches web/package.json's engines.node, which matches Astro's floor.
+          node-version: 22
+
+      - name: Install Lighthouse CI
+        if: steps.bypass.outputs.present == 'true'
+        # Pinned exactly: an LHCI minor can change how a category score is
+        # computed, and an advisory number that moves for tooling reasons is
+        # worse than no number.
+        run: npm install -g @lhci/cli@0.15.1
+
+      - name: Run Lighthouse against the preview
+        if: steps.bypass.outputs.present == 'true'
+        working-directory: web
+        env:
+          BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          PREVIEW_URL: ${{ needs.deploy.outputs.url }}
+        run: |
+          set -euo pipefail
+          # Built with jq so the secret never appears in this file, and so a
+          # secret containing a quote cannot break out of the JSON. Lighthouse
+          # sends `extraHeaders` on every request it makes, subresources
+          # included, which is what makes the bypass cover the whole page load
+          # rather than just the document.
+          headers="$(jq -nc --arg v "$BYPASS" '{"x-vercel-protection-bypass": $v}')"
+
+          # `--config` is explicit rather than relying on LHCI's config
+          # discovery, and `working-directory: web` means the same command works
+          # verbatim from a local `web/` checkout.
+          #
+          # Do not add a `preset` to lighthouserc.json: `lighthouse:recommended`
+          # sets its assertions to `error`, which would turn this advisory job
+          # into the gate the spec says it must not be yet.
+          lhci autorun \
+            --config=./lighthouserc.json \
+            --collect.url="$PREVIEW_URL" \
+            --collect.settings.extraHeaders="$headers"
+
+      - name: Upload the Lighthouse reports
+        # `always()` because a run that failed is the one whose report is worth
+        # reading.
+        #
+        # `include-hidden-files` is not optional here: `.lighthouseci` is a
+        # hidden directory, upload-artifact skips hidden files by default, and
+        # `if-no-files-found: ignore` means the step would then pass having
+        # uploaded nothing at all. Green, empty, and no way to tell from the
+        # check list — carried over unnoticed from web-lighthouse.yml.
+        if: always() && steps.bypass.outputs.present == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: lighthouse-report
+          include-hidden-files: true
+          path: web/.lighthouseci
+          retention-days: 14
+          if-no-files-found: ignore

@@ -1,0 +1,101 @@
+---
+/**
+ * The homepage hero, and the only <h1> on `/`.
+ *
+ * The subhead is not decoration. Thor does nothing useful without Root, Shizuku
+ * or Dhizuku, and the draft that scored best on prose never said so until three
+ * scrolls down — a reader could install from the recommended channel and find
+ * nothing works. The claims blocklist requires the sentence "You will need one
+ * of the three" on this page, so `subhead` is a slot rather than a prop: it is
+ * written in the page source where the checker can read it out of the built HTML.
+ */
+interface Props {
+  title: string
+  primary: { href: string; label: string }
+  secondary: { href: string; label: string }
+}
+
+const { title, primary, secondary } = Astro.props
+---
+<section class="hero">
+  <div class="hero-copy">
+    <h1>{title}</h1>
+    <div class="hero-subhead"><slot /></div>
+    <div class="hero-actions">
+      <a class="cta cta--primary" href={primary.href}>{primary.label}</a>
+      <a class="cta cta--secondary" href={secondary.href}>{secondary.label}</a>
+    </div>
+  </div>
+  <div class="hero-media"><slot name="media" /></div>
+</section>
+
+<style>
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: var(--space-l);
+    align-items: center;
+    max-width: var(--content-max);
+    margin-inline: auto;
+    padding: var(--space-xl) var(--space-s);
+  }
+
+  @media (max-width: 48rem) {
+    .hero {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  h1 {
+    font-size: var(--text-display-large);
+    line-height: var(--leading-display-large);
+    letter-spacing: -0.02em;
+    margin: 0 0 var(--space-s);
+    text-wrap: balance;
+  }
+
+  .hero-subhead {
+    max-width: var(--measure);
+    font-size: var(--text-body-large);
+    color: var(--on-surface-variant);
+  }
+
+  .hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+    margin-block-start: var(--space-m);
+  }
+
+  .cta {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: var(--text-label-large);
+    text-decoration: none;
+    padding: var(--space-xs) var(--space-m);
+    border-radius: var(--radius-full);
+  }
+
+  .cta--primary {
+    background: var(--primary);
+    color: var(--on-primary);
+  }
+
+  .cta--secondary {
+    /* --outline rather than the hairline: this is a control boundary, and the
+       hairline tokens are 1.62:1 / 2.11:1. */
+    border: 1px solid var(--outline);
+    color: var(--on-surface);
+  }
+
+  .cta:hover {
+    /* No transform: a hover that moves the button is the kind of motion
+       prefers-reduced-motion exists to suppress, and this site has no
+       motion budget to spend on a link. */
+    filter: brightness(1.08);
+  }
+
+  .hero-media {
+    justify-self: end;
+  }
+</style>

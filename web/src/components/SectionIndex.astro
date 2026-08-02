@@ -1,0 +1,95 @@
+---
+/**
+ * The sticky in-page index for the long pages.
+ *
+ * Entries are declared, not scraped from the rendered headings. Scraping would
+ * make the index silently correct at all times, which sounds good until a
+ * heading is reworded and the anchor a reader bookmarked — or the in-app
+ * Extension Manager deep-links to — quietly changes. Declaring them means the
+ * link checker fails the build instead.
+ *
+ * Highlighting the section currently on screen would need a scroll listener and
+ * an IntersectionObserver, which is more client JavaScript than the whole rest
+ * of the site put together. It is left out on purpose.
+ */
+interface Entry {
+  id: string
+  label: string
+}
+
+interface Props {
+  entries: Entry[]
+  heading?: string
+}
+
+const { entries, heading = 'On this page' } = Astro.props
+---
+<nav class="section-index" aria-label={heading}>
+  <h2>{heading}</h2>
+  <ol>
+    {entries.map((e) => <li><a href={`#${e.id}`}>{e.label}</a></li>)}
+  </ol>
+</nav>
+
+<style>
+  .section-index {
+    position: sticky;
+    top: var(--space-m);
+    align-self: start;
+    padding: var(--space-s);
+    border: 1px solid var(--outline-variant);
+    border-radius: var(--radius-m);
+    background: var(--surface-container-low);
+  }
+
+  @media (max-width: 60rem) {
+    .section-index {
+      position: static;
+    }
+  }
+
+  h2 {
+    font-family: var(--font-mono);
+    font-size: var(--text-label-small);
+    /* --weight-label-large, not --weight-label-small: 400 would erase the
+       emphasis this heading is carrying. Same pairing base.css gives <th>, the
+       site's other uppercase mono label. */
+    font-weight: var(--weight-label-large);
+    line-height: var(--leading-label-small);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--on-surface-variant);
+    margin: 0 0 var(--space-xs);
+  }
+
+  ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: var(--space-2xs);
+    counter-reset: idx;
+  }
+
+  li {
+    counter-increment: idx;
+  }
+
+  li::before {
+    content: counter(idx) '.';
+    font-family: var(--font-mono);
+    font-size: var(--text-label-small);
+    color: var(--on-surface-variant);
+    margin-inline-end: var(--space-2xs);
+  }
+
+  a {
+    color: var(--on-surface);
+    text-decoration: none;
+    font-size: var(--text-label-large);
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+</style>

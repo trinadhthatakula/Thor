@@ -1,0 +1,247 @@
+name: Web Link Check
+
+# The site's *internal* links are already gated at build time by the offline
+# checker in `npm run build`, which resolves them against `dist` with no network.
+# This job is the other half: the outbound links — GitHub, IzzyOnDroid, Telegram,
+# five funding routes — that rot on somebody else's schedule. Checking those on
+# every build would redden a PR whenever another host has a bad minute, so it
+# runs weekly and files an issue instead (spec §6.3).
+#
+# It runs against the LIVE SITE, seeded from the sitemap. Never against
+# `web/dist`: `dist` is gitignored, so on a fresh checkout a glob over it matches
+# zero files and the run exits 0 — forever, and green. A gate that quietly
+# stopped being a gate is the failure shape this whole plan is written to avoid.
+# Pointing at the deployed site also tests what a reader actually loads,
+# including Vercel's routing, which no check over `dist` can see.
+#
+# One consequence worth knowing: `schedule` and the "Run workflow" button only
+# exist on the *default* branch, so this file does nothing until it reaches
+# `master` on a release merge. That is convenient rather than a problem — it
+# cannot start filing issues about a site that has not been deployed yet.
+on:
+  schedule:
+    # Tuesdays 06:00 UTC — a day after the Shizu store audit, so the two
+    # issue-filing jobs never land in the same morning.
+    - cron: "0 6 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: web-link-check
+  cancel-in-progress: false
+
+env:
+  SITE: https://thor.trinadhthatakula.com
+  # gh reads GH_REPO, so every `gh` call below works without checking the repo
+  # out. Nothing in this job comes from the working tree — the inputs are URLs.
+  GH_REPO: ${{ github.repository }}
+
+jobs:
+  link-check:
+    runs-on: ubuntu-latest
+    # lychee retries three times at up to 30s per request across every outbound
+    # link on the site. A hung chain would otherwise sit on the 6-hour default.
+    timeout-minutes: 20
+    steps:
+      # A failure here must still file an issue rather than abort the job, so
+      # the step is allowed to fail and the verdict step below reads its outcome.
+      - name: Seed the crawl from the live sitemap
+        id: seed
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+
+          # @astrojs/sitemap emits a sitemap *index* pointing at one or more child
+          # sitemaps, so this is a two-level fetch. Both levels are plain <loc>
+          # elements and `grep -o` finds every match on a line, which matters
+          # because the emitted XML is a single line.
+          fetch_locs() {
+            curl -sSfL --max-time 30 --retry 3 "$1" \
+              | grep -oE '<loc>[^<]+</loc>' \
+              | sed -e 's|^<loc>||' -e 's|</loc>$||'
+          }
+
+          index="$SITE/sitemap-index.xml"
+          all="$(fetch_locs "$index")"
+          children="$(printf '%s\n' "$all" | grep -E '\.xml$' || true)"
+
+          : > pages.txt
+          if [ -n "$children" ]; then
+            for child in $children; do
+              fetch_locs "$child" >> pages.txt
+            done
+          else
+            # A single-file sitemap would list pages directly. Handling it here
+            # means a sitemap config change degrades instead of silently
+            # producing an empty crawl.
+            printf '%s\n' "$all" > pages.txt
+          fi
+
+          # lychee-action `eval`s its args string, so every URL below is shell
+          # input. These come from our own origin over HTTPS, but "our own
+          # origin" is an assumption a DNS mistake can break, so anything that is
+          # not a plain path on our own host is dropped rather than passed
+          # through. Only the dots need escaping — a URL carries no other regex
+          # metacharacter.
+          site_re="$(printf '%s' "$SITE" | sed 's/\./\\./g')"
+          pages="$(sort -u pages.txt \
+                   | grep -E "^${site_re}(/[A-Za-z0-9._~/-]*)?$" || true)"
+
+          count="$(printf '%s\n' "$pages" | grep -c . || true)"
+          echo "Seeded $count page(s) from $index"
+          printf '%s\n' "$pages"
+
+          if [ "$count" -eq 0 ]; then
+            echo "::error::No page URLs came back from $index"
+            exit 1
+          fi
+
+          echo "pages=$(printf '%s' "$pages" | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+
+      - name: Check every outbound link on the live site
+        id: lychee
+        if: steps.seed.outputs.pages != ''
+        # `failIfEmpty` (default true) exits non-zero *regardless* of `fail:
+        # false` when lychee finds no links at all — which is exactly the silent
+        # pass this job exists to prevent, so it is left on and the step is
+        # allowed to fail so the issue still gets filed.
+        continue-on-error: true
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          # The run's verdict is decided below so an issue can be opened first;
+          # `fail: true` would abort the job before that.
+          fail: false
+          # Pinned so a lychee release cannot change what "broken" means between
+          # two Tuesdays without a diff.
+          lycheeVersion: v0.24.2
+          # The seeded URLs are *inputs*: lychee fetches each page and checks the
+          # links it finds inside. Our own host is deliberately not excluded —
+          # the build-time checker proves the links resolve inside `dist`, and
+          # only this run proves Vercel actually serves them at those paths.
+          #
+          # Low concurrency and a real retry gap because most of these links
+          # point at four or five hosts; hammering them is how a link checker
+          # earns a 429 and reports it as a broken link.
+          args: >-
+            --no-progress
+            --verbose
+            --max-concurrency 4
+            --max-retries 3
+            --retry-wait-time 5
+            --timeout 30
+            --user-agent "ThorSiteLinkCheck/1.0 (+https://github.com/trinadhthatakula/Thor)"
+            ${{ steps.seed.outputs.pages }}
+
+      - name: Decide the verdict
+        id: verdict
+        # Through `env:` rather than inline `${{ }}` so nothing from a step
+        # output is ever parsed as shell, per the workflow-injection guidance.
+        env:
+          SEED_OUTCOME: ${{ steps.seed.outcome }}
+          LYCHEE_OUTCOME: ${{ steps.lychee.outcome }}
+          LYCHEE_EXIT: ${{ steps.lychee.outputs.exit_code }}
+        run: |
+          set -uo pipefail
+          seed="$SEED_OUTCOME"
+          lychee="$LYCHEE_OUTCOME"
+          code="$LYCHEE_EXIT"
+
+          # Three distinct failures, all of which mean the same thing to a
+          # reader: the site's links are not known to be good this week.
+          #   - the seed step failed        -> the site or its sitemap is gone
+          #   - the lychee step failed      -> zero links found (failIfEmpty)
+          #   - a non-zero lychee exit code -> broken links
+          if [ "$seed" != "success" ] || [ "$lychee" = "failure" ] || { [ -n "$code" ] && [ "$code" != "0" ]; }; then
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "seed_failed=$([ "$seed" != "success" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      # The label has to exist before `gh issue create --label` will accept it,
+      # and a failure here would land at exactly the moment it matters most.
+      - name: Ensure the tracking label exists
+        if: steps.verdict.outputs.failed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create web-link-check \
+            --description "Automated weekly external link sweep for the website" \
+            --color D93F0B 2>/dev/null || true
+
+      - name: Open or update the tracking issue
+        if: steps.verdict.outputs.failed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SEED_FAILED: ${{ steps.verdict.outputs.seed_failed }}
+        run: |
+          {
+            echo "The weekly external link check failed."
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            if [ "$SEED_FAILED" = "true" ]; then
+              echo "**The crawl could not be seeded.** \`$SITE/sitemap-index.xml\` returned no"
+              echo "page URLs, so nothing was checked. That is one of:"
+              echo
+              echo "- the site is down or the deploy is broken;"
+              echo "- \`@astrojs/sitemap\` was dropped from \`web/astro.config.mjs\`;"
+              echo "- the \`thor\` DNS record no longer points at Vercel — note that deleting it"
+              echo "  does **not** produce NXDOMAIN, because a proxied \`*\` wildcard on the zone"
+              echo "  absorbs it and the subdomain keeps resolving to the wrong place."
+            elif [ ! -f lychee/out.md ]; then
+              # The action failed before writing a report at all — a failed
+              # binary download, say. Without this branch the redirect below
+              # would abort the step under `bash -e` and no issue would be filed.
+              echo "The link checker itself did not run to completion and produced no report."
+              echo "See the Actions run above."
+            else
+              # lychee's report is already Markdown, so it is inlined rather than
+              # fenced the way shizu-store-audit fences its plain-text log.
+              if [ "$(wc -c < lychee/out.md)" -gt 50000 ]; then
+                # head -c cuts at a byte offset, which can land mid-codepoint if a
+                # link title carries non-ASCII. iconv -c drops the partial
+                # sequence so the issue body stays valid UTF-8. `|| true` is
+                # load-bearing: iconv exits 1 on exactly that trailing sequence,
+                # and `run:` executes under `bash -e`.
+                head -c 50000 lychee/out.md | iconv -c -f utf-8 -t utf-8 2>/dev/null || true
+                echo
+                echo "_(truncated — see the full report in the Actions run above)_"
+              else
+                cat lychee/out.md
+              fi
+            fi
+          } > issue-body.md
+
+          existing="$(gh issue list --label web-link-check --state open \
+                        --limit 1 --json number -q '.[0].number')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file issue-body.md
+          else
+            gh issue create \
+              --title "Website external link check failed" \
+              --label web-link-check \
+              --body-file issue-body.md
+          fi
+
+      - name: Close the tracking issue
+        if: steps.verdict.outputs.failed == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          existing="$(gh issue list --label web-link-check --state open \
+                        --limit 1 --json number -q '.[0].number')"
+          if [ -n "$existing" ]; then
+            gh issue close "$existing" --comment "Link check passed. Run: $RUN_URL"
+          fi
+
+      # Every failure path above is `continue-on-error`, so without this the
+      # Actions history would show a green tick over a filed issue.
+      - name: Fail the run if the check failed
+        if: steps.verdict.outputs.failed == 'true'
+        run: exit 1

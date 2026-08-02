@@ -1,0 +1,11 @@
+/*
+ * A stand-in for the hashed stylesheet Astro emits into `dist/_astro/`.
+ *
+ * Its contents are irrelevant — the link checker only ever asks whether the path
+ * exists. What it proves is that `_astro/` is part of the file index. It once was
+ * not, and every page's own stylesheet and every preloaded font therefore
+ * reported as a broken link on a build where all of them were present.
+ */
+:root {
+  --page: #0e0e0e;
+}

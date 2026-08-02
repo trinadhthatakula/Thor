@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Well-formed, advertised, resolves, contradicts nothing in robots.txt — and
+     silently omits /faq, which is in the build. This is the shape that passed:
+     the first four assertions all hold, and the only symptom is that one page
+     never gets indexed. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://thor.trinadhthatakula.com</loc></url>
+</urlset>
