@@ -7,7 +7,18 @@ platform :android do
   # production's to open testing ('beta'). There is deliberately no default — a lane that uploads
   # must name where, and a lane that does not upload passes nothing.
   def prepare_release_artifacts(upload_to_store: false, track: nil, version_code: nil)
-    UI.user_error!("❌ upload_to_store: true requires a track") if upload_to_store && track.nil?
+    # A lane that uploads must name a track, and it must be one this repo is allowed to write.
+    # 'production' is deliberately off the list: promoting a build to production is a manual Play
+    # Console action and that manual step is the release gate, so a lane able to reach it from CI
+    # would quietly remove the gate. A typo lands on the wrong side of this check too, which is the
+    # point — upload_to_play_store would otherwise *create* a track by that name rather than fail.
+    if upload_to_store
+      allowed_tracks = %w[internal alpha beta]
+      track = track.to_s.strip
+      unless allowed_tracks.include?(track)
+        UI.user_error!("❌ upload_to_store: true needs track: one of #{allowed_tracks.join(', ')} — got #{track.inspect}")
+      end
+    end
 
     # 1. PREPARATION
     fastlane_dir = Dir.pwd

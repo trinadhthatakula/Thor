@@ -222,7 +222,10 @@ jobs:
             *)          TRACK_LABEL="$TRACK" ;;
           esac
 
-          CAPTION=$(printf "🚀 *Thor (Valhalla) Dev Build*\n\nBranch: %s\nAuthor: %s\nTrack: %s\nStatus: Uploaded to Play Store & GitHub" "$GITHUB_REF_NAME" "$GITHUB_ACTOR" "$TRACK_LABEL")
+          # "& GitHub" was a lie of ordering: Create GitHub Pre-Release is a later step in this job,
+          # so the caption asserted a release that had not been attempted yet and would still say so
+          # if it failed. Claim only what has actually happened by the time this message is sent.
+          CAPTION=$(printf "🚀 *Thor (Valhalla) Dev Build*\n\nBranch: %s\nAuthor: %s\nTrack: %s\nStatus: Uploaded to Play Store — GitHub pre-release next" "$GITHUB_REF_NAME" "$GITHUB_ACTOR" "$TRACK_LABEL")
 
           if [ "$HAS_TELEGRAM_NOTES" = "true" ] && [ -r "$TELEGRAM_NOTES_PATH" ]; then
             CAPTION=$(printf "%s\n\n%s" "$CAPTION" "$(cat "$TELEGRAM_NOTES_PATH")")

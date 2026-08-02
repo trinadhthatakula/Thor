@@ -26,7 +26,7 @@ Thor uploads from two places:
 | `dev-check.yml` | `master` | `distribute_dev` | `alpha` (closed testing) |
 | `production-deploy.yml` | `production` | `distribute_production` | `beta` (open testing) |
 
-(Both tracks moved up one rung on 2026-08-02 — `internal`→`alpha` and `alpha`→`beta`. Neither lane
+(Both tracks moved up one rung in PR #320 — `internal`→`alpha` and `alpha`→`beta`. Neither lane
 has ever written `production`: promoting a build to the production track is a manual Play Console
 action, and that manual step is the release gate. The collision below is unaffected by the move,
 because Play's uniqueness is per app, not per track.)
