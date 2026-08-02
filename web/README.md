@@ -152,8 +152,10 @@ nothing, and exits 0 for *every* commit — the site would show "Build skipped",
   `dev` and `master` rulesets, `on.pull_request.paths` filters the whole workflow, and GitHub reports
   a path-skipped required check as pending forever. A site-only PR would be unmergeable. The ~7
   minutes of Android CI on a CSS change is the accepted price.
-- **`dev-check.yml` / `production-deploy.yml`** — `web/**` is in their `paths-ignore`. Neither is a
-  required check, and a change that cannot reach the APK should not spend seven minutes proving it.
+- **`dev-check.yml` / `production-deploy.yml`** — `web/**` is in their `paths-ignore`, and so are
+  `vercel.json`, `.github/workflows/web-*.yml` and `.github/labeler.yml`, because `web/**` alone does
+  not cover the site's own plumbing. Neither is a required check, and a change that cannot reach the
+  APK should not spend seven minutes proving it.
 
 ---
 
