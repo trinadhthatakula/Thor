@@ -338,7 +338,7 @@ fun HomeScreen(
             },
             confirmButton = {
                 Button(onClick = {
-                    viewModel.loadDashboardData()
+                    viewModel.refreshPrivileges()
                     showPrivilegeDialog = false
                 }) {
                     Text(stringResource(R.string.refresh))

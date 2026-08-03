@@ -8,13 +8,13 @@ import android.app.AppOpsManager
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.os.Process
 import androidx.core.content.getSystemService
 import com.valhalla.bypass.Bypass
+import com.valhalla.thor.data.source.local.thorUserId
 
 class Packages(private val app: Context) {
 
-    val myUserId get() = Process.myUserHandle().hashCode()
+    val myUserId get() = thorUserId
 
     fun packageUri(packageName: String) = "package:$packageName"
 

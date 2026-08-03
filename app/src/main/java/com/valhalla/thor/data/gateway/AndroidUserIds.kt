@@ -16,5 +16,9 @@ private const val PER_USER_RANGE = 100_000
  * Shared by all three gateways rather than repeated in each: they must agree on which user a package
  * lives in, or the same `pm grant` would land on a different user depending on which privilege mode
  * happened to be active. One copy is also one place to correct if the platform ever moves the range.
+ *
+ * This answers *which user does this uid belong to*. For *which user is Thor itself*, see
+ * `thorUserId` in `data/source/local/ThorUser.kt` — that one is also read by the two privilege
+ * helpers, so it sits in the package they share rather than here.
  */
 internal fun userIdOf(uid: Int): Int = uid / PER_USER_RANGE

@@ -80,7 +80,7 @@
     <string name="active">活跃</string>
     <string name="frozen">已冻结</string>
     <string name="suspended">已暂停</string>
-    <string name="privilege_check_desc">Thor 需要 Root 或 Shizuku 权限才能正常运行。\n\n请在管理应用中授予权限并点击刷新。</string>
+    <string name="privilege_check_desc">Thor 需要 Root、Shizuku 或 Dhizuku 权限才能正常运行。\n\n请在管理应用中授予权限并点击刷新。</string>
 
     <!-- App List / Freezer -->
     <string name="system_apps_warning">⚠ 系统应用</string>
