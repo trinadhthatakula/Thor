@@ -434,6 +434,7 @@
 
     
     <!-- Missing Translations -->
+    <string name="suspend_owned_by_other_privilege">Impossible de lever la suspension de %1$s ici. Elle a été suspendue par %2$s, et Android n\'autorise que le même privilège à la lever. Repassez Thor dans ce mode de privilège, puis réessayez.</string>
     <string name="auto_reinstall">Réinstallation automatique d\'applications</string>
     <string name="auto_reinstall_desc">Conserver automatiquement Google Play Store comme installateur enregistré pour activer les mises à jour en arrière-plan</string>
     <string name="legacy_extension_title">Extension obsolète détectée</string>

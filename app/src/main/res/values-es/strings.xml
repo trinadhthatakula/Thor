@@ -434,6 +434,7 @@
 
     
     <!-- Missing Translations -->
+    <string name="suspend_owned_by_other_privilege">No se puede reanudar %1$s desde aquí. Fue suspendida por %2$s y Android solo permite que el mismo privilegio la reanude. Cambia Thor a ese modo de privilegio e inténtalo de nuevo.</string>
     <string name="auto_reinstall">Reinstalación automática de apps</string>
     <string name="auto_reinstall_desc">Mantener automáticamente Google Play Store como el instalador registrado para permitir actualizaciones en segundo plano</string>
     <string name="legacy_extension_title">Extensión heredada detectada</string>
