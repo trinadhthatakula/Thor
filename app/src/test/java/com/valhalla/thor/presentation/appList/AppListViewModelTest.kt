@@ -6,6 +6,7 @@ package com.valhalla.thor.presentation.appList
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.FilterType
+import com.valhalla.thor.domain.model.InstalledAppsPermission
 import com.valhalla.thor.domain.model.PermissionIndex
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
@@ -17,6 +18,7 @@ import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.FakeAppRepository
 import com.valhalla.thor.presentation.FakeAppShortcutController
 import com.valhalla.thor.presentation.FakeFreezerRepository
+import com.valhalla.thor.presentation.FakeInstalledAppsPermissionGate
 import com.valhalla.thor.presentation.FakePermissionRepository
 import com.valhalla.thor.presentation.FakePreferenceRepository
 import com.valhalla.thor.presentation.FakePrivilegeStateProvider
@@ -102,7 +104,8 @@ class AppListViewModelTest {
     private fun TestScope.viewModel(
         intensity: AnimationIntensity = AnimationIntensity.MEDIUM,
         filterType: FilterType = FilterType.Source,
-        permissions: FakePermissionRepository = FakePermissionRepository()
+        permissions: FakePermissionRepository = FakePermissionRepository(),
+        installedApps: FakeInstalledAppsPermissionGate = FakeInstalledAppsPermissionGate()
     ): AppListViewModel {
         val prefs = FakePreferenceRepository(
             UserPreferences(animationIntensity = intensity, appFilterType = filterType)
@@ -121,6 +124,7 @@ class AppListViewModelTest {
             permissionRepository = permissions,
             storageStats = FakeStorageStatsProvider(),
             usageAccess = FakeUsageAccessGate(),
+            installedAppsPermission = installedApps,
             defaultDispatcher = mainDispatcherRule.dispatcher,
             ioDispatcher = mainDispatcherRule.dispatcher
         )
@@ -434,6 +438,58 @@ class AppListViewModelTest {
         assertTrue(
             "the watchlist entry is the only route back to a still-frozen app",
             freezer.contains("a")
+        )
+    }
+
+    // --- GET_INSTALLED_APPS banner ---------------------------------------------------------
+
+    @Test
+    fun `a device that does not define the permission never reaches the banner state`() = runTest {
+        // The Pixel case, and the one that matters most: GET_INSTALLED_APPS is a Chinese-market
+        // permission, so getPermissionInfo throws on the overwhelming majority of devices Thor runs
+        // on. Because shouldShowRequestPermissionRationale() also returns a hard false for a
+        // permission the ROM has never defined, the textbook "denied && !rationale => send them to
+        // Settings" recipe reads this exact state as *permanently denied* and nags forever. Nothing
+        // downstream is allowed to see anything but Unsupported here.
+        val vm = viewModel(installedApps = FakeInstalledAppsPermissionGate())
+        runCurrent()
+
+        assertEquals(
+            InstalledAppsPermission.Unsupported,
+            vm.uiState.value.installedAppsPermission
+        )
+    }
+
+    @Test
+    fun `a denied grant on a ROM that defines the permission surfaces to the UI`() = runTest {
+        val vm = viewModel(
+            installedApps = FakeInstalledAppsPermissionGate(InstalledAppsPermission.Denied)
+        )
+        runCurrent()
+
+        assertEquals(
+            InstalledAppsPermission.Denied,
+            vm.uiState.value.installedAppsPermission
+        )
+    }
+
+    @Test
+    fun `a re-read after the permission dialog picks up the new answer`() = runTest {
+        // The activity-result callback ignores the boolean the launcher hands back and re-reads the
+        // device instead, because a "while in use" grant reports true and stops being true the
+        // moment Thor is backgrounded. This is that re-read.
+        val gate = FakeInstalledAppsPermissionGate(InstalledAppsPermission.Denied)
+        val vm = viewModel(installedApps = gate)
+        runCurrent()
+        assertEquals(InstalledAppsPermission.Denied, vm.uiState.value.installedAppsPermission)
+
+        gate.permission = InstalledAppsPermission.Granted
+        vm.refreshInstalledAppsPermission()
+        runCurrent()
+
+        assertEquals(
+            InstalledAppsPermission.Granted,
+            vm.uiState.value.installedAppsPermission
         )
     }
 }

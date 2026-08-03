@@ -471,6 +471,9 @@
     <string name="notification_access_granted_subtitle">批量冻结结果将以通知形式显示</string>
     <string name="notification_access_needed_subtitle">允许通知以查看批量冻结结果</string>
     <string name="open_settings">打开设置</string>
+    <string name="installed_apps_permission_title">应用列表可能不完整</string>
+    <string name="installed_apps_permission_desc">您的设备限制了 Thor 在后台运行时可以看到的应用。请授予读取已安装应用列表的完全访问权限，以保持列表完整。</string>
+    <string name="installed_apps_permission_grant">授予</string>
     <string name="freeze_mode">冻结模式</string>
     <string name="suspend_instead_of_freeze">挂起代替冻结</string>
     <string name="suspend_instead_of_freeze_desc">冻结（包括自动冻结）时挂起应用，而不是禁用它们。挂起的应用仍然可见但处于暂停状态。</string>

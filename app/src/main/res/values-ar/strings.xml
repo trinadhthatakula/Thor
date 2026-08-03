@@ -518,6 +518,9 @@
     <string name="notification_access_granted_subtitle">تظهر نتائج التجميد الجماعي كإشعارات</string>
     <string name="notification_access_needed_subtitle">اسمح بالإشعارات لرؤية نتائج التجميد الجماعي</string>
     <string name="open_settings">فتح الإعدادات</string>
+    <string name="installed_apps_permission_title">قد تكون قائمة التطبيقات غير مكتملة</string>
+    <string name="installed_apps_permission_desc">يقيّد جهازك التطبيقات التي يمكن لـ Thor رؤيتها أثناء عمله في الخلفية. امنح وصولاً كاملاً إلى قائمة التطبيقات المثبّتة للحفاظ على اكتمالها.</string>
+    <string name="installed_apps_permission_grant">منح</string>
     <string name="freeze_mode">وضع التجميد</string>
     <string name="suspend_instead_of_freeze">التعليق بدلاً من التجميد</string>
     <string name="suspend_instead_of_freeze_desc">عند التجميد (بما في ذلك التجميد التلقائي)، قم بتتعليق التطبيقات بدلاً من تعطيلها. تظل التطبيقات المعلقة مرئية ولكن متوقفة مؤقتًا.</string>

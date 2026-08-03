@@ -4,6 +4,11 @@
 package com.valhalla.thor.presentation.appList
 
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -25,6 +31,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -34,6 +41,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.basicMarquee
@@ -47,10 +57,14 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.AppListType
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
+import com.valhalla.asgard.components.AsgardBanner
 import com.valhalla.asgard.components.ConnectedButtonGroup
 import com.valhalla.asgard.components.ConnectedButtonGroupItem
+import com.valhalla.thor.domain.model.GET_INSTALLED_APPS_PERMISSION
+import com.valhalla.thor.domain.model.InstalledAppsPermission
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.presentation.widgets.AppList
@@ -110,6 +124,36 @@ fun AppListScreen(
             // Screen entry: let the navigation transition settle before the scan starts.
             viewModel.loadApps(deferForTransition = true)
         }
+    }
+
+    // com.android.permission.GET_INSTALLED_APPS — an ordinary runtime permission, so an ordinary
+    // RequestPermission contract. No privilege path: Thor never self-grants the permission that
+    // decides how much of the device it is allowed to see.
+    //
+    // The result boolean is deliberately ignored and the truth re-read instead, the same way the
+    // notification row does it in SettingsScreen. This permission is three-state on the ROMs that
+    // define it, and a "while in use" grant answers `true` here and then stops being true the moment
+    // Thor is backgrounded — which is precisely the state that truncates the package scan. Only the
+    // checker's own read is worth believing.
+    val installedAppsPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { _ ->
+        viewModel.refreshInstalledAppsPermission()
+    }
+
+    // A grant made in system Settings never comes back through the launcher callback, and a
+    // "while in use" grant silently lapses while Thor is away, so the state is re-read on every
+    // resume rather than only after a request. Same idiom as the permissions section of
+    // SettingsScreen.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshInstalledAppsPermission()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // Handle one-off feedback (toasts + freezer prompt) delivered exactly once.
@@ -177,7 +221,32 @@ fun AppListScreen(
                 )
             }
 
-            // 2. The List Content
+            // 2. Package-visibility banner, above the search bar AppList draws below.
+            //
+            // Gated on Denied and nothing else. Unsupported is the state of every AOSP device Thor
+            // runs on and must stay invisible there — the permission does not exist on a Pixel, so
+            // there is nothing to grant and nothing to say. There is deliberately no rationale check
+            // and no "permanently denied, open Settings" fallback either:
+            // shouldShowRequestPermissionRationale() returns a hard false for a permission the
+            // platform does not define, so the usual denied && !rationale recipe reads every Pixel
+            // as permanently denied and nags forever. The availability probe upstream is what makes
+            // the rationale question unnecessary rather than merely skipped.
+            //
+            // If the user denies, the banner simply stays and another tap re-prompts; whether a
+            // dialog appears is the OS's call, not Thor's.
+            AnimatedVisibility(
+                visible = state.installedAppsPermission is InstalledAppsPermission.Denied,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                IncompleteAppListBanner(
+                    onGrant = {
+                        installedAppsPermissionLauncher.launch(GET_INSTALLED_APPS_PERMISSION)
+                    }
+                )
+            }
+
+            // 3. The List Content
             val refreshState = rememberPullToRefreshState()
 
             PullToRefreshBox(
@@ -310,4 +379,45 @@ fun AppListScreen(
             )
         }
     }
+}
+
+/**
+ * "App list may be incomplete" — shown only while [InstalledAppsPermission.Denied] holds.
+ *
+ * Same error-tinted treatment as `ReadOnlyBanner` on the permission-manager screen, because it makes
+ * the same kind of claim: what is on screen is not the whole truth, and Thor cannot fix that on its
+ * own. The [onGrant] button is the only route offered — no Settings deep link, because there is no
+ * reliable way to tell "the user said no once" from "the dialog will not appear again" for a
+ * permission AOSP has never heard of, and guessing wrong strands the user in a Settings screen with
+ * no matching toggle.
+ */
+@Composable
+private fun IncompleteAppListBanner(onGrant: () -> Unit) {
+    AsgardBanner(
+        title = stringResource(R.string.installed_apps_permission_title),
+        description = stringResource(R.string.installed_apps_permission_desc),
+        icon = ImageVector.vectorResource(R.drawable.warning),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        containerBrush = Brush.horizontalGradient(
+            colors = listOf(
+                MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f),
+                MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f)
+            )
+        ),
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        descriptionStyle = MaterialTheme.typography.bodySmall,
+        action = {
+            // The button's content colour is pinned rather than left to the TextButton default,
+            // which is `primary` — a colour chosen to sit on the surface, not on this banner's
+            // error-tinted gradient, and unreadable against it in several of Thor's themes.
+            TextButton(
+                onClick = onGrant,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                )
+            ) { Text(stringResource(R.string.installed_apps_permission_grant)) }
+        }
+    )
 }
