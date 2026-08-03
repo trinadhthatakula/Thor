@@ -13,6 +13,7 @@ import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
 import com.valhalla.thor.data.source.local.shizuku.SystemAppRemovalOutcome
 import com.valhalla.thor.data.source.local.shizuku.displayLine
 import com.valhalla.thor.data.source.local.shizuku.isRootOnlySystemAppRemoval
+import com.valhalla.thor.data.source.local.shizuku.thorUserId
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed
@@ -378,7 +379,7 @@ class ShizukuSystemGateway(
             val combinedPath = paths.joinToString(" ") { it.escapeForShell() }
 
             // 2. Get Current User ID
-            val currentUser = ShizukuHelper.getCurrentUserId()
+            val currentUser = thorUserId
 
             // 3. Execute the reinstallation command
             val command =

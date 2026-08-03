@@ -11,6 +11,7 @@ import com.valhalla.thor.data.source.local.dhizuku.DhizukuReflector
 import com.valhalla.thor.data.source.local.shizuku.SystemAppRemovalOutcome
 import com.valhalla.thor.data.source.local.shizuku.displayLine
 import com.valhalla.thor.data.source.local.shizuku.isRootOnlySystemAppRemoval
+import com.valhalla.thor.data.source.local.shizuku.thorUserId
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed
@@ -27,9 +28,9 @@ private val USER_ID_REGEX = Regex("^\\d+$")
 
 @Single
 class DhizukuSystemGateway(
-    // Present for one reason: the system-app freeze's refusal message is read by the user, so it
-    // has to come out of resources. ShizukuSystemGateway and RootSystemGateway take theirs the
-    // same way.
+    // Two uses: the system-app freeze's refusal message is read by the user, so it has to come out
+    // of resources (ShizukuSystemGateway and RootSystemGateway take theirs the same way), and the
+    // availability probe binds the Dhizuku client through it — see DhizukuHelper.isDhizukuAvailable.
     private val context: Context,
     private val reflector: DhizukuReflector,
     private val preferenceRepository: PreferenceRepository
@@ -39,10 +40,11 @@ class DhizukuSystemGateway(
 
     override suspend fun isShizukuAvailable(): Boolean = false
 
-    // DhizukuHelper.isDhizukuAvailable() performs blocking binder IPC (DhizukuAPI); confine it
-    // to IO at the gateway boundary so this probe is main-safe regardless of the caller's dispatcher.
+    // DhizukuHelper.isDhizukuAvailable() performs blocking binder IPC (DhizukuAPI) and may re-bind
+    // the client; confine it to IO at the gateway boundary so this probe is main-safe regardless of
+    // the caller's dispatcher.
     override suspend fun isDhizukuAvailable(): Boolean = withContext(Dispatchers.IO) {
-        DhizukuHelper.isDhizukuAvailable()
+        DhizukuHelper.isDhizukuAvailable(context)
     }
 
     override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> {
@@ -367,8 +369,8 @@ class DhizukuSystemGateway(
 
             val combinedPath = paths.joinToString(" ") { it.escapeForShell() }
 
-            // 2. Get Current User ID
-            val currentUser = DhizukuHelper.getCurrentUserId()
+            // 2. The user to install for — Thor's own, matching every other `--user` here.
+            val currentUser = thorUserId
 
             // 3. Execute the reinstallation command
             val command =

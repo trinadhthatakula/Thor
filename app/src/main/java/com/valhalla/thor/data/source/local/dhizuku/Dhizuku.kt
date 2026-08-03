@@ -25,6 +25,7 @@ import com.valhalla.thor.data.source.local.shizuku.SystemAppRemovalOutcome
 import com.valhalla.thor.data.source.local.shizuku.firstRungThatSticks
 import com.valhalla.thor.data.source.local.shizuku.isPolicyRefusal
 import com.valhalla.thor.data.source.local.shizuku.shellRungResult
+import com.valhalla.thor.data.source.local.shizuku.thorUserId
 import com.valhalla.thor.domain.model.SHELL_SUSPENDER_IDENTITY
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
@@ -32,6 +33,52 @@ import com.rosan.dhizuku.api.Dhizuku as DhizukuAPI
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.R
 import java.util.concurrent.TimeUnit
+
+/**
+ * What one availability probe learned: whether the client is bound, and whether Thor is authorised.
+ *
+ * Two fields because they are not the same answer and the caller latches only the first. `available`
+ * is per-probe — the user can revoke in Dhizuku at any moment — while `initialised` is the binding,
+ * which survives.
+ */
+internal data class DhizukuProbe(val initialised: Boolean, val available: Boolean)
+
+/**
+ * The probe's decision table, lifted out of [DhizukuHelper.isDhizukuAvailable] so it can be
+ * exercised without a Dhizuku client — every call it makes is a static on `DhizukuAPI`, which is
+ * why the logic and not the wiring is what gets tested.
+ *
+ * Two properties are the point, and both were wrong before:
+ *
+ * - **A failed [init] is not remembered.** It was never retried at all before this — the one attempt
+ *   in `ThorApplication` ran at process start, which on a first run is before the user has
+ *   authorised Thor. Latching that `false` would restore exactly the bug, one layer down.
+ * - **A successful [init] is not repeated.** The probe runs on every privilege refresh, and every
+ *   screen that shows a privilege chip; re-binding each time would be a service bind per probe.
+ *
+ * [isPermissionGranted] is consulted only once bound, because an unbound client answers `false` to
+ * it regardless — which is what made the stale `false` look like a denied grant rather than a
+ * missing connection.
+ */
+internal fun probeDhizuku(
+    alreadyInitialised: Boolean,
+    init: () -> Boolean,
+    isPermissionGranted: () -> Boolean,
+): DhizukuProbe {
+    val initialised = try {
+        alreadyInitialised || init()
+    } catch (_: Exception) {
+        return DhizukuProbe(initialised = alreadyInitialised, available = false)
+    }
+    // A throw here loses the authorisation answer, never the binding: the bind above already
+    // succeeded, and forgetting it would make the next probe re-bind for nothing.
+    val available = try {
+        initialised && isPermissionGranted()
+    } catch (_: Exception) {
+        false
+    }
+    return DhizukuProbe(initialised = initialised, available = available)
+}
 
 /**
  * Helper to interact with Dhizuku service using the actual API.
@@ -49,12 +96,47 @@ object DhizukuHelper {
     /** Grace period for reader threads to drain their streams after the process has exited/been destroyed. */
     private const val READER_JOIN_TIMEOUT_MS = 5_000L
 
-    fun isDhizukuAvailable(): Boolean {
-        return try {
-            DhizukuAPI.isPermissionGranted()
-        } catch (_: Exception) {
-            false
-        }
+    /**
+     * Whether Dhizuku is connected *and* has authorised Thor.
+     *
+     * Re-runs `DhizukuAPI.init` when no connection has been established yet, and that is the whole
+     * point of taking a [context]. `ThorApplication` initialises once at process start, which on a
+     * first run is *before* the user has authorised Thor in Dhizuku; that bind is refused and
+     * nothing ever retried it, so [DhizukuAPI.isPermissionGranted] answered `false` for the rest of
+     * the process lifetime. The Privilege Check dialog tells the user to grant access and press
+     * **Refresh** — and Refresh re-probes through exactly this function, so without the retry the
+     * documented recovery could not work and only a force-stop would. Observed on an Android 17
+     * device: grant, Refresh, still red; force-stop and relaunch, `active=DHIZUKU`.
+     *
+     * Shizuku needs no equivalent because `PrivilegeManager` owns its binder and
+     * permission-result listeners; Dhizuku 2.6.0 publishes no connection callback to register, so
+     * the retry has to be pulled from the probe rather than pushed from an event.
+     *
+     * Only a successful init is latched, so a failed attempt is retried on the next probe rather
+     * than being remembered as a permanent no.
+     */
+    fun isDhizukuAvailable(context: Context): Boolean {
+        val probe = probeDhizuku(
+            alreadyInitialised = clientInitialised,
+            init = { DhizukuAPI.init(context) },
+            isPermissionGranted = { DhizukuAPI.isPermissionGranted() },
+        )
+        clientInitialised = probe.initialised
+        return probe.available
+    }
+
+    // Written from whichever IO thread probes first and read by every later probe; @Volatile is
+    // for safe publication of that hand-off, not for making the check-then-set atomic. Two probes
+    // racing both call init(), which is idempotent, and both land on the same value.
+    @Volatile
+    private var clientInitialised = false
+
+    /**
+     * Records the outcome of the one-shot init `ThorApplication` runs at process start, so a
+     * successful early bind is not re-attempted on the first probe.
+     */
+    fun markClientInitialised(initialised: Boolean) {
+        clientInitialised = initialised
     }
 
     fun getSystemService(serviceName: String): IBinder? {
@@ -284,22 +366,22 @@ object DhizukuHelper {
         }
     }
 
-    // @Volatile for safe cross-thread publication (getCurrentUserId() may be called from IO
-    // coroutines); only a successfully-resolved id is ever cached (it throws before assigning
-    // on failure), matching the Shizuku/RootSystemGateway pattern (#41/#34).
-    @Volatile
-    private var cachedUserId: String? = null
-
-    fun getCurrentUserId(): String {
-        cachedUserId?.let { return it }
-        val userResult = execute("am get-current-user")
-        val output = userResult.second?.trim()
-        if (userResult.first != 0 || output == null || !output.matches(Regex("^\\d+$"))) {
-            throw IllegalStateException("Failed to determine current user ID: exitCode=${userResult.first}, output=$output")
-        }
-        cachedUserId = output
-        return output
-    }
+    // The user id every `--user` below names is [thorUserId], read in process.
+    //
+    // This helper used to shell out to `am get-current-user` here, and under Dhizuku that could
+    // never work: `DhizukuAPI.newProcess` runs the command inside the **device-owner app**, and
+    // `ActivityManager.getCurrentUser()` requires INTERACT_ACROSS_USERS, which that app does not
+    // hold. Measured on an Android 17 device (Dhizuku at uid 10231):
+    //
+    //   SecurityException: Permission Denial: getCurrentUser() from pid=5209, uid=10231
+    //     requires android.permission.INTERACT_ACROSS_USERS               -> exit 255
+    //
+    // The throw landed before `pm` ever ran, so rung 2 of the system-app freeze, the user-facing
+    // uninstall and unfreeze/reinstall were all dead under Dhizuku — the last one silently, since
+    // reinstallApp swallowed the cause. It predates the rung chain rather than regressing from it.
+    //
+    // Even where the shell call is permitted it answers the wrong question, and no cache is needed
+    // for the answer that replaces it; both reasons are in [thorUserId]'s KDoc.
 
     /**
      * The user-facing "uninstall this app" action: removes [packageName] for the current user
@@ -340,9 +422,12 @@ object DhizukuHelper {
      * useful string in the whole flow, so it is passed back to the caller rather than reduced to
      * false — see [SystemAppRemovalOutcome].
      *
-     * Unverified on hardware: no device with Dhizuku installed was available for this change, so
-     * every claim here about what the device-owner identity is *allowed* to do is inference from
-     * the platform source, not a measurement.
+     * The identity claim above is now **measured**, on an Android 17 device with Dhizuku as device
+     * owner: rung 1 is refused for the device-owner uid while the same `pm disable-user --user 0`
+     * exits 0 at shell uid on that very device, so the refusal belongs to the identity and not to
+     * the platform version. What remains unmeasured is this rung's own answer — the user-id bug
+     * fixed alongside this comment threw before `pm` ever ran, so nothing on that pass reached
+     * `pm uninstall` to find out whether Android 17 replies with the root-only line here too.
      */
     fun freezeSystemAppForUser(packageName: String): SystemAppRemovalOutcome =
         removeForUser(packageName, keepData = true)
@@ -356,7 +441,7 @@ object DhizukuHelper {
      * 0 having changed nothing, and can exit non-zero having done the work).
      */
     private fun removeForUser(packageName: String, keepData: Boolean): SystemAppRemovalOutcome = try {
-        val currentUser = getCurrentUserId()
+        val currentUser = thorUserId
         val keepDataFlag = if (keepData) "-k " else ""
         val (code, output) = execute(
             "pm uninstall $keepDataFlag--user $currentUser ${packageName.escapeForShell()}"
@@ -377,15 +462,31 @@ object DhizukuHelper {
         SystemAppRemovalOutcome(succeeded = false, exitCode = -1, platformMessage = e.message)
     }
 
+    /**
+     * The unfreeze half: restores a package that was removed for this user, data and all where `-k`
+     * kept it.
+     *
+     * Still returns a `Boolean` — the caller re-reads `FLAG_INSTALLED` and reports on *that*, so
+     * there is no message to carry out the way [removeForUser] carries one. But every way this can
+     * answer `false` is now logged with its reason, which is the part that was missing. Measured on
+     * an Android 17 Dhizuku device before the fix, the whole user-visible failure was
+     * `unfreeze(com.android.egg): install-existing reported success=false` — the `SecurityException`
+     * that actually caused it was swallowed by a bare `catch { false }` and appeared nowhere.
+     */
     fun reinstallApp(packageName: String): Boolean {
         return try {
-            val currentUser = getCurrentUserId()
-            execute(
-                "pm install-existing --user $currentUser ${
-                    packageName.escapeForShell()
-                }"
-            ).first == 0
-        } catch (_: Exception) {
+            val (code, output) = execute(
+                "pm install-existing --user $thorUserId ${packageName.escapeForShell()}"
+            )
+            if (code != 0) {
+                Logger.w(
+                    "DhizukuHelper",
+                    "`pm install-existing --user $thorUserId $packageName` exited $code: $output"
+                )
+            }
+            code == 0
+        } catch (e: Exception) {
+            Logger.e("DhizukuHelper", "reinstallApp($packageName) failed", e)
             false
         }
     }

@@ -12,6 +12,7 @@ import com.rosan.dhizuku.api.Dhizuku
 import com.valhalla.bypass.Bypass
 import com.valhalla.thor.core.ThorShellConfig
 import com.valhalla.thor.data.service.AutoFreezeManager
+import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.utils.AppIconFetcher
@@ -86,10 +87,16 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
         Bypass.prepareThor()
         ThorShellConfig.init()
 
+        // Hand the outcome to DhizukuHelper rather than dropping it. This init runs once, at process
+        // start — which for a first-run user is *before* they have authorised Thor in Dhizuku, so it
+        // returns false and there is nothing here to retry it. Recording the answer is what lets the
+        // later probe tell "already bound, just ask about permission" apart from "never bound, bind
+        // now" instead of asking an unbound client whether it has permission and always hearing no.
         try {
-            Dhizuku.init(this)
+            DhizukuHelper.markClientInitialised(Dhizuku.init(this))
         } catch (e: Exception) {
             Logger.e("ThorApp", "Dhizuku init failed", e)
+            DhizukuHelper.markClientInitialised(false)
         }
 
         autoFreezeManager.startObserving()

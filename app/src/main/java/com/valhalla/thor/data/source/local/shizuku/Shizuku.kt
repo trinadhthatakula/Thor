@@ -1004,35 +1004,30 @@ object Shizuku {
         }.getOrElse { false }
     }
 
-    // @Volatile guarantees safe publication across threads: getCurrentUserId() may be invoked from
-    // arbitrary threads, and only a *successfully* resolved id is ever cached (the read throws
-    // before the assignment on failure), so a transient shell blip can't persist a wrong user (#41,
-    // mirrors the RootSystemGateway #34 pattern).
-    @Volatile
-    private var cachedUserId: String? = null
-
-    fun getCurrentUserId(): String {
-        cachedUserId?.let { return it }
-        val userResult = execute("am get-current-user")
-        val output = userResult.second?.trim()
-        if (userResult.first != 0 || output == null || !output.matches(Regex("^\\d+$"))) {
-            throw IllegalStateException("Failed to determine current user ID: exitCode=${userResult.first}, output=$output")
-        }
-        cachedUserId = output
-        return output
-    }
+    // The user id every `--user` below names is [thorUserId], read in process.
+    //
+    // This used to shell out to `am get-current-user` and cache the answer. Nothing was broken at
+    // shell uid — the call is permitted there and returns the same number on a single-user device
+    // — but it answered a different question from the one the disable rungs ask. Those target
+    // `Packages.myUserId`, so on a work-profile device (Thor in profile 10, parent 0 in the
+    // foreground) rung 1 disabled for 10 while the `pm uninstall -k` fallback removed for 0: a
+    // fallback acting on a package the rung it is covering for never touched. Both now resolve
+    // through the one symbol, for the reason its KDoc gives, and the cache goes with the shell
+    // call — [thorUserId] is a process-lifetime constant.
+    //
+    // The same swap on the Dhizuku side fixes an outright failure rather than a latent mismatch;
+    // see the note in DhizukuHelper.
 
     fun uninstallApp(context: Context, packageName: String): Boolean {
         // Escape the package identifier before interpolating it into the shell command, mirroring
-        // the Dhizuku helper (#40). currentUser is regex-validated numeric, so it needs no escaping.
+        // the Dhizuku helper (#40). thorUserId is an Int, so it needs no escaping.
         val escapedPackage = packageName.escapeForShell()
         val normally = Packages(context).canUninstallNormally(packageName)
         if (normally) {
             return execute("pm uninstall $escapedPackage").first == 0
         }
         return try {
-            val currentUser = getCurrentUserId()
-            execute("pm uninstall --user $currentUser $escapedPackage").first == 0
+            execute("pm uninstall --user $thorUserId $escapedPackage").first == 0
         } catch (_: Exception) {
             false
         }
@@ -1098,7 +1093,7 @@ object Shizuku {
      * code is the whole point of this rung's failure; see that class for what dropping it cost.
      */
     fun freezeSystemAppForUser(packageName: String): SystemAppRemovalOutcome = try {
-        val currentUser = getCurrentUserId()
+        val currentUser = thorUserId
         val (code, output) = execute(
             "pm uninstall -k --user $currentUser ${packageName.escapeForShell()}"
         )
@@ -1125,10 +1120,9 @@ object Shizuku {
 
     fun reinstallApp(packageName: String): Boolean {
         return try {
-            val currentUser = getCurrentUserId()
             // Escape the package identifier before interpolating it (#40).
             val escapedPackage = packageName.escapeForShell()
-            execute("pm install-existing --user $currentUser $escapedPackage").first == 0
+            execute("pm install-existing --user $thorUserId $escapedPackage").first == 0
         } catch (_: Exception) {
             false
         }

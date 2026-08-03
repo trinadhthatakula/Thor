@@ -81,7 +81,7 @@
     <string name="frozen">Congelado</string>
     <string name="suspended">Suspendido</string>
     <string name="privilege_check">Verificación de privilegios</string>
-    <string name="privilege_check_desc">Thor requiere acceso Root o Shizuku para funcionar correctamente.\n\nPor favor, concede acceso en tu aplicación de gestión y pulsa Actualizar.</string>
+    <string name="privilege_check_desc">Thor requiere acceso Root, Shizuku o Dhizuku para funcionar correctamente.\n\nPor favor, concede acceso en tu aplicación de gestión y pulsa Actualizar.</string>
 
     <!-- App List / Freezer -->
     <string name="system_apps_warning">⚠ Aplicaciones del sistema</string>

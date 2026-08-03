@@ -81,7 +81,7 @@
     <string name="frozen">مجمد</string>
     <string name="suspended">معلق</string>
     <string name="privilege_check">فحص الصلاحيات</string>
-    <string name="privilege_check_desc">يتطلب Thor صلاحيات Root أو Shizuku ليعمل بشكل صحيح.\n\nيرجى منح الصلاحيات في تطبيق الإدارة والنقر فوق تحديث.</string>
+    <string name="privilege_check_desc">يتطلب Thor صلاحيات Root أو Shizuku أو Dhizuku ليعمل بشكل صحيح.\n\nيرجى منح الصلاحيات في تطبيق الإدارة والنقر فوق تحديث.</string>
 
     <!-- App List / Freezer -->
     <string name="system_apps_warning">⚠ تطبيقات النظام</string>

@@ -83,7 +83,7 @@
     <string name="frozen">Frozen</string>
     <string name="suspended">Suspended</string>
     <string name="privilege_check">Privilege Check</string>
-    <string name="privilege_check_desc">Thor requires Root or Shizuku access to function correctly.\n\nPlease grant access in your manager app and click Refresh.</string>
+    <string name="privilege_check_desc">Thor requires Root, Shizuku or Dhizuku access to function correctly.\n\nPlease grant access in your manager app and click Refresh.</string>
 
     <!-- App List / Freezer -->
     <string name="system_apps_warning">⚠ System Apps</string>
