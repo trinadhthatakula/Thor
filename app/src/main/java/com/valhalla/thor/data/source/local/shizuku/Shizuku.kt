@@ -9,6 +9,10 @@ import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import com.valhalla.bypass.Bypass
 import com.valhalla.superuser.utils.escapeForShell
+import com.valhalla.thor.domain.model.SHELL_SUSPENDER_IDENTITY
+import com.valhalla.thor.domain.model.canLiftSuspension
+import com.valhalla.thor.domain.model.parseSuspendingPackages
+import com.valhalla.thor.domain.model.thorSuspenderIdentities
 import moe.shizuku.server.IShizukuService
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuBinderWrapper
@@ -409,107 +413,369 @@ object Shizuku {
         )
     }
 
-    // Hidden-API reflection (SuspendDialogInfo) is intentional: it is the core privilege mechanism,
-    // guarded by the :bypass VMRuntime unseal.
-    @SuppressLint("PrivateApi")
+    /**
+     * Suspend or unsuspend a package, reporting only what a post-read can prove.
+     *
+     * ### Why the exit code was not enough
+     *
+     * This used to be `if (shellResult.first == 0) return true`. `pm unsuspend` exits 0 even when it
+     * removed nothing: lifting a suspension you do not own leaves
+     * `oldSuspendParams == null == newSuspendParams`, so `changed` is false, the package is logged
+     * "No change is needed" and is left *out* of the array of failures the API returns. That empty
+     * array — and the 0 the shell prints because of it — is exactly what every caller read as
+     * success while the user's app stayed suspended forever.
+     *
+     * ### Ownership, and the one thing a shell-uid Shizuku genuinely cannot do
+     *
+     * From API 30 a suspension is keyed on the suspending package name and only that name may remove
+     * it (`PackageSettingBase.removeSuspension`, android-11.0.0_r1 :443-452, carried into
+     * `SuspendPackageHelper` on 13-16). `PackageManagerService.enforceCanSetPackagesSuspendedAsUser`
+     * (android-17.0.0_r1 :3354-3358) early-returns for `Process.ROOT_UID` *before* any
+     * suspender-name validation, but shell gets no such exemption —
+     * `allowedShell = callingUid == SHELL_UID && isCallerSameApp(suspendingPackage, callingUid)` — so
+     * a Shizuku at uid 2000 can only ever act as [SHELL_SUSPENDER_IDENTITY]. A suspension recorded by
+     * root-mode Thor (`com.valhalla.thor`) is therefore **unliftable from here**, permanently, and
+     * the only honest move is to say so: [canLiftSuspension] decides and the throw names the owner
+     * and points at root mode. Attempting it anyway would take the "No change is needed" path above
+     * and report success, which is the bug.
+     *
+     * A Shizuku *started as root* is a different animal: uid 0 is exempt, so it names each recorded
+     * owner verbatim and performs the same rescue `RootSystemGateway` does.
+     *
+     * ### Why it throws instead of returning false
+     *
+     * `ShizukuSystemGateway.runAction` turns a thrown exception into `Result.failure(e)` and the UI
+     * renders `e.message`; a bare `false` becomes the generic "Action failed. This may happen if
+     * reflection is blocked…", which is precisely the sentence that would send a user hunting for a
+     * problem that does not exist. The owner's name is the whole point of the failure, so it has to
+     * ride an exception to survive the `Boolean` this function is stuck returning.
+     */
     fun setAppSuspended(context: Context, packageName: String, suspended: Boolean): Boolean {
         val pkgs = Packages(context)
         pkgs.getApplicationInfoOrNull(packageName) ?: return false
         val userId = pkgs.myUserId
+        // Escaped for the shell rungs only; the reflection rung passes the raw name over binder.
+        val escapedPackage = packageName.escapeForShell()
+        val sdkInt = android.os.Build.VERSION.SDK_INT
 
-        // 1. Try shell first
-        val command = if (suspended) {
-            "pm suspend --user $userId $packageName"
-        } else {
-            "pm unsuspend --user $userId $packageName"
+        // A package that is not suspended is already in the requested state, so there is nothing to
+        // lift and no owner to read. This is a *positive* read of the end state, not the fail-open
+        // "could not tell, call it success" this change exists to delete — an unreadable flag is
+        // null, which is neither true nor false and falls through to the full path below. It also
+        // keeps a bulk unfreeze from paying a `dumpsys` round trip per app that was never suspended.
+        if (!suspended && isSuspendedNow(pkgs, packageName) == false) return true
+
+        // Read the owner BEFORE writing. `dumpsys package` needs android.permission.DUMP
+        // (`PackageManagerService.dump` → `DumpUtils.checkDumpAndUsageStatsPermission`,
+        // android-16 :6689); the shell uid Shizuku runs commands as holds it and the app process
+        // does not, which is why this read can only live on this side of the binder.
+        val recorded = if (suspended) emptySet() else recordedSuspenders(escapedPackage, userId)
+        refuseUnliftableSuspension(context, packageName, recorded, sdkInt)
+
+        // Which identity each rung acts as. Only root may name someone else's.
+        val callers: List<String> = when {
+            // Suspending records a new entry, and the name it records is the one the system turns
+            // into the user-visible "managed by …" line on the pause dialog. Unchanged on purpose.
+            suspended -> listOf(if (isRoot) context.packageName else SHELL_SUSPENDER_IDENTITY)
+            // Unsuspending at uid 0: name every recorded owner verbatim. This is the rescue path —
+            // it is what lets a root Shizuku lift a suspension some other privilege wrote.
+            isRoot && recorded.isNotEmpty() -> recorded.toList()
+            // uid 0, but the dump was unreadable. Sweep every identity Thor has ever written
+            // (its own name, the legacy "root", and shell) rather than guessing one.
+            isRoot -> (thorSuspenderIdentities(context.packageName) + SHELL_SUSPENDER_IDENTITY).toList()
+            // Shell uid can only ever name itself; refuseUnliftableSuspension has already turned
+            // away everything else, so this is the only name left that can do anything.
+            else -> listOf(SHELL_SUSPENDER_IDENTITY)
         }
-        val shellResult = execute(command)
-        if (shellResult.first == 0) return true
 
-        // 2. Fallback to reflection
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            val reflectionResult = runCatching {
-                val pm = asInterface("android.content.pm.IPackageManager", "package")
-                val dialogInfoClass = Class.forName("android.content.pm.SuspendDialogInfo")
-                val builderClass = Class.forName("android.content.pm.SuspendDialogInfo\$Builder")
-                val dialogInfo = if (suspended) {
-                    Bypass.newInstance<Any>(builderClass).let { b ->
-                        val title = context.getString(com.valhalla.thor.R.string.suspended_app_dialog_title)
-                        val message = context.getString(com.valhalla.thor.R.string.suspended_app_dialog_message)
-                        Bypass.invoke<Any>(builderClass, b, "setTitle", title)
-                        Bypass.invoke<Any>(
-                            builderClass,
-                            b,
-                            "setMessage",
-                            message
+        // `pm suspend` / `pm unsuspend` act as whoever the shell is — "com.android.shell" at uid
+        // 2000, the literal "root" at uid 0 (PackageManagerShellCommand picks the name from the
+        // calling uid, which is where legacy "root"-owned suspensions came from). Cheapest rung and
+        // the one that covers the ordinary case, so it stays first.
+        val shellRung = EnableRung(RUNG_SHELL) {
+            val verb = if (suspended) "suspend" else "unsuspend"
+            val (code, _) = execute("pm $verb --user $userId $escapedPackage")
+            if (code == 0) RungResult.RAN else RungResult.FAILED
+        }
+
+        val reflectionRung = EnableRung(RUNG_REFLECTION) {
+            if (sdkInt < android.os.Build.VERSION_CODES.Q) {
+                // `SuspendDialogInfo` does not exist before API 29 — the API 28 overload takes a
+                // String dialogMessage in its place — so there is nothing to reflect on P.
+                RungResult.FAILED
+            } else {
+                var ran = false
+                // Every caller, not the first that works: on the unsuspend path each recorded owner
+                // is a separate entry in the suspendParams map and each one has to be named to be
+                // removed. Stopping early would leave the package suspended by the rest.
+                for (caller in callers) {
+                    runCatching {
+                        setPackagesSuspendedViaBypass(context, packageName, suspended, caller, userId)
+                        ran = true
+                    }.onFailure { e ->
+                        Logger.e(
+                            "Shizuku",
+                            "setPackagesSuspendedAsUser reflection failed for $packageName " +
+                                "(suspended=$suspended, caller=$caller)",
+                            e
                         )
-                        Bypass.invoke<Any>(builderClass, b, "build")
                     }
-                } else {
-                    null
                 }
-
-                val caller =
-                    if (isRoot) com.valhalla.thor.BuildConfig.APPLICATION_ID else "com.android.shell"
-
-                try {
-                    // Try Android 13+ (8 args)
-                    Bypass.invoke<Array<String>>(
-                        pm.javaClass,
-                        pm,
-                        "setPackagesSuspendedAsUser",
-                        arrayOf(
-                            Array<String>::class.java,
-                            Boolean::class.javaPrimitiveType!!,
-                            android.os.PersistableBundle::class.java,
-                            android.os.PersistableBundle::class.java,
-                            dialogInfoClass,
-                            Int::class.javaPrimitiveType!!,
-                            String::class.java,
-                            Int::class.javaPrimitiveType!!
-                        ),
-                        arrayOf(packageName),
-                        suspended,
-                        null, null,
-                        dialogInfo,
-                        0,
-                        caller,
-                        userId
-                    )
-                } catch (_: NoSuchMethodException) {
-                    // Try Android 10-12 (7 args)
-                    Bypass.invoke<Array<String>>(
-                        pm.javaClass,
-                        pm,
-                        "setPackagesSuspendedAsUser",
-                        arrayOf(
-                            Array<String>::class.java,
-                            Boolean::class.javaPrimitiveType!!,
-                            android.os.PersistableBundle::class.java,
-                            android.os.PersistableBundle::class.java,
-                            dialogInfoClass,
-                            String::class.java,
-                            Int::class.javaPrimitiveType!!
-                        ),
-                        arrayOf(packageName),
-                        suspended,
-                        null, null,
-                        dialogInfo,
-                        caller,
-                        userId
-                    )
-                }
-                true
-            }.getOrDefault(false)
-
-            if (reflectionResult) return true
+                if (ran) RungResult.RAN else RungResult.FAILED
+            }
         }
 
-        // 3. Unprivileged fallback (re-query PM to observe post-mutation state)
-        val currentSuspended = pkgs.getApplicationInfoOrNull(packageName)?.run {
-            (flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED) != 0
-        } ?: false
-        return currentSuspended == suspended
+        // The post-read is the only evidence that counts; see firstRungThatSticks, whose types are
+        // named for their first caller (the enable/disable chain) rather than for that chain alone.
+        val outcome = firstRungThatSticks(listOf(shellRung, reflectionRung)) {
+            reachedSuspendState(pkgs, packageName, escapedPackage, userId, suspended)
+        }
+        if (outcome.winner != null) {
+            Logger.d(
+                "Shizuku",
+                "setAppSuspended($packageName, suspended=$suspended): ${outcome.winner} changed the state"
+            )
+            return true
+        }
+
+        // Nothing moved. Re-read the owner: the pre-read can come back empty because the dump was
+        // truncated or denied, not because nobody owned the package, and this second look is the one
+        // chance to turn "that did not work" into the specific "root mode owns it" the user can act
+        // on. Empty is still "unknown", so this can only ever add information, never remove it.
+        val remaining = if (suspended) emptySet() else recordedSuspenders(escapedPackage, userId)
+        refuseUnliftableSuspension(context, packageName, remaining, sdkInt)
+        Logger.e(
+            "Shizuku",
+            "setAppSuspended($packageName, suspended=$suspended): both rungs ran as " +
+                "${callers.joinToString()} and the state did not change" +
+                if (remaining.isEmpty()) "" else " (still suspended by ${remaining.joinToString()})"
+        )
+        return false
+    }
+
+    /**
+     * Is [packageName] suspended right now — or `null` when that cannot be read at all?
+     *
+     * Three-valued and never `?: false`, which is the shape `readEffectivelyEnabled` uses for the
+     * same reason: an unreadable `ApplicationInfo` collapsed to "not suspended" reads as "the
+     * unsuspend worked", so the one state where Thor knows least would be the one it is loudest
+     * about. Callers treat null as "not verified".
+     */
+    private fun isSuspendedNow(pkgs: Packages, packageName: String): Boolean? =
+        pkgs.getApplicationInfoOrNull(packageName)
+            ?.let { (it.flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED) != 0 }
+
+    /**
+     * Has [packageName] actually reached [suspended]?
+     *
+     * `FLAG_SUSPENDED` is asked first because it is a binder call rather than a shell round trip,
+     * and because it is the same bit the dump prints (`PackageInfoUtils.generateApplicationInfo`
+     * sets it from `PackageUserState.isSuspended()`, which is just "the suspendParams map is not
+     * empty"). Every rung's failure therefore costs one cheap read and no `dumpsys` at all.
+     *
+     * The dump is then asked on the unsuspend path only, and only once the flag has already said
+     * "not suspended". That ordering is what makes the dump safe to use here: an empty parse means
+     * "unknown" on its own — a denied or truncated dump looks identical to a clean one — and it is
+     * the flag's independent *positive* answer that turns this pair into a confirmation instead of
+     * two absences of evidence. Asking it at all is worth the round trip because the flag is one bit
+     * and cannot say who is still holding the package.
+     */
+    private fun reachedSuspendState(
+        pkgs: Packages,
+        packageName: String,
+        escapedPackage: String,
+        userId: Int,
+        suspended: Boolean
+    ): Boolean {
+        // null != true and null != false, so an unreadable package is never "verified".
+        if (isSuspendedNow(pkgs, packageName) != suspended) return false
+        if (suspended) return true
+        return recordedSuspenders(escapedPackage, userId).isEmpty()
+    }
+
+    /**
+     * The packages the platform records as suspending [escapedPackage] for [userId].
+     *
+     * Empty means **unknown**, not "nothing" — a package that is not suspended, a dump denied for
+     * want of `android.permission.DUMP`, a truncated read and an OEM format nobody has seen all land
+     * here identically. [parseSuspendingPackages] documents the same rule; every caller in this file
+     * either pairs it with a positive `FLAG_SUSPENDED` read or treats it as "no information".
+     */
+    private fun recordedSuspenders(escapedPackage: String, userId: Int): Set<String> {
+        val (code, output) = execute("dumpsys package $escapedPackage")
+        if (code != 0 || output.isNullOrBlank()) {
+            Logger.w(
+                "Shizuku",
+                "dumpsys package $escapedPackage failed (exit=$code): suspender ownership is unknown"
+            )
+            return emptySet()
+        }
+        return parseSuspendingPackages(output, userId)
+    }
+
+    /**
+     * Throws when [recorded] holds an identity this privilege cannot lift, naming it.
+     *
+     * At uid 0 [canLiftSuspension] is always true and this is a no-op, as is every call below API 30
+     * where `setSuspended(false)` clears the single slot regardless of who set it (android-9.0.0_r1
+     * `PackageSettingBase.java:399-407`). It bites in exactly one place: a shell-uid Shizuku facing a
+     * suspension that root-mode Thor recorded under its own name on API 30+. That is genuinely
+     * unfixable from here, and the requirement is that Thor says so — the alternative, which is what
+     * shipped, is a call that removes nothing, returns an empty failure array and reports success.
+     */
+    private fun refuseUnliftableSuspension(
+        context: Context,
+        packageName: String,
+        recorded: Set<String>,
+        sdkInt: Int
+    ) {
+        val blocked = recorded.filterNot { canLiftSuspension(it, isRoot, sdkInt) }
+        if (blocked.isEmpty()) return
+        val owners = blocked.joinToString()
+        Logger.e(
+            "Shizuku",
+            "setAppSuspended($packageName, suspended=false): suspension is owned by $owners and " +
+                "this Shizuku acts as ${if (isRoot) "root" else SHELL_SUSPENDER_IDENTITY}; refusing " +
+                "to attempt a removal the platform would silently drop"
+        )
+        throw IllegalStateException(
+            context.getString(
+                com.valhalla.thor.R.string.suspend_owned_by_other_privilege,
+                packageName,
+                owners
+            )
+        )
+    }
+
+    /**
+     * The one and only copy of the `IPackageManager.setPackagesSuspendedAsUser` reflection.
+     *
+     * All three overloads are needed and the 9-argument one was missing, which is why this rung was
+     * dead on every Android 15+ device: only the 8-arg and 7-arg lookups existed, both threw
+     * `NoSuchMethodException` there, and the outer `runCatching` swallowed it into a plain `false`.
+     *
+     * | Args | Platform | Shape |
+     * |---|---|---|
+     * | 9 | API 35+ | `…, int flags, String callingPackage, int suspendingUserId, int targetUserId` |
+     * | 8 | API 33-34 | `…, int flags, String callingPackage, int userId` |
+     * | 7 | API 29-32 | `…, String callingPackage, int userId` |
+     *
+     * `suspendingUserId` is the user the *suspending* package lives in and is what API 35 prints as
+     * the `<0>` prefix on the dump's `UserPackage` key; both ids are [userId] here because Thor
+     * suspends its own user's packages as an identity in that same user.
+     *
+     * Returns Unit and throws on failure rather than returning a boolean, for the same reason
+     * [setApplicationEnabledSettingViaBypass] does — and here the reason is sharper still: the
+     * boolean it *could* return is `!failedPackages.contains(packageName)`, and an empty
+     * `failedPackages` is precisely the lie this whole change exists to stop believing. The returned
+     * array is deliberately discarded; the post-read decides.
+     */
+    @SuppressLint("PrivateApi")
+    private fun setPackagesSuspendedViaBypass(
+        context: Context,
+        packageName: String,
+        suspended: Boolean,
+        caller: String,
+        userId: Int
+    ) {
+        val pm = asInterface("android.content.pm.IPackageManager", "package")
+        val dialogInfoClass = Class.forName("android.content.pm.SuspendDialogInfo")
+        val dialogInfo = if (suspended) buildSuspendDialogInfo(context) else null
+        val targets = arrayOf(packageName)
+
+        val stringArrayType = Array<String>::class.java
+        val boolType = Boolean::class.javaPrimitiveType!!
+        val intType = Int::class.javaPrimitiveType!!
+        val bundleType = android.os.PersistableBundle::class.java
+        val stringType = String::class.java
+
+        // API 35+ — 9 args.
+        try {
+            Bypass.invoke<Any?>(
+                pm.javaClass,
+                pm,
+                "setPackagesSuspendedAsUser",
+                arrayOf(
+                    stringArrayType, boolType, bundleType, bundleType, dialogInfoClass,
+                    intType, stringType, intType, intType
+                ),
+                targets, suspended, null, null, dialogInfo, 0, caller, userId, userId
+            )
+            return
+        } catch (_: NoSuchMethodException) {
+            // Older platform; fall through.
+        }
+
+        // API 33-34 — 8 args.
+        try {
+            Bypass.invoke<Any?>(
+                pm.javaClass,
+                pm,
+                "setPackagesSuspendedAsUser",
+                arrayOf(
+                    stringArrayType, boolType, bundleType, bundleType, dialogInfoClass,
+                    intType, stringType, intType
+                ),
+                targets, suspended, null, null, dialogInfo, 0, caller, userId
+            )
+            return
+        } catch (_: NoSuchMethodException) {
+            // Older platform; fall through.
+        }
+
+        // API 29-32 — 7 args. Uncaught on purpose: there is no overload left to try, so a
+        // NoSuchMethodException here is real news and belongs to the caller's log line.
+        Bypass.invoke<Any?>(
+            pm.javaClass,
+            pm,
+            "setPackagesSuspendedAsUser",
+            arrayOf(
+                stringArrayType, boolType, bundleType, bundleType, dialogInfoClass,
+                stringType, intType
+            ),
+            targets, suspended, null, null, dialogInfo, caller, userId
+        )
+    }
+
+    /**
+     * The custom pause dialog, or null when this platform will not build one.
+     *
+     * Null is a supported argument — the system falls back to its own generic dialog — so a failure
+     * here must never fail the suspend itself. It is logged rather than swallowed all the same,
+     * because a silently-null dialogInfo is invisible until a user asks why the dialog is generic.
+     *
+     * The overloads are picky and the wrong one throws `NoSuchMethodException` for the whole
+     * builder: `setMessage(String)` exists from API 29, `setTitle(String)` only from API 31 — asking
+     * for `setTitle` on 29 or 30 used to take the entire reflection rung down with it. The
+     * `@StringRes int` overloads are deliberately not used even though they go back to 29: the
+     * dialog is rendered by the system's `SuspendedAppActivity` against the *suspending* package's
+     * resources, which for a shell-uid Shizuku is `com.android.shell` — Thor's resource ids mean
+     * nothing there.
+     */
+    @SuppressLint("PrivateApi")
+    private fun buildSuspendDialogInfo(context: Context): Any? = runCatching {
+        val builderClass = Class.forName("android.content.pm.SuspendDialogInfo\$Builder")
+        val builder = Bypass.newInstance<Any>(builderClass)
+        Bypass.invoke<Any?>(
+            builderClass,
+            builder,
+            "setMessage",
+            arrayOf(String::class.java),
+            context.getString(com.valhalla.thor.R.string.suspended_app_dialog_message)
+        )
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            Bypass.invoke<Any?>(
+                builderClass,
+                builder,
+                "setTitle",
+                arrayOf(String::class.java),
+                context.getString(com.valhalla.thor.R.string.suspended_app_dialog_title)
+            )
+        }
+        Bypass.invoke<Any>(builderClass, builder, "build")
+    }.getOrElse { e ->
+        Logger.e("Shizuku", "SuspendDialogInfo.Builder failed; suspending without a custom dialog", e)
+        null
     }
 
     // PrivateApi: hidden-API reflection (IPackageDataObserver) is intentional — the core privilege
