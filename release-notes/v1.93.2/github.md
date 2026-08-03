@@ -41,8 +41,10 @@ new marketing site, documentation and CI; the app changes are below.*
   by a shell exit code — `pm` prints `Success` for a no-op (`b59c1f64`).
 * **Rung 2 keeps the data.** The uninstall fallback now carries `-k` (`DELETE_KEEP_DATA`). Measured
   on the HyperOS device this fallback exists for: `pm uninstall -k --user 0` then
-  `pm install-existing --user 0` returned byte-identical `ceDataInode` and `deDataInode`
-  (`cf739fc0`). A later pass measured that runtime permission grants survive the round trip too, at
+  `pm install-existing --user 0` returned **unchanged** `ceDataInode` and `deDataInode` values, so
+  the CE and DE data directories were never recreated — which is exactly what `DELETE_KEEP_DATA`
+  promises. The bytes inside them were not compared; the inodes were (`cf739fc0`). A later pass
+  measured that runtime permission grants survive the round trip too, at
   uid 2000 on a stock API 36 emulator — one permission, one build, recorded for the scope it has
   (`4524387d`). What the rung still costs unconditionally is `FLAG_INSTALLED`, which is why every
   query on the freeze path passes `MATCH_UNINSTALLED_PACKAGES`.
