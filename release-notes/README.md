@@ -21,8 +21,15 @@ release-notes/v<version>/
 ```
 
 **`playstore.txt` is the single source for three channels.** All three copies must stay
-byte-identical — the audit in `.github/scripts/check-shizu-manifest.sh` compares them and the
-F-Droid build reads its own copy from `fastlane/`. Write the text once, then propagate it (Step 5).
+byte-identical, because each consumer reads its own copy: F-Droid reads `fastlane/`, the Shizu store
+reads `shizu_store.json`. Write the text once, then propagate it (Step 5).
+
+Only one of those copies is audited. `.github/scripts/check-shizu-manifest.sh` compares
+`shizu_store.json`'s `.changelog` against `playstore.txt`, and `pr-ci.yml:82` runs it on **every**
+PR — deliberately un-path-filtered, since `on.pull_request.paths` would gate the whole workflow
+including the required `build-and-test` check. So a forgotten `sync-shizu-changelog.sh` is a red
+`shizu-manifest` check, not a silent store regression. The **`fastlane/` copy is checked by
+nothing** — the `diff` in Step 6 is its only gate, which is why Step 6 is not optional.
 
 Who reads what, exactly:
 
@@ -58,7 +65,10 @@ Use the `v` form; the fallback exists only for old directories.
 
 * **Format**: punchy markdown, emoji-led bullets, mobile-first.
 * **Size**: **under ~870 UTF-16 code units.** ⚠️ **Exceeding this fails silently — see the trap
-  below.** Measure UTF-16 units, not characters: most emoji count as **2**.
+  below.** Measure UTF-16 units, not characters: most emoji count as **2**. The budget is the 1024
+  cap minus the wrapper the workflow adds, measured at **149** units (`dev-check.yml`, the longer of
+  the two) and **141** (`telegram-release.yml`) for v1.93.2. The wrapper is not fixed — it carries
+  the branch name, the actor and the track label — so keep the margin.
 * **Line breaks**: **MANDATORY** blank line between bullets, or Telegram's mobile client squeezes
   the whole thing into a dense block.
 
@@ -66,7 +76,9 @@ Use the `v` form; the fallback exists only for old directories.
 
 * **Format**: full markdown, no size limit, as detailed as the release deserves.
 * **Content**: `## ✨ Highlights`, then `## What's Changed` with one `###` section per theme
-  carrying PR numbers, then `## 🛠 Build & Dependencies`, then a commits log.
+  carrying PR numbers, then a project/internal section for the work users never see (name it for
+  what the release actually contained — v1.93.2 used `## 🌐 Project: the site, the stores, the
+  build`), then `## 🛠 Commits Log`.
 * Include real short commit hashes (e.g. `(5f3d34d)`) — this file is the open-source accountability
   record. Internal work (docs, CI, tests) belongs here too, in a lower section.
 
@@ -140,11 +152,19 @@ cp release-notes/v<version>/playstore.txt \
 ```
 `sync-shizu-changelog.sh` reads `versionCode` from `gradle.properties`, derives the version name,
 and writes `playstore.txt` into `shizu_store.json`'s `changelog` with `jq`. Run it **after** Step 3
-or it will look for the wrong directory. CI never runs it: the `master` ruleset requires a PR and a
-status check, and a `GITHUB_TOKEN`-authored PR does not trigger `pull_request` workflows, so no bot
-can land that commit.
+or it will look for the wrong directory. CI never runs *this* script: the `master` ruleset requires
+a PR and a status check, and a `GITHUB_TOKEN`-authored PR does not trigger `pull_request` workflows,
+so no bot can land that commit. Do not read that as "nothing checks the result" — its counterpart
+`check-shizu-manifest.sh` runs on every PR (see the note under the diagram above).
+
+The `cp` writes a **trailing newline** the manifest does not carry: `jq` stores the changelog
+stripped, by design, so `check-shizu-manifest.sh` passing while a naive byte comparison of the two
+says "different" is the expected state, not a defect.
 
 ### Step 6 — Verify before committing
+Nothing in CI checks either size, so this step is the only gate on both — see
+`docs/follow-ups/telegram-caption-length-guard.md` for why the Telegram one is not yet automated.
+
 ```bash
 # sizes
 wc -m release-notes/v<version>/playstore.txt            # must be < 500
