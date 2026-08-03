@@ -11,6 +11,7 @@ import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FreezerMode
+import com.valhalla.thor.domain.model.InstalledAppsPermission
 import com.valhalla.thor.domain.model.PermissionIndex
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.PrivilegeState
@@ -24,6 +25,7 @@ import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.AuthCapability
 import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.domain.repository.InstalledAppsPermissionGate
 import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
@@ -359,6 +361,27 @@ class FakeUsageAccessGate(var granted: Boolean = true) : UsageAccessGate {
 
     override suspend fun maybeAutoGrant() {
         autoGrantCalls++
+    }
+}
+
+/**
+ * The GET_INSTALLED_APPS probe, as a plain mutable field.
+ *
+ * Defaults to [InstalledAppsPermission.Unsupported] because that is what the overwhelming majority
+ * of devices Thor runs on answer — the permission is a Chinese-market standard and does not exist on
+ * AOSP. A test that wants the banner has to ask for [InstalledAppsPermission.Denied] explicitly,
+ * which keeps "a Pixel is never nagged" the behaviour you get by saying nothing.
+ */
+class FakeInstalledAppsPermissionGate(
+    var permission: InstalledAppsPermission = InstalledAppsPermission.Unsupported
+) : InstalledAppsPermissionGate {
+
+    var stateCalls = 0
+        private set
+
+    override fun state(): InstalledAppsPermission {
+        stateCalls++
+        return permission
     }
 }
 

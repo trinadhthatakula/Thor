@@ -480,6 +480,9 @@
     <string name="notification_access_granted_subtitle">Los resultados del congelado masivo se muestran como notificaciones</string>
     <string name="notification_access_needed_subtitle">Permite las notificaciones para ver los resultados del congelado masivo</string>
     <string name="open_settings">Abrir ajustes</string>
+    <string name="installed_apps_permission_title">La lista de aplicaciones puede estar incompleta</string>
+    <string name="installed_apps_permission_desc">Tu dispositivo limita qué aplicaciones puede ver Thor mientras está en segundo plano. Concede acceso completo a la lista de aplicaciones instaladas para mantenerla completa.</string>
+    <string name="installed_apps_permission_grant">Conceder</string>
     <string name="freeze_mode">Modo de congelación</string>
     <string name="suspend_instead_of_freeze">Suspender en lugar de congelar</string>
     <string name="suspend_instead_of_freeze_desc">Al congelar (incluyendo el autocongelado), suspende las aplicaciones en lugar de desactivarlas. Las aplicaciones suspendidas siguen siendo visibles pero pausadas.</string>

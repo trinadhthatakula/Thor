@@ -229,6 +229,13 @@
     <string name="notification_access_granted_subtitle">Bulk freeze results are shown as notifications</string>
     <string name="notification_access_needed_subtitle">Allow notifications to see bulk freeze results</string>
     <string name="open_settings">Open settings</string>
+    <!-- Installed-apps visibility (com.android.permission.GET_INSTALLED_APPS). Only ever shown on
+         ROMs that actually declare it — Chinese-market builds such as MIUI/HyperOS, ColorOS,
+         OriginOS and MagicOS. Deliberately worded without naming the permission: on those ROMs the
+         Settings toggle is labelled "read installed app list", not the AOSP permission name. -->
+    <string name="installed_apps_permission_title">App list may be incomplete</string>
+    <string name="installed_apps_permission_desc">Your device restricts which apps Thor can see while it is in the background. Grant full access to the installed-app list to keep it complete.</string>
+    <string name="installed_apps_permission_grant">Grant</string>
 
     <!-- Quick Settings Tile -->
     <string name="tile_no_privilege">No privilege granted</string>

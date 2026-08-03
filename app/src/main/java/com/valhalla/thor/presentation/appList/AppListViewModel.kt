@@ -10,6 +10,7 @@ import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FreezeTier
+import com.valhalla.thor.domain.model.InstalledAppsPermission
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.PermissionIndex
 import com.valhalla.thor.domain.model.SortBy
@@ -21,6 +22,7 @@ import com.valhalla.thor.domain.model.sortApps
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.domain.repository.InstalledAppsPermissionGate
 import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
@@ -38,6 +40,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -99,7 +102,14 @@ data class AppListUiState(
     // getAllApps() emits the Room cache before it starts the package rescan, so isLoading clears
     // after one DAO read and the indicator would blink out while the real scan is still running.
     val isManualRefreshing: Boolean = false,
-    val needsUsageAccessPrompt: Boolean = false
+    val needsUsageAccessPrompt: Boolean = false,
+    // What this device says about com.android.permission.GET_INSTALLED_APPS. Only
+    // InstalledAppsPermission.Denied puts anything on screen; the default is deliberately
+    // Unsupported so nothing can render before the device has actually been asked. That default is
+    // also the permanent answer on every AOSP build, which is the point — a Pixel does not define
+    // this permission, so "not granted" there must never be mistaken for "denied" and turned into a
+    // banner nobody can ever dismiss. See installedAppsPermissionState().
+    val installedAppsPermission: InstalledAppsPermission = InstalledAppsPermission.Unsupported
 )
 
 /**
@@ -125,6 +135,7 @@ class AppListViewModel(
     private val permissionRepository: PermissionRepository,
     private val storageStats: StorageStatsProvider,
     private val usageAccess: UsageAccessGate,
+    private val installedAppsPermission: InstalledAppsPermissionGate,
     // Injected rather than hardcoded so a test can put every stage of this view model on one
     // scheduler: the sort/filter pipeline below runs off-main, and a `Dispatchers.Default` baked
     // in here would keep it on a real thread pool while the rest ran on virtual time.
@@ -136,6 +147,7 @@ class AppListViewModel(
     private var sizeJob: Job? = null
     private var refreshIndicatorJob: Job? = null
     private var permissionIndexJob: Job? = null
+    private var permissionRefreshJob: Job? = null
     private val _rawState = MutableStateFlow(AppListUiState())
 
     // One-off UI feedback (toasts, freezer prompt). A buffered Channel fires each event exactly
@@ -170,6 +182,38 @@ class AppListViewModel(
         observeSizeSort()
         observeFreezerMembership()
         observePermissionFilter()
+        refreshInstalledAppsPermission()
+    }
+
+    /**
+     * Re-reads whether Thor may still see the full package list, for the banner in [AppListScreen].
+     *
+     * Called from `init` and again on every `ON_RESUME` and after every request, because the grant
+     * this reports is the three-state kind: "while in use" reads as granted in the foreground and
+     * stops being true the moment Thor is backgrounded, and a grant made in system Settings never
+     * comes back through a result callback at all. A one-shot read at construction would show the
+     * banner for a permission the user granted ten seconds later and keep showing it until the
+     * process died.
+     *
+     * Off the main thread because the very first call resolves the checker's cached
+     * `getPermissionInfo` binder round trip, and the callers are a lifecycle observer and an
+     * activity-result callback — both of which run on the main thread, on resume, which is exactly
+     * where a blocking package-manager call is most expensive.
+     *
+     * Strictly last-read-wins. The result callback and `ON_RESUME` fire within milliseconds of each
+     * other when the user answers the dialog, so two reads can be in flight at once — and without
+     * this, a slower earlier read that saw `Denied` could land *after* the newer one that saw the
+     * grant, putting the banner back up over a permission the user just granted. Cancelling the
+     * previous job closes most of the window and [ensureActive] closes the rest: a read that lost
+     * the race is cancelled between the binder call and the state write, so it never publishes.
+     */
+    fun refreshInstalledAppsPermission() {
+        permissionRefreshJob?.cancel()
+        permissionRefreshJob = viewModelScope.launch(ioDispatcher) {
+            val permission = installedAppsPermission.state()
+            ensureActive()
+            _rawState.update { it.copy(installedAppsPermission = permission) }
+        }
     }
 
     /**

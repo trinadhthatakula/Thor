@@ -480,6 +480,9 @@
     <string name="notification_access_granted_subtitle">Les résultats du gel groupé sont affichés en notifications</string>
     <string name="notification_access_needed_subtitle">Autorisez les notifications pour voir les résultats du gel groupé</string>
     <string name="open_settings">Ouvrir les paramètres</string>
+    <string name="installed_apps_permission_title">La liste des applications peut être incomplète</string>
+    <string name="installed_apps_permission_desc">Votre appareil limite les applications que Thor peut voir lorsqu\'il est en arrière-plan. Accordez l\'accès complet à la liste des applications installées pour qu\'elle reste complète.</string>
+    <string name="installed_apps_permission_grant">Accorder</string>
     <string name="freeze_mode">Mode de congélation</string>
     <string name="suspend_instead_of_freeze">Suspendre au lieu de congeler</string>
     <string name="suspend_instead_of_freeze_desc">Lors de la congélation (y compris la congélation automatique), suspendez les applications au lieu de les désactiver. Les applications suspendues restent visibles mais en pause.</string>
