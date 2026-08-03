@@ -8,10 +8,7 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
-import com.valhalla.thor.data.freezer.BulkFreezeRunner
 import com.valhalla.thor.data.launcher.FreezerShortcutContract
-import com.valhalla.thor.data.launcher.FreezerShortcutManager
-import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.BulkOp
@@ -22,9 +19,12 @@ import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.freezeTier
+import com.valhalla.thor.domain.repository.AppShortcutController
+import com.valhalla.thor.domain.repository.BulkFreezeController
 import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.PrivilegeStateProvider
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
@@ -33,7 +33,7 @@ import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.UiTextException
 import com.valhalla.thor.util.bulkResultMessage
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -48,6 +48,7 @@ import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.KoinViewModel
+import org.koin.core.annotation.Named
 
 // packageName + appName of an app frozen outside the freezer list — drives the "Add to Freezer" snackbar
 data class FreezerPrompt(val packageName: String, val appName: String?)
@@ -91,13 +92,27 @@ data class FreezerUiState(
 class FreezerViewModel(
     private val freezerRepository: FreezerRepository,
     private val freezeProfileRepository: FreezeProfileRepository,
-    private val bulkFreezeRunner: BulkFreezeRunner,
+    // The two-member port, not the concrete BulkFreezeRunner: the runner takes four collaborators
+    // that need a Context, a PackageManager or Shizuku's listeners, and naming the class kept this
+    // whole view model — watchlist removal included — out of reach of a JVM test.
+    private val bulkFreeze: BulkFreezeController,
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val manageAppUseCase: ManageAppUseCase,
     private val freezeAppUseCase: FreezeAppUseCase,
-    private val privilegeManager: PrivilegeManager,
+    // The read-only privilege port and the shortcut port, not the concrete PrivilegeManager /
+    // FreezerShortcutManager: one registers Shizuku binder listeners from its initializer and the
+    // other needs a Context, so depending on either class put this whole view model out of reach of
+    // a JVM test. This screen only observes the probe and never triggers a re-probe.
+    private val privilege: PrivilegeStateProvider,
     private val preferenceRepository: PreferenceRepository,
-    private val freezerShortcutManager: FreezerShortcutManager
+    private val appShortcuts: AppShortcutController,
+    // Injected rather than baked-in Dispatchers.Default/IO so a test can put every stage of this
+    // view model on one scheduler — otherwise the actions below escape the test dispatcher and
+    // nothing here is deterministically assertable, and the app-list fold behind `uiState` keeps
+    // running on a real thread pool while the rest runs on virtual time. Same pair, and the same
+    // reason, as AppListViewModel.
+    @Named("default") private val defaultDispatcher: CoroutineDispatcher,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FreezerUiState())
@@ -123,7 +138,7 @@ class FreezerViewModel(
                 combine(
                     freezerRepository.getAll(),
                     getInstalledAppsUseCase(),
-                    privilegeManager.state
+                    privilege.state
                 ) { freezerPkgs, (userApps, systemApps), priv ->
                     val pkgSet = freezerPkgs.toSet()
                     val allApps = userApps + systemApps
@@ -139,7 +154,7 @@ class FreezerViewModel(
                             true
                         }
                     }
-                    .flowOn(Dispatchers.Default)
+                    .flowOn(defaultDispatcher)
                     .collect { (appsData, priv) ->
                         val (pkgSet, freezerApps, allApps) = appsData
                         _uiState.update {
@@ -191,23 +206,77 @@ class FreezerViewModel(
         _uiState.update { it.copy(appListType = type) }
     }
 
+    /**
+     * Take a multi-selection off the watchlist, restoring each app first.
+     *
+     * Restore, *then* delete the row — per package, and only on success. The Room delete is durable
+     * and the privileged call is the only step that can fail, so the old order left a failed restore
+     * holding a frozen app with no watchlist entry: gone from this screen, and out of reach of
+     * Unfreeze-all, which iterates the watchlist (GH#310). Same ordering
+     * [com.valhalla.thor.presentation.appList.AppListViewModel.toggleFreezerMembership] uses for the
+     * single-app case. Nothing here aborts the loop — a per-package failure is recorded and the rest
+     * of the selection still runs — because the bug was never that it stopped too early.
+     */
     fun removeFromFreezer(packageNames: Set<String>) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val appByPkg = _uiState.value.allInstalledApps.associateBy { it.packageName }
+        viewModelScope.launch(ioDispatcher) {
+            val succeeded = mutableSetOf<String>()
+            val failures = mutableListOf<Throwable>()
             packageNames.forEach { pkg ->
-                freezerRepository.remove(pkg)
-                // Restore to active (unsuspend and/or enable) so a suspended app isn't stranded.
-                val app = appByPkg[pkg]
-                if (app != null) manageAppUseCase.restoreApp(pkg, app.enabled, app.isSuspended)
-                else manageAppUseCase.forceUnfreeze(pkg)
-                freezerShortcutManager.disableAppShortcut(pkg)
+                try {
+                    // forceUnfreeze, not restoreApp(app.enabled, app.isSuspended): the flags would
+                    // come from allInstalledApps, a rescan snapshot that the suspend-freeze path
+                    // never patches, so an app suspended a moment ago still reads active here and
+                    // restorePlanFor() plans nothing at all. restoreApp would then return success
+                    // having made zero privileged calls, and the app would leave the watchlist still
+                    // suspended — a failure that reports as one. forceUnfreeze asks unconditionally
+                    // instead. Root and Shizuku answer an unsuspend of a never-suspended app from
+                    // the flag alone (RootSystemGateway.unsuspendPackage and Shizuku.setAppSuspended
+                    // both early-return on a *positive* not-suspended read); Dhizuku pays one
+                    // `pm unsuspend` for it. A redundant call is the cheaper of the two mistakes.
+                    manageAppUseCase.forceUnfreeze(pkg)
+                        .onFailure { e ->
+                            failures += e
+                            return@forEach
+                        }
+                    freezerRepository.remove(pkg)
+                    // Pinned shortcuts can only be greyed, never removed — leaving a live one for an
+                    // app no longer in the freezer would let the launcher drive a freeze from it.
+                    appShortcuts.disableAppShortcut(pkg)
+                    succeeded += pkg
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Room and ShortcutManagerCompat report by throwing, not by returning a Result,
+                    // and :app installs no CoroutineExceptionHandler — one escaping here would
+                    // abandon the rest of the selection and take the report down with it.
+                    Logger.e("FreezeViewModel", "removing $pkg from the freezer failed", e)
+                    failures += e
+                }
             }
-            _uiState.update { it.copy(multiSelection = emptySet()) }
+            // Only what actually left. A failure stays selected so the retry is one more tap rather
+            // than finding the app in the list again.
+            _uiState.update { it.copy(multiSelection = it.multiSelection - succeeded) }
             emitToast(
-                UiText.PluralsResource(
-                    R.plurals.removed_from_freezer_success,
-                    packageNames.size
-                )
+                when (failures.size) {
+                    0 -> UiText.PluralsResource(
+                        R.plurals.removed_from_freezer_success,
+                        succeeded.size
+                    )
+                    // One failure: say what the gateway said. Post-GH#330 that message names the
+                    // privilege still holding the app, which is the whole answer — a count would be
+                    // strictly less than what the Apps tab already gives for the same action.
+                    1 -> UiText.StringResource(
+                        R.string.error_format,
+                        failures.first().message ?: ""
+                    )
+                    // Past one there is no single message to show, so report the split instead.
+                    else -> UiText.StringResource(
+                        R.string.removed_from_freezer_partial_failure,
+                        succeeded.size,
+                        packageNames.size,
+                        failures.size
+                    )
+                }
             )
         }
     }
@@ -215,46 +284,73 @@ class FreezerViewModel(
     // --- Manage Sheet ---
 
     fun toggleManaged(packageName: String, add: Boolean) {
-        viewModelScope.launch(Dispatchers.IO) {
-            if (add) {
-                // The blocked tier, enforced here and not only in the sheet that calls this.
-                // Adding does two things — it freezes the app now, and it enlists it in every
-                // later bulk run — so a surface that forgot to ask would hand the QS tile and
-                // the launcher shortcuts a target the in-app dialog refuses to even offer a
-                // confirm button for. The sheet still asks first; this is the backstop.
-                //
-                // A miss fails closed. allInstalledApps is a snapshot of the last full rescan,
-                // so between the tap and this coroutine a refresh can drop the entry — and the
-                // very next statement freezes. Treating "not found" as "not blocked" would let
-                // an unclassified system app through on exactly the timing where we know least
-                // about it. error_unsafe_skipped covers both readings: it says UNSAFE / safety
-                // check failed.
-                val app = _uiState.value.allInstalledApps
-                    .firstOrNull { it.packageName == packageName }
-                if (app == null || app.freezeTier == FreezeTier.BLOCKED) {
-                    emitToast(UiText.StringResource(R.string.error_unsafe_skipped))
-                    return@launch
+        viewModelScope.launch(ioDispatcher) {
+            // Guarded for the same reason [removeFromFreezer]'s loop body is: the privileged calls
+            // report by returning a Result, but the durable steps around them — the Room write and
+            // ShortcutManagerCompat — report by throwing, and :app installs no
+            // CoroutineExceptionHandler, so one escaping here takes the process with it rather than
+            // the toast. Both branches are covered: `add` writes a row too.
+            try {
+                if (add) {
+                    // The blocked tier, enforced here and not only in the sheet that calls this.
+                    // Adding does two things — it freezes the app now, and it enlists it in every
+                    // later bulk run — so a surface that forgot to ask would hand the QS tile and
+                    // the launcher shortcuts a target the in-app dialog refuses to even offer a
+                    // confirm button for. The sheet still asks first; this is the backstop.
+                    //
+                    // A miss fails closed. allInstalledApps is a snapshot of the last full rescan,
+                    // so between the tap and this coroutine a refresh can drop the entry — and the
+                    // very next statement freezes. Treating "not found" as "not blocked" would let
+                    // an unclassified system app through on exactly the timing where we know least
+                    // about it. error_unsafe_skipped covers both readings: it says UNSAFE / safety
+                    // check failed.
+                    val app = _uiState.value.allInstalledApps
+                        .firstOrNull { it.packageName == packageName }
+                    if (app == null || app.freezeTier == FreezeTier.BLOCKED) {
+                        emitToast(UiText.StringResource(R.string.error_unsafe_skipped))
+                        return@launch
+                    }
+                    val freezeResult = if (_uiState.value.freezerMode == FreezerMode.SUSPEND)
+                        manageAppUseCase.setAppSuspended(packageName, true)
+                    else manageAppUseCase.setAppDisabled(packageName, true)
+                    freezeResult
+                        .onSuccess {
+                            freezerRepository.add(packageName)
+                        }
+                        .onFailure { e ->
+                            emitToast(
+                                UiText.StringResource(R.string.error_format, e.message ?: "")
+                            )
+                        }
+                } else {
+                    // Restore first, drop the row second — the same ordering [removeFromFreezer]
+                    // uses, and for the same reason. This path already reported the failure, but
+                    // over a row that was gone by the time the toast appeared: the app stayed
+                    // frozen with nothing left to retry from (GH#310).
+                    //
+                    // forceUnfreeze rather than restoreApp(app.enabled, app.isSuspended), also as
+                    // in [removeFromFreezer], and this switch is the shortest route to the trap
+                    // that choice avoids: it is drawn from freezerPackageNames, which re-emits the
+                    // instant the row lands, while the flags would come from the app lists, which
+                    // only move on the next full rescan. So switching an app on and straight back
+                    // off restores from a snapshot that still calls it active, plans nothing, and
+                    // reports success having made no privileged call at all — the row goes, the
+                    // app stays frozen.
+                    manageAppUseCase.forceUnfreeze(packageName)
+                        .onFailure { e ->
+                            emitToast(
+                                UiText.StringResource(R.string.error_format, e.message ?: "")
+                            )
+                            return@launch
+                        }
+                    freezerRepository.remove(packageName)
+                    appShortcuts.disableAppShortcut(packageName)
                 }
-                val freezeResult = if (_uiState.value.freezerMode == FreezerMode.SUSPEND)
-                    manageAppUseCase.setAppSuspended(packageName, true)
-                else manageAppUseCase.setAppDisabled(packageName, true)
-                freezeResult
-                    .onSuccess {
-                        freezerRepository.add(packageName)
-                    }
-                    .onFailure { e ->
-                        emitToast(UiText.StringResource(R.string.error_format, e.message ?: ""))
-                    }
-            } else {
-                freezerRepository.remove(packageName)
-                freezerShortcutManager.disableAppShortcut(packageName)
-                val app = _uiState.value.freezerApps.firstOrNull { it.packageName == packageName }
-                    ?: _uiState.value.allInstalledApps.firstOrNull { it.packageName == packageName }
-                (if (app != null) manageAppUseCase.restoreApp(packageName, app.enabled, app.isSuspended)
-                else manageAppUseCase.forceUnfreeze(packageName))
-                    .onFailure { e ->
-                        emitToast(UiText.StringResource(R.string.error_format, e.message ?: ""))
-                    }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e("FreezeViewModel", "toggling watchlist membership for $packageName", e)
+                emitToast(UiText.StringResource(R.string.error_format, e.message ?: ""))
             }
         }
     }
@@ -296,7 +392,7 @@ class FreezerViewModel(
 
     private fun observeRunningRequest() {
         viewModelScope.launch {
-            bulkFreezeRunner.runningRequests.collect { requests ->
+            bulkFreeze.runningRequests.collect { requests ->
                 _uiState.update { it.copy(runningRequests = requests) }
             }
         }
@@ -307,7 +403,7 @@ class FreezerViewModel(
     }
 
     /**
-     * Run a profile through [BulkFreezeRunner] rather than freezing here.
+     * Run a profile through [BulkFreezeController] rather than freezing here.
      *
      * That routing is the whole point of the runner's `targetsFor`: it is where the
      * [FreezeTier] block is applied to a *list*, so a profile cannot freeze what the in-app
@@ -320,7 +416,7 @@ class FreezerViewModel(
      */
     fun runProfile(profileId: Long, op: BulkOp) {
         viewModelScope.launch {
-            val outcome = bulkFreezeRunner
+            val outcome = bulkFreeze
                 .launch(BulkRequest(op, BulkScope.Profile(profileId)))
                 .await()
             emitToast(
@@ -341,7 +437,7 @@ class FreezerViewModel(
     }
 
     fun createProfile(name: String, packageNames: List<String>) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             runProfileWrite(R.string.error_profile_name_taken) {
                 freezeProfileRepository.create(name, packageNames)
                 emitToast(UiText.StringResource(R.string.profile_saved))
@@ -350,7 +446,7 @@ class FreezerViewModel(
     }
 
     fun updateProfile(profileId: Long, name: String, packageNames: List<String>) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             runProfileWrite(R.string.error_profile_name_taken) {
                 freezeProfileRepository.update(profileId, name, packageNames)
                 emitToast(UiText.StringResource(R.string.profile_saved))
@@ -359,7 +455,7 @@ class FreezerViewModel(
     }
 
     fun deleteProfile(profileId: Long) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             // A delete cannot collide with the unique name index — the only constraint it can
             // trip is the members table's foreign key — so it must not borrow the save path's
             // "that name is already taken", which would be nonsense over a Delete button.
@@ -406,7 +502,7 @@ class FreezerViewModel(
      * and is what lets Unfreeze-all reach it.
      */
     fun addToFreezer(packageName: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             freezerRepository.add(packageName)
             emitToast(UiText.StringResource(R.string.added_to_freezer_success))
         }
@@ -421,14 +517,14 @@ class FreezerViewModel(
     // --- Single-app freeze/unfreeze (called from AppInfoSheet in FreezerScreen) ---
 
     fun freezeSingleApp(packageName: String, appName: String?, inFreezer: Boolean) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             // Same BLOCKED rule `toggleManaged` applies to the watchlist, now applied to the
             // freeze itself — and applied inside the use case, so a surface that never learned
             // about AppRiskDialog cannot route around it. The mode goes through because a
             // suspend-mode freeze is still a freeze.
             freezeAppUseCase(packageName, _uiState.value.freezerMode)
                 .onSuccess {
-                    freezerShortcutManager.refreshAppShortcut(packageName)
+                    appShortcuts.refreshAppShortcut(packageName)
                     if (!inFreezer) {
                         _events.send(FreezerEvent.ShowFreezerPrompt(packageName, appName))
                     } else {
@@ -449,7 +545,7 @@ class FreezerViewModel(
     }
 
     fun unfreezeSingleApp(packageName: String, appName: String?) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             val app = _uiState.value.freezerApps.firstOrNull { it.packageName == packageName }
                 ?: _uiState.value.allInstalledApps.firstOrNull { it.packageName == packageName }
             val restoreResult = if (app != null) {
@@ -460,7 +556,7 @@ class FreezerViewModel(
             }
             restoreResult
                 .onSuccess {
-                    freezerShortcutManager.refreshAppShortcut(packageName)
+                    appShortcuts.refreshAppShortcut(packageName)
                     emitToast(
                         UiText.StringResource(R.string.unfrozen_success, appName ?: packageName)
                     )
@@ -492,25 +588,25 @@ class FreezerViewModel(
     }
 
     fun setAutoFreezeEnabled(enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             preferenceRepository.setAutoFreezeEnabled(enabled)
         }
     }
 
     fun setFreezerMode(mode: FreezerMode) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             preferenceRepository.setFreezerMode(mode)
         }
     }
 
     fun markDisabledAppsPromptShown() {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             preferenceRepository.setHasShownDisabledAppsPrompt(true)
         }
     }
 
     fun toggleGridMode() {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             preferenceRepository.toggleFreezerIsGrid()
         }
     }
@@ -530,7 +626,7 @@ class FreezerViewModel(
      * the user chose.
      */
     fun addAppsToFreezer(packageNames: List<String>) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             packageNames.forEach { pkg ->
                 freezerRepository.add(pkg)
             }
@@ -545,13 +641,13 @@ class FreezerViewModel(
 
     // --- Launcher shortcuts (gated by the "Add Freezer to launcher" preference) ---
 
-    fun isPinSupported(): Boolean = freezerShortcutManager.isPinSupported()
+    fun isPinSupported(): Boolean = appShortcuts.isPinSupported()
 
     fun pinAppToLauncher(app: AppInfo) {
         if (app.isSystem) return // v1: user apps only
         // Grayscale icon decode + binder pin request — keep it off Main to avoid jank.
-        viewModelScope.launch(Dispatchers.Default) {
-            freezerShortcutManager.pinAppShortcut(app.packageName, app.appName ?: app.packageName)
+        viewModelScope.launch(defaultDispatcher) {
+            appShortcuts.pinAppShortcut(app.packageName, app.appName ?: app.packageName)
         }
     }
 
@@ -559,11 +655,11 @@ class FreezerViewModel(
         // Pin sequentially (suspending) off Main: a rapid loop of the fire-and-forget pinAppShortcut
         // would spawn N concurrent bitmap decodes + binder pin requests and risk OOM / overwhelming
         // the shortcut service. A small gap keeps the per-shortcut system prompts orderly too.
-        viewModelScope.launch(Dispatchers.Default) {
+        viewModelScope.launch(defaultDispatcher) {
             _uiState.value.freezerApps
                 .filter { !it.isSystem }
                 .forEach {
-                    freezerShortcutManager.pinAppShortcutSuspend(it.packageName, it.appName ?: it.packageName)
+                    appShortcuts.pinAppShortcutSuspend(it.packageName, it.appName ?: it.packageName)
                     delay(100)
                 }
         }
@@ -572,8 +668,8 @@ class FreezerViewModel(
     fun pinBulkShortcut(freeze: Boolean) {
         // Rasterizes a 216x216 tile bitmap + issues a binder pin request; keep it off Main
         // to avoid click-time jank, matching pinAppToLauncher / pinAllToLauncher.
-        viewModelScope.launch(Dispatchers.Default) {
-            freezerShortcutManager.pinBulkShortcut(
+        viewModelScope.launch(defaultDispatcher) {
+            appShortcuts.pinBulkShortcut(
                 if (freeze) FreezerShortcutContract.ACTION_FREEZE_ALL
                 else FreezerShortcutContract.ACTION_UNFREEZE_ALL
             )

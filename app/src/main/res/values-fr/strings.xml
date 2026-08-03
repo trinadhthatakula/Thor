@@ -434,6 +434,7 @@
 
     
     <!-- Missing Translations -->
+    <string name="removed_from_freezer_partial_failure">%1$d/%2$d applications retirées du congélateur (%3$d échouées)</string>
     <string name="suspend_owned_by_other_privilege">Impossible de lever la suspension de %1$s ici. Elle a été suspendue par %2$s, et Android n\'autorise que le même privilège à la lever. Repassez Thor dans ce mode de privilège, puis réessayez.</string>
     <string name="freeze_system_app_requires_root">Impossible de geler %1$s ici. Cet appareil n\'a pas laissé Thor la désactiver, et Android n\'autorise que root à supprimer une application préinstallée pour un seul utilisateur. L\'application n\'a pas été modifiée — la geler nécessite le mode Root de Thor.</string>
     <string name="freeze_system_app_removal_failed">Impossible de geler %1$s. Cet appareil n\'a pas laissé Thor la désactiver, et sa suppression pour cet utilisateur a également échoué. Android a signalé : %2$s</string>

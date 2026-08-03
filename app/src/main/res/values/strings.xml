@@ -362,6 +362,10 @@
         <item quantity="one">Removed %1$d app from Freezer</item>
         <item quantity="other">Removed %1$d apps from Freezer</item>
     </plurals>
+    <!-- %1$d apps left the Freezer out of the %2$d selected; the %3$d that failed to unfreeze
+         keep their watchlist rows so Unfreeze-all can still reach them. Three counts, so not
+         a <plurals>. -->
+    <string name="removed_from_freezer_partial_failure" tools:ignore="PluralsCandidate">Removed %1$d/%2$d apps from Freezer (%3$d failed)</string>
     <string name="killed_success">Killed %1$s</string>
     <string name="cache_cleared_success">Cleared cache of %1$s</string>
     <string name="data_cleared_success">Cleared data of %1$s</string>
