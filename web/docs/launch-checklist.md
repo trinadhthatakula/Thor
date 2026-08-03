@@ -3,6 +3,10 @@
 Run top to bottom before pointing the domain at the deployment. Everything in "Owner action" needs a
 person; everything else is a command whose output is the evidence.
 
+Dates here are **UTC**, anchored to the certificate timestamps quoted in §6. The launch work ran past
+local midnight in the owner's timezone, so a `git log` timestamp for the commit that recorded an item
+can read a day later than the item's date. That is the timezone, not a gap in the timeline.
+
 ## 1. Owner action — two external claims that the new site contradicts
 
 The homepage trust note says Thor declares `INTERNET` and names the one file that uses it. Two
@@ -75,158 +79,164 @@ gate which exits 0 for the wrong reason looks identical to one that passes.
       See `web/docs/screenshot-checklist.md`. The build is green with placeholders by design; this
       is the check that stops "green" from meaning "finished".
 
-      **This one is now enforced, not just listed.** `check:screenshots` runs in the `build` chain
-      on every build, but it only *fails* when `VERCEL_ENV=production` or `REQUIRE_SCREENSHOTS=1` —
-      so placeholders stay green locally, in CI and on `dev` previews, and a production deploy
-      carrying one is refused. The workflow also sets `REQUIRE_SCREENSHOTS=1` on any pull request
-      based on `master`, so the release PR's preview is held to the production standard *before* the
-      merge that publishes rather than at it. Running the command above still has a point — it is the
-      only way to see the strict verdict without opening a PR.
+      **This one is enforced, not just listed** — as of 2026-08-02, when the setting it depends on
+      was confirmed. `check:screenshots` runs in the `build` chain on every build, but it only
+      *fails* when `VERCEL_ENV=production` or `REQUIRE_SCREENSHOTS=1`, so placeholders stay green
+      locally, in CI and on `dev` previews by design, and a production deploy carrying one is
+      refused. That last half rests entirely on Vercel injecting `VERCEL_ENV`, which it does only
+      when **"Enable access to System Environment Variables" is on** — now ticked in §5. With that
+      box off, `isProductionDeploy()` returns false and the production build would downgrade silently
+      to advisory placeholder checking.
 
-## 5. Deploy configuration — create the Vercel project and wire the secrets
+      One honest limit: the setting is confirmed, the *behaviour* is not. No production build has run
+      since it was turned on, so nothing has yet observed `VERCEL_ENV=production` reaching
+      `check-screenshots.mjs`.
 
-Deploys run from `.github/workflows/web-deploy.yml`, not from Vercel's Git integration, so almost
-nothing here is a dashboard setting. `web/docs/deploy.md` is the full reference; this is the launch
-sequence.
+      A **passing production build is not the proof**. All six screenshots have landed, so there are
+      zero placeholders; the strict path has nothing to fail on and exits 0 whether or not the
+      variable arrived. The exit code carries no information. What separates the two cases is the
+      line `report()` prints on success as well as failure:
 
-**The order matters more than any individual step.** Each of these is what stops the next one from
-failing in a way that does not look like a failure.
+      ```console
+      check-screenshots: OK — 8 pages checked, 0 placeholders (strict: production)
+      check-screenshots: OK — 8 pages checked, 0 placeholders (advisory)
+      ```
 
-- [ ] **Get `web/` onto `master` first.** Production is a push to `master`, and GitHub only offers
-      the Run-workflow button for workflows on the **default branch** — so until `web-deploy.yml`
-      exists on `master` there is no production deploy and no manual trigger, only `dev` previews.
-      This is safe to do before the Vercel project exists: with no secrets set, the workflow prints a
-      notice naming what is missing and exits green.
+      The first says `VERCEL_ENV=production` arrived and the gate is armed; the second says it did
+      not and the gate silently downgraded. On Vercel the reading is unambiguous, because
+      `REQUIRE_SCREENSHOTS` is the only other input to `isProductionDeploy()` and nothing sets it
+      there — so `strict: production` in a Vercel build log can only have come from `VERCEL_ENV`.
+      **Read that line in the build log of the first `master` deploy.** That is the observation that
+      closes this out; a green checkmark is not.
 
-- [ ] **Create the project from the CLI. Do not use `vercel.com/new` → Import Git Repository.**
+      Locally, `REQUIRE_SCREENSHOTS=1 npm run build` prints the same strict line on demand, which is
+      how to see the strict verdict without waiting for a deploy.
 
-      cd web && npx vercel@58 login && npx vercel@58 link   # choose "create a new project"
+      Nothing sets `REQUIRE_SCREENSHOTS=1` on a pull request into `master` any more — that was the
+      Actions pipeline, which is dormant. So the release PR's preview is *not* held to the production
+      standard; the production build is the first strict one, and it fails rather than publishing a
+      placeholder. Running the command above is therefore the only way to see the strict verdict
+      before the merge that publishes.
 
-      This is the whole ball game. Importing the repository sets Root Directory to `web` (the only
-      sane-looking answer in that UI), installs the deploy webhook, and writes `framework: astro`
-      into the project settings. The workflow already runs the CLI inside `web/`, so a Root
-      Directory of `web` resolves to `web/web` — and with `framework: astro` pulled it fails at
-      `Command "astro build" exited with 127`, which names nothing about paths. `vercel link` from
-      `web/` leaves Root Directory unset and connects no repository, which is what this pipeline
-      wants. If it has already been imported: Settings → Git → Disconnect, and clear Root Directory.
+## 5. Deploy configuration — ✅ done, and what has to stay true
 
-      `vercel link` writes `.vercel/project.json` — gitignored, so it stays local.
+**Done 2026-08-02.** The Vercel project was created by importing this repository from the Vercel
+dashboard, and the site deploys from **Vercel's Git integration**. That is the opposite of what this
+section originally prescribed; `web/docs/deploy.md` is the reference for the model that is actually
+running, and `docs/follow-ups/vercel-actions-deploy.md` holds the Actions path that was deferred.
 
-- [ ] **Add all three repository secrets in one sitting** (Settings → Secrets and variables →
-      Actions): **`VERCEL_TOKEN`** (Vercel → Account Settings → Tokens; scope it to whatever owns
-      the project — on a personal account that is your username, not a team), **`VERCEL_ORG_ID`**
-      and **`VERCEL_PROJECT_ID`** (the `orgId` and `projectId` fields of `.vercel/project.json`).
+The remaining items are settings to confirm rather than steps to perform, and they are worth
+confirming because **none of them is visible in a diff and most fail without an error**.
 
-      A partial set behaves exactly like no set at all: the workflow exits **green** with a notice
-      naming what is missing, having skipped even the checkout. A green `web-deploy` run before this
-      step is complete deployed nothing. Read the notice, or the run duration — the credential-less
-      runs finish in under ten seconds.
-
-- [ ] **Make the first credentialed run a `workflow_dispatch` from `master`, not a test PR.** Vercel
-      makes the first deployment of a new project a production deployment regardless of `--prod`, so
-      whatever runs first after the secrets land is the one the domain will attach to. A test PR
-      would be built with `VERCEL_ENV=preview` — preview environment variables, and the screenshot
-      gate advisory unless its base is `master` — and would become that deployment anyway, while the
-      PR comment calls it a preview. Add the secrets when no web PR is open and no web push is
-      imminent, then dispatch straight away.
-- [ ] **Confirm Root Directory is empty** in Settings → Build & Deployment, whichever way the
-      project was made.
+- [x] **`web/` is on `master`.** `master` publishes, `dev` stages.
+- [x] **The project is created and connected**, Production Branch `master`.
+- [ ] **Confirm Root Directory is `web`** in Settings → Build & Deployment. Unset, Vercel builds from
+      the repository root, finds no `package.json`, and fails. Note this is the exact inverse of what
+      the deferred Actions path needs, where it must be *unset* — do not carry one model's value into
+      the other.
+- [ ] **Confirm "Include files outside the Root Directory" is on.** The build reads
+      `../gradle.properties` and `../gradle/libs.versions.toml`. This one fails *loudly*
+      (`RepoFactsError`), and it is currently correct — `/download` renders "Android 9 (API 28)",
+      which is derived from `gradle/libs.versions.toml`.
+- [x] **"Enable access to System Environment Variables" is on** — confirmed by the owner in the
+      dashboard, 2026-08-02. Settings → Environment Variables. `check:screenshots` is strict only
+      when `VERCEL_ENV=production`, and Vercel is what injects it, so with the box off the gate would
+      silently downgrade to advisory **on the production build** — the one place it is supposed to
+      bite. Vercel does not document the default for a portal import, which is why this needed
+      checking rather than assuming. **It has not yet been exercised**: no production build has run
+      since, so the injection is confirmed at the setting, not at the artifact. §4 names the one log
+      line that settles it, and why the build going green does not.
 - [ ] **Set no Build / Install / Output override in the dashboard.** `web/vercel.json` carries all
       three and takes precedence over project settings — that precedence is the only thing keeping a
       dashboard edit from silently removing the gate chain.
-- [ ] **Ignore Production Branch. There is no safe value for it.** It only takes effect on a
-      connected project, and its default — `master` — is now this workflow's production branch too,
-      so on a connected project the default is what causes the race. Do not go looking for a setting
-      that makes connecting the repository safe; the next item is the answer.
-- [ ] **Confirm both copies of the kill switch survive**: `"git": { "deploymentEnabled": false }` in
-      `web/vercel.json` *and* in `/vercel.json` at the repository root. Two copies because Vercel
-      does not document which one its Git integration reads. Neither is a substitute for leaving the
-      repository disconnected; see `web/docs/deploy.md`.
-- [ ] Optional, for the advisory Lighthouse job only: **`VERCEL_AUTOMATION_BYPASS_SECRET`**
-      (Vercel → Project → Settings → Deployment Protection → Protection Bypass for Automation).
-      Without it that job skips with a notice on the run — `::notice::VERCEL_AUTOMATION_BYPASS_SECRET
-      is not set…`, which names the exact dashboard path to fix it. Nothing else is affected. Set it
-      before the first PR run, or every PR carries that notice and no Lighthouse number.
-- [ ] **Before every `dev` → `master` merge**, confirm the project is still not connected to the
-      repository. On a connected project a `master` push starts a Vercel production build from the
-      Gradle repo root — no `package.json` — at the same moment this workflow deploys a gated
-      artifact to the same alias, and whichever finishes last wins. It breaks the site at release
-      time, not at setup time, which is why it is worth re-checking rather than assuming.
+- [ ] **Leave the dashboard's Ignored Build Step empty.** `web/vercel.json`'s `ignoreCommand`
+      overrides it, and the reviewed copy should be the one that wins. Read `web/docs/deploy.md`
+      before changing it: exit 0 means *skip*, and the `:/` prefixes are load-bearing.
+- [ ] **Do not set `VERCEL_TOKEN`, `VERCEL_ORG_ID` or `VERCEL_PROJECT_ID` as repository secrets.**
+      Those three being unset is what keeps `web-deploy.yml` dormant. Setting them without first
+      disconnecting the Git integration starts two production deployments racing for the same alias
+      on every `master` push, with no error anywhere. See the follow-up for the interlock.
+- [x] **Push-triggered deploys work.** Verified 2026-08-02 on the first branch push after the import:
+      Vercel built it, posted a `success` commit status, and aliased it at
+      `thor-git-<branch>-…vercel.app` (302 — Deployment Protection, so the alias exists but is not
+      publicly readable). The build succeeding is itself the proof that Root Directory is `web` and
+      that reading outside it works — `/download` renders the `minSdk` fact derived from
+      `gradle/libs.versions.toml`.
+- [ ] **The first *production* push is still unobserved.** Everything above was a preview. Watch the
+      Deployments list on the first `master` merge that touches `web/` and confirm exactly one row.
 
-"Include files outside of the Root Directory" no longer matters: the whole repository is checked out
-in Actions, so `repo-facts` reading `gradle.properties` from the root just works.
+Two traps that corrupt that test if the commit does not touch `web/`: `ignoreCommand` cancels the
+build, and Vercel's "Skipping unaffected projects" setting can skip it before that. Test with a
+commit that touches `web/`. A row in state `Canceled` means `ignoreCommand` fired — that is a
+different thing from no row at all.
 
-Leave the Ignored Build Step on **Automatic** — the path filter lives in the workflow's `paths:`
-list, and Vercel has previously shipped a build where the Ignored Build Step cancelled `--prebuilt`
-CLI deploys. `ignoreCommand` remains in `web/vercel.json`; see `web/docs/deploy.md` before touching
-it, and never add `--no-wait` to the deploy step.
+Optional, for the dormant Lighthouse job only: **`VERCEL_AUTOMATION_BYPASS_SECRET`** (Vercel →
+Project → Settings → Deployment Protection → Protection Bypass for Automation). Nothing needs it
+today.
 
-## 6. Domain and certificate
+## 6. Domain and certificate — ✅ done
 
-**Do not check this in a browser until `vercel certs ls` says the certificate exists.** The browser
-will fail for a reason that has nothing to do with anything you did, and the obvious diagnosis is
-the one that breaks the working DNS record.
-
-Right now, before any Vercel project claims the hostname, `https://thor.trinadhthatakula.com`
-answers like this:
+**Passed 2026-08-02.** The domain is attached and the certificate is this project's, not the stale
+wildcard:
 
 ```console
 $ openssl s_client -connect thor.trinadhthatakula.com:443 \
     -servername thor.trinadhthatakula.com </dev/null 2>/dev/null \
-    | openssl x509 -noout -ext subjectAltName -dates
+    | openssl x509 -noout -ext subjectAltName -dates -issuer
 X509v3 Subject Alternative Name:
-    DNS:*.trinadhthatakula.com, DNS:trinadhthatakula.com
-notBefore=Feb 10 12:08:05 2026 GMT
-notAfter=May 11 12:08:04 2026 GMT        # expired
+    DNS:thor.trinadhthatakula.com
+notBefore=Aug  2 17:29:49 2026 GMT
+notAfter=Oct 31 17:29:48 2026 GMT
+issuer=C=US, O=Let's Encrypt, CN=YR1
 
-$ curl -sSI -k https://thor.trinadhthatakula.com | head -3
-HTTP/2 404
-server: Vercel
-x-vercel-error: DEPLOYMENT_NOT_FOUND
+$ curl -sSI https://thor.trinadhthatakula.com | head -1
+HTTP/2 200
 ```
 
-Vercel's edge is already answering for the name and falling back to a stale `*.trinadhthatakula.com`
-wildcard that expired on 11 May 2026. It cannot renew a wildcard without a DNS-01 record and the zone
-is on Cloudflare nameservers, so this will not fix itself. Vercel also serves a two-year HSTS header
-and 308s plain HTTP to HTTPS, so a browser that ever saw the valid certificate will refuse to let you
-click through, and there is no HTTP fallback to test with. `ERR_CERT_DATE_INVALID` here means "no
-project has claimed this hostname yet" — it does not mean the DNS record is wrong.
+DNS needed no change: the `thor` record was already a **DNS-only (grey cloud)** CNAME to
+`cname.vercel-dns.com`, which Vercel accepts — it validates that the name resolves *to Vercel*, not
+that it matches the currently recommended target string.
 
-- [ ] Add `thor.trinadhthatakula.com` in Vercel **after** the first production deployment exists.
-      A newly added domain is applied to the project's latest production deployment; added first, it
-      attaches to nothing.
-- [ ] DNS needs no change. The `thor` record is already a **DNS-only (grey cloud)** CNAME to
-      `cname.vercel-dns.com`, which Vercel accepts — it validates that the name resolves *to Vercel*,
-      not that it matches the currently recommended target string.
-- [ ] Verify in this order, and only this order:
+The rest of this section is kept because it is what to re-read if the hostname ever stops answering,
+and because the pre-launch state was a convincing-looking false alarm.
 
-      npx vercel@58 domains inspect thor.trinadhthatakula.com   # expect Valid Configuration
-      npx vercel@58 certs ls                                    # expect a cert for the exact host
-      openssl s_client -connect thor.trinadhthatakula.com:443 \
-        -servername thor.trinadhthatakula.com </dev/null 2>/dev/null \
-        | openssl x509 -noout -ext subjectAltName -dates
+**Read the SAN, not the subject.** The identity of a modern certificate lives in `subjectAltName`;
+the CN is legacy and may be absent or may not be the name you connected to. The check passes only
+when the SAN lists `thor.trinadhthatakula.com` **explicitly**.
 
-      Read the **SAN**, not the subject. The identity of a modern certificate lives in
-      `subjectAltName`; the CN is legacy and may be absent or may not be the name you connected to.
-      The step passes when the SAN lists `thor.trinadhthatakula.com` **explicitly** and `notAfter` is
-      in the future.
+**A SAN of only `*.trinadhthatakula.com` is the failing case**, even though that wildcard does
+technically match the host under RFC 6125. Before this project claimed the hostname, Vercel's edge
+answered for it by falling back to exactly that wildcard — expired on 11 May 2026, unrenewable
+because a wildcard needs a DNS-01 record and the zone is on Cloudflare nameservers — and returned
+`HTTP/2 404` with `x-vercel-error: DEPLOYMENT_NOT_FOUND`. Seeing that combination means the hostname
+is unclaimed, whatever the dashboard says. Checking dates alone is not enough either: a *renewed*
+wildcard would pass a date check and still not be this project's certificate.
 
-      A SAN of only `*.trinadhthatakula.com` is the failing case even though that wildcard does
-      technically match the host — it is the stale certificate Vercel's edge already falls back to,
-      and seeing it means the hostname is still unclaimed whatever the dashboard says. Checking the
-      dates alone is not enough either: a renewed wildcard would pass a date check and still not be
-      this project's certificate.
+**Do not diagnose this in a browser first.** Vercel serves a two-year HSTS header and 308s plain HTTP
+to HTTPS, so a browser that ever saw the valid certificate will not let you click through, and there
+is no HTTP fallback to test with. `ERR_CERT_DATE_INVALID` says only that the certificate presented
+failed date validation. On this host that is *consistent* with "no project has claimed this
+hostname" — that is what it turned out to be pre-launch, the edge falling back to the expired
+wildcard — but it is equally consistent with a certificate that failed to provision or renew, or
+with DNS pointing somewhere else entirely. Establish which before acting: read the SAN, dates and
+issuer with the `openssl` command above, confirm the DNS record, and check the domain's state in
+Vercel. **Do not change DNS on the strength of the browser error alone** — pre-launch, the record was
+already correct and the obvious "fix" would have broken it.
 
-- [ ] If `vercel certs ls` shows nothing after about 15 minutes, the domain is not attached —
-      re-run `domains inspect`. **Do not touch Cloudflare.**
-- [ ] If Vercel reports the domain is already in use by another project or account, check
-      `vercel domains ls` first: the expired wildcard being served from Vercel's edge means
-      `*.trinadhthatakula.com` was registered with Vercel at some point, and it may still be.
-- [ ] A Cloudflare **526 cannot happen here** and is not the error to look for. 526 requires
-      Cloudflare to be in the request path, which means an orange-clouded record; this one is grey.
-      If a record is ever orange-clouded and a 526 appears, **do not switch the SSL mode to
-      Flexible** — it appears to fix the error and serves the origin hop unencrypted, on a site
-      whose privacy stance is the entire argument.
+If it ever needs re-doing:
+
+- Add the domain in Vercel **after** a production deployment exists. A newly added domain is applied
+  to the project's latest production deployment; added first, it attaches to nothing.
+- `vercel domains inspect thor.trinadhthatakula.com` → expect Valid Configuration, then
+  `vercel certs ls` → expect a cert for the exact host, then the `openssl` command above. That order.
+- Nothing after 15 minutes means the domain is not attached. Re-run `domains inspect`. **Do not touch
+  Cloudflare.**
+- "Domain already in use" → check `vercel domains ls` first. The expired wildcard came from
+  somewhere, so `*.trinadhthatakula.com` may still be registered with Vercel.
+- A Cloudflare **526 cannot happen here**. 526 requires Cloudflare in the request path, which means an
+  orange-clouded record; this one is grey. If a record is ever orange-clouded and a 526 appears, **do
+  not switch the SSL mode to Flexible** — it appears to fix the error and serves the origin hop
+  unencrypted, on a site whose privacy stance is the entire argument.
 
 ## 7. After launch
 

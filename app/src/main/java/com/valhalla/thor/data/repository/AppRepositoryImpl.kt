@@ -16,7 +16,11 @@ import com.valhalla.thor.data.source.local.room.AppEntity
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.PermissionDetail
+import com.valhalla.thor.domain.model.ScanVerdict
+import com.valhalla.thor.domain.model.scanVerdict
 import com.valhalla.thor.domain.repository.AppRepository
+import com.valhalla.thor.domain.repository.InstalledAppsPermissionGate
+import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -34,7 +38,8 @@ import java.io.File
 class AppRepositoryImpl(
     private val context: Context,
     private val appDao: AppDao,
-    private val uadHelper: UadHelper
+    private val uadHelper: UadHelper,
+    private val installedAppsPermission: InstalledAppsPermissionGate
 ) : AppRepository {
 
     private val pm = context.packageManager
@@ -65,6 +70,14 @@ class AppRepositoryImpl(
             }
 
             var lastLocale = context.resources.configuration.locales[0].toString()
+
+            // How many scans in a row scanVerdict() has refused to prune against. Deliberately
+            // declared out here, not inside the trigger loop: the whole point of the tolerance is
+            // that a shrinkage has to reproduce across *independent* scans before it is believed,
+            // and a counter reset on every trigger would be stuck at zero and never let the cache
+            // shrink again. Local to this collection rather than to the class, because a retained
+            // cache self-heals on the next good scan — there is no degraded state worth persisting.
+            var consecutiveSuspectScans = 0
 
             // Signal the worker to refresh
             triggerChannel.send(Unit)
@@ -161,18 +174,61 @@ class AppRepositoryImpl(
                     val currentPackageNames = installedPackages.map { it.packageName }.toSet()
                     val toDelete = cachedMap.keys.filter { it !in currentPackageNames }
 
-                    if (toUpdate.isNotEmpty() || toDelete.isNotEmpty()) {
-                        appDao.syncCache(toUpdate, toDelete)
-                        toDelete.forEach { pkgName ->
-                            cachedMap.remove(pkgName)
-                            try {
-                                File(context.filesDir, "app_icons/$pkgName.png").delete()
-                            } catch (_: Exception) {}
+                    // "Not in the scan" is only the same thing as "uninstalled" when the scan can
+                    // be trusted. On the ROMs that gate package visibility behind the runtime
+                    // GET_INSTALLED_APPS permission, backgrounding Thor makes getInstalledPackages()
+                    // return a near-empty list, and pruning against that wipes the Room rows *and*
+                    // the cached icon PNGs for almost every app the user has. scanVerdict() holds
+                    // the rules; nothing is decided here.
+                    val verdict = scanVerdict(
+                        scannedPackageNames = currentPackageNames,
+                        cachedCount = cachedMap.size,
+                        consecutiveSuspectScans = consecutiveSuspectScans,
+                        permission = installedAppsPermission.state()
+                    )
+
+                    // The cached rows this scan did not see and was not allowed to delete. Mapped
+                    // through the same AppEntity.toDomain() the initial cache emission above uses,
+                    // so a retained row reaches the UI exactly as it did a moment earlier.
+                    val retained = when (verdict) {
+                        ScanVerdict.Accept -> {
+                            consecutiveSuspectScans = 0
+                            if (toUpdate.isNotEmpty() || toDelete.isNotEmpty()) {
+                                appDao.syncCache(toUpdate, toDelete)
+                                toDelete.forEach { pkgName ->
+                                    cachedMap.remove(pkgName)
+                                    try {
+                                        File(context.filesDir, "app_icons/$pkgName.png").delete()
+                                    } catch (_: Exception) {}
+                                }
+                            }
+                            emptyList<AppInfo>()
+                        }
+
+                        is ScanVerdict.Retain -> {
+                            consecutiveSuspectScans++
+                            Logger.w(
+                                "AppRepository",
+                                "not pruning against this scan (${verdict.reason}): saw " +
+                                        "${currentPackageNames.size} package(s) against " +
+                                        "${cachedMap.size} cached, keeping ${toDelete.size} row(s)"
+                            )
+                            // Updates still land — they describe packages the scan *did* see, so
+                            // they are no less trustworthy than on an accepted scan. Only the
+                            // deletions are withheld, and the icon files with them: a retained Room
+                            // row is repaired by the next good scan, a deleted PNG is not.
+                            if (toUpdate.isNotEmpty()) {
+                                appDao.syncCache(toUpdate, emptyList())
+                            }
+                            toDelete.mapNotNull { cachedMap[it]?.toDomain() }
                         }
                     }
 
-                    // Emit a single complete snapshot of all installed apps
-                    producer.send(currentList.toList())
+                    // Emit a single complete snapshot of all installed apps. On a retained scan
+                    // that snapshot is the union, never the scan alone: emitting what a truncated
+                    // scan saw is the blank list this whole guard exists to prevent, and emitting
+                    // nothing would strand isLoading forever on a fresh collection.
+                    producer.send(currentList + retained)
 
                 } catch (e: CancellationException) {
                     // Kotlin's CancellationException is an Exception, so the broad catch below

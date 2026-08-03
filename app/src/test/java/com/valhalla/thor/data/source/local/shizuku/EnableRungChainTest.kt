@@ -241,4 +241,126 @@ class EnableRungChainTest {
 
         assertFalse(isPolicyRefusal(a))
     }
+
+    // --- What a shell rung is allowed to conclude from its own exit code ------------------------
+
+    /**
+     * [shellRungResult] is where both chains turn `(exitCode, output)` into the one verdict that can
+     * arm `pm uninstall -k --user N`, so it is the narrowest place to pin the rule. It is shared
+     * precisely so the two chains cannot answer this differently.
+     */
+    @Test
+    fun `a zero exit is a ran rung whatever it printed`() {
+        assertEquals(RungResult.RAN, shellRungResult(0, null))
+        assertEquals(RungResult.RAN, shellRungResult(0, ""))
+        // Not a contradiction: the post-read is what decides whether it stuck. RAN only claims the
+        // rung got as far as running, and `pm` has been seen exiting 0 for a disable PMS refused.
+        assertEquals(
+            RungResult.RAN,
+            shellRungResult(0, "java.lang.SecurityException: Cannot disable system packages.")
+        )
+    }
+
+    /** `pm` ran, spoke, and exited non-zero of its own accord: the one genuine refusal shape. */
+    @Test
+    fun `pm refusing with a non-zero exit is a policy refusal`() {
+        assertEquals(
+            RungResult.REFUSED_BY_POLICY,
+            shellRungResult(
+                1,
+                "java.lang.SecurityException: Shell cannot change component state for null to 2"
+            )
+        )
+    }
+
+    @Test
+    fun `a non-zero exit without a refusal is a plain failure`() {
+        assertEquals(RungResult.FAILED, shellRungResult(1, null))
+        assertEquals(
+            RungResult.FAILED,
+            shellRungResult(1, "Error: java.lang.IllegalArgumentException: Unknown package: x")
+        )
+    }
+
+    /**
+     * The one that matters. Both `execute` helpers fold a *thrown* failure into
+     * `-1 to err.stackTraceToString()`, and the exceptions that land there are the plumbing ones —
+     * Shizuku's permission not granted, Dhizuku's client not authorised, a dead binder. Several are
+     * themselves `SecurityException`s, so the text being classified contains the word while saying
+     * nothing whatever about what `PackageManagerService` would allow.
+     *
+     * Reading that as a refusal would let "the privilege mode is not set up" buy a destructive
+     * `pm uninstall -k --user N` — the exact mistake the unprivileged rung's own note warns about,
+     * arriving through a rung that was not given the same protection. The stack trace here is a real
+     * one rather than a hand-typed string, so it stays honest if the fold ever changes shape.
+     */
+    @Test
+    fun `a thrown execute is never a refusal however its stack trace reads`() {
+        val thrown = SecurityException("Shizuku: permission not granted").stackTraceToString()
+
+        assertTrue("the fixture must actually contain the word", isPolicyRefusal(thrown))
+        assertEquals(RungResult.FAILED, shellRungResult(-1, thrown))
+    }
+
+    /**
+     * The other two ways -1 is reached. Neither is `pm` speaking: the binder check returns before a
+     * process exists, and a timeout carries whatever `pm` had printed so far — real output, but a
+     * mechanical failure all the same, and a half-finished refusal is not a refusal.
+     */
+    @Test
+    fun `the other no-exit-code paths are failures too`() {
+        assertEquals(RungResult.FAILED, shellRungResult(-1, "Shizuku binder is null"))
+        assertEquals(RungResult.FAILED, shellRungResult(-1, "Command timed out after 30000ms"))
+        assertEquals(
+            RungResult.FAILED,
+            shellRungResult(-1, "java.lang.SecurityException: Cannot disable system packages.")
+        )
+    }
+
+    // --- Recognising Android 17's uid-0-only removal -------------------------------------------
+
+    /**
+     * Verbatim from a stock API 37 emulator (`CE2A.260420.019`), uid 2000,
+     * `pm uninstall -k --user 0 com.android.wallpaperbackup`. It arrives on **stdout**, wrapped in
+     * `pm`'s `Failure [...]`, which is why the match is on a substring rather than the whole line.
+     */
+    @Test
+    fun `recognises the API 37 root-only removal`() {
+        assertTrue(
+            isRootOnlySystemAppRemoval(
+                "Failure [only root can delete system app for a particular user]"
+            )
+        )
+    }
+
+    /**
+     * Nothing else may claim it. This is the branch that tells a user to switch to Root mode, and
+     * root cannot fix an unknown package or a dead binder — sending them there for one of those
+     * costs them a mode switch and still leaves them without the real reason.
+     */
+    @Test
+    fun `ordinary removal failures are not the root-only refusal`() {
+        assertFalse(isRootOnlySystemAppRemoval(null))
+        assertFalse(isRootOnlySystemAppRemoval(""))
+        assertFalse(isRootOnlySystemAppRemoval("Failure [DELETE_FAILED_INTERNAL_ERROR]"))
+        assertFalse(isRootOnlySystemAppRemoval("Failure [not installed for 0]"))
+        assertFalse(isRootOnlySystemAppRemoval("Error: java.lang.SecurityException: nope"))
+        assertFalse(isRootOnlySystemAppRemoval("Shizuku binder is null"))
+    }
+
+    /**
+     * The two classifiers answer different questions and must not be confused for one another:
+     * [isPolicyRefusal] decides whether the destructive rung may be *reached*, this one decides
+     * what to *say* once it has been refused. `pm`'s removal failure carries no "SecurityException"
+     * text at all, so each is silent about the other's input — which is the point.
+     */
+    @Test
+    fun `the two refusal classifiers do not overlap`() {
+        val rootOnly = "Failure [only root can delete system app for a particular user]"
+        val securityException =
+            "java.lang.SecurityException: Shell cannot change component state for null to 2"
+
+        assertFalse(isPolicyRefusal(rootOnly))
+        assertFalse(isRootOnlySystemAppRemoval(securityException))
+    }
 }

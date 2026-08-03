@@ -3,11 +3,17 @@
 
 package com.valhalla.thor.data.gateway
 
+import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.R
 import com.valhalla.thor.data.source.local.shizuku.EnableRungOrder
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
+import com.valhalla.thor.data.source.local.shizuku.SystemAppRemovalOutcome
+import com.valhalla.thor.data.source.local.shizuku.displayLine
+import com.valhalla.thor.data.source.local.shizuku.isRootOnlySystemAppRemoval
+import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed
@@ -27,6 +33,9 @@ private val USER_ID_REGEX = Regex("^\\d+$")
 
 @Single
 class ShizukuSystemGateway(
+    // Present for one reason: the system-app freeze's refusal message is read by the user, so it
+    // has to come out of resources. RootSystemGateway takes its Context the same way.
+    private val context: Context,
     private val reflector: ShizukuReflector,
     private val preferenceRepository: PreferenceRepository
 ) : SystemGateway {
@@ -101,7 +110,13 @@ class ShizukuSystemGateway(
      * Rung 3 is also **unavailable at shell uid on API 37**: `pm uninstall -k --user N` on a system
      * app returns `Failure [only root can delete system app for a particular user]` on Android 17,
      * where the identical command succeeds on API 36. The package is left untouched, so the chain
-     * ends in an honest failure rather than a wrong state.
+     * ends in an honest failure rather than a wrong state — and that failure now says which state,
+     * naming Root mode instead of the generic "reflection is blocked or shell lacks permissions" it
+     * used to report ([systemFreezeFailureMessage]). Read the scope of that restriction
+     * narrowly: Android 17 took
+     * away *removal* at shell uid, not freezing. Rungs 1 and 2 are measurably unaffected there
+     * (`pm disable-user --user 0` lands on `enabled=3` on a stock A17 build), so a stock Android 17
+     * device never reaches rung 3 in the first place — only an OEM that refuses rung 2 does.
      */
     private suspend fun freezeSystemApp(packageName: String): Result<Unit> {
         // Rungs 1 + 2. setAppEnabledDetailed already re-reads ApplicationInfo after each rung and
@@ -155,7 +170,21 @@ class ShizukuSystemGateway(
             "freeze($packageName): this device refuses to let the shell uid disable system " +
                 "packages; falling back to `pm uninstall -k --user N`, which keeps the app's data"
         )
-        val reported = runCancellableAction { reflector.freezeSystemAppForUser(packageName) }
+        // Deliberately NOT through runCancellableAction. That wrapper takes a Boolean and flattens
+        // every falsy outcome into one sentence — "Action failed. This may happen if reflection is
+        // blocked or shell lacks permissions." — which is exactly the sentence this rung must stop
+        // producing: on Android 17 nothing is blocked and no permission is missing, the platform
+        // simply reserves the operation for uid 0 and says so. Its cancellation discipline is kept
+        // inline instead, so a ViewModel scope dying mid-freeze still unwinds rather than being
+        // recorded as a failed freeze.
+        val removal = try {
+            reflector.freezeSystemAppForUser(packageName)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e("ShizukuSystemGateway", "freeze($packageName): uninstall-for-user threw", e)
+            SystemAppRemovalOutcome(succeeded = false, exitCode = -1, platformMessage = e.message)
+        }
         // Verify by re-reading rather than trusting the shell's exit code: `pm` is not a reliable
         // narrator of whether the package is still installed for this user.
         return if (isFrozen(packageName)) {
@@ -165,14 +194,46 @@ class ShizukuSystemGateway(
                     "survive; the package stops resolving without MATCH_UNINSTALLED_PACKAGES"
             )
             Result.success(Unit)
+        } else if (removal.succeeded) {
+            Result.failure(Exception("Shizuku: uninstall reported success but $packageName is still active."))
         } else {
-            reported.fold(
-                onSuccess = {
-                    Result.failure(Exception("Shizuku: uninstall reported success but $packageName is still active."))
-                },
-                onFailure = { Result.failure(it) }
-            )
+            Result.failure(Exception(systemFreezeFailureMessage(packageName, removal)))
         }
+    }
+
+    /**
+     * Turn rung 3's refusal into a sentence that names the actual cause.
+     *
+     * Specific branch first, generic fallback last — the same shape as the "nothing refused us"
+     * branch above. The specific one exists because there is exactly one refusal Thor can both
+     * recognise and route around: Android 17 reserves `pm uninstall --user` on a preinstalled
+     * package for uid 0 (see [ShizukuReflector.freezeSystemAppForUser]), and Thor's own Root mode
+     * *is* uid 0, so "switch to Root mode" is a real instruction rather than a shrug.
+     *
+     * The fallback keeps the old meaning but stops throwing away the evidence: `pm`'s own output
+     * rides along untranslated, so a bug report arrives with the platform's words in it instead of
+     * a sentence Thor made up. When `pm` printed nothing at all there is still the exit code, which
+     * is more than "Action failed" carried.
+     *
+     * Only the first non-blank line of that output is shown, via [displayLine], which documents why.
+     * Classification still reads the *whole* message, so a refusal that arrives on a later line is
+     * still recognised — hence the specific branch returning before [displayLine] is reached.
+     *
+     * The strings live in resources, not inline, because this text is read by the user — the same
+     * reason `Shizuku.refuseUnliftableSuspension` moved its refusal into a resource in PR #330.
+     */
+    private fun systemFreezeFailureMessage(
+        packageName: String,
+        removal: SystemAppRemovalOutcome,
+    ): String {
+        if (isRootOnlySystemAppRemoval(removal.platformMessage)) {
+            return context.getString(R.string.freeze_system_app_requires_root, packageName)
+        }
+        return context.getString(
+            R.string.freeze_system_app_removal_failed,
+            packageName,
+            removal.displayLine(),
+        )
     }
 
     /**
@@ -318,7 +379,7 @@ class ShizukuSystemGateway(
             val combinedPath = paths.joinToString(" ") { it.escapeForShell() }
 
             // 2. Get Current User ID
-            val currentUser = ShizukuHelper.getCurrentUserId()
+            val currentUser = thorUserId
 
             // 3. Execute the reinstallation command
             val command =
@@ -408,14 +469,18 @@ class ShizukuSystemGateway(
     }
 
     /**
-     * [runAction] for the two genuinely suspending rungs, without its cancellation flaw.
+     * [runAction] for the genuinely suspending rung, without its cancellation flaw.
      *
      * `CancellationException` IS an `Exception` in Kotlin, so [runAction]'s `catch (e: Exception)`
      * turns a cancelled action into an ordinary `Result.failure` and the caller carries on as if
-     * the operation had merely failed. That matters exactly here: `uninstallApp` polls with
-     * `delay()` and `reinstallExistingApp` awaits a PackageInstaller broadcast, both under a
-     * ViewModel scope that can die mid-freeze. Rethrowing lets the coroutine unwind cleanly, the
-     * same discipline `ShizukuReflector` keeps at its own reflection call sites.
+     * the operation had merely failed. That matters exactly here: `reinstallExistingApp` awaits a
+     * PackageInstaller broadcast under a ViewModel scope that can die mid-unfreeze. Rethrowing lets
+     * the coroutine unwind cleanly, the same discipline `ShizukuReflector` keeps at its own
+     * reflection call sites.
+     *
+     * The freeze path's rung 3 used to come through here too and no longer does — not because it
+     * needed less cancellation care, but because this wrapper's `Boolean` argument cannot carry the
+     * platform's own refusal text out with it. It keeps the rethrow inline instead.
      */
     private suspend inline fun runCancellableAction(action: suspend () -> Boolean): Result<Unit> {
         return try {

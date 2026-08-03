@@ -135,6 +135,22 @@ class HomeViewModel(
         }
     }
 
+    /**
+     * What the Privilege Check dialog's **Refresh** does — re-probe the three privilege sources,
+     * then reload the dashboard.
+     *
+     * The dialog says "grant access in your manager app and click Refresh", so the probe is the
+     * part that has to re-run; reloading the app list alone leaves the privilege state at whatever
+     * the cold-start probe found. Shizuku recovered anyway, which is why this went unnoticed —
+     * [PrivilegeManager] owns Shizuku's binder and permission listeners and refreshes itself from
+     * them. Root and Dhizuku publish no such callback, so without this a grant made while Thor is
+     * running stays invisible until the process is killed and relaunched.
+     */
+    fun refreshPrivileges() {
+        privilegeManager.refresh()
+        loadDashboardData()
+    }
+
     fun onTypeChanged(type: AppListType) {
         // The stats derivation (combine over _rawAppData + _selectedType) recomputes reactively;
         // no manual re-processing needed.

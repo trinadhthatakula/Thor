@@ -83,7 +83,7 @@
     <string name="frozen">Frozen</string>
     <string name="suspended">Suspended</string>
     <string name="privilege_check">Privilege Check</string>
-    <string name="privilege_check_desc">Thor requires Root or Shizuku access to function correctly.\n\nPlease grant access in your manager app and click Refresh.</string>
+    <string name="privilege_check_desc">Thor requires Root, Shizuku or Dhizuku access to function correctly.\n\nPlease grant access in your manager app and click Refresh.</string>
 
     <!-- App List / Freezer -->
     <string name="system_apps_warning">⚠ System Apps</string>
@@ -229,6 +229,13 @@
     <string name="notification_access_granted_subtitle">Bulk freeze results are shown as notifications</string>
     <string name="notification_access_needed_subtitle">Allow notifications to see bulk freeze results</string>
     <string name="open_settings">Open settings</string>
+    <!-- Installed-apps visibility (com.android.permission.GET_INSTALLED_APPS). Only ever shown on
+         ROMs that actually declare it — Chinese-market builds such as MIUI/HyperOS, ColorOS,
+         OriginOS and MagicOS. Deliberately worded without naming the permission: on those ROMs the
+         Settings toggle is labelled "read installed app list", not the AOSP permission name. -->
+    <string name="installed_apps_permission_title">App list may be incomplete</string>
+    <string name="installed_apps_permission_desc">Your device restricts which apps Thor can see while it is in the background. Grant full access to the installed-app list to keep it complete.</string>
+    <string name="installed_apps_permission_grant">Grant</string>
 
     <!-- Quick Settings Tile -->
     <string name="tile_no_privilege">No privilege granted</string>
@@ -355,11 +362,30 @@
         <item quantity="one">Removed %1$d app from Freezer</item>
         <item quantity="other">Removed %1$d apps from Freezer</item>
     </plurals>
+    <!-- %1$d apps left the Freezer out of the %2$d selected; the %3$d that failed to unfreeze
+         keep their watchlist rows so Unfreeze-all can still reach them. Three counts, so not
+         a <plurals>. -->
+    <string name="removed_from_freezer_partial_failure" tools:ignore="PluralsCandidate">Removed %1$d/%2$d apps from Freezer (%3$d failed)</string>
     <string name="killed_success">Killed %1$s</string>
     <string name="cache_cleared_success">Cleared cache of %1$s</string>
     <string name="data_cleared_success">Cleared data of %1$s</string>
     <string name="suspended_success">Suspended %1$s</string>
     <string name="unsuspended_success">Unsuspended %1$s</string>
+    <!-- %1$s is an app name, %2$s a comma-separated list of package names that recorded the
+         suspension. Shown when Thor cannot lift a suspension because Android only lets the
+         privilege that applied it remove it (API 30+). -->
+    <string name="suspend_owned_by_other_privilege">Can\'t unsuspend %1$s from here. It was suspended by %2$s, and Android only lets the same privilege lift it. Switch Thor back to that privilege mode and try again.</string>
+    <!-- %1$s is an app name. Shown when a preinstalled app cannot be frozen because this device
+         refused to disable it and this build of Android reserves "remove for one user" for uid 0.
+         Deliberately names no privilege mode: both the Shizuku and the Dhizuku gateway raise it,
+         and the refusal is the platform's under either. Root mode is offered because Thor's own
+         Root mode really is uid 0, so it is an instruction rather than a shrug. -->
+    <string name="freeze_system_app_requires_root">Can\'t freeze %1$s from here. This device wouldn\'t let Thor disable it, and Android only lets root remove a preinstalled app for one user. The app was left untouched — freezing it needs Thor\'s Root mode.</string>
+    <!-- %1$s is an app name, %2$s the platform's own words (e.g. "Failure [DELETE_FAILED_INTERNAL_ERROR]"),
+         or "exit code N" when it printed nothing. %2$s is passed through untranslated on purpose:
+         paraphrasing it away into "reflection is blocked or shell lacks permissions" named the
+         wrong cause, which is the defect this string replaces. -->
+    <string name="freeze_system_app_removal_failed">Can\'t freeze %1$s. This device wouldn\'t let Thor disable it, and removing it for this user also failed. Android reported: %2$s</string>
     <string name="unfreezing_app">Unfreezing %1$s…</string>
     <string name="uninstall_success">Uninstalled %1$s</string>
     <string name="error_app_info_missing">Error: App info missing for action</string>

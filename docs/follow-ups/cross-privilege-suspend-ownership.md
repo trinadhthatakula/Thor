@@ -1,79 +1,101 @@
 # Follow-up: cross-privilege suspend ownership (root ⇄ Shizuku can't cross-unsuspend)
 
-**Status:** OPEN — to handle in a future release (post-1.93.0).
+**Status:** IMPLEMENTED in PR #330 — **but not verified on a device.** The design question this doc
+was filed to answer is settled; what remains is the hardware pass described at the bottom. Do not
+close this row until that pass runs.
 **Area:** Freezer "Suspend" mode · `SystemGateway` backends · GH#239 lineage.
 
 ## Symptom
 
-An app **suspended under one privilege mode cannot be unsuspended under another**:
+An app **suspended under one privilege mode could not be unsuspended under another**, and Thor
+**reported every such unsuspend as a success**.
 
-- App suspended via **Root** → cannot be unsuspended while in **Shizuku** mode.
-- App suspended via **Shizuku** → cannot be unsuspended while in **Root** mode.
+- App suspended via **Root** → could not be unsuspended while in **Shizuku** mode.
+- App suspended via **Shizuku** → could not be unsuspended while in **Root** mode.
 
-(Dhizuku, being the Device-Owner path, is a third distinct owner and has the same
-class of problem.)
+Dhizuku, being the Device-Owner path, is a third distinct owner with the same class of problem.
 
 ## Root cause
 
-Android only lets the **suspending package** lift a package suspension
-(`PackageManager.setPackagesSuspendedAsUser(..., callingPackage, ...)`; unsuspend
-is validated against the recorded suspender). The two backends present **different
-suspender identities** to the framework:
+Two separate things, and the second is why nobody noticed the first.
 
-| Mode | Path | Suspender identity recorded by the OS |
-|------|------|----------------------------------------|
-| Root (API ≥ 29, Q+) | `ThorRootService` reflection (`setPackagesSuspendedAsUser`), trying callers `[com.valhalla.thor, com.android.shell, android]` in order and stopping at the **first that succeeds** (no shell fallback on this path — GH#239) | Normally **`com.valhalla.thor`** (tried first → OS shows "Managed by Thor"), but **`com.android.shell`** or **`android`** if the Thor-owned call is rejected |
-| Root (API < 29) | shell `pm suspend` fallback (no reflection path below Q) — `RootSystemGateway.kt:312` | **`root`** — a non-existent package, which is why tapping the paused app can crash `SuspendedAppActivity` (GH#239) |
-| Shizuku | primary `pm suspend --user <u>` shell, then reflection fallback | `com.android.shell` (shell-owned) — see `Shizuku.kt` `caller = if (isRoot) APPLICATION_ID else "com.android.shell"` |
+**1. The recorded suspender is not stable across privilege modes.**
 
-Because the recorded owner varies (`com.valhalla.thor`, `com.android.shell`,
-`android`, or `root` depending on the backend and API level), an unsuspend issued
-by a *different* backend — or one targeting a *different* owner — is a no-op /
-failure. A root-shell `pm unsuspend` also can't clear a `com.valhalla.thor`-owned
-suspension, which is precisely why the root **unsuspend** path already clears every
-owner it can produce: reflection (its caller loop retries `com.valhalla.thor` →
-`com.android.shell` → `android`) **and** shell `pm unsuspend` (covering the
-`root`/shell-owned suspensions).
+| Mode | Suspender identity recorded by the OS |
+|------|----------------------------------------|
+| Root | `com.valhalla.thor` |
+| Shizuku / Dhizuku | `com.android.shell` |
+| Device owner (DPM) | `android` |
+| Pre-GH#239 builds, API < 28 root path | `root` (a non-existent package) |
 
-## Relevant code (as of v1.93.0)
+**2. ⚠️ Whether that matters is version-dependent.** The original filing stated flatly that "Android
+only lets the suspending package lift a suspension". That is **false below API 30** — `setSuspended(false)`
+clears the single slot regardless of who set it ([android-9.0.0_r1 `PackageSettingBase.java:399-407`](https://cs.android.com/android/platform/superproject/+/android-9.0.0_r1:frameworks/base/services/core/java/com/android/server/pm/PackageSettingBase.java;l=399-407)).
+It became true **from API 30**, when `removeSuspension(callingPackage)` started removing only the
+caller's own entry ([android-11.0.0_r1 :443-452](https://cs.android.com/android/platform/superproject/+/android-11.0.0_r1:frameworks/base/services/core/java/com/android/server/pm/PackageSettingBase.java;l=443-452)).
 
-- `app/src/main/java/com/valhalla/thor/data/gateway/RootSystemGateway.kt` (`setAppSuspended`)
-  — API ≥ 29: suspend via AIDL reflection only (never shell — GH#239); API < 29: `pm suspend`
-    shell fallback (records owner `root`, line 312). Unsuspend always **dual-clears**: reflection
-    **and** `pm unsuspend`.
-- `app/src/main/java/com/valhalla/thor/rootservice/ThorRootService.kt`
-  — `setAppSuspended` throws below API 29; on Q+ `callSetSuspended` tries callers
-    `[thor, com.android.shell, android]` in order and stops at the first that succeeds, so the
-    recorded owner is that first successful caller.
-- `app/src/main/java/com/valhalla/thor/data/source/local/shizuku/Shizuku.kt:156`
-  — `setAppSuspended`: shell-first (`pm suspend`), reflection fallback with caller
-    `com.android.shell` (non-root).
+**3. The failure was silent by construction.** Lifting a suspension you do not own finds no entry to
+remove, so `oldSuspendParams == newSuspendParams == null` → `changed` stays `false` →
+PackageManagerService logs *"No change is needed"* → the package is **never added to
+`unmodifiablePackages`** → the API returns an **empty failure array**. Every caller reads an empty
+array as total success. Thor did too.
 
-## Candidate approaches for the fix (design in next version's brainstorm)
+**An empty result means "unknown", never "nothing was wrong."**
 
-1. **Dual-owner unsuspend everywhere** — make the Shizuku and Dhizuku unsuspend
-   paths clear *all* known suspender identities (as the root path already does),
-   so unsuspend is owner-agnostic regardless of which mode suspended it.
-2. **Standardize the suspender identity** across backends (e.g. always
-   `com.android.shell`, or always `com.valhalla.thor` where the caller UID allows
-   it) so any mode can lift any suspension. Note the OS may validate that the
-   calling UID owns `callingPackage`, so a single identity may not be reachable
-   from every backend.
-3. **Persist the suspending mode per package** (DataStore/Room) and, on unsuspend,
-   route through the same backend that suspended it (falling back to dual-clear
-   if that backend is no longer available).
+## What shipped (PR #330)
 
-Recommendation to evaluate first: **(1)** — smallest, matches the pattern the root
-path already established, and needs no new persisted state.
+Not option 1, 2 or 3 below — a fourth: **stop inferring the owner and read it.**
 
-## Verification for the eventual fix
+- `domain/model/SuspenderReadback.kt` · `parseSuspendingPackages()` parses the recorded suspender set
+  out of `dumpsys package <pkg>`. Four line shapes (API 28 inline `dialogMessage=`, 29 inline
+  `dialogInfo=`, 30–34 `Suspend params:` block, 35–37 the same block keyed by `UserPackage.toString()`
+  = `"<0>com.android.shell"` — that last one silently poisons a regex written for 30–34).
+- `canLiftSuspension(recordedSuspender, isRoot, sdkInt)` encodes the API-30 split above rather than
+  assuming the modern rule.
+- **Root** issues one removal per recorded owner, *under that owner's name* — it may, because
+  `enforceCanSetPackagesSuspendedAsUser` unconditionally early-returns for `Process.ROOT_UID` before
+  any suspender-name validation. **Shell cannot**, so a shell-uid Shizuku facing a root-recorded
+  suspension on API 30+ now **refuses and names the owner** instead of returning success.
+- An unreadable dump is never "nothing to do": `readSuspenders()` returns `null` unless the output
+  actually contained a `Package [<pkg>]` block, and `null` fails closed everywhere. This is
+  load-bearing — `dumpsys` needs `android.permission.DUMP`, so a permission-denied read parses as
+  *the empty set*, which is the identical silent-success bug one level down.
+- **Dhizuku deliberately has no readback** — it runs as the device-owner app, not shell, so no dump it
+  may take exists. It gates every success on `ApplicationInfo.FLAG_SUSPENDED` instead and fails closed
+  when that is unreadable. Do not add a dump there.
 
-On a device: suspend an app in Root mode → switch to Shizuku mode → unsuspend →
-confirm it actually unsuspends (and the reverse). Repeat for Dhizuku.
+The three approaches this doc originally proposed are recorded below for the record; all three
+inferred the owner instead of reading it, which is why none was taken.
 
-Cover each Root owner path, since the recorded suspender varies:
-- **API ≥ 29, Thor-owned** (the normal case) — reflection succeeds as `com.valhalla.thor`.
-- **API ≥ 29, shell/android-owned** — force the Thor caller to be rejected so the loop falls
-  through to `com.android.shell` / `android`, then cross-unsuspend.
-- **API < 29** — root records owner `root` via `pm suspend` (verify the GH#239
-  `SuspendedAppActivity` behavior too).
+<details>
+<summary>Original candidate approaches (superseded)</summary>
+
+1. **Dual-owner unsuspend everywhere** — clear *all* known suspender identities from every path.
+   Fails on 30+ from a shell uid, which may not name another package.
+2. **Standardize the suspender identity** across backends. The OS validates that the calling UID owns
+   `callingPackage`, so no single identity is reachable from every backend.
+3. **Persist the suspending mode per package** and route unsuspend through that backend. Carries
+   state that goes stale the moment anything else suspends the app.
+
+</details>
+
+## ⚠️ Verification — still outstanding
+
+**No device testing has been done.** Everything above rests on AOSP source reading and 17 unit tests
+over captured dump shapes. The parser is pinned against fixtures written from the documented formats,
+**not against output from a real device.**
+
+On a device: suspend an app in Root mode → switch to Shizuku mode → unsuspend → confirm it actually
+unsuspends, or refuses with the owner named. Then the reverse. Repeat for Dhizuku.
+
+Priority order, highest risk first:
+
+- **API 35+ `<0>`-keyed shape** — the one most likely to be wrong, because the `UserPackage.toString()`
+  prefix is the newest change and the tests pin it against a hand-written fixture.
+- **The cross-privilege refusal path** — that a shell-uid Shizuku facing a root-recorded suspension on
+  30+ refuses *and names the owner*, rather than refusing generically or silently succeeding.
+- **API < 30** — that Thor correctly *allows* the cross-privilege unsuspend there instead of refusing
+  it. A wrong refusal is as much a bug as a wrong success, and this is the branch with no real-device
+  evidence at all.
+- **A dump Thor is not allowed to read** — confirm it fails closed rather than reading as "not
+  suspended".

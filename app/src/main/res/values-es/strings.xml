@@ -81,7 +81,7 @@
     <string name="frozen">Congelado</string>
     <string name="suspended">Suspendido</string>
     <string name="privilege_check">Verificación de privilegios</string>
-    <string name="privilege_check_desc">Thor requiere acceso Root o Shizuku para funcionar correctamente.\n\nPor favor, concede acceso en tu aplicación de gestión y pulsa Actualizar.</string>
+    <string name="privilege_check_desc">Thor requiere acceso Root, Shizuku o Dhizuku para funcionar correctamente.\n\nPor favor, concede acceso en tu aplicación de gestión y pulsa Actualizar.</string>
 
     <!-- App List / Freezer -->
     <string name="system_apps_warning">⚠ Aplicaciones del sistema</string>
@@ -434,6 +434,10 @@
 
     
     <!-- Missing Translations -->
+    <string name="removed_from_freezer_partial_failure">Se eliminaron %1$d/%2$d aplicaciones del Congelador (%3$d fallaron)</string>
+    <string name="suspend_owned_by_other_privilege">No se puede reanudar %1$s desde aquí. Fue suspendida por %2$s y Android solo permite que el mismo privilegio la reanude. Cambia Thor a ese modo de privilegio e inténtalo de nuevo.</string>
+    <string name="freeze_system_app_requires_root">No se puede congelar %1$s desde aquí. Este dispositivo no ha dejado que Thor la desactive y Android solo permite que root elimine una app preinstalada para un solo usuario. La app se ha quedado intacta: para congelarla necesitas el modo Root de Thor.</string>
+    <string name="freeze_system_app_removal_failed">No se puede congelar %1$s. Este dispositivo no ha dejado que Thor la desactive y eliminarla para este usuario también ha fallado. Android informó: %2$s</string>
     <string name="auto_reinstall">Reinstalación automática de apps</string>
     <string name="auto_reinstall_desc">Mantener automáticamente Google Play Store como el instalador registrado para permitir actualizaciones en segundo plano</string>
     <string name="legacy_extension_title">Extensión heredada detectada</string>
@@ -480,6 +484,9 @@
     <string name="notification_access_granted_subtitle">Los resultados del congelado masivo se muestran como notificaciones</string>
     <string name="notification_access_needed_subtitle">Permite las notificaciones para ver los resultados del congelado masivo</string>
     <string name="open_settings">Abrir ajustes</string>
+    <string name="installed_apps_permission_title">La lista de aplicaciones puede estar incompleta</string>
+    <string name="installed_apps_permission_desc">Tu dispositivo limita qué aplicaciones puede ver Thor mientras está en segundo plano. Concede acceso completo a la lista de aplicaciones instaladas para mantenerla completa.</string>
+    <string name="installed_apps_permission_grant">Conceder</string>
     <string name="freeze_mode">Modo de congelación</string>
     <string name="suspend_instead_of_freeze">Suspender en lugar de congelar</string>
     <string name="suspend_instead_of_freeze_desc">Al congelar (incluyendo el autocongelado), suspende las aplicaciones en lugar de desactivarlas. Las aplicaciones suspendidas siguen siendo visibles pero pausadas.</string>

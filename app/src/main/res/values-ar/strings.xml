@@ -81,7 +81,7 @@
     <string name="frozen">مجمد</string>
     <string name="suspended">معلق</string>
     <string name="privilege_check">فحص الصلاحيات</string>
-    <string name="privilege_check_desc">يتطلب Thor صلاحيات Root أو Shizuku ليعمل بشكل صحيح.\n\nيرجى منح الصلاحيات في تطبيق الإدارة والنقر فوق تحديث.</string>
+    <string name="privilege_check_desc">يتطلب Thor صلاحيات Root أو Shizuku أو Dhizuku ليعمل بشكل صحيح.\n\nيرجى منح الصلاحيات في تطبيق الإدارة والنقر فوق تحديث.</string>
 
     <!-- App List / Freezer -->
     <string name="system_apps_warning">⚠ تطبيقات النظام</string>
@@ -468,6 +468,10 @@
 
     
     <!-- Missing Translations -->
+    <string name="removed_from_freezer_partial_failure">تمت إزالة %1$d/%2$d تطبيقات من المجمد (فشل %3$d)</string>
+    <string name="suspend_owned_by_other_privilege">لا يمكن إلغاء تعليق %1$s من هنا. تم تعليقه بواسطة %2$s، ولا يسمح Android إلا للصلاحية نفسها بإلغائه. بدّل Thor إلى وضع الصلاحية ذاك وحاول مرة أخرى.</string>
+    <string name="freeze_system_app_requires_root">لا يمكن تجميد %1$s من هنا. لم يسمح هذا الجهاز لـ Thor بتعطيله، ولا يسمح Android إلا لـ root بإزالة تطبيق مثبَّت مسبقًا لمستخدم واحد. لم يطرأ أي تغيير على التطبيق — يتطلب تجميده وضع Root في Thor.</string>
+    <string name="freeze_system_app_removal_failed">لا يمكن تجميد %1$s. لم يسمح هذا الجهاز لـ Thor بتعطيله، كما فشلت إزالته لهذا المستخدم. أبلغ Android عن: %2$s</string>
     <string name="auto_reinstall">إعادة التثبيت التلقائي للتطبيقات</string>
     <string name="auto_reinstall_desc">الحفاظ تلقائيًا على متجر Google Play كمثبت رئيسي لتمكين التحديثات في الخلفية</string>
     <string name="legacy_extension_title">تم اكتشاف امتداد قديم</string>
@@ -518,6 +522,9 @@
     <string name="notification_access_granted_subtitle">تظهر نتائج التجميد الجماعي كإشعارات</string>
     <string name="notification_access_needed_subtitle">اسمح بالإشعارات لرؤية نتائج التجميد الجماعي</string>
     <string name="open_settings">فتح الإعدادات</string>
+    <string name="installed_apps_permission_title">قد تكون قائمة التطبيقات غير مكتملة</string>
+    <string name="installed_apps_permission_desc">يقيّد جهازك التطبيقات التي يمكن لـ Thor رؤيتها أثناء عمله في الخلفية. امنح وصولاً كاملاً إلى قائمة التطبيقات المثبّتة للحفاظ على اكتمالها.</string>
+    <string name="installed_apps_permission_grant">منح</string>
     <string name="freeze_mode">وضع التجميد</string>
     <string name="suspend_instead_of_freeze">التعليق بدلاً من التجميد</string>
     <string name="suspend_instead_of_freeze_desc">عند التجميد (بما في ذلك التجميد التلقائي)، قم بتتعليق التطبيقات بدلاً من تعطيلها. تظل التطبيقات المعلقة مرئية ولكن متوقفة مؤقتًا.</string>

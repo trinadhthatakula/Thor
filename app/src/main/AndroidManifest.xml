@@ -22,6 +22,15 @@
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="ReservedSystemPermission" />
 
+    <!--
+      Non-AOSP. Declared by Chinese-market ROMs (MIUI/HyperOS, ColorOS, OriginOS, MagicOS)
+      per T/TAF 108-2022, where package visibility is a three-state runtime permission
+      (allow / while-in-use / deny) *in addition to* QUERY_ALL_PACKAGES above. On a ROM that
+      grants it "while in use", getInstalledPackages() collapses once Thor is backgrounded.
+      Absent on AOSP, where requesting it is a silent no-op — never assume it exists.
+    -->
+    <uses-permission android:name="com.android.permission.GET_INSTALLED_APPS" />
+
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
 
     <uses-permission android:name="shizuku.permission.API_V23" />

@@ -81,7 +81,7 @@
     <string name="frozen">Gelé</string>
     <string name="suspended">Suspendu</string>
     <string name="privilege_check">Vérification des privilèges</string>
-    <string name="privilege_check_desc">Thor nécessite un accès Root ou Shizuku pour fonctionner correctement.\n\nVeuillez accorder l\'accès dans votre application de gestion et cliquer sur Actualiser.</string>
+    <string name="privilege_check_desc">Thor nécessite un accès Root, Shizuku ou Dhizuku pour fonctionner correctement.\n\nVeuillez accorder l\'accès dans votre application de gestion et cliquer sur Actualiser.</string>
 
     <!-- App List / Freezer -->
     <string name="system_apps_warning">⚠ Applis Système</string>
@@ -434,6 +434,10 @@
 
     
     <!-- Missing Translations -->
+    <string name="removed_from_freezer_partial_failure">%1$d/%2$d applications retirées du congélateur (%3$d échouées)</string>
+    <string name="suspend_owned_by_other_privilege">Impossible de lever la suspension de %1$s ici. Elle a été suspendue par %2$s, et Android n\'autorise que le même privilège à la lever. Repassez Thor dans ce mode de privilège, puis réessayez.</string>
+    <string name="freeze_system_app_requires_root">Impossible de geler %1$s ici. Cet appareil n\'a pas laissé Thor la désactiver, et Android n\'autorise que root à supprimer une application préinstallée pour un seul utilisateur. L\'application n\'a pas été modifiée — la geler nécessite le mode Root de Thor.</string>
+    <string name="freeze_system_app_removal_failed">Impossible de geler %1$s. Cet appareil n\'a pas laissé Thor la désactiver, et sa suppression pour cet utilisateur a également échoué. Android a signalé : %2$s</string>
     <string name="auto_reinstall">Réinstallation automatique d\'applications</string>
     <string name="auto_reinstall_desc">Conserver automatiquement Google Play Store comme installateur enregistré pour activer les mises à jour en arrière-plan</string>
     <string name="legacy_extension_title">Extension obsolète détectée</string>
@@ -480,6 +484,9 @@
     <string name="notification_access_granted_subtitle">Les résultats du gel groupé sont affichés en notifications</string>
     <string name="notification_access_needed_subtitle">Autorisez les notifications pour voir les résultats du gel groupé</string>
     <string name="open_settings">Ouvrir les paramètres</string>
+    <string name="installed_apps_permission_title">La liste des applications peut être incomplète</string>
+    <string name="installed_apps_permission_desc">Votre appareil limite les applications que Thor peut voir lorsqu\'il est en arrière-plan. Accordez l\'accès complet à la liste des applications installées pour qu\'elle reste complète.</string>
+    <string name="installed_apps_permission_grant">Accorder</string>
     <string name="freeze_mode">Mode de congélation</string>
     <string name="suspend_instead_of_freeze">Suspendre au lieu de congeler</string>
     <string name="suspend_instead_of_freeze_desc">Lors de la congélation (y compris la congélation automatique), suspendez les applications au lieu de les désactiver. Les applications suspendues restent visibles mais en pause.</string>

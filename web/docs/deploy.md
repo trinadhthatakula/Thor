@@ -1,276 +1,229 @@
 # Deploying thor.trinadhthatakula.com
 
-The site deploys from **GitHub Actions**, not from Vercel's Git integration.
-`.github/workflows/web-deploy.yml` is the whole pipeline; there is no step that happens only inside
-Vercel.
+The site deploys from **Vercel's Git integration**. The Vercel project was created by importing this
+repository from the Vercel dashboard, its Root Directory is `web`, and every build happens inside
+Vercel. `web/vercel.json` is the only part of that pipeline that lives in git.
 
-| Trigger | Target | Result |
+`.github/workflows/web-deploy.yml` is a complete, reviewed, CLI-driven alternative that has **never
+deployed anything**. It is not the deployer; see "The dormant Actions pipeline" at the end, and
+`docs/follow-ups/vercel-actions-deploy.md` for the reactivation procedure.
+
+| Trigger | What Vercel does | Result |
 |---|---|---|
-| push to `master` touching the web paths | production | live at `thor.trinadhthatakula.com` |
-| push to `dev` touching the web paths | preview | staging URL for the integrated site, in the run summary |
-| pull request into `master` touching the web paths | preview, production-strict | URL commented on the PR |
-| pull request into `dev` touching the web paths | preview | URL commented on the PR |
-| `workflow_dispatch` from `master` | production | same as a push to `master` |
-| `workflow_dispatch` from any other branch | preview | escape hatch, deploys nothing live |
-| **pull request from a fork** | **nothing** | job skipped — see below |
+| push to `master` touching the web paths | production build | live at `thor.trinadhthatakula.com` |
+| push to `master` touching nothing the site reads | starts, then aborts | `ignoreCommand` exits 0, the deployment is `CANCELED`, the previous production deployment keeps serving |
+| push to `dev` touching the web paths | preview build | staging URL, on the commit status |
+| push to any other branch touching the web paths | preview build | same |
+| pull request from a branch in this repository | preview build | aliased at `thor-git-<branch>-…vercel.app`, `success` commit status, URL commented by the Vercel bot |
+| pull request from a fork | not yet observed here | Vercel documents a deployment and a comment per PR; confirm on the first fork PR rather than assuming |
 
-The two pull-request rows mean a pull request **from a branch in this repository**. A forked PR gets
-no repository secrets, so the deploy job would fail on an empty token — a red check the contributor
-cannot fix and did not cause — and the job skips itself instead. A fork PR therefore gets no preview
-URL, no comment, and no strict screenshot check. Nothing is silently weakened by that: the `master`
-push re-runs every gate, strictly, *before* it uploads, so a placeholder that slipped through a fork
-PR turns the deploy red and leaves the previous deployment serving. It is caught after the merge
-rather than before it.
+Preview URLs sit behind Deployment Protection, so the alias answers 302 rather than serving. That is
+the protected state, not a broken deploy — a nonexistent alias 404s.
+
+A failed or cancelled build does not replace what is serving. Vercel swaps the alias only on success,
+so the worst case is a **stale** site, never a wrong one. That property is the reason several of the
+gates below are allowed to be strict.
 
 ## The branch model: `master` publishes, `dev` stages
 
-Site work merges to `dev` like everything else. The live site changes only when `dev` is merged to
-`master`, which is a deliberate act rather than a side effect of pushing — that is the whole reason
-production is not `dev`.
+The policy is unchanged from when Actions was to be the deployer; what changed is who enforces it.
+Vercel's Production Branch is `master`, so a push there publishes and every other branch is a preview
+by Vercel's own rule. Site work merges to `dev` like everything else, and the live site moves only
+when `dev` is merged to `master`.
 
-Three consequences worth stating, because each is the kind of thing that is obvious once and then
-forgotten:
+Vercel picked `master` at import time by the second of four documented rules: a branch named `main`,
+else a branch named `master`, else (Bitbucket only) the repository's production-branch setting, else
+the repository's default branch. This repo has no `main`. That `master` is also the default branch is
+a coincidence — do not reason from it.
 
-- **A `dev` push still deploys**, as a preview. That is on purpose. A per-PR preview only ever shows
-  one branch; the `dev` preview is the only URL that shows several merged site PRs *together*, which
-  is the state the release merge is about to publish.
-- **A pull request into `master` is built to the production standard**, as long as it comes from this
-  repository rather than a fork. The workflow sets `REQUIRE_SCREENSHOTS=1` when `github.base_ref` is
-  `master`, which makes `check:screenshots` refuse a placeholder frame on a *preview* build. Without
-  it, the first build ever held to the production standard would be the one already serving on the
-  live domain. The release PR comes from `dev`, so in the flow this was written for it always
-  applies.
-- **`workflow_dispatch` needs this file on `master`**, because GitHub only offers the Run-workflow
-  button for workflows on the **default branch**. That is the same condition production deploys need,
-  so the two arrive together: until `web/` reaches `master` there is no production deploy and no
-  manual trigger, and after it there are both.
+**One property did not survive the change.** Under the Actions design, a pull request into `master`
+was built with `REQUIRE_SCREENSHOTS=1` so that the release PR's preview was held to production
+strictness *before* the merge that publishes. Nothing sets that variable now, so the first build ever
+held to the production standard is the production build itself. The consequence is bounded by the
+atomicity above — a placeholder reaching `master` fails the production build, leaving the previous
+deployment serving — so the failure mode is a stale site and a red deployment on the release merge,
+not a placeholder on the live domain. Restoring the old property is a small change to `web-ci.yml`'s
+build step, in git and reviewable.
 
-"the web paths" is `web/**`, `gradle.properties`, `gradle/libs.versions.toml` and the workflow file
-itself. The two Gradle files are in the list because `web/src/lib/repo-facts` derives the site's
-version name and SDK levels from them, so a `chore(release)` commit changes what the site renders
-without touching a byte under `web/`.
+## What triggers a deploy: the `ignoreCommand` path filter
 
-## Why not Vercel's Git integration
+Most commits here are Android changes. The site must not rebuild unless something it *reads* has
+moved, and the live filter that decides is the `ignoreCommand` in `web/vercel.json` — not the
+`paths:` list in any workflow.
 
-It would work, and it would be less code. The reason it is not used is that it puts the decisions
-somewhere they cannot be reviewed.
-
-Under the Git integration, four dashboard settings determine whether the site's gates run at all —
-Root Directory, "Include files outside the Root Directory", Build Command, and the Ignored Build
-Step. Every one of them produces **no error when wrong**: override the Build Command to the Astro
-preset's `astro build` and all six checkers vanish from the deploy path silently; get the Ignored
-Build Step's pathspec wrong and the site simply stops rebuilding, green forever. None of that is
-visible in a diff.
-
-Driving the CLI from Actions moves each of those into `web-deploy.yml` and `web/vercel.json`, where
-they are in git and under review, and it puts a gate failure in the same place as every other CI
-failure instead of on a Vercel page nobody has open.
-
-## Create the project with the CLI, not by importing the repository
-
-This is the first decision and it silently sets three others. It was not written down until after the
-pipeline shipped, and it is the single most likely way a first deploy fails.
-
-```sh
-cd web
-npx vercel@58 login
-npx vercel@58 link      # answer "create a new project" when it offers
+```
+git diff --quiet HEAD^ HEAD -- . ':/gradle.properties' ':/gradle/libs.versions.toml'
 ```
 
-| | `vercel.com/new` → Import Git Repository | `cd web && vercel link` |
-|---|---|---|
-| Root Directory | the import UI asks, and `web` is the only sane-looking answer | unset — which is what this workflow needs |
-| Git connected | **yes**, webhook installed | **no** — `web/.git/config` does not exist, so the connect prompt never fires |
-| Framework in the pulled settings | `astro`, auto-detected inside `web/` | `null` |
+- **The exit codes are inverted.** Exit 0 aborts the build and marks the deployment `CANCELED`; exit
+  1 or greater proceeds. So `--quiet`'s "no differences → 0" reads as "nothing the site renders has
+  changed → do not rebuild", which is the intent.
+- **It fails open.** A typo, a crash or a `command not found` returns something non-zero and a
+  deployment is built. A broken filter over-deploys; it cannot silently stop publishing.
+- **It runs inside the Root Directory.** That is why `.` means `web/`, and why the two Gradle paths
+  carry the `:/` root-relative prefix. Drop the `:/` and `gradle.properties` resolves to
+  `web/gradle.properties`, matches nothing, and every `chore(release)` commit exits 0 — "Build
+  skipped", correctly, forever, while the site keeps rendering the previous version number and no
+  check anywhere goes red. This is the silent failure this section exists to prevent.
+- **The window is one commit, not one push.** Vercel clones with `git clone --depth=10`, so `HEAD^`
+  is always available, but `HEAD^ HEAD` examines only the tip commit — where GitHub's `paths:` filter
+  examines a whole PR diff. A three-commit push to `dev` in which only the first touches `web/` is
+  skipped. **What that costs is a missing preview, not a stale production site.** A release merge
+  into `master` is safe by construction: `HEAD^` on a merge commit is the previous `master` tip, so
+  the diff spans everything merged — and nothing pushes to `master` except merges, so the gap cannot
+  reach production while that holds. Closing it properly would need the push's base commit, which
+  Vercel does not expose to `ignoreCommand`; the alternative of building unconditionally rebuilds the
+  site on every Android commit, which is the thing this filter exists to stop. The gap is accepted
+  knowingly. If `master` ever takes a direct multi-commit push, this becomes real.
+- **A skipped build still costs a deployment record and a build slot.** It is fast, not free.
+- `vercel.json`'s `ignoreCommand` **overrides** the dashboard's Ignored Build Step, so leave that
+  dashboard field empty and let the reviewed copy win.
 
-The import flow produces the one combination that is confirmed broken. `vercel build` computes its
-work path as `join(cwd, rootDirectory)` (`packages/cli/src/commands/build/index.ts`), so the breakage
-needs both halves: the CLI running from `web/`, *and* a Root Directory of `web`. This workflow does
-the first unconditionally, which is why the second must stay unset — `join('…/web', 'web')` is
-`web/web`, a path that does not exist. Either half alone is fine.
+The same path list lives in four places — this `ignoreCommand`, `web-ci.yml`'s `paths:`,
+`web-deploy.yml`'s `paths:` (dormant), and the `GRADLE_PROPERTIES` / `VERSION_CATALOG` constants in
+`src/lib/repo-facts/read.ts`. Adding a third derived fact from a third file means editing all four in
+one commit, or the site serves a value that no longer rebuilds when it changes.
 
-That is the behaviour of **`vercel@58.4.4`**, read from source; `vercel@58` resolves to exactly that
-today, and it is what the workflow installs. Vercel has a fix in flight for the general monorepo case
-— `vercel/vercel#16749`, which re-anchors per-directory links to the repository root — but it is
-closed unmerged and its `VERCEL_RESOLVE_ROOT_DIRECTORY` guard does not appear anywhere in the
-published 58.4.4 tarball. If a later CLI does land it, this stops being a build failure and starts
-being silently fine, which changes nothing about the advice and everything about what the tripwire
-below catches.
+## Vercel project settings, all of which are now load-bearing
 
-Worse, it does not fail the way this repo advertises: with `framework: "astro"` in
-the pulled settings the build dies first at `Command "astro build" exited with 127`, which reads as a
-broken toolchain and says nothing about paths. The "Gate the staged artifact" tripwire only fires
-when the pulled settings are all null — that is, only when the project was made with the CLI.
+Under the Actions design most of these did not matter, because the build did not happen on Vercel.
+Now every one of them does, **and none of them is visible in a diff**. Two named examples of what
+that costs: a Build Command set in the dashboard would replace `npm run build` and all six content
+checkers would silently stop running; a wrong pathspec in the Ignored Build Step would leave every
+check green while the site never rebuilt again.
 
-If the project has already been imported: Settings → Git → Disconnect, and clear Root Directory back
-to empty.
+The mitigation is `web-ci.yml`, which runs `npm ci && npm test && npm run build` on every push and
+every PR touching the web paths, on both branches, from a file in git. A dashboard edit cannot reach
+it, so the gates cannot vanish — the commit still goes red. What CI cannot do is stop the deploy. It
+can only report on it afterwards.
 
-**Not connecting the repository is also the only guarantee that the site deploys once per commit.**
-See "The one thing that must stay true" below — the `vercel.json` kill switch is real but not
-dependable, and disconnection is.
+- **Root Directory — `web`.** Settings → Build & Deployment. Unset, Vercel builds from the repository
+  root, finds no `package.json`, and fails; set to anything else, `web/vercel.json` is not read at
+  all and the dashboard's own Build Command silently replaces the gate chain. This is the exact
+  inverse of what the Actions path needs, where it must be **unset** — see the follow-up.
+- **"Include files outside the Root Directory" — on.** This is what makes the site render the right
+  version number. `src/lib/repo-facts/read.ts` walks up until it finds `settings.gradle.kts`, then
+  reads `gradle.properties` and `gradle/libs.versions.toml`. It is the one setting here that fails
+  *loudly*: `findRepoRoot` throws a `RepoFactsError` naming the cause and the build goes red. It is
+  currently correct — the live `/download` page renders values derived from those two files.
+- **Build Command, Install Command, Output Directory — leave all three unset in the dashboard.**
+  `web/vercel.json` supplies them and takes precedence. That precedence is the only in-git lever left
+  over what the deploy actually runs.
+- **Production Branch — `master`.** See the branch model above.
+- **System Environment Variables — enabled.** Settings → Environment Variables → "Enable access to
+  System Environment Variables". `check:screenshots` is strict only when `VERCEL_ENV=production`, and
+  Vercel injects that variable. If the box is off, `VERCEL_ENV` is empty, `isProductionDeploy()`
+  returns false, and the screenshot gate silently downgrades from gate to advisory **on the
+  production build**. Vercel does not document whether it is on by default for a portal import, so it
+  was checked rather than assumed: **confirmed on, 2026-08-02** (UTC). Note what that does and does
+  not establish — the setting is on; no production build has run since, so `VERCEL_ENV` reaching the
+  build has not been observed. A passing production build will not establish it either: with no
+  placeholders left there is nothing for the strict path to fail on, so it exits 0 either way. The
+  evidence is the `check-screenshots` line in the build log — `0 placeholders (strict: production)`
+  means the variable arrived, `0 placeholders (advisory)` means it did not and the gate downgraded.
+- **Deployment Protection.** A protected preview URL returns 401 with no notice explaining why. Every
+  branch and every PR now gets a preview URL posted by the Vercel bot, so this is more visible than
+  it was.
+- **Domain.** `thor.trinadhthatakula.com` is attached and serving. Vercel applies a newly added
+  domain to the project's latest *production* deployment, which is also why a rollback takes effect
+  through `vercel promote` rather than through DNS.
 
-## The three secrets
+Verify any change to these **by observation, not by reading the setting back**: push one no-op commit
+that touches `web/` and count the deployments the project creates.
 
-Repository secrets, Settings → Secrets and variables → Actions.
+## Where a failure shows up
 
-| Secret | Where it comes from |
-|---|---|
-| `VERCEL_TOKEN` | Vercel → Account Settings → Tokens → Create. **Scope must match `VERCEL_ORG_ID`.** On a personal/Hobby account the scope is your own username, not a team; picking a team scope for a personal project fails at `vercel pull` with an authorization error that does not say the scope is the problem. |
-| `VERCEL_ORG_ID` | `.vercel/project.json` after running `vercel link` locally in `web/` (field `orgId`). |
-| `VERCEL_PROJECT_ID` | the same file, field `projectId`. |
+Vercel posts a GitHub commit status for every commit it creates a deployment for, and comments the
+preview URL on pull requests. Both are on by default. So a failed Git-integration build is visible on
+the commit and on the PR without any Actions job; this is not a red box on a dashboard nobody has
+open.
 
-A fourth, `VERCEL_AUTOMATION_BYPASS_SECRET`, is optional and only enables the advisory Lighthouse
-job: Vercel → Project → Settings → Deployment Protection → Protection Bypass for Automation.
+Success and failure have both been observed here. What a commit *skipped* by `ignoreCommand` reports
+— a status GitHub treats as passing, or no status at all — has not been, which is why the required-
+checks section below says not to make Vercel's status required until an Android-only commit has been
+watched through.
 
-**Until all three are set the workflow exits green with a notice naming what is missing.** That is
-deliberate. A missing secret is a configuration state, not a regression in the site, and this file
-landing before the Vercel project exists must not redden every web PR in between.
+## What is gated, and what is not
 
-`.vercel/` is gitignored (`.gitignore:49`), so `vercel link` locally will not commit the project id.
+`buildCommand` is `npm run build`, which is the chain: `check:types`, `astro build`, `check:links`,
+`check:claims`, `check:markup`, `check:sitemap`, `check:screenshots`. A content failure fails the
+deployment, and the previous deployment keeps serving.
 
-## Vercel project settings
+Three honest gaps:
 
-Far fewer matter than under the Git integration, because the build no longer happens on Vercel.
-
-- **Root Directory — leave it UNSET.** The workflow already runs the CLI from inside `web/`, and
-  `vercel build`/`vercel deploy` both resolve `join(cwd, rootDirectory)`, so a Root Directory of
-  `web` becomes `web/web`. See the creation table above for why this is the setting most likely to
-  be wrong, and why the tripwire that is supposed to catch it often does not.
-- **"Include files outside the Root Directory"** — no longer relevant. It exists because
-  `repo-facts` reads `gradle.properties` from the repo root, and under Actions the whole repository
-  is checked out, so the read just works.
-- **Build Command / Install Command / Output Directory** — do not set these in the dashboard.
-  `web/vercel.json` sets `buildCommand`, `installCommand` and `outputDirectory`, and `vercel.json`
-  takes precedence over project settings. That precedence is what keeps a dashboard edit from
-  silently removing the gate chain.
-- **Production Branch — it does nothing here, and there is no safe value for it.** Which deploy is
-  production is decided by `web-deploy.yml` (`--prod` only for a `master` push), not by Vercel. The
-  setting only becomes live if the repository is connected, and then the *default* is the dangerous
-  one: Vercel defaults to `main` if it exists, otherwise `master`, and `master` is now this
-  workflow's production branch too. Do not look for a setting that makes a connected project safe —
-  there isn't one. Leave the repository disconnected; see the section below.
-- **Deployment Protection** — a team-level default can protect preview deployments. That does not
-  break the deploy, but the URL commented on a PR then returns 401 to anyone outside the team, with
-  no notice explaining why.
-- **Domain** — add `thor.trinadhthatakula.com` **after** the first production deployment exists, not
-  before. Vercel applies a newly added domain to the project's latest *production* deployment; add
-  it to an empty project and the hostname sits attached to nothing. See "Domain and certificate" in
-  `launch-checklist.md` for what that failure looks like, because it does not look like an error.
+- **`npm test` does not run in the deploy path.** It runs in `web-ci.yml` only, as does `check:a11y`.
+  A red unit test does not stop a deploy; it shows as a red `web` check on the commit.
+- **Nothing re-gates the uploaded artifact.** Vercel uploads what its own build produced. The Actions
+  path had a separate check on the staged output; that is one of the things reactivating it would buy.
+- **`check:screenshots` strictness rides entirely on Vercel injecting `VERCEL_ENV`.** See the System
+  Environment Variables bullet. The mechanism itself is unchanged in code: strict when
+  `VERCEL_ENV=production` **or** `REQUIRE_SCREENSHOTS=1` (`web/scripts/check-screenshots.mjs`).
 
 ## The one thing that must stay true
 
-**The Vercel project must not be connected to the GitHub repository.** That is the guarantee. The
-`vercel.json` kill switch below is defence in depth, and it is worth having, but it is not the thing
-being relied on.
+**Exactly one deploy path may be able to reach production.**
 
-If the project *is* connected while `web-deploy.yml` exists, two things go wrong:
+Today that is Vercel's Git integration, and the thing guaranteeing it is that
+`VERCEL_TOKEN` / `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` are unset, so `web-deploy.yml` skips. Setting
+them without first disconnecting the Git integration starts two production deployments racing for the
+same alias on every `master` push, with no error anywhere and no symptom except the live site
+intermittently serving the older build.
 
-- every commit deploys, Android-only ones included, because the path filter lives in a file that may
-  not be read (below);
-- a push to `master` produces **two production deploys racing for the same alias**. Vercel's default
-  production branch is `master`, which is also this workflow's, so the release merge fires both a
-  Git-sourced Vercel build — started from the repository root, a Gradle project with no
-  `package.json` — and this workflow's gated one. Whichever finishes last wins. Nothing in either
-  system reports the collision; the only symptom is the live site sometimes being the wrong thing.
-
-The kill switch is:
-
-```json
-"git": { "deploymentEnabled": false }
-```
-
-It is in **two** files on purpose. `web/vercel.json` is what the CLI reads. `/vercel.json` at the
-repository root exists only for this flag, because **Vercel does not document which `vercel.json`
-its Git integration reads for `git.deploymentEnabled`.** The setting is evaluated at webhook time,
-before any build container exists, so the CLI's `join(cwd, rootDirectory)` rule verified in source
-does not transfer to it. With Root Directory unset — which is what this pipeline requires — the
-repo-root copy is the one that is plausibly read, and the `web/` copy plausibly is not. Two copies
-cost nothing and remove the guess. Do not delete either.
-
-Even correctly placed, the flag is not a dependable kill switch: `vercel/vercel#11176`
-("deploymentEnabled option in vercel.json is ignored") has been open since **19 February 2024** with
-independent confirmations, and the file must exist on the branch being pushed for it to apply at
-all. Set it, then **verify by observation** — push one no-op commit under `web/` and count the
-deployments the Vercel project creates. If there is more than one, disconnect the repository.
-
-`ignoreCommand` is still in `web/vercel.json`. It was previously described here as inert. That is
-not provable: `vercel deploy` sends `projectSettings.commandForIgnoringBuildStep` derived from
-`vercel.json` on the same payload as `--prebuilt`, so the CLI actively uploads an ignore command on
-prebuilt deploys, and Vercel has shipped — then rolled back — a build where the Ignored Build Step
-cancelled `--prebuilt` deployments. If that happens again the job goes **red**, not silently green:
-`vercel deploy` prints "The deployment has been canceled." and exits 1, under `set -euo pipefail`.
-**Never add `--no-wait` to the deploy step** — that single flag is what would convert this from loud
-to silently green. Leave the dashboard's Ignored Build Step on "Automatic".
-
-## What the pipeline checks before it uploads
-
-**Make the first credentialed run a `workflow_dispatch` from `master`, not a test pull request.**
-Vercel documents that "the first deployment of a new project is always a production deployment",
-including when the CLI is run without `--prod`. Whatever runs first after the three secrets land is
-therefore the production deployment, and the domain will later attach to it — so it should be a run
-that *knew* it was production. A dispatch from `master` builds with `VERCEL_ENV=production`,
-`--prod`, and the strict screenshot gate.
-
-The trap is the natural instinct: add the secrets, then push a test PR to see whether it works. That
-run is built with `VERCEL_ENV=preview` and preview environment variables, becomes the production
-deployment anyway, and the PR comment calls it a preview. Add the secrets when no web pull request is
-open and no web push is about to land, and dispatch immediately.
-
-`vercel build` runs `npm run build`, which is the gate chain: `check:types`, `astro build`,
-`check:links`, `check:claims`, `check:markup`, `check:sitemap`, `check:screenshots`. `npm test` runs
-before it.
-
-Then every checker runs **again**, against `.vercel/output/static` — the directory that is actually
-uploaded — rather than against `dist`, which is only the intermediate the Vercel builder consumes.
-This is nearly free and it closes the gap between "the build was gated" and "the artifact that
-shipped was gated". It is a real assertion rather than a formality because every checker takes its
-directory as `argv[2]` and fails on an empty or missing scan by design; that was verified against
-both an empty and a nonexistent path, so a wrong directory reports itself instead of passing
-vacuously.
-
-`VERCEL_ENV` is set explicitly by the workflow on both the build and the re-gate. This matters:
-`check:screenshots` only *fails* on a placeholder frame when `VERCEL_ENV=production`, and under
-`vercel build` the build runs outside Vercel's infrastructure, where Vercel's documentation warns
-that System Environment Variables are not injected. Letting `--prod` imply it would have quietly
-downgraded that gate to advisory.
-
-`REQUIRE_SCREENSHOTS` is set on the same two steps and is the other half of that switch — the check
-is strict when `VERCEL_ENV=production` **or** `REQUIRE_SCREENSHOTS=1`. The workflow sets it to `1` on
-a pull request whose base is `master`, so the release PR's preview is held to the production standard
-before the merge that publishes, and it is empty everywhere else, because work in progress is allowed
-to carry a placeholder.
-
-## Lighthouse
-
-The advisory Lighthouse run is now a second job in `web-deploy.yml`. It used to be
-`web-lighthouse.yml`, which discovered the preview URL by polling the GitHub Deployments API for up
-to ten minutes.
-
-That only ever worked because **Vercel's Git integration** writes those deployment records. Vercel
-documents that CLI deployments do not carry full `gitSource` metadata, so under this pipeline the
-poll would have found nothing — and it would not have failed, it would have skipped with a notice on
-every PR, forever. The job that does the deploying now hands the URL over directly, so the polling
-loop is deleted rather than left quietly broken.
-
-It remains advisory and structurally unable to become a gate: every assertion in `lighthouserc.json`
-is `warn`, the job is `continue-on-error`, and the workflow is path-filtered.
+`web/vercel.json` no longer carries `"git": { "deploymentEnabled": false }`, and the repository-root
+`/vercel.json` that held a second copy has been deleted. That flag was the kill switch for the
+opposite arrangement; keeping it while relying on the Git integration is what would stop the site
+deploying. If the Actions path is ever reactivated, note that reactivation *also* clears Root
+Directory to empty, and which `vercel.json` Vercel reads follows Root Directory — so the flag would
+belong at `/vercel.json`, not in `web/vercel.json`. Either way it is defence in depth.
+**Disconnecting the repository is the guarantee.**
+`docs/follow-ups/vercel-actions-deploy.md` carries the full interlock.
 
 ## Rolling back
 
-Actions is not in the loop for a rollback — Vercel keeps every deployment.
+Rollback is a Vercel action under either model — Vercel keeps every deployment.
 
 ```sh
 vercel rollback              # to the previous production deployment
 vercel promote <deploy-url>  # to a specific one
 ```
 
-or Vercel → Project → Deployments → "…" → Promote to Production. Rolling back does not revert git,
-so follow it with a revert commit on `master` or the next `master` push will put the bad build
-straight back.
+or Vercel → Project → Deployments → "…" → Promote to Production. **Rolling back does not revert
+git**, and that matters more now than it did: the next push to `master` that touches a web path
+redeploys the bad build automatically. Follow a rollback with a revert commit, not with a plan to
+remember.
 
 ## Path filters and required checks
 
-`web-deploy.yml`, like `web-ci.yml`, is path-filtered and **must never be added to a branch ruleset**.
-GitHub reports a path-skipped required check as "Expected — Waiting for status" forever, so an
-Android-only PR would sit unmergeable. That is why `pr-ci.yml` carries no path filter at all —
-`build-and-test` is the check the `dev` and `master` rulesets require.
+`web-ci.yml`, like the dormant `web-deploy.yml`, is path-filtered and **must never be added to a
+branch ruleset**. GitHub reports a path-skipped required check as "Expected — Waiting for status"
+forever, so an Android-only PR would sit unmergeable. That is why `pr-ci.yml` carries no path filter
+at all — `build-and-test` is the check the `dev` and `master` rulesets require.
+
+The same caution applies to Vercel's own commit status, for a different reason: it is not
+path-filtered in GitHub's sense, and whether a *skipped* deployment posts a status GitHub treats as
+passing has not been observed here. Do not make it a required check until an Android-only commit has
+been watched through.
+
+## Lighthouse
+
+The advisory Lighthouse run is a second job in `web-deploy.yml` and is therefore dormant with it — it
+is `needs: deploy` and gated on a non-empty deploy URL.
+
+It used to be `web-lighthouse.yml`, which found the preview URL by polling the GitHub Deployments
+API. That only works because Vercel's Git integration writes those deployment records, and CLI
+deployments do not carry full `gitSource` metadata — which is why it was folded into the deploy job
+when Actions was to be the deployer. Under the current model the records exist again, so
+resurrecting a standalone Lighthouse job is a live option rather than a broken one. It remains
+advisory either way: every assertion in `lighthouserc.json` is `warn`.
+
+## The dormant Actions pipeline
+
+`.github/workflows/web-deploy.yml` installs, tests, builds, re-gates the built artifact, uploads it
+with the Vercel CLI and comments the URL. Its first step looks for the three secrets, finds none,
+prints a notice and skips the other eleven steps.
+
+**Every green `Web Deploy` tick in this repository's history is that skip.** A partial secret set
+behaves identically — green, with a notice, having deployed nothing. Read the notice, not the tick.
+
+`docs/follow-ups/vercel-actions-deploy.md` is the reactivation procedure, the interlock that makes it
+one change rather than two, and an honest account of what it would and would not buy.

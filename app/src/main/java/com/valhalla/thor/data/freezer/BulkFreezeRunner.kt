@@ -14,6 +14,7 @@ import com.valhalla.thor.domain.model.BulkResult
 import com.valhalla.thor.domain.model.BulkScope
 import com.valhalla.thor.domain.model.bulkActionFor
 import com.valhalla.thor.domain.model.freezableCandidates
+import com.valhalla.thor.domain.repository.BulkFreezeController
 import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
@@ -60,7 +61,11 @@ import java.util.concurrent.atomic.AtomicInteger
  * be the one bulk path able to freeze what every dialog in the app refuses to offer a confirm
  * button for.
  */
-@Single
+// Bound as [BulkFreezeController] as well as itself: the tile, the worker and the launcher
+// trampoline all want the whole runner, but a view model must be able to take the two-member port
+// instead — this class cannot be constructed on a JVM, so naming it is what made FreezerViewModel
+// untestable.
+@Single(binds = [BulkFreezeController::class])
 class BulkFreezeRunner(
     private val freezerRepository: FreezerRepository,
     private val freezeProfileRepository: FreezeProfileRepository,
@@ -71,7 +76,7 @@ class BulkFreezeRunner(
     private val uadHelper: UadHelper,
     private val notifier: BulkResultNotifier,
     @Named("io") private val io: CoroutineDispatcher,
-) {
+) : BulkFreezeController {
     private val scope = CoroutineScope(SupervisorJob() + io)
 
     private val _freezableCount = MutableStateFlow<Int?>(null)
@@ -149,7 +154,7 @@ class BulkFreezeRunner(
      * is being frozen" from "some profile is being frozen" — only the first is the tile's own
      * work — and the profiles sheet can spin every row it has queued rather than only the last.
      */
-    val runningRequests: StateFlow<List<BulkRequest>> = _runningRequests.asStateFlow()
+    override val runningRequests: StateFlow<List<BulkRequest>> = _runningRequests.asStateFlow()
 
     /**
      * A launched run and the request that started it, kept together so [launch] can tell a
@@ -285,7 +290,7 @@ class BulkFreezeRunner(
     fun launch(op: BulkOp): Deferred<BulkOutcome> = launch(BulkRequest(op))
 
     @Synchronized
-    fun launch(request: BulkRequest): Deferred<BulkOutcome> {
+    override fun launch(request: BulkRequest): Deferred<BulkOutcome> {
         val newest = unsettled.lastOrNull()
         // Same-request coalescing: return the in-flight run unchanged. Matched against the whole
         // chain rather than its tail, because once one run is queued behind another the request
