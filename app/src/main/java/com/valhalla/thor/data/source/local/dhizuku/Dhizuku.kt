@@ -25,7 +25,7 @@ import com.valhalla.thor.data.source.local.shizuku.SystemAppRemovalOutcome
 import com.valhalla.thor.data.source.local.shizuku.firstRungThatSticks
 import com.valhalla.thor.data.source.local.shizuku.isPolicyRefusal
 import com.valhalla.thor.data.source.local.shizuku.shellRungResult
-import com.valhalla.thor.data.source.local.shizuku.thorUserId
+import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.domain.model.SHELL_SUSPENDER_IDENTITY
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper

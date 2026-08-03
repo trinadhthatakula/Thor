@@ -13,7 +13,7 @@ import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
 import com.valhalla.thor.data.source.local.shizuku.SystemAppRemovalOutcome
 import com.valhalla.thor.data.source.local.shizuku.displayLine
 import com.valhalla.thor.data.source.local.shizuku.isRootOnlySystemAppRemoval
-import com.valhalla.thor.data.source.local.shizuku.thorUserId
+import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed

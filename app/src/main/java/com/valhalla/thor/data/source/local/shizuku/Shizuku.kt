@@ -9,6 +9,7 @@ import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import com.valhalla.bypass.Bypass
 import com.valhalla.superuser.utils.escapeForShell
+import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.domain.model.SHELL_SUSPENDER_IDENTITY
 import com.valhalla.thor.domain.model.canLiftSuspension
 import com.valhalla.thor.domain.model.parseSuspendingPackages
@@ -883,7 +884,7 @@ object Shizuku {
     @SuppressLint("PrivateApi", "SdCardPath")
     fun clearCache(packageName: String): Boolean {
         // 1. Try shell first
-        val userId = android.os.Process.myUserHandle().hashCode()
+        val userId = thorUserId
         val paths = listOf(
             "/data/data/$packageName/cache",
             "/data/user/$userId/$packageName/cache",
@@ -943,7 +944,7 @@ object Shizuku {
                 arrayOf(String::class.java, observerClass, Int::class.javaPrimitiveType!!),
                 packageName,
                 null,
-                android.os.Process.myUserHandle().hashCode()
+                thorUserId
             )
             true
         }.getOrElse { false }
