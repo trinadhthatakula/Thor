@@ -7,9 +7,12 @@ import android.content.ContextWrapper
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppPermission
+import com.valhalla.thor.domain.model.BulkOutcome
+import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.FilterType
+import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.InstalledAppsPermission
 import com.valhalla.thor.domain.model.PermissionIndex
@@ -24,6 +27,8 @@ import com.valhalla.thor.domain.repository.AppBundleFileStore
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.AuthCapability
+import com.valhalla.thor.domain.repository.BulkFreezeController
+import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.InstalledAppsPermissionGate
 import com.valhalla.thor.domain.repository.PermissionRepository
@@ -32,6 +37,8 @@ import com.valhalla.thor.domain.repository.PrivilegeStateProvider
 import com.valhalla.thor.domain.repository.StorageStatsProvider
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.repository.UsageAccessGate
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -44,13 +51,27 @@ import java.io.File
 // calls rather than simulating a device.
 
 /**
+ * One ordered log shared by several fakes.
+ *
+ * Each fake already records what it was asked to do, which answers "did this happen". No collection
+ * of those per-fake lists answers "did it happen *before* that", and some contracts are purely
+ * ordering claims — GH#310's is exactly one: restore the app, *then* delete its watchlist row. Hand
+ * the same list to several fakes and the interleaving across the privilege boundary, Room and the
+ * launcher becomes a single list to compare by value.
+ *
+ * Entries are namespaced by the fake that wrote them, except [FakeSystemRepository], which keeps its
+ * own `"method:arg"` format so a trace assertion reads the same as a `calls` one.
+ */
+typealias CallTrace = MutableList<String>
+
+/**
  * Records every privileged call in order and answers success unless the test planted a failure.
  *
  * The recorded strings are the whole contract: "was `setAppDisabled` reached at all for this
  * package" is exactly the question a tier gate has to answer, and a list of strings compares by
  * value without a matcher DSL.
  */
-class FakeSystemRepository : SystemRepository {
+class FakeSystemRepository(private val trace: CallTrace? = null) : SystemRepository {
 
     /** Every call reaching the privilege layer, in order, as `"method:arg[:arg]"`. */
     val calls = mutableListOf<String>()
@@ -64,6 +85,7 @@ class FakeSystemRepository : SystemRepository {
 
     private fun record(call: String): Result<Unit> {
         calls += call
+        trace?.add(call)
         return failures[call]?.let { Result.failure(it) } ?: Result.success(Unit)
     }
 
@@ -148,28 +170,121 @@ class FakeAppRepository(initialApps: List<AppInfo> = emptyList()) : AppRepositor
  * The freezer watchlist. [added] / [removed] keep the write history even when the write is a no-op
  * on the set, because "did this path touch membership at all" is what the membership gates decide.
  */
-class FakeFreezerRepository(initial: Set<String> = emptySet()) : FreezerRepository {
+class FakeFreezerRepository(
+    initial: Set<String> = emptySet(),
+    private val trace: CallTrace? = null
+) : FreezerRepository {
 
     private val packages = MutableStateFlow(initial)
 
     val added = mutableListOf<String>()
     val removed = mutableListOf<String>()
 
+    private val addFailures = mutableMapOf<String, Throwable>()
+    private val removeFailures = mutableMapOf<String, Throwable>()
+
+    /**
+     * Make the write of [packageName] raise.
+     *
+     * A throw rather than a `Result`, because that is how Room reports a failed write: a caller
+     * that only checks the privileged call's `Result` never learns this one happened at all.
+     */
+    fun failAddWith(packageName: String, error: Throwable) {
+        addFailures[packageName] = error
+    }
+
+    /** As [failAddWith], for the delete. */
+    fun failRemoveWith(packageName: String, error: Throwable) {
+        removeFailures[packageName] = error
+    }
+
     override fun getAll(): Flow<List<String>> = packages.map { it.toList() }
 
     override suspend fun getAllPackageNames(): List<String> = packages.value.toList()
 
     override suspend fun add(packageName: String) {
+        addFailures[packageName]?.let { throw it }
         added += packageName
+        trace?.add("freezer.add:$packageName")
         packages.update { it + packageName }
     }
 
     override suspend fun remove(packageName: String) {
+        // Before the bookkeeping: a delete that raised deleted nothing, so [removed] stays the
+        // list of rows that actually went.
+        removeFailures[packageName]?.let { throw it }
         removed += packageName
+        trace?.add("freezer.remove:$packageName")
         packages.update { it - packageName }
     }
 
     override suspend fun contains(packageName: String): Boolean = packageName in packages.value
+}
+
+/**
+ * Freeze profiles as an in-memory table, ids handed out in creation order like Room's autoincrement.
+ *
+ * No unique index on the name — the real table has one, and it is what makes a rename fail with
+ * `SQLiteConstraintException`. That exception cannot be constructed on a plain JVM (android.jar
+ * stubs throw from their constructors), so the name-taken path stays out of reach here rather than
+ * being faked into something that only looks like it.
+ */
+class FakeFreezeProfileRepository(initial: List<FreezeProfile> = emptyList()) :
+    FreezeProfileRepository {
+
+    private val profiles = MutableStateFlow(initial)
+    private var nextId = (initial.maxOfOrNull { it.id } ?: 0L) + 1
+
+    override fun observeProfiles(): Flow<List<FreezeProfile>> = profiles
+
+    override suspend fun packagesOf(profileId: Long): List<String> =
+        profiles.value.firstOrNull { it.id == profileId }?.packageNames.orEmpty()
+
+    override suspend fun allProfilePackageNames(): Set<String> =
+        profiles.value.flatMap { it.packageNames }.toSet()
+
+    override suspend fun create(name: String, packageNames: List<String>): Long {
+        val id = nextId++
+        profiles.update { it + FreezeProfile(id, name, packageNames) }
+        return id
+    }
+
+    override suspend fun update(profileId: Long, name: String, packageNames: List<String>) {
+        profiles.update { list ->
+            list.map { if (it.id == profileId) FreezeProfile(profileId, name, packageNames) else it }
+        }
+    }
+
+    override suspend fun delete(profileId: Long) {
+        profiles.update { list -> list.filterNot { it.id == profileId } }
+    }
+}
+
+/**
+ * A bulk runner that runs nothing.
+ *
+ * `BulkFreezeRunner` itself cannot be built on a JVM — see [BulkFreezeController], which exists for
+ * that reason — and a view model only ever observes what is in flight and awaits what it launched.
+ * Recording the request and answering with an already-completed [outcome] covers both members.
+ */
+class FakeBulkFreezeController(
+    var outcome: BulkOutcome = BulkOutcome.NothingToDo
+) : BulkFreezeController {
+
+    val launched = mutableListOf<BulkRequest>()
+
+    private val _runningRequests = MutableStateFlow<List<BulkRequest>>(emptyList())
+    override val runningRequests: StateFlow<List<BulkRequest>> = _runningRequests
+
+    /** Publish an in-flight chain, as the runner does while a batch is going. */
+    fun setRunning(requests: List<BulkRequest>) {
+        _runningRequests.value = requests
+    }
+
+    override fun launch(request: BulkRequest): Deferred<BulkOutcome> {
+        launched += request
+        return CompletableDeferred(outcome)
+    }
 }
 
 /**
@@ -416,18 +531,51 @@ class FakePermissionRepository(
     override suspend fun isPrivilegeActive(): Boolean = true
 }
 
-/** Records the packages whose launcher shortcut was retired, and those merely re-rendered. */
-class FakeAppShortcutController : AppShortcutController {
+/** Records the packages whose launcher shortcut was retired, re-rendered or pinned. */
+class FakeAppShortcutController(
+    // Settable: the pin affordances are hidden on a launcher that refuses pin requests, and that
+    // branch is only reachable if the answer can be false.
+    var pinSupported: Boolean = true,
+    private val trace: CallTrace? = null
+) : AppShortcutController {
 
     val disabled = mutableListOf<String>()
     val refreshed = mutableListOf<String>()
+    val pinned = mutableListOf<String>()
+    val pinnedBulkActions = mutableListOf<String>()
+
+    private val disableFailures = mutableMapOf<String, Throwable>()
+
+    /**
+     * Make disabling [packageName]'s shortcut raise, as `ShortcutManagerCompat` does — it reports a
+     * refused or rate-limited request by throwing, never by returning anything a caller can check.
+     */
+    fun failDisableWith(packageName: String, error: Throwable) {
+        disableFailures[packageName] = error
+    }
 
     override fun disableAppShortcut(packageName: String) {
+        disableFailures[packageName]?.let { throw it }
         disabled += packageName
+        trace?.add("shortcut.disable:$packageName")
     }
 
     override fun refreshAppShortcut(packageName: String) {
         refreshed += packageName
+    }
+
+    override fun isPinSupported(): Boolean = pinSupported
+
+    override fun pinAppShortcut(packageName: String, label: String) {
+        pinned += packageName
+    }
+
+    override suspend fun pinAppShortcutSuspend(packageName: String, label: String) {
+        pinned += packageName
+    }
+
+    override fun pinBulkShortcut(action: String) {
+        pinnedBulkActions += action
     }
 }
 

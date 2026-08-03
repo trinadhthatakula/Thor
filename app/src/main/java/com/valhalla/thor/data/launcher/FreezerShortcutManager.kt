@@ -80,19 +80,19 @@ class FreezerShortcutManager(
         }
     }
 
-    fun isPinSupported(): Boolean =
+    override fun isPinSupported(): Boolean =
         ShortcutManagerCompat.isRequestPinShortcutSupported(context)
 
     /** Ask the launcher to pin a home-screen shortcut for an app. The icon follows the app's state
      *  (grey while frozen, full colour while enabled). Runs off the caller's thread — the icon
      *  decode is heavy — so any surface (dialog, details, freezer) can call this directly. */
-    fun pinAppShortcut(packageName: String, label: String) {
+    override fun pinAppShortcut(packageName: String, label: String) {
         scope.launch { pinAppShortcutSuspend(packageName, label) }
     }
 
     /** Suspending pin so bulk callers can pin sequentially instead of spawning N concurrent bitmap
      *  decodes + binder pin requests (which risks OOM / overwhelming the shortcut service). */
-    suspend fun pinAppShortcutSuspend(packageName: String, label: String) {
+    override suspend fun pinAppShortcutSuspend(packageName: String, label: String) {
         val shortcut = buildAppShortcut(packageName, label)
         // A shortcut id previously greyed by disableShortcuts stays disabled on re-pin unless we
         // re-enable it — otherwise a re-frozen app comes back greyed/uninteractive.
@@ -107,7 +107,7 @@ class FreezerShortcutManager(
     }
 
     /** Ask the launcher to pin a Freeze-all / Unfreeze-all action shortcut. */
-    fun pinBulkShortcut(action: String) {
+    override fun pinBulkShortcut(action: String) {
         val shortcut = bulkShortcut(action)
         val label = shortcut.shortLabel.toString()
         ShortcutManagerCompat.requestPinShortcut(context, shortcut, pinnedCallback(label).intentSender)
