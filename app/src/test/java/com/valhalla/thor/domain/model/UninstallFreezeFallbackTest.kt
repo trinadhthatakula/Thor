@@ -23,11 +23,28 @@ class UninstallFreezeFallbackTest {
         refused: Boolean = true,
     ) = uninstallFreezeFallbackAllowed(isSystem, mode, refused)
 
-    // --- The one combination that is allowed to escalate -------------------------------------
+    // --- The combinations that are allowed to escalate -----------------------------------------
 
     @Test
     fun `shizuku refused by the platform may escalate for a system app`() {
         assertTrue(allowed(mode = PrivilegeMode.SHIZUKU, refused = true))
+    }
+
+    /**
+     * Dhizuku answers like Shizuku, and for the same reason: it has a disable rung that the
+     * platform can *refuse*. Its commands run as the device-owner app rather than as shell, and
+     * that app holds no CHANGE_COMPONENT_ENABLED_STATE, so a `SecurityException` out of
+     * `PackageManagerService` is the expected refusal — after which uninstall-for-user is the only
+     * remaining way to freeze a preinstalled app.
+     *
+     * This branch was `false` while `DhizukuSystemGateway` uninstalled system apps unconditionally,
+     * where a closed gate would have changed nothing. Now that the gateway routes through the
+     * disable chain first, a closed gate makes the rung unreachable and takes system-app freezing
+     * away from Dhizuku entirely.
+     */
+    @Test
+    fun `dhizuku refused by the platform may escalate for a system app`() {
+        assertTrue(allowed(mode = PrivilegeMode.DHIZUKU, refused = true))
     }
 
     // --- The discriminator: refusal, not failure ----------------------------------------------
@@ -77,9 +94,13 @@ class UninstallFreezeFallbackTest {
         assertFalse("root failed", allowed(mode = PrivilegeMode.ROOT, refused = false))
     }
 
+    /**
+     * The half of Dhizuku's answer that did not change. A binder timeout, a package mid-update or
+     * a `pm` that simply did nothing all fail without the platform having refused, and escalating
+     * on those is how a transient error becomes a package silently removed for the user.
+     */
     @Test
-    fun `dhizuku never escalates, refused or not`() {
-        assertFalse("dhizuku refused", allowed(mode = PrivilegeMode.DHIZUKU, refused = true))
+    fun `dhizuku that merely failed may not escalate`() {
         assertFalse("dhizuku failed", allowed(mode = PrivilegeMode.DHIZUKU, refused = false))
     }
 
@@ -108,9 +129,15 @@ class UninstallFreezeFallbackTest {
         }
     }
 
-    /** Guards the enum itself: a new mode must be considered, not silently inherit `true`. */
+    /**
+     * Guards the enum itself: a new mode must be considered, not silently inherit `true`.
+     *
+     * The expected set is spelled out rather than counted. Both members earned their place by
+     * having a disable rung the platform can refuse — root cannot be refused by the guards this
+     * fallback exists for (they key on the shell uid), and NONE has no rung at all.
+     */
     @Test
-    fun `only shizuku can ever escalate`() {
+    fun `only the modes with a refusable disable rung can escalate`() {
         val escalating = PrivilegeMode.entries.filter {
             uninstallFreezeFallbackAllowed(
                 isSystem = true,
@@ -119,8 +146,8 @@ class UninstallFreezeFallbackTest {
             )
         }
         assertTrue(
-            "unexpected modes may destroy data: $escalating",
-            escalating == listOf(PrivilegeMode.SHIZUKU),
+            "unexpected modes may remove packages for the user: $escalating",
+            escalating.toSet() == setOf(PrivilegeMode.SHIZUKU, PrivilegeMode.DHIZUKU),
         )
     }
 }

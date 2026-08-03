@@ -115,7 +115,10 @@ enum class FreezeMechanic {
      *
      * Not reachable at shell uid on API 37: Android 17 answers this command with
      * `Failure [only root can delete system app for a particular user]` where API 36 answers
-     * `Success`.
+     * `Success`. That restriction is specific to *this* mechanic and does not touch [DISABLE] —
+     * on the same Android 17 build, at the same uid, `pm disable-user --user 0` and
+     * `pm suspend --user 0` both succeed on a system package. "Android 17 blocks freezing system
+     * apps" is not what was measured; "Android 17 reserves removing them for uid 0" is.
      */
     UNINSTALL,
 }
@@ -148,6 +151,16 @@ enum class FreezeMechanic {
  *  - AOSP's shell guard in `PackageManagerService.setEnabledSettings` is **byte-identical** across
  *    android14-, android15-, android16-, android16-qpr1- and android16-qpr2-release. The 15→16
  *    diff of that method contains tracing and metrics changes and no security logic at all.
+ *  - **Android 17 did not change that either**, whatever the API 37 note on [FreezeMechanic.UNINSTALL]
+ *    might suggest at a glance. On a stock API 37 emulator (`CE2A.260420.019`), as uid 2000,
+ *    `pm disable-user --user 0 com.android.wallpaperbackup` reports "new state: disabled-user" and
+ *    reads back `enabled=3 installed=true`, and `pm suspend --user 0` reports "new suspended state:
+ *    true" and reads back `suspended=true`. What Android 17 *did* add is a guard on a different
+ *    command — `PackageManagerShellCommand.java:2281-2293` now requires uid 0 for `--user` on a
+ *    `FLAG_SYSTEM` package — which costs [FreezeMechanic.UNINSTALL] and leaves
+ *    [FreezeMechanic.DISABLE] alone. `Flags.protectSystemRequiredPackages()` is not live on that
+ *    build either: `device_config get package_manager_service protect_system_required_packages`
+ *    reads null. So a version check keyed on 37 would be the same mistake as the one keyed on 36.
  *  - The restriction users actually hit is **Xiaomi's**, not Android's: a vendor
  *    `PackageManagerServiceImpl.shouldRestrictEnabledSettingsChange` — a class that does not exist
  *    in AOSP, and which 404s at every `android.googlesource.com` tag from 13 to 17 — throws
@@ -193,6 +206,17 @@ fun uninstallFreezeFallbackAllowed(
         // disable its system packages. Uninstall-for-user is then the only remaining way to
         // freeze one, and refusing to escalate would mean those users cannot freeze system apps
         // at all — which is the state this whole change is trying to get *out* of.
+        //
+        // Still true on Android 17, and deliberately not narrowed to `sdkInt < 37` even though A17
+        // refuses the escalation itself (see [FreezeMechanic.UNINSTALL]). Two reasons, both
+        // measured. First, the A17 refusal keys on the *uid*, not the release: a Shizuku started as
+        // root runs as uid 0 and clears it, and this function cannot see that — adding an isRoot
+        // parameter to answer a question the readback already answers would be the version check
+        // wearing a different hat. Second, an attempt that A17 refuses is harmless: `pm` leaves the
+        // package untouched and prints why, and ShizukuSystemGateway now turns that sentence into
+        // "this build of Android needs root for this" instead of swallowing it. Closing the gate
+        // here would trade a specific, actionable failure for a vague one and break root-Shizuku
+        // for nothing.
         PrivilegeMode.SHIZUKU -> true
 
         // Root is uid 0, and the two refusals this fallback was built for — AOSP's shell guard and
@@ -209,11 +233,33 @@ fun uninstallFreezeFallbackAllowed(
         // them unconditionally.
         PrivilegeMode.ROOT -> false
 
-        // Dhizuku does not consult this policy yet — DhizukuSystemGateway still uninstalls system
-        // apps unconditionally. This branch is what it *should* get, but flipping it on without a
-        // device check would risk removing Dhizuku's only working system-app freeze, so the
-        // gateway is deliberately left unconverted rather than half-converted here.
-        PrivilegeMode.DHIZUKU -> false
+        // Dhizuku now consults this policy, and answers like Shizuku for the same reason: it has
+        // a disable rung that can be *refused*. Exactly one of its three rungs may say so, and the
+        // route is worth naming because the gate is only as honest as that signal. `pm disable-user`
+        // runs inside the device-owner app (`DhizukuAPI.newProcess`), which holds no
+        // CHANGE_COMPONENT_ENABLED_STATE, so a refusing `PackageManagerService` answers the way it
+        // answers any `pm` caller: the SecurityException is printed to the process's own output and
+        // `pm` exits non-zero. That pair — ran, spoke, refused — is what `shellRungResult` reads,
+        // and it leaves uninstall-for-user as the only remaining way to freeze a preinstalled app.
+        //
+        // The other two rungs answer FAILED whatever they throw. Neither reaches PMS as the device
+        // owner (the reflection rung's binder is double-wrapped through Shizuku's transport; the
+        // unprivileged rung is Thor's own uid), so a SecurityException from either describes a
+        // transport Thor could not set up, not a policy the platform applied. See their notes in
+        // `Dhizuku.setAppDisabledDetailed`.
+        //
+        // This was `false` while DhizukuSystemGateway uninstalled system apps unconditionally: a
+        // closed gate then would have removed Dhizuku's only working system-app freeze. Now that
+        // the gateway routes through the disable chain first, a closed gate would do exactly the
+        // same thing — the rung would be unreachable — so keeping it closed is no longer the
+        // conservative option, it is the one that breaks the feature.
+        //
+        // Unverified on hardware: no device with Dhizuku was available. What the gate protects does
+        // not depend on that — a *mechanical* failure (binder timeout, Dhizuku not authorised,
+        // package mid-update) cannot escalate, under Dhizuku exactly as under Shizuku, because
+        // every one of those arrives as a thrown exception and `execute` folds a throw into exit
+        // code -1, which `shellRungResult` will not read as a refusal at any output.
+        PrivilegeMode.DHIZUKU -> true
 
         // No privilege means no freeze at all; nothing can reach the destructive rung from here.
         PrivilegeMode.NONE -> false

@@ -375,6 +375,17 @@
          suspension. Shown when Thor cannot lift a suspension because Android only lets the
          privilege that applied it remove it (API 30+). -->
     <string name="suspend_owned_by_other_privilege">Can\'t unsuspend %1$s from here. It was suspended by %2$s, and Android only lets the same privilege lift it. Switch Thor back to that privilege mode and try again.</string>
+    <!-- %1$s is an app name. Shown when a preinstalled app cannot be frozen because this device
+         refused to disable it and this build of Android reserves "remove for one user" for uid 0.
+         Deliberately names no privilege mode: both the Shizuku and the Dhizuku gateway raise it,
+         and the refusal is the platform's under either. Root mode is offered because Thor's own
+         Root mode really is uid 0, so it is an instruction rather than a shrug. -->
+    <string name="freeze_system_app_requires_root">Can\'t freeze %1$s from here. This device wouldn\'t let Thor disable it, and Android only lets root remove a preinstalled app for one user. The app was left untouched — freezing it needs Thor\'s Root mode.</string>
+    <!-- %1$s is an app name, %2$s the platform's own words (e.g. "Failure [DELETE_FAILED_INTERNAL_ERROR]"),
+         or "exit code N" when it printed nothing. %2$s is passed through untranslated on purpose:
+         paraphrasing it away into "reflection is blocked or shell lacks permissions" named the
+         wrong cause, which is the defect this string replaces. -->
+    <string name="freeze_system_app_removal_failed">Can\'t freeze %1$s. This device wouldn\'t let Thor disable it, and removing it for this user also failed. Android reported: %2$s</string>
     <string name="unfreezing_app">Unfreezing %1$s…</string>
     <string name="uninstall_success">Uninstalled %1$s</string>
     <string name="error_app_info_missing">Error: App info missing for action</string>
