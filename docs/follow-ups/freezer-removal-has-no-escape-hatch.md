@@ -77,5 +77,11 @@ status quo and forecloses nothing.
 
 Whichever is chosen, the invariant must stay stated where the code enforces it. `removeFromFreezer`
 and `toggleManaged(add = false)` both order restore-before-delete on purpose, and both carry a
-comment saying so — a future refactor that "tidies" the ordering back reintroduces GH#310 silently,
-because every failure path still returns `Result.failure` rather than throwing.
+comment saying so — a future refactor that "tidies" the ordering back reintroduces GH#310 **silently**,
+because the privileged call reports a failure by *returning* `Result.failure`: nothing throws, no test
+that ignores the return value fails, and the only visible difference is a toast.
+
+Note the two failure modes are not the same shape, which is why both functions carry two guards. The
+privileged call returns; the durable steps around it — the Room write and `ShortcutManagerCompat` —
+report by **throwing**, and `:app` installs no `CoroutineExceptionHandler`, so an unguarded one takes
+the process rather than the toast.

@@ -290,6 +290,38 @@ class FreezerViewModelTest {
     }
 
     /**
+     * The manage sheet's half of the throw guard. The privileged call reports by returning, but the
+     * durable steps after it report by throwing, and `:app` installs no `CoroutineExceptionHandler`
+     * — unguarded, this escapes [androidx.lifecycle.viewModelScope] and takes the process, not the
+     * toast. The same try/catch covers `add = true`, whose `freezerRepository.add` can throw for the
+     * same reason.
+     */
+    @Test
+    fun `the manage sheet reports a raising delete rather than taking the process with it`() =
+        runTest {
+            freezer.add("a")
+            freezer.failRemoveWith("a", IllegalStateException("database is locked"))
+            val vm = viewModel()
+            val seen = events(vm)
+            runCurrent()
+
+            vm.toggleManaged("a", add = false)
+            runCurrent()
+
+            assertEquals(
+                "the restore still ran and succeeded — it is the delete after it that raised",
+                listOf("setAppSuspended:a:false", "setAppDisabled:a:false"),
+                system.calls
+            )
+            assertTrue("the throw left the row in place", freezer.contains("a"))
+            assertTrue(shortcuts.disabled.isEmpty())
+            assertEquals(
+                UiText.StringResource(R.string.error_format, "database is locked"),
+                seen.onlyToast()
+            )
+        }
+
+    /**
      * The vacuous success: a removal that reports success having made no privileged call at all.
      *
      * `allInstalledApps` is a rescan snapshot, and the suspend-mode freeze path never patches it, so

@@ -285,55 +285,72 @@ class FreezerViewModel(
 
     fun toggleManaged(packageName: String, add: Boolean) {
         viewModelScope.launch(ioDispatcher) {
-            if (add) {
-                // The blocked tier, enforced here and not only in the sheet that calls this.
-                // Adding does two things — it freezes the app now, and it enlists it in every
-                // later bulk run — so a surface that forgot to ask would hand the QS tile and
-                // the launcher shortcuts a target the in-app dialog refuses to even offer a
-                // confirm button for. The sheet still asks first; this is the backstop.
-                //
-                // A miss fails closed. allInstalledApps is a snapshot of the last full rescan,
-                // so between the tap and this coroutine a refresh can drop the entry — and the
-                // very next statement freezes. Treating "not found" as "not blocked" would let
-                // an unclassified system app through on exactly the timing where we know least
-                // about it. error_unsafe_skipped covers both readings: it says UNSAFE / safety
-                // check failed.
-                val app = _uiState.value.allInstalledApps
-                    .firstOrNull { it.packageName == packageName }
-                if (app == null || app.freezeTier == FreezeTier.BLOCKED) {
-                    emitToast(UiText.StringResource(R.string.error_unsafe_skipped))
-                    return@launch
-                }
-                val freezeResult = if (_uiState.value.freezerMode == FreezerMode.SUSPEND)
-                    manageAppUseCase.setAppSuspended(packageName, true)
-                else manageAppUseCase.setAppDisabled(packageName, true)
-                freezeResult
-                    .onSuccess {
-                        freezerRepository.add(packageName)
-                    }
-                    .onFailure { e ->
-                        emitToast(UiText.StringResource(R.string.error_format, e.message ?: ""))
-                    }
-            } else {
-                // Restore first, drop the row second — the same ordering [removeFromFreezer] uses,
-                // and for the same reason. This path already reported the failure, but over a row
-                // that was gone by the time the toast appeared: the app stayed frozen with nothing
-                // left to retry from (GH#310).
-                //
-                // forceUnfreeze rather than restoreApp(app.enabled, app.isSuspended), also as in
-                // [removeFromFreezer], and this switch is the shortest route to the trap that
-                // choice avoids: it is drawn from freezerPackageNames, which re-emits the instant
-                // the row lands, while the flags would come from the app lists, which only move on
-                // the next full rescan. So switching an app on and straight back off restores from
-                // a snapshot that still calls it active, plans nothing, and reports success having
-                // made no privileged call at all — the row goes, the app stays frozen.
-                manageAppUseCase.forceUnfreeze(packageName)
-                    .onFailure { e ->
-                        emitToast(UiText.StringResource(R.string.error_format, e.message ?: ""))
+            // Guarded for the same reason [removeFromFreezer]'s loop body is: the privileged calls
+            // report by returning a Result, but the durable steps around them — the Room write and
+            // ShortcutManagerCompat — report by throwing, and :app installs no
+            // CoroutineExceptionHandler, so one escaping here takes the process with it rather than
+            // the toast. Both branches are covered: `add` writes a row too.
+            try {
+                if (add) {
+                    // The blocked tier, enforced here and not only in the sheet that calls this.
+                    // Adding does two things — it freezes the app now, and it enlists it in every
+                    // later bulk run — so a surface that forgot to ask would hand the QS tile and
+                    // the launcher shortcuts a target the in-app dialog refuses to even offer a
+                    // confirm button for. The sheet still asks first; this is the backstop.
+                    //
+                    // A miss fails closed. allInstalledApps is a snapshot of the last full rescan,
+                    // so between the tap and this coroutine a refresh can drop the entry — and the
+                    // very next statement freezes. Treating "not found" as "not blocked" would let
+                    // an unclassified system app through on exactly the timing where we know least
+                    // about it. error_unsafe_skipped covers both readings: it says UNSAFE / safety
+                    // check failed.
+                    val app = _uiState.value.allInstalledApps
+                        .firstOrNull { it.packageName == packageName }
+                    if (app == null || app.freezeTier == FreezeTier.BLOCKED) {
+                        emitToast(UiText.StringResource(R.string.error_unsafe_skipped))
                         return@launch
                     }
-                freezerRepository.remove(packageName)
-                appShortcuts.disableAppShortcut(packageName)
+                    val freezeResult = if (_uiState.value.freezerMode == FreezerMode.SUSPEND)
+                        manageAppUseCase.setAppSuspended(packageName, true)
+                    else manageAppUseCase.setAppDisabled(packageName, true)
+                    freezeResult
+                        .onSuccess {
+                            freezerRepository.add(packageName)
+                        }
+                        .onFailure { e ->
+                            emitToast(
+                                UiText.StringResource(R.string.error_format, e.message ?: "")
+                            )
+                        }
+                } else {
+                    // Restore first, drop the row second — the same ordering [removeFromFreezer]
+                    // uses, and for the same reason. This path already reported the failure, but
+                    // over a row that was gone by the time the toast appeared: the app stayed
+                    // frozen with nothing left to retry from (GH#310).
+                    //
+                    // forceUnfreeze rather than restoreApp(app.enabled, app.isSuspended), also as
+                    // in [removeFromFreezer], and this switch is the shortest route to the trap
+                    // that choice avoids: it is drawn from freezerPackageNames, which re-emits the
+                    // instant the row lands, while the flags would come from the app lists, which
+                    // only move on the next full rescan. So switching an app on and straight back
+                    // off restores from a snapshot that still calls it active, plans nothing, and
+                    // reports success having made no privileged call at all — the row goes, the
+                    // app stays frozen.
+                    manageAppUseCase.forceUnfreeze(packageName)
+                        .onFailure { e ->
+                            emitToast(
+                                UiText.StringResource(R.string.error_format, e.message ?: "")
+                            )
+                            return@launch
+                        }
+                    freezerRepository.remove(packageName)
+                    appShortcuts.disableAppShortcut(packageName)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e("FreezeViewModel", "toggling watchlist membership for $packageName", e)
+                emitToast(UiText.StringResource(R.string.error_format, e.message ?: ""))
             }
         }
     }
