@@ -47,12 +47,39 @@ class Packages(private val app: Context) {
         else app.packageManager.getApplicationInfo(packageName, flags)
     }.getOrNull()
 
+    /**
+     * The canonical freeze test: a package is "not disabled" only when it is BOTH enabled AND
+     * installed for this user.
+     *
+     * `enabled` on its own — all this used to read — is wrong in the one direction that matters.
+     * Thor's other freeze mechanic is `pm uninstall -k --user N`, which clears FLAG_INSTALLED and
+     * leaves `enabled` **true**, so a system app frozen that way (this build's gated fallback, and
+     * every uninstall-only build before it) read back as *not* disabled. A disable rung verified
+     * against that answer can never confirm the freeze it just performed, and an unfreeze can never
+     * confirm it finished. Same conjunction as `AppFreezeStateReader.candidateOf` and
+     * `Shizuku.setAppDisabledDetailed`, so "frozen" means one thing across Thor.
+     *
+     * The default lookup flags already carry MATCH_UNINSTALLED_PACKAGES, which is what lets such a
+     * package resolve here at all instead of throwing.
+     *
+     * An unreadable package still answers **false**, unchanged — and that is fail-closed in one
+     * direction only, not in both. In the direction that can cost something, a disable rung verified
+     * with `isAppDisabled(pkg) == true` reads "I could not read it" as "it did not work" and reports
+     * the failure instead of claiming a freeze it cannot see. `Dhizuku.setAppDisabledDetailed`, the
+     * caller added alongside this change, runs the same comparison in the *enable* direction too,
+     * where an unreadable package satisfies it instead.
+     *
+     * Left asymmetric on purpose. Flipping the null branch would hand the freeze direction the
+     * answer that lets a package Thor cannot see satisfy a disable it never performed — the same
+     * direction whose failure can escalate to removing the package for the user. The enable
+     * direction has no such cliff: it is only reachable for a package that was readable when the
+     * chain started and vanished mid-chain, and both unfreeze paths re-read `ApplicationInfo`
+     * themselves before reporting success rather than trusting this predicate.
+     */
     fun isAppDisabled(packageName: String): Boolean =
-        getApplicationInfoOrNull(packageName)?.enabled?.not() ?: false
-
-    fun isAppHidden(packageName: String): Boolean = getApplicationInfoOrNull(packageName)?.let {
-        (ApplicationInfo::class.java.getField("privateFlags").get(it) as Int) and 1 == 1
-    } ?: false
+        getApplicationInfoOrNull(packageName)?.let {
+            !(it.enabled && (it.flags and ApplicationInfo.FLAG_INSTALLED) != 0)
+        } ?: false
 
     fun isAppStopped(packageName: String): Boolean =
         getApplicationInfoOrNull(packageName)?.run { flags and ApplicationInfo.FLAG_STOPPED == ApplicationInfo.FLAG_STOPPED }

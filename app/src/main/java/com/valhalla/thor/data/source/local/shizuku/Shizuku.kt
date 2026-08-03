@@ -95,6 +95,109 @@ internal fun isPolicyRefusal(error: Throwable?): Boolean {
     return false
 }
 
+/**
+ * How a shell rung reads its own `(exitCode, output)` pair. Shared by both chains, and pure, so the
+ * one judgement that can arm a destructive fallback is reachable from a plain JVM test.
+ *
+ * The `exitCode > 0` guard is the whole point and is not defensive padding. Both `execute`
+ * helpers fold a *thrown* failure into `-1 to err.stackTraceToString()`, so on that path the text
+ * being classified is **Thor's own stack trace**, not a word `pm` said — and the exceptions that
+ * land there are precisely the plumbing ones: Shizuku's permission not granted, Dhizuku's client
+ * not authorised, a dead binder. Several of those are themselves `SecurityException`s, so a
+ * text match would read "the transport is not set up" as "`PackageManagerService` refuses this
+ * device" — and [com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed] spends that
+ * distinction on whether Thor may fall back to `pm uninstall -k`, which clears `FLAG_INSTALLED`
+ * for the user. A transient failure must never buy that.
+ *
+ * -1 is `execute`'s documented "no exit code to read at all" sentinel — thrown exception, null
+ * binder, timeout (see [SystemAppRemovalOutcome.exitCode]). Its timeout branch does carry `pm`'s
+ * real output, but a timeout is a mechanical failure too, so the same answer is right for both
+ * halves of the sentinel. A refusal is only ever a refusal when `pm` ran, spoke, and exited
+ * non-zero of its own accord.
+ */
+internal fun shellRungResult(exitCode: Int, output: String?): RungResult = when {
+    exitCode == 0 -> RungResult.RAN
+    // `pm` reports a refusal by printing the SecurityException and exiting non-zero, so the exit
+    // code alone cannot tell a refusal from a failure — but it can tell `pm` spoke at all.
+    exitCode > 0 && isPolicyRefusal(output) -> RungResult.REFUSED_BY_POLICY
+    else -> RungResult.FAILED
+}
+
+/**
+ * What `pm uninstall -k --user N` actually said about a preinstalled app.
+ *
+ * A bare `Boolean` used to come back from here, and the string next to it was thrown away — which
+ * is how the single most useful sentence in the whole freeze flow,
+ * `Failure [only root can delete system app for a particular user]`, became the user-facing
+ * "Action failed. This may happen if reflection is blocked or shell lacks permissions." That
+ * generic sentence names the wrong cause: nothing was blocked and no permission was missing, the
+ * platform simply reserved the operation for uid 0.
+ *
+ * [platformMessage] is whatever `pm` printed, verbatim and untranslated, or null when it printed
+ * nothing at all. Note that `pm` prints its `Failure [...]` line on **stdout**, not stderr
+ * (verified on an Android 17 emulator with `2>&1 1>/dev/null`, which printed nothing) — so
+ * [Shizuku.execute]'s stdout-preferring `ifBlank` fold is what makes it reachable here.
+ *
+ * [exitCode] is -1 when there was no exit code to read at all — a thrown exception, a null binder,
+ * a timeout — matching the same convention [Shizuku.execute] uses.
+ */
+data class SystemAppRemovalOutcome(
+    val succeeded: Boolean,
+    val exitCode: Int,
+    val platformMessage: String?,
+)
+
+/**
+ * Did the platform refuse this removal because it reserves it for root?
+ *
+ * `PackageManagerShellCommand.java:2281-2293` on android17-release requires
+ * `Binder.getCallingUid() == Process.ROOT_UID` before it will honour `--user` on a `FLAG_SYSTEM`
+ * package, and answers everyone else with
+ * `Failure [only root can delete system app for a particular user]`. That guard is absent from
+ * every android16 branch, which is why the identical command succeeds on API 36.
+ *
+ * Deliberately narrow: it matches that one sentence and nothing else. A looser test ("requires
+ * root", "permission denied") would relabel ordinary failures as a platform limit and point the
+ * user at Root mode for a problem root cannot fix. Everything this does not match still reaches the
+ * user *with `pm`'s own words attached*, so an unrecognised refusal is a worse message, not a lost
+ * one.
+ *
+ * This is **not** [isPolicyRefusal]. That one reads a `SecurityException` out of
+ * `setEnabledSetting` and decides whether the destructive fallback may be *reached*; this one reads
+ * the destructive fallback's own refusal and decides what to *say*. The `Failure [...]` line
+ * carries no "SecurityException" text, so `isPolicyRefusal` answers false for it — correctly.
+ */
+internal fun isRootOnlySystemAppRemoval(text: String?): Boolean =
+    text != null && text.contains("only root can delete system app", ignoreCase = true)
+
+/**
+ * The one line of [platformMessage][SystemAppRemovalOutcome.platformMessage] worth putting in front
+ * of a user.
+ *
+ * `pm`'s `Failure [...]` is a single line, but neither `execute` hands this back cleanly: both
+ * `Shizuku.execute` and `DhizukuHelper.execute` fold a thrown failure into `stackTraceToString()`,
+ * and a stack trace in a snackbar helps nobody. Its first line is the exception and its message,
+ * which is the part worth reading; the full text is already in the log line the helper wrote, so
+ * nothing is lost. When `pm` printed nothing at all there is still the exit code, which is more
+ * than the "Action failed. This may happen if reflection is blocked or shell lacks permissions."
+ * this whole change exists to retire ever carried.
+ *
+ * **Display only.** Every classifier — [isRootOnlySystemAppRemoval], [isPolicyRefusal] — reads the
+ * *whole* message, because `pm` can print its `Failure [...]` line behind linker noise and a
+ * first-line-only classifier would drop an Android 17 user into the generic branch. Callers must
+ * classify first and reach for this second.
+ *
+ * Shared by both gateways rather than written out in each. It was written out in each, briefly, and
+ * only one of the two copies trimmed — so the Dhizuku freeze could hand a whole stack trace to the
+ * snackbar while its KDoc claimed to be doing what the Shizuku one did.
+ */
+internal fun SystemAppRemovalOutcome.displayLine(): String =
+    platformMessage
+        ?.lineSequence()
+        ?.map { it.trim() }
+        ?.firstOrNull { it.isNotEmpty() }
+        ?: "exit code $exitCode"
+
 /** One privileged attempt, plus the label that names it in the log line when it is the one that stuck. */
 internal class EnableRung(val label: String, val attempt: () -> RungResult)
 
@@ -249,9 +352,10 @@ object Shizuku {
      *
      * Only the preinstalled-app freeze needs this. It is the one caller whose next move depends on
      * the difference between "the platform refused" and "that did not work", because its next move
-     * is `pm uninstall -k --user N` — which keeps the app's data, but clears its installed-for-this-user
-     * bit and its runtime permission grants, and so is worth reaching only where the platform left
-     * no alternative.
+     * is `pm uninstall -k --user N` — which keeps the app's data but clears its
+     * installed-for-this-user bit, and so is worth reaching only where the platform left no
+     * alternative. (This used to say "and its runtime permission grants" as well; that was a guess
+     * and it measured false — see [freezeSystemAppForUser].)
      */
     fun setAppDisabledDetailed(
         context: Context,
@@ -293,13 +397,7 @@ object Shizuku {
                 "pm enable --user $userId $escapedPackage"
             }
             val (code, output) = execute(command)
-            when {
-                code == 0 -> RungResult.RAN
-                // `pm` reports a refusal by printing the SecurityException and exiting non-zero,
-                // so the exit code alone cannot tell a refusal from a timeout.
-                isPolicyRefusal(output) -> RungResult.REFUSED_BY_POLICY
-                else -> RungResult.FAILED
-            }
+            shellRungResult(code, output)
         }
 
         val reflectionRung = EnableRung(RUNG_REFLECTION) {
@@ -962,17 +1060,32 @@ object Shizuku {
      * *not* do: it keeps the data directories, not the whole `PackageUserState` — `installed` still
      * goes false, which is the sentence two paragraphs above.
      *
-     * **This rung does not exist at shell uid on API 37.** Measured on an Android 17 emulator
-     * (`CP31.260623.005`), the identical command that succeeds on API 36 fails:
+     * **This rung does not exist at shell uid on API 37 — and it is the only thing that does not.**
+     * Measured on two Android 17 builds (`CP31.260623.005`, and `CE2A.260420.019` on
+     * `com.android.wallpaperbackup`), at uid 2000, restoring state afterwards:
      * ```
-     * pm uninstall -k --user 0 com.android.egg
+     * pm uninstall -k --user 0 <system pkg>
      *   API 36 -> Success, exit 0
      *   API 37 -> Failure [only root can delete system app for a particular user], exit 1
+     * pm disable-user --user 0 <system pkg>   API 37 -> "new state: disabled-user", enabled=3
+     * pm suspend      --user 0 <system pkg>   API 37 -> "new suspended state: true", suspended=true
      * ```
-     * The package is left untouched, so the caller sees an honest failure rather than a wrong
-     * state. On Android 17 a Shizuku running at uid 2000 therefore ends the chain at "could not
-     * disable" instead of escalating; a Shizuku started as root (uid 0) is unaffected. This is a
-     * platform restriction, not something to work around — do not add a rung below it.
+     * So Android 17 did **not** close the shell uid out of freezing preinstalled apps; it closed it
+     * out of *removing* them for one user. `PackageManagerShellCommand.java:2281-2293` on
+     * android17-release requires `Binder.getCallingUid() == Process.ROOT_UID` before honouring
+     * `--user` on a `FLAG_SYSTEM` package, and that guard exists in no android16 branch.
+     * Nothing else moved: `setEnabledSetting` is untouched, and
+     * `Flags.protectSystemRequiredPackages()` is not live on either build —
+     * `device_config get package_manager_service protect_system_required_packages` reads null.
+     *
+     * That matters for who can actually reach this line. On stock Android 17 rung 2 succeeds, so
+     * the chain never gets here at all. The devices that do get here are the ones whose *OEM*
+     * refuses to let the shell uid disable a system package (Xiaomi HyperOS; see
+     * `uninstallFreezeFallbackAllowed`), and on Android 17 those users have no mechanic left at
+     * shell uid. The package is left untouched, so the caller sees an honest failure rather than a
+     * wrong state — and the failure now carries `pm`'s own sentence so it can name root as the way
+     * out. A Shizuku started as root (uid 0) clears the guard and is unaffected. This is a platform
+     * restriction, not something to work around — do not add a rung below it.
      *
      * The adb client's scary "there is no way to remove the remaining data" warning about `-k` is
      * about orphaned data left behind by a *full* uninstall of a user app. It does not apply here,
@@ -980,13 +1093,34 @@ object Shizuku {
      *
      * Kept separate from [uninstallApp] on purpose: adding `-k` there would silently make the
      * user-facing "uninstall this app" feature leave data behind on every app it removes.
+     *
+     * Returns [SystemAppRemovalOutcome] rather than a `Boolean` because the string beside the exit
+     * code is the whole point of this rung's failure; see that class for what dropping it cost.
      */
-    fun freezeSystemAppForUser(packageName: String): Boolean = try {
+    fun freezeSystemAppForUser(packageName: String): SystemAppRemovalOutcome = try {
         val currentUser = getCurrentUserId()
-        execute("pm uninstall -k --user $currentUser ${packageName.escapeForShell()}").first == 0
+        val (code, output) = execute(
+            "pm uninstall -k --user $currentUser ${packageName.escapeForShell()}"
+        )
+        val platformMessage = output?.trim()?.ifBlank { null }
+        if (code != 0) {
+            Logger.e(
+                "Shizuku",
+                "freezeSystemAppForUser($packageName): `pm uninstall -k --user $currentUser` " +
+                    "exited $code — ${platformMessage ?: "no output"}"
+            )
+        }
+        SystemAppRemovalOutcome(
+            succeeded = code == 0,
+            exitCode = code,
+            platformMessage = platformMessage,
+        )
     } catch (e: Exception) {
         Logger.e("Shizuku", "freezeSystemAppForUser($packageName) failed", e)
-        false
+        // exitCode -1: there was no exit code to read, matching what execute() reports for the
+        // same situation. The message is still carried out — a binder or user-id failure is as
+        // worth showing as a platform refusal.
+        SystemAppRemovalOutcome(succeeded = false, exitCode = -1, platformMessage = e.message)
     }
 
     fun reinstallApp(packageName: String): Boolean {

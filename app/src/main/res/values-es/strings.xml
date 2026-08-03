@@ -435,6 +435,8 @@
     
     <!-- Missing Translations -->
     <string name="suspend_owned_by_other_privilege">No se puede reanudar %1$s desde aquí. Fue suspendida por %2$s y Android solo permite que el mismo privilegio la reanude. Cambia Thor a ese modo de privilegio e inténtalo de nuevo.</string>
+    <string name="freeze_system_app_requires_root">No se puede congelar %1$s desde aquí. Este dispositivo no ha dejado que Thor la desactive y Android solo permite que root elimine una app preinstalada para un solo usuario. La app se ha quedado intacta: para congelarla necesitas el modo Root de Thor.</string>
+    <string name="freeze_system_app_removal_failed">No se puede congelar %1$s. Este dispositivo no ha dejado que Thor la desactive y eliminarla para este usuario también ha fallado. Android informó: %2$s</string>
     <string name="auto_reinstall">Reinstalación automática de apps</string>
     <string name="auto_reinstall_desc">Mantener automáticamente Google Play Store como el instalador registrado para permitir actualizaciones en segundo plano</string>
     <string name="legacy_extension_title">Extensión heredada detectada</string>
