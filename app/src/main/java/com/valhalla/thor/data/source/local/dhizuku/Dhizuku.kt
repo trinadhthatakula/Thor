@@ -108,6 +108,9 @@ object DhizukuHelper {
      * documented recovery could not work and only a force-stop would. Observed on an Android 17
      * device: grant, Refresh, still red; force-stop and relaunch, `active=DHIZUKU`.
      *
+     * That Refresh reaches here at all is the other half of the same fix — it used to reload the
+     * app list and nothing else, so the probe never re-ran; see `HomeViewModel.refreshPrivileges`.
+     *
      * Shizuku needs no equivalent because `PrivilegeManager` owns its binder and
      * permission-result listeners; Dhizuku 2.6.0 publishes no connection callback to register, so
      * the retry has to be pulled from the probe rather than pushed from an event.
@@ -422,12 +425,17 @@ object DhizukuHelper {
      * useful string in the whole flow, so it is passed back to the caller rather than reduced to
      * false — see [SystemAppRemovalOutcome].
      *
-     * The identity claim above is now **measured**, on an Android 17 device with Dhizuku as device
-     * owner: rung 1 is refused for the device-owner uid while the same `pm disable-user --user 0`
-     * exits 0 at shell uid on that very device, so the refusal belongs to the identity and not to
-     * the platform version. What remains unmeasured is this rung's own answer — the user-id bug
-     * fixed alongside this comment threw before `pm` ever ran, so nothing on that pass reached
-     * `pm uninstall` to find out whether Android 17 replies with the root-only line here too.
+     * Both claims above are now **measured**, on an Android 17 device with Dhizuku as device owner,
+     * freezing `com.android.egg`. Rung 1 is refused for the device-owner uid while the same
+     * `pm disable-user --user 0` exits 0 at shell uid on that very device, so the refusal belongs to
+     * the identity and not to the platform version. This rung then ran and answered exactly as
+     * predicted:
+     * ```
+     * `pm uninstall -k --user 0 com.android.egg` exited 1:
+     *   Failure [only root can delete system app for a particular user]
+     * ```
+     * — the same sentence the shell uid gets, reaching the user as the Root-mode message. The
+     * package was left untouched: `installed=true enabled=0`, `ceDataInode` unchanged.
      */
     fun freezeSystemAppForUser(packageName: String): SystemAppRemovalOutcome =
         removeForUser(packageName, keepData = true)
