@@ -51,13 +51,27 @@ import java.io.File
 // calls rather than simulating a device.
 
 /**
+ * One ordered log shared by several fakes.
+ *
+ * Each fake already records what it was asked to do, which answers "did this happen". No collection
+ * of those per-fake lists answers "did it happen *before* that", and some contracts are purely
+ * ordering claims — GH#310's is exactly one: restore the app, *then* delete its watchlist row. Hand
+ * the same list to several fakes and the interleaving across the privilege boundary, Room and the
+ * launcher becomes a single list to compare by value.
+ *
+ * Entries are namespaced by the fake that wrote them, except [FakeSystemRepository], which keeps its
+ * own `"method:arg"` format so a trace assertion reads the same as a `calls` one.
+ */
+typealias CallTrace = MutableList<String>
+
+/**
  * Records every privileged call in order and answers success unless the test planted a failure.
  *
  * The recorded strings are the whole contract: "was `setAppDisabled` reached at all for this
  * package" is exactly the question a tier gate has to answer, and a list of strings compares by
  * value without a matcher DSL.
  */
-class FakeSystemRepository : SystemRepository {
+class FakeSystemRepository(private val trace: CallTrace? = null) : SystemRepository {
 
     /** Every call reaching the privilege layer, in order, as `"method:arg[:arg]"`. */
     val calls = mutableListOf<String>()
@@ -71,6 +85,7 @@ class FakeSystemRepository : SystemRepository {
 
     private fun record(call: String): Result<Unit> {
         calls += call
+        trace?.add(call)
         return failures[call]?.let { Result.failure(it) } ?: Result.success(Unit)
     }
 
@@ -155,21 +170,30 @@ class FakeAppRepository(initialApps: List<AppInfo> = emptyList()) : AppRepositor
  * The freezer watchlist. [added] / [removed] keep the write history even when the write is a no-op
  * on the set, because "did this path touch membership at all" is what the membership gates decide.
  */
-class FakeFreezerRepository(initial: Set<String> = emptySet()) : FreezerRepository {
+class FakeFreezerRepository(
+    initial: Set<String> = emptySet(),
+    private val trace: CallTrace? = null
+) : FreezerRepository {
 
     private val packages = MutableStateFlow(initial)
 
     val added = mutableListOf<String>()
     val removed = mutableListOf<String>()
 
+    private val addFailures = mutableMapOf<String, Throwable>()
     private val removeFailures = mutableMapOf<String, Throwable>()
 
     /**
-     * Make the delete of [packageName] raise.
+     * Make the write of [packageName] raise.
      *
      * A throw rather than a `Result`, because that is how Room reports a failed write: a caller
      * that only checks the privileged call's `Result` never learns this one happened at all.
      */
+    fun failAddWith(packageName: String, error: Throwable) {
+        addFailures[packageName] = error
+    }
+
+    /** As [failAddWith], for the delete. */
     fun failRemoveWith(packageName: String, error: Throwable) {
         removeFailures[packageName] = error
     }
@@ -179,7 +203,9 @@ class FakeFreezerRepository(initial: Set<String> = emptySet()) : FreezerReposito
     override suspend fun getAllPackageNames(): List<String> = packages.value.toList()
 
     override suspend fun add(packageName: String) {
+        addFailures[packageName]?.let { throw it }
         added += packageName
+        trace?.add("freezer.add:$packageName")
         packages.update { it + packageName }
     }
 
@@ -188,6 +214,7 @@ class FakeFreezerRepository(initial: Set<String> = emptySet()) : FreezerReposito
         // list of rows that actually went.
         removeFailures[packageName]?.let { throw it }
         removed += packageName
+        trace?.add("freezer.remove:$packageName")
         packages.update { it - packageName }
     }
 
@@ -508,7 +535,8 @@ class FakePermissionRepository(
 class FakeAppShortcutController(
     // Settable: the pin affordances are hidden on a launcher that refuses pin requests, and that
     // branch is only reachable if the answer can be false.
-    var pinSupported: Boolean = true
+    var pinSupported: Boolean = true,
+    private val trace: CallTrace? = null
 ) : AppShortcutController {
 
     val disabled = mutableListOf<String>()
@@ -516,8 +544,20 @@ class FakeAppShortcutController(
     val pinned = mutableListOf<String>()
     val pinnedBulkActions = mutableListOf<String>()
 
+    private val disableFailures = mutableMapOf<String, Throwable>()
+
+    /**
+     * Make disabling [packageName]'s shortcut raise, as `ShortcutManagerCompat` does — it reports a
+     * refused or rate-limited request by throwing, never by returning anything a caller can check.
+     */
+    fun failDisableWith(packageName: String, error: Throwable) {
+        disableFailures[packageName] = error
+    }
+
     override fun disableAppShortcut(packageName: String) {
+        disableFailures[packageName]?.let { throw it }
         disabled += packageName
+        trace?.add("shortcut.disable:$packageName")
     }
 
     override fun refreshAppShortcut(packageName: String) {

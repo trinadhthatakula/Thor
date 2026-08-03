@@ -19,6 +19,7 @@ import com.valhalla.thor.presentation.FakeSystemRepository
 import com.valhalla.thor.presentation.MainDispatcherRule
 import com.valhalla.thor.presentation.userApp
 import com.valhalla.thor.util.UiText
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -68,12 +69,23 @@ class FreezerViewModelTest {
     private lateinit var shortcuts: FakeAppShortcutController
     private lateinit var privilege: FakePrivilegeStateProvider
 
+    /**
+     * The three fakes' calls in one list.
+     *
+     * `system.calls`, `freezer.removed` and `shortcuts.disabled` each say what happened to them;
+     * none of them, alone or side by side, says what happened *first*. Restore-before-delete is
+     * nothing but an ordering claim, so it needs an ordered assertion — and one that fails on the
+     * happy path, where the per-fake lists are identical either way round.
+     */
+    private lateinit var trace: MutableList<String>
+
     @Before
     fun setUp() {
+        trace = mutableListOf()
         appRepository = FakeAppRepository()
-        system = FakeSystemRepository()
-        freezer = FakeFreezerRepository()
-        shortcuts = FakeAppShortcutController()
+        system = FakeSystemRepository(trace)
+        freezer = FakeFreezerRepository(trace = trace)
+        shortcuts = FakeAppShortcutController(trace = trace)
         privilege = FakePrivilegeStateProvider()
     }
 
@@ -112,6 +124,7 @@ class FreezerViewModelTest {
         val vm = viewModel()
         val seen = events(vm)
         vm.selectAll(setOf("a", "b"))
+        trace.clear() // the two rows above are scaffolding; the trace is about the run itself
 
         vm.removeFromFreezer(setOf("a", "b"))
         runCurrent()
@@ -126,6 +139,17 @@ class FreezerViewModelTest {
         )
         assertEquals("both rows go, because both apps came back", listOf("a", "b"), freezer.removed)
         assertEquals(listOf("a", "b"), shortcuts.disabled)
+        // The ordering itself, which is the whole fix and which the lists above cannot show: the
+        // row goes only after the app is back, one package finished before the next is started.
+        assertEquals(
+            listOf(
+                "setAppSuspended:a:false", "setAppDisabled:a:false",
+                "freezer.remove:a", "shortcut.disable:a",
+                "setAppSuspended:b:false", "setAppDisabled:b:false",
+                "freezer.remove:b", "shortcut.disable:b"
+            ),
+            trace
+        )
         assertTrue("nothing is left selected", vm.uiState.value.multiSelection.isEmpty())
         // The count is what was removed, not what was asked for. They agree here and only here.
         assertEquals(
@@ -202,6 +226,11 @@ class FreezerViewModelTest {
             ),
             system.calls
         )
+        assertEquals(
+            "and both failures stay selected, not just the first",
+            setOf("b", "c"),
+            vm.uiState.value.multiSelection
+        )
     }
 
     /**
@@ -255,6 +284,83 @@ class FreezerViewModelTest {
             assertEquals(
                 "so it stays selected, like any other failure",
                 setOf("b"),
+                vm.uiState.value.multiSelection
+            )
+        }
+
+    /**
+     * The one throw that must *not* be handled.
+     *
+     * `CancellationException` is an `Exception`, so the catch that turns a failure into a toast
+     * would swallow it too — and a cancelled coroutine that keeps going is a view model still
+     * issuing privileged calls for a screen that is gone. Hence the rethrow ahead of it. The run
+     * stops where it was: no report, no tidying of the selection, and nothing at all done for `c`.
+     *
+     * That leaving-things-mid-way is the point, and why cancellation cannot be treated as one more
+     * per-package failure: a failure means "this one did not work, carry on", and cancellation means
+     * "stop".
+     */
+    @Test
+    fun `a cancellation stops the run instead of being reported as a failure`() = runTest {
+        listOf("a", "b", "c").forEach { freezer.add(it) }
+        freezer.failRemoveWith("b", CancellationException("the screen went away"))
+        val vm = viewModel()
+        val seen = events(vm)
+        vm.selectAll(setOf("a", "b", "c"))
+
+        vm.removeFromFreezer(setOf("a", "b", "c"))
+        runCurrent()
+
+        assertEquals("what finished before the cancellation still counts", listOf("a"), freezer.removed)
+        assertEquals(
+            "c is never begun — the loop ends rather than moving on",
+            listOf(
+                "setAppSuspended:a:false", "setAppDisabled:a:false",
+                "setAppSuspended:b:false", "setAppDisabled:b:false"
+            ),
+            system.calls
+        )
+        assertTrue("nothing is reported, because there is nobody left to report to", seen.isEmpty())
+        assertEquals(
+            "and the selection is left as it was, not tidied up on the way out",
+            setOf("a", "b", "c"),
+            vm.uiState.value.multiSelection
+        )
+    }
+
+    /**
+     * The launcher step raising, which is the one failure that lands after the row is already gone.
+     *
+     * It counts as a failure even so. The alternative — treating the package as removed because the
+     * part that mattered worked — would hide a stale live shortcut, and a live shortcut for an app
+     * no longer in the freezer is a route back into freezing it from the launcher. Reporting is the
+     * cheap side to be wrong on: the app is thawed and the row is gone, so nothing is stranded.
+     */
+    @Test
+    fun `a shortcut that will not be disabled is still reported, though the row has gone`() =
+        runTest {
+            freezer.add("a")
+            shortcuts.failDisableWith("a", IllegalStateException("shortcut rate limit exceeded"))
+            val vm = viewModel()
+            val seen = events(vm)
+            vm.selectAll(setOf("a"))
+
+            vm.removeFromFreezer(setOf("a"))
+            runCurrent()
+
+            assertEquals(
+                "the restore ran and the row went — the invariant held all the way through",
+                listOf("setAppSuspended:a:false", "setAppDisabled:a:false"),
+                system.calls
+            )
+            assertEquals(listOf("a"), freezer.removed)
+            assertEquals(
+                UiText.StringResource(R.string.error_format, "shortcut rate limit exceeded"),
+                seen.onlyToast()
+            )
+            assertEquals(
+                "reported as failed, so it stays selected",
+                setOf("a"),
                 vm.uiState.value.multiSelection
             )
         }
@@ -320,6 +426,34 @@ class FreezerViewModelTest {
                 seen.onlyToast()
             )
         }
+
+    /**
+     * The other half of that guard, and the half the reported finding did not mention: `add = true`
+     * writes a row too, so its `freezerRepository.add` can raise for exactly the same reason.
+     *
+     * The app is left frozen with no row, which is the GH#310 shape — but arrived at from the other
+     * end, and self-correcting rather than silent: the freeze is what the user asked for, the
+     * failure is reported, and the Freezer screen's import prompt offers a disabled app back. What
+     * is being pinned here is only that the throw is caught at all.
+     */
+    @Test
+    fun `the manage sheet reports a raising add rather than taking the process with it`() = runTest {
+        appRepository.apps.value = listOf(userApp("a"))
+        freezer.failAddWith("a", IllegalStateException("database is locked"))
+        val vm = viewModel()
+        val seen = events(vm)
+        runCurrent()
+
+        vm.toggleManaged("a", add = true)
+        runCurrent()
+
+        assertEquals("the freeze itself went through", listOf("setAppDisabled:a:true"), system.calls)
+        assertFalse("it is the row that did not land", freezer.contains("a"))
+        assertEquals(
+            UiText.StringResource(R.string.error_format, "database is locked"),
+            seen.onlyToast()
+        )
+    }
 
     /**
      * The vacuous success: a removal that reports success having made no privileged call at all.
@@ -396,5 +530,16 @@ class FreezerViewModelTest {
             )
             assertFalse("and only then does the row go", freezer.contains("a"))
             assertEquals(listOf("a"), shortcuts.disabled)
+            // "And only then" as an assertion rather than a comment: this path had the same
+            // delete-first ordering as the bulk one, and reported its failure over a row that was
+            // already gone.
+            assertEquals(
+                listOf(
+                    "setAppSuspended:a:true", "freezer.add:a",
+                    "setAppSuspended:a:false", "setAppDisabled:a:false",
+                    "freezer.remove:a", "shortcut.disable:a"
+                ),
+                trace
+            )
         }
 }
