@@ -40,6 +40,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -146,6 +147,7 @@ class AppListViewModel(
     private var sizeJob: Job? = null
     private var refreshIndicatorJob: Job? = null
     private var permissionIndexJob: Job? = null
+    private var permissionRefreshJob: Job? = null
     private val _rawState = MutableStateFlow(AppListUiState())
 
     // One-off UI feedback (toasts, freezer prompt). A buffered Channel fires each event exactly
@@ -193,14 +195,23 @@ class AppListViewModel(
      * banner for a permission the user granted ten seconds later and keep showing it until the
      * process died.
      *
-     * Off the main thread because the very first call resolves the checker's `by lazy`
+     * Off the main thread because the very first call resolves the checker's cached
      * `getPermissionInfo` binder round trip, and the callers are a lifecycle observer and an
      * activity-result callback — both of which run on the main thread, on resume, which is exactly
      * where a blocking package-manager call is most expensive.
+     *
+     * Strictly last-read-wins. The result callback and `ON_RESUME` fire within milliseconds of each
+     * other when the user answers the dialog, so two reads can be in flight at once — and without
+     * this, a slower earlier read that saw `Denied` could land *after* the newer one that saw the
+     * grant, putting the banner back up over a permission the user just granted. Cancelling the
+     * previous job closes most of the window and [ensureActive] closes the rest: a read that lost
+     * the race is cancelled between the binder call and the state write, so it never publishes.
      */
     fun refreshInstalledAppsPermission() {
-        viewModelScope.launch(ioDispatcher) {
+        permissionRefreshJob?.cancel()
+        permissionRefreshJob = viewModelScope.launch(ioDispatcher) {
             val permission = installedAppsPermission.state()
+            ensureActive()
             _rawState.update { it.copy(installedAppsPermission = permission) }
         }
     }

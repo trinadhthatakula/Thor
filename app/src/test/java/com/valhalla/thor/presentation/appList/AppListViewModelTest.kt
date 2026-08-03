@@ -492,4 +492,38 @@ class AppListViewModelTest {
             vm.uiState.value.installedAppsPermission
         )
     }
+
+    @Test
+    fun `a superseded permission read is dropped rather than published late`() = runTest {
+        // The result callback and ON_RESUME both fire within milliseconds when the user answers the
+        // dialog, so two reads are genuinely in flight at once. The stale one must not win: landing
+        // an older Denied after the newer Granted puts the banner back over a permission the user
+        // just granted, and it would stay there until the next resume.
+        //
+        // What is asserted is the supersede itself — the older read is cancelled before it ever
+        // reaches the package manager, so it has nothing to publish. The narrower interleaving,
+        // where the older read already got its answer and is descheduled just short of the state
+        // write, is what ensureActive() covers; it needs two real threads to stage and cannot be
+        // provoked on a single-threaded test dispatcher, where each job runs to completion.
+        val gate = FakeInstalledAppsPermissionGate(InstalledAppsPermission.Denied)
+        val vm = viewModel(installedApps = gate)
+        runCurrent()
+        val callsAfterInit = gate.stateCalls
+
+        // Both queued before the dispatcher runs either — the in-flight case, not a sequential one.
+        vm.refreshInstalledAppsPermission()
+        gate.permission = InstalledAppsPermission.Granted
+        vm.refreshInstalledAppsPermission()
+        runCurrent()
+
+        assertEquals(
+            "the superseded read should never have reached the package manager",
+            callsAfterInit + 1,
+            gate.stateCalls
+        )
+        assertEquals(
+            InstalledAppsPermission.Granted,
+            vm.uiState.value.installedAppsPermission
+        )
+    }
 }
