@@ -489,8 +489,10 @@ object DhizukuHelper {
             "DhizukuHelper",
             "setAppSuspended($packageName, suspended=$suspended) unconfirmed — FLAG_SUSPENDED reads " +
                 "${readSuspended()}. From API 30 a suspension can only be lifted by the identity that " +
-                "recorded it, and Dhizuku can only ever act as $SHELL_SUSPENDER_IDENTITY, so one " +
-                "recorded by Thor's root mode needs root mode to clear it."
+                "recorded it, and without DUMP this process cannot read which identity that is: the " +
+                "shell rung's `pm` names $SHELL_SUSPENDER_IDENTITY, the reflection rung names " +
+                "${BuildConfig.APPLICATION_ID}, and neither is confirmed against what the platform " +
+                "actually recorded. A suspension recorded by Thor's root mode needs root mode to clear it."
         )
         return false
     }
