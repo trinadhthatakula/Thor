@@ -426,6 +426,7 @@
 
     
     <!-- Missing Translations -->
+    <string name="removed_from_freezer_partial_failure">已从冻结列表中移除 %1$d/%2$d 个应用（%3$d 个失败）</string>
     <string name="suspend_owned_by_other_privilege">无法在此解除 %1$s 的暂停。它由 %2$s 暂停，而 Android 只允许同一权限方解除。请将 Thor 切换回该权限模式后重试。</string>
     <string name="auto_reinstall">自动重新安装应用</string>
     <string name="auto_reinstall_desc">自动保留 Google Play 商店作为主安装程序，以启用后台更新</string>

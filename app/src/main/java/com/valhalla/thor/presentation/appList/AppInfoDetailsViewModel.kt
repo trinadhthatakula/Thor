@@ -49,10 +49,9 @@ class AppInfoDetailsViewModel(
     private val manageAppUseCase: ManageAppUseCase,
     private val freezeAppUseCase: FreezeAppUseCase,
     private val freezerRepository: FreezerRepository,
-    // The narrow port, not the concrete FreezerShortcutManager: this screen only retires and
-    // re-renders a single app's shortcut, and the manager needs a Context, so depending on the
-    // class put the whole view model out of reach of a JVM test. Same dependency AppListViewModel
-    // already takes.
+    // The port, not the concrete FreezerShortcutManager: this screen only retires and re-renders a
+    // single app's shortcut, and the manager needs a Context, so depending on the class put the
+    // whole view model out of reach of a JVM test. Same dependency AppListViewModel already takes.
     private val appShortcuts: AppShortcutController,
     // Injected rather than a baked-in Dispatchers.IO, so a test can put this work on its own
     // scheduler — otherwise every action below escapes the test dispatcher and nothing here is
