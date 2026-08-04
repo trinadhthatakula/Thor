@@ -419,6 +419,7 @@
     <string name="biometric_not_enrolled_toast_biometric_only">Aucune empreinte enregistrée — sous Android 9, un verrouillage d\'écran ne déverrouille pas Thor : enregistrez d\'abord une empreinte</string>
     <string name="biometric_lock_unavailable_toast">Impossible d\'activer le verrouillage de l\'application : cet appareil n\'a aucune biométrie pour le déverrouiller</string>
     <string name="biometric_lock_disabled_no_biometric">Verrouillage de l\'application désactivé : cet appareil n\'a aucune biométrie pour le déverrouiller</string>
+    <string name="settings_lost_using_defaults">Thor n\'a pas pu lire vos paramètres et utilise ceux par défaut : vérifiez le verrouillage de l\'application dans les Paramètres</string>
     <string name="open_security_settings">Ouvrir les paramètres de sécurité</string>
     <string name="unlock">Déverrouiller</string>
     <string name="thank_you_support_desc">Votre abonnement est actif. Merci d\'aider à soutenir le développement de Thor !</string>
