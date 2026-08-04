@@ -4,6 +4,7 @@
 package com.valhalla.thor.domain.repository
 
 import android.net.Uri
+import com.valhalla.thor.domain.model.StagedPackage
 
 enum class InstallMode {
     NORMAL,
@@ -15,8 +16,22 @@ enum class InstallMode {
 
 /**
  * The Repository Contract.
- * The Domain layer doesn't care about PackageInstaller APIs, only that we can install a URI.
+ * The Domain layer doesn't care about PackageInstaller APIs, only that we can install a package.
  */
 interface InstallerRepository {
-    suspend fun installPackage(uri: Uri, mode: InstallMode, canDowngrade: Boolean = false)
+    /**
+     * Install the already-staged [staged] bytes — the ones the user was shown. The URI is never
+     * re-opened here; see [StagedPackage] for why.
+     *
+     * @param uri the original input, needed ONLY by [InstallMode.EXTERNAL], which hands the job
+     *   to another installer app rather than installing anything itself (that app does its own
+     *   read and shows its own confirmation, so the read-once rule is not ours to enforce there —
+     *   and a private staging path is not something another app could open anyway).
+     */
+    suspend fun installPackage(
+        staged: StagedPackage,
+        uri: Uri,
+        mode: InstallMode,
+        canDowngrade: Boolean = false
+    )
 }
