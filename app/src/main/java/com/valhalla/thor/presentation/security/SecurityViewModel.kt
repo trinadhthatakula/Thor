@@ -14,6 +14,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -44,9 +45,20 @@ class SecurityViewModel(
     private val _events = Channel<UiText>(Channel.BUFFERED)
     val events: Flow<UiText> = _events.receiveAsFlow()
 
-    private val _biometricEnabled = preferenceRepository.userPreferences
+    /**
+     * Whether the app lock is armed — `null` until the preference has actually been read.
+     *
+     * The nullability is the whole point. The preference arrives from DataStore asynchronously, so
+     * a `false` seed made "not read yet" indistinguishable from "the user turned the lock off", and
+     * `!enabled` is the *first* branch of the `when` below: every cold start reported
+     * [AuthState.NotRequired] until the real value landed, which is a fail-open gate. Long enough to
+     * compose the whole app, too — and MainScreen reads the restored navigation state on its first
+     * composition, which Compose's `SaveableStateRegistry` then drops, so the user who authenticated
+     * a moment later arrived back at the start destination with their place lost.
+     */
+    private val _biometricEnabled: StateFlow<Boolean?> = preferenceRepository.userPreferences
         .map { it.biometricLockEnabled }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     /**
      * Whether a prompt could succeed at all. Seeded synchronously rather than refreshed into
@@ -71,7 +83,7 @@ class SecurityViewModel(
 
     /**
      * The single source of truth for auth state, derived from:
-     *  - Whether biometric lock is enabled in preferences
+     *  - Whether biometric lock is enabled in preferences — `null` until that has been read
      *  - Whether the user has authenticated this session
      *  - Whether this device can authenticate at all
      *  - Whether the last auth attempt produced an error
@@ -83,6 +95,10 @@ class SecurityViewModel(
         _authError
     ) { enabled, authenticated, capable, error ->
         when {
+            // Above everything, including `authenticated`: nothing else in this `when` can be
+            // decided before the preference is known, and each of the other branches would be
+            // asserting something about a lock whose state has not been read yet.
+            enabled == null -> AuthState.Loading
             !enabled -> AuthState.NotRequired
             authenticated -> AuthState.Unlocked
             // Above Error on purpose. The prompt fails the instant it opens on a device that
@@ -106,7 +122,11 @@ class SecurityViewModel(
     }.stateIn(
         viewModelScope,
         SharingStarted.Eagerly,
-        AuthState.Locked
+        // The same value the combine produces first, so the seed cannot describe a different app
+        // than the flow does. `Eagerly` starts the collector but does not make it emit inline — on a
+        // real device this seed is what `HomeActivity` reads when it composes, and `Locked` there
+        // would show the lock screen (and fire a prompt) to every user who never turned it on.
+        AuthState.Loading
     )
 
     init {
@@ -121,12 +141,12 @@ class SecurityViewModel(
         // user can still open would be a security downgrade dressed up as a bug fix.
         //
         // Driven off the preference flow rather than checked once here, because the preference is
-        // read asynchronously: `_biometricEnabled` seeds `false` and the restored `true` lands a
+        // read asynchronously: `_biometricEnabled` seeds `null` and the restored `true` lands a
         // moment later, which is precisely the case this exists for. Writing `false` flips that
         // flow, so this settles after one pass instead of looping.
         viewModelScope.launch {
             combine(_biometricEnabled, _canAuthenticate) { enabled, capable ->
-                enabled && !capable
+                enabled == true && !capable
             }.collect { lockedOut ->
                 if (!lockedOut || enrolmentCanFix) return@collect
                 preferenceRepository.setBiometricLock(false)
@@ -166,7 +186,7 @@ class SecurityViewModel(
      * user can choose to retry or exit.
      */
     fun onAuthError(message: String) {
-        if (_biometricEnabled.value && !_isSessionAuthenticated.value) {
+        if (_biometricEnabled.value == true && !_isSessionAuthenticated.value) {
             _authError.value = message
         }
     }

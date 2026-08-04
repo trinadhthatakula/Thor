@@ -39,9 +39,12 @@ import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.repository.UsageAccessGate
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import java.io.File
@@ -291,14 +294,29 @@ class FakeBulkFreezeController(
  * A real (in-memory) preference store rather than a stub: every setter writes the field it names,
  * so a test can flip a preference mid-run and watch the view model react through its own flow —
  * which is how the preference is delivered in production too.
+ *
+ * [firstReadDelayMs] models the one thing a `MutableStateFlow` cannot: DataStore reads from disk, so
+ * in production a fresh collector gets **no** value at all for the first moments — and a gate that
+ * treats "not read yet" as an answer is open for exactly that long. Left at 0 the flow emits
+ * synchronously as it always has; above 0 it emits nothing until that much virtual time has passed,
+ * then the current value and every later one.
  */
 class FakePreferenceRepository(
-    initial: UserPreferences = UserPreferences()
+    initial: UserPreferences = UserPreferences(),
+    firstReadDelayMs: Long = 0
 ) : PreferenceRepository {
 
     private val prefs = MutableStateFlow(initial)
 
-    override val userPreferences: Flow<UserPreferences> = prefs
+    override val userPreferences: Flow<UserPreferences> =
+        if (firstReadDelayMs == 0L) {
+            prefs
+        } else {
+            flow {
+                delay(firstReadDelayMs)
+                emitAll(prefs)
+            }
+        }
 
     override suspend fun updateAppSort(sortBy: SortBy) {
         prefs.update { it.copy(appSortBy = sortBy) }

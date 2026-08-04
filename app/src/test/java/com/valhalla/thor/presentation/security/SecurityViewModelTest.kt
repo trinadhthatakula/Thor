@@ -30,6 +30,11 @@ import org.junit.Test
  * No dispatcher is injected here and none is needed: both `stateIn`s are `SharingStarted.Eagerly`,
  * so with a test dispatcher installed as Main the whole chain settles during construction and
  * `authState.value` is readable straight away.
+ *
+ * That settling is also this file's blind spot. Every test below starts from a preference that has
+ * already been read, and the cold start — the window in which it has *not* — is where the gate used
+ * to stand open. It is out of reach here by construction and lives in
+ * [SecurityViewModelColdStartTest].
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SecurityViewModelTest {
@@ -52,8 +57,8 @@ class SecurityViewModelTest {
     fun `with the lock switched on the app starts locked`() = runTest {
         val vm = SecurityViewModel(locked(), FakeAuthCapability())
 
-        // The seed value of the stateIn is Locked as well, so this is only meaningful because the
-        // preference has already been read: fail *open* here and the lock never engages.
+        // Meaningful only because the preference has already been read — the seed is Loading, which
+        // is a different claim entirely: fail *open* on the read and the lock never engages.
         assertEquals(AuthState.Locked, vm.authState.value)
     }
 
