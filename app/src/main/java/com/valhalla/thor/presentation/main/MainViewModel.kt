@@ -25,6 +25,7 @@ import com.valhalla.thor.domain.usecase.ShareAppUseCase
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.presentation.home.AppDestinations
+import com.valhalla.thor.util.AppLocale
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.util.UiTextException
@@ -41,7 +42,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
-import java.util.Locale
 
 /**
  * Side Effects: One-time events that the UI must handle (Navigation, Intents).
@@ -759,8 +759,13 @@ class MainViewModel(
      * `android.text.format.Formatter.formatShortFileSize` is the usual answer and is what the
      * details screen uses, but it needs a Context and this ViewModel deliberately has none — every
      * other string leaves here as a [UiText] for the screen to resolve. Same SI units the platform
-     * helper has used since O, and the number goes through the default locale so the decimal
-     * separator is the user's.
+     * helper has used since O.
+     *
+     * The locale is [AppLocale.formattingLocale], not `Locale.getDefault()`. Below API 33 nothing
+     * makes the process default follow Thor's in-app language, so the default would put `1.5 GB`
+     * inside `export_bulk_no_space` — a sentence rendered from `values-fr` — where the rest of that
+     * sentence expects `1,5`. On 33+ the platform merges the per-app locale into the process
+     * default and the two answers coincide.
      */
     private fun formatBytes(bytes: Long): String {
         val units = listOf("B", "kB", "MB", "GB", "TB")
@@ -771,7 +776,7 @@ class MainViewModel(
             unit++
         }
         val pattern = if (unit == 0) "%.0f %s" else "%.1f %s"
-        return String.format(Locale.getDefault(), pattern, value, units[unit])
+        return String.format(AppLocale.formattingLocale(), pattern, value, units[unit])
     }
 
     private suspend fun performLoggedMultiAction(

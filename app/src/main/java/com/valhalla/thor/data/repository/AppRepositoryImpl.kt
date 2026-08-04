@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.content.res.Resources
 import android.os.Build
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.UadHelper
@@ -45,6 +46,29 @@ class AppRepositoryImpl(
     private val pm = context.packageManager
 
     /**
+     * What the cached app labels depend on, as one comparable value.
+     *
+     * **Two** locales, and they can now differ. Thor's own strings follow the *app* language —
+     * `AppLocale`'s configuration override below API 33, the platform's per-app locale above it —
+     * while a third-party app's label is loaded from *that app's* resources and follows the
+     * **system** language. Comparing only the first misses a device-language change made while an
+     * in-app override is active, which is precisely when every cached label in the database is
+     * wrong and nothing else would notice; comparing only the second was what this did before the
+     * app context could disagree with the system at all.
+     *
+     * Over-firing is the safe direction: a miss leaves a stale label on every row until some
+     * unrelated package event happens to force a re-map, while a spurious refresh costs one rescan
+     * immediately after a language change the user just made and was already waiting on.
+     */
+    private fun localeCacheKey(): String {
+        val app = context.resources.configuration.locales
+            .takeIf { !it.isEmpty }?.get(0)?.toString().orEmpty()
+        val system = Resources.getSystem().configuration.locales
+            .takeIf { !it.isEmpty }?.get(0)?.toString().orEmpty()
+        return "$app|$system"
+    }
+
+    /**
      * RUTHLESS OPTIMIZATION V2:
      * We debounce the TRIGGER to prevent heavy package scanning during batch operations.
      */
@@ -69,7 +93,7 @@ class AppRepositoryImpl(
                 mutableMapOf()
             }
 
-            var lastLocale = context.resources.configuration.locales[0].toString()
+            var lastLocale = localeCacheKey()
 
             // How many scans in a row scanVerdict() has refused to prune against. Deliberately
             // declared out here, not inside the trigger loop: the whole point of the tolerance is
@@ -90,7 +114,7 @@ class AppRepositoryImpl(
 
                 // Now Perform the Heavy Fetch ONE time
                 try {
-                    val currentLocale = context.resources.configuration.locales[0].toString()
+                    val currentLocale = localeCacheKey()
                     val forceRefresh = currentLocale != lastLocale
                     if (forceRefresh) {
                         lastLocale = currentLocale

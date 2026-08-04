@@ -4,6 +4,9 @@
 package com.valhalla.thor
 
 import android.app.Application
+import android.content.Context
+import android.content.res.Configuration
+import android.content.res.Resources
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
@@ -17,7 +20,9 @@ import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.utils.AppIconFetcher
 import com.valhalla.thor.presentation.utils.AppIconKeyer
+import com.valhalla.thor.util.AppLocale
 import com.valhalla.thor.util.LocaleManager
+import com.valhalla.thor.util.LocalizedResources
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.koinLogLevel
 import kotlinx.coroutines.CancellationException
@@ -25,6 +30,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -36,6 +42,120 @@ import org.koin.plugin.module.dsl.startKoin
 
 @KoinApplication
 class ThorApplication : Application(), SingletonImageLoader.Factory {
+
+    /**
+     * The application context's locale, at process start **and afterwards**.
+     *
+     * [attachBaseContext] is the only wrap this object will ever get —
+     * `ContextWrapper.attachBaseContext` throws `IllegalStateException("Base context already set")`
+     * on a second call — so it alone freezes the application context at whatever the mirror said
+     * when the process started. [getResources] is what makes it track a later change; see
+     * [LocalizedResources] for why one `getResources()` override moves every `getString` in the
+     * process.
+     *
+     * ### What tracks a runtime language change, and what does not
+     *
+     * **Tracks it, immediately.** Everything that resolves a string through the Koin
+     * `androidContext()` — which is this object — reads [getResources] at the moment it resolves,
+     * so it is correct from the next call onwards: `ShizukuSystemGateway` and `DhizukuSystemGateway`
+     * (`freeze_system_app_requires_root` and `freeze_system_app_removal_failed`, toasted by
+     * `FreezerViewModel`), `AppBundleFileStoreImpl` (export destination names), the suspended-app
+     * dialog strings in `Shizuku.kt` / `Dhizuku.kt`, `FreezerShortcutManager.disableAppShortcut`,
+     * and `BulkResultNotifier`'s notification title.
+     *
+     * **Tracks it at the next publish, not at the change.** `BulkResultNotifier`'s *channel* name:
+     * `ensureChannel` runs on every `post()` and `createNotificationChannel` updates the name of an
+     * existing channel, so it is corrected the next time a bulk run reports — not the moment the
+     * user picks a language.
+     *
+     * **Only tracks it because something re-publishes.** The Freeze-all / Unfreeze-all *dynamic*
+     * shortcut labels are a copy held by the launcher, and `getResources()` cannot reach a copy. It
+     * is [onCreate]'s `appliedTag` collector that re-runs `syncDynamicShortcuts`, and only for the
+     * dynamic pair. A bulk shortcut the user has **pinned** keeps its old label until they pin it
+     * again: `ShortcutManager` rate-limits background updates and re-pushing every pinned id on a
+     * language change would spend that budget on cosmetics.
+     *
+     * **Never tracks it, on any API level.** The QS tile's manifest `android:label`, read by
+     * SystemUI out of Thor's APK with SystemUI's own resources — see `FreezerTileService`.
+     *
+     * A no-op above API 32, where `ActivityThread` merges the platform's per-app locale into this
+     * context's own configuration and there is nothing left to do — see
+     * [AppLocale.overridesConfiguration].
+     */
+    override fun attachBaseContext(base: Context) {
+        // The RAW base, deliberately, not getBaseContext() afterwards: LocalizedResources must
+        // rebuild from the ContextImpl the framework keeps current, not from a wrap of a wrap.
+        localizedResources = LocalizedResources(base)
+        systemLocaleTag = firstLocaleTag(base.resources.configuration)
+        super.attachBaseContext(AppLocale.wrap(base))
+    }
+
+    /** Rebuilt on a language change; see [attachBaseContext]. Never read before it is assigned. */
+    @Volatile
+    private var localizedResources: LocalizedResources? = null
+
+    /**
+     * The **system** locale as last seen, which is not necessarily the one Thor renders in.
+     *
+     * Seeded from the raw base in [attachBaseContext] so that the first [onConfigurationChanged] —
+     * which may well be a night-mode or font-scale change — is not mistaken for a language change.
+     */
+    @Volatile
+    private var systemLocaleTag: String? = null
+
+    override fun getResources(): Resources =
+        localizedResources?.current() ?: super.getResources()
+
+    /**
+     * Two jobs, both of them consequences of holding a context the framework cannot re-attach.
+     *
+     * `AppLocale.wrap` pins the whole configuration and not only the locale (see its KDoc), so the
+     * cached `Resources` must be dropped whenever the system's configuration moves. Cheap: this
+     * fires on device-language, night-mode, density and font-scale changes, all of them user-driven,
+     * and the rebuild is one `createConfigurationContext`.
+     *
+     * The locale comparison then covers the language changes that [AppLocale.appliedTag] cannot see:
+     * a change made in *system* Settings → Apps → Thor → Language on API 33+, and a device-wide
+     * language change for a user who left Thor on "System default" on any API level. Neither writes
+     * Thor's mirror, and a device-wide language change since API 24 recreates activities without
+     * restarting the process — so without this, the launcher labels would keep the old language
+     * until the next cold start.
+     */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        localizedResources?.invalidate()
+        val tag = firstLocaleTag(newConfig)
+        if (tag != systemLocaleTag) {
+            systemLocaleTag = tag
+            republishLocalisedLabels()
+        }
+    }
+
+    private fun firstLocaleTag(configuration: Configuration): String? =
+        configuration.locales.takeIf { !it.isEmpty }?.get(0)?.toLanguageTag()
+
+    /**
+     * Re-resolves the strings that live in someone else's process.
+     *
+     * [getResources] fixes every string Thor resolves *on demand*, but a launcher shortcut label is
+     * a copy `ShortcutManager` handed the launcher at publish time and no `Resources` override can
+     * reach it. Only the dynamic Freeze-all / Unfreeze-all pair is re-pushed:
+     * `syncDynamicShortcuts` is idempotent and takes the enabled flag from the preference, so this
+     * publishes nothing a user has turned off. Pinned per-app shortcuts are deliberately left —
+     * re-pushing every pinned id on a language change spends `ShortcutManager`'s background update
+     * budget on cosmetics.
+     */
+    private fun republishLocalisedLabels() {
+        appScope.launch {
+            runCatching {
+                val prefs = preferenceRepository.userPreferences.first()
+                freezerShortcutManager.syncDynamicShortcuts(prefs.addFreezerToLauncher)
+            }.onFailure { throwable ->
+                if (throwable is CancellationException) throw throwable
+                Logger.e("ThorApp", "Shortcut label refresh failed", throwable)
+            }
+        }
+    }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {
         return ImageLoader.Builder(context)
@@ -104,16 +224,34 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
         appScope.launch {
             runCatching {
                 val prefs = preferenceRepository.userPreferences.first()
-                freezerShortcutManager.syncDynamicShortcuts(prefs.addFreezerToLauncher)
-                withContext(Dispatchers.Main) {
-                    localeManager.applyLocale(prefs.language)
+                // Reconcile BEFORE publishing shortcuts, not after: on the one start where the two
+                // stores disagree — a cloud restore, where the DataStore preference travels and
+                // AppLocale's mirror does not — this is what makes the labels below resolve in the
+                // restored language instead of the device's.
+                val reconciled = withContext(Dispatchers.Main) {
+                    localeManager.reconcileOnStartup(prefs.language)
                 }
+                if (reconciled != prefs.language) {
+                    // Only when the platform's per-app locale won (API 33+). Writing it back is what
+                    // stops the Settings row saying "System default" over a screen the system
+                    // language picker put in French.
+                    preferenceRepository.setLanguage(reconciled)
+                }
+                freezerShortcutManager.syncDynamicShortcuts(prefs.addFreezerToLauncher)
             }.onFailure { throwable ->
                 // runCatching also catches CancellationException; rethrow it so appScope.cancel()
                 // (onTerminate) isn't logged as a failure and cooperative cancellation is preserved.
                 if (throwable is CancellationException) throw throwable
                 Logger.e("ThorApp", "Startup preference sync failed", throwable)
             }
+        }
+
+        // Below API 33 nothing else notices a language change: the platform has no per-app locale to
+        // broadcast, so no configuration change is dispatched and onConfigurationChanged above never
+        // fires for it. AppLocale.appliedTag is the only signal. Inert on 33+, where that flow is
+        // never written and the configuration path covers the same ground.
+        appScope.launch {
+            AppLocale.appliedTag.drop(1).collect { republishLocalisedLabels() }
         }
     }
 

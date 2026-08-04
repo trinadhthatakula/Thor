@@ -12,6 +12,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
@@ -51,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -72,6 +74,8 @@ import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
+import com.valhalla.thor.util.AppLanguage
+import com.valhalla.thor.util.displayedLanguage
 import com.valhalla.asgard.components.ConnectedButtonGroup
 import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import org.koin.androidx.compose.koinViewModel
@@ -90,6 +94,25 @@ fun SettingsScreen(
     var showLanguageSheet by remember { mutableStateOf(false) }
     var showUnfreezeConfirmation by remember { mutableStateOf(false) }
     var showSupportSheet by remember { mutableStateOf(false) }
+
+    // The language the row and the picker's checkmark are allowed to name.
+    //
+    // `LocalConfiguration.current` is the Configuration this composition is being drawn with —
+    // `AndroidCompositionLocals` seeds it from `view.context.resources.configuration`, and that
+    // context is the Activity, whose base `AppLocale.wrap` overrode. So this is not what Thor
+    // believes it applied; it is what the screen is rendering in, read back off the screen. If the
+    // override ever fails to take, this reports the locale the user is actually looking at and the
+    // row says so, which is precisely what the old `when (prefs.language)` could not do — it read
+    // the persisted preference and therefore confirmed every change, applied or not.
+    //
+    // Recomposition is automatic on both paths: a locale change recreates the activity (the
+    // platform's on 33+, `AppLocale.recreateOnChange` below it), which rebuilds this composition
+    // with the new Configuration.
+    val shownLanguage = displayedLanguage(
+        persistedTag = prefs.language,
+        appliedTag = LocalConfiguration.current.locales
+            .takeIf { !it.isEmpty }?.get(0)?.toLanguageTag()
+    )
 
     ObserveAsEvents(viewModel.events) { event ->
         android.widget.Toast.makeText(
@@ -254,14 +277,7 @@ fun SettingsScreen(
             SettingsClickRow(
                 icon = R.drawable.settings_backup_restore,
                 title = stringResource(R.string.app_language),
-                subtitle = when (prefs.language) {
-                    "en" -> stringResource(R.string.english)
-                    "zh" -> stringResource(R.string.chinese)
-                    "fr" -> stringResource(R.string.french)
-                    "es" -> stringResource(R.string.spanish)
-                    "ar" -> stringResource(R.string.arabic)
-                    else -> stringResource(R.string.system_default)
-                },
+                subtitle = stringResource(shownLanguage.labelRes),
                 onClick = { showLanguageSheet = true }
             )
         }
@@ -746,9 +762,11 @@ fun SettingsScreen(
 
     if (showLanguageSheet) {
         LanguageBottomSheet(
-            selectedLanguage = prefs.language,
-            onLanguageSelected = { lang ->
-                viewModel.setLanguage(lang)
+            // The same value the row shows, for the same reason: a checkmark against Français on a
+            // screen rendering English is the identical lie in a smaller font.
+            selectedLanguage = shownLanguage,
+            onLanguageSelected = { language ->
+                viewModel.setLanguage(language.tag)
                 showLanguageSheet = false
             },
             onDismiss = { showLanguageSheet = false }
@@ -762,22 +780,30 @@ fun SettingsScreen(
     }
 }
 
+/**
+ * The label for each entry, the only Android-side half of [AppLanguage].
+ *
+ * Split out so the tag list and the label list cannot drift apart: they used to be two hand-written
+ * `when`/`listOf` blocks — one in the row, one in this sheet — and a language added to one but not
+ * the other showed up as a row reading "System default" over a checkmark next to its own name.
+ */
+private val AppLanguage.labelRes: Int
+    @StringRes get() = when (this) {
+        AppLanguage.SystemDefault -> R.string.system_default
+        AppLanguage.English -> R.string.english
+        AppLanguage.Chinese -> R.string.chinese
+        AppLanguage.French -> R.string.french
+        AppLanguage.Spanish -> R.string.spanish
+        AppLanguage.Arabic -> R.string.arabic
+    }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LanguageBottomSheet(
-    selectedLanguage: String?,
-    onLanguageSelected: (String?) -> Unit,
+    selectedLanguage: AppLanguage,
+    onLanguageSelected: (AppLanguage) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val languages = listOf(
-        null to stringResource(R.string.system_default),
-        "en" to stringResource(R.string.english),
-        "zh" to stringResource(R.string.chinese),
-        "fr" to stringResource(R.string.french),
-        "es" to stringResource(R.string.spanish),
-        "ar" to stringResource(R.string.arabic),
-    )
-
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberBottomSheetState(
@@ -802,8 +828,8 @@ private fun LanguageBottomSheet(
                 modifier = Modifier.padding(bottom = 24.dp)
             )
 
-            languages.forEach { (code, label) ->
-                val isSelected = selectedLanguage == code
+            AppLanguage.PICKER_ORDER.forEach { language ->
+                val isSelected = selectedLanguage == language
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -812,12 +838,12 @@ private fun LanguageBottomSheet(
                             if (isSelected) MaterialTheme.colorScheme.primaryContainer
                             else Color.Transparent
                         )
-                        .clickable { onLanguageSelected(code) }
+                        .clickable { onLanguageSelected(language) }
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = label,
+                        text = stringResource(language.labelRes),
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                         color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
