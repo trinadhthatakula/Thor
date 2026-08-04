@@ -22,6 +22,7 @@ import com.valhalla.thor.presentation.utils.AppIconFetcher
 import com.valhalla.thor.presentation.utils.AppIconKeyer
 import com.valhalla.thor.util.AppLocale
 import com.valhalla.thor.util.LocaleManager
+import com.valhalla.thor.util.LocaleRevision
 import com.valhalla.thor.util.LocalizedResources
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.koinLogLevel
@@ -135,17 +136,27 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
         configuration.locales.takeIf { !it.isEmpty }?.get(0)?.toLanguageTag()
 
     /**
-     * Re-resolves the strings that live in someone else's process.
+     * Re-resolves the localised strings that have already been **copied** somewhere [getResources]
+     * cannot reach.
      *
-     * [getResources] fixes every string Thor resolves *on demand*, but a launcher shortcut label is
-     * a copy `ShortcutManager` handed the launcher at publish time and no `Resources` override can
-     * reach it. Only the dynamic Freeze-all / Unfreeze-all pair is re-pushed:
-     * `syncDynamicShortcuts` is idempotent and takes the enabled flag from the preference, so this
-     * publishes nothing a user has turned off. Pinned per-app shortcuts are deliberately left —
-     * re-pushing every pinned id on a language change spends `ShortcutManager`'s background update
-     * budget on cosmetics.
+     * [getResources] fixes every string Thor resolves *on demand*. A copy is a different problem,
+     * and there are two kinds:
+     *
+     * - **In this process.** The app-label cache in Room holds a label per row, resolved at scan
+     *   time. [LocaleRevision] is how the repository hears about the change; see its KDoc for the
+     *   one half of the problem it deliberately leaves to `ACTION_LOCALE_CHANGED`.
+     * - **In someone else's process.** A launcher shortcut label is a copy `ShortcutManager` handed
+     *   the launcher at publish time. Only the dynamic Freeze-all / Unfreeze-all pair is re-pushed:
+     *   `syncDynamicShortcuts` is idempotent and takes the enabled flag from the preference, so this
+     *   publishes nothing a user has turned off. Pinned per-app shortcuts are deliberately left —
+     *   re-pushing every pinned id on a language change spends `ShortcutManager`'s background update
+     *   budget on cosmetics.
+     *
+     * Both call sites below are language changes this process can actually observe, which is why
+     * this is the only place that emits on [LocaleRevision].
      */
     private fun republishLocalisedLabels() {
+        LocaleRevision.bump()
         appScope.launch {
             runCatching {
                 val prefs = preferenceRepository.userPreferences.first()

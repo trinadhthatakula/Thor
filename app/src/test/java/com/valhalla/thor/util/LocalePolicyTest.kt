@@ -184,6 +184,82 @@ class LocalePolicyTest {
     }
 
     /**
+     * Indonesian is not right-to-left, under either of its two ISO codes.
+     *
+     * `id` normalises to `in` exactly the way `he` normalises to `iw`, which is the trap that put
+     * both members of the Hebrew and Yiddish pairs in the set. Sharing a quirk is not sharing a
+     * layout direction, and a language that renders every Indonesian screen mirrored is a much
+     * louder bug than a missing RTL entry.
+     */
+    @Test
+    fun theLegacyCodeQuirkDoesNotMakeIndonesianRightToLeft() {
+        assertFalse(isRtl(Locale.forLanguageTag("id")))
+        assertFalse(isRtl(Locale.forLanguageTag("in")))
+        assertTrue(isRtl(Locale.forLanguageTag("yi")))
+        assertTrue(isRtl(Locale.forLanguageTag("ji")))
+    }
+
+    /**
+     * Choosing "System default" while a language Thor does not ship is in force actually clears it.
+     *
+     * The short-circuit compares languages, and [languageForTag] answers
+     * [AppLanguage.SystemDefault] for two very different inputs: "the user asked for no override"
+     * and "something is applied that Thor has no translation for". Comparing those two answers
+     * reports agreement between a request to clear the override and the override still being
+     * there, so the request returns without doing anything and the user cannot get back to their
+     * device language. Reachable through `adb shell cmd locale set-app-locales`, through an OEM
+     * language screen that ignores `locales_config`, and through any future release that drops a
+     * translation while a user is still on it.
+     */
+    @Test
+    fun choosingSystemDefaultOverAnUnshippedLanguageIsNotANoOp() {
+        assertFalse(isRedundantLanguageRequest(requestedTag = null, inEffectTag = "de"))
+        assertFalse(isRedundantLanguageRequest(requestedTag = null, inEffectTag = "fr"))
+        // ...but with nothing applied there is genuinely nothing to clear.
+        assertTrue(isRedundantLanguageRequest(requestedTag = null, inEffectTag = null))
+        assertTrue(isRedundantLanguageRequest(requestedTag = null, inEffectTag = "  "))
+    }
+
+    /**
+     * The resolved tag the platform hands back is still the same language, and re-applying it is
+     * the no-op the short-circuit exists for — that is the whole reason it compares subtags.
+     */
+    @Test
+    fun aRequestForTheLanguageAlreadyInForceIsRedundant() {
+        assertTrue(isRedundantLanguageRequest(requestedTag = "fr", inEffectTag = "fr-FR"))
+        assertTrue(isRedundantLanguageRequest(requestedTag = "zh", inEffectTag = "zh-Hans-CN"))
+        assertTrue(isRedundantLanguageRequest(requestedTag = " ar ", inEffectTag = "ar"))
+        assertFalse(isRedundantLanguageRequest(requestedTag = "es", inEffectTag = "fr"))
+        assertFalse(isRedundantLanguageRequest(requestedTag = "fr", inEffectTag = null))
+    }
+
+    /**
+     * Languages Thor does not ship are still told apart from each other.
+     *
+     * They all answer [AppLanguage.SystemDefault], so deciding this on [languageForTag] would call
+     * `de` and `it` the same language and refuse to switch between them — the same collapse that
+     * swallows a request to clear the override, in a different direction. Comparing subtags keeps
+     * them distinct, and still recognises `de` over `de` as the genuine no-op it is rather than
+     * recreating the activity for nothing.
+     */
+    @Test
+    fun unshippedLanguagesAreStillDistinguishedFromEachOther() {
+        assertFalse(isRedundantLanguageRequest(requestedTag = "de", inEffectTag = "it"))
+        assertFalse(isRedundantLanguageRequest(requestedTag = "de", inEffectTag = null))
+        assertTrue(isRedundantLanguageRequest(requestedTag = "de", inEffectTag = "de-AT"))
+    }
+
+    /**
+     * Both sides get the same 1989 normalisation, so a legacy code and its modern twin are one
+     * language rather than a change to apply.
+     */
+    @Test
+    fun theLegacyCodePairsAreNotADisagreement() {
+        assertTrue(isRedundantLanguageRequest(requestedTag = "he", inEffectTag = "iw"))
+        assertTrue(isRedundantLanguageRequest(requestedTag = "id", inEffectTag = "in"))
+    }
+
+    /**
      * The picker offers "System default" first, then every shipped translation exactly once.
      *
      * The row and the sheet are now both driven off this list, so a language present in one and

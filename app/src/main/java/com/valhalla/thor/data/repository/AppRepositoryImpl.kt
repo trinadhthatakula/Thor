@@ -10,6 +10,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.res.Resources
 import android.os.Build
+import androidx.core.content.edit
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.UadHelper
 import com.valhalla.thor.data.source.local.room.AppDao
@@ -21,6 +22,7 @@ import com.valhalla.thor.domain.model.ScanVerdict
 import com.valhalla.thor.domain.model.scanVerdict
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.InstalledAppsPermissionGate
+import com.valhalla.thor.util.LocaleRevision
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -69,6 +71,27 @@ class AppRepositoryImpl(
     }
 
     /**
+     * The locale key the [AppEntity] rows in Room were actually mapped under, or `null` if no scan
+     * has ever recorded one.
+     *
+     * A one-key `SharedPreferences` file, the same shape [com.valhalla.thor.util.AppLocale] uses for
+     * its mirror and for the same reason: it has to be readable before the first scan, without a
+     * suspension point and without a schema migration. It describes the *cache*, not the user, which
+     * is why it does not live in `PreferenceRepository` next to things a backup should carry — a
+     * restored device's Room rows are its own, and a restored key describing someone else's rows
+     * would be worse than no key at all.
+     */
+    private val labelCacheState by lazy {
+        context.getSharedPreferences(LABEL_CACHE_PREFS, Context.MODE_PRIVATE)
+    }
+
+    private fun cachedLabelLocale(): String? = labelCacheState.getString(KEY_LABEL_LOCALE, null)
+
+    private fun recordLabelLocale(key: String) {
+        labelCacheState.edit { putString(KEY_LABEL_LOCALE, key) }
+    }
+
+    /**
      * RUTHLESS OPTIMIZATION V2:
      * We debounce the TRIGGER to prevent heavy package scanning during batch operations.
      */
@@ -93,7 +116,14 @@ class AppRepositoryImpl(
                 mutableMapOf()
             }
 
-            var lastLocale = localeCacheKey()
+            // Seeded from what the cached rows were mapped under, NOT from the locale in force now.
+            // Reading localeCacheKey() here would compare the current key against itself on the
+            // first scan, so `forceRefresh` could never be true on the one scan that most needs it:
+            // a language changed while this process was dead, or before this collection started,
+            // leaves every row in the previous language and no package event to force a re-map.
+            // `null` on a first run differs from every key, so that scan re-maps — which is free,
+            // because it has no cache to reuse anyway.
+            var lastLocale = cachedLabelLocale()
 
             // How many scans in a row scanVerdict() has refused to prune against. Deliberately
             // declared out here, not inside the trigger loop: the whole point of the tolerance is
@@ -116,9 +146,6 @@ class AppRepositoryImpl(
                 try {
                     val currentLocale = localeCacheKey()
                     val forceRefresh = currentLocale != lastLocale
-                    if (forceRefresh) {
-                        lastLocale = currentLocale
-                    }
 
                     val flags = PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong()
                     val installedPackages =
@@ -254,6 +281,17 @@ class AppRepositoryImpl(
                     // nothing would strand isLoading forever on a fresh collection.
                     producer.send(currentList + retained)
 
+                    // Only now, and only on a scan that was trusted enough to prune against. Moving
+                    // the key up next to the `forceRefresh` read would let a scan that was cancelled
+                    // mid-loop, or one that ran while package visibility was truncated, record a
+                    // language for rows it never re-mapped — and nothing would ever force-refresh
+                    // them again. Re-mapping twice costs a rescan; recording too early costs the
+                    // stale labels this key exists to prevent.
+                    if (forceRefresh && verdict == ScanVerdict.Accept) {
+                        lastLocale = currentLocale
+                        recordLabelLocale(currentLocale)
+                    }
+
                 } catch (e: CancellationException) {
                     // Kotlin's CancellationException is an Exception, so the broad catch below
                     // would otherwise swallow it, log it in debug, and loop straight back round to
@@ -263,6 +301,16 @@ class AppRepositoryImpl(
                     if (BuildConfig.DEBUG) e.printStackTrace()
                 }
             }
+        }
+
+        // A language change is not a package event, so without this nothing in the flow above would
+        // ever pump the channel for one and the locale key could only be consulted when some
+        // unrelated package broadcast happened to arrive — on a device that installs nothing, never.
+        // This covers the *app* half of the key; the system half is ACTION_LOCALE_CHANGED below,
+        // which is a separate signal because it fires in cases this one cannot see (see
+        // [LocaleRevision]).
+        val localeWatcher = launch {
+            LocaleRevision.changes.collect { triggerChannel.trySend(Unit) }
         }
 
         // Receiver for Package-specific changes (requires "package" data scheme)
@@ -292,6 +340,12 @@ class AppRepositoryImpl(
         val generalFilter = IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGES_SUSPENDED)
             addAction(Intent.ACTION_PACKAGES_UNSUSPENDED)
+            // The *system* half of the locale key, and the only signal that carries it. A
+            // third-party app's label is loaded from that app's resources and so follows the device
+            // language, which can move while Thor's own language does not: under an in-app override
+            // the application configuration never changes, so LocaleRevision stays silent and every
+            // cached label is quietly a language behind.
+            addAction(Intent.ACTION_LOCALE_CHANGED)
         }
 
         context.registerReceiver(packageReceiver, packageFilter)
@@ -300,6 +354,7 @@ class AppRepositoryImpl(
         awaitClose {
             context.unregisterReceiver(packageReceiver)
             context.unregisterReceiver(generalReceiver)
+            localeWatcher.cancel()
             worker.cancel()
         }
     }.flowOn(Dispatchers.IO)
@@ -468,5 +523,15 @@ class AppRepositoryImpl(
 
     override suspend fun updateInstallSizes(sizes: Map<String, Long>) {
         appDao.updateInstallSizes(sizes)
+    }
+
+    private companion object {
+        /**
+         * Not in the Auto Backup allowlist, deliberately — it describes rows that live in a
+         * database Auto Backup does not carry either, and restoring one without the other would
+         * assert a language for labels that were never scanned on this device.
+         */
+        const val LABEL_CACHE_PREFS = "app_label_cache"
+        const val KEY_LABEL_LOCALE = "label_locale_key"
     }
 }

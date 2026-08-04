@@ -56,6 +56,29 @@ fun languageForTag(tag: String?): AppLanguage {
 }
 
 /**
+ * Whether applying [requestedTag] while [inEffectTag] is already in force would change nothing, so
+ * the caller can return without touching the platform.
+ *
+ * The comparison is on the **language subtag** and nothing else, because the tag that comes back is
+ * rarely the tag that went in: `fr` requested against the `fr-FR` the system language screen
+ * recorded, or `zh` against a resolved `zh-Hans-CN`, is the same language, and re-applying it below
+ * API 33 would fire [AppLocale.appliedTag] and recreate the visible activity for no change. Both
+ * sides go through [localeForTag], so the legacy normalisation applies to each identically — `he`
+ * against `iw` is one language, not two.
+ *
+ * **Not [languageForTag], which is the obvious spelling and the wrong one.** That function degrades
+ * anything Thor does not ship to [AppLanguage.SystemDefault], which is the right conservative
+ * answer for a row that must not claim a language it is not rendering — but it gives the same
+ * answer for "the user asked for no override" and "a language with no translation behind it is
+ * applied right now". Comparing those two answers reports agreement between a request to *clear*
+ * the override and the override still being there, so the request that exists to undo it returns
+ * having done nothing. Comparing subtags keeps `null` distinct from every language while still
+ * treating `de` against `de` as the no-op it is.
+ */
+fun isRedundantLanguageRequest(requestedTag: String?, inEffectTag: String?): Boolean =
+    localeForTag(requestedTag)?.language == localeForTag(inEffectTag)?.language
+
+/**
  * The [Locale] a persisted preference selects, or `null` for "leave the system locale alone".
  *
  * `null` is not a failure value to be substituted for — it is the instruction to wrap nothing, and
@@ -77,9 +100,11 @@ fun localeForTag(tag: String?): Locale? {
 /**
  * Languages written right-to-left, by ISO 639 code as [Locale.getLanguage] reports it.
  *
- * `he`/`id`/`yi` are listed under both their modern and their legacy codes because
- * [Locale.getLanguage] still normalises them to the 1989 forms (`iw`/`in`/`ji`) — a `Locale`
- * built from the tag `he` answers `iw`, so a set holding only `he` would miss it.
+ * `he` and `yi` are listed under both their modern and their legacy codes because
+ * [Locale.getLanguage] still normalises them to the 1989 forms (`iw` and `ji`) — a `Locale`
+ * built from the tag `he` answers `iw`, so a set holding only `he` would miss it. Indonesian
+ * carries the same legacy normalisation (`id` → `in`) and is deliberately **not** here: it is
+ * written left-to-right, so neither of its codes belongs in this set.
  */
 private val RTL_LANGUAGES = setOf(
     "ar", "ckb", "dv", "fa", "he", "iw", "ji", "ps", "sd", "ug", "ur", "yi"

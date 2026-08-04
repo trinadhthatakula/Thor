@@ -85,6 +85,14 @@ class FreezerTileService : TileService() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         localizedResources?.invalidate()
+        // invalidate() only fixes the *next* resource read, and by this point the strings are
+        // already gone: `subtitle`, `stateDescription` and `contentDescription` are copies handed
+        // to SystemUI by the last [paint], and SystemUI is displaying them now. Nothing else would
+        // repaint them — the collector in [onStartListening] fires on privilege and freezer state,
+        // neither of which moves when the language does — so the open shade would keep the previous
+        // language until some unrelated state change happened to come along. [paint] returns
+        // immediately when this service is not listening, so this costs nothing when it is not.
+        paint()
     }
 
     override fun onStartListening() {
