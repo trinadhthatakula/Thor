@@ -336,7 +336,7 @@ class RootSystemGateway(
                 return@withContext Result.success(Unit)
             }
             daemonVerdict = aidlCall.fold(
-                onSuccess = { "the root daemon refused the wipe" },
+                onSuccess = { "the root daemon answered no" },
                 onFailure = { "the root daemon could not confirm the wipe (${it.javaClass.simpleName})" },
             )
         } else {

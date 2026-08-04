@@ -8,6 +8,7 @@ import android.os.IBinder
 import com.valhalla.thor.util.Logger
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -19,6 +20,68 @@ import java.util.concurrent.atomic.AtomicReference
  * about its transport rather than about its timeout.
  */
 private const val DATA_OBSERVER_TIMEOUT_MS = 15_000L
+
+/**
+ * The wait [awaitDataObserver] falls back to once this transport has been *seen* to drop a verdict.
+ *
+ * ### Why a second number exists at all
+ *
+ * The full [DATA_OBSERVER_TIMEOUT_MS] is priced for one app: a user taps "clear data", and fifteen
+ * seconds is a defensible ceiling for `PackageManagerService` to finish wiping a large package.
+ * Batches change that arithmetic. `MainViewModel.performLoggedMultiAction` runs its list through one
+ * sequential `forEachIndexed` — deliberately, because it emits an ordered "step i of n" log — so a
+ * transport that never calls back turns a fifty-app cache sweep into fifty consecutive full-length
+ * waits. Twelve and a half minutes of them, every one ending in [DataClearOutcome.UNVERIFIED].
+ *
+ * ### Why one observation is enough to change the wait
+ *
+ * Whether `onRemoveCompleted` comes back is a property of the **ROM and the transport**, not of the
+ * package being cleared. A vendor build that drops the callback drops it for every package; there is
+ * no version of this where app 1 goes unanswered and app 2 is fine. So the first full-length timeout
+ * is not bad luck to be re-rolled forty-nine more times, it is evidence — and the honest response to
+ * evidence is to stop paying full price for it.
+ *
+ * ### Why it is a shortened wait and not a skipped one
+ *
+ * Skipping would make [DataClearOutcome.UNVERIFIED] structural: no observer could ever answer again,
+ * on any ROM, once one had failed to. A ROM that is merely *slow* would be permanently misreported.
+ * Shortening keeps the callback path live and costs at most this much per package. The belief is
+ * cleared by the very next verdict that does arrive — see [transportDeliversVerdicts] — so a single
+ * genuinely slow wipe degrades one subsequent call and then repairs itself.
+ *
+ * The trade this buys, stated plainly rather than hidden: a package whose verdict would have landed
+ * between this and [DATA_OBSERVER_TIMEOUT_MS] is reported [DataClearOutcome.UNVERIFIED] instead of
+ * its real answer. That window only opens on a transport that has just demonstrably failed to answer
+ * within fifteen seconds, and it closes on the first answer of any kind.
+ */
+private const val DEGRADED_OBSERVER_TIMEOUT_MS = 1_500L
+
+/**
+ * Whether the last [awaitDataObserver] to reach a conclusion got there via the callback.
+ *
+ * `true` — the optimistic start, and where any arriving verdict puts it back — means the next call
+ * waits the full [DATA_OBSERVER_TIMEOUT_MS]. `false`, set only by a wait that expired with nothing
+ * delivered, drops the next call to [DEGRADED_OBSERVER_TIMEOUT_MS].
+ *
+ * Process-wide on purpose. The thing being remembered is a fact about the transport, and every clear
+ * in the process shares one of those. Threading it through `SystemRepositoryImpl` →
+ * `ShizukuSystemGateway` → `ShizukuReflector` to make it per-batch would carry a global fact down
+ * four layers as a parameter and still be a global fact.
+ *
+ * It is only ever a *timeout* input. Nothing here can produce [DataClearOutcome.CLEARED] — that
+ * invariant is unchanged and this flag cannot touch it.
+ */
+private val transportDeliversVerdicts = AtomicBoolean(true)
+
+/**
+ * Puts [transportDeliversVerdicts] back to its optimistic start.
+ *
+ * Exists for tests, which would otherwise be order-dependent: one case that deliberately times out
+ * would shorten the wait of whichever case JUnit happened to run next. Call it in `@Before`.
+ */
+internal fun resetObserverTransportBelief() {
+    transportDeliversVerdicts.set(true)
+}
 
 /**
  * What a clear-data / clear-cache call actually achieved, as opposed to what it returned.
@@ -104,8 +167,10 @@ internal enum class DataClearOutcome {
  *   Shizuku's.
  * @param packageName the package being cleared; used for logging and to spot a callback that names
  *   something else.
- * @param timeoutMillis how long to wait for the verdict. Defaults to [DATA_OBSERVER_TIMEOUT_MS];
- *   only tests should pass anything else.
+ * @param timeoutMillis the longest this will wait for the verdict. Defaults to
+ *   [DATA_OBSERVER_TIMEOUT_MS]; only tests should pass anything else. The wait actually used is this
+ *   or [DEGRADED_OBSERVER_TIMEOUT_MS], whichever is smaller, once [transportDeliversVerdicts] has
+ *   been knocked down — so this is a ceiling, never a floor.
  * @param fire dispatches the actual privileged call, handing it the observer. It must not swallow
  *   its own failures — a throw here is information, and it is turned into
  *   [DataClearOutcome.UNVERIFIED].
@@ -122,6 +187,10 @@ internal fun awaitDataObserver(
 
     val observer = newDataObserver(tag, packageName) { reportedPackage, succeeded ->
         val verdict = if (succeeded) DataClearOutcome.CLEARED else DataClearOutcome.REFUSED
+        // Set before the CAS, and set by *any* callback including a late or duplicate one. This flag
+        // answers "does this transport deliver?", and a verdict that arrived too late to be used
+        // still answers it yes.
+        transportDeliversVerdicts.set(true)
         if (outcome.compareAndSet(DataClearOutcome.UNVERIFIED, verdict)) {
             Logger.d(tag, "clear($packageName): observer reported $verdict for $reportedPackage")
             latch.countDown()
@@ -136,19 +205,30 @@ internal fun awaitDataObserver(
         }
     }
 
+    // `minOf`, not a plain substitution: a test that asks for 50ms must still get 50ms, and the
+    // degraded path is a ceiling on the wait rather than a value for it.
+    val effectiveTimeoutMillis =
+        if (transportDeliversVerdicts.get()) timeoutMillis
+        else minOf(timeoutMillis, DEGRADED_OBSERVER_TIMEOUT_MS)
+
     return try {
         fire(observer)
 
-        if (latch.await(timeoutMillis, TimeUnit.MILLISECONDS)) {
+        if (latch.await(effectiveTimeoutMillis, TimeUnit.MILLISECONDS)) {
             outcome.get()
         } else {
             // Read nothing back here. A verdict that lands a microsecond after the wait expired is
             // still a verdict Thor did not see in time, and honouring it would make the result
             // depend on scheduler luck.
+            transportDeliversVerdicts.set(false)
+            val shortened =
+                if (effectiveTimeoutMillis < timeoutMillis) " (shortened from ${timeoutMillis}ms " +
+                    "because the previous wait went unanswered)" else ""
             Logger.w(
                 tag,
-                "clear($packageName): issued but unconfirmed within ${timeoutMillis}ms — reporting " +
-                    "failure, because a clear that cannot be confirmed is not a clear that happened"
+                "clear($packageName): issued but unconfirmed within ${effectiveTimeoutMillis}ms" +
+                    "$shortened — reporting failure, because a clear that cannot be confirmed is " +
+                    "not a clear that happened"
             )
             DataClearOutcome.UNVERIFIED
         }

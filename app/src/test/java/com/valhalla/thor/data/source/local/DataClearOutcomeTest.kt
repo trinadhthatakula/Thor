@@ -10,6 +10,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -52,6 +53,22 @@ class DataClearOutcomeTest {
      * that are deliberately waiting it out.
      */
     private val shortTimeoutMs = 150L
+
+    /**
+     * `awaitDataObserver` carries one piece of process-wide state — whether the last conclusive wait
+     * got there via the callback — and every timeout case in this file knocks it down.
+     *
+     * Without this, the file would be order-dependent in a way that hides rather than fails: JUnit
+     * does not promise an order, so `a verdict that never arrives is unverified` could run first and
+     * silently shorten the wait of whatever came next. It happens not to matter for the cases that
+     * use [shortTimeoutMs], because 150ms is already below the degraded ceiling and `minOf` leaves it
+     * alone — but that is a coincidence of one constant, not a property, and the three cases below
+     * deliberately use nominal timeouts either side of the ceiling where it stops being true.
+     */
+    @Before
+    fun assumeTheTransportWorksUntilShownOtherwise() {
+        resetObserverTransportBelief()
+    }
 
     /**
      * The one input that means success.
@@ -308,6 +325,84 @@ class DataClearOutcomeTest {
                 outcome
             )
         }
+    }
+
+    /**
+     * One unanswered wait shortens the next one, which is what keeps a batch from taking minutes.
+     *
+     * `MainViewModel.performLoggedMultiAction` clears a selection sequentially, one full wait per
+     * package, so on a ROM that never calls back the old arithmetic was fifty apps × fifteen seconds.
+     * The claim under test is that the *second* wait is cut, not that the first one is: the first
+     * full-length timeout is the evidence, and paying for it once is the price of finding out.
+     *
+     * The nominal 60s here is the point — it is four times the production default, so an assertion
+     * that the call came back in a fraction of it cannot be satisfied by any un-shortened wait.
+     */
+    @Test
+    fun `a wait that went unanswered shortens the next one`() {
+        awaitDataObserver("test", pkg, shortTimeoutMs) { /* the evidence: dispatched, never answered */ }
+
+        val started = System.nanoTime()
+        val outcome = awaitDataObserver("test", pkg, timeoutMillis = 60_000L) { /* also unanswered */ }
+        val elapsedMs = (System.nanoTime() - started) / 1_000_000
+
+        assertEquals(DataClearOutcome.UNVERIFIED, outcome)
+        assertTrue(
+            "the second wait took ${elapsedMs}ms of its nominal 60000ms — it was not shortened, so a " +
+                "fifty-app batch on a ROM that drops callbacks still costs twelve minutes",
+            elapsedMs < 10_000
+        )
+    }
+
+    /**
+     * The shortened wait is a shorter wait, not a skipped one.
+     *
+     * This is the guard against the version of this optimisation that would be a real regression:
+     * once one call had timed out, a *skip* would make [DataClearOutcome.UNVERIFIED] structural and
+     * no clear could ever be confirmed again. A ROM that is merely slow — rather than mute — would be
+     * permanently misreported as failing, which is precisely the false-negative this whole PR is
+     * written to avoid creating.
+     */
+    @Test
+    fun `a shortened wait still honours a verdict that arrives inside it`() {
+        awaitDataObserver("test", pkg, shortTimeoutMs) { /* knock the belief down */ }
+
+        val outcome = awaitDataObserver("test", pkg, timeoutMillis = 60_000L) { observer ->
+            observer.onRemoveCompleted(pkg, true)
+        }
+
+        assertEquals(DataClearOutcome.CLEARED, outcome)
+    }
+
+    /**
+     * The shortening is undone by the next verdict of any kind, so it cannot accumulate.
+     *
+     * A single slow wipe should cost one shortened wait and nothing more. If the belief were sticky,
+     * one unlucky timeout early in a session would quietly halve the patience of every clear after
+     * it for the life of the process — a permanent degradation bought with a transient symptom.
+     *
+     * The nominal 2500ms is chosen to straddle the 1500ms ceiling: a call that is still shortened
+     * comes back at about 1500ms, one that is not comes back at about 2500ms, and the assertion can
+     * only be met by the second.
+     */
+    @Test
+    fun `a verdict of any kind restores the full wait`() {
+        awaitDataObserver("test", pkg, shortTimeoutMs) { /* knock the belief down */ }
+        awaitDataObserver("test", pkg, shortTimeoutMs) { observer ->
+            // A refusal, not a success: what this proves about the transport is that it *answers*,
+            // and the answer's content is irrelevant to that.
+            observer.onRemoveCompleted(pkg, false)
+        }
+
+        val started = System.nanoTime()
+        awaitDataObserver("test", pkg, timeoutMillis = 2_500L) { /* unanswered again */ }
+        val elapsedMs = (System.nanoTime() - started) / 1_000_000
+
+        assertTrue(
+            "the wait came back after ${elapsedMs}ms of its nominal 2500ms, so it was still using " +
+                "the degraded ceiling — the refusal in between should have restored full patience",
+            elapsedMs >= 2_000
+        )
     }
 
     /**
