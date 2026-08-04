@@ -587,6 +587,37 @@ object DhizukuHelper {
         -1 to err.stackTraceToString()
     }
 
+    /**
+     * Deletes [packageName]'s cache directories **for [thorUserId]** — shell first, then a
+     * hidden-API `IPackageManager` call.
+     *
+     * The reflection overloads are tried `…AsUser` first for the same reason as
+     * [com.valhalla.thor.data.source.local.shizuku.Shizuku.clearCache], whose KDoc carries the full
+     * argument: `deleteApplicationCacheFiles(String, IPackageDataObserver)` is declared on every
+     * release this app runs on (28 through 37), so the `NoSuchMethodException` meant to reach the
+     * `…AsUser` branch never fires. Ordered the other way round, the only branch that names a user
+     * is unreachable and the branch that runs names none — `PackageManagerService` implements the
+     * no-user overload as `deleteApplicationCacheFilesAsUser(packageName, getCallingUserId(),
+     * observer)`, resolving the user from the *caller*. Here the caller is the Dhizuku app holding
+     * device owner, so from a work profile the reachable rung cleared the cache of whichever user
+     * Dhizuku itself runs as, for a package the user picked in another profile.
+     *
+     * The fallback is gated on `NoSuchMethodException` alone, never `Exception`: a *refusal* of the
+     * per-user call must not fall through to one that clears a different user's cache and reports it
+     * as this user's success.
+     *
+     * How often this rung runs at all is a separate question, and the answer is probably never:
+     * `asInterface` wraps the binder twice — Dhizuku's own wrapper, then `ShizukuBinderWrapper` on
+     * top — so on a Dhizuku-only device the call dies in a transport belonging to a privilege mode
+     * the user has not set up. `setAppDisabled` carries that argument in full. It is a reason not to
+     * expect the reorder to change behaviour today, not a reason to keep the order wrong: a rung
+     * that is dead now is still the rung a future transport fix would wake up.
+     *
+     * **A `true` from this function is not evidence the cache is gone.** Only the shell rung is
+     * honest (`rm -rf` exits 0 or it does not). The reflective call is asynchronous — PMS reports
+     * through the `IPackageDataObserver` that is passed as `null` here — so `true` means only that
+     * the binder call returned without throwing.
+     */
     // SdCardPath: absolute system paths are intentional for privileged/root file ops on app data
     // dirs (not app-scoped storage). PrivateApi: hidden-API reflection is the core privilege
     // mechanism, guarded by the :bypass VMRuntime unseal.
@@ -610,19 +641,21 @@ object DhizukuHelper {
                 Bypass.invoke<Any?>(
                     pm.javaClass,
                     pm,
-                    "deleteApplicationCacheFiles",
-                    arrayOf(String::class.java, observerClass),
-                    packageName,
-                    null /* IPackageDataObserver */
-                )
-            } catch (_: NoSuchMethodException) {
-                Bypass.invoke(
-                    pm.javaClass,
-                    pm,
                     "deleteApplicationCacheFilesAsUser",
                     arrayOf(String::class.java, Int::class.javaPrimitiveType!!, observerClass),
                     packageName,
                     thorUserId,
+                    null /* IPackageDataObserver */
+                )
+            } catch (_: NoSuchMethodException) {
+                // No user id to give: this overload derives one from the calling uid. Reached only
+                // if a release stops declaring the AsUser variant, which none in 28..37 does.
+                Bypass.invoke<Any?>(
+                    pm.javaClass,
+                    pm,
+                    "deleteApplicationCacheFiles",
+                    arrayOf(String::class.java, observerClass),
+                    packageName,
                     null
                 )
             }
