@@ -28,6 +28,10 @@ class BillingProcessorImpl : BillingProcessor {
         // No-op in FOSS flavor
     }
 
+    override fun refreshPurchases() {
+        // No-op in FOSS flavor: no purchases exist, so nothing can need acknowledging.
+    }
+
     override fun close() {
         // No-op in FOSS flavor: no billing client or scope to tear down.
     }

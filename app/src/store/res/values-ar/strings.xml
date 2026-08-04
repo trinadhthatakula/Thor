@@ -11,4 +11,10 @@
     <string name="change_support_plan_title">هل تريد تغيير خطة الدعم؟</string>
     <string name="change_support_plan_desc">أنت تدعم المطور بالفعل بخطة نشطة. سيؤدي ترقية خطتك أو تغييرها إلى إلغاء اشتراكك القديم واستبداله بالاشتراك الجديد. هل تريد الاستمرار؟</string>
     <string name="active_plan">الخطة النشطة</string>
+    <string name="billing_purchase_pending">الشراء قيد الانتظار — سيتم تفعيله بمجرد اكتمال الدفع</string>
+    <string name="billing_price_per_week">%1$s / أسبوعيًا</string>
+    <string name="billing_price_per_month">%1$s / شهريًا</string>
+    <string name="billing_price_per_quarter">%1$s / كل 3 أشهر</string>
+    <string name="billing_price_per_half_year">%1$s / كل 6 أشهر</string>
+    <string name="billing_price_per_year">%1$s / سنويًا</string>
 </resources>

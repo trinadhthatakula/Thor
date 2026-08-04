@@ -36,6 +36,7 @@ import com.valhalla.thor.presentation.security.AuthState
 import com.valhalla.thor.presentation.security.BiometricScreen
 import com.valhalla.thor.presentation.security.BiometricUnavailableScreen
 import com.valhalla.thor.presentation.security.SecurityViewModel
+import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.theme.ThorTheme
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.util.Logger
@@ -50,6 +51,7 @@ class HomeActivity : ComponentActivity() {
     private val homeViewModel: HomeViewModel by viewModel()
     private val securityViewModel: SecurityViewModel by viewModel()
     private val preferenceRepository: PreferenceRepository by inject()
+    private val billingProcessor: BillingProcessor by inject()
 
     private val requestCode = 1001
     private var hasRequestedShizuku = false
@@ -238,6 +240,12 @@ class HomeActivity : ComponentActivity() {
         // AuthState.Unavailable. They leave to set a screen lock and come back, and only a
         // re-query turns that into an unlocked app rather than the same dead end.
         securityViewModel.refreshCapability()
+        // Above the Shizuku early-return, which latches after the first resume — this one has to
+        // run on *every* resume. A purchase completed while Thor's process was dead is never
+        // reported by onPurchasesUpdated, and Google revokes and refunds anything left
+        // unacknowledged for three days; coming back to the app is the first chance to catch it.
+        // The store implementation does its work on a background scope and the foss one is a no-op.
+        billingProcessor.refreshPurchases()
         if (hasRequestedShizuku) return
         lifecycleScope.launch {
             val privileges = privilegeManager.state.first { it.isReady }
