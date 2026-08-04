@@ -121,7 +121,7 @@ jobs:
           for rules in app/build/outputs/mapping/*/missing_rules.txt; do
             [ -f "$rules" ] || continue
             missing=1
-            echo "::error::R8 could not resolve every class the code references. $rules holds the -dontwarn rules R8 suggests to proceed anyway; copying them in silences the symptom, so reach for that only once you have established the class is genuinely absent at runtime. Prefer the actual fix — a missing dependency, a compileOnly that should be implementation, or a real -keep in app/proguard-rules.pro (or the flavour's own file)."
+            echo "::error::R8 could not resolve every class the code references. The fix is on the classpath, not in the keep rules: add the dependency that supplies the class, or correct its scope (a compileOnly that should be implementation). A -keep cannot help here — it preserves a class R8 can already see, it does not supply one it cannot. $rules holds the -dontwarn rules R8 suggests so the build can proceed regardless; those silence the diagnostic rather than fix it, so add them to app/proguard-rules.pro (or the flavour's own file) only once you have established the class is genuinely absent at runtime too. If that code path does run, -dontwarn buys a ClassNotFoundException instead of a build failure."
             cat "$rules"
           done
           exit "$missing"
