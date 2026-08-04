@@ -21,6 +21,29 @@ import kotlinx.serialization.json.Json
  * failure / wrong base pick).
  */
 
+/**
+ * The same shape the privilege gateways demand of a package name before it reaches a shell
+ * (`ShizukuSystemGateway`, `RootSystemGateway`, `DhizukuSystemGateway`).
+ */
+private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
+
+/**
+ * True when a package name read out of a bundle *sidecar* may be trusted as an identity.
+ *
+ * Unlike the real-APK path, nothing has validated this string: it is whatever
+ * `manifest.json` / `info.json` said, and the archive came from whichever app fired the
+ * ACTION_VIEW intent. It goes on to drive the installed-app lookup, the downgrade verdict and
+ * the icon cache path, so `"../../databases/thor_database"` must not get that far.
+ *
+ * `..` matches the character class on its own, so it is rejected separately — a path component
+ * is exactly what a filename must never be.
+ */
+fun isValidSidecarPackageName(name: String?): Boolean =
+    !name.isNullOrBlank() &&
+        name != "." &&
+        name != ".." &&
+        PACKAGE_NAME_REGEX.matches(name)
+
 /** Tolerant, framework-independent JSON reader for XAPK manifests. */
 private val bundleJson = Json {
     ignoreUnknownKeys = true
@@ -277,7 +300,16 @@ fun selectBaseApkCandidates(entryNames: List<String>, packageName: String?): Lis
  * (which would yield a base-only/partial install). Otherwise we fall back to
  * [selectBaseApkCandidates], which orders every `.apk` base-first.
  *
- * Returns an empty list only when there are no `.apk` entries at all (caller then
+ * Every name in the result has a leaf that satisfies [isSafeEntryFileName]. That is a
+ * *postcondition*, and it is the reason the filter lives here rather than at the writers: this
+ * is the single place both the install set and the identity candidates drawn from it are
+ * decided, so a name the writers would refuse cannot survive into a list a *reader* still acts
+ * on. Applied at the writers instead — which is where the check started — an entry named
+ * `good\base.apk` stayed in the install set and in the identity candidates, was parsed for the
+ * confirmation sheet, and was then silently dropped from the set `pm` received: the sheet
+ * described one file and the device installed another.
+ *
+ * Returns an empty list only when there are no usable `.apk` entries at all (caller then
  * treats the input as monolithic).
  */
 fun resolveBundleInstallSet(
@@ -285,12 +317,20 @@ fun resolveBundleInstallSet(
     manifestSplitFiles: List<String>?,
     packageName: String?
 ): List<String> {
-    val ordered = selectBaseApkCandidates(entryNames, packageName)
+    // The one filter of the untrusted name list. Entry names come out of an archive a stranger's
+    // app handed us; `java.io.File` does not normalise `.`/`..`, and a backslash is a separator
+    // on the JVM's other host platform.
+    val entries = entryNames.filter { isSafeEntryFileName(it.substringAfterLast('/')) }
+    val ordered = selectBaseApkCandidates(entries, packageName)
     if (manifestSplitFiles.isNullOrEmpty()) return ordered
 
-    val available = entryNames.mapTo(HashSet()) { it.substringAfterLast('/') }
+    val available = entries.mapTo(HashSet()) { it.substringAfterLast('/') }
     // A manifest that references files not present is stale/partial: ignore it and
-    // fall back to the entry scan rather than extracting nothing.
+    // fall back to the entry scan rather than extracting nothing. This is also what carries the
+    // leaf-name postcondition onto the manifest's own strings, which are untrusted too and are
+    // returned verbatim below: `available` holds only leaves that passed the filter, so a split
+    // list naming `evil\payload.apk` reads as stale and is discarded whole — never shortened,
+    // because half a bundle is not a smaller install, it is a different one.
     if (!manifestSplitFiles.all { it.substringAfterLast('/') in available }) return ordered
 
     val listed = manifestSplitFiles.mapTo(HashSet()) { it.substringAfterLast('/') }
@@ -301,4 +341,62 @@ fun resolveBundleInstallSet(
         it.substringAfterLast('/') !in listed && isSplitApkName(it, packageName)
     }
     return manifestSplitFiles + extras
+}
+
+/**
+ * The single answer to "which APKs does this archive install, and which of them is the app".
+ *
+ * These used to be two answers reached by two algorithms. The analyzer picked an identity out of
+ * every `.apk` entry in the archive ([selectBaseApkCandidates]); the installer picked an install set
+ * out of the `manifest.json` split list ([resolveBundleInstallSet]), which deliberately drops
+ * standalone APKs the manifest did not list. An archive carrying a genuine, correctly signed
+ * `base.apk` next to a `manifest.json` naming only `payload.apk` therefore got one answer from each:
+ * the sheet described the signed app, `pm` installed the other one. With the set collapsed to a
+ * single APK there is not even the platform's own base/split package-name check left to catch it.
+ *
+ * So [identityCandidates] is drawn from [installSet] rather than from the archive at large. The APK
+ * the user is shown is always one of the files that gets written — and when [installSet] holds more
+ * than one, `install-multiple` puts the rest through the platform's consistency check against it.
+ *
+ * Being drawn from one list is not enough on its own: the list also has to hold only names the
+ * writers will accept, or the two sides diverge again at extraction time rather than at selection
+ * time. [resolveBundleInstallSet] is where that filter runs, and both fields inherit it.
+ *
+ * @param installSet ordered entry names to hand to `install-multiple`, empty when the archive holds
+ *   no installable `.apk` entry — which is how both sides agree to treat the file as monolithic.
+ *   Every name's leaf satisfies [isSafeEntryFileName].
+ * @param identityCandidates the same list re-ordered base-first, best guess first; the analyzer
+ *   parses these in turn and keeps the first that is a real, non-split APK. Same leaf guarantee,
+ *   because every element is one of [installSet]'s.
+ */
+data class BundleInstallPlan(
+    val installSet: List<String>,
+    val identityCandidates: List<String>
+)
+
+/**
+ * Resolve [entryNames] into the one plan both the analyzer and the installer act on.
+ *
+ * [manifestBaseFile] is untrusted like everything else in the sidecar, and it is the only string
+ * here that does not come from [installSet]. It is admitted only when it names one of the install
+ * set's own leaves, which is what gives it the same [isSafeEntryFileName] guarantee as the rest.
+ */
+fun resolveBundlePlan(
+    entryNames: List<String>,
+    manifestSplitFiles: List<String>?,
+    manifestBaseFile: String?,
+    packageName: String?
+): BundleInstallPlan {
+    val installSet = resolveBundleInstallSet(entryNames, manifestSplitFiles, packageName)
+    val installable = installSet.mapTo(HashSet()) { it.substringAfterLast('/').lowercase() }
+    val identity = buildList {
+        // The manifest's own `id == "base"` entry first — but only when it survived install-set
+        // resolution. A manifest that flags a base it then leaves out of `split_apks` is
+        // describing a file nobody installs, and that discrepancy is the attack, not a hint.
+        manifestBaseFile
+            ?.takeIf { it.substringAfterLast('/').lowercase() in installable }
+            ?.let { add(it) }
+        addAll(selectBaseApkCandidates(installSet, packageName))
+    }.distinctBy { it.substringAfterLast('/').lowercase() }
+    return BundleInstallPlan(installSet, identity)
 }
