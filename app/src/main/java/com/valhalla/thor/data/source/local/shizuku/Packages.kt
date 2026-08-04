@@ -3,13 +3,9 @@
 
 package com.valhalla.thor.data.source.local.shizuku
 
-import android.app.ActivityManager
-import android.app.AppOpsManager
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import androidx.core.content.getSystemService
-import com.valhalla.bypass.Bypass
 import com.valhalla.thor.data.source.local.thorUserId
 
 class Packages(private val app: Context) {
@@ -99,51 +95,23 @@ class Packages(private val app: Context) {
     // left for the next caller to find — there is no operation for which the answer "this is not a
     // system app" implies "no user needs naming".
 
-    fun forceStopApp(packageName: String): Boolean = runCatching {
-        app.getSystemService<ActivityManager>()?.let {
-            Bypass.invoke<Any?>(
-                it::class.java,
-                it,
-                "forceStopPackage",
-                packageName
-            )
-        }
-        true
-    }.getOrElse {
-        it.printStackTrace()
-        false
-    }
-
-    fun setAppDisabled(packageName: String, disabled: Boolean): Boolean {
-        getApplicationInfoOrNull(packageName) ?: return false
-        if (disabled) forceStopApp(packageName)
-        runCatching {
-            val newState = when {
-                !disabled -> PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-                else -> PackageManager.COMPONENT_ENABLED_STATE_DISABLED
-            }
-            app.packageManager.setApplicationEnabledSetting(packageName, newState, 0)
-        }.onFailure {
-            it.printStackTrace()
-        }
-        return isAppDisabled(packageName) == disabled
-    }
-
-    fun setAppRestricted(packageName: String, restricted: Boolean): Boolean = runCatching {
-        app.getSystemService<AppOpsManager>()?.let {
-            Bypass.invoke<Any?>(
-                it::class.java,
-                it,
-                "setMode",
-                "android:run_any_in_background",
-                packageUid(packageName),
-                packageName,
-                if (restricted) AppOpsManager.MODE_IGNORED else AppOpsManager.MODE_ALLOWED
-            )
-        }
-        true
-    }.getOrElse {
-        it.printStackTrace()
-        false
-    }
+    // `forceStopApp`, `setAppDisabled` and `setAppRestricted` used to sit here, and were deleted as
+    // one edit because they only made sense as one: `setAppDisabled` was `forceStopApp`'s ONLY
+    // caller, and `setAppDisabled` itself had none, so removing either alone leaves a dangling call
+    // or a still-dead pair.
+    //
+    // All three were unprivileged reflection — `ActivityManager.forceStopPackage` and
+    // `AppOpsManager.setMode` invoked via `Bypass` from Thor's own uid, with no privilege behind
+    // them — wrapped in `runCatching { ...; true }`. That reports **true whenever the call merely
+    // did not throw**, which is the failure mode this class exists to avoid: a `SecurityException`
+    // is not the only way a call can do nothing, and a caller reading `true` cannot tell the
+    // difference between "stopped it" and "was refused quietly". `setAppDisabled` was the only one
+    // that read anything back (`isAppDisabled(...) == disabled`), and it still discarded the
+    // force-stop's answer entirely.
+    //
+    // The real implementations are the privileged ones — `Shizuku`/`Dhizuku`/`RootSystemGateway`,
+    // each of which runs the operation through a shell or a Device Owner binder and verifies it.
+    // What survives on `Packages` is deliberately only the *observers* (`isAppDisabled`,
+    // `isAppStopped`, `isAppUninstalled`, `getApplicationInfoOrNull`), which are what those
+    // privileged paths call this class for. Do not re-add an unprivileged mutator here.
 }

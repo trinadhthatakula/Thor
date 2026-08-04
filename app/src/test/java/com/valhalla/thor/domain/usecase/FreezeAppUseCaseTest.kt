@@ -65,8 +65,6 @@ private class RecordingSystemRepository : SystemRepository {
         error("off the freeze path")
 
     override suspend fun rebootDevice(reason: String): Result<Unit> = error("off the freeze path")
-    override suspend fun aggressiveCleanup(packageName: String): Result<Unit> =
-        error("off the freeze path")
 
     override suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> =
         error("off the freeze path")

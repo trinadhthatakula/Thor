@@ -308,22 +308,35 @@ object Shizuku {
     fun forceStopApp(context: Context, packageName: String): Boolean {
         val pkgs = Packages(context)
         val userId = pkgs.myUserId
-        // 1. Try shell first
+        // 1. Try shell first — but exit 0 is not an answer to "is it stopped?", which is why it is
+        // no longer the whole condition. `ActivityManagerShellCommand.runForceStop` calls
+        // `mInterface.forceStopPackage(pkg, userId)` and then ends in an unconditional `return 0`;
+        // its only non-zero exits are an unknown command-line option and an exception thrown out of
+        // AMS. AMS refuses nothing here — a package nothing is running for, or one not installed
+        // for `--user N` at all, produces exactly the same 0 as a real kill. So this rung reported
+        // success for every force-stop Thor has ever issued, and FLAG_STOPPED re-read from
+        // PackageManager — `Packages.isAppStopped`, the post-condition the caller actually means —
+        // sat twice below, unreachable behind that 0. Do not simplify this back to the exit code.
         val result = execute("am force-stop --user $userId $packageName")
-        if (result.first == 0) return true
+        if (result.first == 0 && pkgs.isAppStopped(packageName)) return true
 
-        // 2. Fallback to reflection
-        val reflectionResult = runCatching {
+        // 2. Fallback to reflection, and nothing reads its result any more. It is the same shape of
+        // claim rung 1 just stopped making: `IActivityManager.forceStopPackage` returns void, so all
+        // the old `if (reflectionResult) return true` could report was that the binder call did not
+        // throw — and verifying rung 1 alone would have moved that false success one rung down
+        // rather than removed it. The line is deleted rather than gated because rung 3 already
+        // re-reads FLAG_STOPPED unconditionally: `reflectionResult && pkgs.isAppStopped(...)` can
+        // only return true where the very next line returns true anyway, at the cost of a second
+        // PackageManager round trip. One verifier, reached whichever rung did the work — the same
+        // shape `DhizukuHelper.forceStopApp` carries.
+        runCatching {
             val am = asInterface("android.app.IActivityManager", Context.ACTIVITY_SERVICE)
             Bypass.invoke<Any?>(
                 am::class.java, am, "forceStopPackage", packageName, userId
             )
-            true
-        }.getOrElse {
+        }.onFailure {
             Logger.e("Shizuku", "forceStopApp reflection failed for $packageName", it)
-            false
         }
-        if (reflectionResult) return true
 
         // 3. Unprivileged fallback (re-query PM to observe post-mutation state)
         if (pkgs.isAppStopped(packageName)) return true
@@ -1008,6 +1021,83 @@ object Shizuku {
     }
 
     fun setAppRestricted(context: Context, packageName: String, restricted: Boolean): Boolean {
+        // `ignore`/MODE_IGNORED restricts and `allow`/MODE_ALLOWED lifts, matching the shell rung's
+        // own pair. This is also what the read-back below expects to find afterwards.
+        val expectedMode =
+            if (restricted) android.app.AppOpsManager.MODE_IGNORED
+            else android.app.AppOpsManager.MODE_ALLOWED
+
+        // The op code and the target uid are resolved once, here, instead of inside the reflection
+        // rung where the `strOpToOp` call used to sit: the read-back needs both, and a write and a
+        // read that each resolve their own op are two chances to name different ones. Null means
+        // "could not resolve", which the read-back answers as "could not tell" rather than as a
+        // disagreement.
+        //
+        // The uid is also what makes the read address the same user as the write:
+        // `Packages.packageUid` goes through Thor's own PackageManager, so it carries Thor's user —
+        // the one the shell rung below spells out as `--user thorUserId`.
+        val opCode = runCatching {
+            Bypass.invoke<Int>(
+                android.app.AppOpsManager::class.java,
+                null,
+                "strOpToOp",
+                "android:run_any_in_background"
+            )
+        }.getOrElse { e ->
+            Logger.e("Shizuku", "strOpToOp(android:run_any_in_background) failed", e)
+            null
+        }
+        val uid = runCatching { Packages(context).packageUid(packageName) }.getOrElse { e ->
+            Logger.e("Shizuku", "packageUid failed for $packageName", e)
+            null
+        }
+
+        // The read-back both rungs are judged by. Three answers, and the third is the point: true
+        // (the op is in the requested mode), false (it is not), null (could not tell) — never false
+        // for "could not tell".
+        //
+        // It reads through the privileged binder rather than the in-process AppOpsManager because
+        // Thor holds no UPDATE_APP_OPS_STATS, and `AppOpsService.verifyIncomingUid` throws
+        // SecurityException at any caller asking about a uid other than its own without it. The
+        // Shizuku identity that performed the write is the one allowed to read it back. What comes
+        // back is the mode actually in force, not a record of what was written.
+        fun opReadsBackAsExpected(): Boolean? {
+            if (opCode == null || uid == null) return null
+            return runCatching {
+                val appops =
+                    asInterface("com.android.internal.app.IAppOpsService", Context.APP_OPS_SERVICE)
+                Bypass.invoke<Int>(
+                    appops::class.java,
+                    appops,
+                    "checkOperation",
+                    arrayOf(
+                        Int::class.javaPrimitiveType!!,
+                        Int::class.javaPrimitiveType!!,
+                        String::class.java
+                    ),
+                    opCode,
+                    uid,
+                    packageName
+                ) == expectedMode
+            }.getOrElse { e ->
+                // Fail OPEN, and the asymmetry with the clear-data sites is deliberate rather than
+                // an oversight. `checkOperation(int, int, String)` has been on IAppOpsService for a
+                // long time, but it has NOT been verified on every release in 28..37; a
+                // NoSuchMethodException here means "this device's signature differs", not "the
+                // restriction failed", so both rungs keep their own verdict when this answers null.
+                //
+                // At the clear-data sites fail-CLOSED is the right call, because there "the
+                // reflective invoke did not throw" is the entire evidence a wipe happened — an
+                // unconfirmable result there really is an unconfirmed wipe. Here the rung being
+                // second-guessed is already honest: `appops set` exits non-zero for an unknown
+                // package or op, and `setMode` throws when it is denied. Turning an unreadable
+                // read-back into a hard failure would therefore report failures for restrictions
+                // that were applied — a regression bought with no new information.
+                Logger.e("Shizuku", "checkOperation read-back unavailable for $packageName", e)
+                null
+            }
+        }
+
         // 1. Try shell first. The user this names is not the `pm` story retold: `appops` seeds
         // UserHandle.USER_CURRENT and system_server resolves it with ActivityManager.getCurrentUser(),
         // so the bare line landed on whoever was in the *foreground* at the moment it ran — the
@@ -1020,13 +1110,19 @@ object Shizuku {
         val result = execute(
             backgroundRestrictionCommand(packageName.escapeForShell(), thorUserId, restricted)
         )
-        if (result.first == 0) return true
+        // `!= false`, not `== true`: null is "could not read the op back" and leaves this rung's
+        // own exit code standing, which is the fail-open rule the read-back documents. Only a
+        // definite disagreement — the op is not in the mode just requested — falls through to
+        // rung 2 rather than reporting a success nobody confirmed.
+        if (result.first == 0 && opReadsBackAsExpected() != false) return true
 
-        // 2. Fallback to reflection
-        return runCatching {
+        // 2. Fallback to reflection. Without an op code or a uid there is nothing to call setMode
+        // with, which is the same `false` the surrounding runCatching used to produce when
+        // `strOpToOp` or `packageUid` threw inside it.
+        if (opCode == null || uid == null) return false
+        val reflectionRan = runCatching {
             val appops =
                 asInterface("com.android.internal.app.IAppOpsService", Context.APP_OPS_SERVICE)
-            val uid = Packages(context).packageUid(packageName)
             Bypass.invoke<Any?>(
                 appops::class.java,
                 appops,
@@ -1037,18 +1133,21 @@ object Shizuku {
                     String::class.java,
                     Int::class.javaPrimitiveType!!
                 ),
-                Bypass.invoke<Int>(
-                    android.app.AppOpsManager::class.java,
-                    null,
-                    "strOpToOp",
-                    "android:run_any_in_background"
-                ),
+                opCode,
                 uid,
                 packageName,
-                if (restricted) android.app.AppOpsManager.MODE_IGNORED else android.app.AppOpsManager.MODE_ALLOWED
+                expectedMode
             )
             true
-        }.getOrElse { false }
+        }.getOrElse { e ->
+            // Logged rather than swallowed: when this rung is the one that has to work, its
+            // SecurityException is the line a bug report needs.
+            Logger.e("Shizuku", "setMode(RUN_ANY_IN_BACKGROUND) failed for $packageName", e)
+            false
+        }
+        // `setMode` returns void, so `reflectionRan` only ever meant "the binder call did not
+        // throw". Same fail-open `!= false` as rung 1.
+        return reflectionRan && opReadsBackAsExpected() != false
     }
 
     // The user id every `--user` below names is [thorUserId], read in process.

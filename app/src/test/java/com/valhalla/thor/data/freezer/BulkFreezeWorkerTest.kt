@@ -161,9 +161,6 @@ private class RecordingSystemRepository(
 
     override suspend fun rebootDevice(reason: String): Result<Unit> = unreachable("rebootDevice")
 
-    override suspend fun aggressiveCleanup(packageName: String): Result<Unit> =
-        unreachable("aggressiveCleanup")
-
     override suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> =
         unreachable("reinstallAppWithGoogle")
 

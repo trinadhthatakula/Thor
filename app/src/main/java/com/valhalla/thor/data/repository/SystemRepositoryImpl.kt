@@ -158,13 +158,14 @@ class SystemRepositoryImpl(
         }
     }
 
-    override suspend fun aggressiveCleanup(packageName: String): Result<Unit> = withContext(Dispatchers.IO) {
-        runGatewayAction { gateway ->
-            gateway.forceStopApp(packageName)
-            gateway.clearCache(packageName)
-            Result.success(Unit)
-        }
-    }
+    // `aggressiveCleanup` used to sit here: force-stop then clear-cache, both `Result`s discarded,
+    // then an unconditional `Result.success(Unit)`. It had no production caller — its only
+    // references were the interface declaration and three interface-forced test overrides — so it
+    // is deleted rather than taught to honour the results it was throwing away. A composite that
+    // reports success no matter what its two steps did is worse than no composite: the caller that
+    // would eventually be written for it inherits a guarantee nothing checks. The two operations
+    // remain available individually as `forceStopApp` and `clearCache`, each returning its own
+    // real `Result`.
 
     override suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> = withContext(Dispatchers.IO) {
         runGatewayAction { it.reinstallAppWithGoogle(packageName) }
