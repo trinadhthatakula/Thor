@@ -76,6 +76,72 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      # The only place R8 runs BEFORE a merge. It does run elsewhere — dev-check.yml:147,
+      # production-deploy.yml:145 and manual-build.yml:52 all shell out to fastlane, which
+      # assembles release — but every one of those triggers on a push to an already-merged
+      # branch. On the PR itself nothing minified was ever built: assembleFossDebug above does
+      # not minify (app/build.gradle.kts: `debug { isMinifyEnabled = false }`), lintStoreRelease
+      # analyses unminified classes, and codeql.yml builds with `build-mode: none`. So the first
+      # minified build of any change was the build that published it, and a shrinker break was
+      # discovered by the release rather than by review. gradle.properties runs R8 in full mode
+      # with android.r8.strictFullModeForKeepRules=true, which is exactly the configuration where
+      # a keep that used to be implied quietly stops being one.
+      #
+      # Needs no secrets: the release build type assigns signingConfig only when jks.properties
+      # or KEY_ALIAS exists (`hasSigningCredentials` in app/build.gradle.kts, added so a fresh
+      # clone can still build), so this produces an unsigned release APK rather than dying in
+      # validateSigningFossRelease. Nothing here exports the keystore env vars, so the result is
+      # the same for a fork PR and for a branch PR.
+      #
+      # Both flavours, on every PR, deliberately. The two are not redundant: foss is the
+      # reproducibility-critical one and the only consumer of proguard-rules-foss.pro, while
+      # store is the only place the Play Billing dependency, its consumer keep rules and the
+      # app/src/store sources are shrunk at all — a store-only R8 break is invisible to a foss
+      # run. Gating store on `base_ref == 'master'` would defer exactly that check to the
+      # release PR, which is the one place a red check is most expensive. The marginal cost is
+      # small: lintStoreRelease above has already compiled the store release variant, so this
+      # adds shrink/dex/package for store rather than a second full Kotlin compile.
+      - name: Assemble minified release (R8)
+        id: r8
+        run: ./gradlew assembleFossRelease assembleStoreRelease --stacktrace
+
+      # R8 writes missing_rules.txt into the mapping directory when it cannot resolve a class
+      # something references, and the contents are the rules it wants. AGP fails the build in the
+      # same breath today, so this is a second lock rather than the only one — but it is the lock
+      # that survives the first being relaxed (a blanket -dontwarn added to quiet the symptom, or
+      # a future AGP demoting missing classes to a warning), and it names the file in the log
+      # instead of leaving it to be found inside an artifact.
+      - name: Check R8 missing rules
+        id: missing_rules
+        # Runs even when the assemble failed, because if R8 is what failed then this is the step
+        # that says so. Skipped along with the assemble if an earlier step went red.
+        if: ${{ !cancelled() && steps.r8.outcome != 'skipped' }}
+        run: |
+          missing=0
+          for rules in app/build/outputs/mapping/*/missing_rules.txt; do
+            [ -f "$rules" ] || continue
+            missing=1
+            echo "::error::R8 could not resolve every class the code references. $rules holds the -dontwarn rules R8 suggests to proceed anyway; copying them in silences the symptom, so reach for that only once you have established the class is genuinely absent at runtime. Prefer the actual fix — a missing dependency, a compileOnly that should be implementation, or a real -keep in app/proguard-rules.pro (or the flavour's own file)."
+            cat "$rules"
+          done
+          exit "$missing"
+
+      # configuration.txt is the fully merged rule set, every consumer rule from every dependency
+      # included, and usage.txt is what R8 removed — between them a shrinker failure is readable
+      # from the PR without rerunning the build locally on a variant nobody assembles by hand.
+      # Failure-only, like the lint report above: on a green run the APK is unsigned and thrown
+      # away, and its mapping.txt describes nothing that will ever ship.
+      - name: Upload R8 outputs
+        if: failure() && steps.r8.outcome != 'skipped'
+        uses: actions/upload-artifact@v7
+        with:
+          # One directory per variant inside, so the archive names the variant even when the
+          # master-only store run above is part of it.
+          name: r8-outputs
+          path: app/build/outputs/mapping/
+          if-no-files-found: warn
+          retention-days: 14
+
   # Runs on every PR rather than being path-filtered. on.pull_request.paths
   # filters the whole workflow, which would also gate build-and-test — the
   # required status check — leaving unrelated PRs pending forever.
