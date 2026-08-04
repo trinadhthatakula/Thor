@@ -110,7 +110,20 @@ private const val BILLING_RETRY_MAX_DELAY_MS = 30_000L
  *
  * Doubling from a second and capped, because both callers are bounded and both have a backstop: a
  * failed acknowledgement is retried by the `queryPurchasesAsync` sweep on the next launch, and a
- * failed reconnection by the next one the billing library itself schedules.
+ * failed reconnection by `refreshPurchases()` on the next resume, which re-arms the ladder through
+ * `BillingReconnectLadder.onResume()`.
+ *
+ * That second half used to read "by the next one the billing library itself schedules", which is
+ * wrong in a way worth naming rather than quietly correcting: **the library schedules nothing.**
+ * `enableAutoServiceReconnection` is lazy — in billing 9.1.0 the only reachable call to
+ * `BillingClientImpl.zzaI(int)` sits behind `zzbw(long)`/`zzbx(long)`, which run at the head of each
+ * API callable, so the binding is rebuilt on the *next API call* and never on a timer. There is also
+ * no listener notification: the library's own reconnect passes an internal `zzbv` to
+ * `zzbu(listener, i)` with `i != 0`, which does not overwrite the app's stored `zzK`, so
+ * `onBillingSetupFinished` never fires again. `BillingProcessorImpl` says all of this at its
+ * `enableAutoServiceReconnection` call and at `scheduleReconnect`; this KDoc was the one place that
+ * said the opposite, and a reader who believed it could have cut the resume re-arm as redundant —
+ * removing the only backstop there is.
  */
 fun billingRetryDelayMillis(attempt: Int): Long {
     if (attempt <= 0) return BILLING_RETRY_BASE_DELAY_MS
