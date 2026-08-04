@@ -33,9 +33,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -238,7 +238,12 @@ private fun BiometricLockView(
             Box(
                 modifier = Modifier
                     .size(110.dp)
-                    .alpha(pulseAlpha)
+                    // graphicsLayer, not Modifier.alpha: the lambda defers the read of the animated
+                    // value to the layer block, so each frame re-records the layer instead of
+                    // invalidating this composable. Read in composition scope it recomposes
+                    // BiometricLockView every frame, forever — on the first screen of a cold start,
+                    // against the main thread the biometric prompt needs.
+                    .graphicsLayer { this.alpha = pulseAlpha }
                     .background(Color.Transparent, CircleShape)
                     .padding(2.dp)
                     .background(greenDark.copy(alpha = 0.2f), CircleShape)
@@ -303,8 +308,14 @@ private fun BiometricLockView(
             Box(
                 modifier = Modifier
                     .size(96.dp)
-                    .scale(scale)
-                    .alpha(0.1f)
+                    // Same reason as the ring above: `scale` is animated, so it is read in the layer
+                    // block rather than in composition. The constant alpha rides along in the same
+                    // layer instead of adding a second one.
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                        alpha = 0.1f
+                    }
                     .background(greenDark, RoundedCornerShape(24.dp))
             )
 

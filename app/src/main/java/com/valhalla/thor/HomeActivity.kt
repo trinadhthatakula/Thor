@@ -8,12 +8,19 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
@@ -62,7 +69,14 @@ class HomeActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        installSplashScreen()
+        val splashScreen = installSplashScreen()
+        // Hold the frame until the app lock has answered. The preference comes from DataStore, which
+        // answers a beat after `setContent` returns, so without this the branch the user sees first
+        // is decided by a race rather than by the preference — and the losing outcome is the app,
+        // fully composed, behind a lock that had not finished switching on.
+        splashScreen.setKeepOnScreenCondition {
+            securityViewModel.authState.value == AuthState.Loading
+        }
         enableEdgeToEdge()
         shizukuHandler.register()
 
@@ -83,6 +97,30 @@ class HomeActivity : ComponentActivity() {
             ) {
                 val authState by securityViewModel.authState.collectAsStateWithLifecycle()
 
+                // The app lock promises that nothing inside is visible until you authenticate, and
+                // the Recents card is inside: Android snapshots whatever was on screen when Thor went
+                // to the background — typically the full installed-app list, with which apps are
+                // frozen or hidden — and shows it to anyone who picks the device up, no prompt
+                // involved. FLAG_SECURE is what excludes the window from that capture, and from
+                // screenshots and recorders with it.
+                //
+                // Keyed on `authState`, deliberately, and NOT on `prefs.biometricLockEnabled`:
+                // `prefs` is seeded with `UserPreferences()` until DataStore answers, whose default
+                // is `false`, so keying on it would leave the window capturable for exactly the
+                // window this whole change exists to close — the same "not read yet is
+                // indistinguishable from off" defect, reintroduced one screen later. `authState`
+                // already carries the tri-state, so the condition is inverted to fail closed: every
+                // state is secure *except* the one that means the lock is genuinely off, and an
+                // `AuthState` added later is protected by default rather than by remembering to
+                // amend this line. A user who never armed the lock still keeps their screenshots.
+                LaunchedEffect(authState) {
+                    if (authState == AuthState.NotRequired) {
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    } else {
+                        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    }
+                }
+
                 // The two things SecurityViewModel says, both about the app lock going away without
                 // the user asking: it disarms a lock this device can never open, and it reports a
                 // settings file it could not read — which drops the lock preference to `false` the
@@ -99,6 +137,21 @@ class HomeActivity : ComponentActivity() {
                 }
 
                 when (authState) {
+                    AuthState.Loading -> {
+                        // Deliberately nothing but a backdrop: the splash is still up (its
+                        // keep-on-screen condition reads this same state), and composing MainScreen
+                        // here is the defect this state exists to stop — its first composition
+                        // consumes the restored navigation state, which is then gone by the time the
+                        // user authenticates. Filled rather than empty so that a frame between the
+                        // splash exiting and MainScreen laying out cannot flash the light window
+                        // background of `Theme.Thor` at a dark-theme user.
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.background)
+                        )
+                    }
+
                     AuthState.NotRequired,
                     AuthState.Unlocked -> {
                         MainScreen(
