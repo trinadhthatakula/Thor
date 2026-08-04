@@ -17,8 +17,9 @@ import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
+import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import com.valhalla.thor.util.Logger
 import com.valhalla.superuser.utils.escapeForShell
@@ -34,7 +35,8 @@ class DhizukuSystemGateway(
     // availability probe binds the Dhizuku client through it — see DhizukuHelper.isDhizukuAvailable.
     private val context: Context,
     private val reflector: DhizukuReflector,
-    private val preferenceRepository: PreferenceRepository
+    private val preferenceRepository: PreferenceRepository,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : SystemGateway {
 
     override suspend fun isRootAvailable() = false
@@ -44,7 +46,7 @@ class DhizukuSystemGateway(
     // DhizukuHelper.isDhizukuAvailable() performs blocking binder IPC (DhizukuAPI) and may re-bind
     // the client; confine it to IO at the gateway boundary so this probe is main-safe regardless of
     // the caller's dispatcher.
-    override suspend fun isDhizukuAvailable(): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun isDhizukuAvailable(): Boolean = withContext(ioDispatcher) {
         DhizukuHelper.isDhizukuAvailable(context)
     }
 

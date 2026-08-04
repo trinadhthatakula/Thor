@@ -25,7 +25,7 @@ import com.valhalla.thor.domain.repository.InstalledAppsPermissionGate
 import com.valhalla.thor.util.LocaleRevision
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.ensureActive
@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import java.io.File
 
@@ -42,7 +43,8 @@ class AppRepositoryImpl(
     private val context: Context,
     private val appDao: AppDao,
     private val uadHelper: UadHelper,
-    private val installedAppsPermission: InstalledAppsPermissionGate
+    private val installedAppsPermission: InstalledAppsPermissionGate,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : AppRepository {
 
     private val pm = context.packageManager
@@ -103,7 +105,7 @@ class AppRepositoryImpl(
         val triggerChannel = Channel<Unit>(Channel.CONFLATED)
 
         // The Worker: Consumes triggers, waits for quiet, then fetches ONCE.
-        val worker = launch(Dispatchers.IO) {
+        val worker = launch(ioDispatcher) {
             // Initial load from cache and baseline for comparison
             val cachedMap = try {
                 val entities = appDao.getAllApps()
@@ -357,10 +359,10 @@ class AppRepositoryImpl(
             localeWatcher.cancel()
             worker.cancel()
         }
-    }.flowOn(Dispatchers.IO)
+    }.flowOn(ioDispatcher)
 
     override suspend fun getAppDetails(packageName: String): AppInfo? =
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             try {
                 val flags = (PackageManager.MATCH_UNINSTALLED_PACKAGES).toLong()
                 val packInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -386,7 +388,7 @@ class AppRepositoryImpl(
 
     @Suppress("DEPRECATION")
     override suspend fun getDetailedAppInfo(packageName: String): DetailedAppInfo? =
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             try {
                 val appInfo = (getAppDetails(packageName) ?: return@withContext null)
                     // Carry the persisted total install size (computed lazily on Size
@@ -502,7 +504,7 @@ class AppRepositoryImpl(
             }
         }
 
-    override suspend fun getApkDetails(apkPath: String): AppInfo? = withContext(Dispatchers.IO) {
+    override suspend fun getApkDetails(apkPath: String): AppInfo? = withContext(ioDispatcher) {
         val flags = PackageManager.GET_PERMISSIONS
         val packInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             pm.getPackageArchiveInfo(apkPath, PackageManager.PackageInfoFlags.of(flags.toLong()))

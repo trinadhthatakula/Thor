@@ -20,8 +20,9 @@ import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
+import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import rikka.shizuku.Shizuku
 import com.valhalla.thor.data.source.local.shizuku.Shizuku as ShizukuHelper
@@ -38,14 +39,15 @@ class ShizukuSystemGateway(
     // has to come out of resources. RootSystemGateway takes its Context the same way.
     private val context: Context,
     private val reflector: ShizukuReflector,
-    private val preferenceRepository: PreferenceRepository
+    private val preferenceRepository: PreferenceRepository,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : SystemGateway {
 
     override suspend fun isRootAvailable() = false
 
     // Shizuku.checkSelfPermission()/pingBinder() are blocking binder IPC; confine them to IO
     // at the gateway boundary so this probe is main-safe regardless of the caller's dispatcher.
-    override suspend fun isShizukuAvailable(): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun isShizukuAvailable(): Boolean = withContext(ioDispatcher) {
         try {
             Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED && Shizuku.pingBinder()
         } catch (_: Exception) {

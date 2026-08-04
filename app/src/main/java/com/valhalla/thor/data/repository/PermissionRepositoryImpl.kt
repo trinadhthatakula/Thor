@@ -15,10 +15,11 @@ import com.valhalla.thor.domain.model.runtimeGroupFor
 import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 
 /**
@@ -44,14 +45,15 @@ internal const val PERMISSION_QUERY_FLAGS =
 @Single(binds = [PermissionRepository::class])
 class PermissionRepositoryImpl(
     context: Context,
-    private val systemRepository: SystemRepository
+    private val systemRepository: SystemRepository,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : PermissionRepository {
 
     private val pm = context.packageManager
 
     @Suppress("DEPRECATION")
     override suspend fun getAppPermissions(packageName: String): Result<List<AppPermission>> =
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             try {
                 val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     pm.getPackageInfo(
@@ -123,7 +125,7 @@ class PermissionRepositoryImpl(
      */
     @Suppress("DEPRECATION")
     override suspend fun buildPermissionIndex(): Result<PermissionIndex> =
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             try {
                 val packages = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     pm.getInstalledPackages(

@@ -19,9 +19,10 @@ import com.valhalla.thor.domain.model.AppMetadata
 import com.valhalla.thor.domain.model.StagedPackage
 import com.valhalla.thor.domain.repository.AppAnalyzer
 import com.valhalla.thor.util.getDisplayName
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import java.io.File
 import java.io.FileOutputStream
@@ -32,9 +33,12 @@ import java.util.UUID
 private const val STAGING_DIR_NAME = "staged_installs"
 
 @Single(binds = [AppAnalyzer::class])
-class AppAnalyzerImpl(private val context: Context) : AppAnalyzer {
+class AppAnalyzerImpl(
+    private val context: Context,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher
+) : AppAnalyzer {
 
-    override suspend fun analyze(uri: Uri): Result<AnalyzedPackage> = withContext(Dispatchers.IO) {
+    override suspend fun analyze(uri: Uri): Result<AnalyzedPackage> = withContext(ioDispatcher) {
         val displayName = uri.getDisplayName(context)
         // Random, unpredictable temp names (CWE-377): avoids collisions between
         // concurrent analyses and predictable cache paths.

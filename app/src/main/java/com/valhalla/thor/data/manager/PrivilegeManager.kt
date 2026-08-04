@@ -14,8 +14,8 @@ import com.valhalla.thor.util.PrivilegeProbeTier
 import com.valhalla.thor.util.PrivilegeProbeTrace
 import com.valhalla.thor.util.timeProbe
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import rikka.shizuku.Shizuku
 
@@ -43,9 +44,17 @@ import rikka.shizuku.Shizuku
 @Single(binds = [PrivilegeStateProvider::class])
 class PrivilegeManager(
     private val systemRepository: SystemRepository,
-    private val preferenceRepository: PreferenceRepository
+    private val preferenceRepository: PreferenceRepository,
+    // `scope` below is process-lifetime and carries the whole combine/collect pipeline, so this
+    // is the dispatcher the probe actually runs on. Note that injecting it does not make this
+    // class unit-testable, which was measured rather than assumed: the `init` block touches
+    // `rikka.shizuku.Shizuku`, whose static initializer builds a Binder, and the stub
+    // android.jar answers `Binder.attachInterface` with "not mocked" — construction throws
+    // ExceptionInInitializerError before any dispatcher matters.
+    @Named("default") private val defaultDispatcher: CoroutineDispatcher,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : PrivilegeStateProvider {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(SupervisorJob() + defaultDispatcher)
 
     private val _state = MutableStateFlow(PrivilegeState())
     override val state: StateFlow<PrivilegeState> = _state.asStateFlow()
@@ -132,7 +141,7 @@ class PrivilegeManager(
                         .also { trace?.logRun(it.root, it.shizuku, it.dhizuku) }
                 }
             }
-            .flowOn(Dispatchers.IO)
+            .flowOn(ioDispatcher)
 
     private suspend fun safeProbe(block: suspend () -> Boolean): Boolean = try {
         block()
