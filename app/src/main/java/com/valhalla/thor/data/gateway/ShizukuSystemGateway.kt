@@ -13,6 +13,8 @@ import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
 import com.valhalla.thor.data.source.local.shizuku.SystemAppRemovalOutcome
 import com.valhalla.thor.data.source.local.shizuku.displayLine
 import com.valhalla.thor.data.source.local.shizuku.isRootOnlySystemAppRemoval
+import com.valhalla.thor.data.source.local.installCommand
+import com.valhalla.thor.data.source.local.pmPathCommand
 import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.PrivilegeMode
@@ -341,13 +343,26 @@ class ShizukuSystemGateway(
         }
     }
 
+    /**
+     * Install a single APK already on disk, for the user Thor runs as.
+     *
+     * The `--user` is not cosmetic here. `PackageManagerShellCommand.makeInstallParams` opens with
+     * `params.userId = UserHandle.USER_ALL` and leaves it there when the option loop never sees a
+     * `--user`, after which the session is created with `USER_SYSTEM` plus `INSTALL_ALL_USERS` — so
+     * the bare command this replaces installed the package for **every user on the device** and
+     * exited 0, the mirror image of the `DELETE_ALL_USERS` trap `uninstallCommand` documents. Every
+     * other privileged command in this gateway already named a user; the install path did not.
+     */
     override suspend fun installApp(apkPath: String, canDowngrade: Boolean): Result<Unit> {
         val installerArg = preferenceRepository.getInstallerArg()
-        
-        val command = "pm install -r -g${if (canDowngrade) " -d" else ""}$installerArg ${
-            apkPath.escapeForShell()
-        }"
-        
+
+        val command = installCommand(
+            escapedApkPaths = listOf(apkPath.escapeForShell()),
+            userId = thorUserId,
+            canDowngrade = canDowngrade,
+            installerArg = installerArg,
+        )
+
         val result = ShizukuHelper.execute(command)
         return if (result.first == 0) {
             Result.success(Unit)
@@ -366,8 +381,19 @@ class ShizukuSystemGateway(
 
         return try {
             val escapedPackageName = packageName.escapeForShell()
-            // 1. Get the APK path(s)
-            val pathResult = ShizukuHelper.execute("pm path $escapedPackageName")
+
+            // 1. The user this whole operation is about — read once, before the first command,
+            // because the read half and the write half have to agree. `pm path` used to run bare,
+            // and `PackageManagerShellCommand.runPath` seeds USER_SYSTEM, so it answered for user
+            // 0's copy while the reinstall below already passed `--user`. Nothing surfaced the
+            // mismatch: the APK bytes are device-wide, so both commands exit 0 whichever user they
+            // name. What differed was visibility — a work-profile-only app answered nothing and
+            // stopped here with "Could not find APK path", and an app installed for user 0 but not
+            // for Thor's user was reinstalled off a record this user does not hold.
+            val currentUser = thorUserId
+
+            // 2. Get the APK path(s) as that user sees them
+            val pathResult = ShizukuHelper.execute(pmPathCommand(escapedPackageName, currentUser))
             val paths = pathResult.second?.lines()
                 ?.filter { it.isNotBlank() }
                 ?.map { it.removePrefix("package:").trim() } ?: emptyList()
@@ -377,9 +403,6 @@ class ShizukuSystemGateway(
             }
 
             val combinedPath = paths.joinToString(" ") { it.escapeForShell() }
-
-            // 2. Get Current User ID
-            val currentUser = thorUserId
 
             // 3. Execute the reinstallation command
             val command =

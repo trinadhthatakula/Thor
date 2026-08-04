@@ -13,8 +13,8 @@ package com.valhalla.thor.rootservice;
  * back as an empty reply parcel -- false for a boolean, null for a String. A stale daemon therefore
  * degrades into an honest failure rather than a mis-dispatch.
  *
- * <p>That is why setAppSuspended below keeps its two-argument shape even though setAppSuspendedAs
- * supersedes it.
+ * <p>That is why setAppSuspended below keeps its two-argument shape, and setAppSuspendedAs its
+ * three-argument one, even though setAppSuspendedAsForUser supersedes both.
  */
 interface IThorRootService {
     boolean setAppSuspended(String packageName, boolean suspended);
@@ -59,4 +59,59 @@ interface IThorRootService {
      * as "unknown", never as "not suspended".
      */
     @nullable String dumpPackage(String packageName);
+
+    /**
+     * {@link #clearAppData} for a named Android user, which is the only shape of it that is safe to
+     * call from a secondary user.
+     *
+     * <p>The daemon cannot work the user out for itself. It runs as uid 0 in user 0, so
+     * {@code Process.myUserHandle()} answers 0 there no matter which user the app that bound it
+     * belongs to -- and IPackageManager.clearApplicationUserData takes the user id as an argument,
+     * so the one-argument {@link #clearAppData} above could only ever pass 0. For Thor in a work
+     * profile or a Xiaomi Second Space that wipes the *primary* user's copy of the package, which is
+     * irreversible and reported as a success.
+     *
+     * <p>Appended rather than added as a third argument to {@link #clearAppData}, per the rule at the
+     * top of this file: a daemon left over from an older build has no transaction code for this and
+     * returns false, so the caller reports a failure instead of destroying the wrong user's data.
+     * {@link #clearAppData} therefore stays, and stays user-0, for that stale-daemon case alone.
+     */
+    boolean clearAppDataForUser(String packageName, int userId);
+
+    /**
+     * {@link #setAppSuspendedAs} for a named Android user -- the only shape of it whose outcome the
+     * app process can actually judge.
+     *
+     * <p>One operation used to name three different users. The daemon's reflection wrote user 0,
+     * because it cannot work the user out for itself: it runs as uid 0 in user 0, so
+     * {@code Process.myUserHandle()} answers 0 there whichever user the app that bound it belongs to
+     * -- the same blindness {@link #clearAppDataForUser} exists for. The dumpsys readback that
+     * decides this method's return value parsed user 0 to match. But the gateway's own judge of
+     * success is {@code ApplicationInfo.FLAG_SUSPENDED}, read in-process, and that can only ever
+     * answer for *Thor's* user.
+     *
+     * <p>With Thor in a work profile or a Xiaomi Second Space, those two numbers differ and the
+     * mismatch is a false success in both directions. A suspend pauses the personal profile's copy
+     * of an app the user never selected, verifies it against a user-0 dump, and reports success. The
+     * unsuspend that should undo it reads FLAG_SUSPENDED for Thor's user, finds it false because
+     * nothing was ever suspended there, and returns success having run no rung at all -- so the
+     * suspension it created cannot be lifted from inside Thor.
+     *
+     * <p>{@code userId} is therefore both the user written and the user parsed back:
+     * setPackagesSuspendedAsUser's suspendingUserId and targetUserId, and the {@code User N:} section
+     * parseSuspendingPackages is asked to read. Root may name a user it does not itself belong to for
+     * the same reason it may name an arbitrary suspending package --
+     * PackageManagerService.enforceCanSetPackagesSuspendedAsUser early-returns for Process.ROOT_UID
+     * before either check (android-17.0.0_r1 PackageManagerService.java:3354-3358).
+     *
+     * <p>Appended rather than added as a fourth argument to {@link #setAppSuspendedAs}, per the rule
+     * at the top of this file: a daemon left over from an older build has no transaction code for
+     * this and returns false, so the caller reports a failure instead of pausing another user's app
+     * behind a dialog only this daemon can lift. {@link #setAppSuspended} and
+     * {@link #setAppSuspendedAs} therefore stay, and stay user-0, for that stale-daemon case alone.
+     *
+     * @param suspendingPackage as on {@link #setAppSuspendedAs}: the identity to act as, or null to
+     *   let the daemon apply its own fallback order.
+     */
+    boolean setAppSuspendedAsForUser(String packageName, boolean suspended, in @nullable String suspendingPackage, int userId);
 }

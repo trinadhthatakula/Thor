@@ -10,6 +10,9 @@ import android.os.IBinder
 import com.valhalla.bypass.Bypass
 import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.data.source.local.backgroundRestrictionCommand
+import com.valhalla.thor.data.source.local.clearAppDataCommand
+import com.valhalla.thor.data.source.local.clearCachePaths
 // The enable/disable rung machinery is privilege-agnostic; it lives in the `shizuku` package
 // because that is where it was first needed, and it is imported rather than re-typed here so the
 // two privilege modes cannot drift apart on "did the platform refuse?" — the one question whose
@@ -589,14 +592,12 @@ object DhizukuHelper {
     // mechanism, guarded by the :bypass VMRuntime unseal.
     @SuppressLint("PrivateApi", "SdCardPath")
     fun clearCache(packageName: String): Boolean {
-        // 1. Try shell first
-        val userId = android.os.Process.myUserHandle().hashCode()
-        val paths = listOf(
-            "/data/data/$packageName/cache",
-            "/data/user/$userId/$packageName/cache",
-            "/sdcard/Android/data/$packageName/cache"
-        )
-        val command = "rm -rf ${paths.joinToString(" ")}"
+        // 1. Try shell first. The `/data/data/<pkg>/cache` and `/sdcard/Android/data/<pkg>/cache`
+        // aliases that used to sit either side of these two are gone: they are not extra coverage,
+        // they are the same directories *for user 0*, so from a secondary user they deleted another
+        // user's cache. At user 0 they resolve to exactly what remains.
+        val command =
+            "rm -rf ${clearCachePaths(packageName.escapeForShell(), thorUserId).joinToString(" ")}"
         val shellResult = execute(command)
         if (shellResult.first == 0) return true
 
@@ -621,7 +622,7 @@ object DhizukuHelper {
                     "deleteApplicationCacheFilesAsUser",
                     arrayOf(String::class.java, Int::class.javaPrimitiveType!!, observerClass),
                     packageName,
-                    userId,
+                    thorUserId,
                     null
                 )
             }
@@ -635,8 +636,11 @@ object DhizukuHelper {
     // the :bypass VMRuntime unseal.
     @SuppressLint("PrivateApi")
     fun clearAppData(packageName: String): Boolean {
-        // 1. Try shell first
-        val result = execute("pm clear $packageName")
+        // 1. Try shell first, naming the same user the reflection rung below hands to
+        // clearApplicationUserData. `pm clear` with no `--user` seeds USER_SYSTEM, so from a work
+        // profile this rung wiped the primary user's copy and exited 0 — and the reflection rung
+        // that would have targeted the right user never ran.
+        val result = execute(clearAppDataCommand(packageName.escapeForShell(), thorUserId))
         if (result.first == 0) return true
 
         // 2. Fallback to reflection
@@ -650,7 +654,7 @@ object DhizukuHelper {
                 arrayOf(String::class.java, observerClass, Int::class.javaPrimitiveType!!),
                 packageName,
                 null,
-                android.os.Process.myUserHandle().hashCode()
+                thorUserId
             )
             true
         }.getOrElse { false }
@@ -916,10 +920,29 @@ object DhizukuHelper {
         )
     }.getOrNull()
 
+    /**
+     * Restricts or unrestricts background execution for [packageName], for the user Thor runs as.
+     *
+     * The `--user` the shell rung now carries is not the `pm` story told elsewhere in this file:
+     * nothing here defaults to user 0 and nothing here fans out to all users.
+     * `AppOpsService.Shell.parseUserPackageOp` seeds `UserHandle.USER_CURRENT` and resolves it with
+     * `ActivityManager.getCurrentUser()` — evaluated inside system_server — so the bare command
+     * targeted the **globally foreground user**, which is neither the caller's user nor user 0. On a
+     * managed profile the foreground user is the parent, so a restriction set from the work profile
+     * landed on the personal profile's copy; in a Xiaomi Second Space the space you switched into
+     * *is* foreground, so the same command happened to be right. The defect was therefore the
+     * dependence on foreground state, not a fixed wrong target, and it could differ between one call
+     * and the next while Thor stayed alive.
+     *
+     * The reflection rung below never had the problem: it resolves the op against the package's own
+     * uid, which carries the user in its high bits, so it was already per-user. The two rungs now
+     * agree on which app op they are setting for whom.
+     */
     fun setAppRestricted(context: Context, packageName: String, restricted: Boolean): Boolean {
         // 1. Try shell first
-        val result =
-            execute("appops set $packageName RUN_ANY_IN_BACKGROUND ${if (restricted) "ignore" else "allow"}")
+        val result = execute(
+            backgroundRestrictionCommand(packageName.escapeForShell(), thorUserId, restricted)
+        )
         if (result.first == 0) return true
 
         // 2. Fallback to reflection

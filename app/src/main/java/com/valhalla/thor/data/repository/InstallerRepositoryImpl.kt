@@ -16,7 +16,9 @@ import com.valhalla.bypass.Bypass
 import com.valhalla.thor.data.ACTION_INSTALL_STATUS
 import com.valhalla.thor.data.gateway.RootSystemGateway
 import com.valhalla.thor.data.receivers.InstallReceiver
+import com.valhalla.thor.data.source.local.installCommand
 import com.valhalla.thor.data.source.local.shizuku.ShizukuPackageInstallerUtils
+import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.data.source.local.shizuku.ShizukuReflector
 import com.valhalla.thor.data.source.local.shizuku.Shizuku as ShizukuHelper
 import com.valhalla.thor.data.source.local.dhizuku.DhizukuHelper
@@ -224,12 +226,10 @@ class InstallerRepositoryImpl(
         // on some ROMs / API versions and caused NoSuchMethodError).
         try {
             val iPackageInstaller = ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller()
-            val root = try {
-                rikka.shizuku.Shizuku.getUid() == 0
-            } catch (_: Exception) {
-                false
-            }
-            val userId = if (root) android.os.Process.myUserHandle().hashCode() else 0
+            // Thor's own user, for the reason `ShizukuReflector.getPackageInstaller` gives: which
+            // uid Shizuku holds is a different question from which user the session installs for,
+            // and the old `if (root) … else 0` answered the first one.
+            val userId = thorUserId
             val installerPackageName = context.packageName
 
             return ShizukuPackageInstallerUtils.createPackageInstaller(
@@ -256,11 +256,11 @@ class InstallerRepositoryImpl(
         } catch (_: Exception) {
             -1
         }
-        val isRoot = shizukuUid == 0
         val isShell = shizukuUid == 2000
 
-        // If Shizuku is running as root, set userId to current user; otherwise use 0
-        val userId = if (isRoot) android.os.Process.myUserHandle().hashCode() else 0
+        // Thor's own user, whatever uid Shizuku holds. Shell uid is the normal setup, so the old
+        // `if (isRoot) … else 0` meant a work-profile install landed in the primary user instead.
+        val userId = thorUserId
 
         // For ADB-based Shizuku (shell), using "com.android.shell" often works better
         // than the app's own package name to avoid permission/UID mismatch issues.
@@ -386,19 +386,24 @@ class InstallerRepositoryImpl(
         val installerArg = preferenceRepository.getInstallerArg()
 
         return try {
-            val apkPaths = tempFiles.map { it.absolutePath }
-            val result = if (apkPaths.size == 1) {
-                val command = "pm install -r -g${if (canDowngrade) " -d" else ""}$installerArg ${
-                    apkPaths[0].escapeForShell()
-                }"
-                ShizukuHelper.execute(command)
-            } else {
-                val escapedPaths = apkPaths.joinToString(" ") {
-                    it.escapeForShell()
-                }
-                val command = "pm install-multiple -r -g${if (canDowngrade) " -d" else ""}$installerArg $escapedPaths"
-                ShizukuHelper.execute(command)
-            }
+            // The shell rung, and normally the one that decides the outcome: the PackageInstaller
+            // session rung is only reached when this returns false. Both rungs now name the same
+            // user, which is the whole point — getShizukuPackageInstaller() creates its session for
+            // thorUserId, so a shell rung that installed somewhere else meant one operation landing
+            // in two different places depending on which rung happened to succeed.
+            //
+            // Bare `pm install` was not "install for the shell's user" and was not "install for
+            // user 0" either: makeInstallParams leaves params.userId at USER_ALL when no --user is
+            // parsed, and the session is then created with USER_SYSTEM plus INSTALL_ALL_USERS, so
+            // every install here landed on *every* user of the device and exited 0. From a work
+            // profile that pushes an APK into the personal profile nobody asked to install it into.
+            val command = installCommand(
+                escapedApkPaths = tempFiles.map { it.absolutePath.escapeForShell() },
+                userId = thorUserId,
+                canDowngrade = canDowngrade,
+                installerArg = installerArg,
+            )
+            val result = ShizukuHelper.execute(command)
 
             if (result.first == 0) {
                 eventBus.emit(InstallState.Installing(1.0f))
@@ -434,19 +439,18 @@ class InstallerRepositoryImpl(
         val installerArg = preferenceRepository.getInstallerArg()
 
         return try {
-            val apkPaths = tempFiles.map { it.absolutePath }
-            val result = if (apkPaths.size == 1) {
-                val command = "pm install -r -g${if (canDowngrade) " -d" else ""}$installerArg ${
-                    apkPaths[0].escapeForShell()
-                }"
-                DhizukuHelper.execute(command)
-            } else {
-                val escapedPaths = apkPaths.joinToString(" ") {
-                    it.escapeForShell()
-                }
-                val command = "pm install-multiple -r -g${if (canDowngrade) " -d" else ""}$installerArg $escapedPaths"
-                DhizukuHelper.execute(command)
-            }
+            // Same rung, same seed, same fix as installWithShizuku above — and the same pairing
+            // with the session rung, which getDhizukuPackageInstaller() creates for thorUserId.
+            // Dhizuku's identity does not soften the trap: `pm` runs inside the device-owner app
+            // via DhizukuAPI.newProcess, but the missing --user is parsed by PackageManagerService,
+            // not by whoever invoked it, so the bare form installed for every user here too.
+            val command = installCommand(
+                escapedApkPaths = tempFiles.map { it.absolutePath.escapeForShell() },
+                userId = thorUserId,
+                canDowngrade = canDowngrade,
+                installerArg = installerArg,
+            )
+            val result = DhizukuHelper.execute(command)
 
             if (result.first == 0) {
                 eventBus.emit(InstallState.Installing(1.0f))

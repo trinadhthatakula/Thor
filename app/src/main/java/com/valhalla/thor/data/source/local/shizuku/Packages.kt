@@ -93,10 +93,11 @@ class Packages(private val app: Context) {
         (ApplicationInfo::class.java.getField("privateFlags").get(it) as Int) and 8 == 8
     } ?: false
 
-    fun canUninstallNormally(packageName: String): Boolean =
-        getApplicationInfoOrNull(packageName)?.let {
-            (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0
-        } ?: false
+    // `canUninstallNormally` used to sit here: `FLAG_SYSTEM == 0`, one caller, and its only job was
+    // to route ordinary user apps to a `pm uninstall` with no `--user`. That command is
+    // DELETE_ALL_USERS in disguise (see `uninstallCommand`), so the predicate is deleted rather than
+    // left for the next caller to find — there is no operation for which the answer "this is not a
+    // system app" implies "no user needs naming".
 
     fun forceStopApp(packageName: String): Boolean = runCatching {
         app.getSystemService<ActivityManager>()?.let {

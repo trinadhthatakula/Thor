@@ -11,6 +11,8 @@ import com.valhalla.thor.data.source.local.dhizuku.DhizukuReflector
 import com.valhalla.thor.data.source.local.shizuku.SystemAppRemovalOutcome
 import com.valhalla.thor.data.source.local.shizuku.displayLine
 import com.valhalla.thor.data.source.local.shizuku.isRootOnlySystemAppRemoval
+import com.valhalla.thor.data.source.local.installCommand
+import com.valhalla.thor.data.source.local.pmPathCommand
 import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.PrivilegeMode
@@ -332,13 +334,29 @@ class DhizukuSystemGateway(
         return Result.failure(Exception("Dhizuku: Uninstall failed — ${removal.displayLine()}"))
     }
 
+    /**
+     * Install a single APK already on disk, for the user Thor runs as.
+     *
+     * Naming the user is what stops this installing for all of them. `makeInstallParams` leaves
+     * `params.userId` at `UserHandle.USER_ALL` when the option loop sees no `--user`, and the
+     * session is then created with `USER_SYSTEM` plus `INSTALL_ALL_USERS`: the bare command this
+     * replaces installed the package for **every user on the device** and exited 0, the same
+     * all-users widening `DhizukuHelper.uninstallApp` avoids from the removal side.
+     *
+     * Running as the Device Owner does not change that. `DhizukuAPI.newProcess` decides which
+     * process `pm` runs in; the missing `--user` is interpreted by `PackageManagerService`, which
+     * neither knows nor cares who invoked the command.
+     */
     override suspend fun installApp(apkPath: String, canDowngrade: Boolean): Result<Unit> {
         val installerArg = preferenceRepository.getInstallerArg()
-        
+
         val result = DhizukuHelper.execute(
-            "pm install -r -g${if (canDowngrade) " -d" else ""}$installerArg ${
-                apkPath.escapeForShell()
-            }"
+            installCommand(
+                escapedApkPaths = listOf(apkPath.escapeForShell()),
+                userId = thorUserId,
+                canDowngrade = canDowngrade,
+                installerArg = installerArg,
+            )
         )
         return if (result.first == 0) {
             Result.success(Unit)
@@ -357,8 +375,18 @@ class DhizukuSystemGateway(
 
         return try {
             val escapedPackageName = packageName.escapeForShell()
-            // 1. Get the APK path(s)
-            val pathResult = DhizukuHelper.execute("pm path $escapedPackageName")
+
+            // 1. The user this whole operation is about — Thor's own, matching every other `--user`
+            // here, and read before the first command rather than between the two. `pm path` used
+            // to run bare, and `PackageManagerShellCommand.runPath` seeds USER_SYSTEM, so the read
+            // half answered for user 0 while the write half below already named Thor's user. The
+            // APK bytes are device-wide, so both commands exit 0 either way and the mismatch is
+            // invisible: what a user id selects here is whether the package is *visible*, which is
+            // how a work-profile-only app came back with no paths at all.
+            val currentUser = thorUserId
+
+            // 2. Get the APK path(s) as that user sees them
+            val pathResult = DhizukuHelper.execute(pmPathCommand(escapedPackageName, currentUser))
             val paths = pathResult.second?.lines()
                 ?.filter { it.isNotBlank() }
                 ?.map { it.removePrefix("package:").trim() } ?: emptyList()
@@ -368,9 +396,6 @@ class DhizukuSystemGateway(
             }
 
             val combinedPath = paths.joinToString(" ") { it.escapeForShell() }
-
-            // 2. The user to install for — Thor's own, matching every other `--user` here.
-            val currentUser = thorUserId
 
             // 3. Execute the reinstallation command
             val command =

@@ -9,7 +9,11 @@ import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import com.valhalla.bypass.Bypass
 import com.valhalla.superuser.utils.escapeForShell
+import com.valhalla.thor.data.source.local.backgroundRestrictionCommand
+import com.valhalla.thor.data.source.local.clearAppDataCommand
+import com.valhalla.thor.data.source.local.clearCachePaths
 import com.valhalla.thor.data.source.local.thorUserId
+import com.valhalla.thor.data.source.local.uninstallCommand
 import com.valhalla.thor.domain.model.SHELL_SUSPENDER_IDENTITY
 import com.valhalla.thor.domain.model.canLiftSuspension
 import com.valhalla.thor.domain.model.parseSuspendingPackages
@@ -877,20 +881,48 @@ object Shizuku {
         null
     }
 
+    /**
+     * Deletes [packageName]'s cache directories **for [thorUserId]** — shell first, then a
+     * hidden-API `IPackageManager` call.
+     *
+     * The two reflection overloads used to be tried in the opposite order, and that order made the
+     * user id decorative. `deleteApplicationCacheFiles(String, IPackageDataObserver)` is declared on
+     * `IPackageManager` on every release this app runs on (28 through 37), so the
+     * `NoSuchMethodException` that was supposed to reach the `…AsUser` branch never fired: the only
+     * branch naming a user was unreachable, and the branch that ran named none. It could not — that
+     * overload takes no user id, and `PackageManagerService`'s implementation of it is
+     * `deleteApplicationCacheFilesAsUser(packageName, UserHandle.getCallingUserId(), observer)`,
+     * which resolves the user from the *caller*. The caller here is the Shizuku server, at shell uid
+     * 2000 in the ordinary setup, so from a work profile the reachable rung cleared **user 0's**
+     * cache for a package the user selected in profile 10. Hence the reorder rather than an extra
+     * argument: `…AsUser` first, and the calling-user overload kept only as the answer to "this
+     * release does not declare the symbol".
+     *
+     * The fallback is deliberately gated on `NoSuchMethodException` alone and not on `Exception`. A
+     * *refusal* of the per-user call must not fall through to a call that clears a different user's
+     * cache and reports it as this user's success — the failure the reorder exists to remove.
+     *
+     * **A `true` from this function is not evidence the cache is gone.** The shell rung is honest:
+     * `rm -rf` exits 0 or it does not. The reflection rung is not — the call is asynchronous
+     * (`PackageManagerService` posts the work to its own handler and reports through the
+     * `IPackageDataObserver`, which is passed as `null` here), so `true` means only that the binder
+     * call returned without throwing. At shell uid PMS also *accepts* cache clears that it then
+     * declines — it logs that it is silently ignoring the request and returns without deleting
+     * anything, and the caller is told none of that. So this Boolean must not be turned into
+     * "N bytes freed"; re-measure the cache if the number matters.
+     */
     // PrivateApi: hidden-API reflection (IPackageDataObserver) is intentional — the core privilege
     // mechanism, guarded by the :bypass VMRuntime unseal.
-    // SdCardPath: the absolute /data and /sdcard paths are intentional for privileged/root file ops,
+    // SdCardPath: the absolute /data and /storage paths are intentional for privileged file ops,
     // not app-scoped storage.
     @SuppressLint("PrivateApi", "SdCardPath")
     fun clearCache(packageName: String): Boolean {
-        // 1. Try shell first
-        val userId = thorUserId
-        val paths = listOf(
-            "/data/data/$packageName/cache",
-            "/data/user/$userId/$packageName/cache",
-            "/sdcard/Android/data/$packageName/cache"
-        )
-        val command = "rm -rf ${paths.joinToString(" ")}"
+        // 1. Try shell first. The `/data/data/<pkg>/cache` and `/sdcard/Android/data/<pkg>/cache`
+        // aliases that used to sit either side of these two are gone: they are not extra coverage,
+        // they are the same directories *for user 0*, so from a secondary user they deleted another
+        // user's cache. At user 0 they resolve to exactly what remains.
+        val command =
+            "rm -rf ${clearCachePaths(packageName.escapeForShell(), thorUserId).joinToString(" ")}"
         val shellResult = execute(command)
         if (shellResult.first == 0) return true
 
@@ -903,19 +935,21 @@ object Shizuku {
                 Bypass.invoke<Any?>(
                     pm.javaClass,
                     pm,
-                    "deleteApplicationCacheFiles",
-                    arrayOf(String::class.java, observerClass),
-                    packageName,
-                    null
-                )
-            } catch (_: NoSuchMethodException) {
-                Bypass.invoke<Any?>(
-                    pm.javaClass,
-                    pm,
                     "deleteApplicationCacheFilesAsUser",
                     arrayOf(String::class.java, Int::class.javaPrimitiveType!!, observerClass),
                     packageName,
-                    userId,
+                    thorUserId,
+                    null
+                )
+            } catch (_: NoSuchMethodException) {
+                // No user id to give: this overload derives one from the calling uid. Reached only
+                // if a release stops declaring the AsUser variant, which none in 28..37 does.
+                Bypass.invoke<Any?>(
+                    pm.javaClass,
+                    pm,
+                    "deleteApplicationCacheFiles",
+                    arrayOf(String::class.java, observerClass),
+                    packageName,
                     null
                 )
             }
@@ -929,8 +963,11 @@ object Shizuku {
     // mechanism, guarded by the :bypass VMRuntime unseal.
     @SuppressLint("PrivateApi")
     fun clearAppData(packageName: String): Boolean {
-        // 1. Try shell first
-        val result = execute("pm clear $packageName")
+        // 1. Try shell first. Both rungs name the same user: the reflection rung below already
+        // passed thorUserId, while this one passed none at all — and `pm clear` with no `--user`
+        // seeds USER_SYSTEM, so from a work profile the shell rung wiped the primary user's copy
+        // and exited 0, and the reflection rung that would have done the right thing never ran.
+        val result = execute(clearAppDataCommand(packageName.escapeForShell(), thorUserId))
         if (result.first == 0) return true
 
         // 2. Fallback to reflection
@@ -971,9 +1008,18 @@ object Shizuku {
     }
 
     fun setAppRestricted(context: Context, packageName: String, restricted: Boolean): Boolean {
-        // 1. Try shell first
-        val result =
-            execute("appops set $packageName RUN_ANY_IN_BACKGROUND ${if (restricted) "ignore" else "allow"}")
+        // 1. Try shell first. The user this names is not the `pm` story retold: `appops` seeds
+        // UserHandle.USER_CURRENT and system_server resolves it with ActivityManager.getCurrentUser(),
+        // so the bare line landed on whoever was in the *foreground* at the moment it ran — the
+        // parent profile for a Thor sitting in a work profile, and a value free to change between
+        // this write and the read-back that is supposed to confirm it. The reflection rung below
+        // never had that problem: it addresses the app by uid, and Packages.packageUid resolves that
+        // through Thor's own PackageManager, so it already carried Thor's user. Naming thorUserId
+        // here is what makes the two rungs of this one operation agree on a target.
+        // The package is escaped for the same reason it is everywhere else in this object (#40).
+        val result = execute(
+            backgroundRestrictionCommand(packageName.escapeForShell(), thorUserId, restricted)
+        )
         if (result.first == 0) return true
 
         // 2. Fallback to reflection
@@ -1019,16 +1065,51 @@ object Shizuku {
     // The same swap on the Dhizuku side fixes an outright failure rather than a latent mismatch;
     // see the note in DhizukuHelper.
 
-    fun uninstallApp(context: Context, packageName: String): Boolean {
+    /**
+     * The user-facing uninstall: removes [packageName] for [thorUserId], data included.
+     *
+     * This used to name the user only for system packages. Ordinary user apps — everything the
+     * uninstall button is normally pressed on — took a bare `pm uninstall`, selected by a
+     * `canUninstallNormally` predicate that read `FLAG_SYSTEM == 0` and nothing else. That was not
+     * the harmless default it looked like: `PackageManagerShellCommand.runUninstall` seeds
+     * `userId = UserHandle.USER_ALL` and converts it to `DELETE_ALL_USERS`, so from a work profile
+     * the line removed the app **and its data for every user on the device** and exited 0.
+     *
+     * Both the predicate and the branch are gone rather than corrected, because there is no version
+     * of "system apps get `--user`, ordinary ones do not" that is right; [uninstallCommand] carries
+     * the reasoning. The root gateway and the Dhizuku helper already named their user on this same
+     * operation — this was the one site of the class that did not.
+     *
+     * **Naming the user is stricter than the bare form, not merely narrower.** [uninstallCommand]'s
+     * "on a single-user device this changes nothing" is a claim about *which users are affected*,
+     * and it does not extend to *whether the command succeeds*. Once `userId != USER_ALL`,
+     * `runUninstall` first does
+     * `getPackageInfo(pkg, MATCH_STATIC_SHARED_AND_SDK_LIBRARIES, userId)` and stops with
+     * `Failure [not installed for N]` and exit 1 when that is null. Those flags carry neither
+     * `MATCH_UNINSTALLED_PACKAGES` nor `MATCH_ARCHIVED_PACKAGES`, so every package whose
+     * `PackageUserState.installed` bit is false for this user is refused here, at user 0, on a
+     * device that has only one user — where the bare form took the `USER_ALL` path and skipped the
+     * precondition altogether. Thor lists exactly those packages, because its app sweep queries
+     * with `MATCH_UNINSTALLED_PACKAGES`: a Play-Store-archived app on API 35+, and anything another
+     * tool (or Thor's own [freezeSystemAppForUser]) removed with `pm uninstall -k`.
+     *
+     * The rung that covers the difference is the reflection fallback in
+     * `ShizukuReflector.uninstallApp`, which reads `false` here as "try `PackageInstaller` instead"
+     * — and `PackageInstaller.uninstall` has no equivalent precondition. That fallback was defeated
+     * by the same condition until its `getInfoForPackage` lookup was widened to the two match flags
+     * `pm` omits; that widening is what makes this trade-off survivable, so the two are one change.
+     * The answer is not to drop `--user` again: that trades a failure the ladder recovers from for
+     * a silent removal on every user of the device.
+     *
+     * Takes no `Context`, unlike its neighbours in this object: the only thing it needed one for
+     * was constructing the `Packages` that answered the predicate.
+     */
+    fun uninstallApp(packageName: String): Boolean {
         // Escape the package identifier before interpolating it into the shell command, mirroring
         // the Dhizuku helper (#40). thorUserId is an Int, so it needs no escaping.
         val escapedPackage = packageName.escapeForShell()
-        val normally = Packages(context).canUninstallNormally(packageName)
-        if (normally) {
-            return execute("pm uninstall $escapedPackage").first == 0
-        }
         return try {
-            execute("pm uninstall --user $thorUserId $escapedPackage").first == 0
+            execute(uninstallCommand(escapedPackage, thorUserId)).first == 0
         } catch (_: Exception) {
             false
         }
