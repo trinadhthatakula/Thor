@@ -206,6 +206,10 @@ class RootSystemGateway(
         // caller here treats false as "not proven stopped" and does more work, ending at the
         // failure below; so "could not read" costs a wasted killBackgroundProcesses and a reported
         // failure, never a success that did not happen.
+        //
+        // What it does cost is a *sentence*. "FLAG_STOPPED is clear" and "the package could not be
+        // read" are the same `false` here, so the failure message must not speak for both — see the
+        // last read below, which keeps its `ApplicationInfo` for exactly that.
         fun isStoppedNow(): Boolean = getApplicationInfoCompat(packageName)?.run {
             (flags and android.content.pm.ApplicationInfo.FLAG_STOPPED) != 0
         } ?: false
@@ -241,21 +245,36 @@ class RootSystemGateway(
             am?.killBackgroundProcesses(packageName)
         }
 
-        if (isStoppedNow()) return Result.success(Unit)
+        // The last read is spelled out rather than asked for through [isStoppedNow], because the
+        // failure message below has to say *which* of that function's two `false`s this is, and
+        // re-reading to find out would describe a different moment than the one that decided.
+        val postKillInfo = getApplicationInfoCompat(packageName)
+        if (postKillInfo != null &&
+            (postKillInfo.flags and android.content.pm.ApplicationInfo.FLAG_STOPPED) != 0
+        ) {
+            return Result.success(Unit)
+        }
 
         // Two ways to arrive here now, and a bug report has to be able to tell them apart: the
         // shell command itself failed, or it exited 0 and the app kept running anyway. The old
         // message asserted the first unconditionally, which the guard above has just made false.
         val shellVerdict = if (shellResult.isSuccess) {
-            "`am force-stop` exited 0 but the app never entered the stopped state"
+            "`am force-stop` exited 0"
         } else {
             "the shell command failed"
         }
+        // The same defect one level down, and the reason this is not simply "it is still running":
+        // that claim rests on [isStoppedNow], where an unreadable `ApplicationInfo` and a genuinely
+        // clear FLAG_STOPPED are indistinguishable. A bug report generated from "Thor could not
+        // read the package" must not read as "the kill did not work" — they need different fixes.
+        val stateVerdict = if (postKillInfo == null) {
+            "the package's ApplicationInfo could not be read back after killBackgroundProcesses, " +
+                "so whether it is still running is unknown"
+        } else {
+            "FLAG_STOPPED is still clear after killBackgroundProcesses, so it is still running"
+        }
         return Result.failure(
-            Exception(
-                "Root force stop of $packageName failed: $shellVerdict, and it is still " +
-                    "running after killBackgroundProcesses."
-            )
+            Exception("Root force stop of $packageName failed: $shellVerdict, and $stateVerdict.")
         )
     }
 

@@ -176,19 +176,38 @@ object DhizukuHelper {
     fun forceStopApp(context: Context, packageName: String): Boolean {
         val pkgs = Packages(context)
         val userId = pkgs.myUserId
-        // 1. Shell first — and its exit code is not evidence of anything. `am force-stop` cannot
-        // fail: `ActivityManagerShellCommand.runForceStop` ends in an unconditional `return 0`, so
-        // exit 0 says the command parsed, never that a process died. The honest verifier was
-        // already written in this function — `pkgs.isAppStopped`, rung 3 below — and sat unreachable
-        // behind this short-circuit, which always won. Do not "simplify" the readback back out.
+        // 1. Shell first — and its exit code is not evidence of anything, in either direction.
+        // `ActivityManagerShellCommand.runForceStop` ends in an unconditional `return 0`, so exit 0
+        // says the command parsed, never that a process died. The honest verifier was already
+        // written in this function — `pkgs.isAppStopped`, rung 3 below — and sat unreachable behind
+        // this short-circuit. Do not "simplify" the readback back out.
         //
-        // Verifying is worth doing *here*, unlike the reflection rungs of [clearCache] and
-        // [clearAppData], which were only made honest: this rung is alive. `execute` runs `am`
-        // inside the device-owner app via `DhizukuAPI.newProcess`, so it reaches
-        // ActivityManagerService for real — the same fact [setAppDisabledDetailed]'s reflection rung
-        // records for `pm`. A readback on a live rung turns a false success into a true one; a
-        // readback on a transport-dead rung turns it into a guaranteed red, which is why those two
-        // sites report failure instead of waiting for an answer that cannot arrive.
+        // **Do not read this rung as the live one.** `execute` runs `am` inside the *Dhizuku* app:
+        // `DhizukuAPI.newProcess` is an AIDL call to `IDhizuku.remoteProcess`, so the child is
+        // spawned by the device-owner app at its own ordinary app uid. AMS gates what that child
+        // then asks for — `ActivityManagerService.forceStopPackage` opens on
+        // `checkCallingPermission(FORCE_STOP_PACKAGES)`, a `signature|privileged` permission that
+        // holding device owner does not confer — so it throws SecurityException,
+        // `ShellCommand.exec` prints that to stderr and leaves its `res` at -1, and `am` exits 255
+        // without `runForceStop` ever reaching its `return 0`. The `&&` below therefore
+        // short-circuits, and `pkgs.isAppStopped` is not called on this rung at all.
+        //
+        // That chain is AOSP-derived rather than measured for `force-stop` itself; its identity
+        // half is measured on device. The same binary at the same Dhizuku uid is recorded further
+        // down this file being refused `am get-current-user` — `Permission Denial … uid=10231`,
+        // exit 255 — which is this exact shape one command over.
+        //
+        // The readback stays anyway: it costs nothing on a rung that short-circuits, and it is the
+        // guard for the one case that would otherwise lie — an exit 0 from a transport that killed
+        // nothing, which is what a ROM or a Dhizuku build that does hold the permission would
+        // produce. Nothing is lost when it never runs, because rung 3 re-reads FLAG_STOPPED
+        // unconditionally: one verifier, reached whichever rung did the work.
+        //
+        // The `newProcess` identity fact lives in [setAppDisabledDetailed]'s **KDoc**, where it is
+        // a caveat — neither of its rungs reaches `PackageManagerService` as uid 2000, which is
+        // precisely why nothing there trusts an exit code — and not in its reflection rung, whose
+        // note says the opposite about *itself*: double-wrapped binder, dead on a Dhizuku-only
+        // device.
         val result = execute("am force-stop --user $userId $packageName")
         if (result.first == 0 && pkgs.isAppStopped(packageName)) return true
 
@@ -1001,9 +1020,16 @@ object DhizukuHelper {
      * a `@StringRes int`). On API 29-30 that lookup threw `NoSuchMethodException` out of the caller's
      * `runCatching` and killed the whole reflection path before it ever reached the suspend call.
      *
-     * The `@StringRes int` overloads are deliberately not used as a pre-31 fallback: the system
-     * resolves such an id against the *suspending* package's resources, which in Dhizuku mode is
-     * `com.android.shell`, not us. A missing title is better than a wrong one.
+     * The `@StringRes int` overloads are deliberately not used as a pre-31 fallback: the system's
+     * `SuspendedAppActivity` resolves such an id against the resources of whichever package the
+     * platform *recorded* as the suspender. This helper's only caller is [setAppSuspended]'s
+     * reflection rung, which names `BuildConfig.APPLICATION_ID`, so the id would ordinarily land on
+     * Thor's own resources — but Dhizuku is the one privilege mode that cannot read the suspension
+     * record back at all (no `DUMP`; see [setAppSuspended]), so "ordinarily" is the strongest claim
+     * this file can make about where it lands. A literal string is right whoever renders it, and a
+     * missing title is better than a wrong one. (`com.android.shell` is
+     * `Shizuku.buildSuspendDialogInfo`'s answer, where the caller really is shell uid 2000; it does
+     * not transfer here.)
      */
     @SuppressLint("PrivateApi")
     private fun buildSuspendDialogInfo(context: Context): Any? = runCatching {
@@ -1138,9 +1164,28 @@ object DhizukuHelper {
      * **Expected to answer `null` on a Dhizuku-only device, and that is not a defect.** This rides
      * the same double-wrapped binder as the reflection rung — `asInterface` puts
      * `ShizukuBinderWrapper` on top of Dhizuku's own wrapper — so where that rung is dead this is
-     * dead with it, and the shell rung's own honest report is what stands. The readback can only
-     * ever *add* confirmation here; it is not load-bearing, which is what makes failing open at the
-     * shell rung safe rather than optimistic.
+     * dead with it.
+     *
+     * What a `null` costs depends on which rung asked, and the two are opposites:
+     * - **Shell rung** — not load-bearing. `appops set` exits non-zero for an unknown package or
+     *   op, so that rung's own report is already honest and a `null` leaves it standing. This
+     *   readback can only *add* confirmation there, which is what makes failing open safe rather
+     *   than optimistic.
+     * - **Reflection rung** — the sole verdict. "The invoke did not throw" is not a mode, so with
+     *   no readback there is nothing left to believe and a `null` forces `false` — which is what
+     *   that rung's own comment says. Fail-closed, as at the clear-data sites.
+     *
+     * **Known blind spot: a uid-level mode hides the package-level one this asks about.**
+     * `AppOpsService.checkOperationUnchecked` consults
+     * `mAppOpsCheckingService.getUidMode(uidState.uid, persistentDeviceId, code)` first and returns
+     * straight away whenever that differs from `AppOpsManager.opToDefaultMode(code)` — before the
+     * package entry is consulted at all. Both write paths in [setAppRestricted] are *package*-level
+     * (`appops set <pkg>` and `IAppOpsService.setMode(op, uid, packageName, mode)`), so wherever a
+     * uid-level mode exists for `OP_RUN_ANY_IN_BACKGROUND` this reports something unrelated to
+     * whether the write landed. `checkOperationRaw` is not the fix: it drops `evalMode`, not the
+     * uid short-circuit. The mechanism is AOSP-verified; what is *not* established is that anything
+     * writes this op at uid level — Settings' Battery ▸ Restricted uses the package-level form — so
+     * this is a known blind spot rather than an observed bug.
      *
      * `checkOperation(int, int, String)` is the signature this project has *not* verified across
      * 28..37 — it has been stable in `IAppOpsService` for as long as anyone has needed it, but that
