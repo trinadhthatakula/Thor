@@ -25,7 +25,8 @@ byte-identical, because each consumer reads its own copy: F-Droid reads `fastlan
 reads `shizu_store.json`. Write the text once, then propagate it (Step 5).
 
 Only one of those copies is audited. `.github/scripts/check-shizu-manifest.sh` compares
-`shizu_store.json`'s `.changelog` against `playstore.txt`, and `pr-ci.yml:82` runs it on **every**
+`shizu_store.json`'s `.changelog` against `playstore.txt`, and `pr-ci.yml`'s `shizu-manifest` job
+runs it on **every**
 PR — deliberately un-path-filtered, since `on.pull_request.paths` would gate the whole workflow
 including the required `build-and-test` check. So a forgotten `sync-shizu-changelog.sh` is a red
 `shizu-manifest` check, not a silent store regression. The **`fastlane/` copy is checked by

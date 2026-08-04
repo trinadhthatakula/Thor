@@ -245,6 +245,91 @@ class SecurityViewModelTest {
         }
     }
 
+    // ── Settings that could not be read ─────────────────────────────────────────────────────────
+    //
+    // `UserPreferences.settingsLost` means the values in the snapshot are Thor's defaults rather
+    // than the user's, because `thor_preferences.preferences_pb` was unreadable — the partial-restore
+    // case the corruption handler exists for. Every other setting degrades to something the user can
+    // see and put back; this one degrades to an app lock that is off, which is indistinguishable
+    // from a user who never set one.
+
+    @Test
+    fun `settings that could not be read hold the lock closed rather than opening it`() = runTest {
+        val vm = SecurityViewModel(
+            FakePreferenceRepository(UserPreferences(settingsLost = true)),
+            FakeAuthCapability()
+        )
+
+        // The preference itself reads `false` here — that is the whole problem. Taking it at face
+        // value opens Thor for a user who deliberately closed it, on the one device where that is
+        // most likely to have happened, and the replaced file makes it permanent.
+        assertEquals(AuthState.Locked, vm.authState.value)
+    }
+
+    @Test
+    fun `an unreadable store does not invent a gate this device could not open`() = runTest {
+        val vm = SecurityViewModel(
+            FakePreferenceRepository(UserPreferences(settingsLost = true)),
+            FakeAuthCapability(capable = false)
+        )
+
+        // Failing closed is only the safer guess while a prompt can succeed. Here it would hand a
+        // user who may never have armed the lock the Unavailable screen and send them off to enrol
+        // a screen lock for a gate Thor invented.
+        assertEquals(AuthState.NotRequired, vm.authState.value)
+    }
+
+    @Test
+    fun `a lock held closed by an unreadable store still reports its own errors`() = runTest {
+        val vm = SecurityViewModel(
+            FakePreferenceRepository(UserPreferences(settingsLost = true)),
+            FakeAuthCapability()
+        )
+
+        vm.onAuthError("Fingerprint operation cancelled")
+
+        // onAuthError is gated on the lock being armed, and on this branch the preference says it
+        // is not. Without settingsLost in that gate the user sits on the lock screen after a
+        // cancelled prompt with no message and no Retry.
+        assertEquals(AuthState.Error("Fingerprint operation cancelled"), vm.authState.value)
+    }
+
+    @Test
+    fun `losing the settings says so`() = runTest {
+        val vm = SecurityViewModel(
+            FakePreferenceRepository(UserPreferences(settingsLost = true)),
+            FakeAuthCapability()
+        )
+
+        vm.events.test {
+            // The prompt alone would not explain itself, and on the incapable branch above there is
+            // no prompt at all — the lock is simply gone. Either way Thor is running on settings the
+            // user did not choose and has to say so.
+            assertEquals(
+                UiText.StringResource(R.string.settings_lost_using_defaults),
+                awaitItem()
+            )
+        }
+    }
+
+    @Test
+    fun `an unreadable store is not mistaken for a lock this device cannot open`() = runTest {
+        val prefs = FakePreferenceRepository(UserPreferences(settingsLost = true))
+        val vm = SecurityViewModel(prefs, FakeAuthCapability(capable = false, hardware = false))
+
+        vm.events.test {
+            // The settings notice, and only the settings notice. The disarm above writes `false`
+            // for a lock it has decided cannot work; this branch has decided nothing — it does not
+            // know what the user chose — and feeding settingsLost into it would turn a failed read
+            // into a permanent answer of Thor's own, told to the user as a lock it took off.
+            assertEquals(
+                UiText.StringResource(R.string.settings_lost_using_defaults),
+                awaitItem()
+            )
+            expectNoEvents()
+        }
+    }
+
     @Test
     fun `a lock the user could enrol their way into is left alone`() = runTest {
         val prefs = locked()

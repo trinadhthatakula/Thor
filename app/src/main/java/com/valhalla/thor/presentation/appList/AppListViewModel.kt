@@ -15,7 +15,6 @@ import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.PermissionIndex
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
-import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.model.filterApps
 import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.domain.model.sortApps
@@ -333,11 +332,7 @@ class AppListViewModel(
             // time prepended to the scan rather than overlapped with it. A deliberate
             // pull-to-refresh has no transition to protect and must not pay for it.
             if (deferForTransition) {
-                // catch: userPreferences is dataStore.data, which throws IOException on a failed
-                // read. Fall back to the defaults rather than letting a preference read failure
-                // take down the whole app list. (Flow.catch stays transparent to cancellation.)
                 val intensity = preferenceRepository.userPreferences
-                    .catch { emit(UserPreferences()) }
                     .first()
                     .animationIntensity
                 // LOW resolves to ZERO, which delay() returns from without suspending.
