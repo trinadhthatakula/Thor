@@ -15,7 +15,15 @@ import com.valhalla.thor.rootservice.IThorRootService
 import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.superuser.ktx.ShellResult
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.data.source.local.backgroundRestrictionCommand
+import com.valhalla.thor.data.source.local.clearAppDataCommand
+import com.valhalla.thor.data.source.local.clearCachePaths
+import com.valhalla.thor.data.source.local.forceStopCommand
+import com.valhalla.thor.data.source.local.pmPathCommand
+import com.valhalla.thor.data.source.local.setAppEnabledCommand
 import com.valhalla.thor.data.source.local.shizuku.isPolicyRefusal
+import com.valhalla.thor.data.source.local.thorUserId
+import com.valhalla.thor.data.source.local.uninstallCommand
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.parseSuspendingPackages
@@ -34,22 +42,35 @@ import java.io.File
 import kotlin.coroutines.resume
 
 private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
-private val USER_ID_REGEX = Regex("^\\d+$")
 
 // Upper bound for the RootService bind handshake. A null binder or a callback that never
 // arrives must not pin connectionMutex forever and deadlock every later privileged op (H2).
 private const val ROOT_SERVICE_BIND_TIMEOUT_MS = 10_000L
 
 /**
- * The Android user every suspend and unsuspend in this gateway writes to and verifies against.
+ * The Android user every suspend and unsuspend in this gateway writes, verifies, and reads the
+ * platform's suspension record for — Thor's own, and no longer a pinned 0.
  *
- * It has to be the number `ThorRootService.TARGET_USER_ID` writes with, or the readback would
- * confirm a state nobody set: the daemon suspends user 0, and parsing user 10's section of the same
- * dump reports an empty suspender set for a package that is very much suspended. Deliberately not
- * `getCurrentUserId()` for exactly that reason — on a work-profile device the foreground user is the
- * parent (0) while the profile's packages live in 10, and the daemon would still be writing 0.
+ * One operation used to name three different users, and the third is the one that made the pinning
+ * indefensible. The *write* was user 0 (`ThorRootService`'s own constant, plus an API-28 `pm suspend`
+ * that named no user at all, which `PackageManagerShellCommand.runSuspend` seeds to
+ * `UserHandle.USER_SYSTEM`). [readSuspenders] parsed user 0 to match it, so those two agreed. But
+ * [readSuspendedFlag] is `context.packageManager.getApplicationInfo`, an in-process query that can
+ * only ever answer for **Thor's** user — and it is what decides the outcome on all four paths below,
+ * including the early return that skips the unsuspend entirely.
+ *
+ * With Thor in a work profile or a Xiaomi Second Space those numbers differ, and the result was a
+ * false success in both directions. A suspend paused the personal profile's copy of an app the user
+ * never selected, verified it against a user-0 dump, and reported success while the copy they were
+ * looking at stayed running. The unsuspend that should have undone it read `FLAG_SUSPENDED` for
+ * Thor's user, found it false because nothing was ever suspended there, and returned success having
+ * run no rung — leaving the suspension it had made unliftable from inside Thor.
+ *
+ * The user id crosses the binder now ([IThorRootService.setAppSuspendedAsForUser]), so write, dump
+ * parse and flag read finally name one user. It keeps its own symbol rather than being spelled
+ * [thorUserId] at each site so that the set of places which must agree stays one grep.
  */
-private const val SUSPEND_USER_ID = 0
+private val SUSPEND_USER_ID: Int get() = thorUserId
 
 /**
  * Modern implementation of SystemGateway using the reactive ShellRepository.
@@ -121,10 +142,6 @@ class RootSystemGateway(
 
                         override fun onServiceDisconnected(name: ComponentName?) {
                             rootService = null
-                            // A dead service can no longer answer '--user <id>'; drop the cached
-                            // user id so a reconnect re-reads the (possibly switched) user (#34).
-                            cachedUserId = null
-                            userIdGeneration++
                             if (activeConnection === this) {
                                 activeConnection = null
                             }
@@ -179,7 +196,12 @@ class RootSystemGateway(
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = packageName.escapeForShell()
-        val shellResult = runCommand("am force-stop $escapedPackage")
+        // The two halves of this function have to name the same user. Everything below the shell
+        // rung is in-process — killBackgroundProcesses and the FLAG_STOPPED reads both answer for
+        // Thor's own user — while a bare `am force-stop` reads USER_ALL and kills the package
+        // everywhere. Naming [thorUserId] is what makes the post-check evidence about the process
+        // the command was aimed at.
+        val shellResult = runCommand(forceStopCommand(escapedPackage, thorUserId))
         if (shellResult.isSuccess) return shellResult
 
         // Unprivileged check/fallback
@@ -207,7 +229,7 @@ class RootSystemGateway(
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = packageName.escapeForShell()
-        val command = "rm -rf /data/data/$escapedPackage/cache /sdcard/Android/data/$escapedPackage/cache"
+        val command = "rm -rf ${clearCachePaths(escapedPackage, thorUserId).joinToString(" ")}"
         return runCommand(command)
     }
 
@@ -216,14 +238,18 @@ class RootSystemGateway(
             return@withContext Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = packageName.escapeForShell()
-        val shellResult = runCommand("pm clear $escapedPackage")
+        val shellResult = runCommand(clearAppDataCommand(escapedPackage, thorUserId))
         if (shellResult.isSuccess) return@withContext shellResult
 
-        // Fallback to ThorRootService AIDL daemon
+        // Fallback to ThorRootService AIDL daemon. `clearAppDataForUser` and not the older
+        // `clearAppData`: the daemon runs as uid 0 in user 0, so it cannot read Thor's user for
+        // itself and the one-argument entry point wipes user 0 unconditionally. A daemon left over
+        // from an older build has no such transaction code and answers false, which lands on the
+        // failure below — the right way round for a call that destroys data.
         val service = getRootService()
         if (service != null) {
             val aidlCleared = runCatching {
-                service.clearAppData(packageName)
+                service.clearAppDataForUser(packageName, thorUserId)
             }.onFailure { e ->
                 Logger.e("RootSystemGateway", "AIDL clearAppData failed", e)
             }.getOrDefault(false)
@@ -238,8 +264,36 @@ class RootSystemGateway(
     /**
      * Freeze ([isDisabled] = true) or unfreeze a package.
      *
-     * **User apps** keep the single `pm disable` / `pm enable` rung they always had, with the
-     * unprivileged `setApplicationEnabledSetting` as a last resort. It works; it is untouched.
+     * **User apps** run the single `pm disable` / `pm enable` rung they always had, with the
+     * unprivileged `setApplicationEnabledSetting` as a last resort. Two things about it are new, and
+     * the second can report a failure where this path used to report a success, so both are worth
+     * stating rather than leaving to be rediscovered:
+     *
+     *  - The rung now names [thorUserId]. That changes nothing on a single-user device — `pm
+     *    disable` seeds `UserHandle.USER_SYSTEM`, so the bare command and `--user 0` are the same
+     *    operation, byte for byte — and everything on a secondary user, where the bare form moved
+     *    the parent profile's copy while the re-read below, which can only see Thor's own user,
+     *    watched a package that never changed.
+     *  - The rung is now verified by re-reading `ApplicationInfo`, which is this function's own
+     *    stated rule (see the last paragraph) finally applied to the one path that never followed
+     *    it. `pm` exits 0 for a command it accepted and did not act on, and that is not theoretical
+     *    at user 0: an app some other freezer removed with `pm uninstall -k --user N` still has a
+     *    `PackageSetting`, so `pm enable` on it exits 0, writes an enabled-setting nothing consults
+     *    and leaves `FLAG_INSTALLED` clear. The app stays frozen and the old code called that
+     *    success. A **null** read is not evidence in either direction — the package could not be
+     *    resolved at all — so it keeps the exit code's answer instead of manufacturing a failure.
+     *
+     * The read is fresh, and the evidence for that is not an argument: it is the same
+     * `getApplicationInfo(…, MATCH_UNINSTALLED_PACKAGES)` call, in the same process, that two
+     * already-shipped paths depend on for exactly this — [freezeSystemApp]'s rung-1 short-circuit,
+     * device-tested for GH#316, and `Shizuku.setAppDisabledDetailed`, whose
+     * `firstRungThatSticks { isDisabledNow() == disabled }` has been the *only* judge of a freeze in
+     * that gateway since it shipped, for ordinary user apps as well as preinstalled ones — the same
+     * kind of package this rung handles. Mechanically, `ApplicationPackageManager` answers from a
+     * cache keyed on a nonce system_server bumps when it commits a package-state change, so a read
+     * issued after the shell command has returned cannot be served from a pre-command entry; on API
+     * 28, which has no such cache, the call is a plain binder round trip to PMS and there is nothing
+     * to be stale.
      *
      * **System apps** run a two-rung chain, in this order — the order matters because the two rungs
      * have wildly different consequences for the user's data:
@@ -276,10 +330,9 @@ class RootSystemGateway(
         val isSystem = appInfo != null && (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
         val escapedPackage = packageName.escapeForShell()
 
+        val currentUser = thorUserId
+
         if (isSystem) {
-            // Only the system path needs a user id, so the `am get-current-user` round trip stays
-            // off the user-app path entirely.
-            val currentUser = getCurrentUserId()
             return if (isDisabled) {
                 freezeSystemApp(packageName, escapedPackage, currentUser)
             } else {
@@ -287,10 +340,16 @@ class RootSystemGateway(
             }
         }
 
-        val state = if (isDisabled) "disable" else "enable"
-        val shellResult = runCommand("pm $state $escapedPackage")
+        val shellResult = runCommand(setAppEnabledCommand(escapedPackage, currentUser, isDisabled))
 
-        if (shellResult.isSuccess) return shellResult
+        // Not a bare `if (isSuccess) return it` — the exit code is not the judge here; see the KDoc.
+        // `enabled != isDisabled` reads oddly and is the whole test: it is "the state we asked for
+        // was reached", since reaching it means `enabled == !isDisabled`. A null read is neither, so
+        // the exit code keeps its answer.
+        if (shellResult.isSuccess) {
+            val enabled = readEffectivelyEnabled(packageName)
+            if (enabled == null || enabled != isDisabled) return shellResult
+        }
 
         // Check if already in the target state
         if (appInfo != null) {
@@ -337,7 +396,7 @@ class RootSystemGateway(
     private suspend fun freezeSystemApp(
         packageName: String,
         escapedPackage: String,
-        currentUser: String,
+        currentUser: Int,
     ): Result<Unit> {
         // Already frozen — by us, by an older build, or by another tool. Short-circuit before any
         // rung runs: re-freezing a package that is merely disabled must never walk down into the
@@ -351,7 +410,7 @@ class RootSystemGateway(
         // The result is kept rather than discarded because the gate below turns on *why* a rung
         // failed: runCommand folds stderr into the exception message, which is where a
         // PackageManagerService SecurityException lands.
-        val disableResult = runCommand("pm disable --user $currentUser $escapedPackage")
+        val disableResult = runCommand(setAppEnabledCommand(escapedPackage, currentUser, isDisabled = true))
         when (readEffectivelyEnabled(packageName)) {
             false -> {
                 Logger.i(
@@ -451,7 +510,7 @@ class RootSystemGateway(
     private suspend fun unfreezeSystemApp(
         packageName: String,
         escapedPackage: String,
-        currentUser: String,
+        currentUser: Int,
     ): Result<Unit> {
         val tried = mutableListOf<String>()
 
@@ -479,7 +538,7 @@ class RootSystemGateway(
         // restored above with its old disabled enabled-setting intact. install-existing does not
         // clear that setting, which is why this runs *after* rung 1 rather than instead of it.
         if (step == RootFreezeChain.UnfreezeStep.ENABLE) {
-            runCommand("pm enable --user $currentUser $escapedPackage")
+            runCommand(setAppEnabledCommand(escapedPackage, currentUser, isDisabled = false))
             tried += "pm enable --user $currentUser"
             step = readUnfreezeStep(packageName) ?: return unreadable()
         }
@@ -539,6 +598,11 @@ class RootSystemGateway(
      * `FLAG_SUSPENDED` is a public `ApplicationInfo` flag, so unlike the suspender *names* (which
      * need `dumpsys` and `android.permission.DUMP`) it can be read from the app process. It answers
      * "is this app still paused" but never "who owns it", which is why both reads exist.
+     *
+     * It is also the one read here that cannot be told which user to answer for: `getApplicationInfo`
+     * answers for the process's own, always. That made it the reader which silently disagreed with
+     * the writer for as long as the write was pinned to user 0 — see [SUSPEND_USER_ID], which is now
+     * the same number by construction rather than by luck.
      */
     private fun readSuspendedFlag(packageName: String): Boolean? =
         getApplicationInfoCompat(packageName)?.let {
@@ -592,14 +656,21 @@ class RootSystemGateway(
             // ("IllegalArgumentException: Package root does not exist"). We never fall back to the
             // shell for suspend — a broken suspension is worse than a reported failure. GH#239.
             //
-            // The identity stays Thor's own applicationId, chosen by the daemon: the system builds
-            // the user-visible "managed by Thor" line out of the recorded suspender name, so what
-            // this writes is deliberately unchanged. Only the read and unsuspend paths moved.
+            // The identity is still left to the daemon — hence the null third argument: the system
+            // builds the user-visible "managed by Thor" line out of the recorded suspender name, so
+            // what this writes as *who* is deliberately unchanged.
+            //
+            // What this writes as *where* is not. `setAppSuspendedAsForUser` and not the userless
+            // `setAppSuspended`: the daemon runs as uid 0 in user 0 and cannot read Thor's user for
+            // itself, so the old entry point suspended the primary user's copy while
+            // [readSuspendedFlag] below — the only thing that can contradict the daemon — asked
+            // Thor's. A daemon left over from an older build has no transaction code for this and
+            // answers false, which lands on the failure below rather than on another user's app.
             if (hasReflection) {
                 val service = getRootService()
                 if (service != null) {
                     val taskResult = runCatching {
-                        service.setAppSuspended(packageName, true)
+                        service.setAppSuspendedAsForUser(packageName, true, null, SUSPEND_USER_ID)
                     }.onFailure { e ->
                         Logger.e("RootSystemGateway", "AIDL suspend failed", e)
                     }.getOrDefault(false)
@@ -612,8 +683,13 @@ class RootSystemGateway(
                 }
                 return@withContext Result.failure(Exception("Root suspend failed via AIDL for $packageName."))
             }
-            // API < 29 has no SuspendDialogInfo reflection path.
-            val shell = runCommand("pm suspend $escapedPackage")
+            // API < 29 has no SuspendDialogInfo reflection path, so the shell is the whole rung and
+            // it has to name the user itself. `PackageManagerShellCommand.runSuspend` seeds
+            // `UserHandle.USER_SYSTEM`, so the bare form this replaces suspended user 0 whichever
+            // user Thor runs as, while [readSuspendedFlag] — the only judge of the result — read
+            // Thor's own and saw nothing change. On a single-user device the two commands are the
+            // same operation byte for byte; on a secondary user they are two different apps.
+            val shell = runCommand("pm suspend --user $SUSPEND_USER_ID $escapedPackage")
             return@withContext if (shell.isSuccess) shell
             else Result.failure(Exception("Root suspend failed for $packageName."))
         }
@@ -626,9 +702,9 @@ class RootSystemGateway(
      *
      * Two shapes, picked by whether the platform's record could be read at all:
      *
-     *  1. **Record readable** — one `setAppSuspendedAs(…, owner)` per recorded owner, then a second
-     *     read that has to come back empty. This is the rescue path for the user's Shizuku-era
-     *     suspensions and the only one that can name an identity Thor never wrote.
+     *  1. **Record readable** — one `setAppSuspendedAsForUser(…, owner, …)` per recorded owner, then
+     *     a second read that has to come back empty. This is the rescue path for the user's
+     *     Shizuku-era suspensions and the only one that can name an identity Thor never wrote.
      *  2. **Record unknown, empty included** — sweep the identities Thor could have written and let
      *     `FLAG_SUSPENDED` be the sole judge. Reached when the daemon will not bind, when the dump
      *     is denied or in a shape the parser has never seen, and on API 28, where there is no
@@ -668,10 +744,12 @@ class RootSystemGateway(
         if (service != null && recorded != null) {
             // One removal per recorded owner, and deliberately no break on the first accepted call:
             // from API 30 `PackageUserState.suspendParams` is a map, so a package can carry several
-            // entries at once and stays suspended while any one of them survives.
+            // entries at once and stays suspended while any one of them survives. Each removal names
+            // the user the owners were read for, so what is lifted is what [readSuspenders] listed
+            // rather than user 0's same-named entries.
             for (owner in recorded) {
                 val accepted = runCatching {
-                    service.setAppSuspendedAs(packageName, false, owner)
+                    service.setAppSuspendedAsForUser(packageName, false, owner, SUSPEND_USER_ID)
                 }.onFailure { e ->
                     Logger.e("RootSystemGateway", "AIDL unsuspend of $packageName as $owner failed", e)
                 }.getOrDefault(false)
@@ -712,20 +790,23 @@ class RootSystemGateway(
             return Result.success(Unit)
         }
 
-        // Unknown record. Sweep rather than guess: the daemon's two-argument entry point clears
-        // every identity Thor has written across its history, and the root shell's `pm unsuspend`
-        // clears the "root" entry left by a pre-GH#239 build or by the API-28 suspend path above
+        // Unknown record. Sweep rather than guess: passing a null identity asks the daemon to clear
+        // every name Thor has written across its history, and the root shell's `pm unsuspend` clears
+        // the "root" entry left by a pre-GH#239 build or by the API-28 suspend path above
         // (PackageManagerShellCommand passes "root" as the calling package for uid 0). Neither is
         // allowed to *report* anything — an exit code of 0 is what the no-op returns — so the flag
-        // read below is the only judge.
+        // read below is the only judge, and both rungs therefore have to act on the user that flag
+        // answers for. That is what `--user $SUSPEND_USER_ID` and the fourth argument below are
+        // doing; `runSuspend` would otherwise seed `USER_SYSTEM` and the daemon would otherwise
+        // default to 0, neither of which is Thor's user in a work profile.
         if (service != null) {
             runCatching {
-                service.setAppSuspended(packageName, false)
+                service.setAppSuspendedAsForUser(packageName, false, null, SUSPEND_USER_ID)
             }.onFailure { e ->
                 Logger.e("RootSystemGateway", "AIDL unsuspend failed", e)
             }
         }
-        runCommand("pm unsuspend $escapedPackage")
+        runCommand("pm unsuspend --user $SUSPEND_USER_ID $escapedPackage")
         return when (readSuspendedFlag(packageName)) {
             false -> {
                 Logger.i(
@@ -803,8 +884,12 @@ class RootSystemGateway(
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = packageName.escapeForShell()
-        val state = if (isRestricted) "ignore" else "allow"
-        return runCommand("appops set $escapedPackage RUN_ANY_IN_BACKGROUND $state")
+        // Not the `pm` trap: `appops` seeds USER_CURRENT and resolves it, inside system_server, to
+        // the *foreground* user. So the bare form did not land on user 0 and did not fan out to
+        // every user — it landed on whoever happened to be in the foreground when the shell ran,
+        // which on a work-profile device is the parent while Thor and the app it is restricting
+        // live in the profile. See [backgroundRestrictionCommand] for the AOSP path.
+        return runCommand(backgroundRestrictionCommand(escapedPackage, thorUserId, isRestricted))
     }
 
     override suspend fun rebootDevice(reason: String): Result<Unit> {
@@ -817,9 +902,13 @@ class RootSystemGateway(
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
-        val currentUser = getCurrentUserId()
         val escapedPackage = packageName.escapeForShell()
-        return runCommand("pm uninstall --user $currentUser $escapedPackage")
+        // Through the shared builder rather than the byte-identical string this used to hold: the
+        // `DELETE_ALL_USERS` trap a bare `pm uninstall` falls into is documented once, on
+        // [uninstallCommand], and `Shizuku.uninstallApp` already reaches it the same way. Two
+        // gateways spelling the destructive command themselves is how one of them keeps the `--user`
+        // and the other loses it.
+        return runCommand(uninstallCommand(escapedPackage, thorUserId))
     }
 
     override suspend fun installApp(apkPath: String, canDowngrade: Boolean): Result<Unit> {
@@ -855,7 +944,7 @@ class RootSystemGateway(
         apkPaths.firstOrNull { File(it).length() == 0L }?.let {
             return Result.failure(Exception("APK file is missing or empty: $it"))
         }
-        val currentUser = getCurrentUserId()
+        val currentUser = thorUserId
         val downgrade = if (canDowngrade) " -d" else ""
         
         val installerArg = preferenceRepository.getInstallerArg()
@@ -904,7 +993,10 @@ class RootSystemGateway(
         }
         return try {
             val escapedPackage = packageName.escapeForShell()
-            val result = shellRepository.exec("du -s /data/data/$escapedPackage/cache")
+            // The credential-encrypted cache dir for Thor's own user. `/data/data/<pkg>` is an alias
+            // of this path *for user 0* — from a secondary user it sizes the wrong copy — and at
+            // user 0 the two name the same directory, so nothing changes on a single-user device.
+            val result = shellRepository.exec("du -s /data/user/$thorUserId/$escapedPackage/cache")
             val outputLine = (if (result.isSuccess) result.stdout.firstOrNull() else null) ?: return 0L
 
             // Output format is usually "12345   /path/to/file"
@@ -941,8 +1033,8 @@ class RootSystemGateway(
 
                 val combinedPath = paths.joinToString(" ") { it.escapeForShell() }
 
-                // 2. Get Current User ID
-                val currentUser = getCurrentUserId()
+                // 2. The user to reinstall for — Thor's own, matching every other `--user` here.
+                val currentUser = thorUserId
 
                 // 3. Execute the reinstallation command
                 val command =
@@ -970,14 +1062,23 @@ class RootSystemGateway(
     }
 
     /**
-     * Retrieves all APK paths (Base + Splits) for a package.
+     * Every APK path (base + splits) of [packageName] **as [thorUserId] sees it**, or an empty list
+     * when the package has no record for that user.
+     *
+     * The user id is not decoration. `pm path` seeds `UserHandle.USER_SYSTEM`, so the bare form
+     * answered for user 0's record whichever user Thor runs as, and [reinstallAppWithGoogle] — this
+     * function's only in-app caller — feeds the answer straight into a `pm install … --user
+     * $thorUserId`. Read one user, write another, and every command in the chain exits 0: Fix Store
+     * would reinstall a secondary user's app off the primary user's record and report success. An
+     * empty list now means "this user has no such package", which is what the caller already
+     * assumed it meant when it turns it into "Could not find APK path".
      */
     suspend fun getAppPaths(packageName: String): List<String> {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return emptyList()
         }
         val escapedPackage = packageName.escapeForShell()
-        val result = shellRepository.exec("pm path $escapedPackage")
+        val result = shellRepository.exec(pmPathCommand(escapedPackage, thorUserId))
         val lines = if (result.isSuccess) result.stdout else emptyList()
 
         return lines
@@ -1082,34 +1183,17 @@ class RootSystemGateway(
         }
     }.getOrNull()
 
-    // @Volatile guarantees safe publication across threads: getCurrentUserId() runs on the IO
-    // dispatcher while onServiceDisconnected() invalidates the cache on the main thread, so a
-    // '--user <id>' read always sees a consistent value and a foreground-user switch is picked up
-    // after the next reconnect (#34).
-    @Volatile
-    private var cachedUserId: String? = null
-
-    // Bumped on every cache invalidation (onServiceDisconnected). getCurrentUserId() captures it
-    // before the shell read and only commits the result if it is unchanged, so an invalidation that
-    // races an in-flight lookup can't be silently overwritten by the stale value the lookup read.
-    @Volatile
-    private var userIdGeneration = 0
-
-    private suspend fun getCurrentUserId(): String {
-        cachedUserId?.let { return it }
-        val gen = userIdGeneration
-        val userResult = shellRepository.exec("am get-current-user")
-        val currentUser = if (userResult.isSuccess) userResult.stdout.firstOrNull()?.trim() else null
-        return if (currentUser != null && currentUser.matches(USER_ID_REGEX)) {
-            // Only cache a *successfully* resolved id (caching the "0" fallback would let a transient
-            // shell/daemon blip persist the wrong user, so later '--user' commands would target user
-            // 0 on multi-user devices), AND only if no invalidation raced this lookup — a user switch
-            // that fired onServiceDisconnected mid-read must not re-cache the stale value.
-            currentUser.also { if (userIdGeneration == gen) cachedUserId = it }
-        } else {
-            "0"
-        }
-    }
+    // getCurrentUserId(), its @Volatile cache and the generation counter that guarded the cache all
+    // lived here. Every one of them existed to make `am get-current-user` — a shell round trip whose
+    // answer can change while the process runs — safe to reuse. It answered the wrong question:
+    // the *foreground* user, which on a work-profile device is the parent (0) while Thor and the
+    // packages it lists live in 10. So `pm uninstall --user 0` deleted the personal profile's copy
+    // of a package the user never selected, and `pm disable --user 0` disabled a copy the verifying
+    // re-read (which looks at Thor's user) could never see change. Its "0" fallback made a failed
+    // read indistinguishable from a real answer.
+    //
+    // [thorUserId] is a process-lifetime constant read in-process, so there is nothing left to cache
+    // and nothing left to invalidate — which is why onServiceDisconnected no longer resets anything.
 }
 
 /**

@@ -10,6 +10,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.Process
 import android.provider.Settings
+import com.valhalla.superuser.utils.escapeForShell
+import com.valhalla.thor.data.source.local.thorUserId
+import com.valhalla.thor.data.source.local.usageStatsGrantCommand
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.repository.UsageAccessGate
 import org.koin.core.annotation.Single
@@ -46,7 +49,15 @@ class UsageAccessManager(
         if (isGranted()) return true
         // Harmless if no privilege is active (command just fails); may also be
         // blocked on newer Android — hence we re-verify rather than assume success.
-        systemRepository.executeShellCommand("appops set $pkg GET_USAGE_STATS allow")
+        //
+        // The user id is not decoration. `isGranted()` above reads the op through
+        // AppOpsManager for `Process.myUid()`, which answers for Thor's own user; the bare
+        // `appops set` this replaced was resolved by `AppOpsService.Shell.parseUserPackageOp`
+        // against `USER_CURRENT`, i.e. the foreground user. On a managed profile those are two
+        // different users, so the write and the confirming read never met.
+        systemRepository.executeShellCommand(
+            usageStatsGrantCommand(pkg.escapeForShell(), thorUserId)
+        )
         return isGranted()
     }
 
