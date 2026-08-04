@@ -72,7 +72,8 @@ class BillingProcessorImpl(
      * Nothing in this file is on any unit test's classpath — billing is a `storeImplementation`
      * dependency and the test task is `testFossDebugUnitTest` — so the counting lives in
      * flavour-agnostic `BillingPolicy.kt` and this class does only the parts that genuinely cannot
-     * be made pure: calling `startConnection`, reading `isReady`/`connectionState`, and sleeping.
+     * be made pure: calling `startConnection`, reading `connectionState` (see [isConnected] for why
+     * that and never `isReady`), and sleeping.
      *
      * `elapsedRealtime` rather than `currentTimeMillis` because the cooldown must survive an NTP
      * correction, and rather than `uptimeMillis` because it must keep counting while the device is
@@ -110,15 +111,52 @@ class BillingProcessorImpl(
                 .enableOneTimeProducts()
                 .build()
         )
-        // Opt-in since billing 9.x, and kept, but do not mistake it for the recovery path: it is
-        // lazy, not proactive. In billing-9.1.0 the only reachable call to the reconnect helper
+        // Opt-in since billing 9.x, and kept — but it is lazy, not proactive, and it has a second
+        // effect that is easy to miss and was very nearly fatal here. See [isConnected]: enabling
+        // this flag makes `isReady` a constant `true`, so `isReady` must never be used anywhere in
+        // this file as a stand-in for "the binding is up".
+        //
+        // What it does do: in billing-9.1.0 the only reachable call to the reconnect helper
         // `BillingClientImpl.zzaI(int)` sits behind `zzbw(long)`/`zzbx(long)`, which run at the head
-        // of each API callable — so it rebuilds the binding on the *next API call*, and every call
-        // site here refuses to make one while `isReady` is false. It earns its keep only as cover
-        // for a future call site that drops that guard. [scheduleReconnect] is what actually
-        // rebuilds a binding lost to a background Play Store self-update.
+        // of each API callable — so it rebuilds the binding on the *next API call*. That covers the
+        // two call sites here that are deliberately unguarded, [queryProducts] and
+        // [acknowledgePurchase]; the latter is the money path, where a dropped binding costs a real
+        // refund, so the library retrying underneath it is worth keeping.
+        //
+        // What it does NOT do is notify *this* client's listener. The library's own reconnect passes
+        // an internal `zzbv` to `zzbu(listener, i)` with `i != 0`, which does not overwrite the app's
+        // stored `zzK` — so `onBillingSetupFinished` never fires again and `_isBillingAvailable` /
+        // `_products` are never repaired. [scheduleReconnect] is what actually rebuilds a binding
+        // lost to a background Play Store self-update, and it is the only thing that can.
         .enableAutoServiceReconnection()
         .build()
+
+    /**
+     * Whether the Play binding is actually up.
+     *
+     * **Not `billingClient.isReady`**, which this class cannot use at all. `isReady` is
+     * short-circuited by the very flag set above — verified with `javap` against the artifact Gradle
+     * resolves (`com.android.billingclient:billing:9.1.0`):
+     *
+     * ```
+     * BillingClient$Builder.enableAutoServiceReconnection()  ->  putfield zza:Z   (constant 1)
+     * BillingClientImpl.<init>  (all four overloads)         ->  this.zzH = builder.zza
+     * BillingClientImpl.isReady()                            ->  if (zzH) return true; else zzby()
+     * ```
+     *
+     * So from construction onwards — before `startConnection` has ever been called — `isReady`
+     * answers `true` on a client with no binding at all. Guarding on it made
+     * `scheduleReconnect`'s `else -> connectToBilling()` arm unreachable (the ladder issued exactly
+     * one bind instead of the documented 1/2/4/8/16 s ladder) and made `refreshPurchases`'
+     * `reconnect.onResume()` re-arm dead code. Both of this class's recovery mechanisms were inert
+     * on device while every JVM test passed, because the tests drive the ladder directly and never
+     * construct a `BillingClient`.
+     *
+     * `getConnectionState()` is not affected: it returns the raw `zzb` field under the client's own
+     * monitor, which is why it is the honest predicate.
+     */
+    private val isConnected: Boolean
+        get() = billingClient.connectionState == BillingClient.ConnectionState.CONNECTED
 
     init {
         // startConnection() reaches PackageManager.queryIntentServices and bindService with no
@@ -160,14 +198,15 @@ class BillingProcessorImpl(
      * something else got there first.
      *
      * This ladder is not a belt-and-braces backup for the library's own retries; it is the only
-     * thing here that reconnects at all. `enableAutoServiceReconnection` is *lazy*, not proactive:
-     * decompiling billing-9.1.0 puts the sole reachable call to `BillingClientImpl.zzaI(int)` behind
-     * `zzbw(long)`/`zzbx(long)`, which run at the head of each API callable, so the library only
-     * rebuilds a binding when an API call is made on a disconnected client. Every call site in this
-     * file is guarded on `isReady` ([queryActiveSubscriptions], [refreshPurchases],
-     * [launchBillingFlow]), so no such call is ever made and the library's reconnection never fires.
-     * The two mechanisms fail together rather than independently, which is why the budget below
-     * cannot be the last word.
+     * thing here that can restore the *observable* state. `enableAutoServiceReconnection` is *lazy*,
+     * not proactive: decompiling billing-9.1.0 puts the sole reachable call to
+     * `BillingClientImpl.zzaI(int)` behind `zzbw(long)`/`zzbx(long)`, which run at the head of each
+     * API callable, so the library only rebuilds a binding when an API call is made on a
+     * disconnected client. When it does, it reconnects with an internal listener of its own and
+     * never calls `onBillingSetupFinished` on the one this class registered — so `_isBillingAvailable`
+     * and `_products`, which are written nowhere else, stay stale however many times the library
+     * silently repairs the binding underneath. That is why the two mechanisms are not
+     * interchangeable and why the budget below cannot be the last word.
      *
      * One run of it is worth ~31 s and then it stops, because a device with no usable Play Store
      * would otherwise get an unbounded background wakeup loop out of a donation button. The escape
@@ -194,7 +233,7 @@ class BillingProcessorImpl(
                 // The library's own reconnection, or a resume-driven attempt, won the race. Both
                 // branches still have to clear the queued flag — a step that silently declines to
                 // run and says nothing is how a ladder stalls without ever reporting exhaustion.
-                billingClient.isReady -> reconnect.reset()
+                isConnected -> reconnect.reset()
                 billingClient.connectionState == BillingClient.ConnectionState.CONNECTING ->
                     reconnect.reset()
 
@@ -266,7 +305,7 @@ class BillingProcessorImpl(
     }
 
     private fun queryActiveSubscriptions() {
-        if (!billingClient.isReady) return
+        if (!isConnected) return
         val params = QueryPurchasesParams.newBuilder()
             .setProductType(BillingClient.ProductType.SUBS)
             .build()
@@ -405,10 +444,10 @@ class BillingProcessorImpl(
 
         val billingFlowParams = billingFlowParamsBuilder.build()
 
-        if (billingClient.isReady) {
+        if (isConnected) {
             billingClient.launchBillingFlow(activity, billingFlowParams)
         } else {
-            Logger.e("BillingProcessor", "BillingClient is not ready to launch billing flow")
+            Logger.e("BillingProcessor", "BillingClient is not connected; cannot launch billing flow")
         }
     }
 
@@ -431,8 +470,23 @@ class BillingProcessorImpl(
         // at most a *queued* startConnection — never a synchronous bindService on the main thread.
         // BillingReconnectLadder.onResume is arithmetic; scheduleReconnect only launches.
         scope.launch {
-            if (billingClient.isReady) {
+            if (isConnected) {
                 queryActiveSubscriptions()
+                // The catalogue can fail on its own, without the binding ever dropping. Binding is
+                // local IPC and needs no network; `queryProductDetails` is a network call, so first
+                // launch in airplane mode gives OK from onBillingSetupFinished and
+                // SERVICE_UNAVAILABLE from the product query, which is logged and dropped. Nothing
+                // then re-runs it: queryProducts has one call site, the OK branch of
+                // onBillingSetupFinished, and that branch needs a *reconnect* to run again — which
+                // never comes, because the connection never broke. The support sheet gates on
+                // `isBillingAvailable && products.isNotEmpty()`, so it renders the "Rate on Play
+                // Store" fallback until the process is killed.
+                //
+                // A resume is the same "the outside world changed" signal for a failed catalogue
+                // fetch as it is for a failed binding; the connection path was given that escape
+                // hatch above and the catalogue path needs it too. Guarded on emptiness rather than
+                // unconditional so a healthy resume costs no IPC.
+                if (_products.value.isEmpty()) queryProducts()
                 return@launch
             }
             scheduleReconnect(reconnect.onResume())
