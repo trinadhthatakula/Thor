@@ -10,6 +10,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
+import com.valhalla.thor.domain.model.AnalyzedPackage
 import com.valhalla.thor.domain.model.isVersionDowngrade
 import com.valhalla.thor.domain.repository.AppAnalyzer
 import com.valhalla.thor.domain.repository.InstallMode
@@ -46,6 +47,13 @@ class InstallerViewModel(
         private set
 
     private var pendingUri: Uri? = null
+
+    // The one copy of the picked file, made by the analyzer and installed as-is. This ViewModel
+    // owns its lifetime: the analyzer stages it and never deletes it again, so every way out of
+    // this screen — a new pick, or teardown — has to discard it or a full-size copy of the file
+    // is stranded in the cache.
+    private var analyzed: AnalyzedPackage? = null
+
     private var isUpdateOperation: Boolean = false
     private var isDowngrade: Boolean = false
 
@@ -75,17 +83,26 @@ class InstallerViewModel(
         // @Single bus) is still showing. The viewModelScope is already cancelled here, so use the
         // synchronous reset() rather than resetState().
         if (ownsInstall) eventBus.reset()
+        // Covers the cancel path this class exists to serve: the user swipes the installer sheet
+        // away, the Activity finishes, and nothing else would ever delete the staged copy.
+        analyzer.discard(analyzed)
+        analyzed = null
     }
 
     fun parsePackage(uri: Uri) {
         pendingUri = uri
         ownsInstall = true
+        // A second pick replaces the first; the first's copy has no further use.
+        analyzer.discard(analyzed)
+        analyzed = null
         viewModelScope.launch {
             eventBus.emit(InstallState.Parsing)
             val result = analyzer.analyze(uri)
 
             result.fold(
-                onSuccess = { meta ->
+                onSuccess = { analysis ->
+                    analyzed = analysis
+                    val meta = analysis.metadata
                     currentPackageName = meta.packageName
 
                     // getPackageInfo() and the privilege checks in checkPrivilegeAndModes()
@@ -153,6 +170,10 @@ class InstallerViewModel(
 
     fun startInstallation() {
         val uri = pendingUri ?: return
+        // No staged copy means no analysis succeeded, and installing would mean reading the URI
+        // a second time — the very thing the staging exists to prevent. There is nothing to
+        // install here: the sheet only offers Install from ReadyToInstall.
+        val staged = analyzed?.staged ?: return
         ownsInstall = true
         val mode = _installMode.value
 
@@ -174,7 +195,7 @@ class InstallerViewModel(
         val allowDowngrade = isDowngrade || (versionCodeUnknown && mode != InstallMode.NORMAL)
 
         viewModelScope.launch {
-            repository.installPackage(uri, mode, allowDowngrade)
+            repository.installPackage(staged, uri, mode, allowDowngrade)
         }
     }
 }
