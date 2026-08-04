@@ -314,10 +314,17 @@ class RootSystemGateway(
         // case the paragraph above describes — `clearAppDataForUser` hands back a bare boolean, so
         // this side cannot separate those two and the string does not pretend to.
         //
-        // What a `true` is, since it still returns a success here: the daemon's reflective
-        // `clearApplicationUserData` is void and reports through an `IPackageDataObserver` that
-        // `ThorRootService.clearAppData` deliberately does not wire up, so `true` means the wipe
-        // was dispatched without throwing — not that the data is gone.
+        // What a `true` is, since it still returns a success here: `ThorRootService.clearAppData`
+        // now hands `clearApplicationUserData` a real `IPackageDataObserver` and waits for
+        // `onRemoveCompleted`, so `true` means a verdict of "cleared" actually arrived rather than
+        // that the void call was dispatched without throwing. That is the whole point of the
+        // observer, and it is why this rung's success is worth returning.
+        //
+        // What a `false` is has correspondingly widened, and the string below is deliberately vague
+        // about it. `clearAppDataForUser` hands back a bare boolean, so REFUSED (PMS said no) and
+        // UNVERIFIED (nothing came back inside the daemon's own wait) reach this side as the same
+        // value. The daemon logs which one it was; this process cannot know, so "answered no"
+        // rather than "refused" is the strongest claim available here.
         val daemonVerdict: String
         if (service != null) {
             val aidlCall = runCatching {
@@ -329,7 +336,7 @@ class RootSystemGateway(
                 return@withContext Result.success(Unit)
             }
             daemonVerdict = aidlCall.fold(
-                onSuccess = { "the root daemon refused the wipe" },
+                onSuccess = { "the root daemon answered no" },
                 onFailure = { "the root daemon could not confirm the wipe (${it.javaClass.simpleName})" },
             )
         } else {

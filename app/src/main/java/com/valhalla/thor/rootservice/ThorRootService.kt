@@ -10,6 +10,8 @@ import android.os.IBinder
 import android.os.PersistableBundle
 import com.valhalla.superuser.ipc.RootService
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.data.source.local.DataClearOutcome
+import com.valhalla.thor.data.source.local.awaitDataObserver
 import com.valhalla.thor.domain.model.LEGACY_ROOT_SUSPENDER_IDENTITY
 import com.valhalla.thor.domain.model.SHELL_SUSPENDER_IDENTITY
 import com.valhalla.thor.domain.model.parseSuspendingPackages
@@ -53,8 +55,25 @@ private const val PLATFORM_SUSPENDER_IDENTITY = "android"
  * The whole daemon deliberately reaches hidden framework APIs (IPackageManager, ServiceManager,
  * SuspendDialogInfo) via reflection — that is the entire point of running in the privileged :root
  * process — so PrivateApi is suppressed class-wide rather than method-by-method.
+ *
+ * `SoonBlockedPrivateApi` joined it when `app/src/main/aidl/android/content/pm/IPackageDataObserver.aidl`
+ * was vendored, and the reason is worth recording because nothing about the flagged call changed.
+ * Lint reports on `clearApplicationUserData` by resolving the argument classes of the
+ * `getDeclaredMethod` call into a descriptor and looking that up in its non-SDK list; the second
+ * argument is `Class.forName("android.content.pm.IPackageDataObserver")`, which lint could not
+ * resolve before — no such class existed in `android.jar` or in this project — so it could not
+ * build the descriptor and said nothing. The aidl gave it one. Measured as a single variable: an
+ * `origin/dev` worktree lints clean, and the same worktree with only that aidl file added, and no
+ * other change at all, reports this error on the identical line.
+ *
+ * Suppressed rather than worked around, on the argument already written out in [init]: this daemon
+ * is a bare `app_process`, never zygote-specialised, so it never goes through
+ * `ActivityThread.handleBindApplication` and the runtime's non-SDK enforcement is never switched on
+ * for it. "Will throw an exception when targeting API 28 and above" is true of the app process and
+ * false here — which is exactly why every reflective call in this file runs unexempted today, with
+ * no `Bypass` anywhere, on a path `RootSystemGateway` has device-proven.
  */
-@SuppressLint("PrivateApi")
+@SuppressLint("PrivateApi", "SoonBlockedPrivateApi")
 class ThorRootService : RootService() {
 
     init {
@@ -63,6 +82,29 @@ class ThorRootService : RootService() {
         // stay false and silently drop this daemon's logs. Mirror it so root-side diagnostics are
         // visible in debug builds (Logger is Thor's own, gated on this flag; safe in release).
         Logger.isDebug = BuildConfig.DEBUG
+
+        // No Bypass.setHiddenApiExemptions("Landroid/content/pm") here, deliberately, even though
+        // clearAppData below now subclasses the hidden android.content.pm.IPackageDataObserver$Stub
+        // and ThorApplication's Bypass.prepareThor() — which exempts that very prefix — never runs
+        // in this process.
+        //
+        // It is not needed: a bare app_process is not zygote-specialised and never goes through
+        // ActivityThread.handleBindApplication, so the runtime's hidden-API policy is never switched
+        // on for it. The proof is in this file already — everything below reaches IPackageManager,
+        // ServiceManager and SuspendDialogInfo with plain Class.forName + getDeclaredMethod +
+        // invoke, no Bypass anywhere, and that is the device-proven path RootSystemGateway falls
+        // back to. `Class.forName("android.content.pm.IPackageDataObserver")` is itself one of those
+        // calls, so the class this daemon must subclass is demonstrably reachable here unexempted.
+        //
+        // And it would not be free. Bypass.setHiddenApiExemptions tries its Unsafe layer first,
+        // which calls ensureUnsafeBypassReady() -> an mmap + dex parse of the boot-classpath core-oj
+        // jar; Bypass's own init block refuses to do that at class-initialization time for exactly
+        // that reason. Worse, Bypass.init(context) never ran here either, so there is no on-disk
+        // offset cache to hit or to persist into — the scan would be paid on the construction path
+        // of every single daemon start, to guard against an enforcement that is switched off.
+        //
+        // The app process needs nothing added either: prepareThor() already exempts
+        // "Landroid/content/pm", and it runs in onCreate, long before any clear.
     }
 
     override fun onBind(intent: Intent): IBinder {
@@ -592,9 +634,17 @@ class ThorRootService : RootService() {
      * `clearApplicationUserData`, whose third argument is exactly this number. It used to be the
      * literal 0, which is the difference between wiping the app the user tapped and wiping the
      * primary user's same-named app — irreversibly, and reported as a success.
+     *
+     * **The return value is now a confirmation, not a dispatch receipt.** This is the one site in
+     * Thor where a destructive privileged operation had no verifier of any kind: the daemon has no
+     * `PackageManager` for the caller's user and no readback to compare against, so
+     * `runCatching { … }.isSuccess` over a `void` method was all there was, and it reported success
+     * for every wipe `PackageManagerService` accepted and then declined. `true` now means
+     * `onRemoveCompleted` arrived saying so; a refusal, a timeout and a broken lookup all return
+     * `false` and are told apart in the log rather than in the return type.
      */
     private fun clearAppData(packageName: String, userId: Int): Boolean {
-        return runCatching {
+        val outcome = runCatching {
             val pmStub = Class.forName("android.content.pm.IPackageManager\$Stub")
             val serviceManager = Class.forName("android.os.ServiceManager")
             val getService = serviceManager.getMethod("getService", String::class.java)
@@ -603,20 +653,49 @@ class ThorRootService : RootService() {
             val pm = asInterface.invoke(null, binder)
             val pmClass = Class.forName("android.content.pm.IPackageManager")
 
+            // Still looked up by name rather than as IPackageDataObserver::class.java. Both resolve
+            // to the same framework class while parent-first delegation holds, and if it ever stops
+            // holding this spelling keeps the failure where it belongs — a lookup that cannot find
+            // the framework's method, rather than an invoke that silently takes our shadow copy.
             val method = pmClass.getDeclaredMethod(
                 "clearApplicationUserData",
                 String::class.java,
                 Class.forName("android.content.pm.IPackageDataObserver"),
                 Int::class.javaPrimitiveType
             )
-            // clearApplicationUserData returns void — the real success/failure is delivered
-            // asynchronously via IPackageDataObserver.onRemoveCompleted, which we deliberately do
-            // not wire up. So a clean reflective invocation is the strongest signal available: a
-            // thrown SecurityException / missing-package / bad-signature error propagates as
-            // failure (via runCatching below), while a successfully dispatched wipe reports success.
-            method.invoke(pm, packageName, null, userId)
-        }.onFailure { e ->
-            Logger.e("Odin", "Failed to clear app data for $packageName", e)
-        }.isSuccess
+            // clearApplicationUserData returns void: the verdict only ever arrives asynchronously on
+            // IPackageDataObserver.onRemoveCompleted, so a real observer is what makes it readable.
+            // The observer is constructed before the invoke, inside awaitDataObserver, so the
+            // callback cannot land before there is something to receive it.
+            awaitDataObserver("Odin", packageName) { observer ->
+                method.invoke(pm, packageName, observer, userId)
+            }
+        }.getOrElse { e ->
+            // Only the reflective lookup can land here — awaitDataObserver already absorbs whatever
+            // the invoke itself throws and answers UNVERIFIED for it.
+            Logger.e("Odin", "Failed to look up clearApplicationUserData for $packageName", e)
+            DataClearOutcome.UNVERIFIED
+        }
+
+        when (outcome) {
+            DataClearOutcome.CLEARED ->
+                Logger.d("Odin", "clearAppData($packageName, user $userId): confirmed by the observer")
+
+            DataClearOutcome.REFUSED ->
+                Logger.w(
+                    "Odin",
+                    "clearAppData($packageName, user $userId): PackageManagerService refused the " +
+                        "wipe — the data is still there"
+                )
+
+            DataClearOutcome.UNVERIFIED ->
+                Logger.w(
+                    "Odin",
+                    "clearAppData($packageName, user $userId): issued but never confirmed — the " +
+                        "data may or may not be gone, so this reports failure"
+                )
+        }
+
+        return outcome == DataClearOutcome.CLEARED
     }
 }

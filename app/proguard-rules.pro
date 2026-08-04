@@ -51,3 +51,22 @@
 -keep class com.valhalla.thor.rootservice.** { *; }
 -keep interface com.valhalla.thor.rootservice.** { *; }
 
+# --- IPackageDataObserver (framework AIDL callback, shadowed at runtime) --------------------------
+# This file is the one the RELEASE build type wires in (`proguardFiles(..., "proguard-rules.pro")`),
+# so it covers both flavours -- `proguardFile("proguard-rules-foss.pro")` on the foss flavour ADDS to
+# that list rather than replacing it. The rule has to live here and not there: the foss file's only
+# blanket keep, `-keep class com.valhalla.thor.** { *; }`, is commented out, and it would not have
+# covered `android.content.pm.**` anyway.
+#
+# app/src/main/aidl/android/content/pm/IPackageDataObserver.aidl is an AOSP copy that exists only so
+# the Kotlin compiler has a Stub to subclass. At runtime PathClassLoader delegates parent-first and
+# the boot classpath's real framework class wins, so Thor's observer extends the FRAMEWORK Stub and
+# the FRAMEWORK's onTransact dispatches to it -- by the original method name and descriptor, which
+# R8 has no way to know about: nothing in the dex calls onRemoveCompleted, a binder transaction does.
+# Renaming the override would leave onTransact unable to find it, so the callback would never fire,
+# every clear would report "could not confirm" forever, and only in release, because debug is not
+# minified. Same failure shape as the rootservice block above.
+-keep class android.content.pm.IPackageDataObserver { *; }
+-keep class android.content.pm.IPackageDataObserver$Stub { *; }
+-keep class * extends android.content.pm.IPackageDataObserver$Stub { *; }
+
