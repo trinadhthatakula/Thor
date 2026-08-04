@@ -45,6 +45,20 @@ if (keystorePropertiesFile.exists()) {
 val hasSigningCredentials: Boolean =
     keystorePropertiesFile.exists() || System.getenv("KEY_ALIAS") != null
 
+// The locales Thor actually translates, and therefore the only ones any variant keeps.
+//
+// Declared once and applied variant-wide in `androidComponents` below, deliberately rather than
+// per-flavour: two copies of this set is how foss and store drift into shipping different
+// languages, and the whole point of the in-app picker is that the answer does not depend on how
+// the user got the app. Adding a `values-xx` directory means adding it here too, or the resources
+// are compiled and then filtered straight back out.
+//
+// `zh-rCN` and not `zh`: the resource directory is `values-zh-rCN`, and `localeFilters` matches on
+// the qualifier as written. The picker's tag is region-less `zh`, which still resolves, because
+// since API 24 ResourcesImpl selects via LocaleList.getFirstMatch with likely-subtag expansion
+// (`zh` -> `zh-Hans` matches `zh-CN` -> `zh-Hans-CN`).
+val translatedLocales: Set<String> = setOf("en", "ar", "es", "fr", "zh-rCN")
+
 // --- VERSIONING HELPERS (Private & Modernized) ---
 
 // 1. Resolve Code: Checks property 'versionCode' first, falls back to 'initialVersionCode'
@@ -219,6 +233,44 @@ android {
         printTextReport = true
     }
 
+    bundle {
+        language {
+            // An in-app language picker and per-locale delivery cannot both be true.
+            //
+            // Play splits an AAB by locale and installs only the ones the device's system languages
+            // ask for. Picking Français then sets a Configuration whose `values-fr` was never
+            // delivered, resources fall back to `values/`, and the picker is a no-op on Play
+            // installs for exactly the languages the user does not already have — which is all of
+            // the ones they would go looking for the picker to get.
+            //
+            // API 33+ is the exception and the reason this was survivable until now:
+            // `LocaleManager.setApplicationLocales` tells `LocaleManagerService`, which has Play
+            // fetch the missing language split. There is no such path below 33, and the only
+            // supported substitute is Play Core's `SplitInstallManager` — a proprietary dependency
+            // the FOSS flavour must not carry. Disabling the split is the documented alternative:
+            // https://developer.android.com/guide/app-bundle/configure-base#handling_language_changes
+            //
+            // Cost: a Play install downloads one base APK carrying every locale it will ever have,
+            // instead of a split carrying its own. That is paid for by the variant-wide
+            // `localeFilters` in `androidComponents` below — the two changes are a pair, and either
+            // one alone is wrong. Splits off without the filter means shipping ~75 locales of
+            // AndroidX/Material strings to every device; the filter without splits off means the
+            // picker still cannot reach `values-fr`.
+            //
+            // Measured on storeRelease (unsigned, 2026-08-04): filtering takes resources.arsc from
+            // 663,672 to 230,132 bytes and the APK from 4,016,164 to 3,582,624 — a 433,540-byte
+            // saving that is *entirely* arsc, the two deltas being equal to the byte and no other
+            // zip entry differing. The residual regression against per-locale delivery is bounded
+            // by an en-only build at 3,439,320, i.e. at most 143,304 bytes (4.00%), and that is an
+            // over-estimate because a real base-plus-one-split download pays split overhead this
+            // single APK does not.
+            //
+            // Applies only to `bundle*` tasks, so the reproducible `assembleFossRelease` APK is
+            // untouched.
+            enableSplit = false
+        }
+    }
+
     packaging {
         dex {
             // Compress dex in generated APKs. dex is otherwise STORED uncompressed (~76% of the
@@ -256,16 +308,29 @@ androidComponents {
         variantBuilder.enable = false
     }
 
-    // 1. Existing FOSS Copy Task
-    onVariants(selector().withFlavor("distribution", "foss")) { variant ->
-        // foss ships as a single universal APK (GitHub direct download), so every locale lands in
-        // one file. Restrict to the locales we actually translate, trimming library-provided strings
-        // (Material/AndroidX) for ~75 unused languages out of resources.arsc.
-        // Deliberately NOT applied to the store flavor: its AAB is delivered by Play as per-locale
-        // splits, so keeping all locales there lets Play serve each device its own library
-        // translations without bloating any single download.
-        variant.androidResources.localeFilters.set(setOf("en", "ar", "es", "fr", "zh-rCN"))
+    // 1. Locale filtering — every variant, one set.
+    //
+    // Both flavours now ship every locale they will ever have in a single file: foss has always
+    // been one universal APK (GitHub direct download), and store became one the moment
+    // `bundle { language { enableSplit = false } }` was set above so that the in-app picker works
+    // below API 33. Read that comment for why the split had to go; this is the other half of that
+    // decision and the two are only correct together.
+    //
+    // Without this filter, disabling the language split would mean every Play install downloading
+    // ~75 locales of AndroidX/Material translations it cannot reach: Thor's own UI is one of five
+    // languages, so those library strings (date pickers, accessibility labels) would render in a
+    // language the app is not being displayed in. The filter is what keeps "no per-locale delivery"
+    // from meaning "pay for all locales".
+    //
+    // The cost is real and bounded: a user whose system language is, say, Polish loses Polish
+    // library strings and gets English ones inside an app whose own UI is already English. That is
+    // the same experience foss users have always had.
+    onVariants { variant ->
+        variant.androidResources.localeFilters.set(translatedLocales)
+    }
 
+    // 2. Existing FOSS Copy Task
+    onVariants(selector().withFlavor("distribution", "foss")) { variant ->
         if (variant.buildType == "release") {
             val apkDir = variant.artifacts.get(SingleArtifact.APK)
             tasks.register<Copy>("copyFossReleaseApk") {
@@ -278,7 +343,7 @@ androidComponents {
         }
     }
 
-    // 2. Store Copy Task
+    // 3. Store Copy Task
     onVariants(selector().withFlavor("distribution", "store")) { variant ->
         if (variant.buildType == "release") {
             val apkDir = variant.artifacts.get(SingleArtifact.APK)

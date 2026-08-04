@@ -5,6 +5,7 @@ package com.valhalla.thor.presentation.launcher
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -16,6 +17,7 @@ import com.valhalla.thor.data.launcher.FreezerShortcutManager
 import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
+import com.valhalla.thor.util.AppLocale
 import com.valhalla.thor.util.bulkResultMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -44,6 +46,23 @@ class FreezerLaunchActivity : Activity() {
     private val manageAppUseCase: ManageAppUseCase by inject()
     private val freezerShortcutManager: FreezerShortcutManager by inject()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    /**
+     * Applies the chosen locale on API 28–32, where nothing else will.
+     *
+     * A third entry point, reached from a launcher shortcut without passing through
+     * [com.valhalla.thor.HomeActivity]. It draws no UI, but every outcome it reports is a
+     * `getString` on **this** context — `tile_grant_privilege_toast`, `tile_no_apps_toast`,
+     * `bulk_run_failed`, `freezer_launch_failed` and [com.valhalla.thor.util.bulkResultMessage] —
+     * so without the wrap those toasts are the one part of Thor still speaking English.
+     *
+     * No `recreateOnChange` counterpart: this activity is `noHistory`, `excludeFromRecents` and
+     * finishes itself within a few hundred milliseconds, so there is no instance alive long enough
+     * for a language change to strand.
+     */
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLocale.wrap(newBase))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

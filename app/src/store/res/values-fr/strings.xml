@@ -11,4 +11,10 @@
     <string name="change_support_plan_title">Modifier le plan de soutien ?</string>
     <string name="change_support_plan_desc">Vous soutenez déjà le développeur avec un plan actif. Mettre à niveau ou modifier votre plan annulera votre ancien abonnement et le remplacera par le nouveau. Voulez-vous continuer ?</string>
     <string name="active_plan">Plan actif</string>
+    <string name="billing_purchase_pending">Achat en attente : il sera activé une fois le paiement effectué</string>
+    <string name="billing_price_per_week">%1$s / semaine</string>
+    <string name="billing_price_per_month">%1$s / mois</string>
+    <string name="billing_price_per_quarter">%1$s / 3 mois</string>
+    <string name="billing_price_per_half_year">%1$s / 6 mois</string>
+    <string name="billing_price_per_year">%1$s / an</string>
 </resources>

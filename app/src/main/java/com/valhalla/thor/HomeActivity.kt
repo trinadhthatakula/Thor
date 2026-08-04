@@ -4,6 +4,7 @@
 package com.valhalla.thor
 
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -36,8 +37,10 @@ import com.valhalla.thor.presentation.security.AuthState
 import com.valhalla.thor.presentation.security.BiometricScreen
 import com.valhalla.thor.presentation.security.BiometricUnavailableScreen
 import com.valhalla.thor.presentation.security.SecurityViewModel
+import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.theme.ThorTheme
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
+import com.valhalla.thor.util.AppLocale
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -50,9 +53,26 @@ class HomeActivity : ComponentActivity() {
     private val homeViewModel: HomeViewModel by viewModel()
     private val securityViewModel: SecurityViewModel by viewModel()
     private val preferenceRepository: PreferenceRepository by inject()
+    private val billingProcessor: BillingProcessor by inject()
 
     private val requestCode = 1001
     private var hasRequestedShizuku = false
+
+    /** The locale tag this instance attached with; see [attachBaseContext]. */
+    private var attachedLocaleTag: String? = null
+
+    /**
+     * Applies the chosen locale on API 28–32, where nothing else will.
+     *
+     * Spelled identically in [com.valhalla.thor.presentation.installer.PortableInstallerActivity]
+     * and [com.valhalla.thor.presentation.launcher.FreezerLaunchActivity]: an entry point that
+     * omits this renders in the system locale while the rest of the app does not, and "the language
+     * picker works" quietly stops being true for whoever arrives through that door.
+     */
+    override fun attachBaseContext(newBase: Context) {
+        attachedLocaleTag = AppLocale.tagFor(newBase)
+        super.attachBaseContext(AppLocale.wrap(newBase))
+    }
 
     private val shizukuHandler = ShizukuPermissionHandler(
         onPermissionGranted = {
@@ -78,6 +98,10 @@ class HomeActivity : ComponentActivity() {
             securityViewModel.authState.value == AuthState.Loading
         }
         enableEdgeToEdge()
+        // Settings lives inside this activity, so a language change never leaves it: without this
+        // the new locale would only appear on the next cold start. A no-op above API 32, where the
+        // platform relaunches the activity itself.
+        AppLocale.recreateOnChange(this, attachedLocaleTag)
         shizukuHandler.register()
 
         setContent {
@@ -238,6 +262,12 @@ class HomeActivity : ComponentActivity() {
         // AuthState.Unavailable. They leave to set a screen lock and come back, and only a
         // re-query turns that into an unlocked app rather than the same dead end.
         securityViewModel.refreshCapability()
+        // Above the Shizuku early-return, which latches after the first resume — this one has to
+        // run on *every* resume. A purchase completed while Thor's process was dead is never
+        // reported by onPurchasesUpdated, and Google revokes and refunds anything left
+        // unacknowledged for three days; coming back to the app is the first chance to catch it.
+        // The store implementation does its work on a background scope and the foss one is a no-op.
+        billingProcessor.refreshPurchases()
         if (hasRequestedShizuku) return
         lifecycleScope.launch {
             val privileges = privilegeManager.state.first { it.isReady }

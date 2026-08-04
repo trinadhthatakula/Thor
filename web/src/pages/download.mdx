@@ -179,16 +179,19 @@ beside the direct links. Play Billing is scoped to `store` with `storeImplementa
 build never links it: it compiles a no-op billing implementation instead, and its sheet offers
 GitHub Sponsors, Patreon and PayPal and nothing else.
 
-Three others worth knowing, all of them in `app/build.gradle.kts`:
+Two others worth knowing, both of them in `app/build.gradle.kts`:
 
-- **Locales.** The `foss` build ships five — English, Arabic, Spanish, French and Chinese — because
-  it is one universal APK, and trimming the unused library translations out of `resources.arsc`
-  saves real size. The `store` build keeps them all, because Play serves per-locale splits anyway.
-  This is a **flavour** difference and not a Play-versus-GitHub one: the `store-release.apk` on the
-  same GitHub release also carries the full set.
 - **Version string.** The `foss` build carries a `-foss` suffix, which is how you tell the two apart
   on-device.
 - **An extra ProGuard file** for the `foss` flavour.
+
+**Locales are no longer one of them.** Both builds now ship the same five — English, Arabic,
+Spanish, French and Chinese — in a single file, and the Play build no longer uses per-locale
+splits. Splitting an app bundle by locale means Play installs only the languages the device's system
+settings ask for, which is exactly the set the in-app language picker is not needed for: choosing
+Français on a phone that never asked for French would have selected resources Play had not
+delivered. Below Android 13 there is no supported way to fetch that split without Play Core, a
+proprietary library the FOSS build must not carry, so the split is off for both.
 
 Everything else is the same code in both: the same privilege engines, the same app-management
 actions, the same behaviour. Which key an APK carries is a property of the channel, not of the
