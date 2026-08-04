@@ -208,7 +208,7 @@ sealed interface BillingReconnectStep {
  *
  * `@Synchronized` rather than the `@Volatile` fields this replaced: every one of these is a
  * read-modify-write of two or three fields at once, and they arrive on at least two threads — the
- * billing library's main-thread callbacks and the processor's `Dispatchers.Default` scope — so
+ * billing library's main-thread callbacks and the processor's injected default-dispatcher scope — so
  * `@Volatile` was buying visibility for an operation that was never atomic to begin with. The
  * critical sections are a handful of integer comparisons; nothing blocks inside one.
  *

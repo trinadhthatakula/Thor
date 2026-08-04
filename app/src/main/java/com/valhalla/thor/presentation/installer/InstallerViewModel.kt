@@ -18,7 +18,7 @@ import com.valhalla.thor.domain.repository.InstallerRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.R
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
+import org.koin.core.annotation.Named
 
 @KoinViewModel
 class InstallerViewModel(
@@ -34,6 +35,7 @@ class InstallerViewModel(
     private val eventBus: InstallerEventBus,
     private val packageManager: PackageManager,
     private val systemRepository: SystemRepository,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
     val installState = eventBus.events
@@ -126,7 +128,7 @@ class InstallerViewModel(
                     // getPackageInfo() and the privilege checks in checkPrivilegeAndModes()
                     // (isShizukuAvailable()/isDhizukuAvailable() are synchronous binder IPC)
                     // must not run on the main thread.
-                    val existing = withContext(Dispatchers.IO) {
+                    val existing = withContext(ioDispatcher) {
                         // Privilege detection is best-effort: an unexpected repository/
                         // binder IPC exception must not crash package parsing. On failure
                         // the available modes simply stay at their defaults (NORMAL) and

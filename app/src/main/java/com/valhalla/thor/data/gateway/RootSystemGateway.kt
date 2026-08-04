@@ -30,6 +30,7 @@ import com.valhalla.thor.domain.model.parseSuspendingPackages
 import com.valhalla.thor.domain.model.uninstallFreezeFallbackAllowed
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.util.Logger
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -37,6 +38,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import java.io.File
 import kotlin.coroutines.resume
@@ -80,13 +82,53 @@ private val SUSPEND_USER_ID: Int get() = thorUserId
 class RootSystemGateway(
     private val context: Context,
     private val shellRepository: ShellRepository,
-    private val preferenceRepository: PreferenceRepository
+    private val preferenceRepository: PreferenceRepository,
+    // Covers three sites, not every shell call: clearAppData, setAppSuspended and
+    // reinstallAppWithGoogle hop onto this, while the other overrides reach the shell through
+    // runCommand, which adds no withContext and so runs on — and stays on — the caller's context.
+    // There is deliberately no matching "main" parameter; see the bind site in getRootService.
+    @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : SystemGateway {
 
     private var rootService: IThorRootService? = null
     private val connectionMutex = Mutex()
     private var isDaemonReset = false
     private var activeConnection: ServiceConnection? = null
+
+    /**
+     * Drop a stale [ServiceConnection], on the main thread because Odin requires it.
+     *
+     * `RootService.unbind` is `@MainThread` and enforces that at runtime — `RootServiceManager`
+     * opens it with `enforceMainThread()`, which throws `IllegalStateException` unless
+     * `Looper.myLooper()` is the main looper. [getRootService]'s callers arrive under
+     * `withContext(ioDispatcher)`, so both cleanup sites below were throwing that exception into a
+     * `runCatching` that discarded it, then nulling `activeConnection` regardless: the binding was
+     * never actually released and the reference to it was thrown away, which is a leak that
+     * survives until the process dies. `invokeOnCancellation` already got this right by posting to
+     * the main looper; the two cleanup paths never had the same treatment applied.
+     *
+     * Suspending rather than posting, so the unbind is ordered strictly before the rebind that
+     * follows it instead of racing that rebind from a queued Runnable. A failure is now logged
+     * rather than silently swallowed — if this ever throws again it should be visible.
+     *
+     * Bounded for the same reason the bind below is (H2): this runs inside `connectionMutex`, so a
+     * main looper that never gets round to us must not pin that mutex and deadlock every later
+     * privileged op. `withTimeoutOrNull` returns rather than throws, so on timeout the caller
+     * carries on to the bind — no worse off than before, when this never ran at all.
+     */
+    private suspend fun unbindStaleConnection(conn: ServiceConnection) {
+        withTimeoutOrNull(ROOT_SERVICE_BIND_TIMEOUT_MS) {
+            withContext(Dispatchers.Main) {
+                runCatching { RootService.unbind(conn) }
+                    .onFailure {
+                        Logger.w(
+                            "RootSystemGateway",
+                            "unbind of stale root connection failed: ${it.message.orEmpty()}"
+                        )
+                    }
+            }
+        }
+    }
 
     private suspend fun getRootService(): IThorRootService? = connectionMutex.withLock {
         if (!isDaemonReset) {
@@ -103,7 +145,7 @@ class RootSystemGateway(
             } else {
                 rootService = null
                 activeConnection?.let { oldConn ->
-                    runCatching { RootService.unbind(oldConn) }
+                    unbindStaleConnection(oldConn)
                     activeConnection = null
                 }
             }
@@ -111,9 +153,7 @@ class RootSystemGateway(
 
         // Clean up any stale connection before creating a new one
         activeConnection?.let { oldConn ->
-            runCatching {
-                RootService.unbind(oldConn)
-            }
+            unbindStaleConnection(oldConn)
             activeConnection = null
         }
 
@@ -123,6 +163,11 @@ class RootSystemGateway(
         // mutex is released. On timeout the child coroutine is cancelled, which fires
         // invokeOnCancellation below to unbind the stale connection; the caller then falls back.
         withTimeoutOrNull(ROOT_SERVICE_BIND_TIMEOUT_MS) {
+            // Hardcoded, and the one place in this class that must stay so. Odin's RootService.bind
+            // is @MainThread and enforces it at runtime — RootServiceManager.bindInternal opens with
+            // enforceMainThread(), which throws IllegalStateException unless Looper.myLooper() is
+            // the main looper. An injectable "main" here would look like a test seam while being
+            // the opposite: any dispatcher a test substituted would throw rather than bind.
             withContext(Dispatchers.Main) {
                 suspendCancellableCoroutine { continuation ->
                     val intent = Intent(context, com.valhalla.thor.rootservice.ThorRootService::class.java)
@@ -292,7 +337,7 @@ class RootSystemGateway(
         return runCommand(command)
     }
 
-    override suspend fun clearAppData(packageName: String): Result<Unit> = withContext(Dispatchers.IO) {
+    override suspend fun clearAppData(packageName: String): Result<Unit> = withContext(ioDispatcher) {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return@withContext Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
@@ -729,7 +774,7 @@ class RootSystemGateway(
      * or a `FLAG_SUSPENDED` that positively reads false; "could not tell" is a failure, and the
      * failure names the owner so the user learns *which* privilege holds the app.
      */
-    override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
+    override suspend fun setAppSuspended(packageName: String, isSuspended: Boolean): Result<Unit> = withContext(ioDispatcher) {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return@withContext Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
@@ -1137,7 +1182,7 @@ class RootSystemGateway(
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
 
-        return withContext(Dispatchers.IO) {
+        return withContext(ioDispatcher) {
             try {
                 // 1. Get the APK path(s)
                 val paths = getAppPaths(packageName)

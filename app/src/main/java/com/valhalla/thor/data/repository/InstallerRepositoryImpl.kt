@@ -30,11 +30,12 @@ import com.valhalla.thor.R
 import com.valhalla.thor.util.Logger
 import com.valhalla.superuser.utils.escapeForShell
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import kotlinx.coroutines.flow.first
 import com.valhalla.thor.domain.repository.PreferenceRepository
@@ -52,7 +53,12 @@ class InstallerRepositoryImpl(
     private val eventBus: InstallerEventBus,
     private val rootGateway: RootSystemGateway,
     private val shizukuReflector: ShizukuReflector,
-    private val preferenceRepository: PreferenceRepository
+    private val preferenceRepository: PreferenceRepository,
+    // Carries the session writes, the APK extraction and the hashing.
+    @Named("io") private val ioDispatcher: CoroutineDispatcher,
+    // Only installWithExternal() uses this: handing the URI to the system's installer chooser is a
+    // UI hand-off, so it stays on main. Note this is plain Main, not Main.immediate.
+    @Named("main") private val mainDispatcher: CoroutineDispatcher
 ) : InstallerRepository {
 
     private val defaultInstaller = context.packageManager.packageInstaller
@@ -101,7 +107,7 @@ class InstallerRepositoryImpl(
         mode: InstallMode,
         canDowngrade: Boolean,
     ) =
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             try {
                 when (mode) {
                     InstallMode.ROOT -> {
@@ -299,7 +305,7 @@ class InstallerRepositoryImpl(
     }
 
     private suspend fun installWithExternal(uri: Uri) {
-        withContext(Dispatchers.Main) {
+        withContext(mainDispatcher) {
             try {
                 val intent = Intent(Intent.ACTION_VIEW).apply {
                     setDataAndType(uri, "application/vnd.android.package-archive")

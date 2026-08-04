@@ -23,8 +23,8 @@ import com.android.billingclient.api.queryProductDetails
 import com.valhalla.thor.R
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -32,15 +32,24 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import java.util.concurrent.ConcurrentHashMap
 
 @Single
 class BillingProcessorImpl(
-    private val context: Context
+    private val context: Context,
+    // [scope] below is where every retry `delay` in this class is spent — a ~31 s reconnect
+    // ladder. Nothing can reach it from a test: `com.android.billingclient` is a
+    // storeImplementation dependency and the only unit-test task run anywhere is
+    // testFossDebugUnitTest, so this class is not on any test's classpath (see BillingPolicy).
+    @Named("default") private val defaultDispatcher: CoroutineDispatcher,
+    // Toast has a hard main-thread requirement, so this one stays a real dispatcher choice rather
+    // than an implementation detail of `scope`.
+    @Named("main") private val mainDispatcher: CoroutineDispatcher,
 ) : BillingProcessor {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(SupervisorJob() + defaultDispatcher)
 
     private val _isBillingAvailable = MutableStateFlow(true)
     override val isBillingAvailable: StateFlow<Boolean> = _isBillingAvailable.asStateFlow()
@@ -243,7 +252,7 @@ class BillingProcessorImpl(
     }
 
     private fun showToast(message: String) {
-        scope.launch(Dispatchers.Main) {
+        scope.launch(mainDispatcher) {
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         }
     }

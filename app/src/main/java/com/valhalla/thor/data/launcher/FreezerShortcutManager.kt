@@ -31,11 +31,12 @@ import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 
 /** Owns all launcher-shortcut plumbing for the Freezer feature. */
@@ -45,9 +46,10 @@ class FreezerShortcutManager(
     private val freezerRepository: FreezerRepository,
     private val bulkFreezeRunner: BulkFreezeRunner,
     private val stateReader: AppFreezeStateReader,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : AppShortcutController {
     // App-scoped: bulk work must survive the (finishing) trampoline activity.
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + ioDispatcher)
 
     // Solid launcher-tile backgrounds for the bulk action shortcuts (shared with the in-app preview).
     private val freezeShortcutBg = FreezerShortcutContract.FREEZE_TILE_COLOR

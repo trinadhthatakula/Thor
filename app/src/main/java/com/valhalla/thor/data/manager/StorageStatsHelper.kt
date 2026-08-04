@@ -10,8 +10,9 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Process
 import com.valhalla.thor.domain.repository.StorageStatsProvider
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
+import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 
 /**
@@ -20,14 +21,17 @@ import org.koin.core.annotation.Single
  * (see UsageAccessManager) — a per-package failure is skipped, never thrown.
  */
 @Single(binds = [StorageStatsProvider::class])
-class StorageStatsHelper(private val context: Context) : StorageStatsProvider {
+class StorageStatsHelper(
+    private val context: Context,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher
+) : StorageStatsProvider {
 
     private val statsManager = context.getSystemService(StorageStatsManager::class.java)
     private val pm = context.packageManager
     private val user = Process.myUserHandle()
 
     override suspend fun installSizes(packages: List<String>): Map<String, Long> =
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             val manager = statsManager ?: return@withContext emptyMap()
             // One Binder call for all ApplicationInfo instead of one per package.
             // (queryStatsForPackage below still costs one IPC each — there is no batch
