@@ -32,9 +32,10 @@
         <!-- DataStore Preferences — theme, sort/filter, privilege mode, freezer mode, biometric
              lock and friends. The store name "thor_preferences" is declared in
              data/repository/PreferenceRepositoryImpl.kt:28, and DataStore writes it to
-             files/datastore/<name>.preferences_pb, so the domain is "file", NOT "sharedpref" —
-             Thor persists nothing through SharedPreferences. A path that matches nothing fails
-             exactly as silently as the empty template this replaced.
+             files/datastore/<name>.preferences_pb, so the domain is "file", NOT "sharedpref". A
+             path that matches nothing fails exactly as silently as the empty template this
+             replaced. Thor's two SharedPreferences files are omitted on purpose; see
+             backup_rules.xml.
 
              The two device-specific keys in here re-resolve rather than break on a new device:
              export_dir_uri is revalidated by ExportAppUseCase (falls back to Downloads if the
@@ -55,7 +56,9 @@
            package the new device does not have reads as a frozen app that is not there;
          - everything under cacheDir is in-flight installer scratch, meaningless off-device;
          - thor_local_state describes the database that is not coming with it, so moving it would
-           land a claim about a watchlist that does not exist on the new device.
+           land a claim about a watchlist that does not exist on the new device;
+         - the two SharedPreferences files describe state that is likewise not coming with them —
+           see backup_rules.xml.
        If the watchlist is ever worth transferring, split it out of the metadata cache first
        rather than widening this section.
     -->

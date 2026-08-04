@@ -3,6 +3,9 @@
 
 package com.valhalla.thor.presentation.tile
 
+import android.content.Context
+import android.content.res.Configuration
+import android.content.res.Resources
 import android.os.Build
 import android.service.quicksettings.TileService
 import com.valhalla.thor.R
@@ -11,6 +14,8 @@ import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.BulkResult
+import com.valhalla.thor.util.AppLocale
+import com.valhalla.thor.util.LocalizedResources
 import com.valhalla.thor.util.Logger
 import com.valhalla.thor.util.bulkResultMessage
 import kotlinx.coroutines.CancellationException
@@ -43,6 +48,52 @@ class FreezerTileService : TileService() {
 
     /** The [BulkResult] currently displayed in the subtitle; consumed in [onStopListening]. */
     private var shownResult: BulkResult? = null
+
+    /**
+     * Applies the chosen locale on API 28–32 to the strings **this service** resolves.
+     *
+     * `Service` extends `ContextWrapper` and is attached the same way an Activity is, so the same
+     * wrap works here. What it covers is everything [paint] reads: `tile_checking`, `tile_freezing`,
+     * `tile_no_privilege`, `tile_no_apps`, the `freezer` content description and
+     * [com.valhalla.thor.util.bulkResultMessage].
+     *
+     * **What it does not cover, on any API level:** the tile's *label* and *icon*, declared as
+     * `android:label="@string/freezer"` on the `<service>` in the manifest. Those are read by
+     * SystemUI out of Thor's APK using SystemUI's own resources and configuration — Thor's process
+     * is not involved and neither a wrapped context here nor `LocaleManager.setApplicationLocales`
+     * on 33+ reaches it. The tile name therefore follows the **system** locale while its subtitle
+     * follows the app language. That split is a property of how QS tiles load metadata, not
+     * something left undone here.
+     *
+     * The wrap is one-shot — `ContextWrapper.attachBaseContext` refuses a second call — and how long
+     * this instance lives is SystemUI's decision, not Thor's: `TileServiceManager` may hold the
+     * binding across shade sessions rather than unbinding with each one. [getResources] therefore
+     * goes through [LocalizedResources] exactly as `ThorApplication` does, so the subtitle cannot
+     * end up a language behind the app that painted it. On API 33+ that indirection is inert.
+     */
+    override fun attachBaseContext(newBase: Context) {
+        localizedResources = LocalizedResources(newBase)
+        super.attachBaseContext(AppLocale.wrap(newBase))
+    }
+
+    @Volatile
+    private var localizedResources: LocalizedResources? = null
+
+    override fun getResources(): Resources =
+        localizedResources?.current() ?: super.getResources()
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        localizedResources?.invalidate()
+        // invalidate() only fixes the *next* resource read, and by this point the strings are
+        // already gone: `subtitle`, `stateDescription` and `contentDescription` are copies handed
+        // to SystemUI by the last [paint], and SystemUI is displaying them now. Nothing else would
+        // repaint them — the collector in [onStartListening] fires on privilege and freezer state,
+        // neither of which moves when the language does — so the open shade would keep the previous
+        // language until some unrelated state change happened to come along. [paint] returns
+        // immediately when this service is not listening, so this costs nothing when it is not.
+        paint()
+    }
 
     override fun onStartListening() {
         // Cancel any previous scope before replacing it. The framework does not deliver
