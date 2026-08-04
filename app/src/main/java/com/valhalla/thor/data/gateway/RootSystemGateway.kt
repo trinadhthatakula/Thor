@@ -114,21 +114,47 @@ class RootSystemGateway(
      * Bounded for the same reason the bind below is (H2): this runs inside `connectionMutex`, so a
      * main looper that never gets round to us must not pin that mutex and deadlock every later
      * privileged op. `withTimeoutOrNull` returns rather than throws, so on timeout the caller
-     * carries on to the bind — no worse off than before, when this never ran at all.
+     * carries on to the bind.
+     *
+     * That timeout cannot simply give up, though, which is why there is a fallback below. It
+     * cancels the main-dispatched block, so `conn` is never handed back to `RootServiceManager`,
+     * and the caller then nulls `activeConnection` and drops the last reference to it. What that
+     * strands is not a bare object leak: `RootServiceManager.connections` is refcounted per
+     * `ServiceConnection`, and `services` is keyed by intent rather than by connection, so a
+     * record that is never removed holds the service's `refCount` above zero for the life of the
+     * process — after which no unbind of any *later* connection can reach the `refCount == 0`
+     * branch that actually releases the service inside the root process.
      */
     private suspend fun unbindStaleConnection(conn: ServiceConnection) {
-        withTimeoutOrNull(ROOT_SERVICE_BIND_TIMEOUT_MS) {
-            withContext(Dispatchers.Main) {
-                runCatching { RootService.unbind(conn) }
-                    .onFailure {
-                        Logger.w(
-                            "RootSystemGateway",
-                            "unbind of stale root connection failed: ${it.message.orEmpty()}"
-                        )
-                    }
-            }
+        val unbound = withTimeoutOrNull(ROOT_SERVICE_BIND_TIMEOUT_MS) {
+            withContext(Dispatchers.Main) { unbindOnMain(conn) }
         }
+        if (unbound == true) return
+
+        // Not observed to have happened, so hand it to the looper to do whenever it catches up.
+        // This keeps the ordering claim above intact rather than reintroducing the race it warns
+        // about: the post is enqueued here, *before* the bind that follows queues its own main
+        // dispatch, so a looper that recovers still runs this unbind first.
+        //
+        // Deliberately does not touch `activeConnection` — by the time this runs, that field may
+        // legitimately hold a newer connection, and clearing it would strand that one instead.
+        //
+        // Also covers the (near-unreachable) throwing path rather than only the timeout, so this
+        // does not rest on the order of statements inside Odin's `unbind`; a redundant retry there
+        // is a no-op, since removing an absent connection does nothing.
+        android.os.Handler(android.os.Looper.getMainLooper()).post { unbindOnMain(conn) }
     }
+
+    /** The unbind itself, factored out only so the timeout fallback above can reuse it. */
+    private fun unbindOnMain(conn: ServiceConnection): Boolean =
+        runCatching { RootService.unbind(conn) }
+            .onFailure {
+                Logger.w(
+                    "RootSystemGateway",
+                    "unbind of stale root connection failed: ${it.message.orEmpty()}"
+                )
+            }
+            .isSuccess
 
     private suspend fun getRootService(): IThorRootService? = connectionMutex.withLock {
         if (!isDaemonReset) {
