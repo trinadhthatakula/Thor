@@ -469,24 +469,40 @@ class PerUserCommandsTest {
      * with the user by some means other than naming it — hashing it into a session name, say — is
      * not accepted as per-user. Neither fixture string contains a digit, so a matched `10` can only
      * have come from the user id.
+     *
+     * Each boolean combination is compared against its own counterpart rather than joined into one
+     * blob first. A builder that named the user on only one of its branches still renders two
+     * different joins for users 10 and 11 — the single branch that does vary is enough to make the
+     * whole strings differ — so one assertion over the join accepts it. For the mirrored builder,
+     * the one that names the user only on its `false` branch, joining is *weaker* than the
+     * single-value render this enumeration was written to replace: defaulting the booleans would
+     * have caught it. Branch against matching branch is what makes enumerating them mean what the
+     * rationale in [renderEach] says it means.
      */
     @Test
     fun `every builder in the file names a user`() {
         for (builder in perUserBuilders()) {
-            val forTen = render(builder, userId = 10)
-            val forEleven = render(builder, userId = 11)
+            val forTen = renderEach(builder, userId = 10)
+            val forEleven = renderEach(builder, userId = 11)
 
-            assertNotEquals(
-                "${builder.readableName()} emits the same thing for user 10 and user 11, so the " +
-                    "user id it was handed reaches nothing. That is the bug this file exists to " +
-                    "fix, in a builder that has not been given its own test yet.",
-                forTen,
-                forEleven
-            )
-            assertTrue(
-                "${builder.readableName()} varies with the user id but never names it: $forTen",
-                userTokenTen.containsMatchIn(forTen)
-            )
+            for ((ten, eleven) in forTen.zip(forEleven)) {
+                val branch =
+                    if (ten.booleans.isEmpty()) "" else " on the branch ${ten.booleans}"
+
+                assertNotEquals(
+                    "${builder.readableName()} emits the same thing for user 10 and user 11" +
+                        "$branch, so the user id it was handed reaches nothing. That is the bug " +
+                        "this file exists to fix, in a builder that has not been given its own " +
+                        "test yet.",
+                    ten.text,
+                    eleven.text
+                )
+                assertTrue(
+                    "${builder.readableName()} varies with the user id but never names it" +
+                        "$branch: ${ten.text}",
+                    userTokenTen.containsMatchIn(ten.text)
+                )
+            }
         }
     }
 
@@ -551,29 +567,35 @@ class PerUserCommandsTest {
     /** The Kotlin name, with the `internal` module-mangling suffix taken back off. */
     private fun Method.readableName(): String = name.substringBefore('$')
 
+    /** One boolean combination's rendering, tagged with the combination that produced it. */
+    private data class Rendering(val booleans: List<Boolean>, val text: String)
+
     /**
-     * One builder's entire output for [userId], as text.
+     * One rendering of [builder] per boolean combination, for [userId], in a stable order.
      *
      * Booleans are enumerated rather than defaulted: `setAppEnabledCommand` and
      * `backgroundRestrictionCommand` both pick between two verbs, and a builder that named the user
-     * on only one branch would slip through a single-value render. The renderings are concatenated
-     * so the caller compares a builder's whole behaviour across two user ids in one assertion.
+     * on only one branch would slip through a single-value render. The rows are returned separately
+     * rather than concatenated because a join hands that hole straight back — one varying branch
+     * carries the whole string, and the caller can no longer tell which branch it came from.
      */
-    private fun render(builder: Method, userId: Int): String =
+    private fun renderEach(builder: Method, userId: Int): List<Rendering> =
         booleanCombinations(builder.parameterTypes.count { it == Boolean::class.javaPrimitiveType })
-            .joinToString("\n") { booleans ->
-                when (val output = builder.invoke(null, *argumentsFor(builder, userId, booleans))) {
-                    is String -> output
-                    is List<*> -> output.joinToString(" ")
-                    null -> throw AssertionError(
-                        "${builder.readableName()} returned null. A command builder that can " +
-                            "produce no command is not a shape this sweep can check."
-                    )
-                    else -> throw AssertionError(
-                        "${builder.readableName()} returns a ${output.javaClass.simpleName}, " +
-                            "which this sweep cannot read. Teach render() about it."
-                    )
-                }
+            .map { booleans ->
+                val text =
+                    when (val output = builder.invoke(null, *argumentsFor(builder, userId, booleans))) {
+                        is String -> output
+                        is List<*> -> output.joinToString(" ")
+                        null -> throw AssertionError(
+                            "${builder.readableName()} returned null. A command builder that can " +
+                                "produce no command is not a shape this sweep can check."
+                        )
+                        else -> throw AssertionError(
+                            "${builder.readableName()} returns a ${output.javaClass.simpleName}, " +
+                                "which this sweep cannot read. Teach renderEach() about it."
+                        )
+                    }
+                Rendering(booleans, text)
             }
 
     /**
