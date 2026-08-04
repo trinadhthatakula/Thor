@@ -196,19 +196,48 @@ class RootSystemGateway(
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = packageName.escapeForShell()
+
+        // What "stopped" means here, asked of the platform rather than of an exit code. All three
+        // rungs below ask this one question, so it is one function: three hand-written copies of a
+        // verifier are how one of them quietly stops matching the others.
+        //
+        // An unreadable package answers false, and that collapse is safe in the one direction that
+        // matters — the opposite of the `null` [readSuspendedFlag] is careful to preserve. Every
+        // caller here treats false as "not proven stopped" and does more work, ending at the
+        // failure below; so "could not read" costs a wasted killBackgroundProcesses and a reported
+        // failure, never a success that did not happen.
+        //
+        // What it does cost is a *sentence*. "FLAG_STOPPED is clear" and "the package could not be
+        // read" are the same `false` here, so the failure message must not speak for both — see the
+        // last read below, which keeps its `ApplicationInfo` for exactly that.
+        fun isStoppedNow(): Boolean = getApplicationInfoCompat(packageName)?.run {
+            (flags and android.content.pm.ApplicationInfo.FLAG_STOPPED) != 0
+        } ?: false
+
         // The two halves of this function have to name the same user. Everything below the shell
         // rung is in-process — killBackgroundProcesses and the FLAG_STOPPED reads both answer for
         // Thor's own user — while a bare `am force-stop` reads USER_ALL and kills the package
         // everywhere. Naming [thorUserId] is what makes the post-check evidence about the process
         // the command was aimed at.
         val shellResult = runCommand(forceStopCommand(escapedPackage, thorUserId))
-        if (shellResult.isSuccess) return shellResult
+        // The exit code alone decided this, and it cannot say no:
+        // `ActivityManagerShellCommand.runForceStop` ends in an unconditional `return 0`, so it
+        // reports that the command parsed, never that a process died. `shellResult.isSuccess` was
+        // therefore true on every device for every package, which made the fallback's FLAG_STOPPED
+        // readback — [isStoppedNow], already written, already correct — dead code from the shell
+        // rung's point of view: the verifier existed and was skipped by a rung that could not fail.
+        // Do not simplify this back to `if (shellResult.isSuccess)`; that restores an unfalsifiable
+        // success and takes the only evidence this function has with it.
+        //
+        // The readback is fresh because `am force-stop` is synchronous — AMS has committed the
+        // stopped state before the shell command returns — and it is *about the same app* because
+        // the command names [thorUserId] and `getApplicationInfo` can only ever answer for Thor's
+        // own user. A shell 0 with a package that did not stop now falls through to the
+        // unprivileged rung rather than being reported as done.
+        if (shellResult.isSuccess && isStoppedNow()) return shellResult
 
         // Unprivileged check/fallback
-        val isStopped = getApplicationInfoCompat(packageName)?.run {
-            (flags and android.content.pm.ApplicationInfo.FLAG_STOPPED) != 0
-        } ?: false
-        if (isStopped) return Result.success(Unit)
+        if (isStoppedNow()) return Result.success(Unit)
 
         runCatching {
             val am =
@@ -216,12 +245,37 @@ class RootSystemGateway(
             am?.killBackgroundProcesses(packageName)
         }
 
-        val postCheck = getApplicationInfoCompat(packageName)?.run {
-            (flags and android.content.pm.ApplicationInfo.FLAG_STOPPED) != 0
-        } ?: false
-        if (postCheck) return Result.success(Unit)
+        // The last read is spelled out rather than asked for through [isStoppedNow], because the
+        // failure message below has to say *which* of that function's two `false`s this is, and
+        // re-reading to find out would describe a different moment than the one that decided.
+        val postKillInfo = getApplicationInfoCompat(packageName)
+        if (postKillInfo != null &&
+            (postKillInfo.flags and android.content.pm.ApplicationInfo.FLAG_STOPPED) != 0
+        ) {
+            return Result.success(Unit)
+        }
 
-        return Result.failure(Exception("Root force stop failed. Shell command failed and app is still running."))
+        // Two ways to arrive here now, and a bug report has to be able to tell them apart: the
+        // shell command itself failed, or it exited 0 and the app kept running anyway. The old
+        // message asserted the first unconditionally, which the guard above has just made false.
+        val shellVerdict = if (shellResult.isSuccess) {
+            "`am force-stop` exited 0"
+        } else {
+            "the shell command failed"
+        }
+        // The same defect one level down, and the reason this is not simply "it is still running":
+        // that claim rests on [isStoppedNow], where an unreadable `ApplicationInfo` and a genuinely
+        // clear FLAG_STOPPED are indistinguishable. A bug report generated from "Thor could not
+        // read the package" must not read as "the kill did not work" — they need different fixes.
+        val stateVerdict = if (postKillInfo == null) {
+            "the package's ApplicationInfo could not be read back after killBackgroundProcesses, " +
+                "so whether it is still running is unknown"
+        } else {
+            "FLAG_STOPPED is still clear after killBackgroundProcesses, so it is still running"
+        }
+        return Result.failure(
+            Exception("Root force stop of $packageName failed: $shellVerdict, and $stateVerdict.")
+        )
     }
 
     override suspend fun clearCache(packageName: String): Result<Unit> {
@@ -229,6 +283,11 @@ class RootSystemGateway(
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = packageName.escapeForShell()
+        // Deliberately unverified, and deliberately staying that way: as uid 0 `rm -rf` is honest
+        // about its own post-condition — exit 0 means those paths are gone or were never there,
+        // non-zero means a real error — so there is no asynchronous framework call here, and no
+        // IPackageDataObserver to wire up as the reflective cache rungs in the other two gateways
+        // need. A readback would re-`stat` what the shell already reported on.
         val command = "rm -rf ${clearCachePaths(escapedPackage, thorUserId).joinToString(" ")}"
         return runCommand(command)
     }
@@ -247,18 +306,39 @@ class RootSystemGateway(
         // from an older build has no such transaction code and answers false, which lands on the
         // failure below — the right way round for a call that destroys data.
         val service = getRootService()
+        // The failure below now names *which* way the AIDL rung produced nothing. "AIDL failed" —
+        // the whole of what it used to say — folded three different diagnoses into one sentence of
+        // a bug report about data that is still there: no daemon at all (the bind was refused or
+        // timed out), a daemon that could not be reached (dead binder, `:root` killed mid-call),
+        // and a daemon that answered no. The third covers both a PMS refusal and the older-build
+        // case the paragraph above describes — `clearAppDataForUser` hands back a bare boolean, so
+        // this side cannot separate those two and the string does not pretend to.
+        //
+        // What a `true` is, since it still returns a success here: the daemon's reflective
+        // `clearApplicationUserData` is void and reports through an `IPackageDataObserver` that
+        // `ThorRootService.clearAppData` deliberately does not wire up, so `true` means the wipe
+        // was dispatched without throwing — not that the data is gone.
+        val daemonVerdict: String
         if (service != null) {
-            val aidlCleared = runCatching {
+            val aidlCall = runCatching {
                 service.clearAppDataForUser(packageName, thorUserId)
             }.onFailure { e ->
                 Logger.e("RootSystemGateway", "AIDL clearAppData failed", e)
-            }.getOrDefault(false)
-            if (aidlCleared) {
+            }
+            if (aidlCall.getOrDefault(false)) {
                 return@withContext Result.success(Unit)
             }
+            daemonVerdict = aidlCall.fold(
+                onSuccess = { "the root daemon refused the wipe" },
+                onFailure = { "the root daemon could not confirm the wipe (${it.javaClass.simpleName})" },
+            )
+        } else {
+            daemonVerdict = "the root daemon would not bind, so it was never asked"
         }
 
-        return@withContext Result.failure(Exception("Root clear app data failed. Shell command and AIDL both failed."))
+        return@withContext Result.failure(
+            Exception("Root clear app data of $packageName failed: `pm clear` failed and $daemonVerdict.")
+        )
     }
 
     /**
@@ -689,9 +769,36 @@ class RootSystemGateway(
             // user Thor runs as, while [readSuspendedFlag] — the only judge of the result — read
             // Thor's own and saw nothing change. On a single-user device the two commands are the
             // same operation byte for byte; on a secondary user they are two different apps.
+            //
+            // Its exit code is not the judge either, and never was entitled to be:
+            // `PackageManagerShellCommand.runSuspend` returns 0 whenever `setPackagesSuspendedAsUser`
+            // did not throw, discarding the failure array that names the packages it declined to
+            // suspend — an exempt package, or one not installed for this user, comes back as a clean
+            // exit. [readSuspendedFlag] already decides every other branch of this function (the AIDL
+            // suspend above, the early return in [unsuspendPackage]); this rung was the one place a
+            // `pm` exit code still stood in for it.
+            //
+            // `== true` and not a bare call, for the reason the AIDL branch above spells out:
+            // [readSuspendedFlag] answers `null` for "could not read the package at all", and "could
+            // not tell" must never stand in for success. The readback is legitimate here only because
+            // [SUSPEND_USER_ID] is [thorUserId]: `--user` and `getApplicationInfo` — which can answer
+            // for Thor's own user and nothing else — name one user by construction. Pin either back
+            // to 0 and this guard starts asking about a different copy of the app than the command
+            // changed. It is also fresh by the same argument [setAppDisabled] makes, only stronger:
+            // this rung runs on API 28 alone, which has no `ApplicationInfo` cache, so the read is a
+            // plain binder round trip to PMS.
             val shell = runCommand("pm suspend --user $SUSPEND_USER_ID $escapedPackage")
-            return@withContext if (shell.isSuccess) shell
-            else Result.failure(Exception("Root suspend failed for $packageName."))
+            return@withContext if (shell.isSuccess && readSuspendedFlag(packageName) == true) shell
+            else Result.failure(
+                Exception(
+                    if (shell.isSuccess) {
+                        "Root suspend of $packageName is unverified: `pm suspend` exited 0 but " +
+                            "FLAG_SUSPENDED does not read back as set for user $SUSPEND_USER_ID."
+                    } else {
+                        "Root suspend failed for $packageName."
+                    }
+                )
+            )
         }
 
         return@withContext unsuspendPackage(packageName, escapedPackage, hasReflection)

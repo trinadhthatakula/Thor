@@ -22,7 +22,8 @@ interface SystemRepository {
     suspend fun rebootDevice(reason: String): Result<Unit>
 
     // Composite Actions
-    suspend fun aggressiveCleanup(packageName: String): Result<Unit>
+    // `aggressiveCleanup(packageName)` was declared here and is deliberately gone; see the note at
+    // its old implementation site in `SystemRepositoryImpl`. Do not re-add it without a caller.
     suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit>
     suspend fun copyFileWithRoot(sourcePath: String, destinationPath: String): Result<Unit>
     suspend fun getAppPaths(packageName: String): Result<List<String>>

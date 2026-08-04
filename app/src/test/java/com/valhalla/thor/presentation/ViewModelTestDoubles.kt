@@ -115,9 +115,6 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
 
     override suspend fun rebootDevice(reason: String) = record("rebootDevice:$reason")
 
-    override suspend fun aggressiveCleanup(packageName: String) =
-        record("aggressiveCleanup:$packageName")
-
     override suspend fun reinstallAppWithGoogle(packageName: String) =
         record("reinstallAppWithGoogle:$packageName")
 
