@@ -411,6 +411,7 @@
     <string name="biometric_not_enrolled_toast_biometric_only">未录入指纹 — 在 Android 9 上屏幕锁无法解锁 Thor，请先录入指纹</string>
     <string name="biometric_lock_unavailable_toast">无法开启应用锁：此设备没有可用来解锁的生物识别方式</string>
     <string name="biometric_lock_disabled_no_biometric">已关闭应用锁：此设备没有可用来解锁的生物识别方式</string>
+    <string name="settings_lost_using_defaults">Thor 无法读取你的设置，正在使用默认设置：请在“设置”中检查应用锁</string>
     <string name="open_security_settings">打开安全设置</string>
     <string name="unlock">解锁</string>
     <string name="thank_you_support_desc">您的订阅已生效。感谢您支持 Thor 的开发！</string>

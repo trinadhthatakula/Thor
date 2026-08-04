@@ -121,11 +121,13 @@ class HomeActivity : ComponentActivity() {
                     }
                 }
 
-                // The only place SecurityViewModel speaks: it disarms a lock this device can never
-                // open, and that must not happen silently — the user set that lock deliberately and
-                // is entitled to know Thor took it off. Collected here rather than in a screen
-                // because the disarm lands *before* any screen: it is what decides which of the
-                // branches below composes at all.
+                // The two things SecurityViewModel says, both about the app lock going away without
+                // the user asking: it disarms a lock this device can never open, and it reports a
+                // settings file it could not read — which drops the lock preference to `false` the
+                // same way. Neither may happen silently; the user set that lock deliberately and is
+                // entitled to know. Collected here rather than in a screen because both land
+                // *before* any screen: they are what decides which of the branches below composes
+                // at all.
                 ObserveAsEvents(securityViewModel.events) { event ->
                     Toast.makeText(
                         this@HomeActivity,
