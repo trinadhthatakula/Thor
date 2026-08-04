@@ -13,4 +13,14 @@
     <string name="change_support_plan_title">Change Support Plan?</string>
     <string name="change_support_plan_desc">You are already supporting the developer with an active plan. Upgrading or changing your plan will cancel your old subscription and replace it with the new one. Do you want to proceed?</string>
     <string name="active_plan">Active Plan</string>
+    <string name="billing_purchase_pending">Purchase pending — it will activate once your payment completes</string>
+
+    <!-- Price + billing period for a subscription tier. %1$s is the price already formatted by
+         Play in the user's currency. One string per period Play can bill a base plan at; an
+         unrecognised period renders the price alone rather than guessing. -->
+    <string name="billing_price_per_week">%1$s / week</string>
+    <string name="billing_price_per_month">%1$s / month</string>
+    <string name="billing_price_per_quarter">%1$s / 3 months</string>
+    <string name="billing_price_per_half_year">%1$s / 6 months</string>
+    <string name="billing_price_per_year">%1$s / year</string>
 </resources>

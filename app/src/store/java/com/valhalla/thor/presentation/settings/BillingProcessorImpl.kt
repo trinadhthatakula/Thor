@@ -5,6 +5,7 @@ package com.valhalla.thor.presentation.settings
 
 import android.app.Activity
 import android.content.Context
+import android.os.SystemClock
 import android.widget.Toast
 import com.android.billingclient.api.AcknowledgePurchaseParams
 import com.android.billingclient.api.BillingClient
@@ -21,10 +22,12 @@ import com.android.billingclient.api.acknowledgePurchase
 import com.android.billingclient.api.queryProductDetails
 import com.valhalla.thor.R
 import com.valhalla.thor.util.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -53,22 +56,53 @@ class BillingProcessorImpl(
 
     private val productDetailsMap = ConcurrentHashMap<String, ProductDetails>()
 
+    /**
+     * Purchase tokens an acknowledgement is already in flight for, or has already succeeded for.
+     *
+     * The sweep runs on every connection setup and every resume, and `queryPurchasesAsync` can
+     * still report `isAcknowledged == false` for a token Play has only just accepted an
+     * acknowledgement for. Without this, that race is a loop: acknowledge, re-query, see it
+     * unacknowledged, acknowledge again.
+     */
+    private val acknowledgingTokens = ConcurrentHashMap.newKeySet<String>()
+
+    /**
+     * All the reconnect bookkeeping, kept where a JVM test can drive it.
+     *
+     * Nothing in this file is on any unit test's classpath — billing is a `storeImplementation`
+     * dependency and the test task is `testFossDebugUnitTest` — so the counting lives in
+     * flavour-agnostic `BillingPolicy.kt` and this class does only the parts that genuinely cannot
+     * be made pure: calling `startConnection`, reading `isReady`/`connectionState`, and sleeping.
+     *
+     * `elapsedRealtime` rather than `currentTimeMillis` because the cooldown must survive an NTP
+     * correction, and rather than `uptimeMillis` because it must keep counting while the device is
+     * dozing — a phone that has been in a pocket overnight is precisely the case a resume is meant
+     * to rescue.
+     */
+    private val reconnect = BillingReconnectLadder(SystemClock::elapsedRealtime)
+
     private val billingClient: BillingClient = BillingClient.newBuilder(context.applicationContext)
         .setListener { billingResult, purchases ->
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
                 for (purchase in purchases) {
-                    if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
-                        acknowledgePurchase(purchase)
+                    val isPurchased = purchase.purchaseState == Purchase.PurchaseState.PURCHASED
+                    when {
+                        needsAcknowledgement(isPurchased, purchase.isAcknowledged) ->
+                            acknowledgePurchase(purchase, showThankYou = true)
+
+                        // Already acknowledged — a re-delivery of something the sweep caught
+                        // first. Nothing owed to Play, but the tier list still has to catch up.
+                        isPurchased -> queryActiveSubscriptions()
+
+                        // A slow payment method (cash, bank transfer). Play will report it again
+                        // as PURCHASED when it clears; saying nothing at all here reads to the
+                        // user as a tap that did nothing.
+                        purchase.purchaseState == Purchase.PurchaseState.PENDING ->
+                            showToast(context.getString(R.string.billing_purchase_pending))
                     }
                 }
             } else if (billingResult.responseCode != BillingClient.BillingResponseCode.USER_CANCELED) {
-                scope.launch(Dispatchers.Main) {
-                    Toast.makeText(
-                        context,
-                        context.getString(R.string.billing_error) + ": " + billingResult.responseCode,
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
+                showToast(context.getString(R.string.billing_error) + ": " + billingResult.responseCode)
             }
         }
         .enablePendingPurchases(
@@ -76,27 +110,103 @@ class BillingProcessorImpl(
                 .enableOneTimeProducts()
                 .build()
         )
+        // Opt-in since billing 9.x, and kept, but do not mistake it for the recovery path: it is
+        // lazy, not proactive. In billing-9.1.0 the only reachable call to the reconnect helper
+        // `BillingClientImpl.zzaI(int)` sits behind `zzbw(long)`/`zzbx(long)`, which run at the head
+        // of each API callable — so it rebuilds the binding on the *next API call*, and every call
+        // site here refuses to make one while `isReady` is false. It earns its keep only as cover
+        // for a future call site that drops that guard. [scheduleReconnect] is what actually
+        // rebuilds a binding lost to a background Play Store self-update.
+        .enableAutoServiceReconnection()
         .build()
 
     init {
-        connectToBilling()
+        // startConnection() reaches PackageManager.queryIntentServices and bindService with no
+        // thread hop of its own. This singleton is resolved on the first-frame path, which is
+        // precisely when Thor is already saturating system_server by enumerating every installed
+        // package, so the binder round-trips go to `scope` rather than the constructor's thread.
+        scope.launch { connectToBilling() }
     }
 
     private fun connectToBilling() {
+        // Before startConnection, not after: zzbu can answer BILLING_UNAVAILABLE on this very
+        // thread before startConnection returns, and the listener below must find the ladder
+        // already knowing an attempt is in progress.
+        reconnect.onAttemptStarted()
         billingClient.startConnection(object : BillingClientStateListener {
             override fun onBillingSetupFinished(billingResult: BillingResult) {
                 if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                    // Set back to true, not merely left alone: recovery has to be visible or the
+                    // support sheet keeps rendering the "Rate on Play Store" fallback forever.
+                    _isBillingAvailable.value = true
+                    reconnect.reset()
                     queryProducts()
                     queryActiveSubscriptions()
                 } else {
                     _isBillingAvailable.value = false
+                    scheduleReconnect(reconnect.onFailure())
                 }
             }
 
             override fun onBillingServiceDisconnected() {
                 _isBillingAvailable.value = false
+                scheduleReconnect(reconnect.onFailure())
             }
         })
+    }
+
+    /**
+     * Carries out one [step] of [reconnect]: waits out its backoff, then reconnects — unless
+     * something else got there first.
+     *
+     * This ladder is not a belt-and-braces backup for the library's own retries; it is the only
+     * thing here that reconnects at all. `enableAutoServiceReconnection` is *lazy*, not proactive:
+     * decompiling billing-9.1.0 puts the sole reachable call to `BillingClientImpl.zzaI(int)` behind
+     * `zzbw(long)`/`zzbx(long)`, which run at the head of each API callable, so the library only
+     * rebuilds a binding when an API call is made on a disconnected client. Every call site in this
+     * file is guarded on `isReady` ([queryActiveSubscriptions], [refreshPurchases],
+     * [launchBillingFlow]), so no such call is ever made and the library's reconnection never fires.
+     * The two mechanisms fail together rather than independently, which is why the budget below
+     * cannot be the last word.
+     *
+     * One run of it is worth ~31 s and then it stops, because a device with no usable Play Store
+     * would otherwise get an unbounded background wakeup loop out of a donation button. The escape
+     * from that terminal state is [refreshPurchases] — a resume is the signal a fixed 31-second
+     * budget cannot see.
+     */
+    private fun scheduleReconnect(step: BillingReconnectStep) {
+        if (step is BillingReconnectStep.Exhausted) {
+            Logger.w(
+                "BillingProcessor",
+                "Reconnect ladder spent after ${step.attemptsSpent} attempts; " +
+                        "waiting for a resume to re-arm it"
+            )
+        }
+        if (step !is BillingReconnectStep.Retry) return
+        scope.launch {
+            delay(step.delayMillis)
+            when {
+                // After close() the client is CLOSED for good; the ladder has to be told, or the
+                // queued-retry flag it is still holding would make every later call read as
+                // "a retry is already pending" on an instance that can never retry again.
+                billingClient.connectionState == BillingClient.ConnectionState.CLOSED ->
+                    reconnect.stop()
+                // The library's own reconnection, or a resume-driven attempt, won the race. Both
+                // branches still have to clear the queued flag — a step that silently declines to
+                // run and says nothing is how a ladder stalls without ever reporting exhaustion.
+                billingClient.isReady -> reconnect.reset()
+                billingClient.connectionState == BillingClient.ConnectionState.CONNECTING ->
+                    reconnect.reset()
+
+                else -> connectToBilling()
+            }
+        }
+    }
+
+    private fun showToast(message: String) {
+        scope.launch(Dispatchers.Main) {
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun queryProducts() {
@@ -132,14 +242,16 @@ class BillingProcessorImpl(
                     
                     for (details in detailsList) {
                         productDetailsMap[details.productId] = details
-                        val basePlan = details.subscriptionOfferDetails?.firstOrNull()
-                        val priceText = basePlan?.pricingPhases?.pricingPhaseList?.firstOrNull()?.formattedPrice ?: ""
+                        // Base plan by identity, recurring phase by recurrence mode — never
+                        // firstOrNull on either. See [selectBaseOffer] / [recurringPhase].
+                        val chargedPhase = selectBaseOffer(details.toSubscriptionOffers())?.recurringPhase()
                         mappedProducts.add(
                             BillingProduct(
                                 id = details.productId,
                                 name = details.name,
-                                formattedPrice = priceText,
-                                description = details.description
+                                formattedPrice = chargedPhase?.formattedPrice ?: "",
+                                description = details.description,
+                                billingPeriod = chargedPhase?.billingPeriod ?: ""
                             )
                         )
                     }
@@ -160,7 +272,23 @@ class BillingProcessorImpl(
             .build()
         billingClient.queryPurchasesAsync(params) { billingResult, purchaseList ->
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                val active = purchaseList.firstOrNull { it.purchaseState == Purchase.PurchaseState.PURCHASED }
+                // The whole list, not just the active one: this is the only backstop for a
+                // purchase whose onPurchasesUpdated never arrived, and Google revokes and refunds
+                // anything still unacknowledged after three days. Silent — the thank-you dialog
+                // belongs to the flow the user just completed, not to a sweep at startup.
+                for (purchase in purchaseList) {
+                    val isPurchased = purchase.purchaseState == Purchase.PurchaseState.PURCHASED
+                    if (needsAcknowledgement(isPurchased, purchase.isAcknowledged)) {
+                        acknowledgePurchase(purchase, showThankYou = false)
+                    }
+                }
+                // Most recent, not first: an upgrade leaves the replaced subscription in the list
+                // until Play retires it, and taking whichever Play happened to list first is the
+                // same ordering bet the offer selection above stopped making. Newest is the tier
+                // the user last chose.
+                val active = purchaseList
+                    .filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
+                    .maxByOrNull { it.purchaseTime }
                 if (active != null) {
                     val activeProductId = active.products.firstOrNull()
                     if (!activeProductId.isNullOrEmpty()) {
@@ -181,21 +309,53 @@ class BillingProcessorImpl(
         }
     }
 
-    private fun acknowledgePurchase(purchase: Purchase) {
+    /**
+     * Acknowledges [purchase], retrying with bounded backoff.
+     *
+     * A failed acknowledgement is as terminal as never sending one — Google refunds either way —
+     * so a single non-OK response code is not something to log and walk away from. Every response
+     * code is retried rather than only the transient ones: the attempt count is small, and
+     * classifying Play's codes as permanent is exactly the kind of guess that loses the money.
+     * Beyond the last attempt, the `queryPurchasesAsync` sweep on the next connection or resume is
+     * the backstop.
+     */
+    private fun acknowledgePurchase(purchase: Purchase, showThankYou: Boolean) {
+        // Also the loop guard: a sweep racing an in-flight acknowledgement still reads
+        // isAcknowledged == false.
+        if (!acknowledgingTokens.add(purchase.purchaseToken)) return
         val acknowledgePurchaseParams = AcknowledgePurchaseParams.newBuilder()
             .setPurchaseToken(purchase.purchaseToken)
             .build()
         scope.launch {
-            try {
-                val ackResult = billingClient.acknowledgePurchase(acknowledgePurchaseParams)
-                if (ackResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                    _showThankYouDialog.value = true
-                    queryActiveSubscriptions()
-                } else {
-                    Logger.e("BillingProcessor", "Failed to acknowledge purchase: ${ackResult.responseCode}")
+            var attempt = 0
+            while (true) {
+                val responseCode = try {
+                    billingClient.acknowledgePurchase(acknowledgePurchaseParams).responseCode
+                } catch (e: CancellationException) {
+                    // Scope teardown, not a billing failure. Caught by the clause below otherwise,
+                    // which would spend the remaining attempts retrying a cancelled coroutine.
+                    throw e
+                } catch (e: Exception) {
+                    Logger.e("BillingProcessor", "Error acknowledging purchase", e)
+                    BillingClient.BillingResponseCode.ERROR
                 }
-            } catch (e: Exception) {
-                Logger.e("BillingProcessor", "Error acknowledging purchase", e)
+                if (responseCode == BillingClient.BillingResponseCode.OK) {
+                    if (showThankYou) _showThankYouDialog.value = true
+                    queryActiveSubscriptions()
+                    return@launch
+                }
+                attempt++
+                if (attempt >= MAX_ACKNOWLEDGE_ATTEMPTS) {
+                    Logger.e(
+                        "BillingProcessor",
+                        "Failed to acknowledge purchase after $attempt attempts: $responseCode"
+                    )
+                    // Release the token so the next sweep can try again rather than skipping it
+                    // for the rest of the process.
+                    acknowledgingTokens.remove(purchase.purchaseToken)
+                    return@launch
+                }
+                delay(billingRetryDelayMillis(attempt - 1))
             }
         }
     }
@@ -211,8 +371,10 @@ class BillingProcessorImpl(
             Logger.e("BillingProcessor", "Product details not found for $productId")
             return
         }
-        val basePlan = productDetails.subscriptionOfferDetails?.firstOrNull()
-        val offerToken = basePlan?.offerToken
+        // Same selection as the price the tier advertised. Taking firstOrNull here charged the
+        // user whichever offer Play happened to list first, which need not be the one the sheet
+        // quoted them.
+        val offerToken = selectBaseOffer(productDetails.toSubscriptionOffers())?.offerToken
         if (offerToken.isNullOrEmpty()) {
             Logger.e("BillingProcessor", "Offer token not found or empty for $productId")
             return
@@ -254,6 +416,49 @@ class BillingProcessorImpl(
         _showThankYouDialog.value = false
     }
 
+    override fun refreshPurchases() {
+        // The disconnected branch used to return early, reasoning that onBillingSetupFinished runs
+        // the identical sweep the moment the client connects. That holds only while something is
+        // still trying to connect. Past the ladder's 5 attempts nothing calls startConnection ever
+        // again, so the callback that was supposed to run the sweep never arrives, and this became
+        // an unconditional no-op for the rest of the process: _isBillingAvailable stuck false, the
+        // support sheet stuck on the "Rate on Play Store" fallback, and an unacknowledged purchase
+        // never swept — which Google refunds after three days. A resume is the one signal that a
+        // fixed retry budget cannot account for, so it re-arms the ladder instead of being dropped.
+        //
+        // The main-thread constraint the old comment protected is real and still holds: HomeActivity
+        // calls this from onResume. Everything below runs on `scope`, and what a resume produces is
+        // at most a *queued* startConnection — never a synchronous bindService on the main thread.
+        // BillingReconnectLadder.onResume is arithmetic; scheduleReconnect only launches.
+        scope.launch {
+            if (billingClient.isReady) {
+                queryActiveSubscriptions()
+                return@launch
+            }
+            scheduleReconnect(reconnect.onResume())
+        }
+    }
+
+    /**
+     * Maps Play's offer list onto the flavor-agnostic model the selection rules in `BillingPolicy`
+     * operate on. Every library constant stays on this side of the boundary.
+     */
+    private fun ProductDetails.toSubscriptionOffers(): List<SubscriptionOffer> =
+        subscriptionOfferDetails.orEmpty().map { offer ->
+            SubscriptionOffer(
+                offerId = offer.offerId,
+                offerToken = offer.offerToken,
+                phases = offer.pricingPhases?.pricingPhaseList.orEmpty().map { phase ->
+                    SubscriptionPricingPhase(
+                        formattedPrice = phase.formattedPrice.orEmpty(),
+                        billingPeriod = phase.billingPeriod.orEmpty(),
+                        isRecurring = phase.recurrenceMode ==
+                                ProductDetails.RecurrenceMode.INFINITE_RECURRING
+                    )
+                }
+            )
+        }
+
     /**
      * TERMINAL teardown — safe ONLY at process shutdown (e.g. [android.app.Application.onTerminate]).
      *
@@ -263,13 +468,25 @@ class BillingProcessorImpl(
      * (e.g. on Support-sheet dismissal): a later billing interaction would then use a dead client
      * and a cancelled scope. A dismissal-driven teardown would first require changing the Koin
      * binding to factory/scoped, or making the client + scope lazily recreatable.
+     *
+     * The ladder is stopped first, and it is what makes the resume-driven re-arm safe here: a
+     * post-close [refreshPurchases] gets `Stopped` and never reaches `scope.launch`. Cancelling the
+     * scope is the second, independent guard — a coroutine launched on it would never run its body
+     * — and a retry already sleeping past its `delay` finds `connectionState == CLOSED`. Three
+     * checks for one invariant because a resume can arrive at any of the three moments.
      */
     override fun close() {
+        reconnect.stop()
         try {
             billingClient.endConnection()
         } catch (e: Exception) {
             Logger.e("BillingProcessor", "Error ending billing connection", e)
         }
         scope.cancel()
+    }
+
+    private companion object {
+        /** ~1 + 2 + 4 s of retries before the next sweep takes over. */
+        const val MAX_ACKNOWLEDGE_ATTEMPTS = 4
     }
 }

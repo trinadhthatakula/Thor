@@ -11,4 +11,10 @@
     <string name="change_support_plan_title">更改支持计划？</string>
     <string name="change_support_plan_desc">您已拥有有效的支持计划。升级或更改计划将取消您以前的订阅，并由新订阅替代。您要继续吗？</string>
     <string name="active_plan">当前生效计划</string>
+    <string name="billing_purchase_pending">购买处理中——付款完成后即可生效</string>
+    <string name="billing_price_per_week">%1$s / 周</string>
+    <string name="billing_price_per_month">%1$s / 月</string>
+    <string name="billing_price_per_quarter">%1$s / 3 个月</string>
+    <string name="billing_price_per_half_year">%1$s / 6 个月</string>
+    <string name="billing_price_per_year">%1$s / 年</string>
 </resources>
