@@ -19,6 +19,7 @@ import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.UiText
 import com.valhalla.thor.R
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -53,6 +54,12 @@ class InstallerViewModel(
     // this screen — a new pick, or teardown — has to discard it or a full-size copy of the file
     // is stranded in the cache.
     private var analyzed: AnalyzedPackage? = null
+
+    // The in-flight analyze(), so a superseding pick can cancel it. Without this the discard in
+    // parsePackage() only reclaims a copy that has already been *handed over* — a parse still
+    // running owns a copy this class cannot see, and would assign it to `analyzed` after the
+    // discard had already run.
+    private var analysisJob: Job? = null
 
     private var isUpdateOperation: Boolean = false
     private var isDowngrade: Boolean = false
@@ -92,10 +99,21 @@ class InstallerViewModel(
     fun parsePackage(uri: Uri) {
         pendingUri = uri
         ownsInstall = true
-        // A second pick replaces the first; the first's copy has no further use.
+        // A second pick replaces the first; the first's copy has no further use. Two things can
+        // hold that copy, and both have to be released here.
+        //
+        // The *finished* parse hands its copy over in `analyzed` — discard reclaims it.
+        //
+        // The *still-running* parse does not: `analyzed` is assigned only when analyze() returns,
+        // so a discard that lands mid-parse finds null and reclaims nothing, and the older parse
+        // then completes and overwrites the newer one's `analyzed` — stranding a full-size copy
+        // in the cache until the hourly sweep. Cancelling is what releases that one: analyze()
+        // deletes its own staged file when it observes cancellation (AppAnalyzerImpl `!isActive`),
+        // and a cancelled coroutine never reaches the `analyzed = analysis` assignment below.
+        analysisJob?.cancel()
         analyzer.discard(analyzed)
         analyzed = null
-        viewModelScope.launch {
+        analysisJob = viewModelScope.launch {
             eventBus.emit(InstallState.Parsing)
             val result = analyzer.analyze(uri)
 
