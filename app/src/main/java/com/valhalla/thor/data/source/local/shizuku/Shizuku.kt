@@ -9,6 +9,8 @@ import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import com.valhalla.bypass.Bypass
 import com.valhalla.superuser.utils.escapeForShell
+import com.valhalla.thor.data.source.local.DataClearOutcome
+import com.valhalla.thor.data.source.local.awaitDataObserver
 import com.valhalla.thor.data.source.local.backgroundRestrictionCommand
 import com.valhalla.thor.data.source.local.clearAppDataCommand
 import com.valhalla.thor.data.source.local.clearCachePaths
@@ -915,14 +917,24 @@ object Shizuku {
      * *refusal* of the per-user call must not fall through to a call that clears a different user's
      * cache and reports it as this user's success — the failure the reorder exists to remove.
      *
-     * **A `true` from this function is not evidence the cache is gone.** The shell rung is honest:
-     * `rm -rf` exits 0 or it does not. The reflection rung is not — the call is asynchronous
-     * (`PackageManagerService` posts the work to its own handler and reports through the
-     * `IPackageDataObserver`, which is passed as `null` here), so `true` means only that the binder
-     * call returned without throwing. At shell uid PMS also *accepts* cache clears that it then
-     * declines — it logs that it is silently ignoring the request and returns without deleting
-     * anything, and the caller is told none of that. So this Boolean must not be turned into
-     * "N bytes freed"; re-measure the cache if the number matters.
+     * **Both rungs now answer for themselves.** The shell rung always could: `rm -rf` exits 0 or it
+     * does not. The reflection rung could not, and used to say `true` whenever the binder call
+     * returned without throwing — which is not the same claim at all, because the call is
+     * asynchronous. `PackageManagerService` posts the work to its own handler and reports on an
+     * `IPackageDataObserver`, and that argument was `null`. At shell uid PMS also *accepts* cache
+     * clears that it then declines: it logs that it is silently ignoring the request, deletes
+     * nothing, and the old `true` reported that as a success. The observer is the only place that
+     * refusal is visible, so it is now wired up and waited on — see `awaitDataObserver`.
+     *
+     * What that changes for a caller: `true` means a verdict of "cleared" actually arrived. A
+     * refusal, a timeout, and a transport that never reached PMS all give `false`, and are told
+     * apart in the log rather than in the return type, because every consumer of this is a Boolean.
+     * `false` is therefore the honest answer to "could not confirm" as well as to "refused" — a
+     * cache clear repeated costs nothing, a false "done" costs the user the chance to try a
+     * privilege mode that would have worked.
+     *
+     * Still not a byte count. This Boolean must not be turned into "N bytes freed"; re-measure the
+     * cache if the number matters.
      */
     // PrivateApi: hidden-API reflection (IPackageDataObserver) is intentional — the core privilege
     // mechanism, guarded by the :bypass VMRuntime unseal.
@@ -939,39 +951,72 @@ object Shizuku {
         val shellResult = execute(command)
         if (shellResult.first == 0) return true
 
-        // 2. Fallback to reflection
-        val reflectionResult = runCatching {
+        // 2. Fallback to reflection, and this is the rung that matters under Shizuku: shell uid 2000
+        // cannot `rm -rf /data/data/<pkg>/cache`, so rung 1 normally fails and this is the real
+        // operation. It is also the one PMS can accept and then quietly decline, which is why the
+        // observer is no longer null — `awaitDataObserver` builds a real IPackageDataObserver.Stub,
+        // hands it to the invoke, and waits for onRemoveCompleted rather than for the invoke to
+        // return. Only a verdict of "cleared" gets out of here as true.
+        val outcome = runCatching {
             val pm = asInterface("android.content.pm.IPackageManager", "package")
             val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
 
-            try {
-                Bypass.invoke<Any?>(
-                    pm.javaClass,
-                    pm,
-                    "deleteApplicationCacheFilesAsUser",
-                    arrayOf(String::class.java, Int::class.javaPrimitiveType!!, observerClass),
-                    packageName,
-                    thorUserId,
-                    null
-                )
-            } catch (_: NoSuchMethodException) {
-                // No user id to give: this overload derives one from the calling uid. Reached only
-                // if a release stops declaring the AsUser variant, which none in 28..37 does.
-                Bypass.invoke<Any?>(
-                    pm.javaClass,
-                    pm,
-                    "deleteApplicationCacheFiles",
-                    arrayOf(String::class.java, observerClass),
-                    packageName,
-                    null
-                )
+            awaitDataObserver("Shizuku", packageName) { observer ->
+                try {
+                    Bypass.invoke<Any?>(
+                        pm.javaClass,
+                        pm,
+                        "deleteApplicationCacheFilesAsUser",
+                        arrayOf(String::class.java, Int::class.javaPrimitiveType!!, observerClass),
+                        packageName,
+                        thorUserId,
+                        observer
+                    )
+                } catch (_: NoSuchMethodException) {
+                    // No user id to give: this overload derives one from the calling uid. Reached
+                    // only if a release stops declaring the AsUser variant, which none in 28..37
+                    // does. The observer still reports honestly, but about the *calling* user's
+                    // cache — shell's, not necessarily Thor's — so an UNVERIFIED from this branch
+                    // is doubly uninformative and a CLEARED from it is not a claim about the user
+                    // the caller asked for.
+                    Bypass.invoke<Any?>(
+                        pm.javaClass,
+                        pm,
+                        "deleteApplicationCacheFiles",
+                        arrayOf(String::class.java, observerClass),
+                        packageName,
+                        observer
+                    )
+                }
             }
-            true
-        }.getOrDefault(false)
+        }.getOrElse { e ->
+            // Only the binder lookup can land here; awaitDataObserver absorbs whatever the invokes
+            // themselves throw and answers UNVERIFIED for it.
+            Logger.e("Shizuku", "clearCache($packageName): could not reach IPackageManager", e)
+            DataClearOutcome.UNVERIFIED
+        }
 
-        return reflectionResult
+        return outcome == DataClearOutcome.CLEARED
     }
 
+    /**
+     * Wipes [packageName]'s data **for [thorUserId]** — `pm clear` first, then a hidden-API
+     * `IPackageManager` call.
+     *
+     * **Both rungs answer for themselves, which the second one did not used to.** `pm clear` blocks
+     * on its own `ClearDataObserver` inside `PackageManagerShellCommand` and exits non-zero when the
+     * wipe fails, so its exit code can be believed. `clearApplicationUserData` returns `void`: the
+     * verdict only ever arrives on an `IPackageDataObserver`, and that argument was `null`, so the
+     * old `true` meant nothing more than "the binder call did not throw". For the single most
+     * destructive operation Thor performs, that is the worst place in the app to be optimistic — the
+     * user was told their data was gone on the strength of a dispatch receipt. `awaitDataObserver`
+     * now supplies a real observer and waits for it.
+     *
+     * `true` therefore means a verdict of "cleared" arrived. A refusal, a timeout and a dead
+     * transport all give `false` and are distinguished in the log rather than in the return type.
+     * That direction is deliberate: wiping data twice costs a user nothing, a false "done" costs
+     * them the chance to try a privilege mode that would have worked.
+     */
     // Hidden-API reflection (IPackageDataObserver) is intentional: it is the core privilege
     // mechanism, guarded by the :bypass VMRuntime unseal.
     @SuppressLint("PrivateApi")
@@ -983,21 +1028,31 @@ object Shizuku {
         val result = execute(clearAppDataCommand(packageName.escapeForShell(), thorUserId))
         if (result.first == 0) return true
 
-        // 2. Fallback to reflection
-        return runCatching {
+        // 2. Fallback to reflection. The observer is no longer null: clearApplicationUserData
+        // returns void, so this is the only channel the verdict can arrive on, and without it the
+        // most destructive rung in the app was also its least honest one.
+        val outcome = runCatching {
             val pm = asInterface("android.content.pm.IPackageManager", "package")
             val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
-            Bypass.invoke<Any?>(
-                pm.javaClass,
-                pm,
-                "clearApplicationUserData",
-                arrayOf(String::class.java, observerClass, Int::class.javaPrimitiveType!!),
-                packageName,
-                null,
-                thorUserId
-            )
-            true
-        }.getOrElse { false }
+            awaitDataObserver("Shizuku", packageName) { observer ->
+                Bypass.invoke<Any?>(
+                    pm.javaClass,
+                    pm,
+                    "clearApplicationUserData",
+                    arrayOf(String::class.java, observerClass, Int::class.javaPrimitiveType!!),
+                    packageName,
+                    observer,
+                    thorUserId
+                )
+            }
+        }.getOrElse { e ->
+            // Only the binder lookup can land here; awaitDataObserver absorbs whatever the invoke
+            // itself throws and answers UNVERIFIED for it.
+            Logger.e("Shizuku", "clearAppData($packageName): could not reach IPackageManager", e)
+            DataClearOutcome.UNVERIFIED
+        }
+
+        return outcome == DataClearOutcome.CLEARED
     }
 
     fun getTotalCacheSizeWithShizuku(): Long {
