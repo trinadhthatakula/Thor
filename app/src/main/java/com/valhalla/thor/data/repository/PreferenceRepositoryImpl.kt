@@ -5,6 +5,7 @@ package com.valhalla.thor.data.repository
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
@@ -22,12 +23,55 @@ import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.util.Logger
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.retryWhen
 import org.koin.core.annotation.Single
+import java.io.IOException
 
-private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "thor_preferences")
+private const val TAG = "PreferenceRepository"
+
+/**
+ * Latches — for the life of the process — once the settings file has been thrown away and replaced.
+ *
+ * File-scoped rather than a field on [PreferenceRepositoryImpl] because the handler below is
+ * captured by the `preferencesDataStore` delegate, which is a property of `Context` and has no way
+ * to reach the repository instance. Nothing resets it: the replacement has already happened, and
+ * every read afterwards succeeds, so the fact that the values are not the user's is only knowable
+ * from here.
+ */
+private val settingsFileReplaced = MutableStateFlow(false)
+
+/**
+ * The settings store — the one in the Auto Backup allowlist.
+ *
+ * [ReplaceFileCorruptionHandler] rather than the default handler, which is `NoOpCorruptionHandler`
+ * and *rethrows*. Nothing ever rewrites the file after that, so an unreadable
+ * `thor_preferences.preferences_pb` rethrows on every read for the life of the install — and since
+ * this file is the one that travels in cloud backup and device transfer, a partial restore can put
+ * a brand-new device into that state before the user has opened Thor once. Replacing the bad file
+ * with an empty one costs the user their settings; not replacing it costs them the app.
+ *
+ * What makes that trade acceptable rather than merely cheaper is [settingsFileReplaced]: one of the
+ * settings in this file is the app lock, and a replacement drops it to `false`. Dropping a lock the
+ * user deliberately armed *silently* is precisely what `SecurityViewModel` is written not to do, so
+ * the loss is recorded here, carried on [UserPreferences.settingsLost], and said out loud.
+ */
+private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
+    name = "thor_preferences",
+    corruptionHandler = ReplaceFileCorruptionHandler {
+        Logger.e(TAG, "thor_preferences was unreadable; replacing it with an empty file", it)
+        settingsFileReplaced.value = true
+        emptyPreferences()
+    }
+)
 
 /**
  * The second store, for state that describes **this install** rather than what the user chose.
@@ -46,8 +90,20 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
  *
  * A user *setting* does not belong here, however local it feels — settings are what the backup is
  * for.
+ *
+ * Corruption-handled for the same reason as [dataStore]: this file cannot arrive corrupted from a
+ * restore, but an interrupted write or a bad block can still leave it unreadable, and the default
+ * handler would then rethrow forever. No equivalent of [settingsFileReplaced] here — the one flag
+ * this file holds falls back to "we have not offered yet", which re-offers the recovery prompt
+ * rather than withholding anything.
  */
-private val Context.localState: DataStore<Preferences> by preferencesDataStore(name = "thor_local_state")
+private val Context.localState: DataStore<Preferences> by preferencesDataStore(
+    name = "thor_local_state",
+    corruptionHandler = ReplaceFileCorruptionHandler {
+        Logger.e(TAG, "thor_local_state was unreadable; replacing it with an empty file", it)
+        emptyPreferences()
+    }
+)
 
 @Single(binds = [PreferenceRepository::class])
 class PreferenceRepositoryImpl(
@@ -117,9 +173,7 @@ class PreferenceRepositoryImpl(
     }
 
     override val userPreferences: Flow<UserPreferences> =
-        combine(context.dataStore.data, context.localState.data) { prefs, local ->
-            prefs.toUserPreferences(local)
-        }
+        userPreferencesFlow(context.dataStore.data, context.localState.data)
 
     // --- App List ---
 
@@ -279,6 +333,83 @@ class PreferenceRepositoryImpl(
         return if (userPreferences.first().autoReinstallEnabled) " -i com.android.vending" else ""
     }
 }
+
+/**
+ * The [PreferenceRepository.userPreferences] stream, with the two store flows passed in so the
+ * composition is reachable from a plain JVM test.
+ *
+ * Each side is guarded **before** the [combine], not after: a `catch` downstream of the combine
+ * would end the whole stream on the first failure, taking the healthy store down with the broken
+ * one. Guarded individually, an unreadable settings file degrades to defaults while `localState`
+ * keeps emitting, and vice versa.
+ *
+ * [settingsFileReplaced] is read at map time rather than combined in as a third flow. It can only
+ * be set by the corruption handler, which runs *while producing* the first `settings` emission, so
+ * by the time this transform runs the answer is already final — and combining it would open a race
+ * where the first snapshot claims the settings are intact and a second one immediately corrects it.
+ */
+internal fun userPreferencesFlow(
+    settings: Flow<Preferences>,
+    local: Flow<Preferences>,
+    settingsReplaced: StateFlow<Boolean> = settingsFileReplaced
+): Flow<UserPreferences> =
+    combine(
+        settings.guardedRead("thor_preferences"),
+        local.guardedRead("thor_local_state")
+    ) { prefs, localPrefs ->
+        prefs.preferences.toUserPreferences(localPrefs.preferences)
+            .copy(settingsLost = prefs.degraded || settingsReplaced.value)
+    }
+
+/**
+ * One snapshot out of a store, and whether it is the user's or something this file made up.
+ *
+ * The two cannot be told apart from the [Preferences] alone — an empty store and a store that could
+ * not be read look identical — and one of the values in there is the app lock, so "made up" has to
+ * survive as far as [UserPreferences.settingsLost].
+ */
+internal data class StoreRead(val preferences: Preferences, val degraded: Boolean)
+
+/** Retries before a read is written off. Backs off over about half a second in total. */
+private const val READ_RETRIES = 3L
+private const val READ_RETRY_DELAY_MS = 100L
+
+/**
+ * Degrade a store's `.data` to an empty snapshot when the read fails, rather than letting it reach
+ * the ~20 places that collect [PreferenceRepository.userPreferences].
+ *
+ * The `corruptionHandler` on each store above is the primary fix and the one that actually heals
+ * the install; this covers what it cannot. It only fires for `CorruptionException` — an
+ * unparseable file — so a read that fails for any other IO reason still throws, and a corrupt file
+ * the handler could not *replace* (no space, a read-only volume) rethrows the original by design.
+ *
+ * Retry first, because degrading is **terminal**: `catch` emits once and the upstream is then
+ * complete, and none of the collectors re-subscribe — `SecurityViewModel` shares this with
+ * `SharingStarted.Eagerly`, which does not restart a finished upstream, and the rest are plain
+ * `collect` loops that simply end. So a single transient failure — low storage, an EIO, a read
+ * attempted before credential-encrypted storage is unlocked — would pin the whole process to values
+ * the user never chose while the file on disk is perfectly intact. Three re-reads cost nothing on a
+ * healthy store and are free on a permanently broken one, where the corruption handler has already
+ * had its go by the time the first attempt fails.
+ *
+ * Only [IOException] is swallowed. Anything else, `CancellationException` above all, is rethrown:
+ * a cancelled collector must not be handed a fabricated defaults emission on its way out. That
+ * distinction is what the tests aim at, which is why this is `internal` rather than private —
+ * asserted through [userPreferencesFlow] it would be asserted through `combine`'s own handling of
+ * a cancelled child instead.
+ */
+internal fun Flow<Preferences>.guardedRead(storeName: String): Flow<StoreRead> =
+    retryWhen { cause, attempt ->
+        (cause is IOException && attempt < READ_RETRIES).also { retrying ->
+            if (retrying) delay(READ_RETRY_DELAY_MS * (attempt + 1))
+        }
+    }
+        .map { StoreRead(it, degraded = false) }
+        .catch { e ->
+            if (e !is IOException) throw e
+            Logger.e(TAG, "$storeName could not be read; falling back to the defaults", e)
+            emit(StoreRead(emptyPreferences(), degraded = true))
+        }
 
 /**
  * Pure mapping from already-read [Preferences] snapshots to [UserPreferences].

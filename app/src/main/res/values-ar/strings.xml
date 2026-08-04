@@ -453,6 +453,7 @@
     <string name="biometric_not_enrolled_toast_biometric_only">لا توجد بصمة مُسجَّلة — في أندرويد 9 لا يفتح قفل الشاشة تطبيق ثور، فسجّل بصمة أولاً</string>
     <string name="biometric_lock_unavailable_toast">لا يمكن تفعيل قفل التطبيق: لا توجد في هذا الجهاز مقاييس حيوية لإلغاء قفله</string>
     <string name="biometric_lock_disabled_no_biometric">تم إيقاف قفل التطبيق: لا توجد في هذا الجهاز مقاييس حيوية لإلغاء قفله</string>
+    <string name="settings_lost_using_defaults">تعذّر على Thor قراءة إعداداتك، ويستخدم الآن الإعدادات الافتراضية: تحقّق من قفل التطبيق في الإعدادات</string>
     <string name="open_security_settings">فتح إعدادات الأمان</string>
     <string name="unlock">إلغاء القفل</string>
     <string name="thank_you_support_desc">اشتراكك نشط الآن. شكرًا لك على المساعدة في دعم تطوير Thor!</string>

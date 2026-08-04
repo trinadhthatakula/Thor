@@ -419,6 +419,7 @@
     <string name="biometric_not_enrolled_toast_biometric_only">Ninguna huella registrada: en Android 9 un bloqueo de pantalla no desbloquea Thor, así que registra una huella primero</string>
     <string name="biometric_lock_unavailable_toast">No se puede activar el bloqueo de la app: este dispositivo no tiene biometría con la que desbloquearlo</string>
     <string name="biometric_lock_disabled_no_biometric">Bloqueo de la app desactivado: este dispositivo no tiene biometría con la que desbloquearlo</string>
+    <string name="settings_lost_using_defaults">Thor no pudo leer tus ajustes y está usando los predeterminados: revisa el bloqueo de la app en Ajustes</string>
     <string name="open_security_settings">Abrir ajustes de seguridad</string>
     <string name="unlock">Desbloquear</string>
     <string name="thank_you_support_desc">Tu suscripción está activa. ¡Gracias por ayudar a apoyar el desarrollo de Thor!</string>

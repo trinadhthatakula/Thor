@@ -58,7 +58,19 @@ data class UserPreferences(
     val autoReinstallEnabled: Boolean = false,
 
     // Export destination (persisted SAF tree URI; null = default Downloads/Thor)
-    val exportDirUri: String? = null
+    val exportDirUri: String? = null,
+
+    /**
+     * True when the values above are Thor's defaults rather than the user's, because the settings
+     * store could not be read or had to be thrown away and replaced after corruption.
+     *
+     * Not a preference — nothing writes it and it is never persisted — but it belongs on the
+     * snapshot rather than beside it, because it is the only thing that distinguishes "the user
+     * turned everything off" from "we could not find out what the user chose". [biometricLockEnabled]
+     * is why that distinction has to travel: `false` there is both the common case and, after a
+     * failed read, a silently disarmed app lock.
+     */
+    val settingsLost: Boolean = false
 )
 
 
