@@ -26,7 +26,6 @@ import com.valhalla.thor.domain.repository.PreferenceRepository
 import kotlinx.coroutines.flow.first
 
 private val PACKAGE_NAME_REGEX = Regex("^[a-zA-Z0-9._]+$")
-private val USER_ID_REGEX = Regex("^\\d+$")
 
 @Single
 class DhizukuSystemGateway(
