@@ -49,11 +49,25 @@ Confirmed by inspection on 2026-08-04: **zero** callers of any `preferenceReposi
    a device that could not open its own app lock stays locked out *and* stops trying to fix itself —
    the exact dead end that self-heal exists to prevent.
 
-2. **`setLanguage` is two writes that must both land.** `SettingsViewModel.setLanguage` calls
-   `preferenceRepository.setLanguage(language)` and then `localeManager.applyLocale(language)`. If
-   the first throws, the second never runs, and the user gets neither the persisted preference nor
-   the applied locale — but if the *ordering* were ever swapped, they would get a locale applied to
-   a preference that says otherwise, which survives the restart.
+2. **`setLanguage` is one DataStore write plus a second, independently persisted side effect.**
+   `SettingsViewModel.setLanguage` calls `preferenceRepository.setLanguage(language)` — one
+   `edit { }` — and then `localeManager.applyLocale(language)`, which is *not* a DataStore write:
+   on API 33+ it sets `LocaleManager.applicationLocales`, and below that
+   `AppCompatDelegate.setApplicationLocales`. Either way the platform persists it in a store Thor
+   does not own, so the two outlive the process independently and can disagree.
+
+   Both failure orders matter, and the code only protects against one of them:
+
+   - **As written** (preference first): the `edit { }` throws, the coroutine dies, `applyLocale`
+     never runs. The user gets neither the persisted preference nor the applied locale — visibly
+     nothing happened, which is the survivable order.
+   - **Reversed**, or if `applyLocale` ever moved first: the locale is applied and persisted by the
+     platform, then the preference write throws. Thor's own settings screen reads back the *old*
+     language from DataStore while the app renders in the new one, and the split survives the
+     restart because nothing re-reconciles them at launch.
+
+   So the ordering is load-bearing and undocumented. A guard here has to decide which of the two is
+   the source of truth, not just whether to retry.
 
 ## What a fix would have to decide
 
