@@ -312,9 +312,13 @@ class BillingProcessorImpl(
             .setProductList(productList)
             .build()
 
-        // Before the call, not in the callback: the point of the stamp is to stop a second query
-        // being issued while this one is in flight, and a callback that never arrives is precisely
-        // the case where that matters.
+        // Before the call, not in the callback, so a query whose callback never arrives still
+        // counts as an attempt and cannot re-fire on every resume for the life of the process.
+        //
+        // Read precisely: this throttles the *populated*-catalogue path only. While `products` is
+        // empty, `shouldFetch` returns true without ever reading the stamp — deliberately, because
+        // a user looking at no tiers at all is the one case worth retrying eagerly. See
+        // [CatalogRefreshGate].
         catalogRefresh.onFetchStarted()
         billingClient.queryProductDetailsAsync(params) { billingResult, queryResult ->
             // This runs on a library callback thread, so an escaping exception is an uncaught crash
