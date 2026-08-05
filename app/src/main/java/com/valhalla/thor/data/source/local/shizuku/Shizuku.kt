@@ -9,7 +9,13 @@ import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import com.valhalla.bypass.Bypass
 import com.valhalla.superuser.utils.escapeForShell
+import com.valhalla.thor.data.source.local.DataClearOutcome
+import com.valhalla.thor.data.source.local.awaitDataObserver
+import com.valhalla.thor.data.source.local.backgroundRestrictionCommand
+import com.valhalla.thor.data.source.local.clearAppDataCommand
+import com.valhalla.thor.data.source.local.clearCachePaths
 import com.valhalla.thor.data.source.local.thorUserId
+import com.valhalla.thor.data.source.local.uninstallCommand
 import com.valhalla.thor.domain.model.SHELL_SUSPENDER_IDENTITY
 import com.valhalla.thor.domain.model.canLiftSuspension
 import com.valhalla.thor.domain.model.parseSuspendingPackages
@@ -304,22 +310,35 @@ object Shizuku {
     fun forceStopApp(context: Context, packageName: String): Boolean {
         val pkgs = Packages(context)
         val userId = pkgs.myUserId
-        // 1. Try shell first
+        // 1. Try shell first — but exit 0 is not an answer to "is it stopped?", which is why it is
+        // no longer the whole condition. `ActivityManagerShellCommand.runForceStop` calls
+        // `mInterface.forceStopPackage(pkg, userId)` and then ends in an unconditional `return 0`;
+        // its only non-zero exits are an unknown command-line option and an exception thrown out of
+        // AMS. AMS refuses nothing here — a package nothing is running for, or one not installed
+        // for `--user N` at all, produces exactly the same 0 as a real kill. So this rung reported
+        // success for every force-stop Thor has ever issued, and FLAG_STOPPED re-read from
+        // PackageManager — `Packages.isAppStopped`, the post-condition the caller actually means —
+        // sat twice below, unreachable behind that 0. Do not simplify this back to the exit code.
         val result = execute("am force-stop --user $userId $packageName")
-        if (result.first == 0) return true
+        if (result.first == 0 && pkgs.isAppStopped(packageName)) return true
 
-        // 2. Fallback to reflection
-        val reflectionResult = runCatching {
+        // 2. Fallback to reflection, and nothing reads its result any more. It is the same shape of
+        // claim rung 1 just stopped making: `IActivityManager.forceStopPackage` returns void, so all
+        // the old `if (reflectionResult) return true` could report was that the binder call did not
+        // throw — and verifying rung 1 alone would have moved that false success one rung down
+        // rather than removed it. The line is deleted rather than gated because rung 3 already
+        // re-reads FLAG_STOPPED unconditionally: `reflectionResult && pkgs.isAppStopped(...)` can
+        // only return true where the very next line returns true anyway, at the cost of a second
+        // PackageManager round trip. One verifier, reached whichever rung did the work — the same
+        // shape `DhizukuHelper.forceStopApp` carries.
+        runCatching {
             val am = asInterface("android.app.IActivityManager", Context.ACTIVITY_SERVICE)
             Bypass.invoke<Any?>(
                 am::class.java, am, "forceStopPackage", packageName, userId
             )
-            true
-        }.getOrElse {
+        }.onFailure {
             Logger.e("Shizuku", "forceStopApp reflection failed for $packageName", it)
-            false
         }
-        if (reflectionResult) return true
 
         // 3. Unprivileged fallback (re-query PM to observe post-mutation state)
         if (pkgs.isAppStopped(packageName)) return true
@@ -877,77 +896,163 @@ object Shizuku {
         null
     }
 
+    /**
+     * Deletes [packageName]'s cache directories **for [thorUserId]** — shell first, then a
+     * hidden-API `IPackageManager` call.
+     *
+     * The two reflection overloads used to be tried in the opposite order, and that order made the
+     * user id decorative. `deleteApplicationCacheFiles(String, IPackageDataObserver)` is declared on
+     * `IPackageManager` on every release this app runs on (28 through 37), so the
+     * `NoSuchMethodException` that was supposed to reach the `…AsUser` branch never fired: the only
+     * branch naming a user was unreachable, and the branch that ran named none. It could not — that
+     * overload takes no user id, and `PackageManagerService`'s implementation of it is
+     * `deleteApplicationCacheFilesAsUser(packageName, UserHandle.getCallingUserId(), observer)`,
+     * which resolves the user from the *caller*. The caller here is the Shizuku server, at shell uid
+     * 2000 in the ordinary setup, so from a work profile the reachable rung cleared **user 0's**
+     * cache for a package the user selected in profile 10. Hence the reorder rather than an extra
+     * argument: `…AsUser` first, and the calling-user overload kept only as the answer to "this
+     * release does not declare the symbol".
+     *
+     * The fallback is deliberately gated on `NoSuchMethodException` alone and not on `Exception`. A
+     * *refusal* of the per-user call must not fall through to a call that clears a different user's
+     * cache and reports it as this user's success — the failure the reorder exists to remove.
+     *
+     * **Both rungs now answer for themselves.** The shell rung always could: `rm -rf` exits 0 or it
+     * does not. The reflection rung could not, and used to say `true` whenever the binder call
+     * returned without throwing — which is not the same claim at all, because the call is
+     * asynchronous. `PackageManagerService` posts the work to its own handler and reports on an
+     * `IPackageDataObserver`, and that argument was `null`. At shell uid PMS also *accepts* cache
+     * clears that it then declines: it logs that it is silently ignoring the request, deletes
+     * nothing, and the old `true` reported that as a success. The observer is the only place that
+     * refusal is visible, so it is now wired up and waited on — see `awaitDataObserver`.
+     *
+     * What that changes for a caller: `true` means a verdict of "cleared" actually arrived. A
+     * refusal, a timeout, and a transport that never reached PMS all give `false`, and are told
+     * apart in the log rather than in the return type, because every consumer of this is a Boolean.
+     * `false` is therefore the honest answer to "could not confirm" as well as to "refused" — a
+     * cache clear repeated costs nothing, a false "done" costs the user the chance to try a
+     * privilege mode that would have worked.
+     *
+     * Still not a byte count. This Boolean must not be turned into "N bytes freed"; re-measure the
+     * cache if the number matters.
+     */
     // PrivateApi: hidden-API reflection (IPackageDataObserver) is intentional — the core privilege
     // mechanism, guarded by the :bypass VMRuntime unseal.
-    // SdCardPath: the absolute /data and /sdcard paths are intentional for privileged/root file ops,
+    // SdCardPath: the absolute /data and /storage paths are intentional for privileged file ops,
     // not app-scoped storage.
     @SuppressLint("PrivateApi", "SdCardPath")
     fun clearCache(packageName: String): Boolean {
-        // 1. Try shell first
-        val userId = thorUserId
-        val paths = listOf(
-            "/data/data/$packageName/cache",
-            "/data/user/$userId/$packageName/cache",
-            "/sdcard/Android/data/$packageName/cache"
-        )
-        val command = "rm -rf ${paths.joinToString(" ")}"
+        // 1. Try shell first. The `/data/data/<pkg>/cache` and `/sdcard/Android/data/<pkg>/cache`
+        // aliases that used to sit either side of these two are gone: they are not extra coverage,
+        // they are the same directories *for user 0*, so from a secondary user they deleted another
+        // user's cache. At user 0 they resolve to exactly what remains.
+        val command =
+            "rm -rf ${clearCachePaths(packageName.escapeForShell(), thorUserId).joinToString(" ")}"
         val shellResult = execute(command)
         if (shellResult.first == 0) return true
 
-        // 2. Fallback to reflection
-        val reflectionResult = runCatching {
+        // 2. Fallback to reflection, and this is the rung that matters under Shizuku: shell uid 2000
+        // cannot `rm -rf /data/data/<pkg>/cache`, so rung 1 normally fails and this is the real
+        // operation. It is also the one PMS can accept and then quietly decline, which is why the
+        // observer is no longer null — `awaitDataObserver` builds a real IPackageDataObserver.Stub,
+        // hands it to the invoke, and waits for onRemoveCompleted rather than for the invoke to
+        // return. Only a verdict of "cleared" gets out of here as true.
+        val outcome = runCatching {
             val pm = asInterface("android.content.pm.IPackageManager", "package")
             val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
 
-            try {
-                Bypass.invoke<Any?>(
-                    pm.javaClass,
-                    pm,
-                    "deleteApplicationCacheFiles",
-                    arrayOf(String::class.java, observerClass),
-                    packageName,
-                    null
-                )
-            } catch (_: NoSuchMethodException) {
-                Bypass.invoke<Any?>(
-                    pm.javaClass,
-                    pm,
-                    "deleteApplicationCacheFilesAsUser",
-                    arrayOf(String::class.java, Int::class.javaPrimitiveType!!, observerClass),
-                    packageName,
-                    userId,
-                    null
-                )
+            awaitDataObserver("Shizuku", packageName) { observer ->
+                try {
+                    Bypass.invoke<Any?>(
+                        pm.javaClass,
+                        pm,
+                        "deleteApplicationCacheFilesAsUser",
+                        arrayOf(String::class.java, Int::class.javaPrimitiveType!!, observerClass),
+                        packageName,
+                        thorUserId,
+                        observer
+                    )
+                } catch (_: NoSuchMethodException) {
+                    // No user id to give: this overload derives one from the calling uid. Reached
+                    // only if a release stops declaring the AsUser variant, which none in 28..37
+                    // does. The observer still reports honestly, but about the *calling* user's
+                    // cache — shell's, not necessarily Thor's — so an UNVERIFIED from this branch
+                    // is doubly uninformative and a CLEARED from it is not a claim about the user
+                    // the caller asked for.
+                    Bypass.invoke<Any?>(
+                        pm.javaClass,
+                        pm,
+                        "deleteApplicationCacheFiles",
+                        arrayOf(String::class.java, observerClass),
+                        packageName,
+                        observer
+                    )
+                }
             }
-            true
-        }.getOrDefault(false)
+        }.getOrElse { e ->
+            // Only the binder lookup can land here; awaitDataObserver absorbs whatever the invokes
+            // themselves throw and answers UNVERIFIED for it.
+            Logger.e("Shizuku", "clearCache($packageName): could not reach IPackageManager", e)
+            DataClearOutcome.UNVERIFIED
+        }
 
-        return reflectionResult
+        return outcome == DataClearOutcome.CLEARED
     }
 
+    /**
+     * Wipes [packageName]'s data **for [thorUserId]** — `pm clear` first, then a hidden-API
+     * `IPackageManager` call.
+     *
+     * **Both rungs answer for themselves, which the second one did not used to.** `pm clear` blocks
+     * on its own `ClearDataObserver` inside `PackageManagerShellCommand` and exits non-zero when the
+     * wipe fails, so its exit code can be believed. `clearApplicationUserData` returns `void`: the
+     * verdict only ever arrives on an `IPackageDataObserver`, and that argument was `null`, so the
+     * old `true` meant nothing more than "the binder call did not throw". For the single most
+     * destructive operation Thor performs, that is the worst place in the app to be optimistic — the
+     * user was told their data was gone on the strength of a dispatch receipt. `awaitDataObserver`
+     * now supplies a real observer and waits for it.
+     *
+     * `true` therefore means a verdict of "cleared" arrived. A refusal, a timeout and a dead
+     * transport all give `false` and are distinguished in the log rather than in the return type.
+     * That direction is deliberate: wiping data twice costs a user nothing, a false "done" costs
+     * them the chance to try a privilege mode that would have worked.
+     */
     // Hidden-API reflection (IPackageDataObserver) is intentional: it is the core privilege
     // mechanism, guarded by the :bypass VMRuntime unseal.
     @SuppressLint("PrivateApi")
     fun clearAppData(packageName: String): Boolean {
-        // 1. Try shell first
-        val result = execute("pm clear $packageName")
+        // 1. Try shell first. Both rungs name the same user: the reflection rung below already
+        // passed thorUserId, while this one passed none at all — and `pm clear` with no `--user`
+        // seeds USER_SYSTEM, so from a work profile the shell rung wiped the primary user's copy
+        // and exited 0, and the reflection rung that would have done the right thing never ran.
+        val result = execute(clearAppDataCommand(packageName.escapeForShell(), thorUserId))
         if (result.first == 0) return true
 
-        // 2. Fallback to reflection
-        return runCatching {
+        // 2. Fallback to reflection. The observer is no longer null: clearApplicationUserData
+        // returns void, so this is the only channel the verdict can arrive on, and without it the
+        // most destructive rung in the app was also its least honest one.
+        val outcome = runCatching {
             val pm = asInterface("android.content.pm.IPackageManager", "package")
             val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
-            Bypass.invoke<Any?>(
-                pm.javaClass,
-                pm,
-                "clearApplicationUserData",
-                arrayOf(String::class.java, observerClass, Int::class.javaPrimitiveType!!),
-                packageName,
-                null,
-                thorUserId
-            )
-            true
-        }.getOrElse { false }
+            awaitDataObserver("Shizuku", packageName) { observer ->
+                Bypass.invoke<Any?>(
+                    pm.javaClass,
+                    pm,
+                    "clearApplicationUserData",
+                    arrayOf(String::class.java, observerClass, Int::class.javaPrimitiveType!!),
+                    packageName,
+                    observer,
+                    thorUserId
+                )
+            }
+        }.getOrElse { e ->
+            // Only the binder lookup can land here; awaitDataObserver absorbs whatever the invoke
+            // itself throws and answers UNVERIFIED for it.
+            Logger.e("Shizuku", "clearAppData($packageName): could not reach IPackageManager", e)
+            DataClearOutcome.UNVERIFIED
+        }
+
+        return outcome == DataClearOutcome.CLEARED
     }
 
     fun getTotalCacheSizeWithShizuku(): Long {
@@ -971,16 +1076,157 @@ object Shizuku {
     }
 
     fun setAppRestricted(context: Context, packageName: String, restricted: Boolean): Boolean {
-        // 1. Try shell first
-        val result =
-            execute("appops set $packageName RUN_ANY_IN_BACKGROUND ${if (restricted) "ignore" else "allow"}")
-        if (result.first == 0) return true
+        // `ignore`/MODE_IGNORED restricts and `allow`/MODE_ALLOWED lifts, matching the shell rung's
+        // own pair. This is also what the read-back below expects to find afterwards.
+        val expectedMode =
+            if (restricted) android.app.AppOpsManager.MODE_IGNORED
+            else android.app.AppOpsManager.MODE_ALLOWED
 
-        // 2. Fallback to reflection
-        return runCatching {
+        // The op code and the target uid are resolved once, here, instead of inside the reflection
+        // rung where the `strOpToOp` call used to sit: the read-back needs both, and a write and a
+        // read that each resolve their own op are two chances to name different ones. Null means
+        // "could not resolve", which the read-back answers as "could not tell" rather than as a
+        // disagreement.
+        //
+        // The uid is also what makes the read address the same user as the write:
+        // `Packages.packageUid` goes through Thor's own PackageManager, so it carries Thor's user —
+        // the one the shell rung below spells out as `--user thorUserId`.
+        val opCode = runCatching {
+            Bypass.invoke<Int>(
+                android.app.AppOpsManager::class.java,
+                null,
+                "strOpToOp",
+                "android:run_any_in_background"
+            )
+        }.getOrElse { e ->
+            Logger.e("Shizuku", "strOpToOp(android:run_any_in_background) failed", e)
+            null
+        }
+        val uid = runCatching { Packages(context).packageUid(packageName) }.getOrElse { e ->
+            Logger.e("Shizuku", "packageUid failed for $packageName", e)
+            null
+        }
+
+        // The read-back both rungs are judged by. Three answers, and the third is the point: true
+        // (the op is in the requested mode), false (it is not), null (could not tell) — never false
+        // for "could not tell".
+        //
+        // It reads through the privileged binder rather than the in-process AppOpsManager, and the
+        // usual justification for that covers only the bottom of Thor's range.
+        // `AppOpsService.checkOperation` does call `verifyIncomingUid` — which throws
+        // SecurityException at a caller asking about a uid other than its own without
+        // UPDATE_APP_OPS_STATS — but only on API 28, where `checkOperation` calls it directly,
+        // and 29, where `checkOperationImpl` does. API 30 dropped it, and current AOSP states the
+        // split outright: `validateOpRequest(..., shouldVerifyUid, ...)` is passed `false` by
+        // `checkOperation` and `true` by `noteOperation`/`startOperation`. On 30..37 — nearly all
+        // of Thor's range — an in-process read is not refused by that check.
+        //
+        // Routing it here is still right, for reasons that do cover the range. From API 31
+        // `checkOperationImpl` also calls `verifyIncomingPackage`, which refuses a package the
+        // caller cannot see, and a Thor reading across a user boundary is exactly that caller. And
+        // `checkOperationUnchecked` turns its own `verifyAndGetBypass` SecurityException into
+        // `opToDefaultMode(code)`, so a read that goes wrong in process answers a plausible mode
+        // rather than throwing — worse than answering null. Reading with the identity that
+        // performed the write is also what makes this a check of that write and not of some other
+        // caller's view of it.
+        //
+        // What comes back is the mode actually in force, not a record of what was written — with
+        // one blind spot worth naming. `checkOperationUnchecked` consults the *uid*-level mode
+        // before it ever reaches the package entry (`mAppOpsCheckingService.getUidMode(...)` on
+        // recent releases, the `uidState.opModes` lookup on 30..33) and returns it whenever it
+        // differs from the op's default. Both of Thor's writes are package-level — `appops set
+        // <pkg> android:run_any_in_background ...` and `setMode(code, uid, pkg, mode)` — so any
+        // uid-level mode on RUN_ANY_IN_BACKGROUND makes this read report a value unrelated to
+        // whether Thor's write landed. `checkOperationRaw` would not help: `raw` only drops the
+        // foreground evaluation, and the uid branch returns the uid mode either way. The masking is
+        // read straight out of AppOpsService; what is missing is a writer. Settings' battery
+        // "Restricted" setting uses the package-level
+        // `setMode(OP_RUN_ANY_IN_BACKGROUND, uid, packageName, mode)`, and the only uid-level
+        // writer identified is `appops set --uid`, which Thor never issues. Recorded as a known
+        // blind spot, not as an observed bug.
+        fun opReadsBackAsExpected(): Boolean? {
+            if (opCode == null || uid == null) return null
+            return runCatching {
+                val appops =
+                    asInterface("com.android.internal.app.IAppOpsService", Context.APP_OPS_SERVICE)
+                Bypass.invoke<Int>(
+                    appops::class.java,
+                    appops,
+                    "checkOperation",
+                    arrayOf(
+                        Int::class.javaPrimitiveType!!,
+                        Int::class.javaPrimitiveType!!,
+                        String::class.java
+                    ),
+                    opCode,
+                    uid,
+                    packageName
+                ) == expectedMode
+            }.getOrElse { e ->
+                // `null` and not `false`: `checkOperation(int, int, String)` has been on
+                // IAppOpsService for a long time, but it has NOT been verified on every release in
+                // 28..37, and a NoSuchMethodException here means "this device's signature differs",
+                // not "the restriction failed".
+                //
+                // What each rung does with that null is one rule, stated here once:
+                //
+                //   A rung may fail OPEN on an unreadable read-back only if it has a self-report
+                //   that is evidence independent of the read-back. With no such evidence it fails
+                //   CLOSED.
+                //
+                // Rung 1 has that evidence and so fails open: `appops set` exits non-zero for an
+                // unknown package or op, so its 0 is the platform's own statement about a real op,
+                // and demoting it because a second opinion was unavailable would report failures
+                // for restrictions that were applied.
+                //
+                // Rung 2 has none and so fails closed. `IAppOpsService.setMode` returns void, so
+                // the only thing the reflective call can report is that it did not throw — which
+                // is not a mode, and is not even reliably "not denied". Read across 28..37, the
+                // one refusal that reaches the caller is `enforceManageAppOpsModes` (no
+                // MANAGE_APP_OPS_MODES), which sits ahead of the try on every release. The
+                // "this package is not under that uid" refusal never does: before API 30
+                // `getOpsRawLocked` met a mismatch with `Slog.w("Bad call: specified package … but
+                // it is really …")` and a null, so `setMode` changed nothing and returned
+                // normally; from API 30 the check does throw, but from inside `verifyAndGetBypass`,
+                // where `setMode` catches it (`Slog.e(TAG, "Cannot setMode", e); return;`, and the
+                // same through `logVerifyAndGetBypassFailure` on API 35+). Current AOSP adds a
+                // second silent return ahead of that one for `!isIncomingPackageValid(...)`. So
+                // "setMode throws when it is denied" — the claim this comment used to rest on — is
+                // true nowhere in Thor's range.
+                //
+                // The clear-data sites fail closed under the same rule and for the same reason:
+                // "the reflective invoke did not throw" is their entire evidence too.
+                Logger.e("Shizuku", "checkOperation read-back unavailable for $packageName", e)
+                null
+            }
+        }
+
+        // 1. Try shell first. The user this names is not the `pm` story retold: `appops` seeds
+        // UserHandle.USER_CURRENT and system_server resolves it with ActivityManager.getCurrentUser(),
+        // so the bare line landed on whoever was in the *foreground* at the moment it ran — the
+        // parent profile for a Thor sitting in a work profile, and a value free to change between
+        // this write and the read-back that is supposed to confirm it. The reflection rung below
+        // never had that problem: it addresses the app by uid, and Packages.packageUid resolves that
+        // through Thor's own PackageManager, so it already carried Thor's user. Naming thorUserId
+        // here is what makes the two rungs of this one operation agree on a target.
+        // The package is escaped for the same reason it is everywhere else in this object (#40).
+        val result = execute(
+            backgroundRestrictionCommand(packageName.escapeForShell(), thorUserId, restricted)
+        )
+        // `!= false`, not `== true`: this is the open side of the rule stated at the read-back, and
+        // the independent evidence it rests on is this rung's own exit code. Null is "could not
+        // read the op back" and leaves that exit code standing. Only a definite disagreement —
+        // the op is not in the mode just requested — falls through to rung 2 rather than reporting
+        // a success nobody confirmed.
+        if (result.first == 0 && opReadsBackAsExpected() != false) return true
+
+        // 2. Fallback to reflection. Without an op code or a uid there is nothing to call setMode
+        // with, which is the same `false` the surrounding runCatching used to produce when
+        // `strOpToOp` or `packageUid` threw inside it.
+        if (opCode == null || uid == null) return false
+        val reflectionRan = runCatching {
             val appops =
                 asInterface("com.android.internal.app.IAppOpsService", Context.APP_OPS_SERVICE)
-            val uid = Packages(context).packageUid(packageName)
             Bypass.invoke<Any?>(
                 appops::class.java,
                 appops,
@@ -991,18 +1237,38 @@ object Shizuku {
                     String::class.java,
                     Int::class.javaPrimitiveType!!
                 ),
-                Bypass.invoke<Int>(
-                    android.app.AppOpsManager::class.java,
-                    null,
-                    "strOpToOp",
-                    "android:run_any_in_background"
-                ),
+                opCode,
                 uid,
                 packageName,
-                if (restricted) android.app.AppOpsManager.MODE_IGNORED else android.app.AppOpsManager.MODE_ALLOWED
+                expectedMode
             )
             true
-        }.getOrElse { false }
+        }.getOrElse { e ->
+            // Logged rather than swallowed: when this rung is the one that has to work, its
+            // SecurityException is the line a bug report needs.
+            Logger.e("Shizuku", "setMode(RUN_ANY_IN_BACKGROUND) failed for $packageName", e)
+            false
+        }
+        // The closed side of the rule: this rung's verdict is the read-back and nothing else, so an
+        // unreadable read-back is `false` here where it is survivable at rung 1. `!= false` in this
+        // position was the bug — on API 33 a `setMode` AppOpsService refuses is swallowed there
+        // rather than thrown (`reflectionRan` is still true) and an unreadable `checkOperation`
+        // answers null, so `true && (null != false)` reported a success with nothing restricted.
+        //
+        // `reflectionRan` stays in the expression as a guard, not as evidence: for
+        // `restricted = false` the expected mode is MODE_ALLOWED, which is also
+        // RUN_ANY_IN_BACKGROUND's platform default, so an op nobody ever wrote reads back as
+        // expected. Without the conjunct a `setMode` that threw would be reported as a success by
+        // the default mode alone.
+        //
+        // DhizukuHelper.setAppRestricted's rung 2 lands on the same fail-closed answer by a
+        // different route, and both reasons are load-bearing. There the binder is double-wrapped
+        // — Dhizuku's own wrapper from `DhizukuAPI.binderWrapper`, with `ShizukuBinderWrapper` put
+        // on top of it — so that rung is transport-dead on a Dhizuku-only device and has nothing to
+        // report either way. Here the binder is wrapped once and the call is live; this rung fails
+        // closed because a void return is not evidence, not because it cannot run. A later edit
+        // that "unifies" the two by keeping one reason would leave the wrong one behind.
+        return reflectionRan && opReadsBackAsExpected() == true
     }
 
     // The user id every `--user` below names is [thorUserId], read in process.
@@ -1019,16 +1285,51 @@ object Shizuku {
     // The same swap on the Dhizuku side fixes an outright failure rather than a latent mismatch;
     // see the note in DhizukuHelper.
 
-    fun uninstallApp(context: Context, packageName: String): Boolean {
+    /**
+     * The user-facing uninstall: removes [packageName] for [thorUserId], data included.
+     *
+     * This used to name the user only for system packages. Ordinary user apps — everything the
+     * uninstall button is normally pressed on — took a bare `pm uninstall`, selected by a
+     * `canUninstallNormally` predicate that read `FLAG_SYSTEM == 0` and nothing else. That was not
+     * the harmless default it looked like: `PackageManagerShellCommand.runUninstall` seeds
+     * `userId = UserHandle.USER_ALL` and converts it to `DELETE_ALL_USERS`, so from a work profile
+     * the line removed the app **and its data for every user on the device** and exited 0.
+     *
+     * Both the predicate and the branch are gone rather than corrected, because there is no version
+     * of "system apps get `--user`, ordinary ones do not" that is right; [uninstallCommand] carries
+     * the reasoning. The root gateway and the Dhizuku helper already named their user on this same
+     * operation — this was the one site of the class that did not.
+     *
+     * **Naming the user is stricter than the bare form, not merely narrower.** [uninstallCommand]'s
+     * "on a single-user device this changes nothing" is a claim about *which users are affected*,
+     * and it does not extend to *whether the command succeeds*. Once `userId != USER_ALL`,
+     * `runUninstall` first does
+     * `getPackageInfo(pkg, MATCH_STATIC_SHARED_AND_SDK_LIBRARIES, userId)` and stops with
+     * `Failure [not installed for N]` and exit 1 when that is null. Those flags carry neither
+     * `MATCH_UNINSTALLED_PACKAGES` nor `MATCH_ARCHIVED_PACKAGES`, so every package whose
+     * `PackageUserState.installed` bit is false for this user is refused here, at user 0, on a
+     * device that has only one user — where the bare form took the `USER_ALL` path and skipped the
+     * precondition altogether. Thor lists exactly those packages, because its app sweep queries
+     * with `MATCH_UNINSTALLED_PACKAGES`: a Play-Store-archived app on API 35+, and anything another
+     * tool (or Thor's own [freezeSystemAppForUser]) removed with `pm uninstall -k`.
+     *
+     * The rung that covers the difference is the reflection fallback in
+     * `ShizukuReflector.uninstallApp`, which reads `false` here as "try `PackageInstaller` instead"
+     * — and `PackageInstaller.uninstall` has no equivalent precondition. That fallback was defeated
+     * by the same condition until its `getInfoForPackage` lookup was widened to the two match flags
+     * `pm` omits; that widening is what makes this trade-off survivable, so the two are one change.
+     * The answer is not to drop `--user` again: that trades a failure the ladder recovers from for
+     * a silent removal on every user of the device.
+     *
+     * Takes no `Context`, unlike its neighbours in this object: the only thing it needed one for
+     * was constructing the `Packages` that answered the predicate.
+     */
+    fun uninstallApp(packageName: String): Boolean {
         // Escape the package identifier before interpolating it into the shell command, mirroring
         // the Dhizuku helper (#40). thorUserId is an Int, so it needs no escaping.
         val escapedPackage = packageName.escapeForShell()
-        val normally = Packages(context).canUninstallNormally(packageName)
-        if (normally) {
-            return execute("pm uninstall $escapedPackage").first == 0
-        }
         return try {
-            execute("pm uninstall --user $thorUserId $escapedPackage").first == 0
+            execute(uninstallCommand(escapedPackage, thorUserId)).first == 0
         } catch (_: Exception) {
             false
         }

@@ -106,7 +106,6 @@ fun MainScreen(
     appListViewModel: AppListViewModel = koinViewModel(),
     freezerViewModel: FreezerViewModel = koinViewModel(),
     onExit: () -> Unit,
-    billingProcessor: BillingProcessor = koinInject(),
 ) {
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -716,6 +715,11 @@ fun MainScreen(
                     )
                 }
 
+                // Resolved here rather than in MainScreen's parameter defaults: a default argument
+                // is evaluated during the first composition, and instantiating the store flavour's
+                // processor there put the Play billing bind on the first-frame main thread purely
+                // to observe one flag.
+                val billingProcessor: BillingProcessor = koinInject()
                 val showThankYouDialog by billingProcessor.showThankYouDialog.collectAsStateWithLifecycle()
                 if (showThankYouDialog) {
                     ThankYouDialog(

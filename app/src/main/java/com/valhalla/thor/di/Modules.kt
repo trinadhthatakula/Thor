@@ -26,8 +26,18 @@ import org.koin.core.annotation.Single
 @Configuration
 class AppModule {
 
-    // Named CoroutineDispatcher bindings so IO/CPU-bound work can inject a dispatcher
-    // instead of hardcoding Dispatchers.*, keeping call sites testable and swappable.
+    // Named CoroutineDispatcher bindings so IO/CPU-bound work injects a dispatcher instead of
+    // hardcoding Dispatchers.*, which makes the choice visible at the constructor and swappable
+    // in one place.
+    //
+    // Worth being honest about the limit, because the injection sites used to claim more than
+    // this: on its own it does not make a class unit-testable. Almost everything that takes one
+    // of these also takes a Context, `:app` has no mocking library and no Robolectric, so those
+    // classes still cannot be constructed on the JVM. PrivilegeManager is the only injector that
+    // takes no Context, and it is not constructible either — its `init` touches
+    // `rikka.shizuku.Shizuku`, whose static initializer builds a Binder against the stub
+    // android.jar and throws "not mocked". Injecting the dispatcher removes one blocker; for
+    // every class here it is not the last one.
     @Single
     @Named("io")
     fun ioDispatcher(): CoroutineDispatcher = Dispatchers.IO

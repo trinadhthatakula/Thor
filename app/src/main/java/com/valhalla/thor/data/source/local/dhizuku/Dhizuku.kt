@@ -10,6 +10,9 @@ import android.os.IBinder
 import com.valhalla.bypass.Bypass
 import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.data.source.local.backgroundRestrictionCommand
+import com.valhalla.thor.data.source.local.clearAppDataCommand
+import com.valhalla.thor.data.source.local.clearCachePaths
 // The enable/disable rung machinery is privilege-agnostic; it lives in the `shizuku` package
 // because that is where it was first needed, and it is imported rather than re-typed here so the
 // two privilege modes cannot drift apart on "did the platform refuse?" — the one question whose
@@ -173,27 +176,61 @@ object DhizukuHelper {
     fun forceStopApp(context: Context, packageName: String): Boolean {
         val pkgs = Packages(context)
         val userId = pkgs.myUserId
-        // 1. Try shell first
+        // 1. Shell first — and its exit code is not evidence of anything, in either direction.
+        // `ActivityManagerShellCommand.runForceStop` ends in an unconditional `return 0`, so exit 0
+        // says the command parsed, never that a process died. The honest verifier was already
+        // written in this function — `pkgs.isAppStopped`, rung 3 below — and sat unreachable behind
+        // this short-circuit. Do not "simplify" the readback back out.
+        //
+        // **Do not read this rung as the live one.** `execute` runs `am` inside the *Dhizuku* app:
+        // `DhizukuAPI.newProcess` is an AIDL call to `IDhizuku.remoteProcess`, so the child is
+        // spawned by the device-owner app at its own ordinary app uid. AMS gates what that child
+        // then asks for — `ActivityManagerService.forceStopPackage` opens on
+        // `checkCallingPermission(FORCE_STOP_PACKAGES)`, a `signature|privileged` permission that
+        // holding device owner does not confer — so it throws SecurityException,
+        // `ShellCommand.exec` prints that to stderr and leaves its `res` at -1, and `am` exits 255
+        // without `runForceStop` ever reaching its `return 0`. The `&&` below therefore
+        // short-circuits, and `pkgs.isAppStopped` is not called on this rung at all.
+        //
+        // That chain is AOSP-derived rather than measured for `force-stop` itself; its identity
+        // half is measured on device. The same binary at the same Dhizuku uid is recorded further
+        // down this file being refused `am get-current-user` — `Permission Denial … uid=10231`,
+        // exit 255 — which is this exact shape one command over.
+        //
+        // The readback stays anyway: it costs nothing on a rung that short-circuits, and it is the
+        // guard for the one case that would otherwise lie — an exit 0 from a transport that killed
+        // nothing, which is what a ROM or a Dhizuku build that does hold the permission would
+        // produce. Nothing is lost when it never runs, because rung 3 re-reads FLAG_STOPPED
+        // unconditionally: one verifier, reached whichever rung did the work.
+        //
+        // The `newProcess` identity fact lives in [setAppDisabledDetailed]'s **KDoc**, where it is
+        // a caveat — neither of its rungs reaches `PackageManagerService` as uid 2000, which is
+        // precisely why nothing there trusts an exit code — and not in its reflection rung, whose
+        // note says the opposite about *itself*: double-wrapped binder, dead on a Dhizuku-only
+        // device.
         val result = execute("am force-stop --user $userId $packageName")
-        if (result.first == 0) return true
+        if (result.first == 0 && pkgs.isAppStopped(packageName)) return true
 
-        // 2. Fallback to reflection
-        val reflectionResult = runCatching {
+        // 2. Fallback to reflection, and nothing reads its result any more. All it could ever report
+        // was that the invoke did not throw, which through `asInterface`'s double-wrapped binder is
+        // not a statement about ActivityManagerService at all — fixing rung 1 and leaving
+        // `if (reflectionResult) return true` underneath it would have been the same defect one line
+        // lower. The line is deleted rather than gated because rung 3 already re-reads FLAG_STOPPED
+        // unconditionally: one verifier, reached whichever rung did the work.
+        runCatching {
             val am = asInterface("android.app.IActivityManager", Context.ACTIVITY_SERVICE)
-                ?: return@runCatching false
-            Bypass.invoke<Any?>(
-                am::class.java, am, "forceStopPackage", packageName, userId
-            )
-            true
-        }.getOrElse {
+            if (am != null) {
+                Bypass.invoke<Any?>(
+                    am::class.java, am, "forceStopPackage", packageName, userId
+                )
+            }
+        }.onFailure {
             Logger.e(
                 "DhizukuHelper",
                 "forceStopApp reflection failed for $packageName",
                 it
             )
-            false
         }
-        if (reflectionResult) return true
 
         // 3. Unprivileged fallback (re-query PM to observe post-mutation state)
         if (pkgs.isAppStopped(packageName)) return true
@@ -584,23 +621,71 @@ object DhizukuHelper {
         -1 to err.stackTraceToString()
     }
 
+    /**
+     * Deletes [packageName]'s cache directories **for [thorUserId]** — shell first, then a
+     * hidden-API `IPackageManager` call.
+     *
+     * The reflection overloads are tried `…AsUser` first for the same reason as
+     * [com.valhalla.thor.data.source.local.shizuku.Shizuku.clearCache], whose KDoc carries the full
+     * argument: `deleteApplicationCacheFiles(String, IPackageDataObserver)` is declared on every
+     * release this app runs on (28 through 37), so the `NoSuchMethodException` meant to reach the
+     * `…AsUser` branch never fires. Ordered the other way round, the only branch that names a user
+     * is unreachable and the branch that runs names none — `PackageManagerService` implements the
+     * no-user overload as `deleteApplicationCacheFilesAsUser(packageName, getCallingUserId(),
+     * observer)`, resolving the user from the *caller*. Here the caller is the Dhizuku app holding
+     * device owner, so from a work profile the reachable rung cleared the cache of whichever user
+     * Dhizuku itself runs as, for a package the user picked in another profile.
+     *
+     * The fallback is gated on `NoSuchMethodException` alone, never `Exception`: a *refusal* of the
+     * per-user call must not fall through to one that clears a different user's cache and reports it
+     * as this user's success.
+     *
+     * How often this rung runs at all is a separate question, and the answer is probably never:
+     * `asInterface` wraps the binder twice — Dhizuku's own wrapper, then `ShizukuBinderWrapper` on
+     * top — so on a Dhizuku-only device the call dies in a transport belonging to a privilege mode
+     * the user has not set up. `setAppDisabledDetailed` carries that argument in full. It is a
+     * reason not to expect the reorder to change behaviour today, not a reason to keep the order
+     * wrong: a rung that is dead now is still the rung a future transport fix would wake up.
+     *
+     * **A `true` from this function now comes from the shell rung or from nowhere.** Only that rung
+     * is honest — `rm -rf` exits 0 or it does not — and the reflective one has stopped claiming
+     * otherwise. Its `true` was never evidence: the call is asynchronous, PMS reports through the
+     * `IPackageDataObserver` passed as `null` here, and on a Dhizuku-only device it does not reach
+     * PMS at all. It is still issued, because on a device that also has Shizuku it may genuinely
+     * run; what changed is that "the binder call returned" is no longer allowed to reach the user as
+     * "the cache is gone".
+     */
     // SdCardPath: absolute system paths are intentional for privileged/root file ops on app data
     // dirs (not app-scoped storage). PrivateApi: hidden-API reflection is the core privilege
     // mechanism, guarded by the :bypass VMRuntime unseal.
     @SuppressLint("PrivateApi", "SdCardPath")
     fun clearCache(packageName: String): Boolean {
-        // 1. Try shell first
-        val userId = android.os.Process.myUserHandle().hashCode()
-        val paths = listOf(
-            "/data/data/$packageName/cache",
-            "/data/user/$userId/$packageName/cache",
-            "/sdcard/Android/data/$packageName/cache"
-        )
-        val command = "rm -rf ${paths.joinToString(" ")}"
+        // 1. Try shell first. The `/data/data/<pkg>/cache` and `/sdcard/Android/data/<pkg>/cache`
+        // aliases that used to sit either side of these two are gone: they are not extra coverage,
+        // they are the same directories *for user 0*, so from a secondary user they deleted another
+        // user's cache. At user 0 they resolve to exactly what remains.
+        val command =
+            "rm -rf ${clearCachePaths(packageName.escapeForShell(), thorUserId).joinToString(" ")}"
         val shellResult = execute(command)
         if (shellResult.first == 0) return true
 
-        // 2. Fallback to reflection
+        // 2. Fallback to reflection — issued, and deliberately never believed.
+        //
+        // `asInterface` wraps the binder twice, Dhizuku's own wrapper and then
+        // `ShizukuBinderWrapper` on top, so on a Dhizuku-only device this call dies inside a
+        // transport belonging to a privilege mode the user never set up; [setAppDisabledDetailed]'s
+        // reflection rung carries that argument in full. The call stays — it costs nothing, and on a
+        // device that *also* has Shizuku it may genuinely run — but the `false` at the end of the
+        // block replaces a `true` that has never meant the cache was cleared. Even on a live
+        // transport it could not mean that: `deleteApplicationCacheFiles*` reports through the
+        // `IPackageDataObserver` passed as `null` here, so the old `true` only ever said "the binder
+        // call returned".
+        //
+        // An observer is deliberately not wired up in its place. On the device this rung actually
+        // runs on the call never reaches PackageManagerService, so a real observer would buy one
+        // guaranteed timeout per package — an always-red answer that teaches the user nothing and
+        // costs seconds each on a bulk clear. Honest and fast beats verified and impossible. If the
+        // transport is ever fixed, *that* is the change that earns an observer here.
         val reflectionResult = runCatching {
             val pm = asInterface("android.content.pm.IPackageManager", "package") ?: return@runCatching false
             val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
@@ -609,37 +694,75 @@ object DhizukuHelper {
                 Bypass.invoke<Any?>(
                     pm.javaClass,
                     pm,
-                    "deleteApplicationCacheFiles",
-                    arrayOf(String::class.java, observerClass),
-                    packageName,
-                    null /* IPackageDataObserver */
-                )
-            } catch (_: NoSuchMethodException) {
-                Bypass.invoke(
-                    pm.javaClass,
-                    pm,
                     "deleteApplicationCacheFilesAsUser",
                     arrayOf(String::class.java, Int::class.javaPrimitiveType!!, observerClass),
                     packageName,
-                    userId,
+                    thorUserId,
+                    null /* IPackageDataObserver */
+                )
+            } catch (_: NoSuchMethodException) {
+                // No user id to give: this overload derives one from the calling uid. Reached only
+                // if a release stops declaring the AsUser variant, which none in 28..37 does.
+                Bypass.invoke<Any?>(
+                    pm.javaClass,
+                    pm,
+                    "deleteApplicationCacheFiles",
+                    arrayOf(String::class.java, observerClass),
+                    packageName,
                     null
                 )
             }
-            true
+            Logger.w(
+                "DhizukuHelper",
+                "clearCache($packageName): the reflection rung was issued but can confirm nothing, " +
+                    "so it reports failure — the shell rung above is the only one that clears a cache"
+            )
+            false
         }.getOrDefault(false)
 
         return reflectionResult
     }
 
+    /**
+     * Wipes [packageName]'s data **for [thorUserId]** — `pm clear` first, then a hidden-API
+     * `IPackageManager` call.
+     *
+     * **A `true` from this function comes from the shell rung or from nowhere**, the same contract
+     * [clearCache] states and for the same reasons. `pm clear` blocks on its own observer inside
+     * `PackageManagerShellCommand` and exits non-zero when the wipe fails, so it can be believed;
+     * the reflection rung below can not be, and no longer says otherwise. It used to return `true`
+     * whenever the invoke did not throw, which for the single most destructive operation Thor
+     * performs meant the user was told their data was gone on the strength of a binder call that,
+     * on a Dhizuku-only device, never reached PackageManagerService.
+     *
+     * Reporting failure here is the conservative direction: clearing data twice costs nothing, so a
+     * user who retries loses nothing, while a false "done" loses them the chance to try a privilege
+     * mode that would have worked.
+     */
     // PrivateApi: hidden-API reflection is intentional — the core privilege mechanism, guarded by
     // the :bypass VMRuntime unseal.
     @SuppressLint("PrivateApi")
     fun clearAppData(packageName: String): Boolean {
-        // 1. Try shell first
-        val result = execute("pm clear $packageName")
+        // 1. Try shell first, naming the same user the reflection rung below hands to
+        // clearApplicationUserData. `pm clear` with no `--user` seeds USER_SYSTEM, so from a work
+        // profile this rung wiped the primary user's copy and exited 0 — and the reflection rung
+        // that would have targeted the right user never ran.
+        val result = execute(clearAppDataCommand(packageName.escapeForShell(), thorUserId))
         if (result.first == 0) return true
 
-        // 2. Fallback to reflection
+        // 2. Fallback to reflection — issued, and deliberately never believed. Same argument as
+        // [clearCache]'s rung 2, one step worse in consequence: `clearApplicationUserData` returns
+        // `void`, so the verdict only ever arrives on the `IPackageDataObserver` that is `null`
+        // here, and `asInterface`'s double-wrapped binder means that on a Dhizuku-only device the
+        // call dies in a Shizuku transport before PackageManagerService sees it — the argument
+        // [setAppDisabledDetailed]'s reflection rung records in full. This rung therefore reported
+        // "your data is gone" for a call that could not have deleted anything, unconditionally, on
+        // every release.
+        //
+        // The call stays because on a device that also has Shizuku it may genuinely run; only the
+        // claim is withdrawn. An observer is not wired up in its place for the reason [clearCache]
+        // gives — a guaranteed 15-second timeout per package on the device this rung actually runs
+        // on is a worse answer than an immediate honest one.
         return runCatching {
             val pm = asInterface("android.content.pm.IPackageManager", "package") ?: return@runCatching false
             val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
@@ -650,9 +773,14 @@ object DhizukuHelper {
                 arrayOf(String::class.java, observerClass, Int::class.javaPrimitiveType!!),
                 packageName,
                 null,
-                android.os.Process.myUserHandle().hashCode()
+                thorUserId
             )
-            true
+            Logger.w(
+                "DhizukuHelper",
+                "clearAppData($packageName): the reflection rung was issued but can confirm nothing, " +
+                    "so it reports failure — `pm clear` above is the only rung that can wipe this data"
+            )
+            false
         }.getOrElse { false }
     }
 
@@ -892,9 +1020,16 @@ object DhizukuHelper {
      * a `@StringRes int`). On API 29-30 that lookup threw `NoSuchMethodException` out of the caller's
      * `runCatching` and killed the whole reflection path before it ever reached the suspend call.
      *
-     * The `@StringRes int` overloads are deliberately not used as a pre-31 fallback: the system
-     * resolves such an id against the *suspending* package's resources, which in Dhizuku mode is
-     * `com.android.shell`, not us. A missing title is better than a wrong one.
+     * The `@StringRes int` overloads are deliberately not used as a pre-31 fallback: the system's
+     * `SuspendedAppActivity` resolves such an id against the resources of whichever package the
+     * platform *recorded* as the suspender. This helper's only caller is [setAppSuspended]'s
+     * reflection rung, which names `BuildConfig.APPLICATION_ID`, so the id would ordinarily land on
+     * Thor's own resources — but Dhizuku is the one privilege mode that cannot read the suspension
+     * record back at all (no `DUMP`; see [setAppSuspended]), so "ordinarily" is the strongest claim
+     * this file can make about where it lands. A literal string is right whoever renders it, and a
+     * missing title is better than a wrong one. (`com.android.shell` is
+     * `Shizuku.buildSuspendDialogInfo`'s answer, where the caller really is shell uid 2000; it does
+     * not transfer here.)
      */
     @SuppressLint("PrivateApi")
     private fun buildSuspendDialogInfo(context: Context): Any? = runCatching {
@@ -916,13 +1051,68 @@ object DhizukuHelper {
         )
     }.getOrNull()
 
+    /**
+     * Restricts or unrestricts background execution for [packageName], for the user Thor runs as.
+     *
+     * The `--user` the shell rung now carries is not the `pm` story told elsewhere in this file:
+     * nothing here defaults to user 0 and nothing here fans out to all users.
+     * `AppOpsService.Shell.parseUserPackageOp` seeds `UserHandle.USER_CURRENT` and resolves it with
+     * `ActivityManager.getCurrentUser()` — evaluated inside system_server — so the bare command
+     * targeted the **globally foreground user**, which is neither the caller's user nor user 0. On a
+     * managed profile the foreground user is the parent, so a restriction set from the work profile
+     * landed on the personal profile's copy; in a Xiaomi Second Space the space you switched into
+     * *is* foreground, so the same command happened to be right. The defect was therefore the
+     * dependence on foreground state, not a fixed wrong target, and it could differ between one call
+     * and the next while Thor stayed alive.
+     *
+     * The reflection rung below never had the problem: it resolves the op against the package's own
+     * uid, which carries the user in its high bits, so it was already per-user. The two rungs now
+     * agree on which app op they are setting for whom.
+     *
+     * Both are also read back now, with `IAppOpsService.checkOperation`, and the two rungs treat an
+     * *unreadable* readback differently on purpose — see [readBackgroundMode]. The shell rung's own
+     * report is already honest, so an unreadable readback leaves it standing; the reflection rung's
+     * never was, so an unreadable readback leaves it with nothing to stand on.
+     */
     fun setAppRestricted(context: Context, packageName: String, restricted: Boolean): Boolean {
-        // 1. Try shell first
-        val result =
-            execute("appops set $packageName RUN_ANY_IN_BACKGROUND ${if (restricted) "ignore" else "allow"}")
-        if (result.first == 0) return true
+        // One expression for the mode both rungs write and the readback compares against, so a
+        // future edit cannot set one thing and check for another. `allow` is `MODE_ALLOWED` and not
+        // `MODE_DEFAULT`, and RUN_ANY_IN_BACKGROUND's platform default is `MODE_ALLOWED` too, so a
+        // lifted restriction reads back as `MODE_ALLOWED` whether AppOpsService kept the entry or
+        // dropped it as redundant.
+        val expectedMode = if (restricted) {
+            android.app.AppOpsManager.MODE_IGNORED
+        } else {
+            android.app.AppOpsManager.MODE_ALLOWED
+        }
 
-        // 2. Fallback to reflection
+        // 1. Try shell first. Unlike the other shell rungs in this file this one is not a liar:
+        // `appops set` returns -1 for an unknown package or op, so a 0 is a real statement about a
+        // real op. The readback is added on top of that rather than in place of it, which is why an
+        // unreadable readback must not sink it — turning "I could not check" into a reported failure
+        // here would be a regression, unlike at the clear-data sites where fail-closed is right.
+        val result = execute(
+            backgroundRestrictionCommand(packageName.escapeForShell(), thorUserId, restricted)
+        )
+        if (result.first == 0) {
+            val mode = readBackgroundMode(context, packageName)
+            if (mode == null || mode == expectedMode) return true
+            Logger.w(
+                "DhizukuHelper",
+                "setAppRestricted($packageName, restricted=$restricted): `appops set` exited 0 but " +
+                    "RUN_ANY_IN_BACKGROUND reads mode $mode, not $expectedMode — trying reflection"
+            )
+        }
+
+        // 2. Fallback to reflection. The call is kept for the reason [clearCache]'s rung 2 keeps
+        // its own — `asInterface` double-wraps the binder, so on a Dhizuku-only device this dies in
+        // a Shizuku transport, but on a device that also has Shizuku it may genuinely run. What is
+        // refused is this rung's *self-report*: "the invoke did not throw" is not a mode. Unlike
+        // clearCache and clearAppData, an app op can actually be read back, so this rung reports
+        // what `checkOperation` says rather than a flat `false` — a state the platform confirms is
+        // not a lie, and answering `false` over a confirmed change would strand the user retrying an
+        // operation that already worked. An unreadable readback still means `false` here, because
+        // there is nothing else left to believe.
         return runCatching {
             val appops =
                 asInterface("com.android.internal.app.IAppOpsService", Context.APP_OPS_SERVICE)
@@ -938,17 +1128,95 @@ object DhizukuHelper {
                     String::class.java,
                     Int::class.javaPrimitiveType!!
                 ),
-                Bypass.invoke<Int>(
-                    android.app.AppOpsManager::class.java,
-                    null,
-                    "strOpToOp",
-                    "android:run_any_in_background"
-                ),
+                runAnyInBackgroundOp(),
                 uid,
                 packageName,
-                if (restricted) android.app.AppOpsManager.MODE_IGNORED else android.app.AppOpsManager.MODE_ALLOWED
+                expectedMode
             )
-            true
+            readBackgroundMode(context, packageName) == expectedMode
         }.getOrElse { false }
+    }
+
+    /**
+     * `android:run_any_in_background` resolved to its op code.
+     *
+     * Lifted out of the `setMode` call it used to sit inside so that the rung that writes the op and
+     * the readback that checks it cannot end up naming two different ops — which is the one way a
+     * readback can turn from a verifier into a fabricated verdict. `strOpToOp` throws for a name the
+     * platform does not know rather than answering a wrong code, so both callers' `runCatching`
+     * still see a failure instead of a plausible number.
+     */
+    private fun runAnyInBackgroundOp(): Int = Bypass.invoke(
+        android.app.AppOpsManager::class.java,
+        null,
+        "strOpToOp",
+        "android:run_any_in_background"
+    )
+
+    /**
+     * The mode `IAppOpsService` reports for [packageName]'s RUN_ANY_IN_BACKGROUND op right now, or
+     * `null` for "could not read it".
+     *
+     * `null` is deliberately not "some other mode": the two callers in [setAppRestricted] treat them
+     * differently, and collapsing them is exactly how a readback stops being a verifier and becomes
+     * a second failure mode.
+     *
+     * **Expected to answer `null` on a Dhizuku-only device, and that is not a defect.** This rides
+     * the same double-wrapped binder as the reflection rung — `asInterface` puts
+     * `ShizukuBinderWrapper` on top of Dhizuku's own wrapper — so where that rung is dead this is
+     * dead with it.
+     *
+     * What a `null` costs depends on which rung asked, and the two are opposites:
+     * - **Shell rung** — not load-bearing. `appops set` exits non-zero for an unknown package or
+     *   op, so that rung's own report is already honest and a `null` leaves it standing. This
+     *   readback can only *add* confirmation there, which is what makes failing open safe rather
+     *   than optimistic.
+     * - **Reflection rung** — the sole verdict. "The invoke did not throw" is not a mode, so with
+     *   no readback there is nothing left to believe and a `null` forces `false` — which is what
+     *   that rung's own comment says. Fail-closed, as at the clear-data sites.
+     *
+     * **Known blind spot: a uid-level mode hides the package-level one this asks about.**
+     * `AppOpsService.checkOperationUnchecked` consults
+     * `mAppOpsCheckingService.getUidMode(uidState.uid, persistentDeviceId, code)` first and returns
+     * straight away whenever that differs from `AppOpsManager.opToDefaultMode(code)` — before the
+     * package entry is consulted at all. Both write paths in [setAppRestricted] are *package*-level
+     * (`appops set <pkg>` and `IAppOpsService.setMode(op, uid, packageName, mode)`), so wherever a
+     * uid-level mode exists for `OP_RUN_ANY_IN_BACKGROUND` this reports something unrelated to
+     * whether the write landed. `checkOperationRaw` is not the fix: it drops `evalMode`, not the
+     * uid short-circuit. The mechanism is AOSP-verified; what is *not* established is that anything
+     * writes this op at uid level — Settings' Battery ▸ Restricted uses the package-level form — so
+     * this is a known blind spot rather than an observed bug.
+     *
+     * `checkOperation(int, int, String)` is the signature this project has *not* verified across
+     * 28..37 — it has been stable in `IAppOpsService` for as long as anyone has needed it, but that
+     * is a recollection and not a measurement. A drifted signature arrives as a
+     * `NoSuchMethodException`, which lands here as `null` and therefore costs nothing, and that is
+     * the whole reason the uncertainty is tolerable instead of blocking.
+     */
+    // The type argument is spelled out because the block has two exits of different types — an early
+    // `null` and an `Int` — and an unreadable op must arrive as `null`, never as a mode.
+    private fun readBackgroundMode(context: Context, packageName: String): Int? = runCatching<Int?> {
+        val appops = asInterface("com.android.internal.app.IAppOpsService", Context.APP_OPS_SERVICE)
+            ?: return@runCatching null
+        Bypass.invoke<Int>(
+            appops::class.java,
+            appops,
+            "checkOperation",
+            arrayOf(
+                Int::class.javaPrimitiveType!!,
+                Int::class.javaPrimitiveType!!,
+                String::class.java
+            ),
+            runAnyInBackgroundOp(),
+            Packages(context).packageUid(packageName),
+            packageName
+        )
+    }.getOrElse {
+        Logger.d(
+            "DhizukuHelper",
+            "setAppRestricted($packageName): RUN_ANY_IN_BACKGROUND is unreadable, so the rung's own " +
+                "report stands: $it"
+        )
+        null
     }
 }

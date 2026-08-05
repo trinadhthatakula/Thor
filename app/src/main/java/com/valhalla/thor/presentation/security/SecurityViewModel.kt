@@ -14,7 +14,9 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
@@ -44,8 +46,32 @@ class SecurityViewModel(
     private val _events = Channel<UiText>(Channel.BUFFERED)
     val events: Flow<UiText> = _events.receiveAsFlow()
 
-    private val _biometricEnabled = preferenceRepository.userPreferences
+    /**
+     * Whether the app lock is armed — `null` until the preference has actually been read.
+     *
+     * The nullability is the whole point. The preference arrives from DataStore asynchronously, so
+     * a `false` seed made "not read yet" indistinguishable from "the user turned the lock off", and
+     * the not-required branch is the *first* one the `when` below can take: every cold start reported
+     * [AuthState.NotRequired] until the real value landed, which is a fail-open gate. Long enough to
+     * compose the whole app, too — and MainScreen reads the restored navigation state on its first
+     * composition, which Compose's `SaveableStateRegistry` then drops, so the user who authenticated
+     * a moment later arrived back at the start destination with their place lost.
+     */
+    private val _biometricEnabled: StateFlow<Boolean?> = preferenceRepository.userPreferences
         .map { it.biometricLockEnabled }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /**
+     * Whether the preference above is the user's answer or a stand-in for one Thor could not read.
+     *
+     * The settings file is the one in the Auto Backup allowlist, so a partial restore can hand a
+     * brand-new device an unreadable copy; `PreferenceRepositoryImpl` replaces it and carries the
+     * loss out on this flag. Everything else in that file degrades to a default the user can see
+     * and put back — the theme is wrong on screen, the language is wrong on screen. The app lock
+     * degrades to *off*, which looks exactly like a user who never set one.
+     */
+    private val _settingsLost = preferenceRepository.userPreferences
+        .map { it.settingsLost }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /**
@@ -71,19 +97,40 @@ class SecurityViewModel(
 
     /**
      * The single source of truth for auth state, derived from:
-     *  - Whether biometric lock is enabled in preferences
+     *  - Whether biometric lock is enabled in preferences — `null` until that has been read
      *  - Whether the user has authenticated this session
      *  - Whether this device can authenticate at all
      *  - Whether the last auth attempt produced an error
+     *  - Whether the preference was readable at all
      */
     val authState = combine(
         _biometricEnabled,
         _isSessionAuthenticated,
         _canAuthenticate,
-        _authError
-    ) { enabled, authenticated, capable, error ->
+        _authError,
+        _settingsLost
+    ) { enabled, authenticated, capable, error, settingsLost ->
+        // A settings file Thor could not read cannot answer whether the lock was armed, and `false`
+        // is not a safe guess: on a freshly restored device — the one place this happens — it opens
+        // Thor for a user who deliberately closed it, and the replaced file makes that permanent.
+        // So an unreadable store arms the lock too.
+        //
+        // Only where a prompt could actually succeed, though. Inventing an *unopenable* gate for a
+        // lock the user may never have set is the worse of the two mistakes, so with `capable`
+        // false this stays out of the way entirely and the branches below see the same state they
+        // always did. The user is told either way — see `init`.
+        //
+        // `enabled == true` rather than `enabled`, because the preference is tri-state: `null`
+        // means "not read yet", and the branch below answers that before this value is ever
+        // consulted. Written this way instead of leaning on a smart cast so that reordering the
+        // `when` cannot silently turn "not read yet" into "not armed".
+        val required = enabled == true || (settingsLost && capable)
         when {
-            !enabled -> AuthState.NotRequired
+            // Above everything, including `authenticated`: nothing else in this `when` can be
+            // decided before the preference is known, and each of the other branches would be
+            // asserting something about a lock whose state has not been read yet.
+            enabled == null -> AuthState.Loading
+            !required -> AuthState.NotRequired
             authenticated -> AuthState.Unlocked
             // Above Error on purpose. The prompt fails the instant it opens on a device that
             // cannot authenticate, so `error` is always populated here a moment later — and an
@@ -106,7 +153,11 @@ class SecurityViewModel(
     }.stateIn(
         viewModelScope,
         SharingStarted.Eagerly,
-        AuthState.Locked
+        // The same value the combine produces first, so the seed cannot describe a different app
+        // than the flow does. `Eagerly` starts the collector but does not make it emit inline — on a
+        // real device this seed is what `HomeActivity` reads when it composes, and `Locked` there
+        // would show the lock screen (and fire a prompt) to every user who never turned it on.
+        AuthState.Loading
     )
 
     init {
@@ -121,17 +172,34 @@ class SecurityViewModel(
         // user can still open would be a security downgrade dressed up as a bug fix.
         //
         // Driven off the preference flow rather than checked once here, because the preference is
-        // read asynchronously: `_biometricEnabled` seeds `false` and the restored `true` lands a
+        // read asynchronously: `_biometricEnabled` seeds `null` and the restored `true` lands a
         // moment later, which is precisely the case this exists for. Writing `false` flips that
         // flow, so this settles after one pass instead of looping.
+        //
+        // `_settingsLost` is deliberately *not* an input: this branch writes to the store, and
+        // writing a lock state Thor is only guessing at would turn a failed read into a permanent
+        // answer of its own.
         viewModelScope.launch {
             combine(_biometricEnabled, _canAuthenticate) { enabled, capable ->
-                enabled && !capable
+                enabled == true && !capable
             }.collect { lockedOut ->
                 if (!lockedOut || enrolmentCanFix) return@collect
                 preferenceRepository.setBiometricLock(false)
                 _events.send(UiText.StringResource(R.string.biometric_lock_disabled_no_biometric))
             }
+        }
+
+        // And say so when the settings could not be read at all, for the same reason the disarm
+        // above does: Thor is running on values the user did not choose, one of which is the app
+        // lock, and on the branch where no prompt can succeed the lock is not even re-armed. Told
+        // from here rather than from a settings screen because the flag decides what the user sees
+        // first, and because this is where the channel that survives that early already exists.
+        //
+        // `first { it }` completes on the first true and the flag never goes back, so this is one
+        // notice per process however many times the stream re-emits.
+        viewModelScope.launch {
+            _settingsLost.first { it }
+            _events.send(UiText.StringResource(R.string.settings_lost_using_defaults))
         }
     }
 
@@ -166,7 +234,14 @@ class SecurityViewModel(
      * user can choose to retry or exit.
      */
     fun onAuthError(message: String) {
-        if (_biometricEnabled.value && !_isSessionAuthenticated.value) {
+        // `_settingsLost` for the same reason `authState` takes it: on that branch the prompt is
+        // armed without the preference being `true`, and gating the error on the preference alone
+        // would leave a cancelled prompt sitting on the lock screen with nothing said and no Retry.
+        //
+        // `== true` because the preference is tri-state. A prompt cannot have errored before the
+        // preference was read, so the `null` case is unreachable rather than merely unhandled — but
+        // spelling it out keeps this branch from quietly changing meaning if that ever stops holding.
+        if ((_biometricEnabled.value == true || _settingsLost.value) && !_isSessionAuthenticated.value) {
             _authError.value = message
         }
     }

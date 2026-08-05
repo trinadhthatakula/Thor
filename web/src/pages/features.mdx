@@ -507,9 +507,11 @@ F-Droid listing is planned. The [download page](/download) has the details for e
 **What differs between `foss` and `store`:** in what the app does, the Support Developer flow. The
 `store` build carries Google Play Billing; the `foss` build ships a no-op stub with billing
 permanently unavailable and opens the donation links in a browser instead. The packaging differs too:
-`foss` takes a `-foss` version-name suffix, an extra ProGuard rules file, and a locale filter
-trimming it to the five languages Thor is translated into, while the benchmark build type exists only
-for `store`. Every app-management feature is the same code in both.
+`foss` takes a `-foss` version-name suffix and an extra ProGuard rules file, while the benchmark
+build type exists only for `store`. The locale filter that used to be one of these is now applied to
+every variant, so both builds carry the same five languages — see the
+[download page](/download#foss-and-store) for why the Play build stopped using per-locale splits. Every
+app-management feature is the same code in both.
 
 <h3 id="reproducible-builds">Reproducible builds</h3>
 

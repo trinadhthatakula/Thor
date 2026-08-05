@@ -18,6 +18,8 @@ import android.os.Build
 import com.valhalla.bypass.Bypass
 import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.data.source.local.installCommand
+import com.valhalla.thor.data.source.local.thorUserId
 import com.valhalla.thor.util.Logger
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
@@ -165,7 +167,7 @@ class ShizukuReflector(
     suspend fun uninstallApp(packageName: String, resetToFactory: Boolean = false): Boolean {
         // 1. Try shell first
         val shellResult = runCatching {
-            Shizuku.uninstallApp(context, packageName)
+            Shizuku.uninstallApp(packageName)
         }.getOrElse {
             if (BuildConfig.DEBUG) {
                 Logger.e("ShizukuReflector", "Shizuku.uninstallApp failed, trying fallbacks", it)
@@ -177,10 +179,19 @@ class ShizukuReflector(
         // 2. Fallback to reflection
         val reflectionResult = runCatching {
             val packageInfo = context.packageManager.getInfoForPackage(packageName) ?: return false
-            val isSystem =
-                (packageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-            val hasUpdates =
-                (packageInfo.applicationInfo!!.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+            // Read through, don't assert. [getInfoForPackage] now also answers for packages that
+            // are not installed for this user — that widening is the whole reason this rung is
+            // reachable for them — and an *archived* record is synthesised by PackageManager from
+            // the archive state rather than parsed from an APK, so its ApplicationInfo is not the
+            // same guaranteed object an ordinary lookup returns. A `!!` that throws here is caught
+            // by the surrounding runCatching and reported as `false`, which would defeat the rung
+            // on the very packages the widening was for. Absent flags mean "no evidence this is a
+            // system app": isSystem and hasUpdates both read false, and the delete flags below fall
+            // to 0 — a plain removal for the session's user, which is the safe reading of an
+            // unknown.
+            val appFlags = packageInfo.applicationInfo?.flags ?: 0
+            val isSystem = (appFlags and ApplicationInfo.FLAG_SYSTEM) != 0
+            val hasUpdates = (appFlags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
 
             val shouldReset = resetToFactory && isSystem && hasUpdates
             // Namespace the result action + PendingIntent requestCode by the TARGET package so that
@@ -215,10 +226,23 @@ class ShizukuReflector(
             //                not just its installed updates)
             // Reset-to-factory means rolling a system app back to its shipped version, which is a
             // plain removal of the installed updates, so DELETE_SYSTEM_APP must NOT be set there.
+            //
+            // No flag at all for an ordinary user app, where this used to set DELETE_ALL_USERS.
+            // `PackageInstaller.uninstall` passes the installer's own `mUserId` — which
+            // [getPackageInstaller] now binds to [thorUserId] — and DELETE_ALL_USERS overrides it,
+            // so the corrected user id was inert for exactly the packages people uninstall. It also
+            // put this rung at odds with the shell rung above it, which names the user: two rungs of
+            // one operation removing the app for different sets of users depending on which one the
+            // device happened to allow. Zero leaves the session's user in charge. On a single-user
+            // device nothing changes — PMS removes a package outright once no other user holds it.
+            //
+            // DELETE_ALL_USERS stays on the reset path, where it is not a default but the operation:
+            // the update APK it removes lives in /data/app and is shared by every user, so rolling
+            // one user back to the shipped version is not a thing the platform can do.
             val flags = when {
                 shouldReset -> 0x00000002
                 isSystem -> 0x00000004
-                else -> 0x00000002
+                else -> 0
             }
 
             // Fire exactly one async uninstall (previously this ran twice for the reset path) and
@@ -310,8 +334,15 @@ class ShizukuReflector(
     }
 
     /**
-     * Installs an APK using the 'pm install' command via Shizuku.
+     * Installs an APK using the 'pm install' command via Shizuku, **for [thorUserId]**.
      * Note: The file at [apkPath] must be readable by the shell user (e.g. /sdcard/).
+     *
+     * The command is built by `installCommand` rather than written here. This one had no caller
+     * when the user id was swept through the gateways, which is exactly why it is worth naming a
+     * user in: a bare `pm install` is not "install for the shell's user" — `makeInstallParams`
+     * leaves `params.userId = UserHandle.USER_ALL` and the session is created with
+     * `INSTALL_ALL_USERS`, so the first person to call this would have installed the APK for every
+     * user on the device without anything in the exit code saying so.
      *
      * @param apkPath Absolute path to the APK file.
      * @param canDowngrade Whether to allow downgrade.
@@ -319,9 +350,11 @@ class ShizukuReflector(
      */
     fun installPackage(apkPath: String, canDowngrade: Boolean = false): Boolean {
         return try {
-            val command = "pm install -r -g${if (canDowngrade) " -d" else ""} ${
-                apkPath.escapeForShell()
-            }"
+            val command = installCommand(
+                escapedApkPaths = listOf(apkPath.escapeForShell()),
+                userId = thorUserId,
+                canDowngrade = canDowngrade,
+            )
             val result = Shizuku.execute(command)
             result.first == 0
         } catch (e: Exception) {
@@ -391,7 +424,12 @@ class ShizukuReflector(
                     installFlags,
                     installReason,
                     intent.intentSender,
-                    0,
+                    // The userId argument, and the whole point of this rung being reached at all:
+                    // it is the fallback for the `pm install-existing --user N` shell rung, so it
+                    // has to restore the package for the same user that rung named. A literal 0
+                    // here silently restored (and, in the uninstall mirror of this call, removed)
+                    // the primary user's copy whenever Thor runs in a work profile.
+                    thorUserId,
                     null
                 )
             }
@@ -405,12 +443,13 @@ class ShizukuReflector(
 
     fun getPackageInstaller(): PackageInstaller {
         val iPackageInstaller = ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller()
-        val root = try {
-            rikka.shizuku.Shizuku.getUid() == 0
-        } catch (_: Exception) {
-            false
-        }
-        val userId = if (root) android.os.Process.myUserHandle().hashCode() else 0
+        // Thor's own user, unconditionally. This used to be `if (Shizuku.getUid() == 0) <this user>
+        // else 0`, which asked what privilege Shizuku holds when the question is which user the
+        // session acts on — and the two are unrelated. The `else 0` branch is the normal setup
+        // (Shizuku at shell uid 2000), so on a work-profile device every operation this installer
+        // carries was scoped to the primary user: `uninstall` with DELETE_SYSTEM_APP and no
+        // DELETE_ALL_USERS bit removed a system app for user 0, the profile the user never touched.
+        val userId = thorUserId
 
         // The reason for use "com.android.shell" as installer package under adb is that
         // getMySessions will check installer package's owner
@@ -428,12 +467,8 @@ class ShizukuReflector(
      */
     fun createPackageInstallerFor(installerPackageName: String): PackageInstaller {
         val iPackageInstaller = ShizukuPackageInstallerUtils.getPrivilegedPackageInstaller()
-        val root = try {
-            rikka.shizuku.Shizuku.getUid() == 0
-        } catch (_: Exception) {
-            false
-        }
-        val userId = if (root) android.os.Process.myUserHandle().hashCode() else 0
+        // Thor's own user, for the reason [getPackageInstaller] gives.
+        val userId = thorUserId
 
         return ShizukuPackageInstallerUtils.createPackageInstaller(
             iPackageInstaller,

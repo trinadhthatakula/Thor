@@ -15,32 +15,53 @@ import com.valhalla.thor.domain.model.runtimeGroupFor
 import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
+
+/**
+ * The flags every permission read in this file uses, single-package and whole-device alike.
+ *
+ * The match half is not optional, and it is not optional *per call site* either — which is how the
+ * two here came apart. A **system** app frozen by removal for the current user (what
+ * `FreezePolicy.uninstallFreezeFallbackAllowed` still permits, and the state every system app frozen
+ * before Thor preferred disabling is already in) is not installed for this user, so a
+ * `getPackageInfo` without MATCH_UNINSTALLED_PACKAGES **throws** for it. The index kept the flag and
+ * the per-app read did not, so Thor listed the app, offered its permission sheet, and then failed to
+ * open it — for exactly the apps Thor itself had frozen.
+ *
+ * A top-level constant rather than two literals: the sweep and the single read have to describe the
+ * same universe of packages, and the only way to keep them from drifting again is to give them one
+ * name to share.
+ */
+internal const val PERMISSION_QUERY_FLAGS =
+    PackageManager.GET_PERMISSIONS or
+            PackageManager.MATCH_UNINSTALLED_PACKAGES or
+            PackageManager.MATCH_DISABLED_COMPONENTS
 
 @Single(binds = [PermissionRepository::class])
 class PermissionRepositoryImpl(
     context: Context,
-    private val systemRepository: SystemRepository
+    private val systemRepository: SystemRepository,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : PermissionRepository {
 
     private val pm = context.packageManager
 
     @Suppress("DEPRECATION")
     override suspend fun getAppPermissions(packageName: String): Result<List<AppPermission>> =
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             try {
-                val flags = PackageManager.GET_PERMISSIONS
                 val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     pm.getPackageInfo(
                         packageName,
-                        PackageManager.PackageInfoFlags.of(flags.toLong())
+                        PackageManager.PackageInfoFlags.of(PERMISSION_QUERY_FLAGS.toLong())
                     )
                 } else {
-                    pm.getPackageInfo(packageName, PackageManager.GET_PERMISSIONS)
+                    pm.getPackageInfo(packageName, PERMISSION_QUERY_FLAGS)
                 }
 
                 val requestedPermissions = packageInfo.requestedPermissions ?: emptyArray()
@@ -84,14 +105,15 @@ class PermissionRepositoryImpl(
     /**
      * One pass over every installed package, bucketing them by runtime-permission group.
      *
-     * The match flags mirror `AppRepositoryImpl`'s sweep, and that is not optional. A *system* app
-     * frozen by removal for the current user — what `FreezePolicy.uninstallFreezeFallbackAllowed`
-     * still permits, and what every system app frozen before Thor preferred disabling is already
-     * in — is not installed for this user, and a default `getInstalledPackages` drops it. The
-     * disabled mechanic needs no flag of its own here, which is exactly why the pair must stay
-     * whole: the half that is doing the work is the invisible one. The app list keeps those rows — showing
-     * them is a headline Thor capability — and `filterApps` intersects the list with this index, so
-     * two different package universes would make every frozen app silently fall out of every chip.
+     * [PERMISSION_QUERY_FLAGS] mirrors `AppRepositoryImpl`'s sweep, and that is not optional. A
+     * *system* app frozen by removal for the current user — what
+     * `FreezePolicy.uninstallFreezeFallbackAllowed` still permits, and what every system app frozen
+     * before Thor preferred disabling is already in — is not installed for this user, and a default
+     * `getInstalledPackages` drops it. The disabled mechanic needs no flag of its own here, which is
+     * exactly why the pair must stay whole: the half that is doing the work is the invisible one.
+     * The app list keeps those rows — showing them is a headline Thor capability — and `filterApps`
+     * intersects the list with this index, so two different package universes would make every
+     * frozen app silently fall out of every chip.
      *
      * Two caches make this affordable. `groupOf` memoises the group per *permission name* — a device
      * with 400 apps declares maybe 200 distinct permissions, and without it the same
@@ -103,15 +125,14 @@ class PermissionRepositoryImpl(
      */
     @Suppress("DEPRECATION")
     override suspend fun buildPermissionIndex(): Result<PermissionIndex> =
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             try {
-                val flags = PackageManager.GET_PERMISSIONS or
-                        PackageManager.MATCH_UNINSTALLED_PACKAGES or
-                        PackageManager.MATCH_DISABLED_COMPONENTS
                 val packages = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(flags.toLong()))
+                    pm.getInstalledPackages(
+                        PackageManager.PackageInfoFlags.of(PERMISSION_QUERY_FLAGS.toLong())
+                    )
                 } else {
-                    pm.getInstalledPackages(flags)
+                    pm.getInstalledPackages(PERMISSION_QUERY_FLAGS)
                 }
 
                 // permission name -> its group, or null for "not dangerous / no usable group".

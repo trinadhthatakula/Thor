@@ -16,9 +16,9 @@
     <!-- The only state worth restoring: DataStore Preferences — theme, sort/filter, privilege
          mode, freezer mode, biometric lock and friends. The store name "thor_preferences" is
          declared in data/repository/PreferenceRepositoryImpl.kt:28, and DataStore writes it to
-         files/datastore/<name>.preferences_pb, so the domain is "file", NOT "sharedpref" — Thor
-         persists nothing through SharedPreferences. A path that matches nothing fails exactly as
-         silently as the empty template this replaced, so it has to track that filename.
+         files/datastore/<name>.preferences_pb, so the domain is "file", NOT "sharedpref". A path
+         that matches nothing fails exactly as silently as the empty template this replaced, so it
+         has to track that filename.
 
          The two device-specific keys in here re-resolve rather than break on a new device:
          export_dir_uri is revalidated by ExportAppUseCase (falls back to Downloads if the SAF
@@ -49,6 +49,15 @@
 
        - cacheDir — APK staging, split bundles, analysis scratch and installer icons, running to
          hundreds of MB. The platform skips it anyway.
+
+       - both SharedPreferences files (domain "sharedpref"). Thor has two, and neither is a
+         setting: AppLocale's one-key language mirror, which exists only so a pre-33 process can
+         read the applied tag before Koin starts, and AppRepositoryImpl's app-label locale key,
+         which records the language the Room rows above were scanned in. Each describes state that
+         is NOT being restored with it — the mirror is re-derived from the backed-up DataStore
+         preference on the first start (ThorApplication reconciles the two), and a locale key
+         restored without its database would claim a language for labels this device never
+         scanned, suppressing the very re-scan that would fix them.
 
        If any of these ever becomes worth backing up, splitting the user-curated freezer watchlist
        out of the derived metadata cache is the prerequisite, not widening this file.

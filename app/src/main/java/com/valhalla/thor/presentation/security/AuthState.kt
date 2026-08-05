@@ -8,6 +8,20 @@ package com.valhalla.thor.presentation.security
  * The UI tree uses this to decide whether to show BiometricScreen or MainScreen.
  */
 sealed interface AuthState {
+    /**
+     * The lock preference has not been read yet, so it is not yet known whether a gate is needed.
+     *
+     * Its own state because it is neither of the two it could be folded into, and both folds are
+     * wrong. Folded into [NotRequired] — which is what seeding the preference `false` did — the gate
+     * stands open for the frames between `onCreate` and DataStore answering, and that is long enough
+     * to compose the entire app behind the lock. Folded into [Locked] it fires a biometric prompt at
+     * every user who never turned the lock on.
+     *
+     * The UI shows nothing on this state and holds the splash screen up until it resolves, so those
+     * frames belong to no branch at all.
+     */
+    data object Loading : AuthState
+
     /** Biometric lock is disabled — proceed directly to the app. */
     data object NotRequired : AuthState
 

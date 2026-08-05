@@ -23,7 +23,7 @@
   ],
   "repo_url": "https://github.com/trinadhthatakula/Thor",
   "download_url": "https://github.com/trinadhthatakula/Thor/releases/latest/download/foss-release.apk",
-  "changelog": "• 🧊 Freezing a preinstalled app no longer wipes its data — Thor disables it, and keeps the data if it must remove it.\n\n• ❄️ Removing an app from the Freezer unfreezes it first, on every screen — and says so if it can't.\n\n• 📱 Fixed the app list collapsing to one entry on Chinese-market ROMs.\n\n• ⏸️ Thor no longer claims success when it couldn't unsuspend an app.\n\n• 🔄 Privilege Check's Refresh re-checks Root, Shizuku and Dhizuku.\n\n• 💖 New: more ways to support Thor's development.",
+  "changelog": "• ✅ Freeze, restrict and clear-data now report what really happened.\n\n• 🔒 App lock now covers app start, and hides your app list in Recents.\n\n• 🌍 Language picker works on Android 12 and below.\n\n• ⚡ Bulk actions no longer stall 15 seconds per app on some ROMs.\n\n• 📦 The installer verifies the exact bytes it installs.\n\n• 🛠️ Fixed a crash loop from an unreadable settings file.\n\n• 💖 Support tiers load from Play — new ones appear without an update.",
   "store_issue_number": 279,
   "category": "Tools",
   "license": "GPL-3.0-or-later",

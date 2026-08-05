@@ -20,14 +20,15 @@ import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.Logger
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 
 @Single
@@ -38,10 +39,15 @@ class AutoFreezeManager(
     private val manageAppUseCase: ManageAppUseCase,
     private val systemRepository: SystemRepository,
     private val appRepository: AppRepository,
-    private val freezerShortcutManager: com.valhalla.thor.data.launcher.FreezerShortcutManager
+    private val freezerShortcutManager: com.valhalla.thor.data.launcher.FreezerShortcutManager,
+    // Both back a process-lifetime scope below rather than a single call, so these two choose
+    // where every auto-freeze batch and every preference observation lives for the life of the
+    // process — not where one function happens to hop.
+    @Named("io") private val ioDispatcher: CoroutineDispatcher,
+    @Named("main") private val mainDispatcher: CoroutineDispatcher
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val scope = CoroutineScope(SupervisorJob() + ioDispatcher)
+    private val mainScope = CoroutineScope(SupervisorJob() + mainDispatcher)
     private var observationJob: Job? = null
     private var isObserving = false
     private var isReceiverRegistered = false

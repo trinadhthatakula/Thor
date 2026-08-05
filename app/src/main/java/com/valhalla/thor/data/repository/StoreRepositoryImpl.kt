@@ -12,11 +12,12 @@ import com.valhalla.thor.domain.model.ExtensionCatalog
 import com.valhalla.thor.domain.repository.StoreRepository
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import java.io.File
 import java.net.HttpURLConnection
@@ -32,11 +33,12 @@ import java.security.MessageDigest
 class StoreRepositoryImpl(
     private val context: Context,
     private val extensionManager: ExtensionManager,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : StoreRepository {
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    override suspend fun fetchCatalog(): Result<List<CatalogEntry>> = withContext(Dispatchers.IO) {
+    override suspend fun fetchCatalog(): Result<List<CatalogEntry>> = withContext(ioDispatcher) {
         runCatching {
             val body = httpGet(CATALOG_URL)
             val catalog = json.decodeFromString<ExtensionCatalog>(body)
@@ -51,7 +53,7 @@ class StoreRepositoryImpl(
     }
 
     override suspend fun downloadAndVerify(entry: CatalogEntry): Result<Uri> =
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             if (entry.apkUrl.isBlank()) {
                 return@withContext Result.failure(
                     IllegalArgumentException("Entry '${entry.id}' has no APK to download")
@@ -142,7 +144,7 @@ class StoreRepositoryImpl(
      * formatting used by the signer-cert hashing) for a case-insensitive compare with the catalog.
      */
     private suspend fun downloadHashing(urlString: String, dest: File): String {
-        return withContext(Dispatchers.IO) {
+        return withContext(ioDispatcher) {
             var url = URL(urlString)
             var redirects = 0
             // Follow redirects MANUALLY so every hop — including the redirect target — is re-validated as

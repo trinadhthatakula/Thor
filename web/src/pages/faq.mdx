@@ -298,9 +298,11 @@ Billing; the `foss` build ships a stub with billing permanently unavailable. Eve
 feature is the same in both.
 
 They are not byte-for-byte twins otherwise — the FOSS flavour also carries a `-foss` suffix in its
-version name and a narrower set of bundled locales — but nothing you can do with one is missing from
-the other. If you are on the FOSS build, or you would simply rather not send a cut to a payment
-processor, [the direct routes are below](#support-development).
+version name and an extra ProGuard rules file — but nothing you can do with one is missing from the
+other. Both now bundle the same five languages: the locale filter that used to apply only to the
+FOSS flavour is applied to every variant, because the Play build no longer uses per-locale splits.
+If you are on the FOSS build, or you would simply rather not send a cut to a payment processor,
+[the direct routes are below](#support-development).
 
 <h3 id="reproducible-builds">Are the builds reproducible?</h3>
 

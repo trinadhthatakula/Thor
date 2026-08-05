@@ -15,7 +15,18 @@ import kotlinx.coroutines.flow.Flow
 
 interface PreferenceRepository {
 
-    // Observe all preferences as a single stream
+    /**
+     * Observe all preferences as a single stream.
+     *
+     * Never fails on a read: an unreadable store is retried and then degrades to the defaults
+     * instead of throwing, so a collector does not need its own `catch`. That is a promise of this
+     * interface, not an accident of the implementation — around twenty call sites collect this,
+     * several of them during startup, and a throw from any of them is an unrecoverable crash loop.
+     *
+     * When it does degrade it says so, on [UserPreferences.settingsLost]. Read that before treating
+     * a `false` as the user's answer: after a failed read every boolean here is `false`, and one of
+     * them arms the app lock.
+     */
     val userPreferences: Flow<UserPreferences>
 
     // --- App List ---

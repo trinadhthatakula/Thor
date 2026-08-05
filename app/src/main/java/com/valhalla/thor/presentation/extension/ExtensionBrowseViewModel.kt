@@ -9,7 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.data.manager.ExtensionManager
 import com.valhalla.thor.domain.model.CatalogEntry
 import com.valhalla.thor.domain.repository.StoreRepository
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
+import org.koin.core.annotation.Named
 
 /** Per-entry install lifecycle in the store list. */
 sealed interface InstallStatus {
@@ -47,6 +48,7 @@ data class BrowseUiState(
 class ExtensionBrowseViewModel(
     private val storeRepository: StoreRepository,
     private val extensionManager: ExtensionManager,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(BrowseUiState())
@@ -59,7 +61,7 @@ class ExtensionBrowseViewModel(
     fun refresh() {
         _uiState.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
-            val installed = withContext(Dispatchers.IO) {
+            val installed = withContext(ioDispatcher) {
                 runCatching { extensionManager.getInstalledExtensionVersionCodes() }
                     .getOrDefault(emptyMap())
             }

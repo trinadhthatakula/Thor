@@ -82,11 +82,11 @@ import com.valhalla.thor.presentation.theme.firaMonoFontFamily
 import com.valhalla.thor.presentation.utils.AppIconModel
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
+import com.valhalla.thor.util.AppLocale
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import androidx.compose.ui.platform.ClipEntry
 import java.util.Date
-import java.util.Locale
 
 @OptIn(ExperimentalSharedTransitionApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -1165,13 +1165,27 @@ private data class ComponentLists(
     val providers: List<String>
 )
 
+/**
+ * An install timestamp as a medium date and time.
+ *
+ * The locale comes from [AppLocale.localeOf] — the `Configuration` this very [context] resolves its
+ * resources with — and not from `Locale.getDefault()`. Below API 33 the process default is the
+ * *device's* language regardless of what the in-app picker chose, so the default put an English
+ * date directly beneath the French label produced by the `stringResource` two lines up. On 33+ the
+ * platform merges the per-app locale into the process default and the two agree, so nothing changes
+ * there.
+ *
+ * This is also what makes the row consistent with the APK size beside it, which already goes
+ * through `android.text.format.Formatter.formatShortFileSize(context, …)` and therefore has always
+ * read its locale off the Context.
+ */
 private fun formatTime(timestamp: Long, context: Context): String {
     if (timestamp == 0L) return context.getString(R.string.not_available)
     return try {
         val formatter = DateFormat.getDateTimeInstance(
             DateFormat.MEDIUM,
             DateFormat.MEDIUM,
-            Locale.getDefault()
+            AppLocale.localeOf(context)
         )
         formatter.format(Date(timestamp))
     } catch (_: Exception) {

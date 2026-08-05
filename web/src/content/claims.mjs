@@ -178,13 +178,16 @@ export const claimRules = [
     unless: NEGATED,
     rationale:
       'One *functional* difference, several others. The foss flavour also sets a `-foss` ' +
-      'versionNameSuffix, adds proguard-rules-foss.pro, and the variant hook narrows ' +
-      'localeFilters to five locales against the store build\'s full set. "One difference" is a ' +
-      'claim a reader can falsify by opening one Gradle file.',
+      'versionNameSuffix and adds proguard-rules-foss.pro, and the benchmark build type is ' +
+      'created only for store. "One difference" is a claim a reader can falsify by opening one ' +
+      'Gradle file. Locales are NOT one of them any more: localeFilters moved from the foss-only ' +
+      'variant hook to onVariants {} once bundle.language.enableSplit was turned off, so both ' +
+      'flavours ship the same five. Any page still saying the store build keeps every locale is ' +
+      'wrong for the opposite reason this rule exists.',
     source:
       "app/build.gradle.kts: productFlavors.create(\"foss\") (versionNameSuffix, " +
-      'proguardFile("proguard-rules-foss.pro")) and the androidComponents variant hook that sets ' +
-      'localeFilters',
+      'proguardFile("proguard-rules-foss.pro")), the store-only benchmark buildType, and the ' +
+      'variant-wide androidComponents onVariants hook that sets localeFilters for every variant',
     allow: [],
   },
 

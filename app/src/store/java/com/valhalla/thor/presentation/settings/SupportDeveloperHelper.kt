@@ -101,27 +101,42 @@ fun SupportDeveloperHelper(
     val rateDesc = stringResource(R.string.rate_play_store_desc)
     val exploreTitle = stringResource(R.string.explore_other_apps_title)
     val exploreDesc = stringResource(R.string.explore_other_apps_desc)
+    // Price templates, one per period Play can bill a base plan at. The tier used to render
+    // "$price / month" from a hardcoded English literal — the one untranslated user-facing string
+    // in the flavour, and a claim about the period that nothing checked. Resolved here in
+    // composable scope like every other string on this screen, then formatted inside remember.
+    val pricePerWeek = stringResource(R.string.billing_price_per_week)
+    val pricePerMonth = stringResource(R.string.billing_price_per_month)
+    val pricePerQuarter = stringResource(R.string.billing_price_per_quarter)
+    val pricePerHalfYear = stringResource(R.string.billing_price_per_half_year)
+    val pricePerYear = stringResource(R.string.billing_price_per_year)
     val playStoreActions = remember(
         products, isBillingAvailable, activeSubscription,
-        activePlanText, rateTitle, rateDesc, exploreTitle, exploreDesc
+        activePlanText, rateTitle, rateDesc, exploreTitle, exploreDesc,
+        pricePerWeek, pricePerMonth, pricePerQuarter, pricePerHalfYear, pricePerYear
     ) {
         if (isBillingAvailable && products.isNotEmpty()) {
-            val sortedProducts = products.sortedBy { product ->
-                when (product.id) {
-                    "support_tier_5" -> 5
-                    "support_tier_10" -> 10
-                    "support_tier_25" -> 25
-                    "support_tier_50" -> 50
-                    else -> 0
-                }
-            }
-
-            sortedProducts.map { product ->
+            // Rendered in the order given. `products` is already sorted cheapest-first from Play's
+            // own prices — see [BillingProcessor.products] and [sortSupportTiers]. This used to
+            // re-derive the order here from a `when` over hardcoded product IDs whose `else` arm
+            // scored every unrecognised tier 0, i.e. cheaper than all of them; re-sorting here at
+            // all is what made the tier list something an app release had to keep in step with.
+            products.map { product ->
                 val isActive = activeSubscription?.productId == product.id
                 val descriptionText = if (isActive) {
                     activePlanText
                 } else if (product.formattedPrice.isNotEmpty()) {
-                    "${product.formattedPrice} / month"
+                    val template = when (subscriptionPeriodOf(product.billingPeriod)) {
+                        SubscriptionPeriod.WEEKLY -> pricePerWeek
+                        SubscriptionPeriod.MONTHLY -> pricePerMonth
+                        SubscriptionPeriod.QUARTERLY -> pricePerQuarter
+                        SubscriptionPeriod.HALF_YEARLY -> pricePerHalfYear
+                        SubscriptionPeriod.YEARLY -> pricePerYear
+                        // A period with no label — a four-week base plan, say. The price on its own
+                        // is still true; a guessed period is not.
+                        SubscriptionPeriod.UNKNOWN -> null
+                    }
+                    template?.format(product.formattedPrice) ?: product.formattedPrice
                 } else {
                     product.description
                 }

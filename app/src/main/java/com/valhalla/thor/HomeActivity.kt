@@ -4,16 +4,24 @@
 package com.valhalla.thor
 
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
@@ -29,8 +37,10 @@ import com.valhalla.thor.presentation.security.AuthState
 import com.valhalla.thor.presentation.security.BiometricScreen
 import com.valhalla.thor.presentation.security.BiometricUnavailableScreen
 import com.valhalla.thor.presentation.security.SecurityViewModel
+import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.theme.ThorTheme
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
+import com.valhalla.thor.util.AppLocale
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -43,9 +53,26 @@ class HomeActivity : ComponentActivity() {
     private val homeViewModel: HomeViewModel by viewModel()
     private val securityViewModel: SecurityViewModel by viewModel()
     private val preferenceRepository: PreferenceRepository by inject()
+    private val billingProcessor: BillingProcessor by inject()
 
     private val requestCode = 1001
     private var hasRequestedShizuku = false
+
+    /** The locale tag this instance attached with; see [attachBaseContext]. */
+    private var attachedLocaleTag: String? = null
+
+    /**
+     * Applies the chosen locale on API 28–32, where nothing else will.
+     *
+     * Spelled identically in [com.valhalla.thor.presentation.installer.PortableInstallerActivity]
+     * and [com.valhalla.thor.presentation.launcher.FreezerLaunchActivity]: an entry point that
+     * omits this renders in the system locale while the rest of the app does not, and "the language
+     * picker works" quietly stops being true for whoever arrives through that door.
+     */
+    override fun attachBaseContext(newBase: Context) {
+        attachedLocaleTag = AppLocale.tagFor(newBase)
+        super.attachBaseContext(AppLocale.wrap(newBase))
+    }
 
     private val shizukuHandler = ShizukuPermissionHandler(
         onPermissionGranted = {
@@ -62,8 +89,19 @@ class HomeActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        installSplashScreen()
+        val splashScreen = installSplashScreen()
+        // Hold the frame until the app lock has answered. The preference comes from DataStore, which
+        // answers a beat after `setContent` returns, so without this the branch the user sees first
+        // is decided by a race rather than by the preference — and the losing outcome is the app,
+        // fully composed, behind a lock that had not finished switching on.
+        splashScreen.setKeepOnScreenCondition {
+            securityViewModel.authState.value == AuthState.Loading
+        }
         enableEdgeToEdge()
+        // Settings lives inside this activity, so a language change never leaves it: without this
+        // the new locale would only appear on the next cold start. A no-op above API 32, where the
+        // platform relaunches the activity itself.
+        AppLocale.recreateOnChange(this, attachedLocaleTag)
         shizukuHandler.register()
 
         setContent {
@@ -83,11 +121,37 @@ class HomeActivity : ComponentActivity() {
             ) {
                 val authState by securityViewModel.authState.collectAsStateWithLifecycle()
 
-                // The only place SecurityViewModel speaks: it disarms a lock this device can never
-                // open, and that must not happen silently — the user set that lock deliberately and
-                // is entitled to know Thor took it off. Collected here rather than in a screen
-                // because the disarm lands *before* any screen: it is what decides which of the
-                // branches below composes at all.
+                // The app lock promises that nothing inside is visible until you authenticate, and
+                // the Recents card is inside: Android snapshots whatever was on screen when Thor went
+                // to the background — typically the full installed-app list, with which apps are
+                // frozen or hidden — and shows it to anyone who picks the device up, no prompt
+                // involved. FLAG_SECURE is what excludes the window from that capture, and from
+                // screenshots and recorders with it.
+                //
+                // Keyed on `authState`, deliberately, and NOT on `prefs.biometricLockEnabled`:
+                // `prefs` is seeded with `UserPreferences()` until DataStore answers, whose default
+                // is `false`, so keying on it would leave the window capturable for exactly the
+                // window this whole change exists to close — the same "not read yet is
+                // indistinguishable from off" defect, reintroduced one screen later. `authState`
+                // already carries the tri-state, so the condition is inverted to fail closed: every
+                // state is secure *except* the one that means the lock is genuinely off, and an
+                // `AuthState` added later is protected by default rather than by remembering to
+                // amend this line. A user who never armed the lock still keeps their screenshots.
+                LaunchedEffect(authState) {
+                    if (authState == AuthState.NotRequired) {
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    } else {
+                        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    }
+                }
+
+                // The two things SecurityViewModel says, both about the app lock going away without
+                // the user asking: it disarms a lock this device can never open, and it reports a
+                // settings file it could not read — which drops the lock preference to `false` the
+                // same way. Neither may happen silently; the user set that lock deliberately and is
+                // entitled to know. Collected here rather than in a screen because both land
+                // *before* any screen: they are what decides which of the branches below composes
+                // at all.
                 ObserveAsEvents(securityViewModel.events) { event ->
                     Toast.makeText(
                         this@HomeActivity,
@@ -97,6 +161,21 @@ class HomeActivity : ComponentActivity() {
                 }
 
                 when (authState) {
+                    AuthState.Loading -> {
+                        // Deliberately nothing but a backdrop: the splash is still up (its
+                        // keep-on-screen condition reads this same state), and composing MainScreen
+                        // here is the defect this state exists to stop — its first composition
+                        // consumes the restored navigation state, which is then gone by the time the
+                        // user authenticates. Filled rather than empty so that a frame between the
+                        // splash exiting and MainScreen laying out cannot flash the light window
+                        // background of `Theme.Thor` at a dark-theme user.
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.background)
+                        )
+                    }
+
                     AuthState.NotRequired,
                     AuthState.Unlocked -> {
                         MainScreen(
@@ -183,6 +262,12 @@ class HomeActivity : ComponentActivity() {
         // AuthState.Unavailable. They leave to set a screen lock and come back, and only a
         // re-query turns that into an unlocked app rather than the same dead end.
         securityViewModel.refreshCapability()
+        // Above the Shizuku early-return, which latches after the first resume — this one has to
+        // run on *every* resume. A purchase completed while Thor's process was dead is never
+        // reported by onPurchasesUpdated, and Google revokes and refunds anything left
+        // unacknowledged for three days; coming back to the app is the first chance to catch it.
+        // The store implementation does its work on a background scope and the foss one is a no-op.
+        billingProcessor.refreshPurchases()
         if (hasRequestedShizuku) return
         lifecycleScope.launch {
             val privileges = privilegeManager.state.first { it.isReady }
