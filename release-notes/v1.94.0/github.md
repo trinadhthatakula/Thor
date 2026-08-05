@@ -133,7 +133,7 @@ suspension another privilege mode applied.
 * The in-app **language picker works below API 33** (#345), and a language change reaches the
   caches that hold copies.
 
-### 💖 Support (#311, #342, #351)
+### 💖 Support (#311, #342, #351, #356)
 
 * **GitHub Sponsors** alongside Patreon and PayPal (#311).
 * **Ko-fi and Buy Me a Coffee are now in the app** (#356). The website and `FUNDING.yml` have
