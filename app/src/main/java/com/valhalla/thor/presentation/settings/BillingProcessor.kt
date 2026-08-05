@@ -8,6 +8,19 @@ import kotlinx.coroutines.flow.StateFlow
 
 interface BillingProcessor : AutoCloseable {
     val isBillingAvailable: StateFlow<Boolean>
+
+    /**
+     * The support tiers Play is currently selling, **cheapest first**.
+     *
+     * Ordering is part of the contract rather than each screen's problem: it is decided once, from
+     * Play's own prices, by [sortSupportTiers]. A consumer that re-sorts is reintroducing the guess
+     * that function exists to remove.
+     *
+     * Which tiers appear is decided by Play, not by this list's length — see
+     * [SUPPORT_TIER_PRODUCT_IDS]. Empty means either that billing is unavailable or that the
+     * catalogue query has not succeeded yet; the support sheet renders its non-billing fallback in
+     * both cases.
+     */
     val products: StateFlow<List<BillingProduct>>
     val activeSubscription: StateFlow<ActiveSubscription?>
     val showThankYouDialog: StateFlow<Boolean>
@@ -38,6 +51,11 @@ interface BillingProcessor : AutoCloseable {
 data class BillingProduct(
     val id: String,
     val name: String,
+    /**
+     * The price as Play formatted it — already localized to the user's currency and conventions
+     * (`$1.00`, `₹99.00`, `1,00 €`). **This is the only thing shown to the user**; see
+     * [priceAmountMicros] for why the numeric form exists and is never rendered.
+     */
     val formattedPrice: String,
     val description: String,
     /**
@@ -45,7 +63,15 @@ data class BillingProduct(
      * Carried instead of a rendered string so the UI picks a translated label; empty when Play
      * reported no period, which the UI renders as the bare price.
      */
-    val billingPeriod: String = ""
+    val billingPeriod: String = "",
+    /**
+     * [formattedPrice] as a sortable number. Ordering only, never displayed — see
+     * [SubscriptionPricingPhase.priceAmountMicros]. `0` means Play reported no price, which
+     * [sortSupportTiers] treats as unknown and orders last.
+     */
+    val priceAmountMicros: Long = 0L,
+    /** ISO 4217 code for [priceAmountMicros]. See [SubscriptionPricingPhase.priceCurrencyCode]. */
+    val priceCurrencyCode: String = ""
 )
 
 data class ActiveSubscription(

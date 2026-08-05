@@ -19,6 +19,57 @@ package com.valhalla.thor.presentation.settings
  */
 
 /**
+ * Every subscription product ID Thor asks Play about, whether or not it exists yet.
+ *
+ * **This list is the entire catalogue.** Play Billing has no enumeration API and cannot be given
+ * one: `queryProductDetailsAsync` is the only call that returns product metadata, and
+ * `QueryProductDetailsParams.Builder` has exactly one setter — `setProductList` — whose `build()`
+ * throws `"Product list must be set to a non empty list."` (verified with `javap` against
+ * `com.android.billingclient:billing:9.1.0`). Enumeration exists only in the Google Play Developer
+ * API, behind an OAuth scope that is read-*write* over the whole developer account, so it cannot go
+ * in a shipped APK — least of all a FOSS one anyone can rebuild. Naming the IDs is not a shortcut
+ * around a better API; it is the only thing the client can do.
+ *
+ * So the list is deliberately wider than the tiers that exist today. **Asking about an ID that does
+ * not exist is free**: the response code is `OK`, the known products come back in
+ * `getProductDetailsList()` and the unknown ones in `getUnfetchedProductList()` with
+ * [UnfetchedProductReason.PRODUCT_NOT_FOUND] — no error, no dialog, no degraded result. The whole
+ * batch is one round trip. That is what buys the property this list exists for: **creating a tier
+ * whose ID is already in here is a Play Console change and needs no app release.** Creating one
+ * outside it does need a release, which is the cost of the ID set being a compile-time constant —
+ * and the price of not putting a remote-controlled catalogue URL in an app whose privacy policy
+ * promises exactly one network call.
+ *
+ * Order here is irrelevant: [sortSupportTiers] re-orders by the price Play reports, so this stays
+ * ascending only for a reader's benefit.
+ *
+ * Keep this at or under [MAX_PRODUCTS_PER_QUERY] — see that constant for what a longer list costs.
+ */
+val SUPPORT_TIER_PRODUCT_IDS: List<String> = listOf(
+    "support_tier_1",
+    "support_tier_2",
+    "support_tier_3",
+    "support_tier_5",
+    "support_tier_10",
+    "support_tier_15",
+    "support_tier_20",
+    "support_tier_25",
+    "support_tier_50",
+    "support_tier_100"
+)
+
+/**
+ * The most product IDs to put in a single [SUPPORT_TIER_PRODUCT_IDS] query.
+ *
+ * Not a limit the library enforces — it is where the query stops being one binder round trip.
+ * Beyond it the call is split, and a single failing chunk fails the whole query rather than
+ * degrading to a partial catalogue, so a longer list trades the "no release needed" property for a
+ * new way to render an empty support sheet. If the tier set ever genuinely needs to be this wide,
+ * that is the point to reconsider the design rather than to raise the number.
+ */
+const val MAX_PRODUCTS_PER_QUERY = 20
+
+/**
  * True when Google will revoke and refund this purchase unless Thor acknowledges it.
  *
  * Google auto-refunds any purchase still unacknowledged after three days, so the load-bearing half
@@ -39,7 +90,28 @@ data class SubscriptionPricingPhase(
     /** ISO-8601 period the phase is billed at, e.g. `P1M`. Empty when Play reported none. */
     val billingPeriod: String,
     /** `recurrenceMode == INFINITE_RECURRING` — the phase the subscriber keeps paying forever. */
-    val isRecurring: Boolean
+    val isRecurring: Boolean,
+    /**
+     * [formattedPrice] as a number, in millionths of [priceCurrencyCode]'s unit.
+     *
+     * Carried purely so [sortSupportTiers] can order tiers without parsing a localized string. It
+     * is never displayed: [formattedPrice] is what Play has already formatted for the user's locale
+     * and currency, and re-deriving that from a number is how an app ends up showing `$1.00` to
+     * someone Play is charging ₹99.
+     *
+     * `0` means Play reported no price at all, which for a paid subscription means "unknown" rather
+     * than "free" — [sortSupportTiers] sorts those last rather than treating them as the cheapest.
+     */
+    val priceAmountMicros: Long = 0L,
+    /**
+     * ISO 4217 code for [priceAmountMicros], e.g. `USD`, `INR`. Empty when Play reported none.
+     *
+     * Play prices a query in one currency — the user's billing country — so in practice every tier
+     * in a response shares this value and comparing the raw micros is same-currency by
+     * construction. It is carried anyway so [sortSupportTiers] can *enforce* that rather than
+     * assume it; comparing 99 INR against 1 USD as bare numbers would silently invert the list.
+     */
+    val priceCurrencyCode: String = ""
 )
 
 /**
@@ -101,6 +173,147 @@ fun subscriptionPeriodOf(billingPeriod: String): SubscriptionPeriod =
         "P1Y", "P12M" -> SubscriptionPeriod.YEARLY
         else -> SubscriptionPeriod.UNKNOWN
     }
+
+/**
+ * Orders the support tiers cheapest first, using the price Play reported.
+ *
+ * This replaces a `when` on the product ID that mapped `support_tier_5` → 5, `…_10` → 10, `…_25` →
+ * 25, `…_50` → 50 and **everything else → 0**. That `else` is the reason this function exists: it
+ * did not mean "unknown", it meant "cheaper than every tier there is". `support_tier_1` happened to
+ * land in the right place under it — $1 *is* the cheapest — which made the rule look correct while
+ * it was still guessing; a `support_tier_100` would have rendered above the $5 tier, at the top of
+ * the sheet. A rule that has to be extended by hand for every new tier is also the rule that
+ * silently misplaces the tier nobody remembered to add, which is precisely what
+ * [SUPPORT_TIER_PRODUCT_IDS] exists to make routine.
+ *
+ * Price from Play is authoritative, needs no maintenance, and cannot drift from what the row
+ * displays, because it is the same [SubscriptionPricingPhase] the row's [formatted price]
+ * [SubscriptionPricingPhase.formattedPrice] came from.
+ *
+ * The ordering, in full:
+ *  - tiers with a price Play reported come before tiers without one — an absent price is unknown,
+ *    not free, and putting it first is the exact mistake the old `else -> 0` made;
+ *  - then by currency, so a response that somehow mixed them groups rather than interleaves
+ *    (see [SubscriptionPricingPhase.priceCurrencyCode]; with the single currency Play actually
+ *    returns, this comparison is constant and the result is plain price order);
+ *  - then by price, ascending;
+ *  - then by ID, so two tiers at the same price have a fixed order instead of inheriting whatever
+ *    order Play happened to answer in.
+ */
+fun sortSupportTiers(products: List<BillingProduct>): List<BillingProduct> =
+    products.sortedWith(
+        // `false` sorts before `true`, so "has no price" last.
+        compareBy<BillingProduct> { it.priceAmountMicros <= 0L }
+            .thenBy { it.priceCurrencyCode }
+            .thenBy { it.priceAmountMicros }
+            .thenBy { it.id }
+    )
+
+/**
+ * Why Play declined to return details for a product ID that was asked about.
+ *
+ * Mapped from `UnfetchedProduct.getStatusCode()`, which arrives as a bare `int`. The constants are
+ * **not contiguous** — `UnfetchedProduct.StatusCode` in billing 9.1.0 defines `UNKNOWN = 0`,
+ * `INVALID_PRODUCT_ID_FORMAT = 2`, `PRODUCT_NOT_FOUND = 3`, `NO_ELIGIBLE_OFFER = 4`, and **no 1**
+ * (verified with `javap`). [UNRECOGNISED] covers 1 along with any value a later library version
+ * adds, so a new code reads as "something Thor has not been taught" instead of being folded into
+ * `UNKNOWN`, which is itself a real status Play sends.
+ */
+enum class UnfetchedProductReason {
+    /** Play sent status 0 — it declined to say why. */
+    UNKNOWN,
+
+    /** The ID is not a well-formed product ID. A typo in [SUPPORT_TIER_PRODUCT_IDS]. */
+    INVALID_PRODUCT_ID_FORMAT,
+
+    /** No such product in Play Console. The **expected** answer for most of the candidate set. */
+    PRODUCT_NOT_FOUND,
+
+    /** The product exists, but has no base plan this user can be sold. Usually a misconfiguration. */
+    NO_ELIGIBLE_OFFER,
+
+    /** A status code this version of Thor does not know. */
+    UNRECOGNISED
+}
+
+fun unfetchedProductReasonOf(statusCode: Int): UnfetchedProductReason = when (statusCode) {
+    0 -> UnfetchedProductReason.UNKNOWN
+    2 -> UnfetchedProductReason.INVALID_PRODUCT_ID_FORMAT
+    3 -> UnfetchedProductReason.PRODUCT_NOT_FOUND
+    4 -> UnfetchedProductReason.NO_ELIGIBLE_OFFER
+    else -> UnfetchedProductReason.UNRECOGNISED
+}
+
+/**
+ * Whether an unfetched product is worth a log line.
+ *
+ * [PRODUCT_NOT_FOUND][UnfetchedProductReason.PRODUCT_NOT_FOUND] is not. Deliberately probing IDs
+ * that mostly do not exist is the design (see [SUPPORT_TIER_PRODUCT_IDS]), so most of the candidate
+ * set answers this way on every single query and logging it would bury the two cases that mean a
+ * tier the developer *did* create is not being sold: a malformed ID, or a product with no eligible
+ * offer. Filtering here rather than at the log call keeps that judgement testable.
+ */
+fun UnfetchedProductReason.isWorthReporting(): Boolean =
+    this != UnfetchedProductReason.PRODUCT_NOT_FOUND
+
+/**
+ * How long a non-empty catalogue is trusted before a resume is allowed to re-read it.
+ *
+ * The catalogue used to be re-read only when it was *empty* — the repair path for a query that
+ * failed while the binding stayed up. That was sufficient when the tier list was a hardcoded
+ * constant that could only change in a release that restarted the process anyway. It is not
+ * sufficient now: with [SUPPORT_TIER_PRODUCT_IDS] the whole point is that a tier created in Play
+ * Console appears without an app update, and a process that never re-queries a catalogue it already
+ * has would not show it until the app was killed. An hour bounds that to one extra network call per
+ * hour of use, on a resume that is already doing a purchase sweep.
+ */
+const val CATALOG_REFRESH_MIN_INTERVAL_MILLIS = 60 * 60 * 1_000L
+
+/**
+ * Decides whether a resume should re-read the product catalogue.
+ *
+ * Split out of the store flavour for the same reason as [BillingReconnectLadder] — nothing that
+ * names `BillingClient` is on a unit test's classpath — and takes a clock for the same reason: a
+ * test drives hours in a loop, which `SystemClock` will not do. See
+ * [CATALOG_REFRESH_MIN_INTERVAL_MILLIS] for why re-reading is needed at all.
+ *
+ * @param elapsedRealtimeMillis monotonic, and counting through deep sleep. A phone in a pocket
+ *   overnight is the case where the catalogue is most likely to be stale.
+ */
+class CatalogRefreshGate(
+    private val elapsedRealtimeMillis: () -> Long,
+    private val minIntervalMillis: Long = CATALOG_REFRESH_MIN_INTERVAL_MILLIS
+) {
+    /** Null until the first query: a process that has never fetched must never be throttled. */
+    private var lastFetchAt: Long? = null
+
+    /**
+     * @param catalogIsEmpty whether anything is currently being shown to the user.
+     *
+     * An empty catalogue is never throttled. While it is empty the support sheet is rendering the
+     * "Rate on Play Store" fallback and no subscription can be sold at all, so this is the repair
+     * path, and it is the behaviour that was already shipping. Throttling applies only to
+     * re-reading a catalogue that is already good enough to display.
+     */
+    @Synchronized
+    fun shouldFetch(catalogIsEmpty: Boolean): Boolean {
+        if (catalogIsEmpty) return true
+        val last = lastFetchAt ?: return true
+        return elapsedRealtimeMillis() - last >= minIntervalMillis
+    }
+
+    /**
+     * A query is being issued right now.
+     *
+     * Stamped on the attempt rather than on success, like [BillingReconnectLadder.onAttemptStarted]:
+     * stamping only successes would let a catalogue that is stale *and* failing re-query on every
+     * single resume, which is the one case where the network is least likely to be there.
+     */
+    @Synchronized
+    fun onFetchStarted() {
+        lastFetchAt = elapsedRealtimeMillis()
+    }
+}
 
 private const val BILLING_RETRY_BASE_DELAY_MS = 1_000L
 private const val BILLING_RETRY_MAX_DELAY_MS = 30_000L

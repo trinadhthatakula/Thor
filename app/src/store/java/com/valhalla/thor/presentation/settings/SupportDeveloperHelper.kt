@@ -116,17 +116,12 @@ fun SupportDeveloperHelper(
         pricePerWeek, pricePerMonth, pricePerQuarter, pricePerHalfYear, pricePerYear
     ) {
         if (isBillingAvailable && products.isNotEmpty()) {
-            val sortedProducts = products.sortedBy { product ->
-                when (product.id) {
-                    "support_tier_5" -> 5
-                    "support_tier_10" -> 10
-                    "support_tier_25" -> 25
-                    "support_tier_50" -> 50
-                    else -> 0
-                }
-            }
-
-            sortedProducts.map { product ->
+            // Rendered in the order given. `products` is already sorted cheapest-first from Play's
+            // own prices — see [BillingProcessor.products] and [sortSupportTiers]. This used to
+            // re-derive the order here from a `when` over hardcoded product IDs whose `else` arm
+            // scored every unrecognised tier 0, i.e. cheaper than all of them; re-sorting here at
+            // all is what made the tier list something an app release had to keep in step with.
+            products.map { product ->
                 val isActive = activeSubscription?.productId == product.id
                 val descriptionText = if (isActive) {
                     activePlanText

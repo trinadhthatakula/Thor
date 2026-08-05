@@ -18,8 +18,8 @@ import com.android.billingclient.api.ProductDetails
 import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
+import com.android.billingclient.api.UnfetchedProduct
 import com.android.billingclient.api.acknowledgePurchase
-import com.android.billingclient.api.queryProductDetails
 import com.valhalla.thor.R
 import com.valhalla.thor.util.Logger
 import kotlinx.coroutines.CancellationException
@@ -63,7 +63,23 @@ class BillingProcessorImpl(
     private val _showThankYouDialog = MutableStateFlow(false)
     override val showThankYouDialog: StateFlow<Boolean> = _showThankYouDialog.asStateFlow()
 
-    private val productDetailsMap = ConcurrentHashMap<String, ProductDetails>()
+    /**
+     * Play's `ProductDetails` for the tiers the last **successful** catalogue query returned,
+     * keyed by product ID. This is what [launchBillingFlow] charges from.
+     *
+     * Replaced wholesale rather than updated in place, so it always holds exactly the snapshot
+     * [products] was published from. Incremental puts were safe while the catalogue was read once
+     * per process; now that it is re-read (see [CatalogRefreshGate]), a tier Play has stopped
+     * selling would linger here after it left [products] — and the support sheet's pending
+     * change-plan confirmation outlives a refresh, so a confirm tapped afterwards would launch a
+     * flow for a withdrawn tier with a stale offer token.
+     *
+     * A failed query leaves the previous snapshot alone; only a success replaces it. `@Volatile`
+     * over an immutable map rather than a `ConcurrentHashMap`: the requirement is a consistent
+     * snapshot, not atomic per-key updates.
+     */
+    @Volatile
+    private var productDetailsById: Map<String, ProductDetails> = emptyMap()
 
     /**
      * Purchase tokens an acknowledgement is already in flight for, or has already succeeded for.
@@ -90,6 +106,12 @@ class BillingProcessorImpl(
      * to rescue.
      */
     private val reconnect = BillingReconnectLadder(SystemClock::elapsedRealtime)
+
+    /**
+     * Rate-limits re-reading the product catalogue on resume. Same clock and same reasoning as
+     * [reconnect]; see [CatalogRefreshGate].
+     */
+    private val catalogRefresh = CatalogRefreshGate(SystemClock::elapsedRealtime)
 
     private val billingClient: BillingClient = BillingClient.newBuilder(context.applicationContext)
         .setListener { billingResult, purchases ->
@@ -257,59 +279,117 @@ class BillingProcessorImpl(
         }
     }
 
+    /**
+     * Asks Play about every ID in [SUPPORT_TIER_PRODUCT_IDS] and publishes whichever ones it sells.
+     *
+     * The list is deliberately wider than the tiers that exist, so that adding a tier is a Play
+     * Console change rather than an app release; unknown IDs come back in the unfetched list at no
+     * cost. [SUPPORT_TIER_PRODUCT_IDS] carries the full reasoning, including why Play cannot simply
+     * be asked what it sells.
+     *
+     * **Raw `queryProductDetailsAsync`, not the `billing-ktx` `queryProductDetails()` suspend
+     * wrapper this used to call.** That wrapper is lossy in exactly the way that matters here: its
+     * `ProductDetailsResult` exposes only `getBillingResult()` and `getProductDetailsList()`, and
+     * its internal listener never touches `getUnfetchedProductList()` (verified with `javap` against
+     * billing-9.1.0). Probing IDs that may not exist without being able to read *why* one came back
+     * unfetched would mean a tier created in Play Console but misconfigured — no eligible base plan,
+     * say — would simply never appear, with nothing anywhere saying so. `acknowledgePurchase` still
+     * uses billing-ktx; only this call needed the raw form.
+     *
+     * Note the listener signature is the breaking one introduced in Play Billing 8.0.0
+     * (`onProductDetailsResponse(BillingResult, QueryProductDetailsResult)`), not the pre-8.0
+     * `(BillingResult, List<ProductDetails>)`.
+     */
     private fun queryProducts() {
-        val productList = listOf(
+        val productList = SUPPORT_TIER_PRODUCT_IDS.map { productId ->
             QueryProductDetailsParams.Product.newBuilder()
-                .setProductId("support_tier_5")
-                .setProductType(BillingClient.ProductType.SUBS)
-                .build(),
-            QueryProductDetailsParams.Product.newBuilder()
-                .setProductId("support_tier_10")
-                .setProductType(BillingClient.ProductType.SUBS)
-                .build(),
-            QueryProductDetailsParams.Product.newBuilder()
-                .setProductId("support_tier_25")
-                .setProductType(BillingClient.ProductType.SUBS)
-                .build(),
-            QueryProductDetailsParams.Product.newBuilder()
-                .setProductId("support_tier_50")
+                .setProductId(productId)
                 .setProductType(BillingClient.ProductType.SUBS)
                 .build()
-        )
+        }
 
         val params = QueryProductDetailsParams.newBuilder()
             .setProductList(productList)
             .build()
 
-        scope.launch {
+        // Before the call, not in the callback, so a query whose callback never arrives still
+        // counts as an attempt and cannot re-fire on every resume for the life of the process.
+        //
+        // Read precisely: this throttles the *populated*-catalogue path only. While `products` is
+        // empty, `shouldFetch` returns true without ever reading the stamp — deliberately, because
+        // a user looking at no tiers at all is the one case worth retrying eagerly. See
+        // [CatalogRefreshGate].
+        catalogRefresh.onFetchStarted()
+        billingClient.queryProductDetailsAsync(params) { billingResult, queryResult ->
+            // This runs on a library callback thread, so an escaping exception is an uncaught crash
+            // rather than a failed coroutine. Everything it touches (`productDetailsById`,
+            // `_products`) is already thread-safe; the mapping below is a few dozen field reads.
             try {
-                val result = billingClient.queryProductDetails(params)
-                if (result.billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                    val detailsList = result.productDetailsList ?: emptyList()
-                    val mappedProducts = mutableListOf<BillingProduct>()
-                    
-                    for (details in detailsList) {
-                        productDetailsMap[details.productId] = details
-                        // Base plan by identity, recurring phase by recurrence mode — never
-                        // firstOrNull on either. See [selectBaseOffer] / [recurringPhase].
-                        val chargedPhase = selectBaseOffer(details.toSubscriptionOffers())?.recurringPhase()
-                        mappedProducts.add(
-                            BillingProduct(
-                                id = details.productId,
-                                name = details.name,
-                                formattedPrice = chargedPhase?.formattedPrice ?: "",
-                                description = details.description,
-                                billingPeriod = chargedPhase?.billingPeriod ?: ""
-                            )
-                        )
-                    }
-                    _products.value = mappedProducts
-                } else {
-                    Logger.e("BillingProcessor", "Failed to query product details: ${result.billingResult.responseCode}")
+                if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
+                    Logger.e(
+                        "BillingProcessor",
+                        "Failed to query product details: ${billingResult.responseCode}"
+                    )
+                    return@queryProductDetailsAsync
                 }
+
+                // `.orEmpty()` on both lists: these are Java platform types, so Kotlin will not
+                // insist on a null check that the library's own annotations do not guarantee, and
+                // the code this replaces took the same precaution (`?: emptyList()`).
+                val detailsList = queryResult.productDetailsList.orEmpty()
+                val mappedProducts = detailsList.map { details ->
+                    // Base plan by identity, recurring phase by recurrence mode — never
+                    // firstOrNull on either. See [selectBaseOffer] / [recurringPhase].
+                    val chargedPhase =
+                        selectBaseOffer(details.toSubscriptionOffers())?.recurringPhase()
+                    BillingProduct(
+                        id = details.productId,
+                        name = details.name,
+                        formattedPrice = chargedPhase?.formattedPrice ?: "",
+                        description = details.description,
+                        billingPeriod = chargedPhase?.billingPeriod ?: "",
+                        priceAmountMicros = chargedPhase?.priceAmountMicros ?: 0L,
+                        priceCurrencyCode = chargedPhase?.priceCurrencyCode ?: ""
+                    )
+                }
+                // Before `_products`, deliberately: the list is what the UI renders and taps
+                // through to [launchBillingFlow], so the details it charges from must already be
+                // the ones this response carried. See [productDetailsById].
+                productDetailsById = detailsList.associateBy { it.productId }
+                // Sorted here rather than at the one screen that renders it: `products` promises an
+                // order (see [BillingProcessor.products]) and Play answers in no particular one.
+                _products.value = sortSupportTiers(mappedProducts)
+                reportUnfetchedProducts(queryResult.unfetchedProductList.orEmpty())
             } catch (e: Exception) {
-                Logger.e("BillingProcessor", "Error querying product details", e)
+                Logger.e("BillingProcessor", "Error handling product details response", e)
             }
+        }
+    }
+
+    /**
+     * Logs the candidate IDs Play refused, for the two reasons that mean something is wrong.
+     *
+     * Most of [SUPPORT_TIER_PRODUCT_IDS] is expected to come back `PRODUCT_NOT_FOUND` on every
+     * query — that is the design, not a fault — so [isWorthReporting] drops those and leaves the
+     * cases that mean a tier which *does* exist in Play Console is not reaching users.
+     *
+     * ⚠️ **This is a debug-build diagnostic only.** `Logger` gates every level on `Logger.isDebug`,
+     * which `ThorApplication` sets from `BuildConfig.DEBUG || BuildConfig.PRIVILEGE_TRACE` — both
+     * false in `storeRelease` — and there is no crash reporter or analytics in this app to carry it
+     * instead. So on the builds that can actually complete a purchase, a misconfigured tier is still
+     * diagnosed by noticing the row is missing. Giving this a sink that survives release (a debug
+     * screen row, or persisted state) is the follow-up; it is deliberately not bundled here, because
+     * it is new UI rather than part of making the catalogue dynamic.
+     */
+    private fun reportUnfetchedProducts(unfetched: List<UnfetchedProduct>) {
+        for (product in unfetched) {
+            val reason = unfetchedProductReasonOf(product.statusCode)
+            if (!reason.isWorthReporting()) continue
+            Logger.w(
+                "BillingProcessor",
+                "Play returned no details for ${product.productId}: $reason " +
+                        "(status ${product.statusCode})"
+            )
         }
     }
 
@@ -414,7 +494,9 @@ class BillingProcessorImpl(
         oldPurchaseToken: String?,
         oldProductId: String?
     ) {
-        val productDetails = productDetailsMap[productId]
+        // One read of the volatile field, so the null check and everything below see the same
+        // snapshot even if a catalogue refresh lands mid-method.
+        val productDetails = productDetailsById[productId]
         if (productDetails == null) {
             Logger.e("BillingProcessor", "Product details not found for $productId")
             return
@@ -493,9 +575,18 @@ class BillingProcessorImpl(
                 //
                 // A resume is the same "the outside world changed" signal for a failed catalogue
                 // fetch as it is for a failed binding; the connection path was given that escape
-                // hatch above and the catalogue path needs it too. Guarded on emptiness rather than
-                // unconditional so a healthy resume costs no IPC.
-                if (_products.value.isEmpty()) queryProducts()
+                // hatch above and the catalogue path needs it too.
+                //
+                // This used to be `if (_products.value.isEmpty())` — repair only, never refresh —
+                // which was sound while the tier list was a hardcoded constant: the only way it
+                // could change was a release, and a release restarts the process. That stopped being
+                // true with [SUPPORT_TIER_PRODUCT_IDS]. The whole property that list buys is that a
+                // tier created in Play Console shows up without an app update, and a process that
+                // re-reads the catalogue only when it has none would have withheld exactly that tier
+                // until the app was killed — the feature would have looked broken on the one device
+                // its author was watching. [CatalogRefreshGate] keeps the unthrottled repair path
+                // for an empty catalogue and adds an hourly re-read for a populated one.
+                if (catalogRefresh.shouldFetch(_products.value.isEmpty())) queryProducts()
                 return@launch
             }
             scheduleReconnect(reconnect.onResume())
@@ -516,7 +607,11 @@ class BillingProcessorImpl(
                         formattedPrice = phase.formattedPrice.orEmpty(),
                         billingPeriod = phase.billingPeriod.orEmpty(),
                         isRecurring = phase.recurrenceMode ==
-                                ProductDetails.RecurrenceMode.INFINITE_RECURRING
+                                ProductDetails.RecurrenceMode.INFINITE_RECURRING,
+                        // Ordering only — never rendered. `formattedPrice` above is what the user
+                        // sees, already localized by Play to their currency and conventions.
+                        priceAmountMicros = phase.priceAmountMicros,
+                        priceCurrencyCode = phase.priceCurrencyCode.orEmpty()
                     )
                 }
             )
