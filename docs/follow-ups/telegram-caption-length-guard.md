@@ -6,7 +6,7 @@ fixed there — see "Why not in #334".
 ## The failure it prevents
 
 Release notes reach Telegram as a `sendDocument` **caption**, not as a message
-(`.github/workflows/telegram-release.yml:146`, `.github/workflows/dev-check.yml:249`). Telegram caps
+(`.github/workflows/telegram-release.yml:144`, `.github/workflows/dev-check.yml:281`). Telegram caps
 captions at **1024 UTF-16 code units** and **rejects** an oversized one outright — it does not
 truncate. The `curl` carries no `--fail` and its output goes to `/dev/null`, so the step exits 0
 having broadcast nothing. Every downstream signal — the job, the check, the release — stays green.

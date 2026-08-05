@@ -76,8 +76,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      # The only place R8 runs BEFORE a merge. It does run elsewhere — dev-check.yml:147,
-      # production-deploy.yml:145 and manual-build.yml:52 all shell out to fastlane, which
+      # The only place R8 runs BEFORE a merge. It does run elsewhere — dev-check.yml:178,
+      # production-deploy.yml:149 and manual-build.yml:52 all shell out to fastlane, which
       # assembles release — but every one of those triggers on a push to an already-merged
       # branch. On the PR itself nothing minified was ever built: assembleFossDebug above does
       # not minify (app/build.gradle.kts: `debug { isMinifyEnabled = false }`), lintStoreRelease
