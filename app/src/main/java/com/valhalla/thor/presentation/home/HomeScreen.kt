@@ -157,6 +157,7 @@ fun HomeScreen(
                         onInstall = { filePickerLauncher.launch(arrayOf("*/*")) },
                         onClearCache = { showCacheDialog = true },
                         onNavigateToExtensionManager = onNavigateToExtensionManager,
+                        narrowContainer = true,
                     )
                 }
 

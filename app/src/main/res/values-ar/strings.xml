@@ -57,6 +57,7 @@
     <string name="error_title">خطأ</string>
     <string name="refresh">تحديث</string>
     <string name="dismiss">تجاهل</string>
+    <string name="show_details">عرض التفاصيل</string>
     <string name="search_apps">بحث عن تطبيقات&#8230;</string>
     <string name="unknown">غير معروف</string>
 
@@ -66,7 +67,6 @@
     <string name="install_from_file">تثبيت من ملف</string>
     <string name="install_from_file_subtitle">تثبيت APK أو XAPK أو APKS أو حزم مقسمة</string>
     <string name="home_extensions_title">الإضافات</string>
-    <string name="home_extensions_subtitle">إدارة وفتح</string>
     <string name="app_distribution">توزيع التطبيقات</string>
     <string name="total_apps">الإجمالي: %1$d</string>
     <string name="others">أخرى</string>

@@ -57,6 +57,7 @@
     <string name="error_title">Erreur</string>
     <string name="refresh">Actualiser</string>
     <string name="dismiss">Ignorer</string>
+    <string name="show_details">Afficher les détails</string>
     <string name="search_apps">Rechercher des applis&#8230;</string>
     <string name="unknown">Inconnu</string>
 
@@ -66,7 +67,6 @@
     <string name="install_from_file">Installer depuis un fichier</string>
     <string name="install_from_file_subtitle">Installer APK, XAPK, APKS ou lots de fichiers</string>
     <string name="home_extensions_title">Extensions</string>
-    <string name="home_extensions_subtitle">Gérer et ouvrir</string>
     <string name="app_distribution">Distribution des applis</string>
     <string name="total_apps">TOTAL : %1$d</string>
     <string name="others">Autres</string>

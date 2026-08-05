@@ -59,6 +59,9 @@
     <string name="error_title">Error</string>
     <string name="refresh">Refresh</string>
     <string name="dismiss">Dismiss</string>
+    <!-- Accessibility label for the long-press action on a compact Home tile. TalkBack reads it
+         as "double-tap and hold to show details", so keep it a verb phrase. -->
+    <string name="show_details">Show details</string>
     <string name="search_apps">Search apps&#8230;</string>
     <string name="unknown">Unknown</string>
 
@@ -68,7 +71,6 @@
     <string name="install_from_file">Install from File</string>
     <string name="install_from_file_subtitle">Install APK, XAPK, APKS or Split bundles</string>
     <string name="home_extensions_title">Extensions</string>
-    <string name="home_extensions_subtitle">Manage &amp; open</string>
     <string name="app_distribution">App Distribution</string>
     <string name="total_apps">TOTAL: %1$d</string>
     <string name="others">Others</string>
