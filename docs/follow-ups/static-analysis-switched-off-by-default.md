@@ -44,7 +44,7 @@ Kotlin has no equivalent gate. The obvious symmetry — `allWarningsAsErrors = t
 warnings are fatal the way lint warnings already are — **cannot be adopted today**, and not for a
 reason in Thor's own code:
 
-```
+```text
 Koin compiler plugin: Kotlin 2.4.10 is newer than the newest tested version (2.4.0) —
 proceeding with the 2.4.0 adapter. Supported versions: 2.3.20, 2.4.0.
 ```
@@ -64,10 +64,27 @@ The same sweep found 11 sites in this class; 4 warned and were fixed in v1.93.3.
 `filterNotNull()` and `requireNotNull()` on a non-null receiver produce no diagnostic where `?:`,
 `?.`, `!!` and `== null` all do:
 
-- `BillingProcessorImpl.kt` lines 339, 362, 607, 608, 614 — `.orEmpty()` on `@androidx.annotation.NonNull`
-  billing getters (and the trailing `.orEmpty()` on 605, which stays).
-- `AppAnalyzerImpl.kt:338` — `require(!archiveInfo.packageName.isNullOrBlank())`, where
-  `PackageInfo.packageName` is `@android.annotation.NonNull`, so only the *blank* half can fire.
+Referenced by symbol rather than line, because line numbers move and these have already moved once:
+
+- `BillingProcessorImpl.kt`, six `.orEmpty()` calls whose receivers `javap` shows as
+  `@androidx.annotation.NonNull` on `billing-9.1.0` — `queryResult.productDetailsList`,
+  `queryResult.unfetchedProductList`, `offer.pricingPhases.pricingPhaseList`,
+  `phase.formattedPrice`, `phase.billingPeriod`, `phase.priceCurrencyCode`.
+- `AppAnalyzerImpl.kt`, `require(!archiveInfo.packageName.isNullOrBlank())` — `PackageInfo.packageName`
+  is `@android.annotation.NonNull`, so only the *blank* half can fire.
+
+**One `.orEmpty()` in that file is emphatically not in this class and must not be swept with them:**
+`details.subscriptionOfferDetails.orEmpty()`. `ProductDetails.getSubscriptionOfferDetails()` is
+`@Nullable` — it returns null for a one-time-purchase product — so that guard is load-bearing and
+Kotlin types it nullable. It sits three lines from two of the dead ones, which is the whole hazard:
+the sites are visually identical and only the annotation on the receiver tells them apart.
+
+Watch out for how `javap -v` lays this out, since getting it backwards inverts every verdict here:
+the resolved annotation name prints on its own line *after* the method's `RuntimeInvisibleAnnotations:`
+block, so the name appearing immediately **above** a signature belongs to the **previous** member.
+Parsing backwards from the signature shifts the whole table by one method and reports
+`getPricingPhases` as `@Nullable` — which would have argued for keeping the `?.` that this sweep
+removed.
 
 **These were left alone deliberately, and the reason matters more than the sites.** They are not
 elided from the binary — `.orEmpty()` compiles to the same `dup`/`ifnonnull`/`pop` branch that
@@ -81,5 +98,6 @@ guards were written on annotated-non-null values and never questioned; it was co
 What is worth watching, if anyone revisits this: rewriting a warned `?: emptyList()` as `.orEmpty()`
 "fixes" nothing. The emitted bytecode is byte-identical; only the compiler goes quiet. If a guard is
 kept it should keep a shape the compiler can still see — which is why the three `ExtensionManager`
-sites were given an explicit `List<PackageInfo>?` local rather than a silent `.orEmpty()` or a
-`@Suppress`.
+sites were given an explicit nullable declared local rather than a silent `.orEmpty()` or a
+`@Suppress`: `List<PackageInfo>?` in `loadExtensions` and `getInstalledExtensionVersionCodes`, and
+`List<ApplicationInfo>?` in `getExtensionPackageName`, which calls `getInstalledApplications`.

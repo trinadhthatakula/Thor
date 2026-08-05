@@ -603,6 +603,11 @@ class BillingProcessorImpl(
      * operate on. Every library constant stays on this side of the boundary.
      */
     private fun ProductDetails.toSubscriptionOffers(): List<SubscriptionOffer> =
+        // This `.orEmpty()` is load-bearing, unlike the four below it:
+        // `getSubscriptionOfferDetails()` is `@Nullable` and returns null for a one-time-purchase
+        // product, so Kotlin types it nullable and this is a real branch. The `.orEmpty()` calls
+        // inside the map are on `@NonNull` receivers and are dead by the type system. They read
+        // identically; only the annotation tells them apart, which is why they are called out here.
         subscriptionOfferDetails.orEmpty().map { offer ->
             SubscriptionOffer(
                 offerId = offer.offerId,
