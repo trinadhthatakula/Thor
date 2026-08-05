@@ -63,7 +63,23 @@ class BillingProcessorImpl(
     private val _showThankYouDialog = MutableStateFlow(false)
     override val showThankYouDialog: StateFlow<Boolean> = _showThankYouDialog.asStateFlow()
 
-    private val productDetailsMap = ConcurrentHashMap<String, ProductDetails>()
+    /**
+     * Play's `ProductDetails` for the tiers the last **successful** catalogue query returned,
+     * keyed by product ID. This is what [launchBillingFlow] charges from.
+     *
+     * Replaced wholesale rather than updated in place, so it always holds exactly the snapshot
+     * [products] was published from. Incremental puts were safe while the catalogue was read once
+     * per process; now that it is re-read (see [CatalogRefreshGate]), a tier Play has stopped
+     * selling would linger here after it left [products] — and the support sheet's pending
+     * change-plan confirmation outlives a refresh, so a confirm tapped afterwards would launch a
+     * flow for a withdrawn tier with a stale offer token.
+     *
+     * A failed query leaves the previous snapshot alone; only a success replaces it. `@Volatile`
+     * over an immutable map rather than a `ConcurrentHashMap`: the requirement is a consistent
+     * snapshot, not atomic per-key updates.
+     */
+    @Volatile
+    private var productDetailsById: Map<String, ProductDetails> = emptyMap()
 
     /**
      * Purchase tokens an acknowledgement is already in flight for, or has already succeeded for.
@@ -302,7 +318,7 @@ class BillingProcessorImpl(
         catalogRefresh.onFetchStarted()
         billingClient.queryProductDetailsAsync(params) { billingResult, queryResult ->
             // This runs on a library callback thread, so an escaping exception is an uncaught crash
-            // rather than a failed coroutine. Everything it touches (`productDetailsMap`,
+            // rather than a failed coroutine. Everything it touches (`productDetailsById`,
             // `_products`) is already thread-safe; the mapping below is a few dozen field reads.
             try {
                 if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
@@ -316,8 +332,8 @@ class BillingProcessorImpl(
                 // `.orEmpty()` on both lists: these are Java platform types, so Kotlin will not
                 // insist on a null check that the library's own annotations do not guarantee, and
                 // the code this replaces took the same precaution (`?: emptyList()`).
-                val mappedProducts = queryResult.productDetailsList.orEmpty().map { details ->
-                    productDetailsMap[details.productId] = details
+                val detailsList = queryResult.productDetailsList.orEmpty()
+                val mappedProducts = detailsList.map { details ->
                     // Base plan by identity, recurring phase by recurrence mode — never
                     // firstOrNull on either. See [selectBaseOffer] / [recurringPhase].
                     val chargedPhase =
@@ -332,6 +348,10 @@ class BillingProcessorImpl(
                         priceCurrencyCode = chargedPhase?.priceCurrencyCode ?: ""
                     )
                 }
+                // Before `_products`, deliberately: the list is what the UI renders and taps
+                // through to [launchBillingFlow], so the details it charges from must already be
+                // the ones this response carried. See [productDetailsById].
+                productDetailsById = detailsList.associateBy { it.productId }
                 // Sorted here rather than at the one screen that renders it: `products` promises an
                 // order (see [BillingProcessor.products]) and Play answers in no particular one.
                 _products.value = sortSupportTiers(mappedProducts)
@@ -470,7 +490,9 @@ class BillingProcessorImpl(
         oldPurchaseToken: String?,
         oldProductId: String?
     ) {
-        val productDetails = productDetailsMap[productId]
+        // One read of the volatile field, so the null check and everything below see the same
+        // snapshot even if a catalogue refresh lands mid-method.
+        val productDetails = productDetailsById[productId]
         if (productDetails == null) {
             Logger.e("BillingProcessor", "Product details not found for $productId")
             return
