@@ -386,6 +386,240 @@ class BillingPolicyTest {
         assertEquals(BillingReconnectStep.Stopped, ladder.onResume())
     }
 
+    // ── The candidate product set ───────────────────────────────────────────
+    //
+    // Play Billing has no enumeration API, so this list *is* the catalogue: an ID that is never
+    // queried can never be sold, however correctly it is configured in Play Console. It is wider
+    // than the tiers that exist so that adding one is a console change rather than a release.
+
+    @Test
+    fun `every tier that was previously hardcoded is still queried`() {
+        // The regression that would cost real revenue silently. These four were the entire query
+        // before the candidate set replaced it; dropping one stops selling it, and nothing about a
+        // build or a screenshot would say so.
+        for (id in listOf("support_tier_5", "support_tier_10", "support_tier_25", "support_tier_50")) {
+            assertTrue("$id is no longer queried", id in SUPPORT_TIER_PRODUCT_IDS)
+        }
+    }
+
+    @Test
+    fun `the one-dollar tier is queried`() {
+        // The tier that prompted all of this: created in Play Console, invisible to the app,
+        // because the app only ever asked about four IDs and this was not one of them.
+        assertTrue("support_tier_1" in SUPPORT_TIER_PRODUCT_IDS)
+    }
+
+    @Test
+    fun `the candidate set fits a single round trip`() {
+        assertTrue(
+            "${SUPPORT_TIER_PRODUCT_IDS.size} candidates exceeds the one-query bound",
+            SUPPORT_TIER_PRODUCT_IDS.size <= MAX_PRODUCTS_PER_QUERY
+        )
+    }
+
+    @Test
+    fun `no candidate id is listed twice`() {
+        // A duplicate is not a crash, just a wasted slot against the bound above — and it would
+        // publish the same tier to the sheet twice.
+        assertEquals(SUPPORT_TIER_PRODUCT_IDS.size, SUPPORT_TIER_PRODUCT_IDS.toSet().size)
+    }
+
+    @Test
+    fun `every candidate id is well formed`() {
+        // A typo here is not a build failure and not a visible one either: Play answers
+        // INVALID_PRODUCT_ID_FORMAT or PRODUCT_NOT_FOUND for it and the query otherwise succeeds,
+        // so the tier simply never appears.
+        val shape = Regex("""support_tier_\d+""")
+        for (id in SUPPORT_TIER_PRODUCT_IDS) {
+            assertTrue("'$id' is not a support tier id", shape.matches(id))
+        }
+    }
+
+    // ── Tier ordering ───────────────────────────────────────────────────────
+
+    private fun tier(id: String, micros: Long, currency: String = "USD") = BillingProduct(
+        id = id,
+        name = id,
+        formattedPrice = "",
+        description = "",
+        billingPeriod = "P1M",
+        priceAmountMicros = micros,
+        priceCurrencyCode = currency
+    )
+
+    @Test
+    fun `tiers are ordered by the price Play reported`() {
+        val shuffled = listOf(
+            tier("support_tier_25", 25_000_000L),
+            tier("support_tier_1", 1_000_000L),
+            tier("support_tier_50", 50_000_000L),
+            tier("support_tier_5", 5_000_000L),
+            tier("support_tier_10", 10_000_000L)
+        )
+        assertEquals(
+            listOf("support_tier_1", "support_tier_5", "support_tier_10", "support_tier_25", "support_tier_50"),
+            sortSupportTiers(shuffled).map { it.id }
+        )
+    }
+
+    @Test
+    fun `a tier costlier than any the old rule knew no longer sorts to the top`() {
+        // The defect, exactly. The replaced rule was `when (id) { "..._5" -> 5 ... else -> 0 }`, so
+        // every ID it had not been taught scored 0 — below the cheapest real tier. `support_tier_1`
+        // landed correctly under it purely because $1 *is* the cheapest, which is what made the rule
+        // look right while it was still guessing. `support_tier_100` is the same rule being wrong.
+        val sorted = sortSupportTiers(
+            listOf(
+                tier("support_tier_100", 100_000_000L),
+                tier("support_tier_5", 5_000_000L),
+                tier("support_tier_1", 1_000_000L)
+            )
+        )
+        assertEquals("support_tier_1", sorted.first().id)
+        assertEquals("support_tier_100", sorted.last().id)
+    }
+
+    @Test
+    fun `a tier Play reported no price for sorts last, not first`() {
+        // The other half of `else -> 0`: an absent price is unknown, not free. Such a row renders
+        // its description instead of a price, and putting it at the top of the sheet presents the
+        // one tier the app understands least as the entry-level option.
+        val sorted = sortSupportTiers(
+            listOf(
+                tier("support_tier_2", 0L, currency = ""),
+                tier("support_tier_5", 5_000_000L),
+                tier("support_tier_1", 1_000_000L)
+            )
+        )
+        assertEquals(
+            listOf("support_tier_1", "support_tier_5", "support_tier_2"),
+            sorted.map { it.id }
+        )
+    }
+
+    @Test
+    fun `prices in different currencies group rather than interleave`() {
+        // Play prices a query in the user's billing currency, so one response is single-currency and
+        // this never fires in practice. It is asserted because the failure mode if it ever did is
+        // silent and inverted: ₹99 is 99_000_000 micros and $1 is 1_000_000, so a bare numeric sort
+        // would advertise the rupee tier as the expensive one.
+        val sorted = sortSupportTiers(
+            listOf(
+                tier("support_tier_1_inr", 99_000_000L, currency = "INR"),
+                tier("support_tier_5_usd", 5_000_000L, currency = "USD"),
+                tier("support_tier_1_usd", 1_000_000L, currency = "USD"),
+                tier("support_tier_5_inr", 499_000_000L, currency = "INR")
+            )
+        )
+        assertEquals(
+            listOf("support_tier_1_inr", "support_tier_5_inr", "support_tier_1_usd", "support_tier_5_usd"),
+            sorted.map { it.id }
+        )
+    }
+
+    @Test
+    fun `two tiers at the same price have a fixed order`() {
+        // Otherwise the sheet re-orders itself between launches for no reason the user can see,
+        // because the input order is whatever Play answered in.
+        val a = tier("support_tier_2", 2_000_000L)
+        val b = tier("support_tier_3", 2_000_000L)
+        assertEquals(listOf("support_tier_2", "support_tier_3"), sortSupportTiers(listOf(a, b)).map { it.id })
+        assertEquals(listOf("support_tier_2", "support_tier_3"), sortSupportTiers(listOf(b, a)).map { it.id })
+    }
+
+    @Test
+    fun `sorting nothing is not an error`() {
+        assertEquals(emptyList<BillingProduct>(), sortSupportTiers(emptyList()))
+    }
+
+    // ── Unfetched products ──────────────────────────────────────────────────
+
+    @Test
+    fun `the status codes Play documents map to a reason`() {
+        assertEquals(UnfetchedProductReason.UNKNOWN, unfetchedProductReasonOf(0))
+        assertEquals(UnfetchedProductReason.INVALID_PRODUCT_ID_FORMAT, unfetchedProductReasonOf(2))
+        assertEquals(UnfetchedProductReason.PRODUCT_NOT_FOUND, unfetchedProductReasonOf(3))
+        assertEquals(UnfetchedProductReason.NO_ELIGIBLE_OFFER, unfetchedProductReasonOf(4))
+    }
+
+    @Test
+    fun `status code one does not exist and is not silently folded into unknown`() {
+        // `UnfetchedProduct.StatusCode` skips 1 — the constants are 0, 2, 3, 4. Treating the gap as
+        // UNKNOWN would make a future library's new code indistinguishable from a real status Play
+        // sends today.
+        assertEquals(UnfetchedProductReason.UNRECOGNISED, unfetchedProductReasonOf(1))
+        assertEquals(UnfetchedProductReason.UNRECOGNISED, unfetchedProductReasonOf(5))
+        assertEquals(UnfetchedProductReason.UNRECOGNISED, unfetchedProductReasonOf(-1))
+    }
+
+    @Test
+    fun `a product that simply does not exist is not worth reporting`() {
+        // Most of the candidate set answers PRODUCT_NOT_FOUND on every query by design. Logging it
+        // would bury the two answers that mean a tier which *does* exist is not reaching users.
+        assertFalse(UnfetchedProductReason.PRODUCT_NOT_FOUND.isWorthReporting())
+        assertTrue(UnfetchedProductReason.NO_ELIGIBLE_OFFER.isWorthReporting())
+        assertTrue(UnfetchedProductReason.INVALID_PRODUCT_ID_FORMAT.isWorthReporting())
+        assertTrue(UnfetchedProductReason.UNKNOWN.isWorthReporting())
+        assertTrue(UnfetchedProductReason.UNRECOGNISED.isWorthReporting())
+    }
+
+    // ── Catalogue refresh ───────────────────────────────────────────────────
+
+    @Test
+    fun `an empty catalogue is re-read on every resume`() {
+        // The repair path, unthrottled and unchanged: while the catalogue is empty the support sheet
+        // is showing the "Rate on Play Store" fallback and no subscription can be sold at all.
+        val clock = Clock()
+        val gate = CatalogRefreshGate(clock)
+        repeat(5) {
+            assertTrue(gate.shouldFetch(catalogIsEmpty = true))
+            gate.onFetchStarted()
+            clock.now += 1_000
+        }
+    }
+
+    @Test
+    fun `a catalogue that has never been fetched is not throttled`() {
+        // `lastFetchAt` is null rather than zero, for the same reason the reconnect ladder's is:
+        // subtracting a sentinel from an elapsed-realtime reading taken shortly after boot would
+        // put the first query inside a window no fetch ever opened.
+        assertTrue(CatalogRefreshGate(Clock(now = 0L)).shouldFetch(catalogIsEmpty = false))
+    }
+
+    @Test
+    fun `a populated catalogue is not re-read on every resume`() {
+        val clock = Clock()
+        val gate = CatalogRefreshGate(clock)
+        gate.onFetchStarted()
+        clock.now += CATALOG_REFRESH_MIN_INTERVAL_MILLIS - 1
+        assertFalse(gate.shouldFetch(catalogIsEmpty = false))
+    }
+
+    @Test
+    fun `a tier added in Play Console appears without the app being killed`() {
+        // The property the whole candidate-set design exists to buy, stated as a test. Before this
+        // gate the catalogue was re-read only when empty, so a running process kept serving the
+        // tier list it had fetched at launch — and the new tier would have been withheld until the
+        // app was force-stopped, on the one device its author was watching.
+        val clock = Clock()
+        val gate = CatalogRefreshGate(clock)
+        gate.onFetchStarted()
+        clock.now += CATALOG_REFRESH_MIN_INTERVAL_MILLIS
+        assertTrue(gate.shouldFetch(catalogIsEmpty = false))
+    }
+
+    @Test
+    fun `the stamp is taken on the attempt, so a failing query cannot re-run every resume`() {
+        // onFetchStarted is called before the query, not in its callback. Stamping successes only
+        // would mean a catalogue that is both stale and failing re-queries on every single resume —
+        // exactly when the network is least likely to be there.
+        val clock = Clock()
+        val gate = CatalogRefreshGate(clock)
+        gate.onFetchStarted() // a query that will never call back
+        clock.now += 1_000
+        assertFalse(gate.shouldFetch(catalogIsEmpty = false))
+    }
+
     @Test
     fun `the shipped ladder is worth about thirty-one seconds`() {
         // Pins the constants the store processor actually runs with, not just the mechanism: the
