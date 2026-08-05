@@ -1,7 +1,7 @@
 # Thor v1.94.0 Release Notes
 
 The first stable since **v1.93.0**, consolidating everything that shipped through the
-`v1.93.1`, `v1.93.2` and `v1.93.3` pre-release builds — **66 pull requests**.
+`v1.93.1`, `v1.93.2` and `v1.93.3` pre-release builds — **67 pull requests**.
 
 Two threads run through it. The first is **new ground**: freeze profiles, bulk backup and
 `.xapk` export, permission filtering, and a support catalogue that comes from Play instead of
@@ -28,6 +28,8 @@ uninstalling it, and taking its data with it.**
   code that never meant success.
 * 🔒 **App lock covers cold start**, and the app list no longer leaks into the Recents preview.
 * 📱 **One app-info sheet**, with the full details built in — the detailed-view switch is gone.
+* 🏠 **The home shortcuts pack themselves to the space they have**, and the Installer and
+  Extensions tiles can be switched off in Settings.
 * 💖 **Support tiers are read from Play**, so a new tier appears without an app update.
 
 ---
@@ -59,6 +61,19 @@ Filter by what apps can actually reach: Camera, Microphone, Location and the res
 
 App info and app details are one sheet. The "detailed view" toggle it replaces is retired
 rather than hidden.
+
+### 🏠 An adaptive home grid, with tiles you can hide (#357 — for GH#344)
+
+The home shortcuts pack to the room they have instead of to a fixed 2×2. An odd number of tiles
+leads with a full-width one rather than leaving a hole, and in the navigation rail — where a
+tile has no width for its label — each takes its own row and explains itself on a long press.
+
+**Installer** and **Extensions** each got a switch in **Settings → General**. Hiding a tile
+takes away the shortcut, never the feature: the installer still handles APK intents, and
+Extensions keeps its own Settings entry. The two preferences stack with the existing eligibility
+rules rather than overriding them, so asking for the Extensions tile without a privilege mode
+still shows nothing — and hiding both with no privilege legitimately empties the grid, which
+disappears rather than leaving a gap where it used to be.
 
 ### 🧊 System-app freeze: disable first, remove second (#314, #332 — for GH#316)
 
@@ -182,6 +197,7 @@ suspension another privilege mode applied.
 
 ## 🛠 Commits Log (`v1.93.0...v1.94.0`)
 
+* `59236b5e` — #357 adaptive home grid, and hiding the Installer and Extensions tiles
 * `fbf2d54e` — #356 Ko-fi and Buy Me a Coffee in the app
 * `0ea6f93b` — #354 lint warning sweep, guards preserved
 * `1f31a36f` — #352 release 1.93.3

@@ -8,15 +8,17 @@
 
 • 🔎 **Filter apps by permission** — Camera, Mic, Location and more.
 
+• 🏠 **Hide the Installer or Extensions tile** from the home screen.
+
 • 💖 **Support tiers load from Play**, so new ones appear without an app update.
 
 **Fixed:**
 
 • 🧊 **Freezing a preinstalled app no longer wipes its data** — Thor disables it instead.
 
-• ✅ **Freeze, restrict and clear-data check the result** instead of trusting an exit code.
+• ✅ **Freeze, restrict and clear-data check the result**, not the exit code.
 
-• 🔒 **App lock covers the moment Thor opens**, and your app list no longer shows in Recents.
+• 🔒 **App lock covers the moment Thor opens**, and Recents hides your app list.
 
 • 📱 **App list survives a ROM revoking package visibility.**
 
