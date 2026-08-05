@@ -13,6 +13,10 @@
     <string name="general">عام</string>
     <string name="show_reinstall_card">إظهار بطاقة إعادة التثبيت</string>
     <string name="show_reinstall_card_desc">إظهار تذكير إصلاح المتجر على الشاشة الرئيسية</string>
+    <string name="show_installer_tile">إظهار مربع المثبِّت</string>
+    <string name="show_installer_tile_desc">إظهار "تثبيت من ملف" على الشاشة الرئيسية</string>
+    <string name="show_extensions_tile">إظهار مربع الإضافات</string>
+    <string name="show_extensions_tile_desc">إظهار الإضافات على الشاشة الرئيسية</string>
     <string name="appearance">المظهر</string>
     <string name="theme">المظهر</string>
     <string name="theme_desc">نمط الواجهة المرئية</string>

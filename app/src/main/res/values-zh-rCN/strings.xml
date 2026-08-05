@@ -12,6 +12,10 @@
     <string name="general">通用</string>
     <string name="show_reinstall_card">显示重新安装卡片</string>
     <string name="show_reinstall_card_desc">在主屏幕上显示修复商店提醒</string>
+    <string name="show_installer_tile">显示安装器磁贴</string>
+    <string name="show_installer_tile_desc">在主屏幕上显示“从文件安装”</string>
+    <string name="show_extensions_tile">显示扩展磁贴</string>
+    <string name="show_extensions_tile_desc">在主屏幕上显示扩展</string>
     <string name="appearance">外观</string>
     <string name="theme">主题</string>
     <string name="theme_desc">视觉界面风格</string>

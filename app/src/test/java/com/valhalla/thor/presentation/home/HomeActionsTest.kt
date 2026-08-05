@@ -14,21 +14,47 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * All three flags derive from one nullable field on the Home state, so only five of the eight
- * combinations are reachable: root implies privilege, and so does a visible reinstall card.
- * Each reachable state is asserted below; the last test pins the packing invariant across all of
- * them.
+ * The three privilege flags all derive from one nullable field on the Home state, so only five of
+ * their eight combinations are reachable: root implies privilege, and so does a visible reinstall
+ * card. The two GH#344 preferences are independent of all of that and of each other, so the
+ * reachable set is those five crossed with all four preference pairs.
+ *
+ * Each privilege state is asserted on its own below, then the preference rules, then the packing
+ * and visibility invariants across every combination.
  */
 class HomeActionsTest {
 
-    /** (reinstall, root, privilege) for every state the Home screen can actually be in. */
-    private val reachableStates = listOf(
-        Triple(false, false, false),
-        Triple(false, false, true),
-        Triple(true, false, true),
-        Triple(false, true, true),
-        Triple(true, true, true),
-    )
+    /** One state the Home screen can be in: the three derived flags plus the two preferences. */
+    private data class State(
+        val reinstall: Boolean,
+        val root: Boolean,
+        val privilege: Boolean,
+        val showInstaller: Boolean,
+        val showExtensions: Boolean,
+    ) {
+        fun rows() = homeActionRows(reinstall, root, privilege, showInstaller, showExtensions)
+
+        override fun toString() = "reinstall=$reinstall root=$root privilege=$privilege " +
+            "installer=$showInstaller extensions=$showExtensions"
+    }
+
+    /** The five reachable privilege states, crossed with every preference pair. */
+    private val reachableStates: List<State> =
+        listOf(
+            Triple(false, false, false),
+            Triple(false, false, true),
+            Triple(true, false, true),
+            Triple(false, true, true),
+            Triple(true, true, true),
+        ).flatMap { (reinstall, root, privilege) ->
+            listOf(true, false).flatMap { installer ->
+                listOf(true, false).map { extensions ->
+                    State(reinstall, root, privilege, installer, extensions)
+                }
+            }
+        }
+
+    // --- Privilege states, both tiles kept ------------------------------------------------------
 
     @Test fun noPrivilege_onlyInstallFullWidth() {
         assertEquals(
@@ -82,29 +108,112 @@ class HomeActionsTest {
         )
     }
 
-    @Test fun everyReachableState_packsIntoPairsWithAtMostOneWideLeader() {
-        for ((reinstall, root, privilege) in reachableStates) {
-            val rows = homeActionRows(reinstall, root, privilege)
-            val label = "reinstall=$reinstall root=$root privilege=$privilege"
+    // --- GH#344 visibility preferences ----------------------------------------------------------
 
-            assertTrue("$label: a row holds more than two tiles", rows.all { it.size in 1..2 })
-            assertTrue("$label: an empty row was emitted", rows.none { it.isEmpty() })
+    /** The 2x2 loses its leader and the survivors re-pack, rather than leaving a hole. */
+    @Test fun hidingTheInstaller_dropsOnlyThatTile() {
+        val rows = homeActionRows(
+            reinstallVisible = true, isRoot = true, hasPrivilege = true, showInstaller = false
+        )
+        assertTrue("Install must be gone", INSTALL !in rows.flatten())
+        assertEquals(listOf(listOf(CLEAR_CACHE), listOf(EXTENSIONS, REINSTALL)), rows)
+    }
+
+    @Test fun hidingExtensions_dropsOnlyThatTile() {
+        val rows = homeActionRows(
+            reinstallVisible = true, isRoot = true, hasPrivilege = true, showExtensions = false
+        )
+        assertTrue("Extensions must be gone", EXTENSIONS !in rows.flatten())
+        assertEquals(listOf(listOf(INSTALL), listOf(CLEAR_CACHE, REINSTALL)), rows)
+    }
+
+    @Test fun hidingBoth_keepsThePrivilegedTiles() {
+        val rows = homeActionRows(
+            reinstallVisible = true,
+            isRoot = true,
+            hasPrivilege = true,
+            showInstaller = false,
+            showExtensions = false,
+        )
+        assertEquals(listOf(listOf(CLEAR_CACHE, REINSTALL)), rows)
+    }
+
+    /**
+     * The whole grid can legitimately disappear — hiding both optional tiles with no privilege
+     * leaves nothing eligible. HomeScreen drops its spacer on this, so it has to stay an empty
+     * list rather than a row of nothing.
+     */
+    @Test fun hidingBothWithNoPrivilege_leavesNothingToDraw() {
+        assertEquals(
+            emptyList<List<HomeAction>>(),
+            homeActionRows(
+                reinstallVisible = false,
+                isRoot = false,
+                hasPrivilege = false,
+                showInstaller = false,
+                showExtensions = false,
+            )
+        )
+    }
+
+    /** The preference relaxes nothing: without a privilege there is no Extensions tile to keep. */
+    @Test fun wantingExtensionsWithoutPrivilege_staysHidden() {
+        val rows = homeActionRows(
+            reinstallVisible = false, isRoot = false, hasPrivilege = false, showExtensions = true
+        )
+        assertEquals(listOf(listOf(INSTALL)), rows)
+    }
+
+    /** Hiding a tile is layout-only, so the rail packs the survivors the same way. */
+    @Test fun narrowContainer_respectsTheVisibilityPreferences() {
+        assertEquals(
+            listOf(listOf(CLEAR_CACHE), listOf(REINSTALL)),
+            homeActionRows(
+                reinstallVisible = true,
+                isRoot = true,
+                hasPrivilege = true,
+                showInstaller = false,
+                showExtensions = false,
+                narrowContainer = true,
+            )
+        )
+    }
+
+    // --- Invariants across every reachable state ------------------------------------------------
+
+    @Test fun everyReachableState_packsIntoPairsWithAtMostOneWideLeader() {
+        for (state in reachableStates) {
+            val rows = state.rows()
+
+            assertTrue("$state: a row holds more than two tiles", rows.all { it.size in 1..2 })
+            assertTrue("$state: an empty row was emitted", rows.none { it.isEmpty() })
             assertTrue(
-                "$label: a single-tile row appears somewhere other than first",
+                "$state: a single-tile row appears somewhere other than first",
                 rows.drop(1).all { it.size == 2 }
             )
 
             val flat = rows.flatten()
-            assertEquals("$label: a tile was duplicated", flat.size, flat.toSet().size)
-            assertTrue("$label: Install is missing", INSTALL in flat)
-            assertEquals("$label: Clear cache visibility", root, CLEAR_CACHE in flat)
-            assertEquals("$label: Extensions visibility", privilege, EXTENSIONS in flat)
-            assertEquals("$label: Reinstall visibility", reinstall, REINSTALL in flat)
+            assertEquals("$state: a tile was duplicated", flat.size, flat.toSet().size)
+        }
+    }
+
+    /** Every tile's visibility is exactly its own rule — no tile rides along on another's. */
+    @Test fun everyReachableState_showsExactlyTheEligibleTiles() {
+        for (state in reachableStates) {
+            val flat = state.rows().flatten()
+            assertEquals("$state: Install visibility", state.showInstaller, INSTALL in flat)
+            assertEquals("$state: Clear cache visibility", state.root, CLEAR_CACHE in flat)
+            assertEquals(
+                "$state: Extensions visibility",
+                state.privilege && state.showExtensions,
+                EXTENSIONS in flat
+            )
+            assertEquals("$state: Reinstall visibility", state.reinstall, REINSTALL in flat)
         }
     }
 
     @Test fun everyActionIsReachableFromSomeState() {
-        val seen = reachableStates.flatMap { (r, root, p) -> homeActionRows(r, root, p).flatten() }
+        val seen = reachableStates.flatMap { it.rows().flatten() }
         assertEquals(HomeAction.entries.toSet(), seen.toSet())
     }
 }

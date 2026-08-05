@@ -13,6 +13,10 @@
     <string name="general">GÉNÉRAL</string>
     <string name="show_reinstall_card">Afficher la carte de réinstallation</string>
     <string name="show_reinstall_card_desc">Afficher le rappel Fix Store sur l\'écran d\'accueil</string>
+    <string name="show_installer_tile">Afficher la tuile d\'installation</string>
+    <string name="show_installer_tile_desc">Afficher « Installer depuis un fichier » sur l\'écran d\'accueil</string>
+    <string name="show_extensions_tile">Afficher la tuile des extensions</string>
+    <string name="show_extensions_tile_desc">Afficher les extensions sur l\'écran d\'accueil</string>
     <string name="appearance">APPARENCE</string>
     <string name="theme">Thème</string>
     <string name="theme_desc">Style d\'interface visuelle</string>

@@ -331,6 +331,14 @@ class FakePreferenceRepository(
         prefs.update { it.copy(showReinstallAllCard = isVisible) }
     }
 
+    override suspend fun setInstallerTileVisibility(isVisible: Boolean) {
+        prefs.update { it.copy(showInstallerTile = isVisible) }
+    }
+
+    override suspend fun setExtensionsTileVisibility(isVisible: Boolean) {
+        prefs.update { it.copy(showExtensionsTile = isVisible) }
+    }
+
     override suspend fun setThemeMode(themeMode: ThemeMode) {
         prefs.update { it.copy(themeMode = themeMode) }
     }

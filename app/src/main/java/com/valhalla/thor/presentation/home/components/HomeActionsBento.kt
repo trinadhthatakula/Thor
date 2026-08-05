@@ -34,6 +34,10 @@ private data class HomeActionCopy(val title: String, val subtitle: String, val i
  * Paired tiles are too narrow for a description, so they drop it and long-press opens
  * [InfoBottomSheet] instead. Full-width tiles keep theirs and long-press is a no-op there.
  *
+ * [showInstaller] and [showExtensions] are the persisted GH#344 preferences — see [homeActionRows].
+ * With both off and no privilege there is nothing left to show, and this composable then emits
+ * nothing at all.
+ *
  * [narrowContainer] is for a pane too narrow to pair tiles at all — the wide-screen rail, where
  * the grid gets roughly a third of a 600 dp window. Every tile then goes full-width *and* compact:
  * measured across five locales and three font scales, that is the only combination in that pane
@@ -52,10 +56,18 @@ fun HomeActionsBento(
     onClearCache: () -> Unit,
     onNavigateToExtensionManager: () -> Unit,
     modifier: Modifier = Modifier,
+    showInstaller: Boolean = true,
+    showExtensions: Boolean = true,
     narrowContainer: Boolean = false,
 ) {
-    val rows = homeActionRows(reinstallVisible, isRoot, hasPrivilege, narrowContainer)
+    val rows = homeActionRows(
+        reinstallVisible, isRoot, hasPrivilege, showInstaller, showExtensions, narrowContainer
+    )
     var explaining by rememberSaveable { mutableStateOf<HomeAction?>(null) }
+    // Hiding both optional tiles with no privilege leaves nothing to draw. Emit no Column at all
+    // rather than an empty one — the Column carries no padding of its own, but its callers stack
+    // spacers around it, and a bare 36 dp gap reads as a rendering bug.
+    if (rows.isEmpty()) return
 
     @Composable
     fun copyFor(action: HomeAction) = when (action) {

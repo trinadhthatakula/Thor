@@ -18,6 +18,13 @@ enum class HomeAction { REINSTALL, INSTALL, CLEAR_CACHE, EXTENSIONS }
  * dismissible tile: putting it at the end means dismissing it re-packs the rows below it rather
  * than shifting every other tile up one slot.
  *
+ * [showInstaller] and [showExtensions] are the user's own answer (GH#344): both tiles are shortcuts
+ * to something reachable elsewhere — Installer still handles APK intents, Extensions keeps its
+ * Settings entry — so hiding either is a layout choice, not a feature switch. They stack with the
+ * eligibility rules rather than replacing them: Extensions needs a privilege *and* the preference.
+ * Every tile can end up hidden, and an empty list is a legitimate answer; callers must not assume
+ * at least one row.
+ *
  * [narrowContainer] is for a pane too narrow to pair tiles at all (the wide-screen rail) — every
  * action then gets its own full-width row.
  */
@@ -25,12 +32,14 @@ fun homeActionRows(
     reinstallVisible: Boolean,
     isRoot: Boolean,
     hasPrivilege: Boolean,
+    showInstaller: Boolean = true,
+    showExtensions: Boolean = true,
     narrowContainer: Boolean = false,
 ): List<List<HomeAction>> {
     val actions = listOfNotNull(
-        HomeAction.INSTALL,
+        HomeAction.INSTALL.takeIf { showInstaller },
         HomeAction.CLEAR_CACHE.takeIf { isRoot },
-        HomeAction.EXTENSIONS.takeIf { hasPrivilege },
+        HomeAction.EXTENSIONS.takeIf { hasPrivilege && showExtensions },
         HomeAction.REINSTALL.takeIf { reinstallVisible },
     )
     if (narrowContainer) return actions.map { listOf(it) }

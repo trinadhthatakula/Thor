@@ -13,6 +13,12 @@ data class UserPreferences(
     // Home Screen Config
     val showReinstallAllCard: Boolean = true,
 
+    // Which of the two always-available Home tiles the user wants there. Both default to shown —
+    // hiding a tile only removes the shortcut, never the feature: Installer still handles APK
+    // intents and Extensions keeps its Settings entry.
+    val showInstallerTile: Boolean = true,
+    val showExtensionsTile: Boolean = true,
+
     // Theme
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val useDynamicColor: Boolean = false,

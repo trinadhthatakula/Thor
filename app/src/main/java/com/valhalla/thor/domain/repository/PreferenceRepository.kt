@@ -35,6 +35,10 @@ interface PreferenceRepository {
     suspend fun updateAppFilter(filterType: FilterType, selectedFilter: String)
     suspend fun setReinstallAllCardVisibility(isVisible: Boolean)
 
+    // --- Home tiles ---
+    suspend fun setInstallerTileVisibility(isVisible: Boolean)
+    suspend fun setExtensionsTileVisibility(isVisible: Boolean)
+
     // --- Theme ---
     suspend fun setThemeMode(themeMode: ThemeMode)
     suspend fun setDynamicColor(enabled: Boolean)
