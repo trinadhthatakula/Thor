@@ -399,6 +399,10 @@
     <string name="sponsor_github_desc">Puntual o mensual, justo al lado del código</string>
     <string name="become_patreon_title">Hacerse Patreon</string>
     <string name="become_patreon_desc">Apoya el desarrollo continuo con una suscripción mensual</string>
+    <string name="support_kofi_title">Apoyar en Ko-fi</string>
+    <string name="support_kofi_desc">Invita a un café, una vez o cada mes</string>
+    <string name="buy_me_a_coffee_title">Apoyar en Buy Me a Coffee</string>
+    <string name="buy_me_a_coffee_desc">Un café puntual o una membresía mensual</string>
     <string name="donate_paypal_title">Donar a través de PayPal</string>
     <string name="donate_paypal_desc">Envía una donación única directamente</string>
 

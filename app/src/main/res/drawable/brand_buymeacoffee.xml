@@ -1,0 +1,39 @@
+<!-- SPDX-FileCopyrightText: 2025-2026 Trinadh Thatakula <github.com/trinadhthatakula/Thor> -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!--
+  A lidded takeaway cup with steam. Not Buy Me a Coffee's trademark — see brand_kofi for why a brand
+  mark is not an option here. The silhouette is deliberately NOT a mug: brand_kofi sits directly
+  above this one in the support sheet, and two coffee cups that differ only in their detail are two
+  identical smudges at 24dp. Lid + taper + steam against mug + handle + saucer reads apart at a
+  glance.
+
+  The steam is stroked rather than filled. Icon(tint = ...) applies a ColorFilter over the whole
+  drawable, so strokeColor is tinted along with fillColor — no fillColor is needed on those paths.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:strokeColor="#000000"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="M8.4,2.2 c1,1 -1,1.9 0,2.9" />
+    <path
+        android:strokeColor="#000000"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="M12,1.7 c1,1 -1,1.9 0,2.9" />
+    <path
+        android:strokeColor="#000000"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="M15.6,2.2 c1,1 -1,1.9 0,2.9" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M4.9,6.9 h14.2 a1.3,1.3 0 0 1 1.29,1.44 l-0.13,1.2 a1.3,1.3 0 0 1 -1.29,1.16 H4.99 a1.3,1.3 0 0 1 -1.29,-1.16 l-0.13,-1.2 A1.3,1.3 0 0 1 4.9,6.9 z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M5.15,10.4 h13.7 l-1.2,9.4 a2.1,2.1 0 0 1 -2.08,1.8 H8.43 a2.1,2.1 0 0 1 -2.08,-1.8 z" />
+</vector>

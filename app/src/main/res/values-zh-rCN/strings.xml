@@ -391,6 +391,10 @@
     <string name="sponsor_github_desc">一次性或按月赞助，就在代码旁边</string>
     <string name="become_patreon_title">成为 Patreon 赞助者</string>
     <string name="become_patreon_desc">通过按月订阅支持持续开发</string>
+    <string name="support_kofi_title">在 Ko-fi 上支持</string>
+    <string name="support_kofi_desc">请喝一杯咖啡，一次或每月</string>
+    <string name="buy_me_a_coffee_title">在 Buy Me a Coffee 上支持</string>
+    <string name="buy_me_a_coffee_desc">一次性咖啡或按月会员</string>
     <string name="donate_paypal_title">通过 PayPal 捐赠</string>
     <string name="donate_paypal_desc">直接发送一次性捐赠</string>
 

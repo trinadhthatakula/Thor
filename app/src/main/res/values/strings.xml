@@ -540,6 +540,10 @@
     <string name="sponsor_github_desc">One-off or monthly, right next to the code</string>
     <string name="become_patreon_title">Become a Patreon</string>
     <string name="become_patreon_desc">Support ongoing development with a monthly subscription</string>
+    <string name="support_kofi_title">Support on Ko-fi</string>
+    <string name="support_kofi_desc">Buy a coffee once, or every month</string>
+    <string name="buy_me_a_coffee_title">Buy Me a Coffee</string>
+    <string name="buy_me_a_coffee_desc">A one-off coffee, or a monthly membership</string>
     <string name="donate_paypal_title">Donate via PayPal</string>
     <string name="donate_paypal_desc">Send a one-time donation directly</string>
 
