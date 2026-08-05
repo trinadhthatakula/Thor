@@ -7,23 +7,45 @@ package com.valhalla.thor.presentation.home.components
 enum class HomeAction { REINSTALL, INSTALL, CLEAR_CACHE, EXTENSIONS }
 
 /**
- * Computes the Home bento rows from the current privilege/state flags.
- * Row 1 = [Reinstall?] + Install (Install is always present).
- * Row 2 = [Clear cache (root)?] + [Extensions (privilege)?].
- * A row that ends up with a single tile renders full-width; empty rows are dropped.
+ * Packs the visible Home actions into bento rows: pairs throughout, with a single full-width
+ * leader when the count is odd. 4 tiles -> 2x2; 3 -> one wide then a pair; 2 -> one pair; 1 -> one
+ * wide tile.
+ *
+ * The leader goes first rather than last so the wide tile lands at the top of the grid, next to
+ * the summary row, instead of leaving a ragged edge at the bottom.
+ *
+ * Order is Install, Clear cache, Extensions, Reinstall. Reinstall is last because it is the only
+ * dismissible tile: putting it at the end means dismissing it re-packs the rows below it rather
+ * than shifting every other tile up one slot.
+ *
+ * [showInstaller] and [showExtensions] are the user's own answer (GH#344): both tiles are shortcuts
+ * to something reachable elsewhere — Installer still handles APK intents, Extensions keeps its
+ * Settings entry — so hiding either is a layout choice, not a feature switch. They stack with the
+ * eligibility rules rather than replacing them: Extensions needs a privilege *and* the preference.
+ * Every tile can end up hidden, and an empty list is a legitimate answer; callers must not assume
+ * at least one row.
+ *
+ * [narrowContainer] is for a pane too narrow to pair tiles at all (the wide-screen rail) — every
+ * action then gets its own full-width row.
  */
 fun homeActionRows(
     reinstallVisible: Boolean,
     isRoot: Boolean,
     hasPrivilege: Boolean,
+    showInstaller: Boolean = true,
+    showExtensions: Boolean = true,
+    narrowContainer: Boolean = false,
 ): List<List<HomeAction>> {
-    val row1 = listOfNotNull(
-        HomeAction.REINSTALL.takeIf { reinstallVisible },
-        HomeAction.INSTALL,
-    )
-    val row2 = listOfNotNull(
+    val actions = listOfNotNull(
+        HomeAction.INSTALL.takeIf { showInstaller },
         HomeAction.CLEAR_CACHE.takeIf { isRoot },
-        HomeAction.EXTENSIONS.takeIf { hasPrivilege },
+        HomeAction.EXTENSIONS.takeIf { hasPrivilege && showExtensions },
+        HomeAction.REINSTALL.takeIf { reinstallVisible },
     )
-    return listOf(row1, row2).filter { it.isNotEmpty() }
+    if (narrowContainer) return actions.map { listOf(it) }
+    return if (actions.size % 2 == 1) {
+        listOf(listOf(actions.first())) + actions.drop(1).chunked(2)
+    } else {
+        actions.chunked(2)
+    }
 }

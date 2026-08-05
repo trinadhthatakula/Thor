@@ -204,6 +204,24 @@ fun SettingsScreen(
             )
 
             SettingsSwitchRow(
+                icon = R.drawable.apk_install,
+                title = stringResource(R.string.show_installer_tile),
+                subtitle = stringResource(R.string.show_installer_tile_desc),
+                checked = prefs.showInstallerTile,
+                enableMarqueeOnClick = true,
+                onCheckedChange = { viewModel.setInstallerTileVisibility(it) }
+            )
+
+            SettingsSwitchRow(
+                icon = R.drawable.round_extension,
+                title = stringResource(R.string.show_extensions_tile),
+                subtitle = stringResource(R.string.show_extensions_tile_desc),
+                checked = prefs.showExtensionsTile,
+                enableMarqueeOnClick = true,
+                onCheckedChange = { viewModel.setExtensionsTileVisibility(it) }
+            )
+
+            SettingsSwitchRow(
                 icon = R.drawable.settings_backup_restore,
                 title = stringResource(R.string.auto_reinstall),
                 subtitle = stringResource(R.string.auto_reinstall_desc),

@@ -167,6 +167,14 @@ class SettingsViewModel(
         viewModelScope.launch { preferenceRepository.setReinstallAllCardVisibility(visible) }
     }
 
+    fun setInstallerTileVisibility(visible: Boolean) {
+        viewModelScope.launch { preferenceRepository.setInstallerTileVisibility(visible) }
+    }
+
+    fun setExtensionsTileVisibility(visible: Boolean) {
+        viewModelScope.launch { preferenceRepository.setExtensionsTileVisibility(visible) }
+    }
+
     fun setAutoReinstallEnabled(enabled: Boolean) {
         viewModelScope.launch { preferenceRepository.setAutoReinstallEnabled(enabled) }
     }

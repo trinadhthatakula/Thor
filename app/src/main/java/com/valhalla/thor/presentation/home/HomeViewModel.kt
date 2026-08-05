@@ -45,6 +45,10 @@ data class HomeUiState(
 
     // Preferences
     val showReinstallCard: Boolean = true, // <--- Controlled by DataStore
+    // GH#344: which of the two optional Home tiles the user kept. Not a capability check —
+    // [activePrivilegeMode] still decides whether Extensions is eligible at all.
+    val showInstallerTile: Boolean = true,
+    val showExtensionsTile: Boolean = true,
     val extensionsUnlocked: Boolean = false
 )
 
@@ -86,6 +90,8 @@ class HomeViewModel(
             unknownInstallerCount = stats.unknownCount,
             distributionData = stats.distribution,
             showReinstallCard = prefs.showReinstallAllCard,
+            showInstallerTile = prefs.showInstallerTile,
+            showExtensionsTile = prefs.showExtensionsTile,
             isRootAvailable = priv.root,
             isShizukuAvailable = priv.shizuku,
             isDhizukuAvailable = priv.dhizuku,
