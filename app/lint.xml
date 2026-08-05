@@ -52,4 +52,19 @@
       than be forced by whichever CI run happened to notice.
     -->
     <issue id="AndroidGradlePluginVersion" severity="informational" />
+
+    <!--
+      SdCardPath exists to stop production code hardcoding a storage path. A test that *asserts about*
+      a path has to contain the literal to do its job — e.g. PerUserCommandsTest's
+      `assertFalse(path.startsWith("/data/data/"))`, which is checking Thor does NOT emit a per-user
+      alias. Scoped rather than downgraded, so the check keeps full force everywhere it is meaningful:
+      this is the exact inversion of the rule's intent, not a rule we disagree with.
+
+      Nine hits, all of this shape, are what `checkTestSources = true` surfaced when it was turned on
+      (see the comment on that line in build.gradle.kts). Without this scope the flag cannot be
+      adopted; with it, the test tree is analysed at a net cost of zero findings.
+    -->
+    <issue id="SdCardPath">
+        <ignore path="src/test/**" />
+    </issue>
 </lint>
