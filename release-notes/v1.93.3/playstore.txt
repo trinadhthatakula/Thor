@@ -1,0 +1,13 @@
+• ✅ Freeze, restrict and clear-data now report what really happened.
+
+• 🔒 App lock now covers app start, and hides your app list in Recents.
+
+• 🌍 Language picker works on Android 12 and below.
+
+• ⚡ Bulk actions no longer stall 15 seconds per app on some ROMs.
+
+• 📦 The installer verifies the exact bytes it installs.
+
+• 🛠️ Fixed a crash loop from an unreadable settings file.
+
+• 💖 Support tiers load from Play — new ones appear without an update.
