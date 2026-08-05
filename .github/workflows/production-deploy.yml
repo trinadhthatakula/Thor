@@ -57,12 +57,12 @@ jobs:
       # without a chore(release) bump. Play only says so after the ~7 minute build and the upload
       # attempt; git can answer that particular case here in seconds.
       #
-      # It does NOT catch the other half. dev-check.yml still publishes from master when the code
-      # moves, and the same chore(release) commit reaches both branches, so master can take a code
-      # on `alpha` before production asks for it on `beta` — Play's uniqueness is per app, not
-      # per track. That collision is real, pre-existing, and out of scope here; it is tracked in
-      # docs/follow-ups/two-branches-one-play-version-code.md. Do not "fix" it by widening this
-      # check, which cannot see what master did.
+      # The other half — master claiming the same code on `alpha` first — is no longer this file's
+      # problem, and never was something it could answer: it compares production against
+      # production's own previous tip and cannot see what master did. dev-check.yml now declines
+      # to publish any versionCode ending in 0, so a stable is only ever uploaded from here. Do not
+      # widen this check to chase that case; the routing rule belongs on the branch that can act
+      # on it.
       #
       # Fails open on any git edge case (branch creation, unreachable parent) — a release must
       # not be blocked by this check failing to make up its mind. workflow_dispatch skips it
@@ -129,10 +129,14 @@ jobs:
 
       # --- FASTLANE (OPEN TESTING) ---
       # One of the repo's two Play uploads — this one to `beta`, dev-check.yml's to `alpha`.
-      # Play rejects the second upload of a version code regardless of track, so when the same
-      # chore(release) commit reaches master and production, exactly one of the two runs can
-      # succeed. Which one wins is currently a race, and that is the open problem in
-      # docs/follow-ups/two-branches-one-play-version-code.md — not something this file decides.
+      # Play rejects the second upload of a version code regardless of track, so the two are kept
+      # apart by the code itself: dev-check.yml publishes only codes that do NOT end in 0, and this
+      # lane takes the stables that do. One code, one uploader, no race — see
+      # docs/follow-ups/two-branches-one-play-version-code.md.
+      #
+      # Enforced on the master side only. Nothing here rejects a non-stable code, so merging a
+      # mid-cycle build into production would re-open the collision from this direction; the
+      # convention that production takes stables is what holds, not a check.
       - name: Run Fastlane (Distribute Prod)
         env:
           JSON_KEY_FILE: ${{ github.workspace }}/app/google-play-api.json
