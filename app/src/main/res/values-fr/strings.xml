@@ -13,6 +13,10 @@
     <string name="general">GÉNÉRAL</string>
     <string name="show_reinstall_card">Afficher la carte de réinstallation</string>
     <string name="show_reinstall_card_desc">Afficher le rappel Fix Store sur l\'écran d\'accueil</string>
+    <string name="show_installer_tile">Afficher la tuile d\'installation</string>
+    <string name="show_installer_tile_desc">Afficher « Installer depuis un fichier » sur l\'écran d\'accueil</string>
+    <string name="show_extensions_tile">Afficher la tuile des extensions</string>
+    <string name="show_extensions_tile_desc">Afficher les extensions sur l\'écran d\'accueil</string>
     <string name="appearance">APPARENCE</string>
     <string name="theme">Thème</string>
     <string name="theme_desc">Style d\'interface visuelle</string>
@@ -57,6 +61,7 @@
     <string name="error_title">Erreur</string>
     <string name="refresh">Actualiser</string>
     <string name="dismiss">Ignorer</string>
+    <string name="show_details">Afficher les détails</string>
     <string name="search_apps">Rechercher des applis&#8230;</string>
     <string name="unknown">Inconnu</string>
 
@@ -66,7 +71,6 @@
     <string name="install_from_file">Installer depuis un fichier</string>
     <string name="install_from_file_subtitle">Installer APK, XAPK, APKS ou lots de fichiers</string>
     <string name="home_extensions_title">Extensions</string>
-    <string name="home_extensions_subtitle">Gérer et ouvrir</string>
     <string name="app_distribution">Distribution des applis</string>
     <string name="total_apps">TOTAL : %1$d</string>
     <string name="others">Autres</string>
@@ -399,6 +403,10 @@
     <string name="sponsor_github_desc">Ponctuel ou mensuel, au plus près du code</string>
     <string name="become_patreon_title">Devenir Patreon</string>
     <string name="become_patreon_desc">Soutenir le développement continu avec un abonnement mensuel</string>
+    <string name="support_kofi_title">Soutenir sur Ko-fi</string>
+    <string name="support_kofi_desc">Offrir un café, une fois ou chaque mois</string>
+    <string name="buy_me_a_coffee_title">Soutenir sur Buy Me a Coffee</string>
+    <string name="buy_me_a_coffee_desc">Un café ponctuel ou un abonnement mensuel</string>
     <string name="donate_paypal_title">Faire un don via PayPal</string>
     <string name="donate_paypal_desc">Envoyer un don unique directement</string>
 

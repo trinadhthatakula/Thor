@@ -12,6 +12,10 @@
     <string name="general">通用</string>
     <string name="show_reinstall_card">显示重新安装卡片</string>
     <string name="show_reinstall_card_desc">在主屏幕上显示修复商店提醒</string>
+    <string name="show_installer_tile">显示安装器磁贴</string>
+    <string name="show_installer_tile_desc">在主屏幕上显示“从文件安装”</string>
+    <string name="show_extensions_tile">显示扩展磁贴</string>
+    <string name="show_extensions_tile_desc">在主屏幕上显示扩展</string>
     <string name="appearance">外观</string>
     <string name="theme">主题</string>
     <string name="theme_desc">视觉界面风格</string>
@@ -56,6 +60,7 @@
     <string name="error_title">错误</string>
     <string name="refresh">刷新</string>
     <string name="dismiss">关闭</string>
+    <string name="show_details">查看详情</string>
     <string name="search_apps">搜索应用&#8230;</string>
     <string name="unknown">未知</string>
 
@@ -65,7 +70,6 @@
     <string name="install_from_file">从文件安装</string>
     <string name="install_from_file_subtitle">安装 APK、XAPK、APKS 或分割包</string>
     <string name="home_extensions_title">扩展</string>
-    <string name="home_extensions_subtitle">管理和打开</string>
     <string name="app_distribution">应用分布</string>
     <string name="total_apps">总计: %1$d</string>
     <string name="others">其他</string>
@@ -391,6 +395,10 @@
     <string name="sponsor_github_desc">一次性或按月赞助，就在代码旁边</string>
     <string name="become_patreon_title">成为 Patreon 赞助者</string>
     <string name="become_patreon_desc">通过按月订阅支持持续开发</string>
+    <string name="support_kofi_title">在 Ko-fi 上支持</string>
+    <string name="support_kofi_desc">请我喝杯咖啡，一次或每月</string>
+    <string name="buy_me_a_coffee_title">在 Buy Me a Coffee 上支持</string>
+    <string name="buy_me_a_coffee_desc">单次请我喝杯咖啡，或按月成为会员</string>
     <string name="donate_paypal_title">通过 PayPal 捐赠</string>
     <string name="donate_paypal_desc">直接发送一次性捐赠</string>
 

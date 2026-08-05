@@ -48,6 +48,7 @@ import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.presentation.home.components.AppDistributionChart
 import com.valhalla.thor.presentation.home.components.DashboardHeader
 import com.valhalla.thor.presentation.home.components.HomeActionsBento
+import com.valhalla.thor.presentation.home.components.homeActionRows
 import com.valhalla.thor.presentation.home.components.SupportCommunitySection
 import com.valhalla.thor.presentation.home.components.SummaryStatRow
 import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
@@ -90,6 +91,15 @@ fun HomeScreen(
     val isRoot = state.activePrivilegeMode == PrivilegeMode.ROOT
     val reinstallVisible = state.activePrivilegeMode != null &&
         state.unknownInstallerCount > 0 && state.showReinstallCard
+    // Both optional tiles hidden with no privilege leaves the bento with nothing to draw, so the
+    // spacer that separates it from the summary row goes with it rather than leaving a bare gap.
+    val hasHomeActions = homeActionRows(
+        reinstallVisible = reinstallVisible,
+        isRoot = isRoot,
+        hasPrivilege = hasPrivilege,
+        showInstaller = state.showInstallerTile,
+        showExtensions = state.showExtensionsTile,
+    ).isNotEmpty()
 
     // The bottom inset (nav-bar height + system navigation-bar insets) is already applied by
     // MainScreen, which hosts this screen inside Scaffold's Box(Modifier.padding(innerPadding)).
@@ -144,20 +154,25 @@ fun HomeScreen(
                         modifier = Modifier.padding(horizontal = 0.dp)
                     )
 
-                    Spacer(Modifier.height(16.dp))
+                    if (hasHomeActions) {
+                        Spacer(Modifier.height(16.dp))
 
-                    HomeActionsBento(
-                        reinstallVisible = reinstallVisible,
-                        isRoot = isRoot,
-                        hasPrivilege = hasPrivilege,
-                        unknownInstallerCount = state.unknownInstallerCount,
-                        selectedTypeName = state.selectedType.name.lowercase(),
-                        onReinstall = onReinstallAll,
-                        onDismissReinstall = { viewModel.dismissReinstallCard() },
-                        onInstall = { filePickerLauncher.launch(arrayOf("*/*")) },
-                        onClearCache = { showCacheDialog = true },
-                        onNavigateToExtensionManager = onNavigateToExtensionManager,
-                    )
+                        HomeActionsBento(
+                            reinstallVisible = reinstallVisible,
+                            isRoot = isRoot,
+                            hasPrivilege = hasPrivilege,
+                            unknownInstallerCount = state.unknownInstallerCount,
+                            selectedTypeName = state.selectedType.name.lowercase(),
+                            onReinstall = onReinstallAll,
+                            onDismissReinstall = { viewModel.dismissReinstallCard() },
+                            onInstall = { filePickerLauncher.launch(arrayOf("*/*")) },
+                            onClearCache = { showCacheDialog = true },
+                            onNavigateToExtensionManager = onNavigateToExtensionManager,
+                            showInstaller = state.showInstallerTile,
+                            showExtensions = state.showExtensionsTile,
+                            narrowContainer = true,
+                        )
+                    }
                 }
 
                 // Right Column: Distribution & Support
@@ -216,22 +231,26 @@ fun HomeScreen(
                 modifier = Modifier.padding(horizontal = 24.dp)
             )
 
-            Spacer(Modifier.height(12.dp))
-
             // --- ACTIONS ---
-            HomeActionsBento(
-                reinstallVisible = reinstallVisible,
-                isRoot = isRoot,
-                hasPrivilege = hasPrivilege,
-                unknownInstallerCount = state.unknownInstallerCount,
-                selectedTypeName = state.selectedType.name.lowercase(),
-                onReinstall = onReinstallAll,
-                onDismissReinstall = { viewModel.dismissReinstallCard() },
-                onInstall = { filePickerLauncher.launch(arrayOf("*/*")) },
-                onClearCache = { showCacheDialog = true },
-                onNavigateToExtensionManager = onNavigateToExtensionManager,
-                modifier = Modifier.padding(horizontal = 24.dp),
-            )
+            if (hasHomeActions) {
+                Spacer(Modifier.height(12.dp))
+
+                HomeActionsBento(
+                    reinstallVisible = reinstallVisible,
+                    isRoot = isRoot,
+                    hasPrivilege = hasPrivilege,
+                    unknownInstallerCount = state.unknownInstallerCount,
+                    selectedTypeName = state.selectedType.name.lowercase(),
+                    onReinstall = onReinstallAll,
+                    onDismissReinstall = { viewModel.dismissReinstallCard() },
+                    onInstall = { filePickerLauncher.launch(arrayOf("*/*")) },
+                    onClearCache = { showCacheDialog = true },
+                    onNavigateToExtensionManager = onNavigateToExtensionManager,
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                    showInstaller = state.showInstallerTile,
+                    showExtensions = state.showExtensionsTile,
+                )
+            }
 
             Spacer(Modifier.height(24.dp))
 

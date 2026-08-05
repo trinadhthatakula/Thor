@@ -36,8 +36,8 @@ Who reads what, exactly:
 
 | File | Consumer | Where |
 |---|---|---|
-| `github.md` | GitHub Release body | `dev-check.yml:166`, `production-deploy.yml:159` |
-| `telegram.md` | Telegram broadcast caption | `dev-check.yml:192`, `telegram-release.yml:84` |
+| `github.md` | GitHub Release body | `dev-check.yml:197`, `production-deploy.yml:163` |
+| `telegram.md` | Telegram broadcast caption | `dev-check.yml:223`, `telegram-release.yml:84` |
 | `playstore.txt` | Play `whats_new`; copied to `fastlane/…/changelogs/<versionCode>.txt` | `fastlane/Fastfile:89-113` |
 | `fastlane/…/changelogs/<versionCode>.txt` | F-Droid changelog | the F-Droid builder reads the repo directly |
 | `shizu_store.json` → `.changelog` | Shizu CoreFetch store listing | `.github/scripts/sync-shizu-changelog.sh` |
@@ -88,8 +88,8 @@ Use the `v` form; the fallback exists only for old directories.
 ## ⚠️ Traps that have already cost a release
 
 **1. An oversized `telegram.md` posts NOTHING, and CI still goes green.**
-The notes are sent as a `sendDocument` **caption** (`telegram-release.yml:146`,
-`dev-check.yml:252`), not as a message. Telegram caps captions at **1024 UTF-16 units** and
+The notes are sent as a `sendDocument` **caption** (`telegram-release.yml:144`,
+`dev-check.yml:281`), not as a message. Telegram caps captions at **1024 UTF-16 units** and
 **rejects** an oversized one outright — it does not truncate. The `curl` has no `--fail` and its
 output is discarded, so the step succeeds having broadcast nothing. The workflow prepends a header
 and appends a GitHub-link footer worth roughly **140 units**, which is where the ~870 budget comes

@@ -107,7 +107,7 @@ jobs:
       # HEAD^ on a PR merge commit is the previous master tip (first parent), which is the
       # comparison we want. Fails OPEN — if the old value cannot be read we attempt the publish
       # and let Play adjudicate, rather than silently skipping a real release.
-      - name: Detect release (did versionCode change?)
+      - name: Detect release (a changed versionCode that is not a stable)
         id: ver
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -122,6 +122,37 @@ jobs:
             echo "::error::versionCode not found in gradle.properties"
             exit 1
           fi
+
+          # A stable belongs to production, not to master. versionName is derived as
+          # code/1000 . code%1000/10 . code%10, so the last digit *is* the patch number: a code
+          # ending in 0 is an x.y.0 — 1940 -> 1.94.0. Those publish from production-deploy.yml,
+          # which puts them on `beta` and cuts a real, non-pre- GitHub release. This branch only
+          # ever publishes the builds between them.
+          #
+          # Skipping them here is not merely tidy. Play allows a version code to be *uploaded*
+          # exactly once app-wide — the limit is per app, not per track — so when the same
+          # chore(release) commit reaches master and production, whichever branch got there first
+          # makes the other die on "Version code NNNN has already been used". Routing on the last
+          # digit gives every code exactly one publisher: dev builds from master, stables from
+          # production. That is what closes docs/follow-ups/two-branches-one-play-version-code.md,
+          # and it keeps the behaviour the owner wanted from option 2 without its cost — master
+          # still publishes to a Play test track, just never a stable.
+          #
+          # Deliberately placed *below* the workflow_dispatch arm, not above it: a manual dispatch
+          # remains an explicit request to publish and still overrides this. Note that using it on
+          # a stable consumes the code production is about to ask for, so the escape hatch for a
+          # stable is production-deploy.yml's own workflow_dispatch, not this one.
+          #
+          # `case` rather than $((NEW % 10)): arithmetic expansion errors out on a non-numeric
+          # read, which would turn a step written to fail OPEN into a red build.
+          case "$NEW" in
+            *0)
+              echo "::notice::versionCode $NEW ends in 0 — a stable, which publishes from the production branch. Building for verification only."
+              echo "release=false" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
+
           if [ -n "$OLD" ] && [ "$OLD" = "$NEW" ]; then
             echo "::notice::versionCode unchanged at $NEW — building for verification only, not publishing."
             echo "release=false" >> "$GITHUB_OUTPUT"

@@ -13,6 +13,10 @@
     <string name="general">عام</string>
     <string name="show_reinstall_card">إظهار بطاقة إعادة التثبيت</string>
     <string name="show_reinstall_card_desc">إظهار تذكير إصلاح المتجر على الشاشة الرئيسية</string>
+    <string name="show_installer_tile">إظهار مربع المثبِّت</string>
+    <string name="show_installer_tile_desc">إظهار "تثبيت من ملف" على الشاشة الرئيسية</string>
+    <string name="show_extensions_tile">إظهار مربع الإضافات</string>
+    <string name="show_extensions_tile_desc">إظهار الإضافات على الشاشة الرئيسية</string>
     <string name="appearance">المظهر</string>
     <string name="theme">المظهر</string>
     <string name="theme_desc">نمط الواجهة المرئية</string>
@@ -57,6 +61,7 @@
     <string name="error_title">خطأ</string>
     <string name="refresh">تحديث</string>
     <string name="dismiss">تجاهل</string>
+    <string name="show_details">عرض التفاصيل</string>
     <string name="search_apps">بحث عن تطبيقات&#8230;</string>
     <string name="unknown">غير معروف</string>
 
@@ -66,7 +71,6 @@
     <string name="install_from_file">تثبيت من ملف</string>
     <string name="install_from_file_subtitle">تثبيت APK أو XAPK أو APKS أو حزم مقسمة</string>
     <string name="home_extensions_title">الإضافات</string>
-    <string name="home_extensions_subtitle">إدارة وفتح</string>
     <string name="app_distribution">توزيع التطبيقات</string>
     <string name="total_apps">الإجمالي: %1$d</string>
     <string name="others">أخرى</string>
@@ -433,6 +437,10 @@
     <string name="sponsor_github_desc">تبرع لمرة واحدة أو شهريًا، بجانب الشيفرة المصدرية مباشرة</string>
     <string name="become_patreon_title">كن داعمًا على Patreon</string>
     <string name="become_patreon_desc">دعم التطوير المستمر باشتراك شهري</string>
+    <string name="support_kofi_title">الدعم عبر Ko-fi</string>
+    <string name="support_kofi_desc">اشترِ قهوة مرة واحدة أو كل شهر</string>
+    <string name="buy_me_a_coffee_title">الدعم عبر Buy Me a Coffee</string>
+    <string name="buy_me_a_coffee_desc">قهوة لمرة واحدة أو عضوية شهرية</string>
     <string name="donate_paypal_title">التبرع عبر PayPal</string>
     <string name="donate_paypal_desc">أرسل تبرعًا لمرة واحدة مباشرة</string>
 

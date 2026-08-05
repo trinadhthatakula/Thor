@@ -118,6 +118,10 @@ class PreferenceRepositoryImpl(
         val SELECTED_FILTER = stringPreferencesKey("selected_filter")
         val SHOW_REINSTALL_ALL = booleanPreferencesKey("show_reinstall_all")
 
+        // Home tiles
+        val SHOW_INSTALLER_TILE = booleanPreferencesKey("show_installer_tile")
+        val SHOW_EXTENSIONS_TILE = booleanPreferencesKey("show_extensions_tile")
+
         // Theme
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val USE_DYNAMIC_COLOR = booleanPreferencesKey("use_dynamic_color")
@@ -201,6 +205,14 @@ class PreferenceRepositoryImpl(
 
     override suspend fun setReinstallAllCardVisibility(isVisible: Boolean) {
         context.dataStore.edit { it[Keys.SHOW_REINSTALL_ALL] = isVisible }
+    }
+
+    override suspend fun setInstallerTileVisibility(isVisible: Boolean) {
+        context.dataStore.edit { it[Keys.SHOW_INSTALLER_TILE] = isVisible }
+    }
+
+    override suspend fun setExtensionsTileVisibility(isVisible: Boolean) {
+        context.dataStore.edit { it[Keys.SHOW_EXTENSIONS_TILE] = isVisible }
     }
 
     // --- Theme ---
@@ -465,6 +477,8 @@ internal fun Preferences.toUserPreferences(
         appFilterType = filterType,
         appSelectedFilter = prefs[Keys.SELECTED_FILTER] ?: "All",
         showReinstallAllCard = prefs[Keys.SHOW_REINSTALL_ALL] ?: true,
+        showInstallerTile = prefs[Keys.SHOW_INSTALLER_TILE] ?: true,
+        showExtensionsTile = prefs[Keys.SHOW_EXTENSIONS_TILE] ?: true,
         themeMode = themeMode,
         useDynamicColor = prefs[Keys.USE_DYNAMIC_COLOR] ?: false,
         useAmoled = prefs[Keys.USE_AMOLED] ?: false,

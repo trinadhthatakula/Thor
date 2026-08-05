@@ -3,44 +3,217 @@
 
 package com.valhalla.thor.presentation.home
 
+import com.valhalla.thor.presentation.home.components.HomeAction
 import com.valhalla.thor.presentation.home.components.HomeAction.CLEAR_CACHE
 import com.valhalla.thor.presentation.home.components.HomeAction.EXTENSIONS
 import com.valhalla.thor.presentation.home.components.HomeAction.INSTALL
 import com.valhalla.thor.presentation.home.components.HomeAction.REINSTALL
 import com.valhalla.thor.presentation.home.components.homeActionRows
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/**
+ * The three privilege flags all derive from one nullable field on the Home state, so only five of
+ * their eight combinations are reachable: root implies privilege, and so does a visible reinstall
+ * card. The two GH#344 preferences are independent of all of that and of each other, so the
+ * reachable set is those five crossed with all four preference pairs.
+ *
+ * Each privilege state is asserted on its own below, then the preference rules, then the packing
+ * and visibility invariants across every combination.
+ */
 class HomeActionsTest {
-    @Test fun noPrivilege_onlyInstallFullWidth() {
-        assertEquals(listOf(listOf(INSTALL)), homeActionRows(reinstallVisible = false, isRoot = false, hasPrivilege = false))
+
+    /** One state the Home screen can be in: the three derived flags plus the two preferences. */
+    private data class State(
+        val reinstall: Boolean,
+        val root: Boolean,
+        val privilege: Boolean,
+        val showInstaller: Boolean,
+        val showExtensions: Boolean,
+    ) {
+        fun rows() = homeActionRows(reinstall, root, privilege, showInstaller, showExtensions)
+
+        override fun toString() = "reinstall=$reinstall root=$root privilege=$privilege " +
+            "installer=$showInstaller extensions=$showExtensions"
     }
 
-    @Test fun shizukuOrDhizuku_withReinstall_extensionsFullWidth() {
+    /** The five reachable privilege states, crossed with every preference pair. */
+    private val reachableStates: List<State> =
+        listOf(
+            Triple(false, false, false),
+            Triple(false, false, true),
+            Triple(true, false, true),
+            Triple(false, true, true),
+            Triple(true, true, true),
+        ).flatMap { (reinstall, root, privilege) ->
+            listOf(true, false).flatMap { installer ->
+                listOf(true, false).map { extensions ->
+                    State(reinstall, root, privilege, installer, extensions)
+                }
+            }
+        }
+
+    // --- Privilege states, both tiles kept ------------------------------------------------------
+
+    @Test fun noPrivilege_onlyInstallFullWidth() {
         assertEquals(
-            listOf(listOf(REINSTALL, INSTALL), listOf(EXTENSIONS)),
-            homeActionRows(reinstallVisible = true, isRoot = false, hasPrivilege = true)
+            listOf(listOf(INSTALL)),
+            homeActionRows(reinstallVisible = false, isRoot = false, hasPrivilege = false)
         )
     }
 
-    @Test fun shizukuOrDhizuku_noReinstall() {
+    @Test fun shizukuOrDhizuku_noReinstall_isOnePair() {
         assertEquals(
-            listOf(listOf(INSTALL), listOf(EXTENSIONS)),
+            listOf(listOf(INSTALL, EXTENSIONS)),
             homeActionRows(reinstallVisible = false, isRoot = false, hasPrivilege = true)
         )
     }
 
-    @Test fun root_withReinstall_fullGrid() {
+    @Test fun shizukuOrDhizuku_withReinstall_leadsWide() {
         assertEquals(
-            listOf(listOf(REINSTALL, INSTALL), listOf(CLEAR_CACHE, EXTENSIONS)),
-            homeActionRows(reinstallVisible = true, isRoot = true, hasPrivilege = true)
+            listOf(listOf(INSTALL), listOf(EXTENSIONS, REINSTALL)),
+            homeActionRows(reinstallVisible = true, isRoot = false, hasPrivilege = true)
         )
     }
 
-    @Test fun root_noReinstall() {
+    @Test fun root_noReinstall_leadsWide() {
         assertEquals(
             listOf(listOf(INSTALL), listOf(CLEAR_CACHE, EXTENSIONS)),
             homeActionRows(reinstallVisible = false, isRoot = true, hasPrivilege = true)
         )
+    }
+
+    @Test fun root_withReinstall_isTwoByTwo() {
+        assertEquals(
+            listOf(listOf(INSTALL, CLEAR_CACHE), listOf(EXTENSIONS, REINSTALL)),
+            homeActionRows(reinstallVisible = true, isRoot = true, hasPrivilege = true)
+        )
+    }
+
+    /** Reinstall is last in the flow, so dismissing it re-packs only the tiles after it. */
+    @Test fun dismissingReinstall_leavesTheOtherTilesInPlace() {
+        val withCard = homeActionRows(reinstallVisible = true, isRoot = true, hasPrivilege = true)
+        val without = homeActionRows(reinstallVisible = false, isRoot = true, hasPrivilege = true)
+        assertEquals(listOf(INSTALL, CLEAR_CACHE, EXTENSIONS), without.flatten())
+        assertEquals(listOf(INSTALL, CLEAR_CACHE, EXTENSIONS, REINSTALL), withCard.flatten())
+    }
+
+    @Test fun narrowContainer_givesEveryTileItsOwnRow() {
+        assertEquals(
+            listOf(listOf(INSTALL), listOf(CLEAR_CACHE), listOf(EXTENSIONS), listOf(REINSTALL)),
+            homeActionRows(
+                reinstallVisible = true, isRoot = true, hasPrivilege = true, narrowContainer = true
+            )
+        )
+    }
+
+    // --- GH#344 visibility preferences ----------------------------------------------------------
+
+    /** The 2x2 loses its leader and the survivors re-pack, rather than leaving a hole. */
+    @Test fun hidingTheInstaller_dropsOnlyThatTile() {
+        val rows = homeActionRows(
+            reinstallVisible = true, isRoot = true, hasPrivilege = true, showInstaller = false
+        )
+        assertTrue("Install must be gone", INSTALL !in rows.flatten())
+        assertEquals(listOf(listOf(CLEAR_CACHE), listOf(EXTENSIONS, REINSTALL)), rows)
+    }
+
+    @Test fun hidingExtensions_dropsOnlyThatTile() {
+        val rows = homeActionRows(
+            reinstallVisible = true, isRoot = true, hasPrivilege = true, showExtensions = false
+        )
+        assertTrue("Extensions must be gone", EXTENSIONS !in rows.flatten())
+        assertEquals(listOf(listOf(INSTALL), listOf(CLEAR_CACHE, REINSTALL)), rows)
+    }
+
+    @Test fun hidingBoth_keepsThePrivilegedTiles() {
+        val rows = homeActionRows(
+            reinstallVisible = true,
+            isRoot = true,
+            hasPrivilege = true,
+            showInstaller = false,
+            showExtensions = false,
+        )
+        assertEquals(listOf(listOf(CLEAR_CACHE, REINSTALL)), rows)
+    }
+
+    /**
+     * The whole grid can legitimately disappear — hiding both optional tiles with no privilege
+     * leaves nothing eligible. HomeScreen drops its spacer on this, so it has to stay an empty
+     * list rather than a row of nothing.
+     */
+    @Test fun hidingBothWithNoPrivilege_leavesNothingToDraw() {
+        assertEquals(
+            emptyList<List<HomeAction>>(),
+            homeActionRows(
+                reinstallVisible = false,
+                isRoot = false,
+                hasPrivilege = false,
+                showInstaller = false,
+                showExtensions = false,
+            )
+        )
+    }
+
+    /** The preference relaxes nothing: without a privilege there is no Extensions tile to keep. */
+    @Test fun wantingExtensionsWithoutPrivilege_staysHidden() {
+        val rows = homeActionRows(
+            reinstallVisible = false, isRoot = false, hasPrivilege = false, showExtensions = true
+        )
+        assertEquals(listOf(listOf(INSTALL)), rows)
+    }
+
+    /** Hiding a tile is layout-only, so the rail packs the survivors the same way. */
+    @Test fun narrowContainer_respectsTheVisibilityPreferences() {
+        assertEquals(
+            listOf(listOf(CLEAR_CACHE), listOf(REINSTALL)),
+            homeActionRows(
+                reinstallVisible = true,
+                isRoot = true,
+                hasPrivilege = true,
+                showInstaller = false,
+                showExtensions = false,
+                narrowContainer = true,
+            )
+        )
+    }
+
+    // --- Invariants across every reachable state ------------------------------------------------
+
+    @Test fun everyReachableState_packsIntoPairsWithAtMostOneWideLeader() {
+        for (state in reachableStates) {
+            val rows = state.rows()
+
+            assertTrue("$state: a row holds more than two tiles", rows.all { it.size in 1..2 })
+            assertTrue("$state: an empty row was emitted", rows.none { it.isEmpty() })
+            assertTrue(
+                "$state: a single-tile row appears somewhere other than first",
+                rows.drop(1).all { it.size == 2 }
+            )
+
+            val flat = rows.flatten()
+            assertEquals("$state: a tile was duplicated", flat.size, flat.toSet().size)
+        }
+    }
+
+    /** Every tile's visibility is exactly its own rule — no tile rides along on another's. */
+    @Test fun everyReachableState_showsExactlyTheEligibleTiles() {
+        for (state in reachableStates) {
+            val flat = state.rows().flatten()
+            assertEquals("$state: Install visibility", state.showInstaller, INSTALL in flat)
+            assertEquals("$state: Clear cache visibility", state.root, CLEAR_CACHE in flat)
+            assertEquals(
+                "$state: Extensions visibility",
+                state.privilege && state.showExtensions,
+                EXTENSIONS in flat
+            )
+            assertEquals("$state: Reinstall visibility", state.reinstall, REINSTALL in flat)
+        }
+    }
+
+    @Test fun everyActionIsReachableFromSomeState() {
+        val seen = reachableStates.flatMap { it.rows().flatten() }
+        assertEquals(HomeAction.entries.toSet(), seen.toSet())
     }
 }

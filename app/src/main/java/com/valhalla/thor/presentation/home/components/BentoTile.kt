@@ -4,16 +4,17 @@
 package com.valhalla.thor.presentation.home.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,6 +23,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -32,6 +36,11 @@ import com.valhalla.thor.R
  * Modifier.weight(1f) (half-width, paired) and fillMaxWidth() (full-width, solo). Icon chip on
  * top, then title + subtitle. Uniform min height so paired tiles align. Mirrors the color logic
  * of the former ActionCard (isPrimary/isWarning/neutral).
+ *
+ * When [showSubtitle] is false the tile is *compact*: the subtitle is dropped from the layout and
+ * the title is allowed to wrap to two lines instead. A half-width tile has no room for both, and
+ * clipping the title is worse than hiding a description the long-press sheet can show in full.
+ * The subtitle stays in the accessibility tree either way — see the Spacer below.
  */
 @Composable
 fun BentoTile(
@@ -41,6 +50,9 @@ fun BentoTile(
     modifier: Modifier = Modifier,
     isPrimary: Boolean = false,
     isWarning: Boolean = false,
+    showSubtitle: Boolean = true,
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
     onClose: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
@@ -58,14 +70,32 @@ fun BentoTile(
         modifier = modifier
             .clip(RoundedCornerShape(28.dp))
             .background(containerColor)
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                role = Role.Button,
+                onLongClickLabel = onLongClickLabel,
+                onLongClick = onLongClick,
+                onClick = onClick,
+            )
             .defaultMinSize(minHeight = 112.dp)
             .padding(18.dp)
     ) {
         if (onClose != null) {
-            IconButton(
-                onClick = onClose,
-                modifier = Modifier.align(Alignment.TopEnd)
+            // Not an IconButton: its own clickable would consume the down event before the tile's
+            // long-press timer could start, leaving a 48 dp corner where holding dismisses the
+            // card instead of opening the sheet. Carrying the same onLongClick here keeps the
+            // gesture uniform across the whole tile.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .clip(CircleShape)
+                    .combinedClickable(
+                        role = Role.Button,
+                        onLongClickLabel = onLongClickLabel,
+                        onLongClick = onLongClick,
+                        onClick = onClose,
+                    )
+                    .size(48.dp),
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
                     painter = painterResource(R.drawable.round_close),
@@ -98,17 +128,24 @@ fun BentoTile(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.ExtraBold,
                     color = contentColor,
-                    maxLines = 1,
+                    maxLines = if (showSubtitle) 1 else 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (isPrimary) contentColor.copy(alpha = 0.8f)
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+                if (showSubtitle) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (isPrimary) contentColor.copy(alpha = 0.8f)
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                } else {
+                    // The tile root merges its descendants, so deleting the subtitle Text would
+                    // also delete the string from what TalkBack reads out. A zero-size node right
+                    // after the title keeps both the content and its reading order.
+                    Spacer(Modifier.semantics { contentDescription = subtitle })
+                }
             }
         }
     }
