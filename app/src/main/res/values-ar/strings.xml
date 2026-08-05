@@ -433,6 +433,10 @@
     <string name="sponsor_github_desc">تبرع لمرة واحدة أو شهريًا، بجانب الشيفرة المصدرية مباشرة</string>
     <string name="become_patreon_title">كن داعمًا على Patreon</string>
     <string name="become_patreon_desc">دعم التطوير المستمر باشتراك شهري</string>
+    <string name="support_kofi_title">الدعم عبر Ko-fi</string>
+    <string name="support_kofi_desc">اشترِ قهوة مرة واحدة أو كل شهر</string>
+    <string name="buy_me_a_coffee_title">الدعم عبر Buy Me a Coffee</string>
+    <string name="buy_me_a_coffee_desc">قهوة لمرة واحدة أو عضوية شهرية</string>
     <string name="donate_paypal_title">التبرع عبر PayPal</string>
     <string name="donate_paypal_desc">أرسل تبرعًا لمرة واحدة مباشرة</string>
 

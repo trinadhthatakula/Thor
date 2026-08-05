@@ -1,0 +1,28 @@
+<!-- SPDX-FileCopyrightText: 2025-2026 Trinadh Thatakula <github.com/trinadhthatakula/Thor> -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!--
+  A mug with a heart, on a saucer. Not Ko-fi's trademark: SupportDeveloperBottomSheet draws every
+  action icon with Icon(tint = colorScheme.primary), so a brand mark could never keep its brand
+  colour anyway — the same reason PayPal already uses the generic shield_with_heart. It only has to
+  read as "Ko-fi" beside its own label, and to be distinguishable from brand_buymeacoffee one row
+  below, which is a lidded takeaway cup with steam.
+
+  fillType="evenOdd" is load-bearing: it is what makes the heart a HOLE in the cup. Everything here
+  is drawn in one tint, so a heart drawn as a second filled subpath would be invisible.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#000000"
+        android:fillType="evenOdd"
+        android:pathData="M4,4 h12 a1,1 0 0 1 1,1 v7 a5,5 0 0 1 -5,5 H8 a5,5 0 0 1 -5,-5 V5 a1,1 0 0 1 1,-1 z M10,14.1 C10,14.1 5.9,11.4 5.9,8.85 C5.9,7.55 6.95,6.5 8.2,6.5 C8.95,6.5 9.65,6.9 10,7.45 C10.35,6.9 11.05,6.5 11.8,6.5 C13.05,6.5 14.1,7.55 14.1,8.85 C14.1,11.4 10,14.1 10,14.1 Z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M17,6.2 h1.6 a3.4,3.4 0 0 1 0,6.8 H17 v-2 h1.6 a1.4,1.4 0 0 0 0,-2.8 H17 z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M3.2,18.6 h13.6 a1.2,1.2 0 0 1 0,2.4 H3.2 a1.2,1.2 0 0 1 0,-2.4 z" />
+</vector>

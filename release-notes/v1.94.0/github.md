@@ -1,7 +1,7 @@
 # Thor v1.94.0 Release Notes
 
 The first stable since **v1.93.0**, consolidating everything that shipped through the
-`v1.93.1`, `v1.93.2` and `v1.93.3` pre-release builds — **65 pull requests**.
+`v1.93.1`, `v1.93.2` and `v1.93.3` pre-release builds — **66 pull requests**.
 
 Two threads run through it. The first is **new ground**: freeze profiles, bulk backup and
 `.xapk` export, permission filtering, and a support catalogue that comes from Play instead of
@@ -133,9 +133,12 @@ suspension another privilege mode applied.
 * The in-app **language picker works below API 33** (#345), and a language change reaches the
   caches that hold copies.
 
-### 💖 Support (#311, #342, #351)
+### 💖 Support (#311, #342, #351, #356)
 
 * **GitHub Sponsors** alongside Patreon and PayPal (#311).
+* **Ko-fi and Buy Me a Coffee are now in the app** (#356). The website and `FUNDING.yml` have
+  advertised five funding routes for a while; the in-app sheet only ever offered three. All five
+  now agree.
 * **Support tiers are probed rather than hardcoded** (#351). Play exposes no catalogue-
   enumeration API, so Thor queries a candidate ID set and renders whatever Play answers with —
   a tier added in Play Console shows up without an app release. Prices and their ordering come
@@ -179,6 +182,7 @@ suspension another privilege mode applied.
 
 ## 🛠 Commits Log (`v1.93.0...v1.94.0`)
 
+* `fbf2d54e` — #356 Ko-fi and Buy Me a Coffee in the app
 * `0ea6f93b` — #354 lint warning sweep, guards preserved
 * `1f31a36f` — #352 release 1.93.3
 * `172583f7` — #351 probe support tiers instead of hardcoding them
