@@ -333,9 +333,14 @@ class BillingProcessorImpl(
                     return@queryProductDetailsAsync
                 }
 
-                // `.orEmpty()` on both lists: these are Java platform types, so Kotlin will not
-                // insist on a null check that the library's own annotations do not guarantee, and
-                // the code this replaces took the same precaution (`?: emptyList()`).
+                // `.orEmpty()` on both lists is belt-and-braces, and the reason recorded here was
+                // wrong: these are NOT platform types. `getProductDetailsList()` and
+                // `getUnfetchedProductList()` both carry `@androidx.annotation.NonNull` (javap on
+                // billing-9.1.0), so Kotlin already types them non-null — written as `?: emptyList()`
+                // this would warn as a useless elvis, and `.orEmpty()` differs only in that the
+                // compiler stays silent about it. The emitted branch is the same either way, so the
+                // fallback costs nothing and still catches a library that violates its own contract;
+                // just do not read it as evidence that the annotation is missing.
                 val detailsList = queryResult.productDetailsList.orEmpty()
                 val mappedProducts = detailsList.map { details ->
                     // Base plan by identity, recurring phase by recurrence mode — never
@@ -598,11 +603,22 @@ class BillingProcessorImpl(
      * operate on. Every library constant stays on this side of the boundary.
      */
     private fun ProductDetails.toSubscriptionOffers(): List<SubscriptionOffer> =
+        // This `.orEmpty()` is load-bearing, unlike the four below it:
+        // `getSubscriptionOfferDetails()` is `@Nullable` and returns null for a one-time-purchase
+        // product, so Kotlin types it nullable and this is a real branch. The `.orEmpty()` calls
+        // inside the map are on `@NonNull` receivers and are dead by the type system. They read
+        // identically; only the annotation tells them apart, which is why they are called out here.
         subscriptionOfferDetails.orEmpty().map { offer ->
             SubscriptionOffer(
                 offerId = offer.offerId,
                 offerToken = offer.offerToken,
-                phases = offer.pricingPhases?.pricingPhaseList.orEmpty().map { phase ->
+                // No `?.` on `pricingPhases`: its backing field is assigned unconditionally in
+                // `SubscriptionOfferDetails(JSONObject)` from `getJSONArray` — which throws rather
+                // than yielding null — so an offer with a null phase list cannot be constructed.
+                // (Contrast the siblings that do have an `aconst_null` path; those getters are
+                // annotated @Nullable.) `.orEmpty()` stays: dropping it would trade the fallback for
+                // an intrinsic that throws.
+                phases = offer.pricingPhases.pricingPhaseList.orEmpty().map { phase ->
                     SubscriptionPricingPhase(
                         formattedPrice = phase.formattedPrice.orEmpty(),
                         billingPeriod = phase.billingPeriod.orEmpty(),

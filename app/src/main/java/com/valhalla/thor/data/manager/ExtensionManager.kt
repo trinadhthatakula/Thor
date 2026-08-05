@@ -5,6 +5,8 @@ package com.valhalla.thor.data.manager
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import com.valhalla.thor.extension.api.DebloatExtension
 import com.valhalla.thor.extension.api.ThorExtension
@@ -74,8 +76,18 @@ class ExtensionManager(private val context: Context) {
     fun loadExtensions(): List<ThorExtension> {
         // Enumerate cheaply (0 flags), filter to extensions, then fetch GET_META_DATA only for those
         // few packages — a GET_META_DATA scan over ALL apps can exceed the binder buffer
-        // (TransactionTooLargeException). getInstalledPackages can return null on some ROMs; guard it.
-        val installedExtensions = (pm.getInstalledPackages(0) ?: emptyList())
+        // (TransactionTooLargeException).
+        //
+        // The explicit nullable type is load-bearing, not noise. android.jar annotates
+        // getInstalledPackages `@android.annotation.NonNull`, so without it Kotlin types the result
+        // non-null and reports the fallback below as a useless elvis — and silencing that warning by
+        // deleting the fallback is a behaviour change, not a cleanup: the compiler then inserts an
+        // intrinsic that turns a ROM's null into `NPE: getInstalledPackages(...) must not be null`.
+        // A modified ROM is not bound by the platform's own annotation, and an empty extension list
+        // degrades where that NPE crashes. Declaring the type nullable keeps the branch alive — it
+        // survives R8 into the shipped DEX as `if-nez` — without suppressing a diagnostic.
+        val installedPackages: List<PackageInfo>? = pm.getInstalledPackages(0)
+        val installedExtensions = installedPackages.orEmpty()
             .filter { it.packageName.startsWith(EXTENSION_PACKAGE_PREFIX) }
             .mapNotNull { pkg ->
                 runCatching { pm.getPackageInfo(pkg.packageName, PackageManager.GET_META_DATA) }.getOrNull()
@@ -214,10 +226,14 @@ class ExtensionManager(private val context: Context) {
      * separately at load time by [loadExtensions]. `longVersionCode` is available from API 28 (Thor's
      * minSdk), so no compat shim is needed.
      */
-    fun getInstalledExtensionVersionCodes(): Map<String, Long> =
-        (pm.getInstalledPackages(0) ?: emptyList())
+    fun getInstalledExtensionVersionCodes(): Map<String, Long> {
+        // Nullable type deliberate — see [loadExtensions] for why the platform's own @NonNull is not
+        // taken at face value here, and what deleting the fallback would actually change.
+        val installedPackages: List<PackageInfo>? = pm.getInstalledPackages(0)
+        return installedPackages.orEmpty()
             .filter { it.packageName.startsWith(EXTENSION_PACKAGE_PREFIX) }
             .associate { it.packageName to it.longVersionCode }
+    }
 
     /**
      * True iff [packageName] is installed, via a single-package [PackageManager.getPackageInfo]
@@ -240,7 +256,11 @@ class ExtensionManager(private val context: Context) {
         // metadata rather than assuming the implementation class lives under the app's packageName.
         // The code package and the applicationId can differ, and a class-name prefix match would
         // namespace the extension's datastore against the wrong package.
-        return (pm.getInstalledApplications(PackageManager.GET_META_DATA) ?: emptyList())
+        // Nullable type deliberate — see [loadExtensions]. This is the GET_META_DATA full scan that
+        // this class's KDoc warns about, so it is the site with the most to lose from a crash.
+        val installedApps: List<ApplicationInfo>? =
+            pm.getInstalledApplications(PackageManager.GET_META_DATA)
+        return installedApps.orEmpty()
             .firstOrNull { app ->
                 app.packageName.startsWith(EXTENSION_PACKAGE_PREFIX) &&
                         app.metaData?.getString("thor.extension.class") == className

@@ -227,6 +227,14 @@ android {
         // do not want this module's result to move because a dependency we do not control changed.
         checkDependencies = false
 
+        // Off by default, which meant 61 unit-test files and the androidTest tree were analysed by
+        // nothing at all — "0 errors" was bounded by what lint was pointed at, not by the code.
+        // Measured cost of turning it on: 9 SdCardPath hits, every one of them a test asserting
+        // *about* a path rather than hardcoding one, so that check is scoped away from src/test in
+        // lint.xml and the net is 0 new findings today. What it buys is the next real defect in
+        // those files being visible.
+        checkTestSources = true
+
         // AGP 9 always writes the HTML/XML/SARIF reports and has deprecated the toggles and *Output
         // paths, so the only thing left worth asking for is the text report on stdout — otherwise a
         // CI failure just points at an HTML file nobody can open from the log.
