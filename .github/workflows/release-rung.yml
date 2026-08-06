@@ -32,6 +32,19 @@ on:
       telegram:
         required: true
         type: boolean
+      # The caption used to assert "Uploaded to Play Store - GitHub pre-release
+      # next" on every rung. That is a dev-only sentence: promote_beta and
+      # promote_production call prepare_release_artifacts(upload_to_store:
+      # false) and then move a bundle that is already on Play, so they upload
+      # nothing, and production publishes a full release rather than a
+      # pre-release. A caption is a claim to users; make each rung state its own.
+      caption_status:
+        description: >-
+          The Status: line of the Telegram caption. Must be true for this rung -
+          only the dev rung uploads an artifact, the promote lanes move one that
+          is already on Play, and production ends in a full release.
+        required: true
+        type: string
       require_notes:
         description: 'Hard-fail when no curated release notes exist.'
         required: true
@@ -40,10 +53,29 @@ on:
         description: "skip | fail. What an unbumped versionCode means here."
         required: true
         type: string
+      # Measured, never estimated: assemble the caption below through a shell and
+      # count UTF-16 units as len(text.encode('utf-16-le')) // 2, the same method
+      # check-notes-budget.sh uses. The scaffolding varies with both the rung and
+      # the actor, counting the "\n\n" that joins it to telegram.md:
+      #
+      #                  trinadhthatakula   github-actions[bot]
+      #     dev                 149                152
+      #     beta                145                148
+      #     production          146                149
+      #
+      # 152 is the maximum, so this default is 152 plus 8 units of margin. The
+      # margin absorbs a ref name longer than 'production' - a workflow_dispatch
+      # can run from any branch - or a reworded status line. It cannot go much
+      # higher: v1.94.0's telegram.md is 847 units, so 177 is the hard ceiling
+      # before today's notes stop fitting. 160 leaves them at 1007/1024.
+      #
+      # The previous default of 149 was the dev rung's figure applied to all
+      # three. It was 2-5 units light on production, where an over-budget caption
+      # means a stable release that reached Play users and was never broadcast.
       caption_wrapper_units:
         description: 'UTF-16 units of caption scaffolding, for the budget gate.'
         required: false
-        default: 149
+        default: 160
         type: number
     outputs:
       published:
@@ -69,20 +101,34 @@ jobs:
         with:
           fetch-depth: 0 # full history + tags so the release-notes fallback works
 
+      # The all-zero SHA is deliberate, not a placeholder. github.event.before is
+      # empty on a workflow_dispatch, and the obvious default - HEAD^ - is a
+      # perfectly readable ref under fetch-depth: 0, so the script would compare
+      # against it and report changed=false for a re-run. That breaks the escape
+      # hatch in precisely the case it exists for: Play rejected the code, a
+      # commit that does not bump it lands on the branch, and the operator
+      # re-runs by hand. Substituting a ref nothing can resolve routes the run
+      # into detect-version-bump.sh's fail-open branch, which reports
+      # changed=true when it cannot read the old code.
+      #
+      # The genuine all-zero case - the first push to a new branch - already
+      # reaches the same branch on its own: before is non-empty zeros, so :- does
+      # not fire, git show fails, and old_code comes back empty.
       - name: Detect version bump
         id: ver
         env:
           BEFORE: ${{ github.event.before }}
-        run: .github/scripts/detect-version-bump.sh "${BEFORE:-HEAD^}" >> "$GITHUB_OUTPUT"
+        run: .github/scripts/detect-version-bump.sh "${BEFORE:-0000000000000000000000000000000000000000}" >> "$GITHUB_OUTPUT"
 
       # A rung decides for itself what an unbumped code means. dev and master
       # treat it as "nothing to publish, build for verification only".
       # production treats it as an error: there is nothing to promote, and Play
       # would otherwise reject the run seven minutes later.
       #
-      # workflow_dispatch has no github.event.before, so detect-version-bump
-      # fails open and reports changed=true. That is the deliberate escape
-      # hatch for re-publishing a code Play never accepted.
+      # A workflow_dispatch reaches detect-version-bump.sh's fail-open branch by
+      # way of the unreadable ref substituted above, so it reports changed=true
+      # and publishes. That is the deliberate escape hatch for re-publishing a
+      # code Play never accepted.
       - name: Decide whether this run publishes
         id: gate
         env:
@@ -213,7 +259,8 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          VERSION_NAME: ${{ steps.prep_notes.outputs.version_name }}
+          TITLE_PREFIX: ${{ inputs.title_prefix }}
+          CAPTION_STATUS: ${{ inputs.caption_status }}
           NOTES_PATH: ${{ steps.prep_notes.outputs.telegram_notes_path }}
         run: |
           # Fastlane 'copyStoreReleaseApk' task puts it here
@@ -240,10 +287,15 @@ jobs:
             *)          TRACK_LABEL="$TRACK" ;;
           esac
 
-          # "& GitHub" was a lie of ordering: Create GitHub Pre-Release is a later step in this job,
-          # so the caption asserted a release that had not been attempted yet and would still say so
+          # "& GitHub" was a lie of ordering: Create GitHub Release is a later step in this job, so
+          # the caption asserted a release that had not been attempted yet and would still say so
           # if it failed. Claim only what has actually happened by the time this message is sent.
-          CAPTION=$(printf "🚀 *Thor (Valhalla) Dev Build*\n\nBranch: %s\nAuthor: %s\nTrack: %s\nStatus: Uploaded to Play Store — GitHub pre-release next" "$GITHUB_REF_NAME" "$GITHUB_ACTOR" "$TRACK_LABEL")
+          #
+          # The title and the status line come from inputs for the same reason. Hardcoded, they said
+          # "Dev Build" and "Uploaded to Play Store" on every rung - three false claims out of four
+          # on production, which promotes an existing bundle and ends in a full release. Only the
+          # track adapted on its own, because promote_to_track rewrites track.txt.
+          CAPTION=$(printf "🚀 *Thor (Valhalla) %s*\n\nBranch: %s\nAuthor: %s\nTrack: %s\nStatus: %s" "$TITLE_PREFIX" "$GITHUB_REF_NAME" "$GITHUB_ACTOR" "$TRACK_LABEL" "$CAPTION_STATUS")
 
           if [ -n "$NOTES_PATH" ] && [ -r "$NOTES_PATH" ]; then
             CAPTION=$(printf "%s\n\n%s" "$CAPTION" "$(cat "$NOTES_PATH")")
@@ -267,8 +319,20 @@ jobs:
       # Existing stable tags are correct only because production has never
       # carried a commit of its own. That is a property of the history so far,
       # not a guarantee.
+      #
+      # always() is load-bearing - do not "simplify" it away. A bare if: is ANDed
+      # with an implicit success(), and the Telegram step sits between the build
+      # and this one, so a rejected caption or a transient 5xx from Telegram
+      # would skip the release entirely. On the production rung that means the
+      # build reaches Play users and there is no tag and no foss-release.apk for
+      # rbtlog to clone. The broadcast must not be able to veto the release.
+      #
+      # The prep_notes guard is what always() would otherwise throw away: it runs
+      # after Fastlane and before Telegram, so success() on it means the APKs
+      # built and the body resolved. Without it a failed build would still reach
+      # this step and cut a tagless, assetless release.
       - name: Create GitHub Release
-        if: steps.gate.outputs.publish == 'true'
+        if: always() && steps.gate.outputs.publish == 'true' && steps.prep_notes.outcome == 'success'
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           tag_name: v${{ steps.prep_notes.outputs.version_name }}${{ inputs.tag_suffix }}
