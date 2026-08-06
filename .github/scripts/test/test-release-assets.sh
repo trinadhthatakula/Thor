@@ -28,7 +28,13 @@ for wf in sorted((root / ".github" / "workflows").glob("*.yml")):
             checked += 1
             for line in files.splitlines():
                 line = line.strip()
-                if line.endswith(".aab") or line.endswith("*.aab"):
+                # endswith(".aab") already covers every glob form the action
+                # accepts - "*.aab" and "**/*.aab" both end in ".aab" - which is
+                # why the "*.aab" disjunct that used to sit here could never be
+                # the deciding one. A path that does not name the extension at
+                # all (a bare "outputs/**") would slip past this; that is the
+                # known limit, and no release step uses one.
+                if line.endswith(".aab"):
                     bad.append(f"{wf.name}:{job_name}: {line}")
 
 if checked == 0:
