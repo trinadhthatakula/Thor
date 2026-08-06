@@ -173,11 +173,14 @@ What happens next depends on which workflow sent it, and the difference matters 
   the reason the sentence above used to read "and CI still goes green".
 
 Either way the discovery lands *during* the release, which is why the budget is checked pre-flight
-instead. `release-rung.yml` prepends a header worth **145–152 UTF-16 units** (measured per rung and
-actor, 152 is the maximum, and it counts the blank line that joins it to `telegram.md`), which is
-where the ~860 budget comes from; `telegram-release.yml` uses a shorter header and also appends a
-GitHub-link footer. For reference: v1.93.1 was 695 units (fine); v1.93.0 was 1008 (**already over
-the budget when it shipped**).
+instead. `release-rung.yml` prepends a header that costs **145–152 UTF-16 units on the ladder's own
+three branches** (it varies by rung and by actor, and it counts the blank line that joins it to
+`telegram.md`), which is where the ~860 budget comes from. **152 is not a ceiling** — the header
+contains the branch name, so a `workflow_dispatch` from a long-named branch costs more; this branch
+measures 176. That is why `release-rung.yml` measures the header per run instead of assuming a
+constant, and why a file sized to exactly ~860 can pass on `dev` and be refused on a dispatch.
+`telegram-release.yml` uses a shorter header and also appends a GitHub-link footer. For reference:
+v1.93.1 was 695 units (fine); v1.93.0 was 1008 (**already over the budget when it shipped**).
 
 **2. Baseline the commit range on the last release TAG, not on `master`.**
 `master` runs ahead of its own release tag, so `master..dev` undercounts. Use the newest tag by
