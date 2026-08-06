@@ -1,13 +1,13 @@
-• 🧊 नया: फ्रीज प्रोफाइल — ऐप्स के नामित समूह सहेजें, एक टैप में फ्रीज या अनफ्रीज करें।
+• 🧊 New: Freeze Profiles — save named groups of apps, freeze or unfreeze in one tap.
 
-• 💾 नया: एक साथ कई ऐप्स एक्सपोर्ट करें, अपनी चुनी हुई फ़ोल्डर में।
+• 💾 New: export several apps at once, to a folder you pick.
 
-• 📦 नया: .apk और .apks के साथ .xapk में भी एक्सपोर्ट।
+• 📦 New: export as .xapk, alongside .apk and .apks.
 
-• 🔎 नया: अनुमति के आधार पर ऐप्स फ़िल्टर करें — कैमरा, माइक, लोकेशन आदि।
+• 🔎 New: filter your apps by permission — Camera, Mic, Location and more.
 
-• 📱 ऐप जानकारी अब एक ही शीट में, पूरे विवरण के साथ।
+• 📱 App info is now one sheet, with the full details built in.
 
-• 🧊 फ्रीजर में सुधार: टाइल और शॉर्टकट अब कहीं ज़्यादा भरोसेमंद।
+• 🧊 Freezer rework: the tile and shortcuts are far more reliable.
 
-• 🔒 ऐप लॉक अब आपको बाहर नहीं कर सकता।
+• 🔒 App lock can no longer lock you out.
