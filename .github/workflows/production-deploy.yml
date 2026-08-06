@@ -199,7 +199,6 @@ jobs:
           files: |
             app/build/distribution/foss/foss-release.apk
             app/build/distribution/store/store-release.apk
-            app/build/outputs/bundle/storeRelease/*.aab
           draft: false
           prerelease: false
         env:
