@@ -256,9 +256,18 @@ section "changelog matches the current release notes"
 # sync-shizu-changelog.sh - update both scripts together.
 production_ref="${SHIZU_VERSION_REF:-origin/production}"
 if ! git rev-parse --verify --quiet "$production_ref" >/dev/null; then
-  # A shallow or single-branch clone will not have it. Fetch just that ref.
-  git fetch --quiet --depth=1 origin production 2>/dev/null || true
-  production_ref="FETCH_HEAD"
+  # A shallow or single-branch clone will not have it. Fetch just that ref -
+  # but ONLY when we picked the default. An explicit SHIZU_VERSION_REF that
+  # does not resolve is an operator error, and fetching production instead
+  # would answer a question nobody asked: measured before this guard,
+  # SHIZU_VERSION_REF=origin/v1.93.0 in a clone without that ref reported
+  # production's 1940 and exited 0. Leaving the unresolvable override in place
+  # makes `git show` fail, which the guard below reports against the ref that
+  # was actually requested.
+  if [ -z "${SHIZU_VERSION_REF:-}" ]; then
+    git fetch --quiet --depth=1 origin production 2>/dev/null || true
+    production_ref="FETCH_HEAD"
+  fi
 fi
 
 # `|| true` is load-bearing and must stay. sync-shizu-changelog.sh runs under
@@ -272,16 +281,19 @@ version_code="$(git show "${production_ref}:gradle.properties" 2>/dev/null \
   | grep -E '^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*[0-9]+[[:space:]]*$' \
   | head -n 1 | cut -d= -f2 | tr -d '[:space:]')" || true
 
-if [ -z "$version_code" ]; then
-  echo "::error::could not read versionCode from ${production_ref}:gradle.properties" >&2
-  exit 1
-fi
-
 version_name="$((version_code / 1000)).$(((version_code % 1000) / 10)).$((version_code % 10))"
-# LOCKSTEP-END
 notes="release-notes/v$version_name/playstore.txt"
 [ -f "$notes" ] || notes="release-notes/$version_name/playstore.txt"
-if [ ! -f "$notes" ]; then
+# LOCKSTEP-END
+
+# Reporting is deliberately NOT in the lockstep block: this script accumulates
+# failures and the other one aborts, and that difference is the whole point of
+# each. `fail`, not `exit 1` - an exit here would abandon the --network tier
+# below on the strength of one transient fetch failure, and that tier is the
+# only thing that catches rot originating outside the repository.
+if [ -z "$version_code" ]; then
+  fail "could not read versionCode from ${production_ref}:gradle.properties — fetch it with: git fetch origin production"
+elif [ ! -f "$notes" ]; then
   fail "no playstore.txt for v$version_name (versionCode $version_code)"
 else
   compare_text "changelog" '.changelog' "$notes"

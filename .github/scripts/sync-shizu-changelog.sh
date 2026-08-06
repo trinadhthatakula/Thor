@@ -29,9 +29,18 @@ command -v jq >/dev/null 2>&1 || { printf 'missing required tool: jq\n' >&2; exi
 # sync-shizu-changelog.sh - update both scripts together.
 production_ref="${SHIZU_VERSION_REF:-origin/production}"
 if ! git rev-parse --verify --quiet "$production_ref" >/dev/null; then
-  # A shallow or single-branch clone will not have it. Fetch just that ref.
-  git fetch --quiet --depth=1 origin production 2>/dev/null || true
-  production_ref="FETCH_HEAD"
+  # A shallow or single-branch clone will not have it. Fetch just that ref -
+  # but ONLY when we picked the default. An explicit SHIZU_VERSION_REF that
+  # does not resolve is an operator error, and fetching production instead
+  # would answer a question nobody asked: measured before this guard,
+  # SHIZU_VERSION_REF=origin/v1.93.0 in a clone without that ref reported
+  # production's 1940 and exited 0. Leaving the unresolvable override in place
+  # makes `git show` fail, which the guard below reports against the ref that
+  # was actually requested.
+  if [ -z "${SHIZU_VERSION_REF:-}" ]; then
+    git fetch --quiet --depth=1 origin production 2>/dev/null || true
+    production_ref="FETCH_HEAD"
+  fi
 fi
 
 # `|| true` is load-bearing and must stay. sync-shizu-changelog.sh runs under
@@ -45,16 +54,19 @@ version_code="$(git show "${production_ref}:gradle.properties" 2>/dev/null \
   | grep -E '^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*[0-9]+[[:space:]]*$' \
   | head -n 1 | cut -d= -f2 | tr -d '[:space:]')" || true
 
+version_name="$((version_code / 1000)).$(((version_code % 1000) / 10)).$((version_code % 10))"
+notes="release-notes/v$version_name/playstore.txt"
+[ -f "$notes" ] || notes="release-notes/$version_name/playstore.txt"
+# LOCKSTEP-END
+
+# Reporting is deliberately NOT in the lockstep block: this script aborts and
+# the checker accumulates, and that difference is the whole point of each.
 if [ -z "$version_code" ]; then
-  echo "::error::could not read versionCode from ${production_ref}:gradle.properties" >&2
+  printf 'could not read versionCode from %s:gradle.properties\n' "$production_ref" >&2
+  printf 'fetch the ref first: git fetch origin production\n' >&2
   exit 1
 fi
 
-version_name="$((version_code / 1000)).$(((version_code % 1000) / 10)).$((version_code % 10))"
-# LOCKSTEP-END
-
-notes="release-notes/v$version_name/playstore.txt"
-[ -f "$notes" ] || notes="release-notes/$version_name/playstore.txt"
 if [ ! -f "$notes" ]; then
   printf 'no release notes for v%s (versionCode %s)\n' "$version_name" "$version_code" >&2
   printf 'expected release-notes/v%s/playstore.txt\n' "$version_name" >&2
