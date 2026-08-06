@@ -37,7 +37,7 @@ Every task's requirements implicitly include this section.
 | Path | Responsibility |
 |---|---|
 | `.github/scripts/detect-version-bump.sh` | Compare `versionCode` between two git refs; emit `changed`, `code`, `name`. The `dev` rung's trigger condition. |
-| `.github/scripts/check-notes-budget.sh` | Pre-flight size gate: assembled Telegram caption ≤ 1024 UTF-16 units, `playstore.txt` < 500 chars. |
+| `.github/scripts/check-notes-budget.sh` | Pre-flight size gate: assembled Telegram caption ≤ 1024 UTF-16 units, `playstore.txt` ≤ 500 chars. |
 | `.github/scripts/test/test-detect-version-bump.sh` | Unit tests for the above, using a throwaway git repo in `mktemp -d`. |
 | `.github/scripts/test/test-check-notes-budget.sh` | Unit tests for the notes budget gate. |
 | `.github/scripts/test/run-tests.sh` | Runs every `test-*.sh`; single entry point for CI and humans. |
@@ -2852,14 +2852,20 @@ push with none fails before it builds.
 
 Sizes are checked pre-flight by `.github/scripts/check-notes-budget.sh`:
 
-- `telegram.md` — the **assembled** caption must fit 1024 UTF-16 units. The wrapper is ~149 units,
-  so budget ~870 for the file. Telegram *rejects* an oversized caption rather than truncating it.
-- `playstore.txt` — under 500 characters.
+- `telegram.md` — the **assembled** caption must fit 1024 UTF-16 units. The wrapper measured 145–152
+  units on the ladder's own three branches, so budget ~860 for the file. Telegram *rejects* an
+  oversized caption rather than truncating it. (This draft's `149` was the dev rung's figure applied
+  to all three; the shipped `caption_wrapper_units` default is 160, and the run measures the real
+  value and takes the larger — a long branch name costs more than any of these numbers.)
+- `playstore.txt` — at most 500 characters. (Play's limit is 500 *inclusive*, and the shipped
+  `check-notes-budget.sh` fails on `> 500` to match it. Earlier drafts here and in
+  `release-notes/README.md` said "under 500" / "strictly under 500"; the code was right and the
+  prose was wrong.)
 
 Run it yourself before opening the release PR:
 
 ```bash
-.github/scripts/check-notes-budget.sh 1.94.1 149
+.github/scripts/check-notes-budget.sh 1.94.1
 ```
 ```
 
@@ -2876,9 +2882,18 @@ level before starting the next cycle:
 
 ```bash
 git checkout dev && git pull
-git merge --no-ff origin/master -m "Merge branch 'master' into dev"
+git merge --no-ff origin/production -m "Merge branch 'production' into dev"
 git push origin dev
+git rev-list --count origin/production ^dev   # expect 0
 ```
+
+One merge of `origin/production` levels `dev` against both rungs at once: after the production rung
+has run, `origin/master` is an ancestor of `origin/production`, because the `master`→`production` PR
+merge is what put it there.
+
+**Mid-cycle exception:** if the `master` rung has run but `production` has not, merge `origin/master`
+instead — neither branch is an ancestor of the other at that point, so the ref you merge is the rung
+that last ran.
 
 This push goes straight to `dev`, which the `DevRules` ruleset permits through a RepositoryRole
 bypass. It is the one exception to "never push directly to `dev`". Skipping it means the next

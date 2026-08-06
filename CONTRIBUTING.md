@@ -85,6 +85,12 @@ If you modify Dalvik VM shadowing or hidden API bypasses, place your stub class 
 4. **Run Verification**: Ensure your code builds (`./gradlew assembleFossDebug`) and tests pass (`./gradlew test`).
 5. **Submit a Pull Request**: Submit your pull request targeting the `dev` branch of the main repository.
 
+> 📖 **Which branch does what?** Thor uses a three-rung release ladder — `dev` → `master` →
+> `production` — and your PR always targets `dev`. See
+> [docs/branching-and-releases.md](docs/branching-and-releases.md) for the full picture, including
+> how a merged commit reaches the Play Store and why you should not bump `versionCode` in a
+> feature PR.
+
 ---
 
 Thank you again for contributing to Thor App Manager! 💖

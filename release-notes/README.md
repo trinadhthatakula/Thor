@@ -7,6 +7,11 @@ Every release gets a directory named `v<versionName>` (e.g. `v1.93.2`) containin
 files: `playstore.txt`, `telegram.md`, `github.md`. Two further channels are generated *from* those
 files rather than written separately.
 
+> 📖 For the branch model itself — which merge runs which rung, why only one of them uploads, and
+> the post-release back-merge — see
+> [docs/branching-and-releases.md](../docs/branching-and-releases.md). This guide covers the
+> *content* of the notes; that one covers the *routing*.
+
 ---
 
 ## Which merge publishes what
@@ -50,10 +55,11 @@ push with none fails before it builds.
 Sizes are checked pre-flight by `.github/scripts/check-notes-budget.sh`:
 
 - `telegram.md` — the **assembled** caption must fit 1024 UTF-16 units. The wrapper the workflow
-  adds was measured at 145–152 units (varying by rung and actor); `check-notes-budget.sh` defaults
-  to 160 — a conservative bound that covers all paths. Telegram *rejects* an oversized caption
-  rather than truncating it.
-- `playstore.txt` — under 500 characters.
+  adds measured 145–152 units on the ladder's own three branches (it varies by rung and actor);
+  `check-notes-budget.sh` defaults to 160. Telegram *rejects* an oversized caption rather than
+  truncating it.
+- `playstore.txt` — at most 500 characters (Play's own limit; the checker fails above 500, not at
+  it).
 
 Run it yourself before opening the release PR:
 
@@ -61,8 +67,12 @@ Run it yourself before opening the release PR:
 .github/scripts/check-notes-budget.sh 1.94.1
 ```
 
-Omitting the wrapper argument uses the 160 default, which is the safe choice: over-estimating the
-wrapper can only produce a false rejection before anything publishes, never a false pass.
+The 160 default is a hand-run convenience, **not a universal ceiling**: the wrapper contains the
+ref name, so a `workflow_dispatch` from a long-named branch costs more — this branch measured 176.
+It covers `dev`, `master` and `production` with room to spare, which is what the ladder uses; if
+you are releasing from anything else, pass the measured wrapper size as a second argument. On the
+ladder itself the workflow measures the wrapper per run and passes the real number, so the default
+never decides a real release.
 
 ---
 
@@ -103,11 +113,14 @@ Who reads what, exactly:
 
 | File | Consumer | Where |
 |---|---|---|
-| `github.md` | GitHub Release body | `release-rung.yml:316` |
-| `telegram.md` | Telegram broadcast caption | `release-rung.yml:345`, `telegram-release.yml:84` |
-| `playstore.txt` | Play `whats_new`; copied to `fastlane/…/changelogs/<versionCode>.txt` | `fastlane/Fastfile:94-119` |
+| `github.md` | GitHub Release body | `release-rung.yml`, step *Prepare Release Notes* |
+| `telegram.md` | Telegram broadcast caption | `release-rung.yml`, step *Publish to Telegram*; `telegram-release.yml`, step *Read Version Info* |
+| `playstore.txt` | Play `whats_new`; copied to `fastlane/…/changelogs/<versionCode>.txt` | `fastlane/Fastfile`, `prepare_release_artifacts` and `copy_playstore_notes` |
 | `fastlane/…/changelogs/<versionCode>.txt` | F-Droid changelog | the F-Droid builder reads the repo directly |
 | `shizu_store.json` → `.changelog` | Shizu CoreFetch store listing | `.github/scripts/sync-shizu-changelog.sh` |
+
+Step names rather than line numbers on purpose — the line references that used to sit here were
+stale within two commits, and a wrong line number is worse than none.
 
 Both CI paths fall back from `release-notes/v<version>/` to `release-notes/<version>/` (no `v`).
 Use the `v` form; the fallback exists only for old directories.
@@ -119,8 +132,9 @@ Use the `v` form; the fallback exists only for old directories.
 ### 1️⃣ `playstore.txt` — Google Play, F-Droid, Shizu Store
 
 * **Format**: plain text. Bullets start with `• ` and lead with an emoji.
-* **Size**: **strictly under 500 characters**, counting newlines and spaces. Play rejects more.
-  Aim for 440–490 so a late edit does not push it over.
+* **Size**: **at most 500 characters**, counting newlines and spaces. Play rejects more, and so
+  does `check-notes-budget.sh` (`> 500`, so exactly 500 passes). Aim for 440–490 so a late edit
+  does not push it over.
 * **Line breaks**: **MANDATORY** blank line between bullets. Without them the Play Console and the
   store listing bunch everything into one illegible paragraph.
 * **Voice**: consumer language. No PR numbers, no file paths, no internal vocabulary
@@ -157,20 +171,20 @@ Use the `v` form; the fallback exists only for old directories.
 ## ⚠️ Traps that have already cost a release
 
 **1. An oversized `telegram.md` posts NOTHING, and you find out mid-release.**
-The notes are sent as a `sendDocument` **caption** (`release-rung.yml:407`, `telegram-release.yml:144`
-and `:152`), not as a message. Telegram caps captions at **1024 UTF-16 units** and **rejects** an
+The notes are sent as a `sendDocument` **caption**, not as a message — both in `release-rung.yml`
+and in `telegram-release.yml`. Telegram caps captions at **1024 UTF-16 units** and **rejects** an
 oversized one outright — it does not truncate.
 
-What happens next depends on which workflow sent it, and the difference matters when you go looking:
+Both workflows now carry `--fail-with-body` and capture the response, so under GitHub's default
+`bash -e` shell the step goes **red** and Telegram's own `"caption is too long"` line lands in the
+log. Red is not harmless, though. On the ladder the Play upload has already happened by then, and
+`Create GitHub Release` still runs, because it is guarded by `!cancelled()` precisely so a broadcast
+cannot veto a release. What you get is a version live on Play and tagged on GitHub that nobody was
+told about, learned from a red check. `telegram-release.yml` is the way to send it after the fact.
 
-* **On the ladder** (`release-rung.yml`) the `curl` carries `--fail-with-body`, so under GitHub's
-  default `bash -e` shell the step goes **red**. Not silent — but not harmless either. The Play
-  upload has already happened by then, and `Create GitHub Release` still runs, because it is guarded
-  by `!cancelled()` precisely so a broadcast cannot veto a release. What you get is a version live
-  on Play and tagged on GitHub that nobody was told about, learned from a red check.
-* **`telegram-release.yml`** still sends with a bare `curl -s` and discards the output, so there the
-  step genuinely succeeds having broadcast nothing. This is the older shape of the same failure and
-  the reason the sentence above used to read "and CI still goes green".
+⚠️ `--fail-with-body` differs from `--fail` in exactly one way: it writes the error body to stdout.
+Redirecting that to `/dev/null` — which both sends in `telegram-release.yml` used to do — silently
+reverts it to `--fail` and throws away the only line that says why. Do not add a `> /dev/null`.
 
 Either way the discovery lands *during* the release, which is why the budget is checked pre-flight
 instead. `release-rung.yml` prepends a header that costs **145–152 UTF-16 units on the ladder's own
@@ -235,7 +249,25 @@ release-notes/v<version>/{playstore.txt,telegram.md,github.md}
 ```bash
 cp release-notes/v<version>/playstore.txt \
    fastlane/metadata/android/en-US/changelogs/<versionCode>.txt   # F-Droid + Play
+
+# EVERY locale needs the file, not just en-US
+for d in fastlane/metadata/android/*/; do
+  [ -f "$d/changelogs/<versionCode>.txt" ] ||
+    cp release-notes/v<version>/playstore.txt "$d/changelogs/<versionCode>.txt"
+done
 ```
+
+⚠️ **`en-US` alone is not enough.** supply enumerates locales from the metadata directory and
+emits an *empty* what's-new for any locale with no file for this code — it blanks those users'
+release notes rather than leaving the previous one standing. `test-changelog-locale-parity.sh`
+enforces this, and `pr-ci.yml` runs it on every PR, so a missing locale is a red check on the
+release PR rather than a store regression found later.
+
+Translate if you can; if you cannot, English is the correct placeholder — a translated release
+would still beat a blank one, and a blank one is the failure mode this prevents. A translation
+added later is safe: `copy_playstore_notes` in `fastlane/Fastfile` overwrites `en-US` only and
+skips any other locale whose file is already non-empty, so the production upload will not
+overwrite a contributed translation with English.
 
 ⚠️ **The Shizu manifest is no longer part of this step.** `sync-shizu-changelog.sh` reads
 `versionCode` from **`origin/production:gradle.properties`**, not from the working tree, because
@@ -277,14 +309,20 @@ says "different" is the expected state, not a defect.
 # the three copies agree, and the manifest still describes reality
 diff release-notes/v<version>/playstore.txt fastlane/metadata/android/en-US/changelogs/<versionCode>.txt
 .github/scripts/check-shizu-manifest.sh                 # add --network for the URL tier
+
+# what pr-ci.yml will run — includes the locale-parity gate from Step 5
+.github/scripts/test/run-tests.sh
 ```
 
 ### Step 7 — Stage explicitly
 ```bash
 git add release-notes/v<version>/ \
-        fastlane/metadata/android/en-US/changelogs/<versionCode>.txt \
+        fastlane/metadata/android/*/changelogs/<versionCode>.txt \
         shizu_store.json gradle.properties
 ```
+
+The `*/` is deliberate — staging only `en-US` is how a locale goes missing. Never `git add -A`:
+`docs/audit/` is untracked on purpose and must stay that way.
 
 ---
 

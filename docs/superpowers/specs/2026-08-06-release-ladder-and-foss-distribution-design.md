@@ -62,10 +62,14 @@ load-bearing and undocumented.
 | `production` | push | yes | **promote** `beta` → `production` | release `v<name>` (Latest) | release post |
 
 `dev` receives every feature-branch merge, so its rung is conditional: a push that leaves
-`versionCode` untouched runs `pr-ci.yml` and nothing else — no build, no upload, no tag. Publishing a
-candidate is therefore an explicit act, the `chore(release)` commit that bumps the code, exactly as it
-is today. `master` and `production` receive commits only from the rung below, so their triggers are
-unconditional.
+`versionCode` untouched still runs the rung and still **builds**, but publishes nothing — no upload,
+no tag, no broadcast. (The first draft of this section said such a push runs `pr-ci.yml` and nothing
+else; the shipped `release-rung.yml` runs `build_release_candidates` instead of the rung's lane when
+its gate says `publish=false`, so a merge that does not bump the code is still compiled and signed.
+That is the more useful behaviour — it is the only pre-release build of `dev`'s merged state — and
+`release-notes/README.md` describes it correctly.) Publishing a candidate is therefore an explicit
+act, the `chore(release)` commit that bumps the code, exactly as it is today. `master` and
+`production` receive commits only from the rung below, so their triggers are unconditional.
 
 ### Invariants
 
@@ -85,8 +89,14 @@ unconditional.
 - The `versionCode`-ends-in-`0` gate (`dev-check.yml:147-155`).
 - The `workflow_dispatch` override that bypasses it (`dev-check.yml:113-117`) — dispatch remains, but
   as a re-run of the rung the branch already implies.
-- The `Merge branch 'master' into dev` back-merge. `master` and `production` receive no commits of
-  their own, so `dev` never falls behind.
+- ~~The `Merge branch 'master' into dev` back-merge.~~ **This one was wrong and is not deleted.**
+  The premise — "`master` and `production` receive no commits of their own" — does not survive the
+  repo's merge convention: every rung is entered by `gh pr merge --merge`, which writes a merge
+  commit on the target branch that `dev` does not have. The back-merge stays, and
+  `release-notes/README.md` documents its shipped form: merge `origin/production` after the
+  production rung has run (which carries the `master` merge along, since `master` is by then an
+  ancestor of `production`), or `origin/master` mid-cycle, when the beta rung has run and production
+  has not.
 - The unmoved-version-code refusal in `production-deploy.yml:70-101` in its current form; the check
   becomes "is this code in `beta`?" rather than "did the number change?".
 
@@ -98,7 +108,8 @@ over a fast lane: a bypass reintroduces a second Play uploader, which is the ent
 
 ### Workflow layout
 
-Three thin caller workflows (`dev-publish.yml`, `master-promote.yml`, `production-promote.yml`)
+Three thin caller workflows — shipped as `1-dev-publish.yml`, `2-master-promote.yml` and
+`3-production-promote.yml`, numbered so the Actions sidebar lists them in ladder order —
 delegating to one reusable workflow that holds the shared build/sign/notes machinery. The rung
 differs only in inputs: Play action (upload vs promote), source track, destination track, tag shape,
 prerelease flag, and whether Telegram fires.

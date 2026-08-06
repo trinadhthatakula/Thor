@@ -352,7 +352,10 @@ and will not find it. The two empty trailing fields mean "take the version name 
 per-rung pre-releases. Every version now gets **three** GitHub releases, one per rung of the release
 ladder: `v<name>-dev-<run>` from `dev`, `v<name>-beta-<run>` from `master`, and the bare `v<name>`
 from `production`. Without the regex, F-Droid would pick up a `-dev-` or `-beta-` tag as a release.
-The `$` anchor is what excludes them, and it is the only thing that does.
+What excludes them is that the **whole** tag has to be the numeric version — and since
+fdroidserver applies the pattern with `re.match`, which anchors only the start, the trailing `$` is
+what makes the match whole. Drop it and `^v\d+\.\d+\.\d+` matches the *prefix* of
+`v1.94.0-dev-103`, putting a dev build in front of F-Droid users.
 
 `AutoUpdateMode: Version` — the plain form, with no `+<suffix>`. The suffixed form documented in
 the metadata reference (*"to differentiate F-Droid's build from the original"*) was needed here only
