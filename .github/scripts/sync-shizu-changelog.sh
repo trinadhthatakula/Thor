@@ -17,18 +17,31 @@ MANIFEST="shizu_store.json"
 
 command -v jq >/dev/null 2>&1 || { printf 'missing required tool: jq\n' >&2; exit 2; }
 
-# Anchored on purpose: an unanchored 'versionCode' also matches
-# initialVersionCode=1921, feeding two lines into arithmetic — the bug that
-# made the old release-manager workflow unusable (deleted 2026-07-27).
-# || true: with set -e, a pipeline failure (grep finds nothing) kills the script
-# before the guard below can print an actionable message. || true lets the guard run.
-# LOCKSTEP: this block (versionCode grep, version arithmetic, notes fallback path) is
-# kept in lockstep with check-shizu-manifest.sh — update both scripts together.
-version_code="$(grep -E '^versionCode=' gradle.properties | cut -d= -f2 | tr -dc '0-9' || true)"
+# shizu_store.json's download_url is /releases/latest/, which GitHub
+# resolves to the newest NON-pre-release - production's build. dev and
+# master both mint pre-releases, so their gradle.properties is one or more
+# codes ahead of what that URL actually serves. Read the code from
+# production so the changelog we assert matches the APK a user downloads.
+#
+# LOCKSTEP: this block (production ref, versionCode grep, version
+# arithmetic, notes fallback path) is kept in lockstep with
+# sync-shizu-changelog.sh - update both scripts together.
+production_ref="${SHIZU_VERSION_REF:-origin/production}"
+if ! git rev-parse --verify --quiet "$production_ref" >/dev/null; then
+  # A shallow or single-branch clone will not have it. Fetch just that ref.
+  git fetch --quiet --depth=1 origin production 2>/dev/null || true
+  production_ref="FETCH_HEAD"
+fi
+
+version_code="$(git show "${production_ref}:gradle.properties" 2>/dev/null \
+  | grep -E '^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*[0-9]+[[:space:]]*$' \
+  | head -n 1 | cut -d= -f2 | tr -d '[:space:]')"
+
 if [ -z "$version_code" ]; then
-  printf 'could not read versionCode from gradle.properties\n' >&2
+  echo "::error::could not read versionCode from ${production_ref}:gradle.properties" >&2
   exit 1
 fi
+
 version_name="$((version_code / 1000)).$(((version_code % 1000) / 10)).$((version_code % 10))"
 
 notes="release-notes/v$version_name/playstore.txt"
