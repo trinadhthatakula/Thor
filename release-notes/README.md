@@ -290,5 +290,7 @@ bypass. It is the one exception to "never push directly to `dev`". Skipping it m
 feature branch forks from a tree that is missing the release commit.
 
 **Mid-cycle exception:** if the `master` rung has run (alpha promoted to beta) but `production`
-has not yet run, use `origin/master` instead — `production` is still behind and is not yet an
-ancestor of `master`.
+has not yet run, use `origin/master` instead. The `master`→`production` merge has not happened
+yet, so `master` is not an ancestor of `production` and merging production would miss the beta
+rung's merge commit. Mid-cycle neither branch is an ancestor of the other, which is why the ref
+you merge is the rung that last ran.
