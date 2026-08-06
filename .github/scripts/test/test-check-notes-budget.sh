@@ -65,6 +65,22 @@ open(sys.argv[2], 'w', encoding='utf-8').write('ok')
 check "emoji counted as 2 UTF-16 units" fail "$d" 30
 rm -rf "$d"
 
+# 511 rockets at wrapper=1: 1022 + 1 = 1023 UTF-16 units (pass), but
+# 2044 + 1 = 2045 UTF-8 bytes (fail). The case above separates UTF-16 from
+# character counting (500 rockets is over budget under both). This one
+# separates UTF-16 from byte counting. Neither case alone pins the unit
+# uniquely; together they do.
+d="$(mktemp -d)"
+mkdir -p "$d/release-notes/v9.99.9"
+python3 -c "
+import sys
+# 511 rockets = 1022 UTF-16 units. Plus a 1-unit wrapper = 1023 <= 1024.
+open(sys.argv[1], 'w', encoding='utf-8').write('\U0001F680' * 511)
+open(sys.argv[2], 'w', encoding='utf-8').write('ok')
+" "$d/release-notes/v9.99.9/telegram.md" "$d/release-notes/v9.99.9/playstore.txt"
+check "UTF-16 fits but byte count would not" pass "$d" 1
+rm -rf "$d"
+
 # Missing notes must not pass silently.
 d="$(mktemp -d)"; mkdir -p "$d/release-notes"
 check "missing notes dir" fail "$d"
