@@ -320,19 +320,33 @@ jobs:
       # carried a commit of its own. That is a property of the history so far,
       # not a guarantee.
       #
-      # always() is load-bearing - do not "simplify" it away. A bare if: is ANDed
-      # with an implicit success(), and the Telegram step sits between the build
-      # and this one, so a rejected caption or a transient 5xx from Telegram
-      # would skip the release entirely. On the production rung that means the
-      # build reaches Play users and there is no tag and no foss-release.apk for
-      # rbtlog to clone. The broadcast must not be able to veto the release.
+      # This condition is load-bearing in all three of its parts - do not
+      # "simplify" any of them away.
       #
-      # The prep_notes guard is what always() would otherwise throw away: it runs
-      # after Fastlane and before Telegram, so success() on it means the APKs
-      # built and the body resolved. Without it a failed build would still reach
-      # this step and cut a tagless, assetless release.
+      # !cancelled() rather than a bare if:, because a bare if: is ANDed with an
+      # implicit success() and the Telegram step sits between the build and this
+      # one. A rejected caption or a transient 5xx from Telegram would otherwise
+      # skip the release entirely, and on the production rung that means the
+      # build reaches Play users while no tag and no foss-release.apk exist for
+      # rbtlog to clone. A broadcast must not be able to veto the release.
+      #
+      # !cancelled() rather than always(), because always() also survives
+      # cancellation - so cancelling a run mid-Telegram would still cut a public
+      # GitHub release and tag. !cancelled() keeps the Telegram-failure path open
+      # and closes the cancellation path. Recovery for a genuinely cancelled run
+      # is the workflow_dispatch hatch above.
+      #
+      # The ${{ }} wrapper is required, not stylistic: a YAML scalar beginning
+      # with ! is a tag directive, so the bare form parses && as an anchor.
+      #
+      # The prep_notes guard is what !cancelled() would otherwise throw away. It
+      # runs after Fastlane and before Telegram and carries its own implicit
+      # success(), so outcome == 'success' proves the whole chain up to it -
+      # checkout, the gate, the notes budget, both setups, the secret decodes and
+      # Fastlane - succeeded. Without it a failed build would reach this step
+      # with empty outputs and cut a tagless, assetless release.
       - name: Create GitHub Release
-        if: always() && steps.gate.outputs.publish == 'true' && steps.prep_notes.outcome == 'success'
+        if: ${{ !cancelled() && steps.gate.outputs.publish == 'true' && steps.prep_notes.outcome == 'success' }}
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           tag_name: v${{ steps.prep_notes.outputs.version_name }}${{ inputs.tag_suffix }}
