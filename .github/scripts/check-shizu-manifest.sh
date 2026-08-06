@@ -295,9 +295,18 @@ section "changelog matches the current release notes"
 # codes ahead of what that URL actually serves. Read the code from
 # production so the changelog we assert matches the APK a user downloads.
 #
-# LOCKSTEP: this block (production ref, versionCode grep, version
-# arithmetic, notes fallback path) is kept in lockstep with
-# sync-shizu-changelog.sh - update both scripts together.
+# The versionCode pattern is ANCHORED on purpose: an unanchored 'versionCode'
+# also matches initialVersionCode=1921, feeding two lines into the arithmetic -
+# the bug that made the old release-manager workflow unusable (deleted
+# 2026-07-27). The `head -n 1` hardens it further: even a gradle.properties
+# carrying two legitimate matches yields one number rather than a syntax error.
+#
+# LOCKSTEP: everything between the two sentinels is byte-identical in
+# check-shizu-manifest.sh and sync-shizu-changelog.sh - edit both copies
+# together. .github/scripts/test/test-shizu-version-source.sh extracts the two
+# regions and diffs them, so drift is a red test rather than a discovery.
+# Failure REPORTING sits outside the sentinels on purpose: the checker
+# accumulates and the sync script aborts, and that difference is deliberate.
 production_ref="${SHIZU_VERSION_REF:-origin/production}"
 if ! git rev-parse --verify --quiet "$production_ref" >/dev/null; then
   # A shallow or single-branch clone will not have it. Fetch just that ref -
@@ -308,6 +317,16 @@ if ! git rev-parse --verify --quiet "$production_ref" >/dev/null; then
   # production's 1940 and exited 0. Leaving the unresolvable override in place
   # makes `git show` fail, which the guard below reports against the ref that
   # was actually requested.
+  #
+  # Setting production_ref=FETCH_HEAD unconditionally after a `|| true` fetch
+  # LOOKS like a stale-FETCH_HEAD trap, and is not, by a git implementation
+  # detail worth writing down: git truncates .git/FETCH_HEAD to 0 bytes at the
+  # start of every fetch attempt, including one that then fails. Measured — a
+  # clone whose FETCH_HEAD held master (versionCode 9990) with a broken remote
+  # URL read EMPTY, not 9990, and the guard below fired. That is what makes this
+  # fail closed. Do NOT "fix" it into `git fetch … || production_ref=<fallback>`:
+  # that reintroduces the stale read, and a wrong-but-plausible version silently
+  # attaches the wrong changelog to a shipped APK.
   if [ -z "${SHIZU_VERSION_REF:-}" ]; then
     git fetch --quiet --depth=1 origin production 2>/dev/null || true
     production_ref="FETCH_HEAD"

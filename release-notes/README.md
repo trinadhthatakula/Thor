@@ -28,9 +28,19 @@ Only one of those copies is audited. `.github/scripts/check-shizu-manifest.sh` c
 `shizu_store.json`'s `.changelog` against `playstore.txt`, and `pr-ci.yml`'s `shizu-manifest` job
 runs it on **every**
 PR — deliberately un-path-filtered, since `on.pull_request.paths` would gate the whole workflow
-including the required `build-and-test` check. So a forgotten `sync-shizu-changelog.sh` is a red
-`shizu-manifest` check, not a silent store regression. The **`fastlane/` copy is checked by
+including the required `build-and-test` check. So a forgotten `sync-shizu-changelog.sh` surfaces on
+the PR rather than becoming a silent store regression. The **`fastlane/` copy is checked by
 nothing** — the `diff` in Step 6 is its only gate, which is why Step 6 is not optional.
+
+**It surfaces as a `::warning::` on a PR, not a red check.** The checker derives its expected
+version from **`origin/production`**, so a production promotion moves the target without any PR
+running, and this job is un-path-filtered — without the softening, one promotion would redden every
+open PR at once, for authors who did not cause the drift and cannot fix it from their branch.
+`pr-ci.yml` therefore passes `--warn-changelog-drift`, which downgrades **only** that one condition.
+The **weekly `shizu-store-audit.yml` runs the same checker with no flag**, so a manifest left
+un-synced is still a hard failure with a tracking issue — just at the place where the fix is a
+commit away. Everything else (schema violation, missing file, unresolvable ref, dead URL) fails hard
+in both.
 
 Who reads what, exactly:
 
@@ -149,13 +159,33 @@ release-notes/v<version>/{playstore.txt,telegram.md,github.md}
 ```bash
 cp release-notes/v<version>/playstore.txt \
    fastlane/metadata/android/en-US/changelogs/<versionCode>.txt   # F-Droid + Play
-.github/scripts/sync-shizu-changelog.sh                          # Shizu Store manifest
 ```
-`sync-shizu-changelog.sh` reads `versionCode` from `gradle.properties`, derives the version name,
-and writes `playstore.txt` into `shizu_store.json`'s `changelog` with `jq`. Run it **after** Step 3
-or it will look for the wrong directory. CI never runs *this* script: the `master` ruleset requires
-a PR and a status check, and a `GITHUB_TOKEN`-authored PR does not trigger `pull_request` workflows,
-so no bot can land that commit. Do not read that as "nothing checks the result" — its counterpart
+
+⚠️ **The Shizu manifest is no longer part of this step.** `sync-shizu-changelog.sh` reads
+`versionCode` from **`origin/production:gradle.properties`**, not from the working tree, because
+`shizu_store.json`'s `download_url` is `/releases/latest/` — which GitHub resolves to the newest
+**non-pre-release**. Under the three-rung ladder that is production's build, while `dev` and
+`master` both mint pre-releases, so the tree you are preparing runs one or more codes ahead of the
+APK that URL actually serves.
+
+Run it here and it will sync the changelog of the **last production release**, print
+`changelog already current for v<production version>`, and exit 0 — which reads like "done" while
+`shizu_store.json` never receives the version you are preparing. The manifest is refreshed **after
+the production promotion**, not during release prep:
+
+```bash
+git fetch origin production                # the script reads this ref; a shallow clone has it not
+.github/scripts/sync-shizu-changelog.sh    # on master, once production carries the new versionCode
+git add shizu_store.json                   # and commit it to master
+```
+
+Until that lands, `shizu-manifest` warns on PRs and the weekly audit fails — see the note under the
+diagram above. `SHIZU_VERSION_REF` overrides the ref for a one-off; if it does not resolve, the
+script fails loudly rather than quietly falling back to production.
+
+CI never runs *this* script: the `master` ruleset requires a PR and a status check, and a
+`GITHUB_TOKEN`-authored PR does not trigger `pull_request` workflows, so no bot can land that
+commit. Do not read that as "nothing checks the result" — its counterpart
 `check-shizu-manifest.sh` runs on every PR (see the note under the diagram above).
 
 The `cp` writes a **trailing newline** the manifest does not carry: `jq` stores the changelog
