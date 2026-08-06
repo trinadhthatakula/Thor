@@ -54,7 +54,13 @@ section() { printf '\n== %s ==\n' "$*"; }
 # unresolvable ref, a dead URL, a wrong SDK level all stay hard failures in
 # every mode: each describes a manifest that is broken, not one that is behind.
 #
-# shellcheck disable=SC2329 # invoked indirectly, as compare_text's $reporter
+# Both codes name the same complaint - "this function is never called" - and
+# which one you get depends on the shellcheck you have. 0.9 (what ubuntu-latest
+# preinstalls) says SC2317; 0.10 split it out as SC2329. Naming only one is a
+# gate that passes locally and fails in CI, which is how this line got written.
+# An unrecognised code in a disable directive is ignored, so listing both is
+# safe on every version.
+# shellcheck disable=SC2317,SC2329 # invoked indirectly, as compare_text's $reporter
 changelog_drift() {
   if [ "$WARN_CHANGELOG_DRIFT" -eq 0 ]; then
     fail "$*"

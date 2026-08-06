@@ -176,13 +176,33 @@ jobs:
       - name: Lint workflows
         run: ./actionlint -color
 
-      # shellcheck is preinstalled on ubuntu-latest runners.
+      # Pinned, not the preinstalled one. ubuntu-latest ships 0.9.0, Homebrew
+      # ships 0.11.0, and they disagree about which code a finding gets - 0.9
+      # reports an uncalled function as SC2317, 0.10 renamed it SC2329. A
+      # `disable=` directive naming one of them passes locally and fails here.
+      # Worse, the runner image can bump under us with no commit to blame.
+      #
+      # 0.11.0 has a darwin.aarch64 build, so a contributor's `brew install
+      # shellcheck` is the same binary this job runs.
+      - name: Install shellcheck
+        env:
+          SHELLCHECK_VERSION: 0.11.0
+          SHELLCHECK_SHA256: b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6
+        run: |
+          set -euo pipefail
+          url="https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.gz"
+          curl --fail --silent --show-error --location -o shellcheck.tar.gz "$url"
+          echo "${SHELLCHECK_SHA256}  shellcheck.tar.gz" | sha256sum --check --strict
+          tar -xzf shellcheck.tar.gz "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+          mv "shellcheck-v${SHELLCHECK_VERSION}/shellcheck" ./shellcheck
+          chmod +x shellcheck
+
       - name: Lint shell scripts
         run: |
           set -euo pipefail
-          shellcheck --version
+          ./shellcheck --version
           # -x follows `source`d files; -S style is the strictest useful level.
-          find .github/scripts -name '*.sh' -print0 | xargs -0 shellcheck -x -S style
+          find .github/scripts -name '*.sh' -print0 | xargs -0 ./shellcheck -x -S style
 
       - name: Run shell script tests
         run: .github/scripts/test/run-tests.sh
