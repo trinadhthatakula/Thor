@@ -81,6 +81,11 @@ describe('lockstep with the repo shell scripts', () => {
       expect(body, `${rel} lost its anchored versionCode grep`).toContain(
         "grep -E '^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*[0-9]+[[:space:]]*$'",
       )
+      // `| head -n 1 |` is what stops an unanchored match on `initialVersionCode=1921`
+      // feeding two lines into the arithmetic. parse.ts asserts all three scripts
+      // that read gradle.properties use it; pinning it here means that claim cannot
+      // silently go stale in the direction that is least safe to miss.
+      expect(body, `${rel} lost its head -n 1 guard`).toContain('| head -n 1 |')
       // The rebinding itself. Without this, `origin/production` could be edited
       // back to `origin/master` and every assertion above would still pass —
       // both refs carry a `versionCode`, and the arithmetic is identical.
@@ -88,6 +93,10 @@ describe('lockstep with the repo shell scripts', () => {
         'production_ref="${SHIZU_VERSION_REF:-origin/production}"',
       )
     }
+    // detect-version-bump.sh is not LOCKSTEP-commented (it has no shizu analogue)
+    // but parse.ts names it alongside the two above. Pin its head -n 1 guard too.
+    const bump = readFileSync(join(root, '.github/scripts/detect-version-bump.sh'), 'utf8')
+    expect(bump, 'detect-version-bump.sh lost its head -n 1 guard').toContain('| head -n 1 |')
   })
 
   it('agrees with app/build.gradle.kts, which is the actual build authority', () => {

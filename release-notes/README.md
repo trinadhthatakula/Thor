@@ -105,7 +105,7 @@ Who reads what, exactly:
 |---|---|---|
 | `github.md` | GitHub Release body | `release-rung.yml:235` |
 | `telegram.md` | Telegram broadcast caption | `release-rung.yml:254`, `telegram-release.yml:84` |
-| `playstore.txt` | Play `whats_new`; copied to `fastlane/…/changelogs/<versionCode>.txt` | `fastlane/Fastfile:89-113` |
+| `playstore.txt` | Play `whats_new`; copied to `fastlane/…/changelogs/<versionCode>.txt` | `fastlane/Fastfile:94-119` |
 | `fastlane/…/changelogs/<versionCode>.txt` | F-Droid changelog | the F-Droid builder reads the repo directly |
 | `shizu_store.json` → `.changelog` | Shizu CoreFetch store listing | `.github/scripts/sync-shizu-changelog.sh` |
 
@@ -275,10 +275,20 @@ level before starting the next cycle:
 
 ```bash
 git checkout dev && git pull
-git merge --no-ff origin/master -m "Merge branch 'master' into dev"
+git merge --no-ff origin/production -m "Merge branch 'production' into dev"
 git push origin dev
+git rev-list --count origin/production ^dev   # expect 0
 ```
+
+One merge of `origin/production` levels `dev` against both rungs at once. After the production
+rung has run, `origin/master` is an ancestor of `origin/production` — the `master`→`production`
+PR merge is what put it there — so merging production carries the master merge commit along for
+free. No separate merge of `origin/master` is needed.
 
 This push goes straight to `dev`, which the `DevRules` ruleset permits through a RepositoryRole
 bypass. It is the one exception to "never push directly to `dev`". Skipping it means the next
 feature branch forks from a tree that is missing the release commit.
+
+**Mid-cycle exception:** if the `master` rung has run (alpha promoted to beta) but `production`
+has not yet run, use `origin/master` instead — `production` is still behind and is not yet an
+ancestor of `master`.

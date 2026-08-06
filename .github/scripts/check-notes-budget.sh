@@ -13,8 +13,11 @@
 # character, two UTF-16 units, and four UTF-8 bytes.
 #
 # wrapper-units is the size of the caption scaffolding the workflow wraps
-# around telegram.md - measured at 149 on the dev path and 141 on
-# telegram-release.yml. Default 160 leaves headroom.
+# around telegram.md. Measured per rung and actor:
+#   dev rung:        149 (own actor) / 152 (bot actor)
+#   beta rung:       145 (own actor) / 148 (bot actor)
+#   production rung: 146 (own actor) / 149 (bot actor)
+# 160 is a deliberate upper bound covering all three rungs in all modes.
 set -euo pipefail
 
 version_name="${1:?usage: check-notes-budget.sh <version-name> [wrapper-units]}"
