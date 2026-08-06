@@ -1,0 +1,11 @@
+• 🧊 Freezing a preinstalled app no longer wipes its data — Thor disables it, and keeps the data if it must remove it.
+
+• ❄️ Removing an app from the Freezer unfreezes it first, on every screen — and says so if it can't.
+
+• 📱 Fixed the app list collapsing to one entry on Chinese-market ROMs.
+
+• ⏸️ Thor no longer claims success when it couldn't unsuspend an app.
+
+• 🔄 Privilege Check's Refresh re-checks Root, Shizuku and Dhizuku.
+
+• 💖 New: more ways to support Thor's development.
