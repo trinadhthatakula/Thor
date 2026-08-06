@@ -9,9 +9,9 @@ name: PR CI
 #
 # The cost is real and will keep inviting the change: a PR that only touches web/ still
 # pays the ~7 minutes of Android build, unit tests and lint below. Seven minutes of CI
-# is cheaper than a PR that cannot merge. dev-check.yml, production-deploy.yml and
-# web-ci.yml do filter — all three are safe to filter precisely because none of them is
-# a required check.
+# is cheaper than a PR that cannot merge. The three release callers
+# (1-dev-publish.yml, 2-master-promote.yml, 3-production-promote.yml) and web-ci.yml do
+# filter — all four are safe to filter precisely because none of them is a required check.
 on:
   pull_request:
     branches: [ "master", "dev", "production" ]
@@ -76,8 +76,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      # The only place R8 runs BEFORE a merge. It does run elsewhere — dev-check.yml:178,
-      # production-deploy.yml:149 and manual-build.yml:52 all shell out to fastlane, which
+      # The only place R8 runs BEFORE a merge. It does run elsewhere — release-rung.yml
+      # (invoked by all three release callers) and manual-build.yml both shell out to fastlane, which
       # assembles release — but every one of those triggers on a push to an already-merged
       # branch. On the PR itself nothing minified was ever built: assembleFossDebug above does
       # not minify (app/build.gradle.kts: `debug { isMinifyEnabled = false }`), lintStoreRelease
