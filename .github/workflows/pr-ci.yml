@@ -151,6 +151,16 @@ jobs:
 
       # Pinned by version AND checksum. `bash <(curl ...)`, which the upstream
       # README suggests, executes whatever the URL serves at that moment.
+      #
+      # Verify locally with THIS version, not with whatever Homebrew installed.
+      # actionlint hands each `run:` block to shellcheck, and how it synthesises
+      # the `env:` block into that script changed after 1.7.7: 1.7.12 declares
+      # the env vars, 1.7.7 does not, so 1.7.7 alone raises SC2153 on a name
+      # that merely resembles a local variable. A newer local actionlint is a
+      # green run that proves nothing about this job.
+      #
+      #   curl -sSLo - https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_darwin_arm64.tar.gz \
+      #     | tar -xz actionlint && ./actionlint
       - name: Install actionlint
         env:
           ACTIONLINT_VERSION: 1.7.7

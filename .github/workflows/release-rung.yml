@@ -190,14 +190,14 @@ jobs:
         if: steps.gate.outputs.publish == 'true'
         env:
           NAME: ${{ steps.ver.outputs.name }}
-          REQUIRE: ${{ inputs.require_notes }}
+          REQUIRE_NOTES: ${{ inputs.require_notes }}
           TELEGRAM: ${{ inputs.telegram }}
           WRAPPER: ${{ inputs.caption_wrapper_units }}
           TITLE_PREFIX: ${{ inputs.title_prefix }}
           CAPTION_STATUS: ${{ inputs.caption_status }}
         run: |
           if [ ! -d "release-notes/v${NAME}" ] && [ ! -d "release-notes/${NAME}" ]; then
-            if [ "$REQUIRE" = "true" ]; then
+            if [ "$REQUIRE_NOTES" = "true" ]; then
               echo "::error::v${NAME} publishes to users and has no release-notes directory. Curated notes are required on this rung." >&2
               exit 1
             fi
@@ -206,7 +206,7 @@ jobs:
           fi
 
           REQUIRED=()
-          if [ "$REQUIRE" = "true" ]; then
+          if [ "$REQUIRE_NOTES" = "true" ]; then
             REQUIRED+=(--require github.md --require playstore.txt)
             if [ "$TELEGRAM" = "true" ]; then
               REQUIRED+=(--require telegram.md)
@@ -294,7 +294,7 @@ jobs:
         id: prep_notes
         if: steps.gate.outputs.publish == 'true'
         env:
-          REQUIRE: ${{ inputs.require_notes }}
+          REQUIRE_NOTES: ${{ inputs.require_notes }}
         run: |
           if [ ! -s version_name.txt ]; then
             echo "::error::version_name.txt is missing or empty — the Fastlane lane did not write it." >&2
@@ -321,7 +321,7 @@ jobs:
             # vanished mid-run - impossible from a single checkout, which is
             # why this is an assertion and not the gate. Never relax it into
             # the fallback: a raw git log is not release notes for users.
-            if [ "$REQUIRE" = "true" ]; then
+            if [ "$REQUIRE_NOTES" = "true" ]; then
               echo "::error::github.md disappeared after the pre-flight check — refusing to publish a commit log as the release body of v${VERSION_NAME}." >&2
               exit 1
             fi
@@ -353,7 +353,7 @@ jobs:
           TITLE_PREFIX: ${{ inputs.title_prefix }}
           CAPTION_STATUS: ${{ inputs.caption_status }}
           NOTES_PATH: ${{ steps.prep_notes.outputs.telegram_notes_path }}
-          REQUIRE: ${{ inputs.require_notes }}
+          REQUIRE_NOTES: ${{ inputs.require_notes }}
         run: |
           # Fastlane 'copyStoreReleaseApk' task puts it here
           APK_PATH=$(find app/build/distribution/store -name "*.apk" | head -n 1)
@@ -391,7 +391,7 @@ jobs:
 
           if [ -n "$NOTES_PATH" ] && [ -r "$NOTES_PATH" ]; then
             CAPTION=$(printf "%s\n\n%s" "$CAPTION" "$(cat "$NOTES_PATH")")
-          elif [ "$REQUIRE" = "true" ]; then
+          elif [ "$REQUIRE_NOTES" = "true" ]; then
             # Same assertion as the release body above, for the same reason.
             # The pre-flight gate required telegram.md on any rung that both
             # broadcasts and curates, so this is unreachable from one checkout.
