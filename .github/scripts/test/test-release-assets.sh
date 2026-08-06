@@ -3,6 +3,11 @@
 # a page users browse gets downloaded and filed as a bug, and every store
 # client (Obtainium apkFilterRegEx, IzzyOnDroid ApkMatch) has to filter past
 # it.
+#
+# "No .aab" alone is a one-sided gate: a step that publishes nothing, or only
+# a checksum file, satisfies it perfectly. Obtainium and IzzyOnDroid both poll
+# the release for an APK, so an assetless release is not an empty page - it is
+# a version those two channels never see. Assert the positive as well.
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 assertions=0
@@ -26,6 +31,7 @@ for wf in sorted((root / ".github" / "workflows").glob("*.yml")):
                 continue
             files = str((step.get("with") or {}).get("files", ""))
             checked += 1
+            apks = 0
             for line in files.splitlines():
                 line = line.strip()
                 # endswith(".aab") already covers every glob form the action
@@ -36,12 +42,16 @@ for wf in sorted((root / ".github" / "workflows").glob("*.yml")):
                 # known limit, and no release step uses one.
                 if line.endswith(".aab"):
                     bad.append(f"{wf.name}:{job_name}: {line}")
+                elif line.endswith(".apk"):
+                    apks += 1
+            if apks == 0:
+                bad.append(f"{wf.name}:{job_name}: publishes no .apk")
 
 if checked == 0:
     sys.exit("  no softprops/action-gh-release steps found - the test is vacuous")
 if bad:
-    sys.exit("  .aab published as a release asset:\n    " + "\n    ".join(bad))
-print(f"  ok: {checked} release step(s) publish no .aab")
+    sys.exit("  release assets are wrong:\n    " + "\n    ".join(bad))
+print(f"  ok: {checked} release step(s) publish an .apk and no .aab")
 PY
 
 assertions=$((assertions + 1))

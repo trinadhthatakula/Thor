@@ -4,8 +4,10 @@
 # Each test script is self-contained: it creates its own fixtures under a
 # mktemp -d, cleans up on exit, prints one line per assertion, and exits
 # non-zero on the first failure. A test file that exits 0 having asserted
-# nothing is indistinguishable from a passing one, so every test script
-# prints its assertion count and this runner checks the total is non-zero.
+# nothing is indistinguishable from a passing one, so every test script prints
+# its own assertion count — that count is for a reader, this runner does not
+# add them up. What the runner does enforce is that it found test files at all:
+# a glob that matches nothing would otherwise report a green run of zero tests.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

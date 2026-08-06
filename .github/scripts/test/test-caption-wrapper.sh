@@ -15,9 +15,16 @@
 #      written track.txt yet at measure time, and only an OVER-estimate is safe,
 #   3. the per-rung table in the input's comment still matches a fresh
 #      measurement, so a reworded title or status line cannot leave the
-#      documented numbers behind, and
+#      documented numbers behind,
 #   4. the measurement is compared against the declared floor with `-gt`, i.e.
-#      the larger wins.
+#      the larger wins, and
+#   5. the long-ref figure the comment cites is real, and is above every entry
+#      in the per-rung table. That table is the ONLY thing anyone reads to size
+#      a telegram.md by hand, and read alone it looks like a ceiling. It is not:
+#      the wrapper contains the ref name, the table's refs are the ladder's own
+#      short ones, and the whole reason the gate measures per run is that a
+#      dispatch from a long branch costs more. Pinning the cited number keeps
+#      that counter-example honest rather than leaving it as prose.
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 assertions=0
@@ -119,6 +126,35 @@ for name, (fname, ref, track) in RUNGS.items():
            header(with_["title_prefix"], ref, "github-actions[bot]", track, with_["caption_status"]))
     check(got == documented[name],
           f"{name} rung wrapper measures {got}, the comment in release-rung.yml says {documented[name]}")
+
+# 5 - the long-ref counter-example the same comment cites. Parsed rather than
+# hardcoded so the prose and the assertion cannot drift apart: reword the
+# sentence and this stops finding it, which is a failure, not a silent pass.
+prose = "\n".join(re.sub(r"^\s*#\s?", "", ln) for ln in rung_text.splitlines() if re.match(r"^\s*#", ln))
+prose = re.sub(r"\s+", " ", prose)
+cited = re.search(
+    r"workflow_dispatch of the (\w+) rung from (\S+) assembles a real wrapper of (\d+)", prose)
+check(cited is not None,
+      "release-rung.yml no longer cites a long-ref wrapper measurement - assertion 5 has nothing to pin")
+if cited:
+    rung_name, long_ref, cited_units = cited.group(1), cited.group(2), int(cited.group(3))
+    check(rung_name in RUNGS, f"the cited long-ref example names rung {rung_name!r}, which is not in {sorted(RUNGS)}")
+    if rung_name in RUNGS:
+        fname, _, track = RUNGS[rung_name]
+        doc = yaml.safe_load((wf_dir / fname).read_text())
+        job = next(iter((doc.get("jobs") or {}).values()))
+        with_ = job.get("with") or {}
+        # Either actor - the point is that the cited number is one the workflow
+        # can really produce, not which of the two produced it.
+        got = tuple(header(with_["title_prefix"], long_ref, actor, track, with_["caption_status"])
+                    for actor in ("trinadhthatakula", "github-actions[bot]"))
+        check(cited_units in got,
+              f"the comment says ref {long_ref!r} assembles {cited_units} units, a fresh measurement says {got}")
+        # The counter-example only counter-exemplifies if it is bigger.
+        ceiling = max(max(pair) for pair in documented.values())
+        check(cited_units > ceiling,
+              f"the cited long-ref figure {cited_units} is not above the per-rung table's maximum {ceiling} - "
+              "the table would then read as a ceiling, which is the misreading this pins against")
 
 if checked == 0:
     sys.exit("  nothing was checked - the test is vacuous")

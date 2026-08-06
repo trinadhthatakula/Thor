@@ -46,8 +46,18 @@ platform :android do
     # 3. DETERMINE VERSION CODE
     final_version_code = nil
 
-    if version_code
-      final_version_code = version_code.to_i
+    # Blank is absent, not zero. A workflow_dispatch with an empty version_code
+    # input reaches fastlane as version_code:"" - and "" is truthy in Ruby, so a
+    # bare `if version_code` took the override branch, where "".to_i is 0. That
+    # built, tagged and broadcast v0.0.0 while the input's own description said
+    # "leave empty to use the latest version". Reject a non-positive override
+    # too: it can only come from a typo, and 0 is exactly what a typo produces.
+    override = version_code.to_s.strip
+    if !override.empty?
+      final_version_code = override.to_i
+      unless override.match?(/\A[0-9]+\z/) && final_version_code.positive?
+        UI.user_error!("❌ version_code override must be a positive integer - got #{version_code.inspect}")
+      end
       UI.important("⚠️  Using MANUAL version code override: #{final_version_code}")
     else
       final_version_code = properties["versionCode"]&.to_i
@@ -205,10 +215,17 @@ platform :android do
   end
 
   # Copies the curated Play notes into the supply layout for EVERY locale that
-  # has metadata. hi-IN has no translations yet and mirrors en-US: supply
-  # enumerates locales from the metadata directory and emits a LocalizedText
-  # with empty text for any locale it cannot find a file for, which blanks
-  # those users' what's-new rather than leaving the previous one.
+  # has metadata. supply enumerates locales from the metadata directory and
+  # emits a LocalizedText with empty text for any locale it cannot find a file
+  # for, which blanks those users' what's-new rather than leaving the previous
+  # one standing.
+  #
+  # en-US is overwritten, every other locale is filled only if empty. en-US is
+  # a mirror of playstore.txt and must track edits to it; the others are
+  # translations, and copying English over a translation someone contributed
+  # would undo their work silently, on the one rung that reaches all users.
+  # A locale with no translation still gets English, which is the point - it
+  # beats a blank what's-new.
   def copy_playstore_notes(project_root:, version_name:, version_code:)
     require 'fileutils'
 
@@ -223,7 +240,14 @@ platform :android do
     locales.each do |locale|
       dest_dir = File.join(metadata_root, locale, 'changelogs')
       FileUtils.mkdir_p(dest_dir)
-      FileUtils.cp(notes, File.join(dest_dir, "#{version_code}.txt"))
+      dest = File.join(dest_dir, "#{version_code}.txt")
+
+      if locale != 'en-US' && File.exist?(dest) && !File.read(dest).strip.empty?
+        UI.message("🌍 #{locale}/changelogs/#{version_code}.txt — kept (translated)")
+        next
+      end
+
+      FileUtils.cp(notes, dest)
       UI.message("📝 #{locale}/changelogs/#{version_code}.txt")
     end
   end
