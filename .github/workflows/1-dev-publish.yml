@@ -1,0 +1,56 @@
+name: 1. Dev — publish to Play alpha
+
+# Rung 1 of 3. This is the ONLY workflow in the repo that uploads an artifact
+# to Play. master and production promote what this uploaded; they never upload.
+# That is what gives every version code exactly one uploader.
+on:
+  push:
+    branches: [ "dev" ]
+    # A change that cannot reach the APK must not spend seven minutes and a
+    # Play upload proving it. Safe to filter the whole workflow because this is
+    # not a required status check.
+    #
+    # gradle.properties and release-notes/** stay OUT of this list: a release
+    # push carries the version bump, so it is never skipped.
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - 'web/**'
+      - 'vercel.json'
+      - '.github/workflows/web-*.yml'
+      - '.github/labeler.yml'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.github/**/*.md'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/assets/**'
+      - '.github/CODEOWNERS'
+      - '.github/FUNDING.yml'
+      - '.github/dependabot.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: release-dev
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    uses: ./.github/workflows/release-rung.yml
+    permissions:
+      contents: write
+    secrets: inherit
+    with:
+      rung: dev
+      fastlane_lane: distribute_dev
+      # github.run_number, not the version code: re-running a failed publish on
+      # the same commit mints a second tag rather than colliding. The real
+      # duplicate guard is Play's server-side check, which is not suppressed.
+      tag_suffix: -dev-${{ github.run_number }}
+      title_prefix: Dev Build
+      prerelease: true
+      telegram: true
+      # Notes are optional here. A dev build falls back to the commit log; the
+      # curated notes are written once, for the stable.
+      require_notes: false
+      on_unchanged_version: skip
+      caption_status: Uploaded to Play Store — GitHub pre-release next

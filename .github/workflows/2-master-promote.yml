@@ -1,0 +1,46 @@
+name: 2. Master — promote alpha to beta
+
+# Rung 2 of 3. Promotes the build dev already uploaded from Play's alpha
+# (Closed testing) to beta (Open testing). Uploads nothing.
+on:
+  push:
+    branches: [ "master" ]
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - 'web/**'
+      - 'vercel.json'
+      - '.github/workflows/web-*.yml'
+      - '.github/labeler.yml'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.github/**/*.md'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/assets/**'
+      - '.github/CODEOWNERS'
+      - '.github/FUNDING.yml'
+      - '.github/dependabot.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: release-beta
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    uses: ./.github/workflows/release-rung.yml
+    permissions:
+      contents: write
+    secrets: inherit
+    with:
+      rung: beta
+      fastlane_lane: promote_beta
+      tag_suffix: -beta-${{ github.run_number }}
+      title_prefix: Beta
+      prerelease: true
+      # Open testers already have the build from Play. The Telegram broadcast
+      # is the dev channel's, and the production announcement is the owner's.
+      telegram: false
+      require_notes: false
+      on_unchanged_version: skip
+      caption_status: Promoted on Play Store — GitHub pre-release next

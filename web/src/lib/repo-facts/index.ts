@@ -39,8 +39,6 @@ export function computeRepoFacts(files = readRepoFiles()): RepoFacts {
   return Object.freeze({
     versionCode,
     versionName,
-    // `versionNameSuffix = "-foss"` on the foss flavour in app/build.gradle.kts.
-    fossVersionName: `${versionName}-foss`,
     minSdk,
     targetSdk,
     compileSdk,

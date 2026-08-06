@@ -194,7 +194,13 @@ android {
 
         create("foss") {
             dimension = "distribution"
-            versionNameSuffix = "-foss"
+            // No versionNameSuffix on purpose. Obtainium cannot reconcile
+            // "1.94.0-foss" against tag v1.94.0 - "foss" is not in its
+            // recognised suffix list - so it sets versionDetection = false and
+            // marks outdated users as up to date. F-Droid's Binaries: field
+            // also substitutes only %v, which would resolve to a tag that does
+            // not exist. The flavour is identified by its APK filename
+            // (foss-release.apk) and its ProGuard file, not by versionName.
             proguardFile("proguard-rules-foss.pro")
         }
     }

@@ -9,12 +9,12 @@ name: PR CI
 #
 # The cost is real and will keep inviting the change: a PR that only touches web/ still
 # pays the ~7 minutes of Android build, unit tests and lint below. Seven minutes of CI
-# is cheaper than a PR that cannot merge. dev-check.yml, production-deploy.yml and
-# web-ci.yml do filter — all three are safe to filter precisely because none of them is
-# a required check.
+# is cheaper than a PR that cannot merge. The three release callers
+# (1-dev-publish.yml, 2-master-promote.yml, 3-production-promote.yml) and web-ci.yml do
+# filter — all four are safe to filter precisely because none of them is a required check.
 on:
   pull_request:
-    branches: [ "master", "dev" ]
+    branches: [ "master", "dev", "production" ]
 
 # Least-privilege token — this workflow only reads the repo.
 permissions:
@@ -30,8 +30,18 @@ jobs:
     name: build-and-test
     runs-on: ubuntu-latest
     steps:
+      # persist-credentials: false on every checkout in this file. The action
+      # defaults it to TRUE, which leaves the job's token in the git config for
+      # everything that runs afterwards — here, an Android build that executes
+      # thousands of lines of third-party Gradle and R8 plugin code on a PR from
+      # a branch anyone with write access can push. Nothing in this workflow
+      # performs an authenticated git operation, so the credential is pure
+      # exposure. It is read-only, which limits the blast radius; it does not
+      # make leaving it lying around free.
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup JDK 21
         uses: actions/setup-java@v5.6.0
@@ -76,8 +86,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      # The only place R8 runs BEFORE a merge. It does run elsewhere — dev-check.yml:178,
-      # production-deploy.yml:149 and manual-build.yml:52 all shell out to fastlane, which
+      # The only place R8 runs BEFORE a merge. It does run elsewhere — release-rung.yml
+      # (invoked by all three release callers) and manual-build.yml both shell out to fastlane, which
       # assembles release — but every one of those triggers on a push to an already-merged
       # branch. On the PR itself nothing minified was ever built: assembleFossDebug above does
       # not minify (app/build.gradle.kts: `debug { isMinifyEnabled = false }`), lintStoreRelease
@@ -142,6 +152,73 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  static-analysis:
+    name: static-analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Pinned by version AND checksum. `bash <(curl ...)`, which the upstream
+      # README suggests, executes whatever the URL serves at that moment.
+      #
+      # Verify locally with THIS version, not with whatever Homebrew installed.
+      # actionlint hands each `run:` block to shellcheck, and how it synthesises
+      # the `env:` block into that script changed after 1.7.7: 1.7.12 declares
+      # the env vars, 1.7.7 does not, so 1.7.7 alone raises SC2153 on a name
+      # that merely resembles a local variable. A newer local actionlint is a
+      # green run that proves nothing about this job.
+      #
+      #   curl -sSLo - https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_darwin_arm64.tar.gz \
+      #     | tar -xz actionlint && ./actionlint
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.7
+          ACTIONLINT_SHA256: 023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757
+        run: |
+          set -euo pipefail
+          url="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl --fail --silent --show-error --location -o actionlint.tar.gz "$url"
+          echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum --check --strict
+          tar -xzf actionlint.tar.gz actionlint
+          chmod +x actionlint
+
+      - name: Lint workflows
+        run: ./actionlint -color
+
+      # Pinned, not the preinstalled one. ubuntu-latest ships 0.9.0, Homebrew
+      # ships 0.11.0, and they disagree about which code a finding gets - 0.9
+      # reports an uncalled function as SC2317, 0.10 renamed it SC2329. A
+      # `disable=` directive naming one of them passes locally and fails here.
+      # Worse, the runner image can bump under us with no commit to blame.
+      #
+      # 0.11.0 has a darwin.aarch64 build, so a contributor's `brew install
+      # shellcheck` is the same binary this job runs.
+      - name: Install shellcheck
+        env:
+          SHELLCHECK_VERSION: 0.11.0
+          SHELLCHECK_SHA256: b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6
+        run: |
+          set -euo pipefail
+          url="https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.gz"
+          curl --fail --silent --show-error --location -o shellcheck.tar.gz "$url"
+          echo "${SHELLCHECK_SHA256}  shellcheck.tar.gz" | sha256sum --check --strict
+          tar -xzf shellcheck.tar.gz "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+          mv "shellcheck-v${SHELLCHECK_VERSION}/shellcheck" ./shellcheck
+          chmod +x shellcheck
+
+      - name: Lint shell scripts
+        run: |
+          set -euo pipefail
+          ./shellcheck --version
+          # -x follows `source`d files; -S style is the strictest useful level.
+          find .github/scripts -name '*.sh' -print0 | xargs -0 ./shellcheck -x -S style
+
+      - name: Run shell script tests
+        run: .github/scripts/test/run-tests.sh
+
   # Runs on every PR rather than being path-filtered. on.pull_request.paths
   # filters the whole workflow, which would also gate build-and-test — the
   # required status check — leaving unrelated PRs pending forever.
@@ -149,16 +226,32 @@ jobs:
     name: shizu-manifest
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 because the checker resolves origin/production, which a
+      # shallow checkout does not create. Its `git fetch --depth=1 origin
+      # production` fallback still works without the persisted credential —
+      # Thor is a public repo, so that fetch is unauthenticated either way.
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Install check-jsonschema
         run: pipx install check-jsonschema
 
+      # --warn-changelog-drift: warn on PRs, fail where it is actionable.
+      # The checker derives its expected version from origin/production, so a
+      # production promotion moves the target without any PR running. This job
+      # is not path-filtered, so without the flag that promotion reddens every
+      # open PR at once — for authors who did not cause the drift and cannot
+      # fix it from their branch. Only that one condition is softened; a
+      # malformed manifest, a missing file, an unresolvable ref or a schema
+      # violation still fail this job. shizu-store-audit.yml runs the same
+      # checker WITHOUT the flag, on master, where the fix is a commit away.
       - name: Check the Shizu store manifest
         run: |
           if [ ! -f shizu_store.json ]; then
             echo "No shizu_store.json on this branch — nothing to check."
             exit 0
           fi
-          .github/scripts/check-shizu-manifest.sh
+          .github/scripts/check-shizu-manifest.sh --warn-changelog-drift

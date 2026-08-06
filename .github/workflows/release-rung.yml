@@ -1,0 +1,548 @@
+name: Release rung
+
+# One workflow, three rungs. dev uploads to Play alpha; master promotes
+# alpha -> beta; production promotes beta -> production. Exactly one branch
+# ever uploads an artifact, which is what makes Play's per-app (not per-track)
+# version-code uniqueness a non-issue rather than an error to handle.
+#
+# The rungs differ only in the inputs declared below. If a behaviour needs to
+# differ between them, add an input - do not fork this file.
+on:
+  workflow_call:
+    inputs:
+      rung:
+        description: 'dev | beta | production. Labels and log lines only.'
+        required: true
+        type: string
+      fastlane_lane:
+        description: 'Lane to run when publishing.'
+        required: true
+        type: string
+      tag_suffix:
+        description: "Appended to v<version-name>. Empty for production."
+        required: true
+        type: string
+      title_prefix:
+        description: 'GitHub release title prefix.'
+        required: true
+        type: string
+      prerelease:
+        required: true
+        type: boolean
+      telegram:
+        required: true
+        type: boolean
+      # The caption used to assert "Uploaded to Play Store - GitHub pre-release
+      # next" on every rung. That is a dev-only sentence: promote_beta and
+      # promote_production call prepare_release_artifacts(upload_to_store:
+      # false) and then move a bundle that is already on Play, so they upload
+      # nothing, and production publishes a full release rather than a
+      # pre-release. A caption is a claim to users; make each rung state its own.
+      caption_status:
+        description: >-
+          The Status: line of the Telegram caption. Must be true for this rung -
+          only the dev rung uploads an artifact, the promote lanes move one that
+          is already on Play, and production ends in a full release.
+        required: true
+        type: string
+      require_notes:
+        description: >-
+          Hard-fail, pre-flight, when any curated notes file this rung consumes
+          is missing - not merely the directory. Also removes the commit-log
+          fallback and the generic-bullet caption from the rung entirely.
+        required: true
+        type: boolean
+      on_unchanged_version:
+        description: "skip | fail. What an unbumped versionCode means here."
+        required: true
+        type: string
+      # A FLOOR, not the wrapper. The gate step measures the real scaffolding
+      # from this run's own ref, actor, title and status line, and uses
+      # whichever of the two is larger - so the margin no longer depends on how
+      # long a branch name happens to be.
+      #
+      # Measured, never estimated: assemble the caption below through a shell and
+      # count UTF-16 units as len(text.encode('utf-16-le')) // 2, the same method
+      # check-notes-budget.sh uses. The scaffolding varies with both the rung and
+      # the actor, counting the "\n\n" that joins it to telegram.md:
+      #
+      #                  trinadhthatakula   github-actions[bot]
+      #     dev                 149                152
+      #     beta                145                148
+      #     production          146                149
+      #
+      # 152 is the maximum of those, so 160 reads like eight units of margin. It
+      # is not. That 152 is the DEV rung, whose ref is three characters, so 160
+      # tolerated an 11-character ref - and 'production' is already 10. A
+      # workflow_dispatch of the dev rung from feat/release-ladder-phase-2
+      # assembles a real wrapper of 176 against the assumed 160, and with
+      # v1.94.0's 847-unit telegram.md the true caption is 1023/1024: it passed
+      # by one unit rather than by design.
+      #
+      # The floor stays because it costs nothing and keeps the gate no weaker
+      # than it was; the per-run measurement is what makes it correct. Only an
+      # over-estimate is safe here - it can reject a caption pre-flight that
+      # would have fitted, which is recoverable, where an under-estimate lets
+      # Telegram reject it after the Play upload, which is not.
+      #
+      # The previous default of 149 was the dev rung's figure applied to all
+      # three. It was 2-5 units light on production, where an over-budget caption
+      # means a stable release that reached Play users and was never broadcast.
+      caption_wrapper_units:
+        description: >-
+          Lower bound on the caption scaffolding, in UTF-16 units. The run
+          measures the real value and uses whichever is larger.
+        required: false
+        default: 160
+        type: number
+    outputs:
+      published:
+        value: ${{ jobs.rung.outputs.published }}
+      version_name:
+        value: ${{ jobs.rung.outputs.version_name }}
+      version_code:
+        value: ${{ jobs.rung.outputs.version_code }}
+
+jobs:
+  rung:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      published: ${{ steps.gate.outputs.publish }}
+      version_name: ${{ steps.ver.outputs.name }}
+      version_code: ${{ steps.ver.outputs.code }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # full history + tags so the release-notes fallback works
+
+      # The all-zero SHA is deliberate, not a placeholder. github.event.before is
+      # empty on a workflow_dispatch, and the obvious default - HEAD^ - is a
+      # perfectly readable ref under fetch-depth: 0, so the script would compare
+      # against it and report changed=false for a re-run. That breaks the escape
+      # hatch in precisely the case it exists for: Play rejected the code, a
+      # commit that does not bump it lands on the branch, and the operator
+      # re-runs by hand. Substituting a ref nothing can resolve routes the run
+      # into detect-version-bump.sh's fail-open branch, which reports
+      # changed=true when it cannot read the old code.
+      #
+      # The genuine all-zero case - the first push to a new branch - already
+      # reaches the same branch on its own: before is non-empty zeros, so :- does
+      # not fire, git show fails, and old_code comes back empty.
+      - name: Detect version bump
+        id: ver
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: .github/scripts/detect-version-bump.sh "${BEFORE:-0000000000000000000000000000000000000000}" >> "$GITHUB_OUTPUT"
+
+      # A rung decides for itself what an unbumped code means. dev and master
+      # treat it as "nothing to publish, build for verification only".
+      # production treats it as an error: there is nothing to promote, and Play
+      # would otherwise reject the run seven minutes later.
+      #
+      # A workflow_dispatch reaches detect-version-bump.sh's fail-open branch by
+      # way of the unreadable ref substituted above, so it reports changed=true
+      # and publishes. That is the deliberate escape hatch for re-publishing a
+      # code Play never accepted.
+      - name: Decide whether this run publishes
+        id: gate
+        env:
+          CHANGED: ${{ steps.ver.outputs.changed }}
+          ON_UNCHANGED: ${{ inputs.on_unchanged_version }}
+          RUNG: ${{ inputs.rung }}
+          CODE: ${{ steps.ver.outputs.code }}
+        run: |
+          if [ "$CHANGED" = "true" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$ON_UNCHANGED" = "fail" ]; then
+            echo "::error::versionCode is still ${CODE}, which Google Play has already taken — there is nothing for the ${RUNG} rung to promote. Land a chore(release) bump first, or re-run via workflow_dispatch if you know Play never accepted ${CODE}." >&2
+            exit 1
+          fi
+
+          echo "::notice::versionCode unchanged at ${CODE} — building for verification only, not publishing."
+          echo "publish=false" >> "$GITHUB_OUTPUT"
+
+      # Pre-flight, before anything publishes. Bolting this next to the
+      # Telegram send would fail a half-published release, because that step
+      # sits between the Play action and the GitHub release.
+      #
+      # require_notes means every curated file THIS rung consumes must exist,
+      # not merely that the directory does. A directory holding only
+      # playstore.txt used to pass this gate, and the run then published a raw
+      # git log as the release body and broadcast the generic bullet - on the
+      # one rung that reaches every user, where a Telegram send cannot be
+      # retracted.
+      #
+      # The list is per rung because the consumers are:
+      #   github.md    -> the GitHub release body (Prepare Release Notes below)
+      #   playstore.txt -> Play's what's-new (Fastfile copy_playstore_notes,
+      #                    which hard-fails on the production lane)
+      #   telegram.md  -> the broadcast caption, ONLY where telegram is true.
+      # Requiring telegram.md on a rung that never sends would be a gate that
+      # can only ever fire falsely.
+      - name: Check release-notes budget
+        if: steps.gate.outputs.publish == 'true'
+        env:
+          NAME: ${{ steps.ver.outputs.name }}
+          REQUIRE_NOTES: ${{ inputs.require_notes }}
+          TELEGRAM: ${{ inputs.telegram }}
+          WRAPPER: ${{ inputs.caption_wrapper_units }}
+          TITLE_PREFIX: ${{ inputs.title_prefix }}
+          CAPTION_STATUS: ${{ inputs.caption_status }}
+        run: |
+          if [ ! -d "release-notes/v${NAME}" ] && [ ! -d "release-notes/${NAME}" ]; then
+            if [ "$REQUIRE_NOTES" = "true" ]; then
+              echo "::error::v${NAME} publishes to users and has no release-notes directory. Curated notes are required on this rung." >&2
+              exit 1
+            fi
+            echo "::notice::No curated notes for v${NAME} — the GitHub body will fall back to the commit log."
+            exit 0
+          fi
+
+          REQUIRED=()
+          if [ "$REQUIRE_NOTES" = "true" ]; then
+            REQUIRED+=(--require github.md --require playstore.txt)
+            if [ "$TELEGRAM" = "true" ]; then
+              REQUIRED+=(--require telegram.md)
+            fi
+          fi
+
+          # The caption wrapper is not a constant: it contains the ref name and
+          # the actor. Assemble this run's actual scaffolding rather than
+          # trusting the declared floor, then take the larger of the two.
+          #
+          # TRACK_LABEL is the one field not yet knowable - fastlane writes
+          # track.txt during the build, which has not run - so substitute the
+          # LONGEST label the case statement in "Send APK to Telegram" can
+          # emit. Over-estimating only ever costs a pre-flight rejection of a
+          # caption that would have fitted; under-estimating spends the Play
+          # upload first and finds out from Telegram.
+          #
+          # 'Internal Testing' is two units longer than the 'Closed Testing'
+          # the dev rung actually gets, and that is not free: a dispatch from
+          # feat/release-ladder-phase-2 measures 178 where the true caption is
+          # 1023/1024, so today's notes would be refused from a long-named
+          # branch. Deriving the label from inputs.rung instead would be exact,
+          # and is rejected on purpose - it would be a fourth place encoding
+          # which track a rung uploads to, and the comment below records that
+          # this caption already once told users the wrong track for months
+          # after a lane moved. A gate that is two units pessimistic is worth
+          # more than a mapping that can go quietly stale.
+          #
+          # The format string is byte-identical to the one that assembles the
+          # real caption below, and test-caption-wrapper.sh pins the two
+          # together - a reworded header that changed only one of them would
+          # otherwise make this measurement quietly wrong.
+          HEADER=$(printf "🚀 *Thor (Valhalla) %s*\n\nBranch: %s\nAuthor: %s\nTrack: %s\nStatus: %s" "$TITLE_PREFIX" "$GITHUB_REF_NAME" "$GITHUB_ACTOR" "Internal Testing" "$CAPTION_STATUS")
+          # + 2 for the blank line that joins the header to telegram.md.
+          MEASURED=$(printf '%s' "$HEADER" | python3 -c 'import sys; print(len(sys.stdin.buffer.read().decode("utf-8").encode("utf-16-le")) // 2 + 2)')
+          if [ "$MEASURED" -gt "$WRAPPER" ]; then
+            echo "::notice::Caption wrapper measures ${MEASURED} units on ref '${GITHUB_REF_NAME}', above the declared floor of ${WRAPPER}. Using the measurement."
+            WRAPPER="$MEASURED"
+          fi
+
+          .github/scripts/check-notes-budget.sh "${REQUIRED[@]}" "$NAME" "$WRAPPER"
+
+      # No dependency cache in this job, unlike pr-ci.yml. This is the only job
+      # in the repository that holds the signing keystore, the Play service
+      # account and `contents: write` at the same time, and a restored cache is
+      # mutable state written by an earlier run — the entry that decides which
+      # jars Gradle compiles against and which gems `bundle exec` loads. Every
+      # other input here is pinned (actions by sha, actionlint and shellcheck by
+      # checksum); a cache is the one that is not.
+      #
+      # It also buys reproducibility. IzzyOnDroid rebuilds the FOSS APK at the
+      # tag from a cold checkout and compares it to what this job published, so
+      # the closer this job is to a cold build, the fewer ways the two can
+      # differ.
+      #
+      # The cost is real and is the reason to reconsider: roughly two minutes
+      # per rung, three rungs per version. If that becomes the bottleneck, the
+      # thing to restore is the Gradle cache — the gems are seconds.
+      - name: Setup JDK 21
+        uses: actions/setup-java@v5.6.0
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: false
+
+      # bundler-cache: false turns off the install as well as the cache, so it
+      # has to happen here or `bundle exec fastlane` finds nothing.
+      - name: Install gems
+        run: bundle install --jobs 4 --retry 3
+
+      # --- SECRET DECODING ---
+      #
+      # Both steps check the result is non-empty, because neither write fails
+      # on an empty secret: `base64 --decode` exits 0 on empty input, and echo
+      # of an unset variable writes a newline. An unset or truncated secret
+      # then surfaces minutes later as a Gradle keystore error or a Play auth
+      # failure that names the symptom and not the cause - and on a promote
+      # rung it fails AFTER the build, so the diagnosis costs a full run.
+      - name: Decode Keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > app/release.jks
+          if [ ! -s app/release.jks ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is unset or decoded to nothing — the signing keystore is empty." >&2
+            exit 1
+          fi
+
+      - name: Decode Google Play Service Account
+        env:
+          PLAY_STORE_JSON_KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
+        run: |
+          set -euo pipefail
+          echo "$PLAY_STORE_JSON_KEY" > app/google-play-api.json
+          # NOT `[ -s ]`: echo of an unset variable writes a newline, so the
+          # file is one byte and passes an emptiness test. Parse it instead,
+          # and require the field Fastlane authenticates with. jq -e exits
+          # non-zero on unparseable input and on a false/null result alike.
+          if ! jq -e 'has("client_email")' app/google-play-api.json > /dev/null 2>&1; then
+            echo "::error::PLAY_STORE_JSON_KEY is empty, malformed, or not a service-account key — Play authentication would fail after the build." >&2
+            exit 1
+          fi
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      # When this run does not publish it still builds, because a green build
+      # on the merged tree is the point of the run. build_release_candidates
+      # touches Play not at all.
+      - name: Run Fastlane
+        env:
+          JSON_KEY_FILE: ${{ github.workspace }}/app/google-play-api.json
+          SUPPLY_JSON_KEY: ${{ github.workspace }}/app/google-play-api.json
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEYSTORE_FILE_PATH: ${{ github.workspace }}/app/release.jks
+        run: |
+          bundle exec fastlane android ${{ steps.gate.outputs.publish == 'true' && inputs.fastlane_lane || 'build_release_candidates' }}
+
+      - name: Prepare Release Notes
+        id: prep_notes
+        if: steps.gate.outputs.publish == 'true'
+        env:
+          REQUIRE_NOTES: ${{ inputs.require_notes }}
+        run: |
+          if [ ! -s version_name.txt ]; then
+            echo "::error::version_name.txt is missing or empty — the Fastlane lane did not write it." >&2
+            exit 1
+          fi
+          VERSION_NAME=$(cat version_name.txt)
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+
+          resolve() {
+            # release-notes/v<name>/ is the convention; the un-prefixed form is
+            # tolerated because older releases used it.
+            if [ -f "release-notes/v${VERSION_NAME}/$1" ]; then
+              echo "release-notes/v${VERSION_NAME}/$1"
+            elif [ -f "release-notes/${VERSION_NAME}/$1" ]; then
+              echo "release-notes/${VERSION_NAME}/$1"
+            fi
+          }
+
+          GITHUB_NOTES_FILE="$(resolve github.md)"
+          if [ -z "$GITHUB_NOTES_FILE" ]; then
+            # What makes "no commit-log fallback on this rung" true rather than
+            # aspirational. The gate above already refused to start without
+            # github.md, so reaching here with require_notes means the file
+            # vanished mid-run - impossible from a single checkout, which is
+            # why this is an assertion and not the gate. Never relax it into
+            # the fallback: a raw git log is not release notes for users.
+            if [ "$REQUIRE_NOTES" = "true" ]; then
+              echo "::error::github.md disappeared after the pre-flight check — refusing to publish a commit log as the release body of v${VERSION_NAME}." >&2
+              exit 1
+            fi
+            FALLBACK_FILE="github_release_notes_fallback.md"
+            {
+              echo "### Changelog"
+              echo ""
+            } > "$FALLBACK_FILE"
+            LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ -n "$LAST_TAG" ]; then
+              echo "Commits since $LAST_TAG:" >> "$FALLBACK_FILE"
+              git log "$LAST_TAG..HEAD" --oneline >> "$FALLBACK_FILE"
+            else
+              echo "Recent commits:" >> "$FALLBACK_FILE"
+              git log --oneline -n 20 >> "$FALLBACK_FILE"
+            fi
+            GITHUB_NOTES_FILE="$FALLBACK_FILE"
+          fi
+          echo "github_notes_path=$GITHUB_NOTES_FILE" >> "$GITHUB_OUTPUT"
+
+          TELEGRAM_NOTES_FILE="$(resolve telegram.md)"
+          echo "telegram_notes_path=$TELEGRAM_NOTES_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Send APK to Telegram
+        if: inputs.telegram && steps.gate.outputs.publish == 'true'
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TITLE_PREFIX: ${{ inputs.title_prefix }}
+          CAPTION_STATUS: ${{ inputs.caption_status }}
+          NOTES_PATH: ${{ steps.prep_notes.outputs.telegram_notes_path }}
+          REQUIRE_NOTES: ${{ inputs.require_notes }}
+        run: |
+          # Fastlane 'copyStoreReleaseApk' task puts it here.
+          #
+          # `|| true` is what makes the guard below reachable. The default shell
+          # is `bash -e -o pipefail`, so if the directory does not exist at all
+          # find exits 1, pipefail promotes that to the assignment, and -e kills
+          # the step BEFORE the if - leaving the friendly message to cover only
+          # the narrower "directory exists but is empty" case. Same shape as the
+          # `|| true` in the Shizu version resolver, and the same reason.
+          APK_PATH=$(find app/build/distribution/store -name "*.apk" 2>/dev/null | head -n 1 || true)
+
+          if [ ! -f "$APK_PATH" ]; then
+            echo "::error::No APK under app/build/distribution/store/ — the build did not produce one." >&2
+            exit 1
+          fi
+
+          echo "Sending $APK_PATH to Telegram..."
+
+          # Read the track fastlane actually uploaded to rather than restating it. This line used to
+          # be the literal "Internal Testing" and stayed that way after the lane moved, which nothing
+          # in the repo could catch — there is no actionlint or shellcheck over .github/workflows.
+          # The default arm prints whatever key it got instead of inventing a friendly name for it.
+          TRACK=$(cat track.txt 2>/dev/null || echo "")
+          case "$TRACK" in
+            internal)   TRACK_LABEL="Internal Testing" ;;
+            alpha)      TRACK_LABEL="Closed Testing" ;;
+            beta)       TRACK_LABEL="Open Testing" ;;
+            production) TRACK_LABEL="Production" ;;
+            "")         TRACK_LABEL="unknown" ;;
+            *)          TRACK_LABEL="$TRACK" ;;
+          esac
+
+          # "& GitHub" was a lie of ordering: Create GitHub Release is a later step in this job, so
+          # the caption asserted a release that had not been attempted yet and would still say so
+          # if it failed. Claim only what has actually happened by the time this message is sent.
+          #
+          # The title and the status line come from inputs for the same reason. Hardcoded, they said
+          # "Dev Build" and "Uploaded to Play Store" on every rung - three false claims out of four
+          # on production, which promotes an existing bundle and ends in a full release. Only the
+          # track adapted on its own, because promote_to_track rewrites track.txt.
+          CAPTION=$(printf "🚀 *Thor (Valhalla) %s*\n\nBranch: %s\nAuthor: %s\nTrack: %s\nStatus: %s" "$TITLE_PREFIX" "$GITHUB_REF_NAME" "$GITHUB_ACTOR" "$TRACK_LABEL" "$CAPTION_STATUS")
+
+          if [ -n "$NOTES_PATH" ] && [ -r "$NOTES_PATH" ]; then
+            CAPTION=$(printf "%s\n\n%s" "$CAPTION" "$(cat "$NOTES_PATH")")
+          elif [ "$REQUIRE_NOTES" = "true" ]; then
+            # Same assertion as the release body above, for the same reason.
+            # The pre-flight gate required telegram.md on any rung that both
+            # broadcasts and curates, so this is unreachable from one checkout.
+            # Failing here still costs nothing: it is before the curl, so the
+            # generic bullet is not broadcast, and Create GitHub Release runs
+            # under !cancelled() regardless.
+            echo "::error::telegram.md is unreadable after the pre-flight check — refusing to broadcast the generic bullet for a release that reaches users." >&2
+            exit 1
+          else
+            CAPTION=$(printf "%s\n\n• Bug fixes and performance improvements" "$CAPTION")
+          fi
+
+          # --max-time is what makes the "a broadcast must not veto the
+          # release" reasoning below actually hold. !cancelled() forgives a
+          # Telegram *failure*, but a hung upload is not a failure - it is no
+          # outcome at all, and it blocks Create GitHub Release behind it until
+          # the job hits its own timeout. On the production rung that leaves a
+          # build live for Play users with no tag and no APK for rbtlog. The
+          # bound converts a hang into the failure the next step already
+          # tolerates. 300s is ~20x the observed upload time for a ~4 MB APK.
+          # The body is captured rather than discarded. --fail-with-body differs
+          # from --fail ONLY in that it writes the error body to stdout, so
+          # `> /dev/null` silently turned it back into --fail: a rejected
+          # caption exited 22 with no output, throwing away the one line that
+          # says why. Telegram answers
+          #   {"ok":false,...,"description":"Bad Request: ... caption is too long"}
+          # and that description is the whole reason this flag is here - see
+          # check-notes-budget.sh's header and release-notes/README.md.
+          if ! body=$(curl -s --fail-with-body --connect-timeout 15 --max-time 300 \
+                           -F "chat_id=$TELEGRAM_CHAT_ID" \
+                           -F "document=@$APK_PATH" \
+                           -F "caption=$CAPTION" \
+                           -F "parse_mode=Markdown" \
+                           "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendDocument"); then
+            # No token or chat id can appear here: this is Telegram's response
+            # body, not the request.
+            echo "::error::Telegram rejected the broadcast: ${body}" >&2
+            exit 1
+          fi
+
+      # target_commitish pins the tag to the commit that was actually built.
+      # Without it the tag is created against the branch's tip AT THE MOMENT
+      # THE API CALL LANDS, so a push arriving during the ~7 minute build moves
+      # the tag off the built tree. IzzyOnDroid's rbtlog clones at the tag and
+      # asserts `git rev-parse HEAD` equals the APK's embedded commit, so a
+      # drifted tag is a failed reproducibility check, not a cosmetic problem.
+      #
+      # Existing stable tags are correct only because production has never
+      # carried a commit of its own. That is a property of the history so far,
+      # not a guarantee.
+      #
+      # This condition is load-bearing in all three of its parts - do not
+      # "simplify" any of them away.
+      #
+      # !cancelled() rather than a bare if:, because a bare if: is ANDed with an
+      # implicit success() and the Telegram step sits between the build and this
+      # one. A rejected caption or a transient 5xx from Telegram would otherwise
+      # skip the release entirely, and on the production rung that means the
+      # build reaches Play users while no tag and no foss-release.apk exist for
+      # rbtlog to clone. A broadcast must not be able to veto the release.
+      #
+      # !cancelled() rather than always(), because always() also survives
+      # cancellation - so cancelling a run mid-Telegram would still cut a public
+      # GitHub release and tag. !cancelled() keeps the Telegram-failure path open
+      # and closes the cancellation path. Recovery for a genuinely cancelled run
+      # is the workflow_dispatch hatch above.
+      #
+      # The ${{ }} wrapper is required, not stylistic: a YAML scalar beginning
+      # with ! is a tag directive, so the bare form parses && as an anchor.
+      #
+      # The prep_notes guard is what !cancelled() would otherwise throw away. It
+      # runs after Fastlane and before Telegram and carries its own implicit
+      # success(), so outcome == 'success' proves the whole chain up to it -
+      # checkout, the gate, the notes budget, both setups, the secret decodes and
+      # Fastlane - succeeded. Without it a failed build would reach this step
+      # with empty outputs and cut a tagless, assetless release.
+      - name: Create GitHub Release
+        if: ${{ !cancelled() && steps.gate.outputs.publish == 'true' && steps.prep_notes.outcome == 'success' }}
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        with:
+          tag_name: v${{ steps.prep_notes.outputs.version_name }}${{ inputs.tag_suffix }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ inputs.title_prefix }} v${{ steps.prep_notes.outputs.version_name }}
+          body_path: ${{ steps.prep_notes.outputs.github_notes_path }}
+          files: |
+            app/build/distribution/foss/foss-release.apk
+            app/build/distribution/store/store-release.apk
+          # Defaults to false, which publishes the release with whatever
+          # assets it found - including none. An assetless stable is worse
+          # than no stable: the tag exists, so Obtainium and the Shizu store
+          # resolve /releases/latest/ to a release with nothing to download,
+          # and rbtlog clones a tag whose APK it cannot find. Fail instead.
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: ${{ inputs.prerelease }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- SECURITY CLEANUP ---
+      - name: Cleanup sensitive files
+        if: always()
+        run: |
+          rm -f app/release.jks
+          rm -f app/google-play-api.json
