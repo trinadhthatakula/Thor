@@ -14,7 +14,7 @@ name: PR CI
 # a required check.
 on:
   pull_request:
-    branches: [ "master", "dev" ]
+    branches: [ "master", "dev", "production" ]
 
 # Least-privilege token — this workflow only reads the repo.
 permissions:

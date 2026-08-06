@@ -1,0 +1,50 @@
+name: 3. Production — promote beta to production
+
+# Rung 3 of 3. Promotes the build master already moved into beta out to
+# production, and mints the only GitHub release that is not a pre-release.
+# Uploads nothing.
+on:
+  push:
+    branches: [ "production" ]
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - 'web/**'
+      - 'vercel.json'
+      - '.github/workflows/web-*.yml'
+      - '.github/labeler.yml'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.github/**/*.md'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/assets/**'
+      - '.github/CODEOWNERS'
+      - '.github/FUNDING.yml'
+      - '.github/dependabot.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: release-production
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    uses: ./.github/workflows/release-rung.yml
+    permissions:
+      contents: write
+    secrets: inherit
+    with:
+      rung: production
+      fastlane_lane: promote_production
+      # No suffix: this is the tag Obtainium, IzzyOnDroid and the Shizu store's
+      # /releases/latest/ URL all resolve to.
+      tag_suffix: ''
+      title_prefix: Release
+      prerelease: false
+      telegram: true
+      # A release that reaches users gets notes a human wrote. There is no
+      # commit-log fallback on this rung.
+      require_notes: true
+      # Nothing to promote, and Play would reject it after the full build.
+      on_unchanged_version: fail
+      caption_status: Promoted on Play Store — GitHub release next
