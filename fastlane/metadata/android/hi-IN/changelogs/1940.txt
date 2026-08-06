@@ -1,13 +1,13 @@
-• 🧊 New: Freeze Profiles — save named groups of apps, freeze or unfreeze in one tap.
+• 🧊 नया: फ्रीज प्रोफाइल — ऐप्स के समूह सहेजें, एक टैप में फ्रीज या अनफ्रीज करें।
 
-• 💾 New: back up or export several apps at once, including .xapk.
+• 💾 नया: एक साथ कई ऐप्स का बैकअप या एक्सपोर्ट, .xapk समेत।
 
-• 🔎 New: filter your apps by permission — Camera, Mic, Location and more.
+• 🔎 नया: अनुमति के आधार पर ऐप्स फ़िल्टर करें — कैमरा, माइक, लोकेशन आदि।
 
-• 🧊 Freezing a preinstalled app no longer wipes its data.
+• 🧊 प्रीइंस्टॉल ऐप फ्रीज करने पर अब उसका डेटा नहीं मिटता।
 
-• ✅ Freeze, restrict and clear-data now report what really happened.
+• ✅ फ्रीज, प्रतिबंध और क्लियर-डेटा अब असली नतीजा बताते हैं।
 
-• 🔒 App lock covers app start and hides your app list in Recents.
+• 🔒 ऐप लॉक अब ऐप खुलने पर लागू, और Recents में ऐप सूची छिपाता है।
 
-• 📱 App info is one sheet, with the full details built in.
+• 📱 ऐप जानकारी अब एक ही शीट में, पूरे विवरण के साथ।
