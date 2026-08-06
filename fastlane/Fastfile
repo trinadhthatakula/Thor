@@ -118,12 +118,12 @@ platform :android do
         UI.important("⚠️  No Play Store release notes found at: #{playstore_notes_path}. Skipping changelog upload.")
       end
 
-      # Upload to the track the lane asked for ('alpha' = closed testing, 'beta' = open testing).
-      # Nothing here ever writes 'production': promoting a build to production is a manual step in
-      # the Play Console, and that manual step is the release gate.
+      # Upload to the track the lane asked for — always one of ThorRelease::UPLOAD_TRACKS
+      # (internal or alpha). beta and production are never received here: they are
+      # reached by promote_beta / promote_production, not by uploading.
       upload_to_play_store(
         track: track,
-        release_status: 'completed', # live on that test track immediately; production stays manual
+        release_status: 'completed', # live on that test track immediately; higher tracks via promotion
         aab: generated_aab_path,
         skip_upload_metadata: true,
         skip_upload_changelogs: skip_changelogs,
