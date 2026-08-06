@@ -9,6 +9,12 @@ Written 1 August 2026 against `dev` at versionCode 1931. Every claim about *this
 against the working tree; every claim about *F-Droid* comes from the pages listed under
 [Sources](#sources), fetched the same day. Where I could not verify something, it says so.
 
+**Revised 6 August 2026 against `feat/release-ladder-phase-2` at versionCode 1940.** Three things
+this document called open have since been decided or done, and the recipe in §8 was rewritten
+because of the first of them: the `-foss` `versionNameSuffix` was **removed** (commit `c0fc2aaf`),
+the Play changelog copy is now **automated**, and `hi-IN` has changelogs. The F-Droid claims were
+not re-fetched; treat them as of 1 August.
+
 > **IzzyOnDroid is not F-Droid.** Thor is already in IzzyOnDroid's repo
 > (`https://apt.izzysoft.de/fdroid/repo`), which is a *third-party* repository that users add to an
 > F-Droid client. It confers no standing with f-droid.org, shares none of its infrastructure, and
@@ -28,8 +34,8 @@ today.** Two things must change in this repo first, and one of them is not a qui
 | Fastlane metadata already present | ✅ mostly |
 | **AGP is a pre-release (`9.4.0-alpha07`)** | ⛔ **blocker** |
 | ~~Release build aborts without a keystore~~ | ✅ fixed in the commit that added this doc |
-| `-foss` versionNameSuffix | ⚠️ declare it in the recipe |
-| ~~Stale changelogs directory~~ | ✅ `1931.txt` added alongside this doc |
+| ~~`-foss` versionNameSuffix~~ | ✅ removed in `c0fc2aaf` — the recipe declares no suffix |
+| ~~Stale changelogs directory~~ | ✅ `1931.txt` added alongside this doc, and the copy is now automated |
 | Extension store downloads APKs at runtime | ⚠️ raise it proactively |
 
 ---
@@ -162,24 +168,46 @@ moved aside and no CI env vars, `assembleFossRelease` now succeeds and emits
 
 ## 5. Smaller things to fix in the same pass
 
-**The `-foss` versionNameSuffix.** The `foss` flavour block in `app/build.gradle.kts` sets
-`versionNameSuffix = "-foss"`, so the APK's versionName is `1.93.1-foss`, not `1.93.1`. F-Droid
-compares the `versionName` in the recipe against the built APK and errors on a mismatch. You do not
-have to remove the suffix — just declare it (see the recipe in §7). Decide deliberately, because
-changing it later churns the metadata.
+**~~The `-foss` versionNameSuffix.~~ ✅ Resolved: the suffix is gone.** This section used to say the
+`foss` flavour block set `versionNameSuffix = "-foss"`, making the APK's versionName `1.93.1-foss`
+rather than `1.93.1`, and that the recipe therefore had to declare it. Commit `c0fc2aaf` **removed
+the suffix**, and `app/build.gradle.kts` now carries a comment explaining why:
 
-**The changelog directory was stale.** `fastlane/metadata/android/en-US/changelogs/` held exactly one
-file, `1600.txt`, while `versionCode` is `1931`. F-Droid reads `changelogs/<versionCode>.txt` for the
-"What's New" text, so every release since 1600 shipped without one — in IzzyOnDroid too. `1931.txt`
-was added in the same commit as this document, copied from `release-notes/v1.93.1/playstore.txt`.
+```kotlin
+create("foss") {
+    dimension = "distribution"
+    // No versionNameSuffix on purpose. Obtainium cannot reconcile
+    // "1.94.0-foss" against tag v1.94.0 …
+}
+```
 
-Still open: nothing *copies* it. The release notes are written each cycle under `release-notes/vX/`
-and the fastlane changelog has to be updated by hand, which is why it drifted five releases behind
-without anyone noticing. Worth adding to the release script rather than the checklist — a checklist
-item is what already failed here.
+Obtainium does not recognise `foss` as a suffix, so it sets `versionDetection = false` and reports
+outdated users as up to date; and F-Droid's `Binaries:` field substitutes only `%v`, which with a
+suffix resolves to a tag that does not exist. The flavour is identified by its APK filename
+(`foss-release.apk`) and its ProGuard file, not by its versionName.
 
-**`hi-IN` is incomplete** — title, short and full description, but no images and no changelogs. Not
-a blocker; F-Droid falls back to `en-US`.
+For this document that simplifies things: **the recipe declares no suffix at all**, `versionName`
+is exactly what `gradle.properties`' `versionCode` derives (1940 → `1.94.0`), and `AutoUpdateMode`
+is the plain `Version` rather than `Version +-foss`. §8 has been rewritten accordingly. The only
+`versionNameSuffix` left in the build is `-benchmark`, on a build type confined to the `store`
+flavour, which no F-Droid build can reach.
+
+**~~The changelog directory was stale.~~ ✅ Resolved, and the copy is automated.**
+`fastlane/metadata/android/en-US/changelogs/` held exactly one file, `1600.txt`, while `versionCode`
+was `1931`. F-Droid reads `changelogs/<versionCode>.txt` for the "What's New" text, so every release
+since 1600 shipped without one — in IzzyOnDroid too. `1931.txt` was added in the same commit as this
+document, copied from `release-notes/v1.93.1/playstore.txt`.
+
+The follow-up this section asked for — *"worth adding to the release script rather than the
+checklist"* — has since been done. `copy_playstore_notes` in `fastlane/Fastfile` copies
+`release-notes/v<name>/playstore.txt` into **every** locale under `fastlane/metadata/android/`
+before the production promotion, and `prepare_release_artifacts` does the en-US copy on the upload
+rung. The directory now runs 1600, 1931, 1932, 1933, 1940 with no gaps since 1931.
+
+**`hi-IN` is partially complete** — title, short and full description, and (since the automated copy)
+changelogs mirroring en-US, but still no images. Not a blocker; F-Droid falls back to `en-US` for
+what is missing. Note the changelogs are *English text in the `hi-IN` directory*: supply blanks a
+locale it has no file for, so mirroring beats leaving it empty, but it is not a translation.
 
 **`.DS_Store` files are a non-issue** — worth stating because a plain `find` makes it look like one.
 There are eight of them in the working tree, three inside `fastlane/metadata/`, but `.gitignore`
@@ -290,21 +318,25 @@ RepoType: git
 Repo: https://github.com/trinadhthatakula/Thor.git
 
 Builds:
-  - versionName: 1.93.1-foss
-    versionCode: 1931
-    commit: v1.93.1
+  - versionName: 1.94.0
+    versionCode: 1940
+    commit: v1.94.0
     subdir: app
     gradle:
       - foss
 
-AutoUpdateMode: Version +-foss
+AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v\d+\.\d+\.\d+$
 UpdateCheckData: gradle.properties|versionCode=(\d+)||
-CurrentVersion: 1.93.1-foss
-CurrentVersionCode: 1931
+CurrentVersion: 1.94.0
+CurrentVersionCode: 1940
 ```
 
-Four lines there are Thor-specific and are the ones most likely to be wrong if you start from
+`versionName` carries **no suffix**: `versionCode` 1940 derives `1.94.0` (`code/1000` . `code%1000/10`
+. `code%10`) and the `foss` flavour adds nothing to it. That is what the APK reports, so it is what
+F-Droid must be told — a mismatch here is an error, not a warning.
+
+Three lines are Thor-specific and are the ones most likely to be wrong if you start from
 someone else's file:
 
 **`gradle: [foss]`** selects the flavour. Per the metadata reference, *"Flavours are case sensitive
@@ -316,17 +348,21 @@ flavours and pull in Play Billing.
 `gradle.properties`, not in `build.gradle.kts`. F-Droid's default scanner looks in the build file
 and will not find it. The two empty trailing fields mean "take the version name from the tag".
 
-**`UpdateCheckMode: Tags ^v\d+\.\d+\.\d+$`** — the tag list mixes stable releases (`v1.93.0`) with
-pre-releases (`v1.93.1-dev-103`). Without the regex, F-Droid would happily pick up a `-dev-` tag as
-a release. The anchor is what excludes them.
+**`UpdateCheckMode: Tags ^v\d+\.\d+\.\d+$`** — the tag list mixes stable releases (`v1.94.0`) with
+per-rung pre-releases. Every version now gets **three** GitHub releases, one per rung of the release
+ladder: `v<name>-dev-<run>` from `dev`, `v<name>-beta-<run>` from `master`, and the bare `v<name>`
+from `production`. Without the regex, F-Droid would pick up a `-dev-` or `-beta-` tag as a release.
+The `$` anchor is what excludes them, and it is the only thing that does.
 
-**`AutoUpdateMode: Version +-foss`** — the `+<suffix>` form appends to the version name, which is how
-you reconcile the recipe with `versionNameSuffix = "-foss"`. The metadata reference documents this
-as a way *"to differentiate F-Droid's build from the original"*; using it to mirror an existing
-suffix is the same mechanism. **Verify this one with `fdroid checkupdates` before relying on it** —
-it is the line I am least certain about, since the published example is truncated mid-word.
+`AutoUpdateMode: Version` — the plain form, with no `+<suffix>`. The suffixed form documented in
+the metadata reference (*"to differentiate F-Droid's build from the original"*) was needed here only
+while `versionNameSuffix = "-foss"` existed; with the suffix removed, appending anything would
+reintroduce the mismatch this recipe is meant to avoid, and `%v` would resolve to a tag that does
+not exist. Leave it plain.
 
-`commit:` should be the tag, not a branch — F-Droid builds from a fixed point.
+`commit:` should be the tag, not a branch — F-Droid builds from a fixed point. Use the **bare**
+`v<name>` tag, the production rung's: the `-dev-` and `-beta-` tags point at different commits on
+different branches and carry APKs with a different embedded build commit.
 
 ---
 
@@ -375,15 +411,17 @@ When it builds, commit the metadata file on a branch named for the application i
 ## 10. Suggested order
 
 1. ~~Make `signingConfig` conditional so a keystore-less clone can build.~~ ✅ done here.
-2. ~~Add `fastlane/.../changelogs/1931.txt`.~~ ✅ done here — but teach the release script to copy it,
-   or it drifts again. *(minutes)*
-3. Decide about the `-foss` suffix: keep it and declare it, or drop it. *(a decision, not work)*
+2. ~~Add `fastlane/.../changelogs/1931.txt`, then teach the release script to copy it.~~ ✅ done —
+   `copy_playstore_notes` in `fastlane/Fastfile` now copies it into every locale each release.
+3. ~~Decide about the `-foss` suffix: keep it and declare it, or drop it.~~ ✅ **decided: dropped**,
+   in `c0fc2aaf`. Obtainium cannot reconcile a `-foss` versionName against tag `v<name>` and marks
+   outdated users as up to date; F-Droid's `%v` substitution has the same problem. See §5.
 4. Audit the licences of the listed store extensions. *(an afternoon)*
 5. **Wait for a stable AGP.** *(the actual gate)*
 6. Write the recipe, test it in the buildserver container, open the MR.
 7. Much later, once a release has gone through cleanly: consider reproducible builds.
 
-Steps 3–4 are worth doing whether or not you ever submit. Step 5 is what sets the date.
+Step 4 is worth doing whether or not you ever submit. Step 5 is what sets the date.
 
 ---
 
@@ -397,7 +435,9 @@ Stated plainly so none of it reads as settled:
   container run in §9 answers this in one command.
 - **Whether reviewers will object to the extension store**, and whether any anti-feature would be
   attached. Depends on the extensions' licences, which I did not check.
-- **The exact `AutoUpdateMode: Version +<suffix>` syntax** — the published example is truncated.
+- ~~**The exact `AutoUpdateMode: Version +<suffix>` syntax** — the published example is truncated.~~
+  No longer load-bearing: the `-foss` suffix is gone, so the recipe uses the plain `Version` form
+  and never needs the `+<suffix>` variant.
 - **How long any of it takes.** F-Droid is volunteer-run; MR review times vary widely and I have no
   basis for an estimate.
 
