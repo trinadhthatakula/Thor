@@ -34,11 +34,16 @@
 # ever fire falsely. Options must precede the positional arguments.
 #
 # wrapper-units is the size of the caption scaffolding the workflow wraps
-# around telegram.md. Measured per rung and actor:
+# around telegram.md. It is NOT a constant - it contains the ref name and the
+# actor - so release-rung.yml measures it per run and passes the result here
+# rather than passing its declared floor. On the ladder's own three refs:
 #   dev rung:        149 (own actor) / 152 (bot actor)
 #   beta rung:       145 (own actor) / 148 (bot actor)
 #   production rung: 146 (own actor) / 149 (bot actor)
-# 160 is a deliberate upper bound covering all three rungs in all modes.
+# but a workflow_dispatch from a long branch name measures 176, because the dev
+# figure above is for a three-character ref. The 160 default here is for
+# invoking the script by hand: a conservative round number that covers all three
+# rungs from their own branches, not a claim about any particular run.
 set -euo pipefail
 
 required=()

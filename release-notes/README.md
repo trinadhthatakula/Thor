@@ -134,8 +134,11 @@ Use the `v` form; the fallback exists only for old directories.
 * **Format**: punchy markdown, emoji-led bullets, mobile-first.
 * **Size**: **under ~860 UTF-16 code units.** ⚠️ **Exceeding this broadcasts nothing — see the trap
   below.** Measure UTF-16 units, not characters: most emoji count as **2**. The wrapper the
-  workflow adds was measured at 145–152 units (varying by rung and actor); `check-notes-budget.sh`
-  defaults to 160 — run it without a second argument for a conservative pre-flight check.
+  workflow adds is 145–152 units on the ladder's own three branches (it varies by rung and by actor),
+  but it **contains the branch name**, so a `workflow_dispatch` from a long-named branch measures
+  176 — which is why `release-rung.yml` measures it per run rather than assuming a constant.
+  `check-notes-budget.sh` defaults to 160 when you run it by hand — run it without a second argument
+  for a conservative pre-flight check.
 * **Line breaks**: **MANDATORY** blank line between bullets, or Telegram's mobile client squeezes
   the whole thing into a dense block.
 

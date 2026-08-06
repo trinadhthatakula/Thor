@@ -56,6 +56,11 @@ on:
         description: "skip | fail. What an unbumped versionCode means here."
         required: true
         type: string
+      # A FLOOR, not the wrapper. The gate step measures the real scaffolding
+      # from this run's own ref, actor, title and status line, and uses
+      # whichever of the two is larger - so the margin no longer depends on how
+      # long a branch name happens to be.
+      #
       # Measured, never estimated: assemble the caption below through a shell and
       # count UTF-16 units as len(text.encode('utf-16-le')) // 2, the same method
       # check-notes-budget.sh uses. The scaffolding varies with both the rung and
@@ -66,17 +71,27 @@ on:
       #     beta                145                148
       #     production          146                149
       #
-      # 152 is the maximum, so this default is 152 plus 8 units of margin. The
-      # margin absorbs a ref name longer than 'production' - a workflow_dispatch
-      # can run from any branch - or a reworded status line. It cannot go much
-      # higher: v1.94.0's telegram.md is 847 units, so 177 is the hard ceiling
-      # before today's notes stop fitting. 160 leaves them at 1007/1024.
+      # 152 is the maximum of those, so 160 reads like eight units of margin. It
+      # is not. That 152 is the DEV rung, whose ref is three characters, so 160
+      # tolerated an 11-character ref - and 'production' is already 10. A
+      # workflow_dispatch of the dev rung from feat/release-ladder-phase-2
+      # assembles a real wrapper of 176 against the assumed 160, and with
+      # v1.94.0's 847-unit telegram.md the true caption is 1023/1024: it passed
+      # by one unit rather than by design.
+      #
+      # The floor stays because it costs nothing and keeps the gate no weaker
+      # than it was; the per-run measurement is what makes it correct. Only an
+      # over-estimate is safe here - it can reject a caption pre-flight that
+      # would have fitted, which is recoverable, where an under-estimate lets
+      # Telegram reject it after the Play upload, which is not.
       #
       # The previous default of 149 was the dev rung's figure applied to all
       # three. It was 2-5 units light on production, where an over-budget caption
       # means a stable release that reached Play users and was never broadcast.
       caption_wrapper_units:
-        description: 'UTF-16 units of caption scaffolding, for the budget gate.'
+        description: >-
+          Lower bound on the caption scaffolding, in UTF-16 units. The run
+          measures the real value and uses whichever is larger.
         required: false
         default: 160
         type: number
@@ -178,6 +193,8 @@ jobs:
           REQUIRE: ${{ inputs.require_notes }}
           TELEGRAM: ${{ inputs.telegram }}
           WRAPPER: ${{ inputs.caption_wrapper_units }}
+          TITLE_PREFIX: ${{ inputs.title_prefix }}
+          CAPTION_STATUS: ${{ inputs.caption_status }}
         run: |
           if [ ! -d "release-notes/v${NAME}" ] && [ ! -d "release-notes/${NAME}" ]; then
             if [ "$REQUIRE" = "true" ]; then
@@ -195,6 +212,41 @@ jobs:
               REQUIRED+=(--require telegram.md)
             fi
           fi
+
+          # The caption wrapper is not a constant: it contains the ref name and
+          # the actor. Assemble this run's actual scaffolding rather than
+          # trusting the declared floor, then take the larger of the two.
+          #
+          # TRACK_LABEL is the one field not yet knowable - fastlane writes
+          # track.txt during the build, which has not run - so substitute the
+          # LONGEST label the case statement in "Send APK to Telegram" can
+          # emit. Over-estimating only ever costs a pre-flight rejection of a
+          # caption that would have fitted; under-estimating spends the Play
+          # upload first and finds out from Telegram.
+          #
+          # 'Internal Testing' is two units longer than the 'Closed Testing'
+          # the dev rung actually gets, and that is not free: a dispatch from
+          # feat/release-ladder-phase-2 measures 178 where the true caption is
+          # 1023/1024, so today's notes would be refused from a long-named
+          # branch. Deriving the label from inputs.rung instead would be exact,
+          # and is rejected on purpose - it would be a fourth place encoding
+          # which track a rung uploads to, and the comment below records that
+          # this caption already once told users the wrong track for months
+          # after a lane moved. A gate that is two units pessimistic is worth
+          # more than a mapping that can go quietly stale.
+          #
+          # The format string is byte-identical to the one that assembles the
+          # real caption below, and test-caption-wrapper.sh pins the two
+          # together - a reworded header that changed only one of them would
+          # otherwise make this measurement quietly wrong.
+          HEADER=$(printf "🚀 *Thor (Valhalla) %s*\n\nBranch: %s\nAuthor: %s\nTrack: %s\nStatus: %s" "$TITLE_PREFIX" "$GITHUB_REF_NAME" "$GITHUB_ACTOR" "Internal Testing" "$CAPTION_STATUS")
+          # + 2 for the blank line that joins the header to telegram.md.
+          MEASURED=$(printf '%s' "$HEADER" | python3 -c 'import sys; print(len(sys.stdin.buffer.read().decode("utf-8").encode("utf-16-le")) // 2 + 2)')
+          if [ "$MEASURED" -gt "$WRAPPER" ]; then
+            echo "::notice::Caption wrapper measures ${MEASURED} units on ref '${GITHUB_REF_NAME}', above the declared floor of ${WRAPPER}. Using the measurement."
+            WRAPPER="$MEASURED"
+          fi
+
           .github/scripts/check-notes-budget.sh "${REQUIRED[@]}" "$NAME" "$WRAPPER"
 
       - name: Setup JDK 21
