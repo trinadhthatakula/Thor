@@ -192,10 +192,19 @@ jobs:
       - name: Install check-jsonschema
         run: pipx install check-jsonschema
 
+      # --warn-changelog-drift: warn on PRs, fail where it is actionable.
+      # The checker derives its expected version from origin/production, so a
+      # production promotion moves the target without any PR running. This job
+      # is not path-filtered, so without the flag that promotion reddens every
+      # open PR at once — for authors who did not cause the drift and cannot
+      # fix it from their branch. Only that one condition is softened; a
+      # malformed manifest, a missing file, an unresolvable ref or a schema
+      # violation still fail this job. shizu-store-audit.yml runs the same
+      # checker WITHOUT the flag, on master, where the fix is a commit away.
       - name: Check the Shizu store manifest
         run: |
           if [ ! -f shizu_store.json ]; then
             echo "No shizu_store.json on this branch — nothing to check."
             exit 0
           fi
-          .github/scripts/check-shizu-manifest.sh
+          .github/scripts/check-shizu-manifest.sh --warn-changelog-drift

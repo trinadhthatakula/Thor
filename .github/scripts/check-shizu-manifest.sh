@@ -5,7 +5,7 @@
 # silently falls back to default GitHub repository data. Nothing reports the
 # failure, so every assertion here exists to make one silent failure loud.
 #
-# Usage: .github/scripts/check-shizu-manifest.sh [--network]
+# Usage: .github/scripts/check-shizu-manifest.sh [--network] [--warn-changelog-drift]
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -17,13 +17,20 @@ FASTLANE="fastlane/metadata/android"
 SHOTS="$FASTLANE/en-US/images/phoneScreenshots"
 RAW_BASE="https://raw.githubusercontent.com/trinadhthatakula/Thor/master"
 
-[ "$#" -le 1 ] || { printf 'usage: %s [--network]\n' "$0" >&2; exit 2; }
 NETWORK=0
-case "${1:-}" in
-  --network) NETWORK=1 ;;
-  "")        ;;
-  *)         printf 'usage: %s [--network]\n' "$0" >&2; exit 2 ;;
-esac
+# --warn-changelog-drift downgrades exactly ONE condition — the changelog no
+# longer matching production's release notes — to a warning with exit 0. See
+# changelog_drift() below for why the scope is that narrow and must stay so.
+WARN_CHANGELOG_DRIFT=0
+usage() { printf 'usage: %s [--network] [--warn-changelog-drift]\n' "$0" >&2; exit 2; }
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --network)              NETWORK=1 ;;
+    --warn-changelog-drift) WARN_CHANGELOG_DRIFT=1 ;;
+    *)                      usage ;;
+  esac
+  shift
+done
 
 failures=0
 warnings=0
@@ -31,6 +38,40 @@ fail()    { printf '  FAIL %s\n' "$*" >&2; failures=$((failures + 1)); }
 warn()    { printf '  WARN %s\n' "$*" >&2; warnings=$((warnings + 1)); }
 ok()      { printf '  ok   %s\n' "$*"; }
 section() { printf '\n== %s ==\n' "$*"; }
+
+# The ONE condition --warn-changelog-drift softens, and the only call site that
+# may ever route through it.
+#
+# shizu_store.json carries the changelog of the last PRODUCTION release. A
+# production promotion moves that target, runs no pull_request workflow, and the
+# manifest is refreshed by a separate commit to master. In the window between
+# the two, this check fails — and it is deliberately not path-filtered, so it
+# fails on EVERY open PR at once, for people who did not cause the drift and
+# cannot fix it from their branch. A red check nobody can act on is a red check
+# everyone learns to ignore.
+#
+# Keep the scope at exactly this. A schema violation, a missing file, an
+# unresolvable ref, a dead URL, a wrong SDK level all stay hard failures in
+# every mode: each describes a manifest that is broken, not one that is behind.
+#
+# shellcheck disable=SC2329 # invoked indirectly, as compare_text's $reporter
+changelog_drift() {
+  if [ "$WARN_CHANGELOG_DRIFT" -eq 0 ]; then
+    fail "$*"
+    return
+  fi
+  warnings=$((warnings + 1))
+  # ::warning:: renders as an annotation on the PR's Checks tab; the indented
+  # lines are for whoever opens the raw log.
+  printf '::warning::%s — not caused by this PR, and not fixable from this branch; see the log\n' "$*"
+  printf '  WARN %s\n' "$*" >&2
+  printf '       Nothing in this PR caused this. shizu_store.json carries the\n' >&2
+  printf '       changelog of the last production release, and a production\n' >&2
+  printf '       promotion moves that target before the manifest catches up.\n' >&2
+  printf '       Fix (a commit on master, not on this branch): run\n' >&2
+  printf '       .github/scripts/sync-shizu-changelog.sh and commit\n' >&2
+  printf '       shizu_store.json — release-notes/README.md, Step 5.\n' >&2
+}
 
 # The manifest's twelve image URLs are fetched back to back from one address,
 # and raw.githubusercontent.com answers a burst like that with a 429 often
@@ -87,15 +128,18 @@ fi
 
 section "copy matches fastlane"
 compare_text() {
-  # $1 label, $2 jq filter, $3 file
-  local label="$1" filter="$2" file="$3" from_json from_file
+  # $1 label, $2 jq filter, $3 file, $4 optional reporter for a MISMATCH.
+  # Defaults to fail; only the changelog passes anything else. A missing file
+  # stays a hard failure in every mode — an absent file is a broken repo, not a
+  # manifest that is merely behind.
+  local label="$1" filter="$2" file="$3" reporter="${4:-fail}" from_json from_file
   if [ ! -f "$file" ]; then fail "$label: $file not found"; return; fi
   from_json="$(jq -r "$filter" "$MANIFEST")"
   from_file="$(cat "$file")"
   if [ "$from_json" = "$from_file" ]; then
     ok "$label matches $file"
   else
-    fail "$label has drifted from $file"
+    "$reporter" "$label has drifted from $file"
     diff <(printf '%s\n' "$from_file") <(printf '%s\n' "$from_json") >&2 || true
   fi
 }
@@ -296,7 +340,8 @@ if [ -z "$version_code" ]; then
 elif [ ! -f "$notes" ]; then
   fail "no playstore.txt for v$version_name (versionCode $version_code)"
 else
-  compare_text "changelog" '.changelog' "$notes"
+  # The only call site that may pass a reporter other than the default.
+  compare_text "changelog" '.changelog' "$notes" changelog_drift
   printf '       (versionCode %s -> v%s)\n' "$version_code" "$version_name"
 fi
 
@@ -387,7 +432,7 @@ if [ "$failures" -eq 0 ]; then
   if [ "$warnings" -eq 0 ]; then
     printf 'shizu_store.json: all checks passed\n'
   else
-    printf 'shizu_store.json: all checks passed, %d skipped (see WARN above)\n' "$warnings"
+    printf 'shizu_store.json: all checks passed, %d warning(s) (see WARN above)\n' "$warnings"
   fi
   exit 0
 fi
