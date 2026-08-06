@@ -189,6 +189,11 @@ jobs:
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           tag_name: v${{ steps.prep_notes.outputs.version_name }}
+          # Anchor the tag to the commit we built. Without this the API
+          # defaults to the repository default branch (master), and the APK's
+          # embedded version-control-info sha stops matching the tag - which
+          # is what IzzyOnDroid's rbtlog rebuilds against.
+          target_commitish: ${{ github.sha }}
           name: Release v${{ steps.prep_notes.outputs.version_name }}
           body_path: ${{ steps.prep_notes.outputs.github_notes_path }}
           files: |

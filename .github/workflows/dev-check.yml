@@ -291,6 +291,7 @@ jobs:
         with:
           # Unique tag for dev builds: v1.0.0-dev-45
           tag_name: v${{ steps.prep_notes.outputs.version_name }}-dev-${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
           name: Dev Build v${{ steps.prep_notes.outputs.version_name }} (${{ github.run_number }})
           body_path: ${{ steps.prep_notes.outputs.github_notes_path }}
           files: |
