@@ -170,6 +170,7 @@ if [ ! -d "$SHOTS" ]; then
   fail "screenshots: $SHOTS does not exist"
   expected_shots=""
 else
+  # shellcheck disable=SC2012 # screenshot filenames are controlled alphanumeric; find adds no value here
   expected_shots="$(ls "$SHOTS" | sed "s#^#$RAW_BASE/$SHOTS/#" | sort)"
   # Guard against vacuous pass: if both sets are empty the assertion below
   # would pass silently.  An empty screenshot set is always a failure.

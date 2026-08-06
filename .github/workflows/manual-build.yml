@@ -55,8 +55,8 @@ jobs:
       - name: Read Version Info
         id: version_info
         run: |
-          echo "VERSION_NAME=$(cat version_name.txt)" >> $GITHUB_ENV
-          echo "VERSION_CODE=$(cat version_code.txt)" >> $GITHUB_ENV
+          echo "VERSION_NAME=$(cat version_name.txt)" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$(cat version_code.txt)" >> "$GITHUB_ENV"
 
       - name: Upload APKs to GitHub Actions
         uses: actions/upload-artifact@v7

@@ -77,8 +77,8 @@ jobs:
         run: |
           VERSION_NAME=$(cat version_name.txt)
           VERSION_CODE=$(cat version_code.txt)
-          echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
-          echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_ENV
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           
           # Resolve Telegram notes
           TELEGRAM_NOTES_FILE="release-notes/v${VERSION_NAME}/telegram.md"
@@ -100,15 +100,15 @@ jobs:
         run: |
           TAG="v${{ env.VERSION_NAME }}"
           echo "Checking for release tag: $TAG"
-          
+
           # Check if release exists using GitHub CLI
           if gh release view "$TAG" > /dev/null 2>&1; then
             echo "Release found!"
-            echo "release_url=https://github.com/${{ github.repository }}/releases/tag/$TAG" >> $GITHUB_OUTPUT
-            echo "has_release=true" >> $GITHUB_OUTPUT
+            echo "release_url=https://github.com/${{ github.repository }}/releases/tag/$TAG" >> "$GITHUB_OUTPUT"
+            echo "has_release=true" >> "$GITHUB_OUTPUT"
           else
             echo "No release found for $TAG"
-            echo "has_release=false" >> $GITHUB_OUTPUT
+            echo "has_release=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Publish to Telegram Channel

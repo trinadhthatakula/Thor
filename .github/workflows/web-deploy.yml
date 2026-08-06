@@ -175,6 +175,7 @@ jobs:
           BASE: ${{ github.base_ref }}
         run: |
           set -euo pipefail
+          # shellcheck disable=SC2129 # individual redirects per branch are clearer than a grouped block here
           if [ "$EVENT" != "pull_request" ] && [ "$REF" = "refs/heads/master" ]; then
             echo "env=production" >> "$GITHUB_OUTPUT"
             echo "flag=--prod" >> "$GITHUB_OUTPUT"
@@ -395,6 +396,7 @@ jobs:
         run: |
           set -euo pipefail
           marker="<!-- web-preview-deployment -->"
+          # shellcheck disable=SC2016 # \n in printf format string is a printf escape, not a shell expansion
           body=$(printf '%s\n**Web preview:** %s\n\nBuilt from `%s` by `web-deploy.yml`. Updated in place on every push.' "$marker" "$URL" "${SHA:0:7}")
 
           id=$(gh api "repos/$GH_REPO/issues/$PR/comments?per_page=100" \

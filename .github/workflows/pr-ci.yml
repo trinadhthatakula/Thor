@@ -142,6 +142,41 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  static-analysis:
+    name: static-analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      # Pinned by version AND checksum. `bash <(curl ...)`, which the upstream
+      # README suggests, executes whatever the URL serves at that moment.
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.7
+          ACTIONLINT_SHA256: 023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757
+        run: |
+          set -euo pipefail
+          url="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl --fail --silent --show-error --location -o actionlint.tar.gz "$url"
+          echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum --check --strict
+          tar -xzf actionlint.tar.gz actionlint
+          chmod +x actionlint
+
+      - name: Lint workflows
+        run: ./actionlint -color
+
+      # shellcheck is preinstalled on ubuntu-latest runners.
+      - name: Lint shell scripts
+        run: |
+          set -euo pipefail
+          shellcheck --version
+          # -x follows `source`d files; -S style is the strictest useful level.
+          find .github/scripts -name '*.sh' -print0 | xargs -0 shellcheck -x -S style
+
+      - name: Run shell script tests
+        run: .github/scripts/test/run-tests.sh
+
   # Runs on every PR rather than being path-filtered. on.pull_request.paths
   # filters the whole workflow, which would also gate build-and-test — the
   # required status check — leaving unrelated PRs pending forever.
