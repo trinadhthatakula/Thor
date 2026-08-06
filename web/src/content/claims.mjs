@@ -177,16 +177,16 @@ export const claimRules = [
     ],
     unless: NEGATED,
     rationale:
-      'One *functional* difference, several others. The foss flavour also sets a `-foss` ' +
-      'versionNameSuffix and adds proguard-rules-foss.pro, and the benchmark build type is ' +
-      'created only for store. "One difference" is a claim a reader can falsify by opening one ' +
-      'Gradle file. Locales are NOT one of them any more: localeFilters moved from the foss-only ' +
-      'variant hook to onVariants {} once bundle.language.enableSplit was turned off, so both ' +
-      'flavours ship the same five. Any page still saying the store build keeps every locale is ' +
-      'wrong for the opposite reason this rule exists.',
+      'One *functional* difference, several others. The foss flavour adds proguard-rules-foss.pro, ' +
+      'and the benchmark build type is created only for store. "One difference" is a claim a ' +
+      'reader can falsify by opening one Gradle file. Locales are NOT one of them any more: ' +
+      'localeFilters moved from the foss-only variant hook to onVariants {} once ' +
+      'bundle.language.enableSplit was turned off, so both flavours ship the same five. Any page ' +
+      'still saying the store build keeps every locale is wrong for the opposite reason this rule ' +
+      'exists.',
     source:
-      "app/build.gradle.kts: productFlavors.create(\"foss\") (versionNameSuffix, " +
-      'proguardFile("proguard-rules-foss.pro")), the store-only benchmark buildType, and the ' +
+      'app/build.gradle.kts: productFlavors.create("foss") (proguardFile("proguard-rules-foss.pro")), ' +
+      'the store-only benchmark buildType, and the ' +
       'variant-wide androidComponents onVariants hook that sets localeFilters for every variant',
     allow: [],
   },
@@ -365,7 +365,7 @@ export const claimRules = [
       'the uploaded app bundle" — which are the true way to say this.',
     source:
       'app/build.gradle.kts — signingConfigs.create("release") is applied by the release build ' +
-      'type, and the store/foss productFlavors blocks set only dimension, versionNameSuffix and a ' +
+      'type, and the store/foss productFlavors blocks set only dimension and a ' +
       'ProGuard file. fastlane\'s upload_to_play_store runs with skip_upload_apk.',
     allow: [],
   },
