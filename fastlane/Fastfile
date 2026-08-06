@@ -1,3 +1,5 @@
+require_relative 'lib/thor_release'
+
 default_platform(:android)
 
 platform :android do
@@ -12,13 +14,16 @@ platform :android do
     # Console action and that manual step is the release gate, so a lane able to reach it from CI
     # would quietly remove the gate. A typo lands on the wrong side of this check too, which is the
     # point — upload_to_play_store would otherwise *create* a track by that name rather than fail.
-    if upload_to_store
-      allowed_tracks = %w[internal alpha beta]
-      track = track.to_s.strip
-      unless allowed_tracks.include?(track)
-        UI.user_error!("❌ upload_to_store: true needs track: one of #{allowed_tracks.join(', ')} — got #{track.inspect}")
-      end
-    end
+    # A lane that uploads must name a track this repo is allowed to upload to.
+    # beta and production are NOT on that list: they are reached by promotion
+    # only, which is what gives every version code exactly one uploader and
+    # makes Play's per-app code uniqueness a non-issue rather than an error to
+    # handle. See ThorRelease::UPLOAD_TRACKS.
+    #
+    # This used to allow beta, because production promotion was a manual Play
+    # Console action and that manual step was the release gate. Promotion is
+    # automated now, so the guard gets stricter rather than looser.
+    track = ThorRelease.validate_upload_track!(track) if upload_to_store
 
     # 1. PREPARATION
     fastlane_dir = Dir.pwd
@@ -143,10 +148,98 @@ platform :android do
     prepare_release_artifacts(upload_to_store: true, track: 'alpha')
   end
 
-  desc "Prod: Build -> Play Store (Open testing) -> GitHub Release"
-  lane :distribute_production do
-    # 'beta' is Google's documented track key for "Open testing"
-    prepare_release_artifacts(upload_to_store: true, track: 'beta')
+  # --- PROMOTION ---
+  # Builds this rung's APKs from this rung's commit (needed for the GitHub
+  # release and Telegram, and required for reproducibility: the APK embeds its
+  # build commit sha in META-INF/version-control-info.textproto), then moves an
+  # already-uploaded bundle one track up. Nothing here uploads an artifact.
+  def promote_to_track(destination:, upload_changelogs: false)
+    source = ThorRelease.source_track_for(destination)
+
+    project_root = File.expand_path('..', Dir.pwd)
+    code = ThorRelease.version_code_from(File.join(project_root, 'gradle.properties'))
+    name = ThorRelease.version_name_for(code)
+
+    UI.message("⬆️  Promoting v#{name} (#{code}): #{source} -> #{destination}")
+
+    # Build the APKs for GitHub/Telegram. upload_to_store: false means no AAB
+    # is built and no upload is attempted; it also writes version_name.txt and
+    # version_code.txt, which the workflow reads.
+    prepare_release_artifacts(upload_to_store: false, version_code: code)
+
+    # prepare_release_artifacts wrote an empty track.txt because it did not
+    # upload. The Telegram caption reads this file to name the track, so
+    # overwrite it with where the build is actually going.
+    File.write(File.join(project_root, 'track.txt'), destination)
+
+    # The invariant: only promote what the rung below already published.
+    # Asked as a yes/no assertion, never as "what is newest?" -
+    # google_play_track_version_codes has no status filter and no ordering, and
+    # promotion leaves the code active in the source track, so "newest in beta"
+    # becomes a dev code after the first ladder run.
+    codes = google_play_track_version_codes(track: source)
+    ThorRelease.assert_code_present!(code: code, track: source, codes_in_track: codes)
+
+    if upload_changelogs
+      copy_playstore_notes(project_root: project_root, version_name: name, version_code: code)
+    end
+
+    upload_to_play_store(
+      track: source,
+      track_promote_to: destination,
+      track_promote_release_status: 'completed',
+      version_code: code,
+      # BOTH skips are required. upload_to_play_store back-fills params[:aab]
+      # from SharedValues::GRADLE_AAB_OUTPUT_PATH when it is nil and both flags
+      # default to false, so a promote lane missing either one uploads the
+      # bundle and dies on "version code already used".
+      skip_upload_apk: true,
+      skip_upload_aab: true,
+      skip_upload_metadata: true,
+      skip_upload_changelogs: !upload_changelogs,
+      skip_upload_images: true,
+      skip_upload_screenshots: true
+    )
+
+    UI.success("🚀 Promoted v#{name} (#{code}) to [#{destination}]")
+  end
+
+  # Copies the curated Play notes into the supply layout for EVERY locale that
+  # has metadata. hi-IN has no translations yet and mirrors en-US: supply
+  # enumerates locales from the metadata directory and emits a LocalizedText
+  # with empty text for any locale it cannot find a file for, which blanks
+  # those users' what's-new rather than leaving the previous one.
+  def copy_playstore_notes(project_root:, version_name:, version_code:)
+    require 'fileutils'
+
+    notes = File.join(project_root, 'release-notes', "v#{version_name}", 'playstore.txt')
+    notes = File.join(project_root, 'release-notes', version_name, 'playstore.txt') unless File.exist?(notes)
+    UI.user_error!("❌ No curated playstore.txt for v#{version_name} - a stable must have one") unless File.exist?(notes)
+
+    metadata_root = File.join(Dir.pwd, 'metadata', 'android')
+    locales = Dir.children(metadata_root).select { |d| File.directory?(File.join(metadata_root, d)) }
+    UI.user_error!("❌ No locales found under #{metadata_root}") if locales.empty?
+
+    locales.each do |locale|
+      dest_dir = File.join(metadata_root, locale, 'changelogs')
+      FileUtils.mkdir_p(dest_dir)
+      FileUtils.cp(notes, File.join(dest_dir, "#{version_code}.txt"))
+      UI.message("📝 #{locale}/changelogs/#{version_code}.txt")
+    end
+  end
+
+  desc 'Master: build -> promote alpha to beta (Open testing) -> GitHub pre-release'
+  lane :promote_beta do
+    # No changelog upload: the promotion carries alpha's notes forward, and the
+    # curated notes are written once, at production.
+    promote_to_track(destination: 'beta', upload_changelogs: false)
+  end
+
+  desc 'Production: build -> promote beta to production -> GitHub release'
+  lane :promote_production do
+    # promote_track copies the source release object wholesale, so without this
+    # explicit pass production would inherit the dev auto-notes verbatim.
+    promote_to_track(destination: 'production', upload_changelogs: true)
   end
 
   # Helper for manual triggering
