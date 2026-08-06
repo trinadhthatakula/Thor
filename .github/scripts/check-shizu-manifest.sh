@@ -261,9 +261,16 @@ if ! git rev-parse --verify --quiet "$production_ref" >/dev/null; then
   production_ref="FETCH_HEAD"
 fi
 
+# `|| true` is load-bearing and must stay. sync-shizu-changelog.sh runs under
+# `set -e`, where a failing pipeline in an assignment kills the script AT THIS
+# LINE - before the guard below can say why, and with git's own stderr already
+# swallowed by the 2>/dev/null. Measured: without it, the identical block prints
+# the ::error:: under `set -uo` and nothing at all under `set -euo`. The checker
+# has no -e today, but its header already warns against constructs that break
+# "the day someone adds set -e". One spelling has to be right under both.
 version_code="$(git show "${production_ref}:gradle.properties" 2>/dev/null \
   | grep -E '^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*[0-9]+[[:space:]]*$' \
-  | head -n 1 | cut -d= -f2 | tr -d '[:space:]')"
+  | head -n 1 | cut -d= -f2 | tr -d '[:space:]')" || true
 
 if [ -z "$version_code" ]; then
   echo "::error::could not read versionCode from ${production_ref}:gradle.properties" >&2
