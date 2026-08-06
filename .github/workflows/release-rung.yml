@@ -46,7 +46,10 @@ on:
         required: true
         type: string
       require_notes:
-        description: 'Hard-fail when no curated release notes exist.'
+        description: >-
+          Hard-fail, pre-flight, when any curated notes file this rung consumes
+          is missing - not merely the directory. Also removes the commit-log
+          fallback and the generic-bullet caption from the rung entirely.
         required: true
         type: boolean
       on_unchanged_version:
@@ -153,11 +156,27 @@ jobs:
       # Pre-flight, before anything publishes. Bolting this next to the
       # Telegram send would fail a half-published release, because that step
       # sits between the Play action and the GitHub release.
+      #
+      # require_notes means every curated file THIS rung consumes must exist,
+      # not merely that the directory does. A directory holding only
+      # playstore.txt used to pass this gate, and the run then published a raw
+      # git log as the release body and broadcast the generic bullet - on the
+      # one rung that reaches every user, where a Telegram send cannot be
+      # retracted.
+      #
+      # The list is per rung because the consumers are:
+      #   github.md    -> the GitHub release body (Prepare Release Notes below)
+      #   playstore.txt -> Play's what's-new (Fastfile copy_playstore_notes,
+      #                    which hard-fails on the production lane)
+      #   telegram.md  -> the broadcast caption, ONLY where telegram is true.
+      # Requiring telegram.md on a rung that never sends would be a gate that
+      # can only ever fire falsely.
       - name: Check release-notes budget
         if: steps.gate.outputs.publish == 'true'
         env:
           NAME: ${{ steps.ver.outputs.name }}
           REQUIRE: ${{ inputs.require_notes }}
+          TELEGRAM: ${{ inputs.telegram }}
           WRAPPER: ${{ inputs.caption_wrapper_units }}
         run: |
           if [ ! -d "release-notes/v${NAME}" ] && [ ! -d "release-notes/${NAME}" ]; then
@@ -168,7 +187,15 @@ jobs:
             echo "::notice::No curated notes for v${NAME} — the GitHub body will fall back to the commit log."
             exit 0
           fi
-          .github/scripts/check-notes-budget.sh "$NAME" "$WRAPPER"
+
+          REQUIRED=()
+          if [ "$REQUIRE" = "true" ]; then
+            REQUIRED+=(--require github.md --require playstore.txt)
+            if [ "$TELEGRAM" = "true" ]; then
+              REQUIRED+=(--require telegram.md)
+            fi
+          fi
+          .github/scripts/check-notes-budget.sh "${REQUIRED[@]}" "$NAME" "$WRAPPER"
 
       - name: Setup JDK 21
         uses: actions/setup-java@v5.6.0
@@ -214,6 +241,8 @@ jobs:
       - name: Prepare Release Notes
         id: prep_notes
         if: steps.gate.outputs.publish == 'true'
+        env:
+          REQUIRE: ${{ inputs.require_notes }}
         run: |
           if [ ! -s version_name.txt ]; then
             echo "::error::version_name.txt is missing or empty — the Fastlane lane did not write it." >&2
@@ -234,6 +263,16 @@ jobs:
 
           GITHUB_NOTES_FILE="$(resolve github.md)"
           if [ -z "$GITHUB_NOTES_FILE" ]; then
+            # What makes "no commit-log fallback on this rung" true rather than
+            # aspirational. The gate above already refused to start without
+            # github.md, so reaching here with require_notes means the file
+            # vanished mid-run - impossible from a single checkout, which is
+            # why this is an assertion and not the gate. Never relax it into
+            # the fallback: a raw git log is not release notes for users.
+            if [ "$REQUIRE" = "true" ]; then
+              echo "::error::github.md disappeared after the pre-flight check — refusing to publish a commit log as the release body of v${VERSION_NAME}." >&2
+              exit 1
+            fi
             FALLBACK_FILE="github_release_notes_fallback.md"
             {
               echo "### Changelog"
@@ -262,6 +301,7 @@ jobs:
           TITLE_PREFIX: ${{ inputs.title_prefix }}
           CAPTION_STATUS: ${{ inputs.caption_status }}
           NOTES_PATH: ${{ steps.prep_notes.outputs.telegram_notes_path }}
+          REQUIRE: ${{ inputs.require_notes }}
         run: |
           # Fastlane 'copyStoreReleaseApk' task puts it here
           APK_PATH=$(find app/build/distribution/store -name "*.apk" | head -n 1)
@@ -299,6 +339,15 @@ jobs:
 
           if [ -n "$NOTES_PATH" ] && [ -r "$NOTES_PATH" ]; then
             CAPTION=$(printf "%s\n\n%s" "$CAPTION" "$(cat "$NOTES_PATH")")
+          elif [ "$REQUIRE" = "true" ]; then
+            # Same assertion as the release body above, for the same reason.
+            # The pre-flight gate required telegram.md on any rung that both
+            # broadcasts and curates, so this is unreachable from one checkout.
+            # Failing here still costs nothing: it is before the curl, so the
+            # generic bullet is not broadcast, and Create GitHub Release runs
+            # under !cancelled() regardless.
+            echo "::error::telegram.md is unreadable after the pre-flight check — refusing to broadcast the generic bullet for a release that reaches users." >&2
+            exit 1
           else
             CAPTION=$(printf "%s\n\n• Bug fixes and performance improvements" "$CAPTION")
           fi
