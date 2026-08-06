@@ -35,10 +35,10 @@ export class RepoFactsError extends Error {
  * Supported: `#` and `!` comment lines, `=` / `:` / bare-whitespace separators,
  * CRLF, backslash line continuations, and leading whitespace.
  *
- * **Last duplicate key wins**, which is what Java does. The repo is currently
- * inconsistent about this — `production-deploy.yml:65` uses `tail -n 1` and
- * `dev-check.yml:104` uses `head -n1` — so it is worth stating rather than
- * inheriting by accident.
+ * **Last duplicate key wins**, which is what Java does. The shell scripts that
+ * read `gradle.properties` in this repo — `.github/scripts/detect-version-bump.sh`
+ * and the two Shizu scripts — all consistently use `head -n 1` (first match), so
+ * this function differs; worth stating rather than inheriting by accident.
  */
 export function parseJavaProperties(text: string): Record<string, string> {
   const out: Record<string, string> = {}

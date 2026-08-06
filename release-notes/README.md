@@ -9,6 +9,63 @@ files rather than written separately.
 
 ---
 
+## Which merge publishes what
+
+Three branches, three rungs, one Play upload. A rung is identified by the branch it runs on —
+there is no arithmetic on the version number anywhere in the routing.
+
+| merge | workflow | Play | GitHub | Telegram |
+|---|---|---|---|---|
+| `<feature>` → `dev` | `1-dev-publish.yml` | **uploads** to `alpha` (Closed testing) | pre-release `v<name>-dev-<run>` | yes |
+| `dev` → `master` | `2-master-promote.yml` | promotes `alpha` → `beta` (Open testing) | pre-release `v<name>-beta-<run>` | no |
+| `master` → `production` | `3-production-promote.yml` | promotes `beta` → `production` | **release** `v<name>` (Latest) | yes |
+
+Only `1-dev-publish.yml` uploads an artifact. Play allows one upload per version code per app —
+not per track — so a second uploader is what produced `Version code NNNN has already been used`.
+The other two rungs move that same upload up a track.
+
+Every rung still builds the APKs from its own commit: the GitHub assets, the Telegram broadcast
+and reproducibility all need an APK built from the tree being released. Only the Play artifact is
+promoted rather than rebuilt.
+
+A push that does not change `versionCode` still builds, but publishes nothing — except on
+`production`, where it is an error, because there is nothing to promote.
+
+### Mid-cycle bug fixes
+
+**There is no hotfix bypass.** A fix lands on `dev` with a *new* version code and re-enters at the
+bottom rung, superseding the previous candidate on `alpha`, then climbs as usual.
+
+This is deliberate rather than an oversight. A fast lane straight to `beta` or `production` would
+be a second Play uploader, and one code with two uploaders is the entire problem the ladder
+exists to remove. A fix that genuinely cannot wait for the ladder is a fix that should ship as a
+new version, which is what this does.
+
+### When notes are required
+
+Curated notes (`release-notes/v<name>/`) are **required** for a `production` release and optional
+below it. A dev or beta build with no notes directory falls back to the commit log; a production
+push with none fails before it builds.
+
+Sizes are checked pre-flight by `.github/scripts/check-notes-budget.sh`:
+
+- `telegram.md` — the **assembled** caption must fit 1024 UTF-16 units. The wrapper the workflow
+  adds was measured at 145–152 units (varying by rung and actor); `check-notes-budget.sh` defaults
+  to 160 — a conservative bound that covers all paths. Telegram *rejects* an oversized caption
+  rather than truncating it.
+- `playstore.txt` — under 500 characters.
+
+Run it yourself before opening the release PR:
+
+```bash
+.github/scripts/check-notes-budget.sh 1.94.1
+```
+
+Omitting the wrapper argument uses the 160 default, which is the safe choice: over-estimating the
+wrapper can only produce a false rejection before anything publishes, never a false pass.
+
+---
+
 ## 🗺️ Five channels, three files
 
 ```
@@ -46,8 +103,8 @@ Who reads what, exactly:
 
 | File | Consumer | Where |
 |---|---|---|
-| `github.md` | GitHub Release body | `dev-check.yml:197`, `production-deploy.yml:163` |
-| `telegram.md` | Telegram broadcast caption | `dev-check.yml:223`, `telegram-release.yml:84` |
+| `github.md` | GitHub Release body | `release-rung.yml:235` |
+| `telegram.md` | Telegram broadcast caption | `release-rung.yml:254`, `telegram-release.yml:84` |
 | `playstore.txt` | Play `whats_new`; copied to `fastlane/…/changelogs/<versionCode>.txt` | `fastlane/Fastfile:89-113` |
 | `fastlane/…/changelogs/<versionCode>.txt` | F-Droid changelog | the F-Droid builder reads the repo directly |
 | `shizu_store.json` → `.changelog` | Shizu CoreFetch store listing | `.github/scripts/sync-shizu-changelog.sh` |
@@ -75,11 +132,10 @@ Use the `v` form; the fallback exists only for old directories.
 ### 2️⃣ `telegram.md` — the broadcast
 
 * **Format**: punchy markdown, emoji-led bullets, mobile-first.
-* **Size**: **under ~870 UTF-16 code units.** ⚠️ **Exceeding this fails silently — see the trap
-  below.** Measure UTF-16 units, not characters: most emoji count as **2**. The budget is the 1024
-  cap minus the wrapper the workflow adds, measured at **149** units (`dev-check.yml`, the longer of
-  the two) and **141** (`telegram-release.yml`) for v1.93.2. The wrapper is not fixed — it carries
-  the branch name, the actor and the track label — so keep the margin.
+* **Size**: **under ~860 UTF-16 code units.** ⚠️ **Exceeding this fails silently — see the trap
+  below.** Measure UTF-16 units, not characters: most emoji count as **2**. The wrapper the
+  workflow adds was measured at 145–152 units (varying by rung and actor); `check-notes-budget.sh`
+  defaults to 160 — run it without a second argument for a conservative pre-flight check.
 * **Line breaks**: **MANDATORY** blank line between bullets, or Telegram's mobile client squeezes
   the whole thing into a dense block.
 
@@ -98,13 +154,13 @@ Use the `v` form; the fallback exists only for old directories.
 ## ⚠️ Traps that have already cost a release
 
 **1. An oversized `telegram.md` posts NOTHING, and CI still goes green.**
-The notes are sent as a `sendDocument` **caption** (`telegram-release.yml:144`,
-`dev-check.yml:281`), not as a message. Telegram caps captions at **1024 UTF-16 units** and
+The notes are sent as a `sendDocument` **caption** (`release-rung.yml:310`,
+`telegram-release.yml:148`), not as a message. Telegram caps captions at **1024 UTF-16 units** and
 **rejects** an oversized one outright — it does not truncate. The `curl` has no `--fail` and its
 output is discarded, so the step succeeds having broadcast nothing. The workflow prepends a header
-and appends a GitHub-link footer worth roughly **140 units**, which is where the ~870 budget comes
-from. For reference: v1.93.1 was 695 units (fine); v1.93.0 was 1008 (**already over the budget when
-it shipped**).
+and appends a GitHub-link footer worth **145–152 UTF-16 units** (measured per rung and actor, 152 is
+the maximum), which is where the ~860 budget comes from. For reference: v1.93.1 was 695 units
+(fine); v1.93.0 was 1008 (**already over the budget when it shipped**).
 
 **2. Baseline the commit range on the last release TAG, not on `master`.**
 `master` runs ahead of its own release tag, so `master..dev` undercounts. Use the newest tag by
@@ -193,14 +249,10 @@ stripped, by design, so `check-shizu-manifest.sh` passing while a naive byte com
 says "different" is the expected state, not a defect.
 
 ### Step 6 — Verify before committing
-Nothing in CI checks either size, so this step is the only gate on both — see
-`docs/follow-ups/telegram-caption-length-guard.md` for why the Telegram one is not yet automated.
+`.github/scripts/check-notes-budget.sh` checks both size limits in one step:
 
 ```bash
-# sizes
-wc -m release-notes/v<version>/playstore.txt            # must be < 500
-python3 -c "t=open('release-notes/v<version>/telegram.md',encoding='utf-8').read(); \
-print(sum(2 if ord(c)>0xFFFF else 1 for c in t))"       # must be < ~870
+.github/scripts/check-notes-budget.sh <version>   # e.g. 1.94.1
 
 # the three copies agree, and the manifest still describes reality
 diff release-notes/v<version>/playstore.txt fastlane/metadata/android/en-US/changelogs/<versionCode>.txt
@@ -213,3 +265,20 @@ git add release-notes/v<version>/ \
         fastlane/metadata/android/en-US/changelogs/<versionCode>.txt \
         shizu_store.json gradle.properties
 ```
+
+---
+
+## After the release: back-merge
+
+`master` and `production` each gain a merge commit that `dev` does not have. Bring `dev` back
+level before starting the next cycle:
+
+```bash
+git checkout dev && git pull
+git merge --no-ff origin/master -m "Merge branch 'master' into dev"
+git push origin dev
+```
+
+This push goes straight to `dev`, which the `DevRules` ruleset permits through a RepositoryRole
+bypass. It is the one exception to "never push directly to `dev`". Skipping it means the next
+feature branch forks from a tree that is missing the release commit.
