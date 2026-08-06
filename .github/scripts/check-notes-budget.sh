@@ -15,9 +15,11 @@
 # outcome is a version live on Play and tagged on GitHub that nobody was told
 # about, discovered from a red check.
 #
-# (telegram-release.yml:144 and :152 still send with a bare `curl -s` and
-# discard the output, so there the step really does go green having posted
-# nothing. That is the older, worse shape of the same failure.)
+# (telegram-release.yml carries the same --fail-with-body now. It used to send
+# with a bare `curl -s ... > /dev/null`, which really did go green having posted
+# nothing - the older, worse shape of the same failure. Note that redirecting
+# stdout is all it takes to recreate it: writing the error body to stdout is the
+# ONLY difference between --fail-with-body and --fail.)
 #
 # Either way, finding out at send time is finding out too late. That is why
 # this runs pre-flight, before anything publishes: bolting it next to the curl

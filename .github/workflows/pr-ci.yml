@@ -30,8 +30,18 @@ jobs:
     name: build-and-test
     runs-on: ubuntu-latest
     steps:
+      # persist-credentials: false on every checkout in this file. The action
+      # defaults it to TRUE, which leaves the job's token in the git config for
+      # everything that runs afterwards — here, an Android build that executes
+      # thousands of lines of third-party Gradle and R8 plugin code on a PR from
+      # a branch anyone with write access can push. Nothing in this workflow
+      # performs an authenticated git operation, so the credential is pure
+      # exposure. It is read-only, which limits the blast radius; it does not
+      # make leaving it lying around free.
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup JDK 21
         uses: actions/setup-java@v5.6.0
@@ -148,6 +158,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       # Pinned by version AND checksum. `bash <(curl ...)`, which the upstream
       # README suggests, executes whatever the URL serves at that moment.
@@ -214,10 +226,15 @@ jobs:
     name: shizu-manifest
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 because the checker resolves origin/production, which a
+      # shallow checkout does not create. Its `git fetch --depth=1 origin
+      # production` fallback still works without the persisted credential —
+      # Thor is a public repo, so that fetch is unauthenticated either way.
       - name: Checkout code
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Install check-jsonschema
         run: pipx install check-jsonschema

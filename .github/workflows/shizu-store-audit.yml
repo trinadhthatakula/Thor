@@ -30,10 +30,18 @@ jobs:
       # every Monday means a transient fetch failure files a spurious
       # shizu-store-audit tracking issue — and an alarm that cries wolf is the
       # exact failure this audit exists to prevent.
+      #
+      # persist-credentials: false because this job holds `issues: write` and
+      # then runs pipx, a downloaded schema validator and ~16 network calls.
+      # The `gh` steps below authenticate through GH_TOKEN, not through the git
+      # config, and the script's `git fetch --depth=1 origin production` needs
+      # no credential on a public repo — so nothing here loses anything, and a
+      # write-scoped token stops sitting in .git/config for the whole run.
       - name: Checkout code
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Install check-jsonschema
         run: pipx install check-jsonschema

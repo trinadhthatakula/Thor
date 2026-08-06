@@ -249,29 +249,72 @@ jobs:
 
           .github/scripts/check-notes-budget.sh "${REQUIRED[@]}" "$NAME" "$WRAPPER"
 
+      # No dependency cache in this job, unlike pr-ci.yml. This is the only job
+      # in the repository that holds the signing keystore, the Play service
+      # account and `contents: write` at the same time, and a restored cache is
+      # mutable state written by an earlier run — the entry that decides which
+      # jars Gradle compiles against and which gems `bundle exec` loads. Every
+      # other input here is pinned (actions by sha, actionlint and shellcheck by
+      # checksum); a cache is the one that is not.
+      #
+      # It also buys reproducibility. IzzyOnDroid rebuilds the FOSS APK at the
+      # tag from a cold checkout and compares it to what this job published, so
+      # the closer this job is to a cold build, the fewer ways the two can
+      # differ.
+      #
+      # The cost is real and is the reason to reconsider: roughly two minutes
+      # per rung, three rungs per version. If that becomes the bottleneck, the
+      # thing to restore is the Gradle cache — the gems are seconds.
       - name: Setup JDK 21
         uses: actions/setup-java@v5.6.0
         with:
           distribution: 'zulu'
           java-version: '21'
-          cache: 'gradle'
 
       - name: Setup Ruby
         uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
         with:
           ruby-version: '3.3'
-          bundler-cache: true
+          bundler-cache: false
+
+      # bundler-cache: false turns off the install as well as the cache, so it
+      # has to happen here or `bundle exec fastlane` finds nothing.
+      - name: Install gems
+        run: bundle install --jobs 4 --retry 3
 
       # --- SECRET DECODING ---
+      #
+      # Both steps check the result is non-empty, because neither write fails
+      # on an empty secret: `base64 --decode` exits 0 on empty input, and echo
+      # of an unset variable writes a newline. An unset or truncated secret
+      # then surfaces minutes later as a Gradle keystore error or a Play auth
+      # failure that names the symptom and not the cause - and on a promote
+      # rung it fails AFTER the build, so the diagnosis costs a full run.
       - name: Decode Keystore
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > app/release.jks
+        run: |
+          set -euo pipefail
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > app/release.jks
+          if [ ! -s app/release.jks ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is unset or decoded to nothing — the signing keystore is empty." >&2
+            exit 1
+          fi
 
       - name: Decode Google Play Service Account
         env:
           PLAY_STORE_JSON_KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
-        run: echo "$PLAY_STORE_JSON_KEY" > app/google-play-api.json
+        run: |
+          set -euo pipefail
+          echo "$PLAY_STORE_JSON_KEY" > app/google-play-api.json
+          # NOT `[ -s ]`: echo of an unset variable writes a newline, so the
+          # file is one byte and passes an emptiness test. Parse it instead,
+          # and require the field Fastlane authenticates with. jq -e exits
+          # non-zero on unparseable input and on a false/null result alike.
+          if ! jq -e 'has("client_email")' app/google-play-api.json > /dev/null 2>&1; then
+            echo "::error::PLAY_STORE_JSON_KEY is empty, malformed, or not a service-account key — Play authentication would fail after the build." >&2
+            exit 1
+          fi
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
@@ -355,11 +398,18 @@ jobs:
           NOTES_PATH: ${{ steps.prep_notes.outputs.telegram_notes_path }}
           REQUIRE_NOTES: ${{ inputs.require_notes }}
         run: |
-          # Fastlane 'copyStoreReleaseApk' task puts it here
-          APK_PATH=$(find app/build/distribution/store -name "*.apk" | head -n 1)
+          # Fastlane 'copyStoreReleaseApk' task puts it here.
+          #
+          # `|| true` is what makes the guard below reachable. The default shell
+          # is `bash -e -o pipefail`, so if the directory does not exist at all
+          # find exits 1, pipefail promotes that to the assignment, and -e kills
+          # the step BEFORE the if - leaving the friendly message to cover only
+          # the narrower "directory exists but is empty" case. Same shape as the
+          # `|| true` in the Shizu version resolver, and the same reason.
+          APK_PATH=$(find app/build/distribution/store -name "*.apk" 2>/dev/null | head -n 1 || true)
 
           if [ ! -f "$APK_PATH" ]; then
-            echo "Error: APK not found in app/build/distribution/store/"
+            echo "::error::No APK under app/build/distribution/store/ — the build did not produce one." >&2
             exit 1
           fi
 
@@ -404,11 +454,33 @@ jobs:
             CAPTION=$(printf "%s\n\n• Bug fixes and performance improvements" "$CAPTION")
           fi
 
-          curl -s --fail-with-body -F "chat_id=$TELEGRAM_CHAT_ID" \
-               -F "document=@$APK_PATH" \
-               -F "caption=$CAPTION" \
-               -F "parse_mode=Markdown" \
-               "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendDocument" > /dev/null
+          # --max-time is what makes the "a broadcast must not veto the
+          # release" reasoning below actually hold. !cancelled() forgives a
+          # Telegram *failure*, but a hung upload is not a failure - it is no
+          # outcome at all, and it blocks Create GitHub Release behind it until
+          # the job hits its own timeout. On the production rung that leaves a
+          # build live for Play users with no tag and no APK for rbtlog. The
+          # bound converts a hang into the failure the next step already
+          # tolerates. 300s is ~20x the observed upload time for a ~4 MB APK.
+          # The body is captured rather than discarded. --fail-with-body differs
+          # from --fail ONLY in that it writes the error body to stdout, so
+          # `> /dev/null` silently turned it back into --fail: a rejected
+          # caption exited 22 with no output, throwing away the one line that
+          # says why. Telegram answers
+          #   {"ok":false,...,"description":"Bad Request: ... caption is too long"}
+          # and that description is the whole reason this flag is here - see
+          # check-notes-budget.sh's header and release-notes/README.md.
+          if ! body=$(curl -s --fail-with-body --connect-timeout 15 --max-time 300 \
+                           -F "chat_id=$TELEGRAM_CHAT_ID" \
+                           -F "document=@$APK_PATH" \
+                           -F "caption=$CAPTION" \
+                           -F "parse_mode=Markdown" \
+                           "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendDocument"); then
+            # No token or chat id can appear here: this is Telegram's response
+            # body, not the request.
+            echo "::error::Telegram rejected the broadcast: ${body}" >&2
+            exit 1
+          fi
 
       # target_commitish pins the tag to the commit that was actually built.
       # Without it the tag is created against the branch's tip AT THE MOMENT
@@ -457,6 +529,12 @@ jobs:
           files: |
             app/build/distribution/foss/foss-release.apk
             app/build/distribution/store/store-release.apk
+          # Defaults to false, which publishes the release with whatever
+          # assets it found - including none. An assetless stable is worse
+          # than no stable: the tag exists, so Obtainium and the Shizu store
+          # resolve /releases/latest/ to a release with nothing to download,
+          # and rbtlog clones a tag whose APK it cannot find. Fail instead.
+          fail_on_unmatched_files: true
           draft: false
           prerelease: ${{ inputs.prerelease }}
         env:
