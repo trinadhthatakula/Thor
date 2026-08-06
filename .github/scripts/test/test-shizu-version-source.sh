@@ -40,14 +40,46 @@ for f in check-shizu-manifest.sh sync-shizu-changelog.sh; do
     "$path" "^[^#]*grep[^|]*versionCode[^|]*['\\\"]?gradle\.properties" absent
 done
 
-# The LOCKSTEP contract has to survive this change: both files must still
-# derive the same version name the same way.
+# The LOCKSTEP contract: the resolver block must be byte-identical in both
+# scripts, because the duplication IS the contract.
+#
+# Asserting that the word "lockstep" appears in both files is not a gate. It
+# stays green while one copy divides by 100 instead of 1000, and it stays green
+# while one copy reads origin/master instead of origin/production - which is the
+# exact bug the production rebinding exists to fix. So extract the region
+# between the sentinels and compare it exactly.
+#
+# sync-shizu-changelog.sh is run by nothing in CI. This comparison is the only
+# automated thing standing between it and silent divergence.
+extract_block() {
+  awk '/^# LOCKSTEP-BEGIN$/ { in_block = 1; next }
+       /^# LOCKSTEP-END$/   { in_block = 0 }
+       in_block' "$1"
+}
+
+for f in check-shizu-manifest.sh sync-shizu-changelog.sh; do
+  assertions=$((assertions + 1))
+  if grep -qxF '# LOCKSTEP-BEGIN' "$scripts_dir/$f" \
+     && grep -qxF '# LOCKSTEP-END' "$scripts_dir/$f"; then
+    echo "  ok: $f carries both LOCKSTEP sentinels"
+  else
+    echo "  FAIL: $f is missing a '# LOCKSTEP-BEGIN' or '# LOCKSTEP-END' sentinel"
+    failed=1
+  fi
+done
+
 assertions=$((assertions + 1))
-if grep -q 'lockstep' "$scripts_dir/check-shizu-manifest.sh" \
-   && grep -q -i 'lockstep' "$scripts_dir/sync-shizu-changelog.sh"; then
-  echo "  ok: both scripts still carry the LOCKSTEP notice"
+block_a="$(extract_block "$scripts_dir/check-shizu-manifest.sh")"
+block_b="$(extract_block "$scripts_dir/sync-shizu-changelog.sh")"
+if [ -z "$block_a" ] || [ -z "$block_b" ]; then
+  # Without this, deleting both blocks would compare "" to "" and pass.
+  echo "  FAIL: a LOCKSTEP block is empty - an empty-vs-empty comparison is not a gate"
+  failed=1
+elif [ "$block_a" = "$block_b" ]; then
+  echo "  ok: the LOCKSTEP resolver block is byte-identical in both scripts"
 else
-  echo "  FAIL: the LOCKSTEP notice must be in BOTH files, not just one"
+  echo "  FAIL: the LOCKSTEP resolver blocks have drifted ('<' = checker, '>' = sync):"
+  diff <(printf '%s\n' "$block_a") <(printf '%s\n' "$block_b") | sed 's/^/    /' || true
   failed=1
 fi
 

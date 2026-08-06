@@ -244,6 +244,7 @@ check_int min_sdk    "$toml_min"    "gradle/libs.versions.toml"
 check_int target_sdk "$toml_target" "gradle/libs.versions.toml"
 
 section "changelog matches the current release notes"
+# LOCKSTEP-BEGIN
 # shizu_store.json's download_url is /releases/latest/, which GitHub
 # resolves to the newest NON-pre-release - production's build. dev and
 # master both mint pre-releases, so their gradle.properties is one or more
@@ -270,6 +271,7 @@ if [ -z "$version_code" ]; then
 fi
 
 version_name="$((version_code / 1000)).$(((version_code % 1000) / 10)).$((version_code % 10))"
+# LOCKSTEP-END
 notes="release-notes/v$version_name/playstore.txt"
 [ -f "$notes" ] || notes="release-notes/$version_name/playstore.txt"
 if [ ! -f "$notes" ]; then
