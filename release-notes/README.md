@@ -103,8 +103,8 @@ Who reads what, exactly:
 
 | File | Consumer | Where |
 |---|---|---|
-| `github.md` | GitHub Release body | `release-rung.yml:264` |
-| `telegram.md` | Telegram broadcast caption | `release-rung.yml:293`, `telegram-release.yml:84` |
+| `github.md` | GitHub Release body | `release-rung.yml:316` |
+| `telegram.md` | Telegram broadcast caption | `release-rung.yml:345`, `telegram-release.yml:84` |
 | `playstore.txt` | Play `whats_new`; copied to `fastlane/…/changelogs/<versionCode>.txt` | `fastlane/Fastfile:94-119` |
 | `fastlane/…/changelogs/<versionCode>.txt` | F-Droid changelog | the F-Droid builder reads the repo directly |
 | `shizu_store.json` → `.changelog` | Shizu CoreFetch store listing | `.github/scripts/sync-shizu-changelog.sh` |
@@ -157,7 +157,7 @@ Use the `v` form; the fallback exists only for old directories.
 ## ⚠️ Traps that have already cost a release
 
 **1. An oversized `telegram.md` posts NOTHING, and you find out mid-release.**
-The notes are sent as a `sendDocument` **caption** (`release-rung.yml:355`, `telegram-release.yml:144`
+The notes are sent as a `sendDocument` **caption** (`release-rung.yml:407`, `telegram-release.yml:144`
 and `:152`), not as a message. Telegram caps captions at **1024 UTF-16 units** and **rejects** an
 oversized one outright — it does not truncate.
 
