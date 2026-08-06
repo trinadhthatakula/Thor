@@ -23,8 +23,17 @@ jobs:
     # otherwise sit on the 6-hour default before anyone noticed.
     timeout-minutes: 15
     steps:
+      # fetch-depth: 0, matching pr-ci.yml's shizu-manifest job. The checker
+      # derives the expected version from origin/production, and the default
+      # shallow checkout does not create that remote-tracking ref. The script
+      # has a `git fetch --depth=1 origin production` fallback, but taking it
+      # every Monday means a transient fetch failure files a spurious
+      # shizu-store-audit tracking issue — and an alarm that cries wolf is the
+      # exact failure this audit exists to prevent.
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Install check-jsonschema
         run: pipx install check-jsonschema
