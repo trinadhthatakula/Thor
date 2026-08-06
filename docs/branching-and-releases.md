@@ -229,6 +229,15 @@ Only the *Play* artifact is promoted rather than rebuilt.
 | Telegram step fails, release still published | By design — a broadcast failure must not veto a release | Re-send manually; the release is fine. |
 | Caption rejected by Telegram | `telegram.md` too long once wrapped | Run `check-notes-budget.sh` and trim. |
 | A rung publishes nothing | `versionCode` unchanged since the last release | Expected. Bump it if you meant to release. |
+| Checks sit `queued` for hours, no logs | Usually the account's included Actions minutes are exhausted — **not** a hung job | Check billing first. A quota block looks identical to a stuck runner from the PR page. |
+| Every job fails in `Set up job` with `Failed to resolve action download info` | A GitHub Actions incident — this is before checkout, so no repository code ran | Nothing to fix. Confirm at `githubstatus.com`, re-run when it clears. |
+
+**A run wedged during an incident may become unrecoverable.** If `gh run cancel` says *"cannot
+cancel a completed run"* while the list still shows it `queued`, the run record is inconsistent and
+will never report a conclusion. `gh run rerun` refuses it too (*"already running"*). Both workflows
+use `cancel-in-progress` concurrency groups, so the dead run keeps its slot. Push a new commit —
+close/reopen the PR does not reliably help, because the same incident throttles the webhooks that
+would deliver the `reopened` event.
 
 ---
 
