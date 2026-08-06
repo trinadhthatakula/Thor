@@ -4,10 +4,24 @@
 # usage: check-notes-budget.sh [--require <file>]... <version-name> [wrapper-units]
 #
 # Telegram caps a sendDocument CAPTION at 1024 UTF-16 units and REJECTS an
-# oversized one - it does not truncate. The send has no --fail and its output
-# is discarded, so an over-budget caption makes the step go green having posted
-# nothing. That is why this runs pre-flight, before anything publishes: bolting
-# it next to the curl would fail a half-published release.
+# oversized one - it does not truncate, so an over-budget caption broadcasts
+# NOTHING.
+#
+# release-rung.yml's curl carries --fail-with-body, so on the ladder that
+# failure is at least visible: under GitHub's default `bash -e` shell the step
+# goes red. It goes red mid-release, though. By then the Play upload has
+# happened, and Create GitHub Release runs anyway - it is guarded by
+# !cancelled() on purpose, so that a broadcast cannot veto a release. The
+# outcome is a version live on Play and tagged on GitHub that nobody was told
+# about, discovered from a red check.
+#
+# (telegram-release.yml:144 and :152 still send with a bare `curl -s` and
+# discard the output, so there the step really does go green having posted
+# nothing. That is the older, worse shape of the same failure.)
+#
+# Either way, finding out at send time is finding out too late. That is why
+# this runs pre-flight, before anything publishes: bolting it next to the curl
+# would fail a half-published release.
 #
 # Measure UTF-16 units, not bytes and not characters. One emoji is a single
 # character, two UTF-16 units, and four UTF-8 bytes.

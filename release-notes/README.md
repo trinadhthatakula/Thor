@@ -103,8 +103,8 @@ Who reads what, exactly:
 
 | File | Consumer | Where |
 |---|---|---|
-| `github.md` | GitHub Release body | `release-rung.yml:235` |
-| `telegram.md` | Telegram broadcast caption | `release-rung.yml:254`, `telegram-release.yml:84` |
+| `github.md` | GitHub Release body | `release-rung.yml:264` |
+| `telegram.md` | Telegram broadcast caption | `release-rung.yml:293`, `telegram-release.yml:84` |
 | `playstore.txt` | Play `whats_new`; copied to `fastlane/…/changelogs/<versionCode>.txt` | `fastlane/Fastfile:94-119` |
 | `fastlane/…/changelogs/<versionCode>.txt` | F-Droid changelog | the F-Droid builder reads the repo directly |
 | `shizu_store.json` → `.changelog` | Shizu CoreFetch store listing | `.github/scripts/sync-shizu-changelog.sh` |
@@ -132,7 +132,7 @@ Use the `v` form; the fallback exists only for old directories.
 ### 2️⃣ `telegram.md` — the broadcast
 
 * **Format**: punchy markdown, emoji-led bullets, mobile-first.
-* **Size**: **under ~860 UTF-16 code units.** ⚠️ **Exceeding this fails silently — see the trap
+* **Size**: **under ~860 UTF-16 code units.** ⚠️ **Exceeding this broadcasts nothing — see the trap
   below.** Measure UTF-16 units, not characters: most emoji count as **2**. The wrapper the
   workflow adds was measured at 145–152 units (varying by rung and actor); `check-notes-budget.sh`
   defaults to 160 — run it without a second argument for a conservative pre-flight check.
@@ -153,14 +153,28 @@ Use the `v` form; the fallback exists only for old directories.
 
 ## ⚠️ Traps that have already cost a release
 
-**1. An oversized `telegram.md` posts NOTHING, and CI still goes green.**
-The notes are sent as a `sendDocument` **caption** (`release-rung.yml:310`,
-`telegram-release.yml:148`), not as a message. Telegram caps captions at **1024 UTF-16 units** and
-**rejects** an oversized one outright — it does not truncate. The `curl` has no `--fail` and its
-output is discarded, so the step succeeds having broadcast nothing. The workflow prepends a header
-and appends a GitHub-link footer worth **145–152 UTF-16 units** (measured per rung and actor, 152 is
-the maximum), which is where the ~860 budget comes from. For reference: v1.93.1 was 695 units
-(fine); v1.93.0 was 1008 (**already over the budget when it shipped**).
+**1. An oversized `telegram.md` posts NOTHING, and you find out mid-release.**
+The notes are sent as a `sendDocument` **caption** (`release-rung.yml:355`, `telegram-release.yml:144`
+and `:152`), not as a message. Telegram caps captions at **1024 UTF-16 units** and **rejects** an
+oversized one outright — it does not truncate.
+
+What happens next depends on which workflow sent it, and the difference matters when you go looking:
+
+* **On the ladder** (`release-rung.yml`) the `curl` carries `--fail-with-body`, so under GitHub's
+  default `bash -e` shell the step goes **red**. Not silent — but not harmless either. The Play
+  upload has already happened by then, and `Create GitHub Release` still runs, because it is guarded
+  by `!cancelled()` precisely so a broadcast cannot veto a release. What you get is a version live
+  on Play and tagged on GitHub that nobody was told about, learned from a red check.
+* **`telegram-release.yml`** still sends with a bare `curl -s` and discards the output, so there the
+  step genuinely succeeds having broadcast nothing. This is the older shape of the same failure and
+  the reason the sentence above used to read "and CI still goes green".
+
+Either way the discovery lands *during* the release, which is why the budget is checked pre-flight
+instead. `release-rung.yml` prepends a header worth **145–152 UTF-16 units** (measured per rung and
+actor, 152 is the maximum, and it counts the blank line that joins it to `telegram.md`), which is
+where the ~860 budget comes from; `telegram-release.yml` uses a shorter header and also appends a
+GitHub-link footer. For reference: v1.93.1 was 695 units (fine); v1.93.0 was 1008 (**already over
+the budget when it shipped**).
 
 **2. Baseline the commit range on the last release TAG, not on `master`.**
 `master` runs ahead of its own release tag, so `master..dev` undercounts. Use the newest tag by
