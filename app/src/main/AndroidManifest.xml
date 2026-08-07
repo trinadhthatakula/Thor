@@ -196,8 +196,21 @@
                 <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.apkp" />
             </intent-filter>
 
-            <!-- content:// and file:// URIs: match by extension when the MIME type is
-                 absent/unknown (many file managers hand a typeless content:// URI). -->
+            <!-- content:// and file:// URIs whose type nobody could name. Declaring no
+                 android:mimeType is what keeps this narrow: matchData returns NO_MATCH_TYPE for
+                 any intent that carries a type, and Intent.resolveTypeIfNeeded asks the
+                 ContentResolver before resolution, so a content:// URI only lands here when the
+                 provider's own getType() returned null too.
+
+                 It deliberately declares NO android:host and NO path matchers. Under
+                 IntentFilter.matchData the path list is consulted only inside the
+                 `authorities != null` branch, so declaring a host promotes the extension patterns
+                 from "another way to match" into a mandatory gate. A file manager that hands over
+                 an opaque provider URI — Samsung My Files gives a MediaStore row id with no
+                 filename anywhere in the path — can then never satisfy any pathSuffix/pathPattern,
+                 and the filter dies on the path gate before the type is ever considered, excluding
+                 exactly the case it exists to serve (GH#161). Extension-gated matching still lives
+                 on the wildcard-MIME filter above, which keeps its host and its path matchers. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
@@ -206,62 +219,6 @@
 
                 <data android:scheme="content" />
                 <data android:scheme="file" />
-                <data android:host="*" />
-
-                <!-- Same two-layer matching as the wildcard-MIME filter above:
-                     android:pathSuffix (API 31+, dot-count-agnostic endsWith) plus a
-                     SIMPLE_GLOB pathPattern fallback (up to 6 dots) for API 28-30.
-                     Covers typeless content:// URIs whose path carries the filename. -->
-                <!-- .apk -->
-                <data android:pathSuffix=".apk" />
-                <data android:pathSuffix=".APK" />
-                <data android:pathPattern=".*\\.apk" />
-                <data android:pathPattern=".*\\.APK" />
-                <data android:pathPattern=".*\\..*\\.apk" />
-                <data android:pathPattern=".*\\..*\\..*\\.apk" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\.apk" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.apk" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.apk" />
-                <!-- .xapk -->
-                <data android:pathSuffix=".xapk" />
-                <data android:pathSuffix=".XAPK" />
-                <data android:pathPattern=".*\\.xapk" />
-                <data android:pathPattern=".*\\.XAPK" />
-                <data android:pathPattern=".*\\..*\\.xapk" />
-                <data android:pathPattern=".*\\..*\\..*\\.xapk" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\.xapk" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.xapk" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.xapk" />
-                <!-- .apks -->
-                <data android:pathSuffix=".apks" />
-                <data android:pathSuffix=".APKS" />
-                <data android:pathPattern=".*\\.apks" />
-                <data android:pathPattern=".*\\.APKS" />
-                <data android:pathPattern=".*\\..*\\.apks" />
-                <data android:pathPattern=".*\\..*\\..*\\.apks" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\.apks" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.apks" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.apks" />
-                <!-- .apkm -->
-                <data android:pathSuffix=".apkm" />
-                <data android:pathSuffix=".APKM" />
-                <data android:pathPattern=".*\\.apkm" />
-                <data android:pathPattern=".*\\.APKM" />
-                <data android:pathPattern=".*\\..*\\.apkm" />
-                <data android:pathPattern=".*\\..*\\..*\\.apkm" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\.apkm" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.apkm" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.apkm" />
-                <!-- .apkp -->
-                <data android:pathSuffix=".apkp" />
-                <data android:pathSuffix=".APKP" />
-                <data android:pathPattern=".*\\.apkp" />
-                <data android:pathPattern=".*\\.APKP" />
-                <data android:pathPattern=".*\\..*\\.apkp" />
-                <data android:pathPattern=".*\\..*\\..*\\.apkp" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\.apkp" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.apkp" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.apkp" />
             </intent-filter>
         </activity>
 

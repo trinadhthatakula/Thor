@@ -520,26 +520,26 @@ internal class DexFieldLayout {
             gap1.startOffset - gap2.startOffset
         }
 
-        private fun descriptorString(clazz: Class<*>): String {
+        internal fun descriptorString(clazz: Class<*>): String {
             return 'L' + clazz.name.replace('.', '/') + ';'
         }
 
-        private fun slice(buffer: ByteBuffer, offset: Int, size: Int): ByteBuffer {
+        internal fun slice(buffer: ByteBuffer, offset: Int, size: Int): ByteBuffer {
             val duplicate = buffer.duplicate()
             duplicate.position(offset)
             duplicate.limit(offset + size)
             return duplicate.slice().order(buffer.order())
         }
 
-        private fun isAligned(value: Int, alignment: Int): Boolean {
+        internal fun isAligned(value: Int, alignment: Int): Boolean {
             return (value and (alignment - 1)) == 0
         }
 
-        private fun roundUp(value: Int, alignment: Int): Int {
+        internal fun roundUp(value: Int, alignment: Int): Int {
             return value + alignment - 1 and -alignment
         }
 
-        private fun primitiveOrder(type: Char): Int {
+        internal fun primitiveOrder(type: Char): Int {
             return when (type) {
                 'Z' -> 1
                 'B' -> 2
@@ -553,7 +553,7 @@ internal class DexFieldLayout {
             }
         }
 
-        private fun componentSize(type: Char): Int {
+        internal fun componentSize(type: Char): Int {
             return when (type) {
                 'J', 'D' -> 8
                 'I', 'F' -> 4
