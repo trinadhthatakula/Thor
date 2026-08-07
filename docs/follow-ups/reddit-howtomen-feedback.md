@@ -9,12 +9,12 @@ reported, what the code actually does, and which existing row it lands on. The *
 
 **Why this file exists rather than 23 rows:** most of these are small, and several are the same
 underlying gap seen from different angles. Sizing them one at a time produces a backlog that hides
-the two findings that actually matter (below). The retention rule's exception 2 applies — this is the
-evidence under those conclusions.
+the three findings that actually matter (below). The retention rule's exception 2 applies — this is
+the evidence under those conclusions.
 
 ---
 
-## The two findings that changed something
+## The three findings that changed something
 
 ### 1. A frozen system app can be *removed for the user*, and that is the likely account-loss mechanism
 
@@ -80,36 +80,44 @@ which is what would have made rendering it in a list expensive. The reporter's r
 tier while multi-selecting is therefore cheap, and it is the one that improves the *safety* of a bulk
 debloat rather than just its convenience.
 
-### 3. Thor already declares `PACKAGE_USAGE_STATS`, and nothing uses it
+### 3. The usage-access plumbing for "abandoned apps" is already built and shipping
 
-Found while sizing the "abandoned app" request, which was expected to be the most expensive item in
-the thread on the grounds that it needed a new special-access permission.
+The abandoned-app request was expected to be the most expensive item in the thread, on the grounds
+that it needed a new special-access permission. It does not, and the reason is better than "the
+permission happens to be declared".
 
-It does not. The permission is already in the manifest:
+`PACKAGE_USAGE_STATS` is in the manifest at
+[`AndroidManifest.xml:42`](../../app/src/main/AndroidManifest.xml), and **it is load-bearing today**:
+it is what makes the `GET_USAGE_STATS` app-op grantable, and that op is what lets
+`StorageStatsManager.queryStatsForPackage` answer for *other* packages — i.e. it is why Thor can show
+you an app's size at all
+([`StorageStatsHelper.kt:47`](../../app/src/main/java/com/valhalla/thor/data/manager/StorageStatsHelper.kt)).
 
-```xml
-<uses-permission
-    android:name="android.permission.PACKAGE_USAGE_STATS"
-    tools:ignore="ProtectedPermissions" />
-```
+More than the permission is already done.
+[`UsageAccessManager`](../../app/src/main/java/com/valhalla/thor/data/manager/UsageAccessManager.kt)
+is a complete gate around this op:
 
-— [`AndroidManifest.xml:42`](../../app/src/main/AndroidManifest.xml). And `UsageStatsManager`
-appears **nowhere** in `app/src/main/java`. So Thor requests one of Android's most sensitive
-permissions and never reads a byte through it.
+| Piece | Where |
+|---|---|
+| Read the op for Thor's own uid, per SDK level | `isGranted()`, `:37` |
+| Silent grant through the active privilege gateway, **then re-verify** | `tryGrantViaPrivilege()`, `:48` |
+| Once-per-process auto-grant that latches only on *success* | `maybeAutoGrant()`, `:69` — called from `AppListViewModel.kt:375` |
+| `ACTION_USAGE_ACCESS_SETTINGS` deep link for the manual fallback | `usageAccessIntent()`, `:75` — wired into `AppListScreen.kt:372` and `SettingsScreen.kt:424` |
 
-**This is a finding independent of the feature request, and it should be settled either way:**
+So the permission, the privileged grant path, the re-verification, the user-facing fallback and two
+entry points into Settings all exist. What abandoned-app detection still needs is
+`UsageStatsManager.queryUsageStats` — a **different class** from the `StorageStatsManager` above, and
+the one thing here that genuinely appears nowhere in `app/src/main/java` — plus a schedule and a
+notification.
 
-- **If it is vestigial, delete the line.** It costs Thor real trust for nothing. IzzyOnDroid
-  explicitly screens sensitive permissions and asks maintainers to justify them, and Play surfaces
-  usage access on the listing. Carrying an unused one is a review conversation you can simply not
-  have.
-- **If it is intended, the abandoned-app feature is much closer than it looked.** The manifest
-  declaration is done; what remains is the `ACTION_USAGE_ACCESS_SETTINGS` deep link (the permission
-  is not grantable by a normal prompt), the `queryUsageStats` read, and the notification. That is
-  still real work, but it is ordinary work — not "add a scary permission".
+That is still real work, and the recurring schedule is a maintenance cost the estimate should keep.
+But it is ordinary work on top of a built foundation, not "add a scary permission".
 
-Do not read this as the feature being approved. It is a correction to its price, and a question
-about a line that is in the manifest today.
+> **Correction.** This section first claimed the opposite — that the permission was vestigial and
+> should probably be deleted — on the strength of `UsageStatsManager` matching nothing in the tree.
+> It matches nothing because it is the wrong symbol: the consumer is `StorageStatsManager`.
+> Deleting that line would have broken app-size reporting. A search that returns nothing is not
+> proof of absence unless you searched for the right name; CodeRabbit caught this on the PR.
 
 ---
 
@@ -135,7 +143,7 @@ is wiring, not building.
 | Wants App Ops-style permission grant/revoke | **Genuinely new.** Thor filters *by* permission (#285) and grants via `pm grant`, but has no revoke/appops surface | — |
 | Wants change history (installed/uninstalled/froze last week) | **Genuinely new** — Room is at v6 with `apps`, `freezer_apps`, `extension_data`, `freeze_profiles`. **No event table, no timestamps of actions** | `AppDatabase.kt:21` |
 | Wants update history (previous version of an app) | **Genuinely new, and blocked by the same gap** — `AppEntity.versionCode`/`versionName` are *overwritten* on each scan, so no prior version is retained anywhere | `AppEntity.kt` |
-| Wants "abandoned app" notifications (unused 6 months) | **Cheaper than expected, and it found something** — see finding 3 | `AndroidManifest.xml:42` |
+| Wants "abandoned app" notifications (unused 6 months) | **Cheaper than expected** — the permission, the privileged grant, the re-verification and the Settings deep link all ship today. See finding 3 | `UsageAccessManager.kt` |
 | Wants CSV/MD export of the installed-app list | **Mostly already there** — the SAF picker, remembered destination and `DocumentFile` write plumbing all shipped with #164/#51 phase 1 | `AppBundleFileStoreImpl` |
 | Wants a Portuguese translation | **480 strings.** Thor ships `en` + `ar`, `es`, `fr`, `zh-rCN`, all at 480 | `res/values*/strings.xml` |
 | Wants a default-tab setting | **Hardcoded** `mutableStateOf(AppDestinations.HOME)` | `MainScreen.kt:119` |
@@ -149,19 +157,27 @@ is wiring, not building.
 
 ## What this changes about the existing backlog
 
-**One roadmap justification is falsified outright.** `#178 — app tagging` is deferred in
+**One roadmap justification is falsified outright.** `#178 — app tagging` *was* deferred in
 [`../feature-request-roadmap.md`](../feature-request-roadmap.md) on the stated grounds of **"zero
-demand"**, and in `README.md` as *"low-risk build, **zero demand**"*. A user asked for it unprompted,
+demand"**, and in `README.md` as *"low-risk build, **zero demand**"*. Both of those wordings are
+historical: this sweep replaced them, so the quotes above describe the state before it, not after.
+A user asked for it unprompted,
 and a second asked for per-app **notes**, which is the same storage work. That specific reason no
 longer holds. The roadmap's *other* grounds — 3–5 days, needs a Room migration — are untouched and
 may still justify deferring it; but it now has to be deferred on cost, not on demand.
 
 **One deferral is corroborated rather than falsified.** `#55b — process manager` was deferred for
 fragile `dumpsys`/`top` parsing and a Dhizuku dead-end. A user asked for it, so demand is now
-non-zero — but every engineering objection stands. What the request actually reveals is that the
-expensive part (live RAM/CPU figures) is not what was asked for: *"options for know app running in
-background"* is answered by a running/not-running flag, which is far cheaper and Dhizuku's dead-end
-does not block a coarse answer the way it blocks per-process stats.
+non-zero — but every engineering objection stands. What the request reveals is only that the
+expensive part is not what was asked for: *"options for know app running in background"* is answered
+by a running/not-running flag, without live RAM or CPU figures and without sampled polling.
+
+⚠️ **That is a smaller feature, not a solved one.** `getRunningAppProcesses` has returned only the
+caller's own process since Android 8, so even a coarse flag needs a privileged `ps`/`dumpsys` read —
+which means **Dhizuku's lack of a shell is still a dead-end for it**, exactly as it is for per-process
+stats. Before this is ranked as affordable it needs a named API, a stated privilege path, and a
+decided fallback for the modes that cannot answer. Until then the honest position is *"cheaper than
+#55b as filed, and still unsized"*.
 
 **One item is a documentation problem wearing a feature request.** Freeze Profiles shipped in
 v1.93.1 and does most of what the "custom tabs/groups" request asks for. A user who reads the
