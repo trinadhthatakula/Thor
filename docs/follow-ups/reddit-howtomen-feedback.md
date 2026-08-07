@@ -172,12 +172,12 @@ non-zero — but every engineering objection stands. What the request reveals is
 expensive part is not what was asked for: *"options for know app running in background"* is answered
 by a running/not-running flag, without live RAM or CPU figures and without sampled polling.
 
-⚠️ **That is a smaller feature, not a solved one.** `getRunningAppProcesses` has returned only the
-caller's own process since Android 8, so even a coarse flag needs a privileged `ps`/`dumpsys` read —
-which means **Dhizuku's lack of a shell is still a dead-end for it**, exactly as it is for per-process
-stats. Before this is ranked as affordable it needs a named API, a stated privilege path, and a
-decided fallback for the modes that cannot answer. Until then the honest position is *"cheaper than
-#55b as filed, and still unsized"*.
+⚠️ **That is a smaller feature, not a solved one.** `getRunningAppProcesses` has been progressively
+restricted since **Android 5.1** and is privilege-filtered for an ordinary app, so even a coarse flag
+needs a privileged `ps`/`dumpsys` read — which means **Dhizuku's lack of a shell is still a dead-end
+for it**, exactly as it is for per-process stats. Before this can be ranked as affordable it needs a
+named API, a stated privilege path, and a decided fallback for the modes that cannot answer. Until
+then the honest position is *"smaller than #55b as filed, and still unsized"*.
 
 **One item is a documentation problem wearing a feature request.** Freeze Profiles shipped in
 v1.93.1 and does most of what the "custom tabs/groups" request asks for. A user who reads the

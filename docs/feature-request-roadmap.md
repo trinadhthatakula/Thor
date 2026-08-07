@@ -4,9 +4,10 @@
 
 > **The ranked build order now lives in [`follow-ups/README.md`](follow-ups/README.md).** That file
 > ranks *everything* open — issue-backed or not — by impact × ease, which is what insight 5 below
-> says a roadmap tracking only issues will always fail to do. This document remains the per-issue
-> analysis: why each estimate is what it is.
-**Purpose:** The per-issue analysis behind each estimate — what infrastructure a request can reuse, what it must build, and what its privilege tier costs it. It covers the **issue tracker only**; the ranked build order across *everything* open lives in [`follow-ups/README.md`](follow-ups/README.md), for the reason insight 5 gives.
+> says a roadmap tracking only issues will always fail to do.
+
+**Purpose:** The per-issue analysis behind each estimate — what infrastructure a request can reuse, what it must build, and what its privilege tier costs it. It covers the **issue tracker only**; use it to answer *"why is this number what it is?"*, not *"what should I pick up?"*
+
 **Method:** Each request was analyzed against the actual Thor codebase (existing infra it can reuse, layers it touches, root/Shizuku/Dhizuku feasibility), so the estimates reflect *what already exists vs. what must be built*, not guesses.
 
 ## How to read this
@@ -182,9 +183,9 @@ on its 3–5 d cost, no longer on demand.
 
 ### #55b — Process manager (RAM/CPU) · 🔴 · 4–7 d · impact 3 (niche)
 - **What:** live process list with RAM/CPU to spot heavy apps.
-- **Risks:** Shizuku/root-only (post-Android-8 `getRunningAppProcesses` returns only self → must parse `dumpsys meminfo`/`top`/`ps`), brittle across OEM/OS versions, CPU% needs sampled polling, **Dhizuku has no shell** → dead-end. Overlaps with existing task managers. Split from #55 and deferred; the profiles half (#55a) should ship without it.
+- **Risks:** Shizuku/root-only (`getRunningAppProcesses` is privilege-filtered — restricted since Android 5.1, and an unprivileged caller does not see other packages → must parse `dumpsys meminfo`/`top`/`ps`), brittle across OEM/OS versions, CPU% needs sampled polling, **Dhizuku has no shell** → dead-end. Overlaps with existing task managers. Split from #55 and deferred; the profiles half (#55a) should ship without it.
 - **Split again, 2026-08-07 — and this is the useful part.** A user asked for *"options for know app running in background"*. That is a **running/not-running flag**, and every objection above is an objection to the *statistics*: `top`/`meminfo` parsing, sampled polling for CPU%, OEM drift. A coarse "is this package currently running" needs none of them. **The niche verdict was earned by the expensive half and then applied to the whole feature** — which is insight 1 (ship the MVP, not the costume) going unapplied to the very issue that first prompted it.
-- ⚠️ **Smaller is not the same as costed, and this is not yet costed.** The bullet above originally called the flag *affordable* and said Dhizuku's missing shell only degrades it. Neither claim is supported: `getRunningAppProcesses` returns only the caller's own process on everything Thor targets, so even the coarse answer goes through a privileged `ps`/`dumpsys` — which puts **Dhizuku in the same dead-end it is in for the stats**. What it needs before it can be ranked: a named API, a stated privilege path, and a decided behaviour for the modes that cannot answer. It sits in band D of [`follow-ups/README.md`](follow-ups/README.md) — unrankable, not scheduled — and the stats stay deferred.
+- ⚠️ **Smaller is not the same as costed, and this is not yet costed.** The bullet above originally called the flag *affordable* and said Dhizuku's missing shell only degrades it. Neither claim is supported: `getRunningAppProcesses` is privilege-filtered on everything Thor targets, so even the coarse answer goes through a privileged `ps`/`dumpsys` — which puts **Dhizuku in the same dead-end it is in for the stats**. What it needs before it can be ranked: a named API, a stated privilege path, and a decided behaviour for the modes that cannot answer. It sits in band D of [`follow-ups/README.md`](follow-ups/README.md) — unrankable, not scheduled — and the stats stay deferred.
 - **Verified 2026-08-07:** nothing in the tree queries running processes today. Every `isRunning` in `app/src/main/java` refers to a bulk *operation* in flight, not to a process — so there is no partial seam to build on, in either direction.
 
 ---
