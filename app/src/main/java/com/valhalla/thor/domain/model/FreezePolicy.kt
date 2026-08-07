@@ -8,10 +8,10 @@ package com.valhalla.thor.domain.model
  * recommendation.
  *
  * Only system apps have a tier. Freezing a user app is always reversible with `pm enable`, so
- * there is nothing to warn about; a system app is frozen by disabling it where the platform
- * allows that and by removing it for the current user where it does not (see [FreezeMechanic]),
- * and the ones the UAD list marks unsafe can leave the device unable to boot, place calls, or
- * reach the network.
+ * there is nothing to warn about; a system app is frozen by disabling it, and where the platform
+ * refuses to disable it the freeze now fails rather than removing the package for the current user
+ * (see [FreezeMechanic]), and the ones the UAD list marks unsafe can leave the device unable to
+ * boot, place calls, or reach the network.
  */
 enum class FreezeTier {
     /** No warning: a user app, or a system app UAD considers safe to remove. */
@@ -97,11 +97,11 @@ fun isBlockedFromFreeze(app: AppInfo?): Boolean =
  * says nothing about app-ops, which were never measured. Nor is `-k` "keep the whole
  * `PackageUserState`": AOSP still clears per-user state on this path regardless of the flag.
  *
- * [DISABLE] is still preferred everywhere it works — which, measurably, is everywhere stock Android
- * runs — because it costs none of that. [UNINSTALL] exists because some OEM builds refuse to let
- * the shell uid disable their own system packages at all, and it is reached *only* where the
- * platform actually refused, which is what [uninstallFreezeFallbackAllowed] decides. On API 37 it
- * does not exist at shell uid at all; see [UNINSTALL].
+ * [DISABLE] is the only mechanic a freeze runs today. [UNINSTALL] exists because some OEM builds
+ * refuse to let the shell uid disable their own system packages at all, and it used to be reached
+ * automatically wherever the platform refused; [uninstallFreezeFallbackAllowed] now answers `false`
+ * for every privilege mode, so nothing escalates into it and a refused disable fails visibly with
+ * the package left installed. On API 37 it does not exist at shell uid at all; see [UNINSTALL].
  */
 enum class FreezeMechanic {
     /** `pm disable`, or the equivalent `setApplicationEnabledSetting` reflection. Keeps data. */
@@ -126,20 +126,43 @@ enum class FreezeMechanic {
 /**
  * May a failed [FreezeMechanic.DISABLE] escalate to [FreezeMechanic.UNINSTALL] for this package?
  *
- * Without this gate, *any* failure to disable — a busy PackageManager, a binder timeout, a package
- * that happened to be mid-update — silently escalates to removing the package for the user, who is
- * told the freeze succeeded. With it, escalation is confined to the case where the platform has
- * *refused* to disable the package, and everywhere else a failure to disable stays a *failure*,
- * visible and reportable.
+ * **No — under every privilege mode, refused or not.** Every branch below answers `false`. A
+ * system-app freeze the platform refuses to disable now ends in a visible failure with the package
+ * left installed, instead of quietly swapping in a mechanic that removes it for the current user.
+ * Root already answered that way; Shizuku and Dhizuku were the two modes that still escalated, and
+ * they no longer do.
  *
- * Failing loudly is the deliberate choice. A freeze that reports an error costs the user an
- * annoyance and Thor a bug report; a freeze that quietly swaps one mechanic for another produces no
- * report at all, because from the outside it looked like it worked. Before `-k` was added to the
- * fallback the price of getting this wrong was the user's data; it is now the package silently
- * vanishing from every query that omits `MATCH_UNINSTALLED_PACKAGES`, which is smaller but still
- * not something to spend on a binder timeout.
+ * Failing loudly is the whole point. A freeze that reports an error costs the user an annoyance and
+ * Thor a bug report; a freeze that quietly swaps one mechanic for another produces no report at
+ * all, because from the outside it looked like it worked. That was true when the gate only stopped
+ * a binder timeout from escalating, and it is true of the refusal case too: "the platform refused
+ * to disable this" is a fact the user can act on, and removing the package is not a stronger form
+ * of disabling it. `-k` keeps the app's data, but nothing keeps `FLAG_INSTALLED`, so the package
+ * still vanishes from every query that omits `MATCH_UNINSTALLED_PACKAGES` — and the user was never
+ * asked whether that was the trade they wanted.
+ *
+ * ### Why this function survives answering `false` everywhere
+ *
+ * Because the decision is deferred, not settled. What is removed is the *automatic* escalation. An
+ * explicit "remove it for this user anyway" path — one the user asks for, having been told what it
+ * costs — is a separate change with its own open questions, and when it lands it re-opens exactly
+ * one branch here. Collapsing this to a bare `false` (or deleting it) would push that decision back
+ * into the two gateways, which is the state it was written to get out of: the one freeze decision
+ * that changes what a package looks like to the rest of the system gets a single home, reachable
+ * from a plain JVM test. The `when` stays exhaustive for the same reason — a new [PrivilegeMode] is
+ * a compile error here rather than a mode that silently inherits somebody else's answer — and the
+ * two guard branches stay because they state rules that outlive the current answer (a user app is
+ * never in scope; a mechanical failure is never a refusal), each pinned by its own test.
+ *
+ * The rung it gates is still live code in all three gateways, and deliberately so: it is what the
+ * explicit path will call, and every device that carries a system app frozen by an older build
+ * still needs the unfreeze half of it. See `RootSystemGateway.freezeSystemApp`, whose rung 2 has
+ * been unreachable-but-kept on exactly this reasoning since root's branch went `false`.
  *
  * ### Why this is not a version check
+ *
+ * Kept because it is what a future consent path may and may not key on, and because the `sdkInt`
+ * gate this replaced is the most likely thing for someone to reach for again.
  *
  * It was, briefly: `sdkInt >= 36`, on the report that shell-uid disabling of system apps "stopped
  * working on Android 16". That boundary does not exist, and the measurement is not close:
@@ -175,7 +198,8 @@ enum class FreezeMechanic {
  * Pixel that could have disabled the app, and it would refuse to freeze at all on the Xiaomi
  * devices that are the entire reason the fallback exists. What actually distinguishes the two cases
  * is not which release the device runs but whether the platform refused — so that is what this
- * asks.
+ * asks, and it is still worth asking with the gate shut: the gateways spend the same flag on
+ * telling the user "this device refused" apart from "something went wrong".
  *
  * One thing the shell uid genuinely cannot do, on every release since API 25 and still true on 17:
  * set `COMPONENT_ENABLED_STATE_DISABLED` (state 2, what `pm disable` sends). It may only set
@@ -185,7 +209,9 @@ enum class FreezeMechanic {
  * @param disableRefusedByPolicy true only when a privileged rung was refused by the platform —
  *   a `SecurityException` from `PackageManagerService`, not merely a non-zero exit or a read that
  *   came back unreadable. Passed in rather than inferred so this stays a pure function, and so the
- *   one decision that can cost a user their data is reachable from a plain JVM test.
+ *   one decision that can remove a package for a user is reachable from a plain JVM test. Still
+ *   load-bearing with the gate shut: the gateways read it to choose which failure the user is told
+ *   about, and it is the only signal an explicit removal path would be allowed to key on.
  */
 fun uninstallFreezeFallbackAllowed(
     isSystem: Boolean,
@@ -197,27 +223,29 @@ fun uninstallFreezeFallbackAllowed(
     !isSystem -> false
 
     // Nothing refused us, so nothing is unavailable. Whatever went wrong is a failure to report,
-    // not a restriction to work around — and this is the branch that stops a binder timeout from
-    // costing someone their app data.
+    // not a restriction to work around — this is the branch that stopped a binder timeout from
+    // removing someone's package, and it stays the boundary an explicit removal path may never
+    // cross.
     !disableRefusedByPolicy -> false
 
     else -> when (privilegeMode) {
-        // The real gap, and the only one measured: an OEM that refuses to let the shell uid
-        // disable its system packages. Uninstall-for-user is then the only remaining way to
-        // freeze one, and refusing to escalate would mean those users cannot freeze system apps
-        // at all — which is the state this whole change is trying to get *out* of.
+        // The one real gap, and the only one measured: an OEM (Xiaomi HyperOS, first reported on
+        // Android 14) that refuses to let the shell uid disable its system packages. This branch
+        // answered `true` for as long as that gap was read as "so use the other mechanic".
         //
-        // Still true on Android 17, and deliberately not narrowed to `sdkInt < 37` even though A17
-        // refuses the escalation itself (see [FreezeMechanic.UNINSTALL]). Two reasons, both
-        // measured. First, the A17 refusal keys on the *uid*, not the release: a Shizuku started as
-        // root runs as uid 0 and clears it, and this function cannot see that — adding an isRoot
-        // parameter to answer a question the readback already answers would be the version check
-        // wearing a different hat. Second, an attempt that A17 refuses is harmless: `pm` leaves the
-        // package untouched and prints why, and ShizukuSystemGateway now turns that sentence into
-        // "this build of Android needs root for this" instead of swallowing it. Closing the gate
-        // here would trade a specific, actionable failure for a vague one and break root-Shizuku
-        // for nothing.
-        PrivilegeMode.SHIZUKU -> true
+        // It no longer does, because the substitution was never Thor's to make silently. The user
+        // asked for a freeze — a reversible thing that keeps the app where it is — and got a
+        // package removed for their user, with no dialog, no message naming the mechanic, and a
+        // success toast. `-k` kept the data directories; nothing kept `FLAG_INSTALLED`, which is
+        // what an app needs to stay visible to anything that manages accounts or sync for it.
+        //
+        // The cost of shutting it is stated rather than hidden: on those OEM builds, Shizuku users
+        // cannot freeze system apps at all until an explicit, asked-for removal path lands. That is
+        // the trade — a capability lost on some devices, in exchange for no device ever losing a
+        // package the user did not agree to lose. `ShizukuSystemGateway.freezeSystemApp` now ends
+        // in a failure that says which of the two happened, so those users get an accurate sentence
+        // instead of a wrong state.
+        PrivilegeMode.SHIZUKU -> false
 
         // Root is uid 0, and the two refusals this fallback was built for — AOSP's shell guard and
         // Xiaomi's vendor one — both key on the *shell* uid (2000), so neither can reach root.
@@ -229,18 +257,19 @@ fun uninstallFreezeFallbackAllowed(
         // protects this hard is one where "uninstall it for the user instead" is the wrong reading
         // of the refusal, not a workaround for it. Surface it and let the user decide.
         //
-        // This is a behaviour change either way: root used to freeze system apps by uninstalling
-        // them unconditionally.
+        // That reading is what the other two branches have now adopted. Root reached it first only
+        // because its refusals are rarer, not because the argument was ever root-specific.
         PrivilegeMode.ROOT -> false
 
-        // Dhizuku now consults this policy, and answers like Shizuku for the same reason: it has
-        // a disable rung that can be *refused*. Exactly one of its three rungs may say so, and the
-        // route is worth naming because the gate is only as honest as that signal. `pm disable-user`
-        // runs inside the device-owner app (`DhizukuAPI.newProcess`), which holds no
-        // CHANGE_COMPONENT_ENABLED_STATE, so a refusing `PackageManagerService` answers the way it
-        // answers any `pm` caller: the SecurityException is printed to the process's own output and
-        // `pm` exits non-zero. That pair — ran, spoke, refused — is what `shellRungResult` reads,
-        // and it leaves uninstall-for-user as the only remaining way to freeze a preinstalled app.
+        // Dhizuku answers like Shizuku, as it has since it started consulting this policy at all —
+        // it has a disable rung the platform can *refuse*, so it faced the same question and gets
+        // the same answer. Exactly one of its three rungs can say so, and the route is worth
+        // keeping named because a future consent path is only as honest as that signal:
+        // `pm disable-user` runs inside the device-owner app (`DhizukuAPI.newProcess`), which holds
+        // no CHANGE_COMPONENT_ENABLED_STATE, so a refusing `PackageManagerService` answers the way
+        // it answers any `pm` caller — the SecurityException is printed to the process's own output
+        // and `pm` exits non-zero. That pair — ran, spoke, refused — is what `shellRungResult`
+        // reads.
         //
         // The other two rungs answer FAILED whatever they throw. Neither reaches PMS as the device
         // owner (the reflection rung's binder is double-wrapped through Shizuku's transport; the
@@ -248,18 +277,11 @@ fun uninstallFreezeFallbackAllowed(
         // transport Thor could not set up, not a policy the platform applied. See their notes in
         // `Dhizuku.setAppDisabledDetailed`.
         //
-        // This was `false` while DhizukuSystemGateway uninstalled system apps unconditionally: a
-        // closed gate then would have removed Dhizuku's only working system-app freeze. Now that
-        // the gateway routes through the disable chain first, a closed gate would do exactly the
-        // same thing — the rung would be unreachable — so keeping it closed is no longer the
-        // conservative option, it is the one that breaks the feature.
-        //
-        // Unverified on hardware: no device with Dhizuku was available. What the gate protects does
-        // not depend on that — a *mechanical* failure (binder timeout, Dhizuku not authorised,
-        // package mid-update) cannot escalate, under Dhizuku exactly as under Shizuku, because
-        // every one of those arrives as a thrown exception and `execute` folds a throw into exit
-        // code -1, which `shellRungResult` will not read as a refusal at any output.
-        PrivilegeMode.DHIZUKU -> true
+        // The escalation was never verified on hardware here — no device with Dhizuku was
+        // available — so this branch is the only one whose `true` was never observed doing anything
+        // at all. It shuts on the argument, not on a measurement, and the argument is the same one
+        // as Shizuku's: a package removed for the user is not what "freeze" was asked for.
+        PrivilegeMode.DHIZUKU -> false
 
         // No privilege means no freeze at all; nothing can reach the destructive rung from here.
         PrivilegeMode.NONE -> false

@@ -466,10 +466,14 @@ class RootSystemGateway(
      *     worth surfacing, not a platform gap worth working around. `-k` is `DELETE_KEEP_DATA`, so
      *     this rung keeps the app's files, settings and granted permissions too; what it does *not*
      *     keep is the per-user installed bit, which is why a package frozen this way reads as gone
-     *     to anything querying without `MATCH_UNINSTALLED_PACKAGES`. Under root this rung is
-     *     unreachable today and a failed rung 1 returns `Result.failure`. The code stays because
-     *     the gate — not this gateway — owns that decision, and a device check could legitimately
-     *     flip the root branch later.
+     *     to anything querying without `MATCH_UNINSTALLED_PACKAGES`. This rung is unreachable today
+     *     and a failed rung 1 returns `Result.failure`. The code stays because the gate — not this
+     *     gateway — owns that decision, and the deferred "remove it for this user anyway" path is
+     *     what will re-open it.
+     *
+     *     Root reached that shape first. The gate now answers `false` for the other two privilege
+     *     modes as well, and both their gateways end a refused disable the way this one does — an
+     *     `IOException` naming what was tried, and the package left installed.
      *
      * Unfreeze has to undo **both** mechanics, in the order install-existing → enable. Devices in
      * the field carry apps frozen by the uninstall-only builds and must still thaw after this ships;
@@ -608,8 +612,9 @@ class RootSystemGateway(
         // whatever the refusal flag says — every refusal observed in the wild, AOSP's own and
         // Xiaomi's alike, keys on the shell uid (2000), and root is uid 0 — so the rung below is
         // unreachable today and the failure is surfaced instead. The flag is still computed and
-        // passed honestly rather than hardcoded to false, so the two gateways call the gate the
-        // same way and a future decision to let root escalate is a change in the policy, not here.
+        // passed honestly rather than hardcoded to false, so all three gateways call the gate the
+        // same way and a future decision to let any of them escalate is a change in the policy,
+        // not here.
         if (!uninstallFreezeFallbackAllowed(
                 isSystem = true,
                 privilegeMode = PrivilegeMode.ROOT,
