@@ -1,6 +1,11 @@
 # Thor — Feature Request Roadmap
 
-**Date:** 2026-07-02 · **Last reviewed:** 2026-07-30 (statuses re-checked against `origin/dev` and the live issue tracker)
+**Date:** 2026-07-02 · **Last reviewed:** 2026-08-07 (user feedback folded in; #178 and #55b re-verdicted)
+
+> **The ranked build order now lives in [`follow-ups/README.md`](follow-ups/README.md).** That file
+> ranks *everything* open — issue-backed or not — by impact × ease, which is what insight 5 below
+> says a roadmap tracking only issues will always fail to do. This document remains the per-issue
+> analysis: why each estimate is what it is.
 **Purpose:** A prioritized, codebase-grounded triage of the open feature requests in the issue tracker — ranked by value-to-effort with implementation estimates and impact, to drive the "greens first" build order.
 **Method:** Each request was analyzed against the actual Thor codebase (existing infra it can reuse, layers it touches, root/Shizuku/Dhizuku feasibility), so the estimates reflect *what already exists vs. what must be built*, not guesses.
 
@@ -55,9 +60,9 @@ second branch opens.
 | 2 | **#51 ph.2** | App **data** backup / transfer | **4** | root-data **5–8 d** · P2P 12–20 d | 5 | 🟡 highest remaining impact, hard-gated on root — phase 3 (P2P) stays declined |
 | 3 | **#130** | InstallWithOptions attribution + drill-down | 2 | **1–2 d** (label ≈0.25 d) | 2 | 🟡 label = trivial; attribution unreliable |
 | 4 | **#58** | **App lock** (root/Shizuku) | 3 | **8–15 d** | 5 | 🔴 differentiator but heavy build + ongoing tax |
-| 5 | **#178** | App **tagging** | 3 | **3–5 d** | 3 | 🔴 low-risk but **zero demand** |
+| 5 | **#178** | App **tagging** (+ per-app notes) | 3 | **3–5 d** | 3 | 🟡 low-risk; **demand is no longer zero** (2026-08-07) — defer on cost if at all, not on demand |
 | 6 | **#209** | **VirusTotal** scanner | 2 | **4–7 d** | 3 | 🔴 network stack + user API key + privacy |
-| — | **#55b** | Process manager (RAM/CPU) | 3 | 4–7 d | 4 | 🔴 fragile shell parsing, Shizuku/root-only, Dhizuku dead-end *(split from #55)* |
+| — | **#55b** | Process manager (RAM/CPU) | 3 | 4–7 d full · **medium for a running/not-running flag** | 4 | 🟡/🔴 **split again** — the flag is asked for and affordable; the RAM/CPU stats keep every original objection *(split from #55)* |
 
 ---
 
@@ -77,7 +82,9 @@ platform no longer tells you which group a permission belongs to, so Thor ships 
 
 **✅ Closed out since the last review:** #57 (shipped) and #210 (achievable slice shipped as the Freeze|Suspend mode). Neither issue has been closed on GitHub yet.
 
-**🔴 Defer:** #58 (biggest build + robustness tax), #209 (FOSS API-key + privacy, low demand), #178 (zero demand), #55b (fragile, niche).
+**🔴 Defer:** #58 (biggest build + robustness tax), #209 (FOSS API-key + privacy, low demand), #55b's
+RAM/CPU half (fragile, niche). ~~#178 (zero demand)~~ — **re-verdicted 2026-08-07**: still deferrable
+on its 3–5 d cost, no longer on demand.
 
 ---
 
@@ -162,10 +169,11 @@ platform no longer tells you which group a permission belongs to, so Thor ships 
 - **Reuses:** only `BiometricPromptHandler` + the Room pattern. The whole detection + overlay pipeline is net-new.
 - **Risks:** needs a Shizuku UserService bound to ActivityTaskManager (or root `am monitor`), SYSTEM_ALERT_WINDOW overlay + foreground service, boot persistence; overlay races; OEM quirks; Play-policy risk; Dhizuku can't do per-launch gating. Big build + ongoing maintenance.
 
-### #178 — App tagging · 🔴 · 3–5 d · impact 3
-- **What:** user-defined tags to group/browse the app list.
-- **Reuses:** `FreezerEntity`/`FreezerRepository` is a near-template; `FilterType` is an extensible sealed interface; the chip row already renders dynamically. Needs a Room 4→5 migration + tag CRUD/assignment UI.
-- **Risks:** none hard, but **zero demand**. Bundle with other app-list UX work if/when demand appears.
+### #178 — App tagging · 🟡 *(was 🔴)* · 3–5 d · impact 3
+- **What:** user-defined tags to group/browse the app list. **Scope grew 2026-08-07:** a second user asked for per-app **notes**, which is the same table, the same CRUD and the same assignment UI. Build both or neither.
+- **Reuses:** `FreezerEntity`/`FreezerRepository` is a near-template; `FilterType` is an extensible sealed interface; the chip row already renders dynamically. Needs a Room migration (the DB is at **v6** now, not 4) + tag CRUD/assignment UI.
+- ~~**Risks:** none hard, but **zero demand**. Bundle with other app-list UX work if/when demand appears.~~
+  **Re-verdicted 2026-08-07.** Two independent requests in one thread. The demand argument is spent and the instruction it carried — *bundle with app-list UX work if demand appears* — is now live rather than conditional. Nothing else about the estimate changes: still 3–5 days, still a migration, still no hard risk. **If it is deferred it must be deferred on cost**, and saying so is the point of this correction — a stale "nobody wants it" is how a cheap feature stays unbuilt for reasons that stopped being true.
 
 ### #209 — VirusTotal scanner · 🔴 · 4–7 d · impact 2
 - **What:** scan APKs pre-install + installed apps via VirusTotal.
@@ -175,6 +183,8 @@ platform no longer tells you which group a permission belongs to, so Thor ships 
 ### #55b — Process manager (RAM/CPU) · 🔴 · 4–7 d · impact 3 (niche)
 - **What:** live process list with RAM/CPU to spot heavy apps.
 - **Risks:** Shizuku/root-only (post-Android-8 `getRunningAppProcesses` returns only self → must parse `dumpsys meminfo`/`top`/`ps`), brittle across OEM/OS versions, CPU% needs sampled polling, **Dhizuku has no shell** → dead-end. Overlaps with existing task managers. Split from #55 and deferred; the profiles half (#55a) should ship without it.
+- **Split again, 2026-08-07 — and this is the useful part.** A user asked for *"options for know app running in background"*. That is a **running/not-running flag**, and every objection above is an objection to the *statistics*: `top`/`meminfo` parsing, sampled polling for CPU%, OEM drift. A coarse "is this package currently running" needs none of them, and Dhizuku's missing shell degrades it rather than killing it. **The niche verdict was earned by the expensive half and then applied to the whole feature** — which is insight 1 (ship the MVP, not the costume) going unapplied to the very issue that first prompted it. The flag is band B in [`follow-ups/README.md`](follow-ups/README.md); the stats stay deferred.
+- **Verified 2026-08-07:** nothing in the tree queries running processes today. Every `isRunning` in `app/src/main/java` refers to a bulk *operation* in flight, not to a process — so there is no partial seam to build on, in either direction.
 
 ---
 
@@ -182,6 +192,6 @@ platform no longer tells you which group a permission belongs to, so Thor ships 
 
 1. **Ship the MVP, not the costume.** #51, #55, #210, #130 each hide a small high-value slice behind an ambitious full ask. The leverage is in the slice.
 2. **Privilege tier gates real value.** #51 (data), #55b (process stats), #58 (launch monitoring) are root/Shizuku-only with **Dhizuku dead-ends** — each needs an explicit "requires root/Shizuku" gate; none should assume Dhizuku parity.
-3. **Demand is uneven.** Most requests have low 👍/comment signal; strategic fit (storage/freeze management) matters more than raw demand for a power-user tool — but zero-demand items (#178, #209) should wait.
+3. **Demand is uneven — and "zero demand" has a shelf life.** Most requests have low 👍/comment signal; strategic fit (storage/freeze management) matters more than raw demand for a power-user tool. But a deferral written as *zero demand* is a claim about the world on the day it was written, and unlike an effort estimate it can be falsified by a single thread — as #178's was on 2026-08-07. **Date a demand argument, or re-check it before you lean on it.** The issue tracker is also the wrong instrument for measuring this: four users produced twenty-three asks in one Reddit thread, more feedback than the tracker had collected in months, and none of it would ever have appeared as a 👍.
 4. **Finish the last 20%.** #164 is the cautionary tale: the hard 80% (SAF plumbing, writers, progress states) shipped, and the feature still cannot be closed because a half-day writer is missing — one that was promised in the thread. The same shape threatens #210, which is functionally shipped but held open by cross-privilege suspend ownership. Closing these is cheaper than starting anything new, and it is the difference between a roadmap that reads as delivered and one that reads as stalled.
 5. **Keep this table honest.** Between 2026-07-02 and 2026-07-29 nothing on this list moved, yet nine PRs shipped — the QS tile rework, the store manifest, four installer/app-list fixes, Odin Phase 3, and the app-info unification. A roadmap that only tracks issue-backed work will keep reporting "no progress" while the project moves. Re-check it at each release, not when it feels stale.

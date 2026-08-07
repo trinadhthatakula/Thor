@@ -9,10 +9,10 @@ the thing to update. A row without a link is an item whose whole content is the 
 *declined* ruled out, do not re-raise. Where a row also carries a roadmap colour (🟢 do-first ·
 🟡 scope carefully · 🔴 defer), that colour is the roadmap's own verdict, not a second opinion.
 
-**Last swept:** 2026-08-06. The Kotlin sources still contain **no `TODO`/`FIXME`/`HACK`/`XXX` markers
+**Last swept:** 2026-08-07. The Kotlin sources still contain **no `TODO`/`FIXME`/`HACK`/`XXX` markers
 at all** — re-checked this sweep, zero matches across `app/src/main/java` and `bypass`. So nothing
-below was found by grepping the code; every row came from a doc, the roadmap, or the project
-`README.md`.
+below was found by grepping the code; every row came from a doc, the roadmap, the project
+`README.md`, or — new this sweep — **users**.
 
 Dates here are **UTC**, matching the GitHub timestamps they can be checked against. A sweep run late
 in the evening IST lands on the previous UTC day; write the day GitHub will show, not the day your
@@ -65,6 +65,98 @@ Two follow-up docs deleted; their subjects are now shipped code:
 Inbound links checked before both deletions per the retention rule.
 
 </details>
+
+<details>
+<summary>What this sweep changed (2026-08-07)</summary>
+
+**First sweep driven by user feedback rather than by the code.** Twenty-three asks from four users on
+an r/howtomen post, each checked against `origin/dev` before being sized — see
+[`reddit-howtomen-feedback.md`](reddit-howtomen-feedback.md) for the evidence.
+
+* **A ranked ordering was added** (below). The tier tables answer *"is this approved?"*; they have
+  never answered *"what should I build on Tuesday?"* Both files now had ~45 open items and no
+  agreed order between them.
+* **#178's deferral reason is falsified.** It was deferred as *"zero demand"*. Two users asked for it
+  (tagging, and notes over the same storage). The cost objection survives; the demand one does not.
+* **#55b is corroborated but its scope shrinks.** Someone did ask — and asked for *"which apps are
+  running"*, not for RAM/CPU figures. The cheap slice was never separated from the expensive one.
+* **One request turned out to be already shipped.** Freeze Profiles (#55a, v1.93.1) is most of the
+  "custom groups in the Freezer" ask. Filed as discoverability.
+* **No new defect.** The one report that read as a bug — an app freezing the moment it is added to the
+  Freezer, closing it and losing unsaved work — is **intended behaviour**, confirmed by the
+  maintainer. It joins [`freezer-membership-toggle-semantics.md`](freezer-membership-toggle-semantics.md),
+  which had already filed the same control from the opposite direction.
+
+</details>
+
+---
+
+## Do next — every open item, ranked
+
+Ranked by **impact × ease**: what buys the most for the least. This is the answer to *"what should I
+pick up?"*; the tier tables below are the answer to *"has this been approved, and what is the
+detail?"* Every row appears in both — this section adds an order, not new work.
+
+**Read the bands, not the exact numbers.** The gap between 3 and 5 is noise; the gap between band A
+and band C is not.
+
+### Band A — small, and worth more than it costs
+
+| # | Item | Kind | Effort | Why here |
+|:-:|---|---|---|---|
+| 1 | [Disclose that a freeze may *remove* a system app for the user](reddit-howtomen-feedback.md) | risk | small–medium | The only item with a user reporting real loss (Google accounts). The escalation is correct; its silence is not. Offer "fail instead of escalating" and say which mechanic will run |
+| 2 | [Show the UAD tier in the app **list**](reddit-howtomen-feedback.md) | safety/ux | small | The data is already parsed and in memory. Today the safety label is only visible *after* you open an app — i.e. never, during the bulk debloat where it matters |
+| 3 | [Explain Force Stop vs Suspend vs Freeze in-app](reddit-howtomen-feedback.md) | docs/ux | small | Three destructive-looking verbs with no explanation anywhere. Cheapest possible reduction in "what did I just do?" |
+| 4 | [Warn before adding to the Freezer freezes a running app](freezer-membership-toggle-semantics.md) | ux | small | Intended behaviour that cost a user unsaved work. The behaviour stays; the surprise goes |
+| 5 | [Surface Freeze Profiles from the Freezer screen](reddit-howtomen-feedback.md) | discoverability | small | Shipped in v1.93.1 and requested anyway by someone who had read the screen closely. Highest ratio in the list — the feature already exists |
+| 6 | [Show the UAD `description` too](reddit-howtomen-feedback.md) | ux | small | Same accessor as #2. Answers *"what is this app and why is it safe to remove?"* without leaving the list |
+| 7 | [Sort labels are hardcoded English](sort-labels-are-hardcoded-english.md) | i18n | small | 8 strings × 5 locales, mechanical, `FilterType.kt` is the worked example. Unblocked since #285 |
+| 8 | [Default-tab setting](reddit-howtomen-feedback.md) | ux | small | One hardcoded `AppDestinations.HOME`, one preference. Users who live in the Freezer open on Home every time |
+| 9 | [Tap/hold to copy a package name](reddit-howtomen-feedback.md) | ux | trivial | `LocalClipboard` is already wired twice in the same screen |
+| 10 | [#161 — `.apks` won't open from Samsung My Files](161-apks-not-openable-from-file-managers.md) | bug | small | Diagnosed, named reporter, waiting since 2026-07-18. Run the `pm query-activities` diagnostic first |
+| 11 | [Icon size / column count preference](reddit-howtomen-feedback.md) | ux | small | `GridCells.Adaptive(minSize = 100.dp)` in four places with nothing behind it |
+| 12 | [`SyntheticAccessor` in `:bypass`](static-analysis-switched-off-by-default.md) | tech-debt | small | 18 findings closed by 6 `private`→`internal` edits in one file. ⚠️ Do **not** flip `checkAllWarnings` globally |
+| 13 | [Settle the unused `PACKAGE_USAGE_STATS` declaration](reddit-howtomen-feedback.md) | trust/hygiene | trivial | Thor declares one of Android's most sensitive permissions (`AndroidManifest.xml:42`) and **no Kotlin code reads through it**. Either delete the line or commit to the feature — IzzyOnDroid screens sensitive permissions and Play surfaces usage access on the listing |
+
+### Band B — worth scheduling
+
+| # | Item | Kind | Effort | Why here |
+|:-:|---|---|---|---|
+| 14 | [Guard the DataStore **write** path](datastore-writes-are-unguarded.md) | risk | small–medium | 25 unguarded `edit { }` blocks; a full disk crashes Thor from a settings toggle, and one of them strands a user outside their own app lock. Held only by a product call on retry semantics |
+| 15 | [Fix Store: selection + cancel + plainer copy](reddit-howtomen-feedback.md) | ux | medium | Confirmed: the target set is computed, never chosen (`MainViewModel.kt:459`). A user ran it and had every sideloaded app's installer rewritten |
+| 16 | [Freezer removal has no escape hatch](freezer-removal-has-no-escape-hatch.md) | ux | small once decided | An app that refuses to thaw is a row the user cannot delete. Option 3 (prune uninstalled packages) is independent and safe to land alone |
+| 17 | [Profile editor dismisses before its save lands](profile-editor-dismisses-before-the-save-lands.md) | ux | small–medium | Worst for the user who just ticked forty apps and hits a name collision |
+| 18 | [Per-group *kill* and *suspend* in Freeze Profiles](reddit-howtomen-feedback.md) | feature | small–medium | The genuine remainder of the "groups" ask once #5 has surfaced what exists |
+| 19 | [Optional per-freeze confirmation](reddit-howtomen-feedback.md) | ux | small | ⚠️ Scope carefully — the `BLOCKED`-tier refusal (`FreezePolicy.kt:69`) is a **safety gate**, not a confirmation, and must stay unbypassable |
+| 20 | [Quick scrollbar with sort-aware snapping](reddit-howtomen-feedback.md) | ux | medium | The hard part is done: `SortBy`'s 4 families already have predicates, which is exactly the switch the snap targets need |
+| 21 | [Export the app list to CSV/MD](reddit-howtomen-feedback.md) | feature | small–medium | SAF picker, remembered destination and write plumbing all shipped with #164/#51 |
+| 22 | [Which apps are running](reddit-howtomen-feedback.md) — the cheap half of **#55b** | feature | medium | A running/not-running flag, no RAM/CPU. Splitting this off is what makes the request answerable at all |
+| 23 | [#130 — friendly installer label](../feature-request-roadmap.md) | feature | ≈0.25 d for the label | The label is the whole win; the attribution half stays declined |
+| 24 | [`lastResult` has no expiry](freezer-bulk-run-deferred-review-findings.md) (§1) | bug | medium | Wants the runner's tests first |
+
+### Band C — real, and expensive
+
+| # | Item | Kind | Effort | Why here |
+|:-:|---|---|---|---|
+| 25 | [#51 phase 2 — app **data** backup](app-data-backup-and-xapk-export.md) | feature | 5–8 d | Highest-impact item left (4/5), and `README.md` has promised it for a year. Root-only, hard-gated |
+| 26 | [#178 — app tagging + per-app notes](../feature-request-roadmap.md) | feature | 3–5 d | **Demand is no longer zero** — two users, one thread. Notes and tags are one Room migration, so build them together or neither |
+| 27 | Change history + update history | feature | medium–large | Room has no event table and `AppEntity` overwrites the version on every scan, so *both* need the same new table. Do them as one piece of work |
+| 28 | [`BulkFreezeRunner` concurrency tests](bulk-freeze-runner-concurrency-tests.md) | tests | medium | Still blocked: 3 of 4 collaborators need a seam before the runner can be built in a JVM test |
+| 29 | App Ops–style permission grant/revoke | feature | large | Genuinely new surface. Thor filters by permission and grants; it cannot revoke |
+| 30 | Portuguese translation | i18n | 480 strings | Mechanical but not small, and it is 480 strings *per* new locale forever after |
+| 31 | [Abandoned-app notifications](reddit-howtomen-feedback.md) | feature | medium | Re-priced downward: the permission is **already declared** (#13), so what remains is the usage-access deep link, a `queryUsageStats` read and a notification — ordinary work, not a new special access. Still last of the cheap-ish items because it adds a background schedule to maintain |
+| 32 | #58 — app lock · #209 — VirusTotal | feature | 4–15 d each | Both carry a policy or maintenance tax out of proportion to demand. #209 also puts a third-party API key in a FOSS build |
+
+### Band D — not ready, or not ours
+
+| # | Item | Why it is not rankable |
+|:-:|---|---|
+| — | [biometric capability check](biometric-lock-restores-without-a-capability-check.md) · [watchlist recovery flag](restored-prompt-flag-suppresses-watchlist-recovery.md) · [cross-privilege suspend](cross-privilege-suspend-ownership.md) · [subscription downgrade](subscription-downgrade-replacement-mode.md) | **Fixed or shipped, awaiting a device.** These need verification, not development — and they are ahead of everything above on *risk*, whatever their rank on effort |
+| — | [release builds emit no Thor logcat](release-builds-emit-no-thor-logcat.md) | Possibly deliberate — logcat is world-readable and Thor's logs carry package lists and shell commands. Needs a ruling, not a build |
+| — | [odin root availability cache](odin-root-availability-cache.md) · residual `MainShell` hang | Upstream in Odin |
+| — | [on-device Perfetto pass](perfetto-trace-pass.md) | Explicitly last, by design |
+| — | [vercel-actions-deploy](vercel-actions-deploy.md) | Deferred, nothing broken |
+| — | Editing `packages.xml` · Batch install · Authenticated extension trigger | Unsized `README.md` promises with no issue, design or doc |
 
 ---
 
@@ -127,9 +219,30 @@ Rows tagged 🔴 carry the roadmap's own "defer" verdict; the rest have had no o
 |---|---|:---:|---|---|
 | **#130 — installer attribution + drill-down** | the friendly installer label is the achievable slice; the drill-down nav is the bulk | 3 · 🟡 | 1–2 d (label ≈0.25 d) | slice worth doing, unscheduled |
 | **#58 — app lock** | the whole launch-detection + overlay pipeline is net-new, plus a Play-policy risk and an ongoing maintenance tax | 3 · 🔴 | 8–15 d | roadmap says defer |
-| **#178 — app tagging** | low-risk build, **zero demand** | 3 · 🔴 | 3–5 d | roadmap says defer; bundle with app-list UX work if demand appears |
+| **#178 — app tagging**, and per-app **notes** with it | low-risk build, one Room migration, and the two asks share all of it | 3 · 🔴 | 3–5 d for both | ⚠️ **the deferral reason is spent.** It was deferred as *"zero demand"*; 2026-08-07 brought two independent requests (tags, and notes over the same storage). The **cost** objection stands and may still justify deferring — but it now has to be deferred on cost. `bundle with app-list UX work if demand appears` has been discharged: demand appeared |
 | **#209 — VirusTotal scanner** | an entire network stack, a user-supplied API key, and third-party upload privacy | 3 · 🔴 | 4–7 d | roadmap says defer |
-| **#55b — process manager (RAM/CPU)** | fragile `dumpsys`/`top` parsing, root/Shizuku-only, Dhizuku dead-end | 3 · 🔴 | 4–7 d | roadmap says defer. **#55a — freeze profiles — shipped in v1.93.1 (PR #295)**, which is why #55 stays open on this half alone; status comment posted to the issue 2026-08-03 |
+| **#55b — process manager (RAM/CPU)** | fragile `dumpsys`/`top` parsing, root/Shizuku-only, Dhizuku dead-end | 3 · 🔴 | 4–7 d full · **medium for the running/not-running half** | **corroborated, and narrower than it was filed.** A user asked for it 2026-08-07 — but asked *"options for know app running in background"*, not for RAM/CPU. **Every engineering objection above applies to the stats, not to the flag**, and Dhizuku's dead-end blocks per-process stats far harder than a coarse answer. Split it: the cheap half is band B, the full manager stays deferred. **#55a — freeze profiles — shipped in v1.93.1 (PR #295)**, which is why #55 stays open on this half alone; status comment posted to the issue 2026-08-03 |
+
+### User-reported, 2026-08-07 (r/howtomen)
+
+All twenty-three asks and their verification are in
+[`reddit-howtomen-feedback.md`](reddit-howtomen-feedback.md); the ones that are not already covered
+by a row above are listed here. **Nothing in this block is a defect** — the one report that looked
+like one is intended behaviour.
+
+| Item | What | Tier | Effort | Status |
+|---|---|:---:|---|---|
+| **[a freeze that silently *removes* the app for the user](reddit-howtomen-feedback.md)** | on OEM builds that refuse `pm disable-user`, freezing escalates to `pm uninstall -k --user N`, which clears `FLAG_INSTALLED`. A user reported losing their **Google accounts** to it when freezing Play Services — and, consistently, seeing none of the notification spam Hail's disable produces. The escalation gate itself is correct and is **not** what is being questioned | 3 | small–medium | **band A #1.** ⚠️ **The mechanism is inferred, not measured** — reproduce before fixing, on a device where disable is actually refused, since on stock Android the escalation never fires. The fix is disclosure plus an opt-out, not removing the fallback |
+| **[UAD tier + description in the list](reddit-howtomen-feedback.md)** | the safety label appears only in an app's detail page, so it is invisible during exactly the bulk debloat where it matters | 3 | small | **band A #2/#6.** `uad_lists.json` already ships `description` and `UadEntry` already parses it — `UadSnapshot` exposes only `removal`, so the data is read and discarded. Rendering work, no new data source |
+| **[no in-app explanation of Force Stop / Suspend / Freeze](reddit-howtomen-feedback.md)** | three destructive-looking verbs offered with labels and icons and nothing else | 3 | small | band A #3 |
+| **[Freeze Profiles are undiscoverable](reddit-howtomen-feedback.md)** | "custom tabs/groups in the Freezer with group actions" — most of which shipped in v1.93.1 as #55a, requested anyway by a user who had read the screen carefully | 3 | small | band A #5. Per-group *kill*/*suspend* is the genuine remainder (band B #18) |
+| **[Fix Store is opaque, all-or-nothing and uncancellable](reddit-howtomen-feedback.md)** | *"forces the installer record"* is accurate but jargon; a user ran it and had every sideloaded app's installer rewritten from InstallerX to Play. **Confirmed: the target set is computed, never chosen** (`MainViewModel.kt:459-471`) | 3 | medium | band B #15 |
+| **app-list UX cluster** | default tab · [copy package name](reddit-howtomen-feedback.md) · icon size / columns · quick scrollbar with sort-aware snapping · optional per-freeze confirmation | 3 | trivial→medium each | bands A/B. Independent of each other; the scrollbar is the only one above small, and `SortBy`'s four family predicates are already the switch its snap targets need |
+| **[change history and update history](reddit-howtomen-feedback.md)** | "last week you installed X, froze Z", and "what version was this before the update that broke it" | 3 | medium–large | band C #27. **One piece of work, not two** — Room is at v6 with no event table, and `AppEntity` overwrites `versionCode`/`versionName` on every scan, so neither question has anywhere to be answered from today |
+| **[export the app list to CSV/MD](reddit-howtomen-feedback.md)** | package names, versions, frozen status | 3 | small–medium | band B #21 — the SAF picker and write plumbing already shipped with #164/#51 |
+| **[App Ops–style permission grant/revoke](reddit-howtomen-feedback.md)** | grant or revoke permissions the system greys out | 3 | large | band C #29 — genuinely new. Thor filters *by* permission (#285) and grants via `pm grant`; it cannot revoke |
+| **[abandoned-app notifications](reddit-howtomen-feedback.md)** | "unused for 6 months — uninstall or freeze?" | 3 | medium | band C #31 — **re-priced while sizing it**: `PACKAGE_USAGE_STATS` is already in the manifest and unused, which is band A #13 in its own right |
+| **[Portuguese translation](reddit-howtomen-feedback.md)** | Thor ships `en` + `ar`, `es`, `fr`, `zh-rCN` | 3 | 480 strings | band C #30 — mechanical, not small, and it is 480 strings per locale forever after. A community PR is the natural route |
 | **Editing `packages.xml`** | listed under *Upcoming Features* in the project `README.md`. No issue, no design, no doc | 3 | unsized | no decision |
 | **Batch install** | listed under *Upcoming Features* in the project `README.md`. No issue, no design, no doc | 3 | unsized | no decision |
 | **Authenticated extension trigger** | *Upcoming Features*: replace the removed public `thor://extension/trigger` deep link with an explicit-component intent or a nonce-signed token | 3 | unsized | no decision — but the insecure version is already gone, so this is an addition, not a fix |
