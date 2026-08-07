@@ -19,6 +19,9 @@
     <string name="show_extensions_tile_desc">Show Extensions on the home screen</string>
     <string name="auto_reinstall">Auto Reinstall Apps</string>
     <string name="auto_reinstall_desc">Automatically preserve Google Play Store as the installer of record to enable background updates</string>
+    <!-- Options reuse the four navigation labels above (home / apps / freezer / settings). -->
+    <string name="default_tab">Default Tab</string>
+    <string name="default_tab_desc">The screen Thor opens on at launch</string>
     <string name="appearance">APPEARANCE</string>
     <string name="theme">Theme</string>
     <string name="theme_desc">Visual interface style</string>
@@ -108,6 +111,16 @@
     <string name="descending">Descending</string>
     <string name="filters">Filters</string>
     <string name="sort_by">Sort By</string>
+    <!-- One label per SortBy entry. The English values are byte-identical to the strings
+         SortBy.asGeneralName() hardcodes today, so switching to resources changes no en text. -->
+    <string name="sort_by_name">Name</string>
+    <string name="sort_by_size">Size</string>
+    <string name="sort_by_install_date">Install Date</string>
+    <string name="sort_by_last_updated">Last Updated</string>
+    <string name="sort_by_version_code">Version Code</string>
+    <string name="sort_by_version_name">Version Name</string>
+    <string name="sort_by_target_sdk">Target SDK Version</string>
+    <string name="sort_by_min_sdk">Min SDK Version</string>
     <string name="filter_type_state">Active State</string>
     <string name="filter_type_source">Installation Source</string>
     <string name="filter_type_permission">Permission</string>
@@ -153,6 +166,15 @@
     <string name="action_cache">Cache</string>
     <string name="action_uninstall">Uninstall</string>
     <string name="action_reinstall">Reinstall</string>
+
+    <!-- Action explainers. Three actions users routinely confuse; each body answers the same
+         three questions in the same order — what it does, does it survive a reboot, is data lost. -->
+    <string name="explain_force_stop_title">Force Stop</string>
+    <string name="explain_force_stop_body">Kills the app and everything it is running right now. It stays installed and starts again the moment you or the system opens it. Nothing is deleted.</string>
+    <string name="explain_suspend_title">Suspend</string>
+    <string name="explain_suspend_body">The app stays on your launcher but can\'t be opened — tapping it shows a system dialog instead. This survives a reboot, until you unsuspend it. Nothing is deleted.</string>
+    <string name="explain_freeze_title">Freeze</string>
+    <string name="explain_freeze_body">Disables the app completely: it disappears from the launcher and can\'t run at all, not even in the background. This survives a reboot, until you unfreeze it. Nothing is deleted.</string>
 
     <!-- Export -->
     <string name="action_export">Export</string>
@@ -305,6 +327,10 @@
         <item quantity="other">Added %1$d apps to Freezer</item>
     </plurals>
     <string name="add_to_freezer">Add to Freezer</string>
+    <!-- Confirmation shown before an app joins the watchlist. Adding freezes immediately — that is
+         the intended behaviour, so the copy states it as the rule rather than apologising for it. -->
+    <string name="freezer_add_warning_title">Adding freezes it now</string>
+    <string name="freezer_add_warning_body">An app goes into the Freezer already frozen — that is how the Freezer works, not a fault. Anything you haven\'t saved in it is lost, and it stays frozen until you unfreeze it.</string>
 
     <!-- Extensions -->
     <string name="extensions">Extensions</string>
@@ -392,6 +418,11 @@
          paraphrasing it away into "reflection is blocked or shell lacks permissions" named the
          wrong cause, which is the defect this string replaces. -->
     <string name="freeze_system_app_removal_failed">Can\'t freeze %1$s. This device wouldn\'t let Thor disable it, and removing it for this user also failed. Android reported: %2$s</string>
+    <!-- %1$s is an app name. Replaces the freeze->uninstall escalation: a refused disable is now a
+         plain failure. The second sentence exists because "it just didn't work" reads as a bug,
+         while "Thor chose not to remove it" is the decision — removing a preinstalled app can sign
+         the user out of every account it manages. Short enough to read in a Toast. -->
+    <string name="freeze_system_app_disable_refused">Can\'t freeze %1$s. This device refused to disable it, so Thor left the app alone — removing it instead could sign you out of the accounts it manages.</string>
     <string name="unfreezing_app">Unfreezing %1$s…</string>
     <string name="uninstall_success">Uninstalled %1$s</string>
     <string name="error_app_info_missing">Error: App info missing for action</string>
@@ -420,6 +451,7 @@
     <string name="action_clear_cache">Clear Cache</string>
     <string name="action_clear_data">Clear Data</string>
     <string name="info_app_version">App version</string>
+    <string name="info_package_name">Package name</string>
     <string name="info_sdk_details">SDK details</string>
     <string name="info_sdk_details_format">Target SDK: %1$d   |   Min SDK: %2$d</string>
     <string name="info_app_size">Size</string>
@@ -431,6 +463,9 @@
     <string name="info_obb_dir">OBB directory</string>
     <string name="info_shared_data_dir">Shared data directory</string>
     <string name="info_signature_sha256">SHA-256 signature fingerprint</string>
+    <!-- Label for the UAD debloat note. The note itself ships in uad_lists.json and is English
+         only, so this card renders in the General tab alone — never in the app-info header. -->
+    <string name="info_bloat_description">Why this is flagged</string>
     <string name="no_permissions_found">No permissions found</string>
     <string name="search_components_placeholder">Search components&#8230;</string>
     <string name="section_activities_title">Activities (%1$d)</string>
@@ -581,6 +616,14 @@
     <string name="unlock">Unlock</string>
     <string name="thank_you_support_desc">Your subscription is active. Thank you for helping support the development of Thor!</string>
 
+    <!-- Grid density. Deliberately its own three labels rather than reusing
+         animation_intensity_low/medium/high — two unrelated settings must not share copy. -->
+    <string name="grid_density">Grid Density</string>
+    <string name="grid_density_desc">How many apps fit in a row of the grid</string>
+    <string name="grid_density_compact">Compact</string>
+    <string name="grid_density_default">Default</string>
+    <string name="grid_density_large">Large</string>
+
     <!-- Details & Animation Intensity -->
     <string name="action_details">Details</string>
     <string name="animation_intensity">Animation Intensity</string>
@@ -592,6 +635,9 @@
 
     <!-- Freeze profiles -->
     <string name="freeze_profiles">Freeze Profiles</string>
+    <!-- Short label for the entry point that opens the profiles screen. The empty state itself
+         reuses no_profiles_yet / no_profiles_yet_desc. -->
+    <string name="freeze_profiles_action">Freeze profiles</string>
     <string name="profile_new">New profile</string>
     <string name="profile_edit">Edit profile</string>
     <string name="profile_name_label">Profile name</string>

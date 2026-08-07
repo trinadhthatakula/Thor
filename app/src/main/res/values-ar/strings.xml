@@ -17,6 +17,8 @@
     <string name="show_installer_tile_desc">إظهار "تثبيت من ملف" على الشاشة الرئيسية</string>
     <string name="show_extensions_tile">إظهار مربع الإضافات</string>
     <string name="show_extensions_tile_desc">إظهار الإضافات على الشاشة الرئيسية</string>
+    <string name="default_tab">علامة التبويب الافتراضية</string>
+    <string name="default_tab_desc">الشاشة التي يفتحها Thor عند التشغيل</string>
     <string name="appearance">المظهر</string>
     <string name="theme">المظهر</string>
     <string name="theme_desc">نمط الواجهة المرئية</string>
@@ -103,6 +105,14 @@
     <string name="descending">تنازلي</string>
     <string name="filters">الفلاتر</string>
     <string name="sort_by">فرز حسب</string>
+    <string name="sort_by_name">الاسم</string>
+    <string name="sort_by_size">الحجم</string>
+    <string name="sort_by_install_date">تاريخ التثبيت</string>
+    <string name="sort_by_last_updated">آخر تحديث</string>
+    <string name="sort_by_version_code">رمز الإصدار</string>
+    <string name="sort_by_version_name">اسم الإصدار</string>
+    <string name="sort_by_target_sdk">إصدار SDK المستهدف</string>
+    <string name="sort_by_min_sdk">أدنى إصدار SDK</string>
     <string name="filter_type_state">الحالة النشطة</string>
     <string name="filter_type_source">مصدر التثبيت</string>
     <string name="filter_type_permission">الإذن</string>
@@ -146,6 +156,14 @@
     <string name="action_cache">ذاكرة مؤقتة</string>
     <string name="action_uninstall">إلغاء التثبيت</string>
     <string name="action_reinstall">إعادة تثبيت</string>
+
+    <!-- Action explainers -->
+    <string name="explain_force_stop_title">فرض الإيقاف</string>
+    <string name="explain_force_stop_body">ينهي التطبيق وكل ما يشغّله في هذه اللحظة. يبقى مثبَّتًا ويعمل من جديد بمجرد أن تفتحه أنت أو يفتحه النظام. لا يُحذف أي شيء.</string>
+    <string name="explain_suspend_title">التعليق</string>
+    <string name="explain_suspend_body">يبقى التطبيق في شاشة التطبيقات لكن لا يمكن فتحه — عند النقر عليه تظهر نافذة نظام بدلاً من ذلك. يستمر ذلك بعد إعادة التشغيل حتى تلغي التعليق. لا يُحذف أي شيء.</string>
+    <string name="explain_freeze_title">التجميد</string>
+    <string name="explain_freeze_body">يعطّل التطبيق تمامًا: يختفي من شاشة التطبيقات ولا يمكنه العمل إطلاقًا، ولا حتى في الخلفية. يستمر ذلك بعد إعادة التشغيل حتى تلغي التجميد. لا يُحذف أي شيء.</string>
 
     <!-- Main Screen / Global -->
     <string name="cannot_launch_app">لا يمكن تشغيل التطبيق</string>
@@ -238,6 +256,8 @@
         <item quantity="other">تمت إضافة %1$d تطبيقات إلى المجمد</item>
     </plurals>
     <string name="add_to_freezer">إضافة للمجمد</string>
+    <string name="freezer_add_warning_title">الإضافة تُجمّده فورًا</string>
+    <string name="freezer_add_warning_body">يدخل التطبيق إلى المجمد مجمدًا بالفعل — هكذا يعمل المجمد، وليس خللًا. يُفقد كل ما لم تحفظه فيه، ويبقى مجمدًا حتى تلغي تجميده.</string>
 
     <!-- Extensions -->
     <string name="extensions">الإضافات</string>
@@ -314,6 +334,7 @@
     <string name="action_clear_cache">مسح التخزين المؤقت</string>
     <string name="action_clear_data">مسح البيانات</string>
     <string name="info_app_version">إصدار التطبيق</string>
+    <string name="info_package_name">اسم الحزمة</string>
     <string name="info_sdk_details">تفاصيل SDK</string>
     <string name="info_sdk_details_format">SDK المستهدف: %1$d   |   SDK الأدنى: %2$d</string>
     <string name="info_installer_source">مصدر التثبيت</string>
@@ -324,6 +345,7 @@
     <string name="info_obb_dir">دليل OBB</string>
     <string name="info_shared_data_dir">دليل البيانات المشتركة</string>
     <string name="info_signature_sha256">بصمة توقيع SHA-256</string>
+    <string name="info_bloat_description">سبب هذا التصنيف</string>
     <string name="no_permissions_found">لم يتم العثور على أذونات</string>
     <string name="search_components_placeholder">البحث عن المكونات&#8230;</string>
     <string name="section_activities_title">الأنشطة (%1$d)</string>
@@ -466,6 +488,13 @@
     <string name="unlock">إلغاء القفل</string>
     <string name="thank_you_support_desc">اشتراكك نشط الآن. شكرًا لك على المساعدة في دعم تطوير Thor!</string>
     
+    <!-- Grid density -->
+    <string name="grid_density">كثافة الشبكة</string>
+    <string name="grid_density_desc">عدد التطبيقات التي تظهر في صف واحد من الشبكة</string>
+    <string name="grid_density_compact">مضغوطة</string>
+    <string name="grid_density_default">افتراضية</string>
+    <string name="grid_density_large">كبيرة</string>
+
     <!-- Details & Animation Intensity -->
     <string name="action_details">التفاصيل</string>
     <string name="animation_intensity">كثافة الرسوم المتحركة</string>
@@ -481,6 +510,7 @@
     <string name="suspend_owned_by_other_privilege">لا يمكن إلغاء تعليق %1$s من هنا. تم تعليقه بواسطة %2$s، ولا يسمح Android إلا للصلاحية نفسها بإلغائه. بدّل Thor إلى وضع الصلاحية ذاك وحاول مرة أخرى.</string>
     <string name="freeze_system_app_requires_root">لا يمكن تجميد %1$s من هنا. لم يسمح هذا الجهاز لـ Thor بتعطيله، ولا يسمح Android إلا لـ root بإزالة تطبيق مثبَّت مسبقًا لمستخدم واحد. لم يطرأ أي تغيير على التطبيق — يتطلب تجميده وضع Root في Thor.</string>
     <string name="freeze_system_app_removal_failed">لا يمكن تجميد %1$s. لم يسمح هذا الجهاز لـ Thor بتعطيله، كما فشلت إزالته لهذا المستخدم. أبلغ Android عن: %2$s</string>
+    <string name="freeze_system_app_disable_refused">لا يمكن تجميد %1$s. رفض هذا الجهاز تعطيله، لذلك تركه Thor دون تغيير — فإزالته بدلاً من ذلك قد تُخرجك من الحسابات التي يديرها.</string>
     <string name="auto_reinstall">إعادة التثبيت التلقائي للتطبيقات</string>
     <string name="auto_reinstall_desc">الحفاظ تلقائيًا على متجر Google Play كمثبت رئيسي لتمكين التحديثات في الخلفية</string>
     <string name="legacy_extension_title">تم اكتشاف امتداد قديم</string>
@@ -586,6 +616,7 @@
 
     <!-- ملفات التجميد -->
     <string name="freeze_profiles">ملفات التجميد</string>
+    <string name="freeze_profiles_action">ملفات التجميد</string>
     <string name="profile_new">ملف جديد</string>
     <string name="profile_edit">تعديل الملف</string>
     <string name="profile_name_label">اسم الملف</string>
