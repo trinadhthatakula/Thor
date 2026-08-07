@@ -10,6 +10,9 @@ data class UserPreferences(
     val appFilterType: FilterType = FilterType.Source,
     val appSelectedFilter: String = "All",
 
+    // Navigation — the tab Thor opens on at launch
+    val defaultTab: DefaultTab = DefaultTab.HOME,
+
     // Home Screen Config
     val showReinstallAllCard: Boolean = true,
 
@@ -54,6 +57,9 @@ data class UserPreferences(
     // Grid/List View modes
     val appListIsGrid: Boolean = true,
     val freezerIsGrid: Boolean = true,
+
+    // How tightly the grids pack. DEFAULT is today's rendering to the dp — see AppGridDensity.
+    val appGridDensity: AppGridDensity = AppGridDensity.DEFAULT,
 
     // Extensions (the Settings entry is shown only with an active privilege; the manager itself is
     // gated behind a one-time liability-consent sheet on first open).

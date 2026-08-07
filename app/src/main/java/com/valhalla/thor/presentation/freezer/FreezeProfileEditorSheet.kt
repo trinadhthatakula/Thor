@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import com.valhalla.asgard.components.ConnectedButtonGroup
 import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FreezeProfile
@@ -61,6 +62,7 @@ import com.valhalla.thor.domain.model.profileNameError
 import com.valhalla.thor.presentation.widgets.AppRiskAction
 import com.valhalla.thor.presentation.widgets.AppRiskDialog
 import com.valhalla.thor.presentation.widgets.AppSearchBar
+import com.valhalla.thor.presentation.widgets.gridMetricsFor
 import kotlinx.coroutines.launch
 
 /**
@@ -82,6 +84,7 @@ fun FreezeProfileEditorSheet(
     existingNames: List<String>,
     allApps: List<AppInfo>,
     searchQuery: String,
+    gridDensity: AppGridDensity = AppGridDensity.DEFAULT,
     onSearchChange: (String) -> Unit,
     onSave: (name: String, packageNames: List<String>) -> Unit,
     onDismiss: () -> Unit
@@ -228,8 +231,9 @@ fun FreezeProfileEditorSheet(
             Spacer(Modifier.height(4.dp))
         }
 
+        val metrics = gridMetricsFor(gridDensity)
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 100.dp),
+            columns = GridCells.Adaptive(minSize = metrics.minCellSize),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp)
         ) {
             items(filtered.sortedBy { it.appName }, key = { it.packageName }) { app ->
@@ -237,6 +241,7 @@ fun FreezeProfileEditorSheet(
                 FreezerAppPickerItem(
                     app = app,
                     selected = picked,
+                    metrics = metrics,
                     onClick = {
                         // Same rule the watchlist applies at add time, for the same reason: a
                         // profile is a standing instruction that later runs act on with no UI.

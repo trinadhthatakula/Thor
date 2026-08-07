@@ -25,11 +25,13 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddCircle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
@@ -55,6 +57,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -76,6 +79,7 @@ import com.valhalla.thor.presentation.widgets.AppInfoSheet
 import com.valhalla.thor.presentation.widgets.AppItemGrid
 import com.valhalla.thor.presentation.widgets.AppItemList
 import com.valhalla.thor.presentation.widgets.AppSearchBar
+import com.valhalla.thor.presentation.widgets.gridMetricsFor
 import com.valhalla.thor.presentation.widgets.FreezerPromptSnackbar
 import org.koin.androidx.compose.koinViewModel
 
@@ -269,6 +273,25 @@ fun FreezerScreen(
                         onQueryChange = viewModel::updateSearchQuery,
                         onOpenConfig = { showSettingsSheet = true }
                     )
+
+                    // Freeze Profiles has shipped since v1.93.1 and people still ask for it,
+                    // because the only way in outside multi-select was the unlabelled glyph in
+                    // the floating toolbar below — third of four identical icon buttons. This is
+                    // the label that glyph never had. Not privilege-gated, for the same reason
+                    // the toolbar button isn't; see the comment there.
+                    FilledTonalButton(
+                        onClick = { showProfilesSheet = true },
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.list_alt),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.size(6.dp))
+                        Text(stringResource(R.string.freeze_profiles_action))
+                    }
                 }
 
                 // --- App List / Empty State ---
@@ -298,12 +321,33 @@ fun FreezerScreen(
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                 )
+                                // The other half of the discoverability fix: say what profiles
+                                // are, while there is room to. Only the truly-empty branch gets
+                                // this — a user who has filtered a populated watchlist down to
+                                // nothing is not being onboarded — and only while they have no
+                                // profiles, since past that it explains something they know.
+                                if (state.profiles.isEmpty()) {
+                                    Spacer(Modifier.size(24.dp))
+                                    Text(
+                                        stringResource(R.string.no_profiles_yet),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        stringResource(R.string.no_profiles_yet_desc),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.padding(horizontal = 32.dp)
+                                    )
+                                }
                             }
                         }
                     }
                 } else if (state.isGrid) {
+                    val metrics = gridMetricsFor(state.gridDensity)
                     LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 100.dp),
+                        columns = GridCells.Adaptive(minSize = metrics.minCellSize),
                         contentPadding = PaddingValues(bottom = 100.dp, top = 8.dp),
                         modifier = Modifier.weight(1f)
                     ) {
@@ -320,6 +364,7 @@ fun FreezerScreen(
                                         selectedPackageName = app.packageName
                                 },
                                 onLongClick = { viewModel.toggleSelection(app.packageName) },
+                                metrics = metrics,
                                 sharedTransitionScope = sharedTransitionScope,
                                 animatedVisibilityScope = animatedVisibilityScope
                             )
@@ -523,6 +568,7 @@ fun FreezerScreen(
             allApps = state.allInstalledApps,
             freezerPackageNames = state.freezerPackageNames,
             searchQuery = state.manageSheetSearchQuery,
+            gridDensity = state.gridDensity,
             onSearchChange = viewModel::updateManageSheetSearch,
             onToggle = { pkg, add -> viewModel.toggleManaged(pkg, add) },
             onDismiss = { showManageSheet = false }
@@ -574,6 +620,7 @@ fun FreezerScreen(
             existingNames = state.profiles.map { it.name },
             allApps = state.allInstalledApps,
             searchQuery = state.profileEditorSearchQuery,
+            gridDensity = state.gridDensity,
             onSearchChange = viewModel::updateProfileEditorSearch,
             onSave = { name, packageNames ->
                 if (editing == null) viewModel.createProfile(name, packageNames)

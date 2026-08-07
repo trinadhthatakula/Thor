@@ -15,6 +15,8 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.valhalla.thor.data.repository.PreferenceRepositoryImpl.Keys
 import com.valhalla.thor.data.repository.PreferenceRepositoryImpl.LocalKeys
 import com.valhalla.thor.domain.model.AnimationIntensity
+import com.valhalla.thor.domain.model.AppGridDensity
+import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
@@ -118,6 +120,9 @@ class PreferenceRepositoryImpl(
         val SELECTED_FILTER = stringPreferencesKey("selected_filter")
         val SHOW_REINSTALL_ALL = booleanPreferencesKey("show_reinstall_all")
 
+        // Navigation
+        val DEFAULT_TAB = stringPreferencesKey("default_tab")
+
         // Home tiles
         val SHOW_INSTALLER_TILE = booleanPreferencesKey("show_installer_tile")
         val SHOW_EXTENSIONS_TILE = booleanPreferencesKey("show_extensions_tile")
@@ -161,6 +166,7 @@ class PreferenceRepositoryImpl(
         // Grid/List View
         val APP_LIST_IS_GRID = booleanPreferencesKey("app_list_is_grid")
         val FREEZER_IS_GRID = booleanPreferencesKey("freezer_is_grid")
+        val APP_GRID_DENSITY = stringPreferencesKey("app_grid_density")
 
         // Extensions
         val EXTENSIONS_UNLOCKED = booleanPreferencesKey("extensions_unlocked")
@@ -205,6 +211,10 @@ class PreferenceRepositoryImpl(
 
     override suspend fun setReinstallAllCardVisibility(isVisible: Boolean) {
         context.dataStore.edit { it[Keys.SHOW_REINSTALL_ALL] = isVisible }
+    }
+
+    override suspend fun setDefaultTab(tab: DefaultTab) {
+        context.dataStore.edit { it[Keys.DEFAULT_TAB] = tab.name }
     }
 
     override suspend fun setInstallerTileVisibility(isVisible: Boolean) {
@@ -324,6 +334,12 @@ class PreferenceRepositoryImpl(
         context.dataStore.edit { prefs ->
             val current = prefs[Keys.FREEZER_IS_GRID] ?: true
             prefs[Keys.FREEZER_IS_GRID] = !current
+        }
+    }
+
+    override suspend fun setAppGridDensity(density: AppGridDensity) {
+        context.dataStore.edit {
+            it[Keys.APP_GRID_DENSITY] = density.name
         }
     }
 
@@ -465,8 +481,18 @@ internal fun Preferences.toUserPreferences(
         ?.let { runCatching { AnimationIntensity.valueOf(it) }.getOrNull() }
         ?: AnimationIntensity.MEDIUM
 
+    // Degrades to HOME for an unknown token, like every other enum here. Worth more than the
+    // others: this one is read once, before the first frame, and decides which screen the app
+    // opens on — a throw here would be a launch crash rather than a wrong-looking setting.
+    val defaultTab = prefs[Keys.DEFAULT_TAB]
+        ?.let { runCatching { DefaultTab.valueOf(it) }.getOrNull() }
+        ?: DefaultTab.HOME
+
     val appListIsGrid = prefs[Keys.APP_LIST_IS_GRID] ?: true
     val freezerIsGrid = prefs[Keys.FREEZER_IS_GRID] ?: true
+    val appGridDensity = prefs[Keys.APP_GRID_DENSITY]
+        ?.let { runCatching { AppGridDensity.valueOf(it) }.getOrNull() }
+        ?: AppGridDensity.DEFAULT
     val freezerMode = prefs[Keys.FREEZER_MODE]
         ?.let { runCatching { FreezerMode.valueOf(it) }.getOrNull() }
         ?: FreezerMode.FREEZE
@@ -476,6 +502,7 @@ internal fun Preferences.toUserPreferences(
         appSortOrder = sortOrder,
         appFilterType = filterType,
         appSelectedFilter = prefs[Keys.SELECTED_FILTER] ?: "All",
+        defaultTab = defaultTab,
         showReinstallAllCard = prefs[Keys.SHOW_REINSTALL_ALL] ?: true,
         showInstallerTile = prefs[Keys.SHOW_INSTALLER_TILE] ?: true,
         showExtensionsTile = prefs[Keys.SHOW_EXTENSIONS_TILE] ?: true,
@@ -496,6 +523,7 @@ internal fun Preferences.toUserPreferences(
         animationIntensity = animationIntensity,
         appListIsGrid = appListIsGrid,
         freezerIsGrid = freezerIsGrid,
+        appGridDensity = appGridDensity,
         extensionsUnlocked = prefs[Keys.EXTENSIONS_UNLOCKED] ?: false,
         extensionConsentAccepted = prefs[Keys.EXTENSION_CONSENT_ACCEPTED] ?: false,
         autoReinstallEnabled = prefs[Keys.AUTO_REINSTALL_ENABLED] ?: false,

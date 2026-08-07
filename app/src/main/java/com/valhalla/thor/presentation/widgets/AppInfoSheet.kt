@@ -3,7 +3,9 @@
 
 package com.valhalla.thor.presentation.widgets
 
+import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -41,6 +43,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -430,6 +434,10 @@ fun AppInfoSheet(
 
 @Composable
 private fun AppHeader(appInfo: AppInfo) {
+    val clipboard = LocalClipboard.current
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val valueLabel = stringResource(R.string.value_label)
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
@@ -506,12 +514,31 @@ private fun AppHeader(appInfo: AppInfo) {
 
         Spacer(Modifier.height(12.dp))
 
-        // Package Name
+        // Package Name. Tap to copy — the one gesture that was still free here. Long-press is the
+        // list's multi-select and a row tap opens this sheet, so the list itself has nowhere to put
+        // this; the header the sheet already draws is where the package name is legible anyway.
+        // Copying must not dismiss: `setClipEntry` suspends, and this scope dies with the sheet.
         Text(
             text = appInfo.packageName,
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontFamily = com.valhalla.thor.presentation.theme.firaMonoFontFamily
+            fontFamily = com.valhalla.thor.presentation.theme.firaMonoFontFamily,
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable {
+                    coroutineScope.launch {
+                        clipboard.setClipEntry(
+                            ClipEntry(
+                                android.content.ClipData.newPlainText(
+                                    valueLabel,
+                                    appInfo.packageName
+                                )
+                            )
+                        )
+                    }
+                    Toast.makeText(context, (R.string.toast_copy_saved), Toast.LENGTH_SHORT).show()
+                }
+                .padding(horizontal = 8.dp, vertical = 4.dp)
         )
 
         // UAD Description skipped by user request

@@ -8,6 +8,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AnimationIntensity
+import com.valhalla.thor.domain.model.AppGridDensity
+import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
@@ -163,6 +165,10 @@ class SettingsViewModel(
         viewModelScope.launch { preferenceRepository.setPrivilegeMode(mode) }
     }
 
+    fun setDefaultTab(tab: DefaultTab) {
+        viewModelScope.launch { preferenceRepository.setDefaultTab(tab) }
+    }
+
     fun setReinstallAllCardVisibility(visible: Boolean) {
         viewModelScope.launch { preferenceRepository.setReinstallAllCardVisibility(visible) }
     }
@@ -241,6 +247,12 @@ class SettingsViewModel(
     fun setAnimationIntensity(intensity: AnimationIntensity) {
         viewModelScope.launch {
             preferenceRepository.setAnimationIntensity(intensity)
+        }
+    }
+
+    fun setAppGridDensity(density: AppGridDensity) {
+        viewModelScope.launch {
+            preferenceRepository.setAppGridDensity(density)
         }
     }
 }

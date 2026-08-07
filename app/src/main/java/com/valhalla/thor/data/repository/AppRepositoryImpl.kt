@@ -110,6 +110,14 @@ class AppRepositoryImpl(
             val cachedMap = try {
                 val entities = appDao.getAllApps()
                 if (entities.isNotEmpty()) {
+                    // Deliberately un-enriched. `AppEntity` stores no bloat fields, so this first
+                    // frame carries a null recommendation and description for every app, and the
+                    // list's UAD tier badge draws nothing until the rescan below lands. Copying
+                    // `uadHelper.uadMap` in here would fix the pop-in and drag the ~1.6 MB JSON
+                    // parse, under its lock, onto the one path that exists to get pixels up fast —
+                    // the path that was cleared of exactly that after an ANR (see the note at the
+                    // per-rescan read further down, and `UadHelper.uadMap`). A badge that arrives a
+                    // beat late is recoverable; a stall before the first frame is not.
                     producer.send(entities.map { it.toDomain() })
                 }
                 entities.associateBy { it.packageName }.toMutableMap()
