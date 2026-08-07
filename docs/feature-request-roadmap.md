@@ -1,20 +1,20 @@
 # Thor — Feature Request Roadmap
 
-**Date:** 2026-07-02 · **Last reviewed:** 2026-08-07 (user feedback folded in; #178 and #55b reassessed)
-
-> **The ranked build order now lives in [`follow-ups/README.md`](follow-ups/README.md).** That file
-> ranks *everything* open — issue-backed or not — by impact × ease, which is what insight 5 below
-> says a roadmap tracking only issues will always fail to do.
-
-**Purpose:** The per-issue analysis behind each estimate — what infrastructure a request can reuse, what it must build, and what its privilege tier costs it. It covers the **issue tracker only**; use it to answer *"why is this number what it is?"*, not *"what should I pick up?"*
-
+**Date:** 2026-07-02 · **Last reviewed:** 2026-07-30 (statuses re-checked against `origin/dev` and the live issue tracker)
+**Partially re-checked:** 2026-08-07 — **only** the four rows that user feedback or the `feat/band-a`
+build actually moved (161, 178, 55b, and 55a, which this file still had *in review* three weeks after
+it merged). Every other row still carries its 2026-07-30 status and has
+**not** been re-verified against the issue tracker since. Corrections are struck through in place
+rather than overwritten, per this file's own convention — the superseded wording is quoted from
+`docs/follow-ups/`, so deleting it would orphan those quotes.
+**Purpose:** A prioritized, codebase-grounded triage of the open feature requests in the issue tracker — ranked by value-to-effort with implementation estimates and impact, to drive the "greens first" build order.
 **Method:** Each request was analyzed against the actual Thor codebase (existing infra it can reuse, layers it touches, root/Shizuku/Dhizuku feasibility), so the estimates reflect *what already exists vs. what must be built*, not guesses.
 
 ## How to read this
 
 - **Impact** 1–5 (niche → transformative). **Effort** = complexity 1–5 + a rough solo-dev day estimate.
 - **Tier / colour:** 🟢 do-first quick wins (high value, low risk) · 🟡 solid bets (scope carefully) · 🔴 defer (high effort or low demand).
-- **Build strategy:** one issue per branch. Several requests are "a cheap MVP wearing an expensive costume" — ship the small high-value slice, defer/decline the rest. Which one to pick up first is answered in [`follow-ups/README.md`](follow-ups/README.md), not here.
+- **Build strategy:** one issue per branch, **greens first**. Several requests are "a cheap MVP wearing an expensive costume" — ship the small high-value slice, defer/decline the rest.
 
 ## Status snapshot
 
@@ -23,10 +23,10 @@
 | **#57** | Sort by size | ✅ **Done** — built as *total install size* (metric upgraded from APK size at maintainer's call); merged to `dev` (`3e8de3e`). ⚠️ the GitHub issue is still **open** — close it |
 | **#164** | Export bundles | ✅ **Done as scoped** — `.xapk` shipped alongside the existing `.apk` / `.apks` writers, with a format picker in the export sheet (`BundleFormat`, `ExportBottomSheet`). ⚠️ **close it with the scope stated**: the issue's fourth output, a raw split *folder*, is declined, not built — closing silently would read as shipped. The in-thread `.xapk` promise is kept |
 | **#210** | Keep-in-launcher | ✅ **Achievable slice done** — the Freeze\|Suspend mode shipped via #239 (PR #241). The accessibility-based auto-refreeze remains declined, as planned |
-| **#55a** | Freeze profiles | ✅ **Shipped** — PR #295 merged 2026-07-30, released in v1.93.1. All three recon risks closed: the tier gate, the runner's coalescing key and the launcher restore gate (see below) |
+| **#55a** | Freeze profiles | ✅ **Shipped** — ~~in review (#295)~~ merged 2026-07-30 (`2a503959`) and released in v1.93.1. All three recon risks closed: the tier gate, the runner's coalescing key and the launcher restore gate (see below). ⚠️ **It is also undiscoverable**, which r/howtomen surfaced as a feature request for something already built; band A #5 added a labelled entry point |
 | #51 | App + data backup | 🟨 **Phase 1 done** — multi-select → bulk APK/bundle backup to the export target with a `thor-backup-<stamp>.json` manifest, a cancellable progress bar and a process-lifetime runner. **Phase 2 (root data tar) not started**, and that is the half `README.md` has promised for a year |
 | **#285** | Filter by permission | ✅ **Done** — merged to `dev` (#294). Scope question settled: one `getInstalledPackages` sweep, no Room change. ⚠️ the GitHub issue is still **open** — close it |
-| #161 | `.apks` won't open from Samsung My Files | 🐞 **bug, not a feature** — unanswered since 2026-07-18 |
+| #161 | `.apks` won't open from Samsung My Files | 🐞 **bug, not a feature** — ~~unanswered since 2026-07-18~~ diagnosed 2026-07-30, answered on the issue 2026-08-03, **half fixed 2026-08-07** on `feat/band-a`. Stays open: what fixes the other half is a device diagnostic nobody has run |
 | _all others_ | | ⬜ not started |
 
 **Shipped since this document was written but not tracked by any issue:** the Freezer QS tile
@@ -36,7 +36,9 @@ timing fix (#278), the `longVersionCode` truncation fix (#277), installer downgr
 R8 fix (#265). That is where the last four weeks went — the feature backlog below barely moved
 because the work was elsewhere.
 
-**In review, not yet merged:** nothing. Freeze profiles (#295/#55a) merged 2026-07-30. The permission filter
+**In review, not yet merged:** ~~freeze profiles (#295/#55a), and nothing else~~ — **nothing**. #295
+merged 2026-07-30, which is what makes this paragraph the file's own worked example of insight 5
+below: a status line is only true on the day it is written. The permission filter
 (#294/#285), the watchlist prompt flag (#299), the shortcut match flags (#300), `.xapk` export +
 backup phase 1 (#293), the biometric hard-lockout escape hatch (#292), the Dependabot Bundler
 ecosystem (#291), the unified app-info sheet (#288) and the previous refresh (#289) have all since
@@ -55,23 +57,24 @@ second branch opens.
 | — | **#210** | Freezer "keep-in-launcher" | 3 | done | 4 | ✅ **Slice merged** (#241) — suspend mode; rest declined |
 | — | **#164b** | `.xapk` export (the remainder of #164) | 2 | done | 2 | ✅ **Merged** (#293) — the format picker ships with it; close #164 on merge |
 | — | **#51 ph.1** | Bulk APK/bundle backup + manifest | **4** | done | 3 | ✅ **Merged** (#293) — phase 2 (root data) is what remains |
-| — | **#55a** | Freeze **profiles** (named groups) | 3 | done | 4 | ✅ **Shipped** in v1.93.1 (#295, merged 2026-07-30) — reused Room + `BulkFreezeRunner` as predicted; the runner needed a scoped coalescing key first *(split from #55)* |
+| — | **#55a** | Freeze **profiles** (named groups) | 3 | done | 4 | ✅ **Merged** (#295), shipped in v1.93.1 — reused Room + `BulkFreezeRunner` as predicted; the runner needed a scoped coalescing key first *(split from #55)* |
 | — | **#285** | Filter app list by permission | 2–3 | done | 2 | ✅ **Merged** (#294) — mostly UI as predicted, but the group table had to be shipped by Thor (see below); close the issue |
-| 1 | **#161** | `.apks` won't open from Samsung My Files | 2 | **1–2 d** | 2 | 🟢 a real bug with a named reporter and a working comparison app — cheap goodwill |
+| 1 | **#161** | `.apks` won't open from Samsung My Files | 2 | ~~**1–2 d**~~ **half done; the rest is one diagnostic** | 2 | 🟢 **half fixed 2026-08-07** — the typeless filter's host gate is gone; whether that is enough turns on what Samsung's provider reports |
 | 2 | **#51 ph.2** | App **data** backup / transfer | **4** | root-data **5–8 d** · P2P 12–20 d | 5 | 🟡 highest remaining impact, hard-gated on root — phase 3 (P2P) stays declined |
 | 3 | **#130** | InstallWithOptions attribution + drill-down | 2 | **1–2 d** (label ≈0.25 d) | 2 | 🟡 label = trivial; attribution unreliable |
 | 4 | **#58** | **App lock** (root/Shizuku) | 3 | **8–15 d** | 5 | 🔴 differentiator but heavy build + ongoing tax |
-| 5 | **#178** | App **tagging** (+ per-app notes) | 3 | **3–5 d** | 3 | 🟡 low-risk; **demand is no longer zero** (2026-08-07) — defer on cost if at all, not on demand |
+| 5 | **#178** | App **tagging** | 3 | **3–5 d** | 3 | 🔴 low-risk but ~~**zero demand**~~ — **demand is no longer zero** (2026-08-07). Defer on cost, or not at all |
 | 6 | **#209** | **VirusTotal** scanner | 2 | **4–7 d** | 3 | 🔴 network stack + user API key + privacy |
-| — | **#55b** | Process manager (RAM/CPU) | 3 | 4–7 d full · **flag: unsized** | 4 | 🟡/🔴 **split again** — the flag is what was asked for and is *smaller*, but not yet costed: it still needs a privileged `ps`/`dumpsys` read, so name the API and the fallback before ranking it. The RAM/CPU stats keep every original objection *(split from #55)* |
+| — | **#55b** | Process manager (RAM/CPU) | 3 | 4–7 d | 4 | 🔴 fragile shell parsing, Shizuku/root-only, Dhizuku dead-end *(split from #55)* |
 
 ---
 
 ## Sequencing
 
 **🟢 Do first (~1 week):** ~~**#164b** (`.xapk` writer)~~ **merged (#293)** → ~~**#285** (permission
-filter)~~ **merged (#294)** → ~~**#55a** (freeze profiles)~~ **merged (#295), v1.93.1** →
-**#161** (Samsung My Files). All lean on existing infra and are low-risk — with one caveat:
+filter)~~ **merged (#294)** → ~~**#55a** (freeze profiles)~~ **merged (#295)** →
+~~**#161** (Samsung My Files)~~ **half fixed 2026-08-07 (band A #10)** — the remaining half is a
+device diagnostic, not a build. All lean on existing infra and are low-risk — with one caveat:
 ~~**#285's estimate is pending scope validation.**~~ **Settled, and it was the cheap answer** — see
 the **#285** row below. One `getInstalledPackages(GET_PERMISSIONS)` sweep, held in memory while the
 filter is selected. **No Room schema change.** The expensive surprise was elsewhere: since API 29 the
@@ -83,9 +86,8 @@ platform no longer tells you which group a permission belongs to, so Thor ships 
 
 **✅ Closed out since the last review:** #57 (shipped) and #210 (achievable slice shipped as the Freeze|Suspend mode). Neither issue has been closed on GitHub yet.
 
-**🔴 Defer:** #58 (biggest build + robustness tax), #209 (FOSS API-key + privacy, low demand), #55b's
-RAM/CPU half (fragile, niche). ~~#178 (zero demand)~~ — **reassessed 2026-08-07**: still deferrable
-on its 3–5 d cost, no longer on demand.
+**🔴 Defer:** #58 (biggest build + robustness tax), #209 (FOSS API-key + privacy, low demand), #178
+(~~zero demand~~ **cost** — the demand objection is spent, see below), #55b (fragile, niche).
 
 ---
 
@@ -98,7 +100,7 @@ on its 3–5 d cost, no longer on demand.
 - **Risks:** none hard. System/protected apps degrade without root (consistent with the app). OBB export stays out of scope.
 - **Verify with more than a round trip:** installability is necessary but not sufficient. Export → reinstall through Thor's own installer *and* a third-party one, then also check the two failure shapes a successful install would hide: a bundle whose OBB assets are silently absent, and split contents/metadata a different reader rejects. See `docs/follow-ups/app-data-backup-and-xapk-export.md`.
 
-### #55a — Freeze profiles · ✅ built · impact 3
+### #55a — Freeze profiles · ✅ shipped (v1.93.1) · impact 3
 - **What:** named groups of apps you can freeze/unfreeze on demand.
 - **Reuses:** `FreezerRepository` + Room `freezer_apps` table, `FreezerViewModel` multi-select + batch `MultiAppAction.Freeze/UnFreeze`, `AutoMigration`. New profile tables + a small UI.
 - **Shipped:** `freeze_profiles` + `freeze_profile_apps` (Room **auto-migration 5→6**, new tables only, schema export committed), `FreezeProfileRepository`, a profiles sheet with per-row freeze/unfreeze/edit/delete, an editor sheet reusing the watchlist's app picker, and a "save this selection as a profile" entry in the multi-select toolbox. 17 unit tests cover the name rule and the request identity.
@@ -107,12 +109,16 @@ on its 3–5 d cost, no longer on demand.
   2. **Coalescing key.** The job slot keyed on `BulkOp` alone would have made "freeze profile A" then "freeze profile B" return the first `Deferred` and silently never freeze B. The key is now `BulkRequest(op, scope)`: same op / different scope serializes (`join()`), different op still replaces (`cancelAndJoin()`).
   3. **Launcher restore.** `FreezerBridgeProvider` now checks the watchlist **∪** every profile's membership, so an app frozen only by a profile is not a dead launcher tap.
 - **Left for the owner:** on-device verification of the two new sheets, and — as with every freezer surface — a run on a real privilege backend.
+- **What shipping it did not buy: anybody finding it.** A user who read the Freezer screen closely enough to ask for per-group actions did not see that named groups already existed, because the only entry point was an unlabelled toolbar icon. Band A #5 added a labelled button and empty-state copy. Per-group *kill* and *suspend* are the genuine remainder and are still open.
 
-### #161 — `.apks` won't open from Samsung My Files · 🟢 · 1–2 d · impact 2 *(bug)*
+### #161 — `.apks` won't open from Samsung My Files · 🟢 · half fixed · impact 2 *(bug)*
 - **What:** on a Galaxy S25 Ultra / One UI 8.5, tapping a `.apks` file in Samsung's stock My Files does not offer Thor, while InstallerX Revived and Universal Installer both appear. Thor *does* appear from other file managers.
-- **Where to start:** `AndroidManifest.xml` (the `PortableInstallerActivity` intent-filters) — diff Thor's filters against the two apps that work. One UI's My Files is stricter about MIME type ↔ extension pairing than AOSP's picker, so the likely gap is a missing `mimeType`/`pathPattern` combination rather than anything deep.
-- **Risks:** over-broad filters make Thor pop up for every zip or `application/octet-stream`, which is worse than the bug. Narrow the fix to the extensions Thor actually installs.
-- **Why do it:** a named reporter with device details and a screenshot, unanswered since 2026-07-18, and a working comparison app to diff against. Cheap goodwill.
+- ~~**Where to start:** … One UI's My Files is stricter about MIME type ↔ extension pairing than AOSP's picker, so the likely gap is a missing `mimeType`/`pathPattern` combination rather than anything deep.~~
+  **Diagnosed 2026-07-30, and it is the opposite of that guess.** More patterns cannot help: `android:host="*"` on Thor's two wildcard filters made their 35 `pathPattern`s a *mandatory* gate, because `IntentFilter.matchData` reads the path list only inside the `authorities != null` branch — and Samsung's MediaStore URI carries a row id, with the filename nowhere in the path. SAI ships ~10× Thor's pattern coverage with the same host and is absent from the same chooser; the three apps that do appear declare no host. **Pattern count correlates with nothing; the host gate correlates perfectly.**
+- **Shipped 2026-08-07 (band A #10) — the narrow half only.** The *typeless* filter dropped its host and the 45 path matchers that gate had made unreachable: a filter that exists for URIs nobody can type was excluding precisely the opaque provider URI that case arrives as. The `*/*` filter keeps its host **deliberately** — removing it makes Thor a candidate for every typed file on the device, which is worse than the bug.
+- **Still open, and it is a diagnostic rather than a build:** what does Samsung's provider return from `getType()`? The half that shipped only helps if the answer is *no type*. A stable type outside the 14 already declared is one `<data android:mimeType>` line; a type that varies by device needs a product call. Commands in `docs/follow-ups/161-apks-not-openable-from-file-managers.md`. ⚠️ **That doc's four-filter table predates the manifest** — read the manifest comment on the typeless filter as the current shape.
+- **Risks:** over-broad filters make Thor pop up for every zip or `application/octet-stream`, which is worse than the bug. Narrow the fix to the extensions Thor actually installs. The opt-in *"show Thor when opening any file"* toggle that would license the broad half was descoped with band A #10 and is unbuilt.
+- **Why do it:** a named reporter with device details and a screenshot, unanswered from 2026-07-18 until the diagnosis was posted 2026-08-03, and a working comparison app to diff against. Cheap goodwill.
 
 ### #285 — Filter the app list by permission · ✅ built · impact 2–3
 - **What:** filter or group the app list by a permission — "which apps can use the camera".
@@ -170,11 +176,12 @@ on its 3–5 d cost, no longer on demand.
 - **Reuses:** only `BiometricPromptHandler` + the Room pattern. The whole detection + overlay pipeline is net-new.
 - **Risks:** needs a Shizuku UserService bound to ActivityTaskManager (or root `am monitor`), SYSTEM_ALERT_WINDOW overlay + foreground service, boot persistence; overlay races; OEM quirks; Play-policy risk; Dhizuku can't do per-launch gating. Big build + ongoing maintenance.
 
-### #178 — App tagging · 🟡 *(was 🔴)* · 3–5 d · impact 3
-- **What:** user-defined tags to group/browse the app list. **Scope grew 2026-08-07:** a second user asked for per-app **notes**, which is the same table, the same CRUD and the same assignment UI. Build both or neither.
-- **Reuses:** `FreezerEntity`/`FreezerRepository` is a near-template; `FilterType` is an extensible sealed interface; the chip row already renders dynamically. Needs a Room migration (the DB is at **v6** now, not 4) + tag CRUD/assignment UI.
+### #178 — App tagging · 🔴 · 3–5 d · impact 3
+- **What:** user-defined tags to group/browse the app list.
+- **Reuses:** `FreezerEntity`/`FreezerRepository` is a near-template; `FilterType` is an extensible sealed interface; the chip row already renders dynamically. Needs a Room 4→5 migration + tag CRUD/assignment UI.
 - ~~**Risks:** none hard, but **zero demand**. Bundle with other app-list UX work if/when demand appears.~~
-  **Re-verdicted 2026-08-07.** Two independent requests in one thread. The demand argument is spent and the instruction it carried — *bundle with app-list UX work if demand appears* — is now live rather than conditional. Nothing else about the estimate changes: still 3–5 days, still a migration, still no hard risk. **If it is deferred it must be deferred on cost**, and saying so is the point of this correction — a stale "nobody wants it" is how a cheap feature stays unbuilt for reasons that stopped being true.
+  **Risks: none hard, and the demand objection is spent.** On 2026-08-07 two users on one r/howtomen thread asked for it unprompted — one for tags, one for per-app **notes**, which is the same Room migration and the same assignment UI. *"Bundle with other app-list UX work if/when demand appears"* is discharged: demand appeared, and the app-list UX work it was meant to ride along with shipped as band A. What survives is the **cost** — 3–5 days and a schema migration — so this may still be deferred, but it has to be deferred on that and not on demand. Evidence: `docs/follow-ups/reddit-howtomen-feedback.md`.
+- **Build them together or neither.** Tags and notes are one migration; doing them separately buys two migrations for one feature's worth of value.
 
 ### #209 — VirusTotal scanner · 🔴 · 4–7 d · impact 2
 - **What:** scan APKs pre-install + installed apps via VirusTotal.
@@ -183,10 +190,9 @@ on its 3–5 d cost, no longer on demand.
 
 ### #55b — Process manager (RAM/CPU) · 🔴 · 4–7 d · impact 3 (niche)
 - **What:** live process list with RAM/CPU to spot heavy apps.
-- **Risks:** Shizuku/root-only (`getRunningAppProcesses` is privilege-filtered — restricted since Android 5.1, and an unprivileged caller does not see other packages → must parse `dumpsys meminfo`/`top`/`ps`), brittle across OEM/OS versions, CPU% needs sampled polling, **Dhizuku has no shell** → dead-end. Overlaps with existing task managers. Split from #55 and deferred; the profiles half (#55a) should ship without it.
-- **Split again, 2026-08-07 — and this is the useful part.** A user asked for *"options for know app running in background"*. That is a **running/not-running flag**, and every objection above is an objection to the *statistics*: `top`/`meminfo` parsing, sampled polling for CPU%, OEM drift. A coarse "is this package currently running" needs none of them. **The niche verdict was earned by the expensive half and then applied to the whole feature** — which is insight 1 (ship the MVP, not the costume) going unapplied to the very issue that first prompted it.
-- ⚠️ **Smaller is not the same as costed, and this is not yet costed.** The bullet above originally called the flag *affordable* and said Dhizuku's missing shell only degrades it. Neither claim is supported: `getRunningAppProcesses` is privilege-filtered on everything Thor targets, so even the coarse answer goes through a privileged `ps`/`dumpsys` — which puts **Dhizuku in the same dead-end it is in for the stats**. What it needs before it can be ranked: a named API, a stated privilege path, and a decided behaviour for the modes that cannot answer. It sits in band D of [`follow-ups/README.md`](follow-ups/README.md) — unrankable, not scheduled — and the stats stay deferred.
-- **Verified 2026-08-07:** nothing in the tree queries running processes today. Every `isRunning` in `app/src/main/java` refers to a bulk *operation* in flight, not to a process — so there is no partial seam to build on, in either direction.
+- **Risks:** Shizuku/root-only (~~post-Android-8 `getRunningAppProcesses` returns only self~~ — see the correction below — → must parse `dumpsys meminfo`/`top`/`ps`), brittle across OEM/OS versions, CPU% needs sampled polling, **Dhizuku has no shell** → dead-end. Overlaps with existing task managers. Split from #55 and deferred; the profiles half (#55a) shipped without it.
+- **Correction, 2026-08-07 — right conclusion, wrong API and wrong version.** *"Caller-only since Android 8"* is `getRunningServices`. `getRunningAppProcesses` is a different method with a different history: it has been progressively restricted **since Android 5.1** and is privilege-filtered, so an ordinary app does not get other packages back from it. Nothing downstream moves — a privileged `ps`/`dumpsys` is still required and Dhizuku is still a dead-end — but the sentence as written would send someone to check the wrong API against the wrong release.
+- **Demand is corroborated, and the ask is smaller than the row.** A user asked for *"options for know app running in background"* — a running/not-running **flag**, not RAM or CPU figures. That drops the `top`/`meminfo` parsing, the sampled polling and most of the OEM drift, which are objections to the *stats*, not to the flag. ⚠️ **Smaller is not costed:** the flag still needs a named API, a privilege path and a decided fallback for the modes that cannot answer, because the privilege filtering above applies to it too. Until those three exist it stays unsized rather than cheap.
 
 ---
 
@@ -194,6 +200,6 @@ on its 3–5 d cost, no longer on demand.
 
 1. **Ship the MVP, not the costume.** #51, #55, #210, #130 each hide a small high-value slice behind an ambitious full ask. The leverage is in the slice.
 2. **Privilege tier gates real value.** #51 (data), #55b (process stats), #58 (launch monitoring) are root/Shizuku-only with **Dhizuku dead-ends** — each needs an explicit "requires root/Shizuku" gate; none should assume Dhizuku parity.
-3. **Demand is uneven — and "zero demand" has a shelf life.** Most requests have low 👍/comment signal; strategic fit (storage/freeze management) matters more than raw demand for a power-user tool. But a deferral written as *zero demand* is a claim about the world on the day it was written, and unlike an effort estimate it can be falsified by a single thread — as #178's was on 2026-08-07. **Date a demand argument, or re-check it before you lean on it.** The issue tracker is also the wrong instrument for measuring this: four users produced twenty-three asks in one Reddit thread, more feedback than the tracker had collected in months, and none of it would ever have appeared as a 👍.
+3. **Demand is uneven — and "zero demand" has a shelf life.** Most requests have low 👍/comment signal; strategic fit (storage/freeze management) matters more than raw demand for a power-user tool. ~~Zero-demand items (#178, #209) should wait.~~ On 2026-08-07 a single Reddit thread produced demand for **#178** (twice) and **#55b**, none of which the issue tracker had shown, because the people asking never opened an issue. A tracker measures who files, not who wants. Re-read a deferral whose only stated reason is demand before quoting it; **#209** still has none.
 4. **Finish the last 20%.** #164 is the cautionary tale: the hard 80% (SAF plumbing, writers, progress states) shipped, and the feature still cannot be closed because a half-day writer is missing — one that was promised in the thread. The same shape threatens #210, which is functionally shipped but held open by cross-privilege suspend ownership. Closing these is cheaper than starting anything new, and it is the difference between a roadmap that reads as delivered and one that reads as stalled.
 5. **Keep this table honest.** Between 2026-07-02 and 2026-07-29 nothing on this list moved, yet nine PRs shipped — the QS tile rework, the store manifest, four installer/app-list fixes, Odin Phase 3, and the app-info unification. A roadmap that only tracks issue-backed work will keep reporting "no progress" while the project moves. Re-check it at each release, not when it feels stale.
