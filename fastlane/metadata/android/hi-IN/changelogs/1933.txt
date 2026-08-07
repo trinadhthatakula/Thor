@@ -1,13 +1,13 @@
-• ✅ फ्रीज, प्रतिबंध और क्लियर-डेटा अब असली नतीजा बताते हैं।
+• ✅ Freeze, restrict and clear-data now report what really happened.
 
-• 🔒 ऐप लॉक अब ऐप खुलने पर लागू, और Recents में ऐप सूची छिपाता है।
+• 🔒 App lock now covers app start, and hides your app list in Recents.
 
-• 🌍 भाषा चयन अब Android 12 और उससे नीचे भी काम करता है।
+• 🌍 Language picker works on Android 12 and below.
 
-• ⚡ कुछ ROMs पर बल्क कार्रवाई अब हर ऐप पर 15 सेकंड नहीं रुकती।
+• ⚡ Bulk actions no longer stall 15 seconds per app on some ROMs.
 
-• 📦 इंस्टॉलर अब जो बाइट्स इंस्टॉल करता है उन्हें जाँचता है।
+• 📦 The installer verifies the exact bytes it installs.
 
-• 🛠️ खराब सेटिंग्स फ़ाइल से होने वाला क्रैश लूप ठीक किया।
+• 🛠️ Fixed a crash loop from an unreadable settings file.
 
-• 💖 सपोर्ट टियर अब Play से लोड होते हैं — नए टियर बिना अपडेट दिखेंगे।
+• 💖 Support tiers load from Play — new ones appear without an update.
