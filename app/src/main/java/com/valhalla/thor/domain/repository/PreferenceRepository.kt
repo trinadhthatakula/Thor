@@ -41,13 +41,26 @@ interface PreferenceRepository {
      *
      * A latch rather than an event because there is no useful second sentence. Once the store is
      * refusing writes every subsequent toggle fails too, and one honest notice beats a queue of
-     * identical ones. Nothing clears it — a store that has started failing does not recover within
-     * a process, and pretending otherwise would re-arm a notice the user already read.
+     * identical ones. It is cleared only by [acknowledgeSettingsWriteFailure], never by a
+     * successful write — a store that has started failing does not recover within a process.
      *
      * The two setters that report their own outcome ([setBiometricLock], [setLanguage]) do not
      * raise it, so their callers can say something specific instead of being talked over.
      */
     val settingsWriteFailed: Flow<Boolean>
+
+    /**
+     * Lowers [settingsWriteFailed] once the user has been told.
+     *
+     * The latch outlives every ViewModel that reads it — it belongs to the repository, which is a
+     * singleton — so without this a notice already delivered replays to the next collector. Thor
+     * clears its ViewModels without ending its process (Exit finishes the activity), so the next
+     * launch would open on "some settings could not be saved" with nothing having failed since.
+     *
+     * Clearing it does not claim the disk recovered. The next failed write raises it again, which
+     * is the point: the latch tracks *an unreported failure*, not *a broken store*.
+     */
+    fun acknowledgeSettingsWriteFailure()
 
     // --- App List ---
     suspend fun updateAppSort(sortBy: SortBy)

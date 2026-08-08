@@ -333,6 +333,49 @@ class SecurityViewModelTest {
                 awaitItem()
             )
             expectNoEvents()
+
+            // The other half of the same contract. `setLanguage` reports to its own caller too, and
+            // is asserted here rather than in a SettingsViewModel test because that ViewModel takes
+            // a concrete `LocaleManager` holding a `Context` and cannot be built on the JVM.
+            prefs.setLanguage("fr")
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun `a notice already delivered is not replayed to the next ViewModel`() = runTest {
+        // The latch lives on the repository, which is a singleton; this ViewModel is not. Exit
+        // finishes the activity without ending the process, so a fresh SecurityViewModel collects a
+        // flag the previous one already reported — and opens on a notice about nothing.
+        val prefs = FakePreferenceRepository()
+        prefs.latchWriteFailure()
+
+        val first = SecurityViewModel(prefs, FakeAuthCapability())
+        first.events.test {
+            assertEquals(UiText.StringResource(R.string.settings_not_saved), awaitItem())
+        }
+        assertEquals("telling the user is what clears it", false, prefs.writeFailureLatched)
+
+        val second = SecurityViewModel(prefs, FakeAuthCapability())
+        second.events.test { expectNoEvents() }
+    }
+
+    @Test
+    fun `a fresh failure after an acknowledged one is still reported`() = runTest {
+        // Acknowledging does not claim the disk recovered. The latch tracks an *unreported* failure,
+        // so the next dropped write raises it again — otherwise clearing it would trade a repeated
+        // notice for a silent one.
+        val prefs = FakePreferenceRepository(writesFail = true)
+
+        SecurityViewModel(prefs, FakeAuthCapability()).events.test {
+            prefs.setThemeMode(ThemeMode.DARK)
+            assertEquals(UiText.StringResource(R.string.settings_not_saved), awaitItem())
+        }
+
+        prefs.setUseAmoled(true)
+
+        SecurityViewModel(prefs, FakeAuthCapability()).events.test {
+            assertEquals(UiText.StringResource(R.string.settings_not_saved), awaitItem())
         }
     }
 

@@ -316,6 +316,18 @@ class FakePreferenceRepository(
     private val _settingsWriteFailed = MutableStateFlow(false)
     override val settingsWriteFailed: Flow<Boolean> = _settingsWriteFailed
 
+    override fun acknowledgeSettingsWriteFailure() {
+        _settingsWriteFailed.value = false
+    }
+
+    /** Arms the latch the way a foregone failure in an earlier ViewModel would have left it. */
+    fun latchWriteFailure() {
+        _settingsWriteFailed.value = true
+    }
+
+    /** What a collector would see now — the assertion for "the notice was acknowledged". */
+    val writeFailureLatched: Boolean get() = _settingsWriteFailed.value
+
     /**
      * The fake's half of `guardedWrite`, latch and all: applies [change] and answers `true`, or
      * skips it and answers `false` when [writesFail]. Kept in one place so a test cannot get a

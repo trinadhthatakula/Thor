@@ -226,10 +226,16 @@ class SecurityViewModel(
         // values the user never chose, the other means a value the user just chose did not stick —
         // and a `combine` would have to pick one of them to say.
         //
-        // Latched flag, `first { it }`: one notice per process, however many writes fail after it.
+        // Latched flag, `first { it }`: one notice for however many writes fail after it. Then the
+        // latch is lowered, because it lives on the repository singleton and this ViewModel does
+        // not — Exit finishes the activity without ending the process, so the next launch builds a
+        // fresh SecurityViewModel that would collect a `true` it has already reported and open on a
+        // notice about nothing. Acknowledging does not claim the disk recovered; the next dropped
+        // write raises it again.
         viewModelScope.launch {
             preferenceRepository.settingsWriteFailed.first { it }
             _events.send(UiText.StringResource(R.string.settings_not_saved))
+            preferenceRepository.acknowledgeSettingsWriteFailure()
         }
     }
 

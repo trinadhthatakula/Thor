@@ -622,6 +622,10 @@
     <string name="settings_not_saved">Thor couldn\'t save that setting — it will go back to its old value next time you open the app</string>
     <!-- The disarm above was attempted but the write was dropped, so the lock is still on disk and will disarm again next launch. -->
     <string name="biometric_lock_disable_not_saved">App lock can\'t be used on this device, and Thor couldn\'t save that — it will ask again next time you open the app</string>
+    <!-- The user turned app lock ON in Settings and the write was dropped. Names which way the lock is actually facing, not just that a write failed. -->
+    <string name="biometric_lock_not_saved_still_off">Thor couldn\'t save that — app lock is still off</string>
+    <!-- The user turned app lock OFF in Settings and the write was dropped. -->
+    <string name="biometric_lock_not_saved_still_on">Thor couldn\'t save that — app lock is still on</string>
     <!-- The language write was dropped, so the app was deliberately left in the old language rather than switching for one session. -->
     <string name="language_not_saved">Thor couldn\'t save your language choice, so it hasn\'t been changed</string>
     <string name="open_security_settings">Open security settings</string>

@@ -61,10 +61,13 @@ private val settingsFileReplaced = MutableStateFlow(false)
  * [guardedWrite]. Surfaced on [PreferenceRepository.settingsWriteFailed].
  *
  * File-scoped to sit beside [settingsFileReplaced], which it deliberately mirrors: both mean "what
- * is on screen is not what is on disk", and both are one-way. It is separate from that flag rather
- * than folded into it because the two are not the same event and do not deserve the same sentence —
- * a replaced file has already lost the user's settings, whereas a failed write has merely failed to
- * add one.
+ * is on screen is not what is on disk". It is separate from that flag rather than folded into it
+ * because the two are not the same event and do not deserve the same sentence — a replaced file has
+ * already lost the user's settings, whereas a failed write has merely failed to add one.
+ *
+ * Unlike that one it is not one-way: [PreferenceRepositoryImpl.acknowledgeSettingsWriteFailure]
+ * lowers it once the user has been told, so the notice does not replay to the next ViewModel that
+ * collects it in the same process.
  *
  * Not on [UserPreferences]. A failed write does not change what the store holds, so the preference
  * flow does not re-emit, and a field on that snapshot would go unread until something *else*
@@ -207,6 +210,10 @@ class PreferenceRepositoryImpl(
         userPreferencesFlow(context.dataStore.data, context.localState.data)
 
     override val settingsWriteFailed: Flow<Boolean> = writeFailureLatch
+
+    override fun acknowledgeSettingsWriteFailure() {
+        writeFailureLatch.value = false
+    }
 
     // --- App List ---
 
@@ -463,6 +470,19 @@ private const val READ_RETRY_DELAY_MS = 100L
  * asserted through [userPreferencesFlow] it would be asserted through `combine`'s own handling of
  * a cancelled child instead.
  */
+internal fun Flow<Preferences>.guardedRead(storeName: String): Flow<StoreRead> =
+    retryWhen { cause, attempt ->
+        (cause is IOException && attempt < READ_RETRIES).also { retrying ->
+            if (retrying) delay(READ_RETRY_DELAY_MS * (attempt + 1))
+        }
+    }
+        .map { StoreRead(it, degraded = false) }
+        .catch { e ->
+            if (e !is IOException) throw e
+            Logger.e(TAG, "$storeName could not be read; falling back to the defaults", e)
+            emit(StoreRead(emptyPreferences(), degraded = true))
+        }
+
 /**
  * Run one `edit` and answer whether it landed, instead of throwing out of a setter nobody catches.
  *
@@ -477,11 +497,15 @@ private const val READ_RETRY_DELAY_MS = 100L
  * keeps working without an explicit rethrow — a cancelled caller must not be told its write
  * succeeded, and it is not.
  *
+ * No retry here, unlike [guardedRead]. `edit` already serialises writes and re-reads the current
+ * value inside the transform, so a second attempt repeats the same disk operation against the same
+ * full disk. A read can succeed on the next try; this cannot.
+ *
  * **[announce] is the one subtle parameter.** Most setters cannot report a failure: they return
  * `Unit` to a fire-and-forget `launch`, so the only way the user hears about it is
- * [settingsWriteFailed], which this latches. The two setters that *do* return their outcome pass
- * `announce = false` — their callers say something better-aimed than the generic notice, and
- * latching as well would tell the user twice about one failure.
+ * [PreferenceRepository.settingsWriteFailed], which this latches. The two setters that *do* return
+ * their outcome pass `announce = false` — their callers say something better-aimed than the generic
+ * notice, and latching as well would tell the user twice about one failure.
  *
  * Not a `CoroutineExceptionHandler` on `viewModelScope`: one line against thirty, but it silences
  * every unrelated exception in the app for the life of the process, and it cannot tell an
@@ -501,19 +525,6 @@ internal suspend fun DataStore<Preferences>.guardedWrite(
         if (announce) failureLatch.value = true
         false
     }
-
-internal fun Flow<Preferences>.guardedRead(storeName: String): Flow<StoreRead> =
-    retryWhen { cause, attempt ->
-        (cause is IOException && attempt < READ_RETRIES).also { retrying ->
-            if (retrying) delay(READ_RETRY_DELAY_MS * (attempt + 1))
-        }
-    }
-        .map { StoreRead(it, degraded = false) }
-        .catch { e ->
-            if (e !is IOException) throw e
-            Logger.e(TAG, "$storeName could not be read; falling back to the defaults", e)
-            emit(StoreRead(emptyPreferences(), degraded = true))
-        }
 
 /**
  * Pure mapping from already-read [Preferences] snapshots to [UserPreferences].

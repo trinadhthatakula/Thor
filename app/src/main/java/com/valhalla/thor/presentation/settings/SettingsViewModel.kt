@@ -179,6 +179,12 @@ class SettingsViewModel(
      * The message is chosen by [biometricRefusalMessage], not fixed: a refusal that tells an
      * Android 9 user to "set up a screen lock" sends them to do something their prompt cannot accept,
      * which is the same mistake `BiometricUnavailableScreen` exists to avoid making.
+     *
+     * A dropped write is reported here rather than through the store-wide notice, which
+     * `setBiometricLock` deliberately does not raise. This is the one preference where "some
+     * settings could not be saved" is not enough: the user needs to know which way their front door
+     * is facing, so the message names the state the lock is *actually* in — the opposite of the one
+     * they just asked for.
      */
     fun setBiometricLock(enabled: Boolean) {
         viewModelScope.launch {
@@ -193,7 +199,14 @@ class SettingsViewModel(
                 )
                 return@launch
             }
-            preferenceRepository.setBiometricLock(enabled)
+            if (!preferenceRepository.setBiometricLock(enabled)) {
+                _events.send(
+                    UiText.StringResource(
+                        if (enabled) R.string.biometric_lock_not_saved_still_off
+                        else R.string.biometric_lock_not_saved_still_on
+                    )
+                )
+            }
         }
     }
 

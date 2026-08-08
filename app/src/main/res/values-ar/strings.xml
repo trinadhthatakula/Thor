@@ -491,6 +491,8 @@
     <string name="settings_lost_using_defaults">تعذّر على Thor قراءة إعداداتك، ويستخدم الآن الإعدادات الافتراضية: تحقّق من قفل التطبيق في الإعدادات</string>
     <string name="settings_not_saved">تعذّر على Thor حفظ هذا الإعداد، وسيعود إلى قيمته السابقة عند فتح التطبيق في المرة القادمة</string>
     <string name="biometric_lock_disable_not_saved">لا يمكن استخدام قفل التطبيق على هذا الجهاز، وتعذّر على Thor حفظ ذلك: سيسأل مرة أخرى عند فتح التطبيق في المرة القادمة</string>
+    <string name="biometric_lock_not_saved_still_off">تعذّر على Thor حفظ ذلك: قفل التطبيق ما زال مُعطَّلاً</string>
+    <string name="biometric_lock_not_saved_still_on">تعذّر على Thor حفظ ذلك: قفل التطبيق ما زال مُفعَّلاً</string>
     <string name="language_not_saved">تعذّر على Thor حفظ اختيارك للّغة، لذلك لم يتم تغييرها</string>
     <string name="open_security_settings">فتح إعدادات الأمان</string>
     <string name="unlock">إلغاء القفل</string>
