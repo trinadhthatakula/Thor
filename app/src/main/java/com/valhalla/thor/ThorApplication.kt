@@ -246,7 +246,18 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
                     // Only when the platform's per-app locale won (API 33+). Writing it back is what
                     // stops the Settings row saying "System default" over a screen the system
                     // language picker put in French.
-                    preferenceRepository.setLanguage(reconciled)
+                    //
+                    // Logged rather than surfaced, unlike the two ViewModel callers: nobody asked
+                    // for this write. It reconciles two stores behind the user's back during
+                    // startup, so there is no action of theirs to report on and no screen to report
+                    // it to. The cost of it failing is the mismatched Settings row above, which the
+                    // next start attempts to fix again.
+                    if (!preferenceRepository.setLanguage(reconciled)) {
+                        Logger.w(
+                            "ThorApp",
+                            "Locale reconciled to $reconciled but the preference write was dropped"
+                        )
+                    }
                 }
                 freezerShortcutManager.syncDynamicShortcuts(prefs.addFreezerToLauncher)
             }.onFailure { throwable ->

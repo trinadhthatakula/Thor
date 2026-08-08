@@ -221,10 +221,24 @@ class SettingsViewModel(
         viewModelScope.launch { preferenceRepository.setAutoReinstallEnabled(enabled) }
     }
 
+    /**
+     * Applying the locale is conditional on the write, because these two steps disagree about how
+     * long they last: `applyLocale` changes the running process now, the preference is what brings
+     * the choice back next launch. Applying after a dropped write hands the user an app that
+     * speaks the new language until they close it and then quietly reverts — a setting that looks
+     * like it worked, then un-chooses itself, with nothing on screen ever having said otherwise.
+     *
+     * Leaving the UI in the old language instead makes the failure visible in the plainest way
+     * available: the thing the user asked for did not happen. The message names the setting, since
+     * the store-wide notice is suppressed for this call.
+     */
     fun setLanguage(language: String?) {
         viewModelScope.launch {
-            preferenceRepository.setLanguage(language)
-            localeManager.applyLocale(language)
+            if (preferenceRepository.setLanguage(language)) {
+                localeManager.applyLocale(language)
+            } else {
+                _events.send(UiText.StringResource(R.string.language_not_saved))
+            }
         }
     }
 

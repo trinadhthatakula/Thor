@@ -5,6 +5,7 @@ package com.valhalla.thor.presentation.security
 
 import app.cash.turbine.test
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.presentation.FakeAuthCapability
 import com.valhalla.thor.presentation.FakePreferenceRepository
@@ -247,6 +248,91 @@ class SecurityViewModelTest {
                 UiText.StringResource(R.string.biometric_lock_disabled_no_biometric),
                 awaitItem()
             )
+        }
+    }
+
+    // ── Settings that could not be written ──────────────────────────────────────────────────────
+    //
+    // The mirror of the section below. A dropped write is quieter than a dropped read, because
+    // nothing about the UI changes: the preference flow does not re-emit, so a screen driven off it
+    // cannot notice, and the only thing that ever knew is the setter's return value.
+
+    @Test
+    fun `a disarm that could not be saved does not claim the lock was taken off`() = runTest {
+        val prefs = FakePreferenceRepository(
+            UserPreferences(biometricLockEnabled = true),
+            writesFail = true
+        )
+        val vm = SecurityViewModel(prefs, FakeAuthCapability(capable = false, hardware = false))
+
+        vm.events.test {
+            // The past-tense message is the user's only sign the lock is gone. Sending it after a
+            // write that never landed states the opposite of what is on disk, and nothing later
+            // corrects it: `biometricLockEnabled` is still true, so the next launch disarms again
+            // and says the same false thing again.
+            assertEquals(
+                UiText.StringResource(R.string.biometric_lock_disable_not_saved),
+                awaitItem()
+            )
+        }
+
+        assertEquals(true, prefs.userPreferences.first().biometricLockEnabled)
+    }
+
+    @Test
+    fun `a failed disarm still opens the app`() = runTest {
+        val vm = SecurityViewModel(
+            FakePreferenceRepository(
+                UserPreferences(biometricLockEnabled = true),
+                writesFail = true
+            ),
+            FakeAuthCapability(capable = false, hardware = false)
+        )
+
+        // The guard must not turn a bad message into a lockout. `authState` reads the same two
+        // flows the disarm does and resolves this combination itself, so the app opens whether or
+        // not the write landed — the failure costs a wrong sentence, never a way in.
+        assertEquals(AuthState.NotRequired, vm.authState.value)
+    }
+
+    @Test
+    fun `a preference that could not be saved is reported once`() = runTest {
+        val prefs = FakePreferenceRepository(writesFail = true)
+        val vm = SecurityViewModel(prefs, FakeAuthCapability())
+
+        vm.events.test {
+            expectNoEvents()
+
+            // Any ordinary setter, from any screen. This ViewModel is told because it outlives all
+            // of them — a preference dropped by a screen the user has already left still gets said.
+            prefs.setThemeMode(ThemeMode.DARK)
+            assertEquals(UiText.StringResource(R.string.settings_not_saved), awaitItem())
+
+            // Latched, so the second and third failure add nothing. Once the store is refusing
+            // writes every toggle fails, and a queue of identical notices is worse than one.
+            prefs.setUseAmoled(true)
+            prefs.setDynamicColor(true)
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun `the two reporting setters do not also raise the generic notice`() = runTest {
+        val prefs = FakePreferenceRepository(
+            UserPreferences(biometricLockEnabled = true),
+            writesFail = true
+        )
+        val vm = SecurityViewModel(prefs, FakeAuthCapability(capable = false, hardware = false))
+
+        vm.events.test {
+            // The disarm's own failed write must not also trip the store-wide latch, or this one
+            // failure reaches the user as two notices — the specific one and "couldn't save that
+            // setting" — describing the same dropped write.
+            assertEquals(
+                UiText.StringResource(R.string.biometric_lock_disable_not_saved),
+                awaitItem()
+            )
+            expectNoEvents()
         }
     }
 

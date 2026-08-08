@@ -455,6 +455,9 @@
     <string name="biometric_lock_unavailable_toast">Impossible d\'activer le verrouillage de l\'application : cet appareil n\'a aucune biométrie pour le déverrouiller</string>
     <string name="biometric_lock_disabled_no_biometric">Verrouillage de l\'application désactivé : cet appareil n\'a aucune biométrie pour le déverrouiller</string>
     <string name="settings_lost_using_defaults">Thor n\'a pas pu lire vos paramètres et utilise ceux par défaut : vérifiez le verrouillage de l\'application dans les Paramètres</string>
+    <string name="settings_not_saved">Thor n\'a pas pu enregistrer ce paramètre : il reprendra son ancienne valeur à la prochaine ouverture de l\'application</string>
+    <string name="biometric_lock_disable_not_saved">Le verrouillage de l\'application est inutilisable sur cet appareil et Thor n\'a pas pu l\'enregistrer : il redemandera à la prochaine ouverture</string>
+    <string name="language_not_saved">Thor n\'a pas pu enregistrer votre choix de langue, elle n\'a donc pas été changée</string>
     <string name="open_security_settings">Ouvrir les paramètres de sécurité</string>
     <string name="unlock">Déverrouiller</string>
     <string name="thank_you_support_desc">Votre abonnement est actif. Merci d\'aider à soutenir le développement de Thor !</string>

@@ -299,13 +299,39 @@ class FakeBulkFreezeController(
  * treats "not read yet" as an answer is open for exactly that long. Left at 0 the flow emits
  * synchronously as it always has; above 0 it emits nothing until that much virtual time has passed,
  * then the current value and every later one.
+ *
+ * [writesFail] models the other thing it cannot: a disk that refuses. Every setter becomes a no-op
+ * that reports failure, which is the state `PreferenceRepositoryImpl.guardedWrite` produces on an
+ * `IOException`. The distinction that matters to a caller is that the flow does **not** re-emit, so
+ * a screen driven off the preference cannot notice on its own.
  */
 class FakePreferenceRepository(
     initial: UserPreferences = UserPreferences(),
-    firstReadDelayMs: Long = 0
+    firstReadDelayMs: Long = 0,
+    private val writesFail: Boolean = false
 ) : PreferenceRepository {
 
     private val prefs = MutableStateFlow(initial)
+
+    private val _settingsWriteFailed = MutableStateFlow(false)
+    override val settingsWriteFailed: Flow<Boolean> = _settingsWriteFailed
+
+    /**
+     * The fake's half of `guardedWrite`, latch and all: applies [change] and answers `true`, or
+     * skips it and answers `false` when [writesFail]. Kept in one place so a test cannot get a
+     * setter that half-honours the flag.
+     *
+     * [announce] mirrors the production parameter — the two setters that report their own outcome
+     * pass `false`, so a test asserting on a specific message does not also see the generic one.
+     */
+    private fun write(announce: Boolean = true, change: (UserPreferences) -> UserPreferences): Boolean {
+        if (writesFail) {
+            if (announce) _settingsWriteFailed.value = true
+            return false
+        }
+        prefs.update(change)
+        return true
+    }
 
     override val userPreferences: Flow<UserPreferences> =
         if (firstReadDelayMs == 0L) {
@@ -318,115 +344,113 @@ class FakePreferenceRepository(
         }
 
     override suspend fun updateAppSort(sortBy: SortBy) {
-        prefs.update { it.copy(appSortBy = sortBy) }
+        write { it.copy(appSortBy = sortBy) }
     }
 
     override suspend fun updateAppSortOrder(sortOrder: SortOrder) {
-        prefs.update { it.copy(appSortOrder = sortOrder) }
+        write { it.copy(appSortOrder = sortOrder) }
     }
 
     override suspend fun updateAppFilter(filterType: FilterType, selectedFilter: String) {
-        prefs.update { it.copy(appFilterType = filterType, appSelectedFilter = selectedFilter) }
+        write { it.copy(appFilterType = filterType, appSelectedFilter = selectedFilter) }
     }
 
     override suspend fun setReinstallAllCardVisibility(isVisible: Boolean) {
-        prefs.update { it.copy(showReinstallAllCard = isVisible) }
+        write { it.copy(showReinstallAllCard = isVisible) }
     }
 
     override suspend fun setDefaultTab(tab: DefaultTab) {
-        prefs.update { it.copy(defaultTab = tab) }
+        write { it.copy(defaultTab = tab) }
     }
 
     override suspend fun setInstallerTileVisibility(isVisible: Boolean) {
-        prefs.update { it.copy(showInstallerTile = isVisible) }
+        write { it.copy(showInstallerTile = isVisible) }
     }
 
     override suspend fun setExtensionsTileVisibility(isVisible: Boolean) {
-        prefs.update { it.copy(showExtensionsTile = isVisible) }
+        write { it.copy(showExtensionsTile = isVisible) }
     }
 
     override suspend fun setThemeMode(themeMode: ThemeMode) {
-        prefs.update { it.copy(themeMode = themeMode) }
+        write { it.copy(themeMode = themeMode) }
     }
 
     override suspend fun setDynamicColor(enabled: Boolean) {
-        prefs.update { it.copy(useDynamicColor = enabled) }
+        write { it.copy(useDynamicColor = enabled) }
     }
 
     override suspend fun setUseAmoled(enabled: Boolean) {
-        prefs.update { it.copy(useAmoled = enabled) }
+        write { it.copy(useAmoled = enabled) }
     }
 
-    override suspend fun setBiometricLock(enabled: Boolean) {
-        prefs.update { it.copy(biometricLockEnabled = enabled) }
-    }
+    override suspend fun setBiometricLock(enabled: Boolean): Boolean =
+        write(announce = false) { it.copy(biometricLockEnabled = enabled) }
 
     override suspend fun setPrivilegeMode(mode: PrivilegeMode?) {
-        prefs.update { it.copy(preferredPrivilegeMode = mode) }
+        write { it.copy(preferredPrivilegeMode = mode) }
     }
 
-    override suspend fun setLanguage(language: String?) {
-        prefs.update { it.copy(language = language) }
-    }
+    override suspend fun setLanguage(language: String?): Boolean =
+        write(announce = false) { it.copy(language = language) }
 
     override suspend fun setExportDirUri(uri: String?) {
-        prefs.update { it.copy(exportDirUri = uri) }
+        write { it.copy(exportDirUri = uri) }
     }
 
     override suspend fun setAutoFreezeEnabled(enabled: Boolean) {
-        prefs.update { it.copy(autoFreezeEnabled = enabled) }
+        write { it.copy(autoFreezeEnabled = enabled) }
     }
 
     override suspend fun setAddFreezerToLauncher(enabled: Boolean) {
-        prefs.update { it.copy(addFreezerToLauncher = enabled) }
+        write { it.copy(addFreezerToLauncher = enabled) }
     }
 
     override suspend fun setFreezerMode(mode: FreezerMode) {
-        prefs.update { it.copy(freezerMode = mode) }
+        write { it.copy(freezerMode = mode) }
     }
 
     override suspend fun setHasShownDisabledAppsPrompt(hasShown: Boolean) {
-        prefs.update { it.copy(hasShownDisabledAppsPrompt = hasShown) }
+        write { it.copy(hasShownDisabledAppsPrompt = hasShown) }
     }
 
     override suspend fun setHasShownSupportDeveloperPrompt(hasShown: Boolean) {
-        prefs.update { it.copy(hasShownSupportDeveloperPrompt = hasShown) }
+        write { it.copy(hasShownSupportDeveloperPrompt = hasShown) }
     }
 
     override suspend fun setAnimationIntensity(intensity: AnimationIntensity) {
-        prefs.update { it.copy(animationIntensity = intensity) }
+        write { it.copy(animationIntensity = intensity) }
     }
 
     override suspend fun setAppListIsGrid(isGrid: Boolean) {
-        prefs.update { it.copy(appListIsGrid = isGrid) }
+        write { it.copy(appListIsGrid = isGrid) }
     }
 
     override suspend fun setFreezerIsGrid(isGrid: Boolean) {
-        prefs.update { it.copy(freezerIsGrid = isGrid) }
+        write { it.copy(freezerIsGrid = isGrid) }
     }
 
     override suspend fun toggleAppListIsGrid() {
-        prefs.update { it.copy(appListIsGrid = !it.appListIsGrid) }
+        write { it.copy(appListIsGrid = !it.appListIsGrid) }
     }
 
     override suspend fun toggleFreezerIsGrid() {
-        prefs.update { it.copy(freezerIsGrid = !it.freezerIsGrid) }
+        write { it.copy(freezerIsGrid = !it.freezerIsGrid) }
     }
 
     override suspend fun setAppGridDensity(density: AppGridDensity) {
-        prefs.update { it.copy(appGridDensity = density) }
+        write { it.copy(appGridDensity = density) }
     }
 
     override suspend fun setExtensionsUnlocked(unlocked: Boolean) {
-        prefs.update { it.copy(extensionsUnlocked = unlocked) }
+        write { it.copy(extensionsUnlocked = unlocked) }
     }
 
     override suspend fun setExtensionConsentAccepted(accepted: Boolean) {
-        prefs.update { it.copy(extensionConsentAccepted = accepted) }
+        write { it.copy(extensionConsentAccepted = accepted) }
     }
 
     override suspend fun setAutoReinstallEnabled(enabled: Boolean) {
-        prefs.update { it.copy(autoReinstallEnabled = enabled) }
+        write { it.copy(autoReinstallEnabled = enabled) }
     }
 
     override suspend fun getInstallerArg(): String = ""

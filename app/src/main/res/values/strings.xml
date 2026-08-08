@@ -618,6 +618,12 @@
     <string name="biometric_lock_disabled_no_biometric">App lock turned off: this device has no biometrics to unlock it with</string>
     <!-- Shown once when the settings file could not be read, so every setting - the app lock included - fell back to its default. -->
     <string name="settings_lost_using_defaults">Thor couldn\'t read your settings and is using the defaults — check the app lock in Settings</string>
+    <!-- The write-side twin of the above: shown once when a setting the user changed could not be saved to disk. -->
+    <string name="settings_not_saved">Thor couldn\'t save that setting — it will go back to its old value next time you open the app</string>
+    <!-- The disarm above was attempted but the write was dropped, so the lock is still on disk and will disarm again next launch. -->
+    <string name="biometric_lock_disable_not_saved">App lock can\'t be used on this device, and Thor couldn\'t save that — it will ask again next time you open the app</string>
+    <!-- The language write was dropped, so the app was deliberately left in the old language rather than switching for one session. -->
+    <string name="language_not_saved">Thor couldn\'t save your language choice, so it hasn\'t been changed</string>
     <string name="open_security_settings">Open security settings</string>
     <string name="unlock">Unlock</string>
     <string name="thank_you_support_desc">Your subscription is active. Thank you for helping support the development of Thor!</string>
