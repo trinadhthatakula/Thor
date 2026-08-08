@@ -9,23 +9,25 @@ import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AnimationIntensity
 import com.valhalla.thor.domain.model.AppGridDensity
+import com.valhalla.thor.domain.model.BulkOp
+import com.valhalla.thor.domain.model.BulkOutcome
+import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FreezerMode
+import com.valhalla.thor.domain.model.NoOpReason
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.repository.AnyFileOpenerController
 import com.valhalla.thor.domain.repository.AuthCapability
-import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.domain.repository.BulkFreezeController
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
-import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.security.biometricRefusalMessage
 import com.valhalla.thor.util.LocaleManager
 import com.valhalla.thor.util.UiText
+import com.valhalla.thor.util.bulkResultMessage
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,7 +41,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
 
@@ -49,8 +50,7 @@ class SettingsViewModel(
     private val systemRepository: SystemRepository,
     private val biometricHelper: AuthCapability,
     private val localeManager: LocaleManager,
-    private val freezerRepository: FreezerRepository,
-    private val manageAppUseCase: ManageAppUseCase,
+    private val bulkFreeze: BulkFreezeController,
     private val freezerShortcutManager: com.valhalla.thor.data.launcher.FreezerShortcutManager,
     private val anyFileOpenerController: AnyFileOpenerController,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
@@ -267,6 +267,12 @@ class SettingsViewModel(
         }
     }
 
+    fun setSkipRoutineFreezeConfirmation(enabled: Boolean) {
+        viewModelScope.launch {
+            preferenceRepository.setSkipRoutineFreezeConfirmation(enabled)
+        }
+    }
+
     fun setAddFreezerToLauncher(enabled: Boolean) {
         viewModelScope.launch {
             preferenceRepository.setAddFreezerToLauncher(enabled)
@@ -274,36 +280,46 @@ class SettingsViewModel(
         }
     }
 
+    /**
+     * Restore every app on the freezer watchlist, through [BulkFreezeController] like every other
+     * bulk run.
+     *
+     * This used to unfreeze here, and being the one watchlist-wide path outside the runner cost it
+     * four things the runner already had. It fanned out with an unbounded `awaitAll`, so a large
+     * watchlist put one concurrent privileged call per entry against a single shell; it had no
+     * deadline, so a wedged binder left the toast pending forever; it asked for the pinned-icon
+     * rebuild by hand, which is the kind of call that gets forgotten at the next surface; and it
+     * left a parked freeze result in the tile subtitle describing apps it had just restored.
+     *
+     * It also over-reported. `getAllPackageNames` is the whole watchlist, and every entry was
+     * unfrozen and counted, so "Unfroze 12 apps" included the ones that were already running.
+     * `targetsFor` filters to the entries actually frozen, so the number now matches what changed.
+     *
+     * Single-app and small-selection unfreezes stay where they are: the runner's API is list-shaped
+     * and watchlist-or-profile scoped, and they are neither.
+     */
     fun unfreezeAll() {
         viewModelScope.launch {
-            val pkgs = freezerRepository.getAllPackageNames()
-            if (pkgs.isEmpty()) {
-                _events.send(UiText.StringResource(R.string.tile_no_apps_toast))
-                return@launch
-            }
-            val results = withContext(ioDispatcher) {
-                pkgs.map { pkg ->
-                    // forceUnfreeze restores BOTH disabled and suspended apps (not just enable).
-                    async { manageAppUseCase.forceUnfreeze(pkg) }
-                }.awaitAll()
-            }
-            // This is the one bulk path that does not go through BulkFreezeRunner, so it does
-            // not get the icon rebuild that hangs off the runner's completions. Ask for it
-            // explicitly or pinned shortcuts stay grey for apps this just restored.
-            freezerShortcutManager.refreshPinnedShortcutIcons()
-
-            val failures = results.count { it.isFailure }
-            val uiText = if (failures == 0) {
-                UiText.PluralsResource(R.plurals.unfrozen_count_success, pkgs.size)
-            } else {
-                UiText.StringResource(
-                    R.string.tile_unfreeze_partial_failure,
-                    pkgs.size - failures,
-                    pkgs.size,
-                    failures
-                )
-            }
-            _events.send(uiText)
+            val outcome = bulkFreeze.launch(BulkRequest(BulkOp.UNFREEZE)).await()
+            _events.send(
+                when (outcome) {
+                    is BulkOutcome.Completed -> bulkResultMessage(outcome.result)
+                    // Naming the precondition beats "Unfroze 0 apps", which reads as a failed
+                    // unfreeze. Which precondition matters: with a full watchlist and a dead
+                    // Shizuku binder, "No apps in Freezer" is a statement the user can disprove by
+                    // looking at the screen behind the toast, and it hides the one thing they could
+                    // act on.
+                    is BulkOutcome.NothingToDo -> UiText.StringResource(
+                        when (outcome.reason) {
+                            NoOpReason.NO_PRIVILEGE -> R.string.tile_grant_privilege_toast
+                            NoOpReason.NO_TARGETS -> R.string.tile_no_apps_toast
+                        }
+                    )
+                    // Not the same thing: the run raised, possibly after restoring part of the
+                    // watchlist, so the one claim that must not be made is that nothing happened.
+                    is BulkOutcome.Failed -> UiText.StringResource(R.string.bulk_run_failed)
+                }
+            )
         }
     }
 

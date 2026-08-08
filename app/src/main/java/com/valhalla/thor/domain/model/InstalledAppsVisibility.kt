@@ -176,3 +176,46 @@ fun scanVerdict(
 
     return ScanVerdict.Retain(reason)
 }
+
+/**
+ * The Freezer watchlist rows this scan proves have no referent left.
+ *
+ * A watchlist row names a package by string. Uninstall the package and the row survives: it renders
+ * nothing, cannot be restored, and cannot be removed by the one gesture that removes rows, because
+ * that gesture unfreezes first and there is nothing to unfreeze. Pruning it is the only *unarguable*
+ * case of litter in the Freezer — an uninstalled package cannot be thawed, so no decision is being
+ * taken away from anyone.
+ *
+ * **[ScanVerdict.Accept] is the entire safety property, and the emptiness check is the rest of it.**
+ * A [ScanVerdict.Retain] means Thor did not believe the scan — the `GET_INSTALLED_APPS` collapse
+ * this file exists for is exactly that — and "absent from a scan we already decided was a lie" is
+ * not evidence of anything. Pruning on one would delete the user's entire watchlist in a single
+ * pass, silently, with no undo, which is a strictly worse outcome than the litter.
+ *
+ * The emptiness check closes the one gap `Accept` leaves. [scanVerdict]'s first rule accepts
+ * unconditionally when there is nothing cached to protect, so an empty scan against an empty cache
+ * comes back `Accept` — a verdict about the *cache*, taken on a scan that saw nothing. Deleting
+ * every row against that would be the collapse bug wearing the gate's own uniform. An empty
+ * keep-set never prunes.
+ *
+ * Deliberately *not* scoped to rows the app cache is also dropping. That set misses the row whose
+ * package was never installed on this device at all — a watchlist restored from a backup onto a
+ * phone that never had the app — which is the case that can never self-correct, because a package
+ * that is never scanned is never cached either.
+ *
+ * **[watchlist] must have been read before [scannedPackageNames] was.** This function cannot check
+ * that and it is the caller's whole obligation: a row added *after* the scan names a package the
+ * scan had no opportunity to see, so it arrives here indistinguishable from a row whose package is
+ * gone — and gets deleted. Since adding to the Freezer freezes immediately, that produces a frozen
+ * app with no Freezer row, which is the state this function exists to clean up rather than create.
+ * `AppRepositoryImpl.watchlistSnapshot` is where the ordering is established.
+ */
+fun prunableWatchlistRows(
+    watchlist: Set<String>,
+    scannedPackageNames: Set<String>,
+    verdict: ScanVerdict,
+): Set<String> {
+    if (verdict != ScanVerdict.Accept) return emptySet()
+    if (scannedPackageNames.isEmpty()) return emptySet()
+    return watchlist - scannedPackageNames
+}

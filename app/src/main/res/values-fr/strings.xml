@@ -540,6 +540,8 @@
     <string name="freeze_mode">Mode de congélation</string>
     <string name="suspend_instead_of_freeze">Suspendre au lieu de congeler</string>
     <string name="suspend_instead_of_freeze_desc">Lors de la congélation (y compris la congélation automatique), suspendez les applications au lieu de les désactiver. Les applications suspendues restent visibles mais en pause.</string>
+    <string name="skip_routine_freeze_confirmation">Ne pas confirmer les gels courants</string>
+    <string name="skip_routine_freeze_confirmation_desc">Geler les applications système sans demander d\'abord, sauf si la liste UAD les signale. Celles marquées Expert avertissent toujours et les dangereuses restent bloquées.</string>
     <string name="add_freezer_to_launcher">Ajouter le Congélateur au lanceur</string>
     <string name="add_freezer_to_launcher_desc">Afficher les applications congelées comme raccourcis d\'écran d\'accueil pour les lancer d\'un simple geste</string>
     <string name="add_to_home_screen">Ajouter à l\'écran d\'accueil</string>

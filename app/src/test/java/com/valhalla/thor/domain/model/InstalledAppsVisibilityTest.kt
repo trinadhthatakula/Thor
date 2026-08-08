@@ -247,4 +247,86 @@ class InstalledAppsVisibilityTest {
             verdict(packages(5, withPlatform = false), InstalledAppsPermission.Granted)
         )
     }
+
+    // --- prunableWatchlistRows: the second consumer of the same verdict ---
+
+    private val watchlist = setOf("com.example.gone", "com.example.here")
+
+    @Test
+    fun aTrustedScanPrunesOnlyTheRowWhosePackageIsMissing() {
+        assertEquals(
+            setOf("com.example.gone"),
+            prunableWatchlistRows(
+                watchlist = watchlist,
+                scannedPackageNames = packages(40) + "com.example.here",
+                verdict = ScanVerdict.Accept
+            )
+        )
+    }
+
+    @Test
+    fun aDisbelievedScanPrunesNothingWhateverItsReason() {
+        // The whole safety property, one case per reason. Delete the `Accept` check in
+        // prunableWatchlistRows and all three of these turn red: on a collapsed scan every one of
+        // these rows looks uninstalled, so the user's entire watchlist would go in a single pass —
+        // silently, with no undo, and for a device that is working perfectly well.
+        for (reason in RetainReason.entries) {
+            assertEquals(
+                "retained scan (${reason.name}) must not prune",
+                emptySet<String>(),
+                prunableWatchlistRows(
+                    watchlist = watchlist,
+                    scannedPackageNames = emptySet(),
+                    verdict = ScanVerdict.Retain(reason)
+                )
+            )
+        }
+    }
+
+    @Test
+    fun anEmptyScanNeverPrunesEvenWhenItWasAccepted() {
+        // scanVerdict's first rule accepts unconditionally when the cache is empty, so an empty
+        // scan against an empty cache arrives here carrying Accept. That verdict is about the
+        // *cache* — it says nothing about the scan, which saw nothing at all. Without this check
+        // the collapse bug comes back wearing the gate's own uniform.
+        assertEquals(ScanVerdict.Accept, verdict(emptySet(), InstalledAppsPermission.Denied, cachedCount = 0))
+        assertEquals(
+            emptySet<String>(),
+            prunableWatchlistRows(
+                watchlist = watchlist,
+                scannedPackageNames = emptySet(),
+                verdict = ScanVerdict.Accept
+            )
+        )
+    }
+
+    @Test
+    fun aRowForAPackageThisDeviceNeverHadIsStillPruned() {
+        // The restored-backup case, and the reason this is scoped to the scan rather than to the
+        // rows the app cache is dropping. That set is derived from what was cached, and a package
+        // that has never been installed here was never cached — so scoping to it would leave this
+        // row forever.
+        assertEquals(
+            setOf("com.example.neverhere"),
+            prunableWatchlistRows(
+                watchlist = setOf("com.example.neverhere"),
+                scannedPackageNames = packages(80),
+                verdict = ScanVerdict.Accept
+            )
+        )
+    }
+
+    @Test
+    fun anEmptyWatchlistIsNeverAskedToDeleteAnything() {
+        // Room builds `IN ()` from an empty collection and SQLite rejects it, so "nothing to do"
+        // has to be answerable here rather than at the DAO.
+        assertEquals(
+            emptySet<String>(),
+            prunableWatchlistRows(
+                watchlist = emptySet(),
+                scannedPackageNames = packages(80),
+                verdict = ScanVerdict.Accept
+            )
+        )
+    }
 }

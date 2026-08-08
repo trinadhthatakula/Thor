@@ -13,6 +13,7 @@ import com.valhalla.thor.presentation.freezer.FreezerPrompt
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
@@ -39,6 +40,19 @@ data class AppInfoDetailsUiState(
     val detailedInfo: DetailedAppInfo? = null,
     val isInFreezer: Boolean = false,
     val freezerPrompt: FreezerPrompt? = null,
+    /**
+     * [UserPreferences.skipRoutineFreezeConfirmation][com.valhalla.thor.domain.model.UserPreferences],
+     * carried here because both freeze surfaces
+     * reach this view model and neither of their hosts should have to.
+     *
+     * `AppInfoHeaderAndActions` reads it from this state via `AppInfoDetailsScreen`, and `AppInfoSheet`
+     * reads it from the instance it already scopes to itself — so the setting arrives at both without
+     * a `skip…` parameter threaded through `AppListScreen`, `FreezerScreen` and `MainScreen`, none of
+     * which have an opinion about it. Populated from a collector in `init`, not from
+     * [AppInfoDetailsViewModel.loadAppDetails], so it is right before the sheet is ever expanded —
+     * the freeze action is reachable at the partial detent, where no detail load has run.
+     */
+    val skipRoutineFreezeConfirmation: Boolean = false,
     val errorMessage: UiText? = null
 )
 
@@ -53,6 +67,7 @@ class AppInfoDetailsViewModel(
     // single app's shortcut, and the manager needs a Context, so depending on the class put the
     // whole view model out of reach of a JVM test. Same dependency AppListViewModel already takes.
     private val appShortcuts: AppShortcutController,
+    private val preferenceRepository: PreferenceRepository,
     // Injected rather than a baked-in Dispatchers.IO, so a test can put this work on its own
     // scheduler — otherwise every action below escapes the test dispatcher and nothing here is
     // deterministically assertable.
@@ -61,6 +76,18 @@ class AppInfoDetailsViewModel(
 
     private val _uiState = MutableStateFlow(AppInfoDetailsUiState())
     val uiState = _uiState.asStateFlow()
+
+    init {
+        // Collected for the view model's whole life rather than read once, so flipping the setting
+        // takes effect on a sheet that is already open.
+        viewModelScope.launch {
+            preferenceRepository.userPreferences.collect { prefs ->
+                _uiState.update {
+                    it.copy(skipRoutineFreezeConfirmation = prefs.skipRoutineFreezeConfirmation)
+                }
+            }
+        }
+    }
 
     // One-off toast feedback lives here (not in UiState) so it fires exactly once and is never
     // replayed on recomposition or config change. A buffered Channel (not a replay=0 SharedFlow)

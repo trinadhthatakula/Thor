@@ -78,6 +78,7 @@ import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.PermissionDetail
+import com.valhalla.thor.domain.model.freezeNeedsConfirmation
 import com.valhalla.thor.presentation.theme.bodyFontFamily
 import com.valhalla.thor.presentation.theme.firaMonoFontFamily
 import com.valhalla.thor.presentation.utils.AppIconModel
@@ -186,6 +187,8 @@ fun AppInfoDetailsScreen(
                                 isShizuku = state.isShizuku,
                                 isDhizuku = state.isDhizuku,
                                 isInFreezer = state.isInFreezer,
+                                skipRoutineFreezeConfirmation =
+                                    state.skipRoutineFreezeConfirmation,
                                 onAppAction = onAppAction,
                                 onFreeze = { shouldFreeze ->
                                     viewModel.toggleFreezerState(
@@ -242,6 +245,10 @@ fun AppInfoDetailsScreen(
  *
  * [onFreeze] is the "do it" callback: this composable decides whether a confirmation has to come
  * first, the host decides what freezing means.
+ *
+ * [skipRoutineFreezeConfirmation] only ever narrows *which* freezes ask; it can never widen what a
+ * confirmed freeze is allowed to do. Required rather than defaulted to `false`, so a new host has to
+ * say where it reads the setting from instead of silently inheriting "always ask".
  */
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -251,6 +258,7 @@ fun AppInfoHeaderAndActions(
     isShizuku: Boolean,
     isDhizuku: Boolean,
     isInFreezer: Boolean,
+    skipRoutineFreezeConfirmation: Boolean,
     onAppAction: (AppClickAction) -> Unit,
     onFreeze: (Boolean) -> Unit,
     onToggleFreezerMembership: () -> Unit,
@@ -288,8 +296,12 @@ fun AppInfoHeaderAndActions(
             onFreezeToggle = { shouldFreeze ->
                 // Unfreeze immediately. When freezing, only SYSTEM apps get the
                 // safety-warning dialog (instability / reboot-loop risk); user
-                // apps are safe to freeze directly (mirrors AppInfoSheet gating).
-                if (shouldFreeze && appInfo.isSystem) {
+                // apps are safe to freeze directly. Not "mirrors AppInfoSheet
+                // gating" any more — it is literally the same call, which is what
+                // keeps the two from drifting.
+                if (shouldFreeze &&
+                    freezeNeedsConfirmation(appInfo, skipRoutineFreezeConfirmation)
+                ) {
                     showFreezeConfirmation = true
                 } else {
                     onFreeze(shouldFreeze)

@@ -70,6 +70,41 @@ fun isBlockedFromFreeze(app: AppInfo?): Boolean =
     app == null || app.freezeTier == FreezeTier.BLOCKED
 
 /**
+ * Must this freeze be confirmed before it runs?
+ *
+ * The one gate every freeze surface asks before raising `AppRiskDialog`. It lives here rather than
+ * beside the dialog for the reason [freezeTierOf] does: the answer is a statement about the tier, and
+ * a tier rule retyped per call site is how the QS tile ended up freezing what the in-app dialog
+ * refuses to. It is also why the suppression is not a parameter *on* the dialog — a dialog that
+ * decides whether to render itself is a dialog whose callers stop agreeing about when it appears, and
+ * the confirm button here is load-bearing enforcement on most of these paths.
+ *
+ * Two rules, and only the second one is new.
+ *
+ * **A user app is never confirmed.** Freezing one disables a package that `pm enable` returns exactly
+ * as it was, so there has never been anything to warn about; [freezeTier] is [FreezeTier.NORMAL] for
+ * every user app by construction. This is the gate the call sites already carried inline.
+ *
+ * **A system app is confirmed unless the user has switched off the routine case.**
+ * [skipRoutineConfirmation] is [UserPreferences.skipRoutineFreezeConfirmation], and it reaches
+ * exactly [FreezeTier.NORMAL] — a system app the UAD list either recommends removing or says nothing
+ * about. That is the tap the setting exists for: someone debloating a fresh device answers the same
+ * dialog forty times, and the fortieth answer carries no more information than the first.
+ *
+ * [FreezeTier.EXPERT] is deliberately outside the setting's reach. Its warning is not routine — it is
+ * a per-app verdict from the UAD list saying this specific package breaks something real — and there
+ * is no backstop underneath it: `FreezeAppUseCase` refuses [FreezeTier.BLOCKED] and nothing else, so
+ * the dialog is the only thing between an EXPERT tap and the freeze. A blanket "don't ask me" that
+ * silently covered it would turn a preference about *tedium* into a preference about *risk*.
+ *
+ * [FreezeTier.BLOCKED] never reaches the question. It still returns `true` here, because the dialog
+ * is how a blocked app is refused: it renders no confirm button at all. Suppressing it would not skip
+ * a confirmation, it would skip the refusal.
+ */
+fun freezeNeedsConfirmation(app: AppInfo, skipRoutineConfirmation: Boolean): Boolean =
+    app.isSystem && !(skipRoutineConfirmation && app.freezeTier == FreezeTier.NORMAL)
+
+/**
  * How a freeze was actually carried out. The two are not interchangeable.
  *
  * [DISABLE] is reversible in the sense users expect: the package stays installed, keeps its data,

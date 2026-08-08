@@ -15,6 +15,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.data.launcher.FreezerShortcutContract
 import com.valhalla.thor.data.launcher.FreezerShortcutManager
 import com.valhalla.thor.domain.model.BulkOutcome
+import com.valhalla.thor.domain.model.NoOpReason
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.util.AppLocale
@@ -131,10 +132,16 @@ class FreezerLaunchActivity : Activity() {
                 when (outcome) {
                     is BulkOutcome.Completed ->
                         bulkResultMessage(outcome.result).asString(this@FreezerLaunchActivity)
-                    // Nothing to act on. Privilege was checked above, so this is the empty
-                    // target list — same message SettingsViewModel shows for Unfreeze-all on an
-                    // empty watchlist.
-                    BulkOutcome.NothingToDo -> getString(R.string.tile_no_apps_toast)
+                    // Nothing to act on. The privilege branch is not dead despite the check
+                    // above: that check reads a probe taken here, while the runner awaits the
+                    // resolved PrivilegeState, and a mode revoked in between resolves to no
+                    // privilege on a run this activity already let through.
+                    is BulkOutcome.NothingToDo -> getString(
+                        when (outcome.reason) {
+                            NoOpReason.NO_PRIVILEGE -> R.string.tile_grant_privilege_toast
+                            NoOpReason.NO_TARGETS -> R.string.tile_no_apps_toast
+                        }
+                    )
                     // Deliberately vague about what got frozen, because the runner does not know
                     // either: the throw can land before the first package or halfway through the
                     // batch. Saying "nothing to do" here — which is what this used to say — is the

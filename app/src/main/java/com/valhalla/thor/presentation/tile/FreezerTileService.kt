@@ -13,7 +13,7 @@ import com.valhalla.thor.data.freezer.BulkFreezeRunner
 import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkRequest
-import com.valhalla.thor.domain.model.BulkResult
+import com.valhalla.thor.domain.model.ParkedBulkResult
 import com.valhalla.thor.util.AppLocale
 import com.valhalla.thor.util.LocalizedResources
 import com.valhalla.thor.util.Logger
@@ -46,8 +46,8 @@ class FreezerTileService : TileService() {
 
     private var scope: CoroutineScope? = null
 
-    /** The [BulkResult] currently displayed in the subtitle; consumed in [onStopListening]. */
-    private var shownResult: BulkResult? = null
+    /** The result currently displayed in the subtitle; consumed in [onStopListening]. */
+    private var shownResult: ParkedBulkResult? = null
 
     /**
      * Applies the chosen locale on API 28–32 to the strings **this service** resolves.
@@ -210,10 +210,16 @@ class FreezerTileService : TileService() {
         // A finished run's message wins the subtitle for the whole shade-open window.
         // Record it in shownResult so onStopListening can consume exactly what was displayed.
         // Writing to shownResult (a plain field, not a flow) does not re-trigger the collector.
-        val result = runner.lastResult.value
-        val subtitle = if (result != null && !freezing) {
-            shownResult = result
-            bulkResultMessage(result).asString(this)
+        // freshResult(), not lastResult.value: the runner lives for the whole process and this
+        // subtitle is the tile's live status line, so an unexpired report is the only kind that
+        // may occupy it. A run from last night must fall back to the READY count below rather
+        // than tell the user their apps were frozen "just now". The check belongs on this read
+        // because paint() runs synchronously at the top of every onStartListening — every moment
+        // the staleness is observable is a moment this line already executes.
+        val parked = runner.freshResult()
+        val subtitle = if (parked != null && !freezing) {
+            shownResult = parked
+            bulkResultMessage(parked.result).asString(this)
         } else {
             when (visual) {
                 TileVisual.CHECKING -> getString(R.string.tile_checking)

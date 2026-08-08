@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.data.freezer
 
+import android.os.SystemClock
 import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.data.source.local.UadHelper
 import com.valhalla.thor.data.source.local.UadSnapshot
@@ -12,8 +13,11 @@ import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.BulkResult
 import com.valhalla.thor.domain.model.BulkScope
+import com.valhalla.thor.domain.model.NoOpReason
+import com.valhalla.thor.domain.model.ParkedBulkResult
 import com.valhalla.thor.domain.model.bulkActionFor
 import com.valhalla.thor.domain.model.freezableCandidates
+import com.valhalla.thor.domain.model.freshParkedResult
 import com.valhalla.thor.domain.repository.BulkFreezeController
 import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
@@ -92,10 +96,24 @@ class BulkFreezeRunner(
      */
     val freezableCount: StateFlow<Int?> = _freezableCount.asStateFlow()
 
-    private val _lastResult = MutableStateFlow<BulkResult?>(null)
+    private val _lastResult = MutableStateFlow<ParkedBulkResult?>(null)
 
-    /** Outcome of the last completed run, consumed once by whoever displays it. */
-    val lastResult: StateFlow<BulkResult?> = _lastResult.asStateFlow()
+    /**
+     * Outcome of the last completed run, consumed once by whoever displays it.
+     *
+     * Exposed so a surface can repaint when a result lands; read it through [freshResult] rather
+     * than off this flow, or an expired report is displayed as a current one.
+     */
+    val lastResult: StateFlow<ParkedBulkResult?> = _lastResult.asStateFlow()
+
+    /**
+     * [lastResult] if it is still recent enough to show, else null.
+     *
+     * The staleness check happens here, on read, because nothing observes a parked result until a
+     * surface comes back on screen — see [freshParkedResult].
+     */
+    fun freshResult(): ParkedBulkResult? =
+        freshParkedResult(_lastResult.value, SystemClock.elapsedRealtime(), RESULT_TTL_MS)
 
     // replay = 1 so a completion is not lost to a subscriber that has not attached yet.
     // extraBufferCapacity alone only buffers for an *already-subscribed but slow* collector; with
@@ -331,12 +349,32 @@ class BulkFreezeRunner(
                 // stopped. Each cancelled job settles fully (body AND NonCancellable sweep)
                 // before the next cancel, and before this run reaches any package of its own.
                 if (cancelPrevious) doomed.forEach { it.cancelAndJoin() } else previous?.join()
-                // B-8: run() returns null for no-op cases (no privilege, empty target list);
-                // do not publish BulkResult(0,0,0) because the tile already communicates
-                // "nothing to freeze" — a false "Froze 0 apps" message is worse than silence.
-                // That null becomes BulkOutcome.NothingToDo here, so a caller can tell it apart
-                // from the Failed this block's catch returns.
-                val result = run(request) ?: return@async BulkOutcome.NothingToDo
+                // Awaited here rather than trusted from the caller. PrivilegeState starts at
+                // active = NONE / isReady = false, and hasAnyPrivilege is `active != NONE`, so the
+                // raw snapshot reads false until BOTH the probe and the first DataStore emission
+                // have landed — reading it directly turns a cold-start run into a silent no-op.
+                //
+                // The tile happens to be safe because it awaits `isReady` itself before calling
+                // launch() (it needs the resolved state to paint), but FreezerLaunchActivity's
+                // shortcuts run their own direct probe and call straight through. The runner must
+                // not depend on its caller having awaited anything.
+                //
+                // In this block rather than inside run(), which is the only thing that changed
+                // about it: run() returns a nullable result, so a check living in there could only
+                // report *that* the run was a no-op, never which of the two ways. Callers were
+                // each papering over that with a workaround — see NoOpReason. Same position in
+                // the sequence as before, immediately after the handoff join and before any
+                // package is read.
+                if (!privilegeManager.state.first { it.isReady }.hasAnyPrivilege) {
+                    return@async BulkOutcome.NothingToDo(NoOpReason.NO_PRIVILEGE)
+                }
+                // B-8: run() returns null for an empty target list; do not publish
+                // BulkResult(0,0,0) because the tile already communicates "nothing to freeze" —
+                // a false "Froze 0 apps" message is worse than silence. That null becomes
+                // BulkOutcome.NothingToDo here, so a caller can tell it apart from the Failed
+                // this block's catch returns.
+                val result = run(request)
+                    ?: return@async BulkOutcome.NothingToDo(NoOpReason.NO_TARGETS)
                 // Publish to _lastResult for FREEZE only. The tile is freeze-only (D1) and
                 // _lastResult is process-lifetime, so parking an UNFREEZE result here would
                 // render it in the tile subtitle the next time the shade opens — possibly
@@ -356,7 +394,10 @@ class BulkFreezeRunner(
                 // by awaiting this Deferred — pushing it into the tile as well would put
                 // "Froze 4 apps" over a watchlist those four may not even belong to.
                 if (request.op == BulkOp.UNFREEZE) _lastResult.value = null
-                else if (request.scope == BulkScope.Watchlist) _lastResult.value = result
+                else if (request.scope == BulkScope.Watchlist) {
+                    _lastResult.value =
+                        ParkedBulkResult(result, SystemClock.elapsedRealtime())
+                }
                 // Unconditional, unlike the lines around it: a completion is not a *report*
                 // of the run, it is the fact that package state changed. It must not inherit
                 // the tile's freeze-only rule (an unfreeze recolours icons too) nor the
@@ -461,32 +502,32 @@ class BulkFreezeRunner(
      * Clear [lastResult] after it has been shown, consuming only the exact result that was
      * displayed. Compare-and-set means a new result published between the caller's read and
      * this call is not silently dropped.
+     *
+     * Takes the parked value rather than the bare [BulkResult] so the stamp is part of the
+     * comparison: two runs over the same watchlist very often produce an *equal* result
+     * ("Froze 12 apps" twice), and without the stamp the second one would be consumed by a
+     * caller that only ever saw the first.
      */
-    fun consumeResult(shown: BulkResult) {
+    fun consumeResult(shown: ParkedBulkResult) {
         _lastResult.compareAndSet(shown, null)
     }
 
-    // B-8: returns null when there is nothing to act on, so the caller can skip publishing a
-    // misleading BulkResult(0,0,0).
+    // B-8: returns null when there are no targets, so the caller can skip publishing a misleading
+    // BulkResult(0,0,0). Privilege is the caller's gate, not this one's — see [launch].
     private suspend fun run(request: BulkRequest): BulkResult? {
         val op = request.op
-        // Await readiness here rather than trusting the caller to have awaited it. PrivilegeState
-        // starts at active = NONE / isReady = false, and hasAnyPrivilege is `active != NONE`, so
-        // the raw snapshot reads false until BOTH the probe and the first DataStore emission have
-        // landed — reading it directly turns a cold-start run into a silent no-op.
-        //
-        // The tile happens to be safe because it awaits `isReady` itself before calling launch()
-        // (it needs the resolved state to paint), but FreezerLaunchActivity's shortcuts run their
-        // own direct probe and call straight through. The runner must not depend on its caller
-        // having awaited anything.
-        if (!privilegeManager.state.first { it.isReady }.hasAnyPrivilege) return null
-
+        // Privilege has already been awaited by the caller in [launch] — the one caller this has —
+        // so by here it is settled and active. Null from this function now means one thing only:
+        // an empty target list.
         val targets = targetsFor(request)
         if (targets.isEmpty()) return null
 
         // Resolved once per run, not per package: the mode cannot change mid-batch, and the
-        // op × mode decision is a pure function so it can be unit-tested away from binders.
-        val action = bulkActionFor(op, preferenceRepository.userPreferences.first().freezerMode)
+        // op × mode decision is a pure function so it can be unit-tested away from binders. The
+        // global mode is still read — it is one emission off an already-collected DataStore flow —
+        // but it is only *consulted* when the request has no opinion: a profile row's explicit
+        // Suspend names the verb, and must not be re-decided by a global setting it overrides.
+        val action = bulkActionFor(request, preferenceRepository.userPreferences.first().freezerMode)
 
         val succeeded = AtomicInteger(0)
         val failed = AtomicInteger(0)
@@ -572,6 +613,12 @@ class BulkFreezeRunner(
         // purpose: the Shizuku/Dhizuku paths make blocking binder calls that ignore
         // cancellation, so an unbounded join would stall the next batch behind them.
         const val CANCEL_GRACE_MS = 2_000L
+
+        // How long a parked result stays worth showing. Five minutes is arbitrary and there is no
+        // measurement behind it — it is "long enough that the shade you open right after tapping
+        // still explains what happened, short enough that it is not describing something you have
+        // forgotten doing". Tune it freely; nothing else depends on the value.
+        const val RESULT_TTL_MS = 5 * 60_000L
 
         // How long the post-run finally waits for the candidate sweep before releasing the run.
         // Deliberately NOT CANCEL_GRACE_MS: that bounds an unwind, this bounds real work — one

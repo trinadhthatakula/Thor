@@ -45,6 +45,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.listSaver
@@ -119,6 +120,32 @@ fun FreezerScreen(
     // opened from it; false for "save selection as profile", which starts from the app grid and
     // should return there.
     var editorReturnsToList by rememberSaveable { mutableStateOf(false) }
+    // Identifies the *current* editor, not the profile it edits. A save that lands after its own
+    // editor was dismissed by hand must not close whatever editor replaced it — see
+    // FreezerEvent.ProfileSaveSucceeded. Saved with the rest of the editor state so the comparison
+    // still holds across a config change mid-save.
+    var editorSession by rememberSaveable { mutableIntStateOf(0) }
+
+    // Every open goes through here so the session can never be forgotten at a new entry point —
+    // there are three today, and the failure mode of a missed increment is silent (two editors
+    // sharing an id, which is exactly the bug the id exists to prevent).
+    val openProfileEditor = { profileId: Long, seed: Set<String>, returnsToList: Boolean ->
+        editorSeed = seed
+        editorReturnsToList = returnsToList
+        editorSession++
+        editorProfileId = profileId
+    }
+
+    // Cancel and a confirmed save unwind identically — the only difference is whether a write was
+    // issued first — so the teardown lives in one place rather than being kept in step by hand.
+    // Declared up here rather than beside the sheet because the event observer below closes on it.
+    val closeProfileEditor = {
+        editorProfileId = null
+        // The picker's query is VM state so it survives the sheet; clear it or the next open
+        // starts filtered by a search the user has forgotten making.
+        viewModel.updateProfileEditorSearch("")
+        showProfilesSheet = editorReturnsToList
+    }
 
     var showImportDialog by rememberSaveable { mutableStateOf(false) }
     var hasCheckedAutoPrompt by rememberSaveable { mutableStateOf(false) }
@@ -172,6 +199,16 @@ fun FreezerScreen(
 
             is FreezerEvent.ShowFreezerPrompt ->
                 freezerPrompt = FreezerPrompt(event.packageName, event.appName)
+
+            // Two guards, for the two things a hand-dismissed editor can do to a write still in
+            // flight. The null check keeps an already-closed sheet from unwinding again and
+            // re-opening the profiles list underneath it. The session check keeps a *replacement*
+            // editor from being closed by the previous one's write, which would throw away a draft
+            // the user is in the middle of typing.
+            is FreezerEvent.ProfileSaveSucceeded ->
+                if (editorProfileId != null && event.editorSession == editorSession) {
+                    closeProfileEditor()
+                }
         }
     }
 
@@ -429,9 +466,7 @@ fun FreezerScreen(
                         viewModel.removeFromFreezer(state.multiSelection)
                     },
                     onSaveAsProfile = {
-                        editorSeed = state.multiSelection
-                        editorReturnsToList = false
-                        editorProfileId = NEW_PROFILE_ID
+                        openProfileEditor(NEW_PROFILE_ID, state.multiSelection, false)
                         // Clear the selection only once the editor has the seed: the editor is a
                         // separate sheet, so leaving the Freezer in multi-select behind it means
                         // backing out lands on a toolbar for a selection the user has moved on from.
@@ -578,36 +613,30 @@ fun FreezerScreen(
     if (showProfilesSheet) {
         FreezeProfilesSheet(
             profiles = state.profiles,
+            allApps = state.allInstalledApps,
             runningRequests = state.runningRequests,
             hasPrivilege = hasPrivilege,
             onRun = viewModel::runProfile,
+            // Dismissed first: the kill lands in MainScreen's confirm dialog and then its progress
+            // log, and neither is worth reading through a sheet that can no longer say anything
+            // about the run. Freeze and unfreeze keep the sheet because their report *is* the row.
+            onKill = { apps ->
+                showProfilesSheet = false
+                onMultiAppAction(MultiAppAction.Kill(apps))
+            },
             onCreate = {
-                editorSeed = emptySet()
-                editorReturnsToList = true
-                editorProfileId = NEW_PROFILE_ID
+                openProfileEditor(NEW_PROFILE_ID, emptySet(), true)
                 // Swap the editor in for the list rather than stacking it: two modal sheets at
                 // once leaves the lower one's scrim eating the upper one's dismiss gesture.
                 showProfilesSheet = false
             },
             onEdit = { profile ->
-                editorSeed = emptySet()
-                editorReturnsToList = true
-                editorProfileId = profile.id
+                openProfileEditor(profile.id, emptySet(), true)
                 showProfilesSheet = false
             },
             onDelete = viewModel::deleteProfile,
             onDismiss = { showProfilesSheet = false }
         )
-    }
-
-    // Save and cancel unwind identically — the only difference is whether a write was issued
-    // first — so the teardown lives in one place rather than being kept in step by hand.
-    val closeProfileEditor = {
-        editorProfileId = null
-        // The picker's query is VM state so it survives the sheet; clear it or the next open
-        // starts filtered by a search the user has forgotten making.
-        viewModel.updateProfileEditorSearch("")
-        showProfilesSheet = editorReturnsToList
     }
 
     editorProfileId?.let { id ->
@@ -622,10 +651,15 @@ fun FreezerScreen(
             searchQuery = state.profileEditorSearchQuery,
             gridDensity = state.gridDensity,
             onSearchChange = viewModel::updateProfileEditorSearch,
+            isSaving = state.profileSaveInFlight,
+            // No close here. The sheet comes down on FreezerEvent.ProfileSaveSucceeded, so a write
+            // the database refuses — a duplicate name, a foreign key — leaves the draft on screen
+            // to be corrected instead of reporting itself into the void.
+            // The session is captured here, at the tap, rather than read when the answer arrives —
+            // by then it may already name a different editor.
             onSave = { name, packageNames ->
-                if (editing == null) viewModel.createProfile(name, packageNames)
-                else viewModel.updateProfile(editing.id, name, packageNames)
-                closeProfileEditor()
+                if (editing == null) viewModel.createProfile(editorSession, name, packageNames)
+                else viewModel.updateProfile(editorSession, editing.id, name, packageNames)
             },
             onDismiss = { closeProfileEditor() }
         )

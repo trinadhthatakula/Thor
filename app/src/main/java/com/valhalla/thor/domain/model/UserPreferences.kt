@@ -45,6 +45,11 @@ data class UserPreferences(
     // Add Freezer to launcher (home-screen shortcuts for frozen apps)
     val addFreezerToLauncher: Boolean = false,
 
+    // Skip the freeze confirmation for system apps at FreezeTier.NORMAL — the dialog someone
+    // debloating a fresh device answers forty times in a row. Reaches nothing else: EXPERT still
+    // warns and BLOCKED is still refused. See `freezeNeedsConfirmation`.
+    val skipRoutineFreezeConfirmation: Boolean = false,
+
     // Freezer Prompts
     val hasShownDisabledAppsPrompt: Boolean = false,
 
