@@ -34,6 +34,7 @@ import com.valhalla.thor.domain.repository.BulkFreezeController
 import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.InstalledAppsPermissionGate
+import com.valhalla.thor.domain.repository.InstallerLabelResolver
 import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
@@ -712,6 +713,18 @@ class FakeContext(private val cache: File) : ContextWrapper(null) {
  * A user app. `freezeTierOf` short-circuits on `!isSystem -> NORMAL`, so this is never blocked
  * whatever else it carries — which is what makes it the control in every tier-gate test.
  */
+/**
+ * Names installers from a map the test supplies.
+ *
+ * An id that isn't in the map resolves to null, which is the real resolver's answer for a store
+ * that is no longer installed — so the default, empty, fake is the "nothing is installed" device.
+ */
+class FakeInstallerLabelResolver(
+    private val labels: Map<String, String> = emptyMap()
+) : InstallerLabelResolver {
+    override fun labelFor(packageName: String): String? = labels[packageName]
+}
+
 fun userApp(
     packageName: String,
     enabled: Boolean = true,
@@ -721,6 +734,9 @@ fun userApp(
     // The permission index keys its invalidation on `packageName@lastUpdateTime`, so this is how a
     // test says "the same app, updated" as opposed to "the same app".
     lastUpdateTime: Long = 0L,
+    // Null is a real device state, not a missing default: Android records no installer for an app
+    // that arrived by `adb install` or shipped with the image.
+    installerPackageName: String? = null,
 ): AppInfo = AppInfo(
     appName = appName,
     packageName = packageName,
@@ -728,7 +744,8 @@ fun userApp(
     enabled = enabled,
     isSuspended = isSuspended,
     isDebuggable = isDebuggable,
-    lastUpdateTime = lastUpdateTime
+    lastUpdateTime = lastUpdateTime,
+    installerPackageName = installerPackageName
 )
 
 /**

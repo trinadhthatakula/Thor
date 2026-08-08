@@ -63,6 +63,12 @@ fun HomeScreen(
     onNavigateToFreezer: () -> Unit,
     onReinstallAll: () -> Unit,
     onClearAllCache: (AppListType) -> Unit,
+    /**
+     * Opens the Apps tab showing only what the given installer put there. Takes the list type as
+     * well because the chart is drawn per type — a bar read off the System chart names apps the
+     * Apps tab hides while it is on User, so handing over the filter alone lands on an empty list.
+     */
+    onFilterByInstaller: (AppListType, String) -> Unit,
     onNavigateToExtensionManager: () -> Unit,
     viewModel: HomeViewModel = koinViewModel(),
     installerViewModel: InstallerViewModel = koinViewModel()
@@ -177,7 +183,7 @@ fun HomeScreen(
 
                 // Right Column: Distribution & Support
                 Column(modifier = Modifier.weight(1f)) {
-                    AnimatedVisibility(state.distributionData.isNotEmpty() && !state.isLoading) {
+                    AnimatedVisibility(state.distribution.isNotEmpty() && !state.isLoading) {
                         Column(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(48.dp))
@@ -209,7 +215,10 @@ fun HomeScreen(
                             }
                             Spacer(Modifier.height(24.dp))
                             AppDistributionChart(
-                                data = state.distributionData,
+                                slices = state.distribution,
+                                onInstallerClick = { installer ->
+                                    onFilterByInstaller(state.selectedType, installer)
+                                },
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
@@ -255,7 +264,7 @@ fun HomeScreen(
             Spacer(Modifier.height(24.dp))
 
             // 3. Distribution Chart
-            AnimatedVisibility(state.distributionData.isNotEmpty() && !state.isLoading) {
+            AnimatedVisibility(state.distribution.isNotEmpty() && !state.isLoading) {
                 Column(
                     modifier = Modifier
                         .padding(horizontal = 24.dp)
@@ -288,7 +297,10 @@ fun HomeScreen(
                     }
                     Spacer(Modifier.height(24.dp))
                     AppDistributionChart(
-                        data = state.distributionData,
+                        slices = state.distribution,
+                        onInstallerClick = { installer ->
+                            onFilterByInstaller(state.selectedType, installer)
+                        },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }

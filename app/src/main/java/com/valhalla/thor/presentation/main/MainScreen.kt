@@ -399,6 +399,10 @@ fun MainScreen(
                             )
                         },
                         onClearAllCache = { type -> mainViewModel.clearAllCache(type) },
+                        onFilterByInstaller = { type, installer ->
+                            appListViewModel.showAppsFromInstaller(type, installer)
+                            activeDestination = AppDestinations.APPS
+                        },
                         onNavigateToExtensionManager = {
                             homeBackStack.add(ThorRoute.ExtensionManager)
                         }

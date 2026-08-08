@@ -19,6 +19,7 @@ import com.valhalla.thor.presentation.FakeAppRepository
 import com.valhalla.thor.presentation.FakeAppShortcutController
 import com.valhalla.thor.presentation.FakeFreezerRepository
 import com.valhalla.thor.presentation.FakeInstalledAppsPermissionGate
+import com.valhalla.thor.presentation.FakeInstallerLabelResolver
 import com.valhalla.thor.presentation.FakePermissionRepository
 import com.valhalla.thor.presentation.FakePreferenceRepository
 import com.valhalla.thor.presentation.FakePrivilegeStateProvider
@@ -125,6 +126,7 @@ class AppListViewModelTest {
             storageStats = FakeStorageStatsProvider(),
             usageAccess = FakeUsageAccessGate(),
             installedAppsPermission = installedApps,
+            installerLabelResolver = FakeInstallerLabelResolver(),
             defaultDispatcher = mainDispatcherRule.dispatcher,
             ioDispatcher = mainDispatcherRule.dispatcher
         )
