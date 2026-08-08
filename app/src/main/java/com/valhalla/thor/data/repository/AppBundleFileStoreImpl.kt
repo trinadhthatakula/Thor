@@ -87,6 +87,16 @@ class AppBundleFileStoreImpl(
     override fun shareUri(file: File): String =
         FileProvider.getUriForFile(context, "${BuildConfig.APPLICATION_ID}.provider", file).toString()
 
+    override suspend fun stageText(fileName: String, content: String): File =
+        withContext(ioDispatcher) {
+            // Under cacheDir, so `provider_paths.xml`'s cache-path makes it shareable, and so the
+            // system can reclaim it if it is never collected here.
+            val dir = File(context.cacheDir, TEXT_STAGING_DIR)
+            if (dir.exists()) dir.deleteRecursively()
+            dir.mkdirs()
+            File(dir, fileName).apply { writeText(content) }
+        }
+
     @RequiresApi(Build.VERSION_CODES.Q)
     private suspend fun writeToDownloadsMediaStore(source: File, mime: String): String {
         val resolver = context.contentResolver
@@ -169,5 +179,8 @@ class AppBundleFileStoreImpl(
 
     private companion object {
         const val COPY_BUFFER_BYTES = 8192
+
+        /** Cache subdirectory for [stageText]; kept apart from the bundle builder's staging. */
+        const val TEXT_STAGING_DIR = "list_export"
     }
 }

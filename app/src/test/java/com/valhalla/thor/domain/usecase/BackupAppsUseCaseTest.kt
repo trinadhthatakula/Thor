@@ -642,4 +642,7 @@ private class RecordingFileStore(
     override suspend fun isTreeWritable(treeUriStr: String?): Boolean = treeWritable
 
     override fun shareUri(file: File): String = error("an export never shares")
+
+    override suspend fun stageText(fileName: String, content: String): File =
+        error("a batch stages its manifest itself; nothing here goes through stageText")
 }

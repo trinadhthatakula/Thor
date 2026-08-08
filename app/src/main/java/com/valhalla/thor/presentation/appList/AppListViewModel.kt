@@ -6,6 +6,7 @@ package com.valhalla.thor.presentation.appList
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.APP_LIST_MIME
 import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
@@ -30,6 +31,7 @@ import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
 import com.valhalla.thor.domain.repository.StorageStatsProvider
 import com.valhalla.thor.domain.repository.UsageAccessGate
+import com.valhalla.thor.domain.usecase.ExportAppListUseCase
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
@@ -122,6 +124,9 @@ data class AppListUiState(
 sealed interface AppListEvent {
     data class ShowMessage(val message: UiText) : AppListEvent
     data class ShowFreezerPrompt(val prompt: FreezerPrompt) : AppListEvent
+
+    /** Hand the exported list to another app. [uri] is a `content://` string; the screen chooses. */
+    data class ShareList(val uri: String, val mime: String) : AppListEvent
 }
 
 @KoinViewModel
@@ -140,6 +145,7 @@ class AppListViewModel(
     private val usageAccess: UsageAccessGate,
     private val installedAppsPermission: InstalledAppsPermissionGate,
     private val installerLabelResolver: InstallerLabelResolver,
+    private val exportAppListUseCase: ExportAppListUseCase,
     // Injected rather than hardcoded so a test can put every stage of this view model on one
     // scheduler: the sort/filter pipeline below runs off-main, and a `Dispatchers.Default` baked
     // in here would keep it on a real thread pool while the rest ran on virtual time.
@@ -803,6 +809,70 @@ class AppListViewModel(
     fun toggleGridMode() {
         viewModelScope.launch {
             preferenceRepository.toggleAppListIsGrid()
+        }
+    }
+
+    /**
+     * Save the list as it is on screen to the export destination.
+     *
+     * [AppListUiState.displayedApps] and nothing else: the tab, the search, the filter and the sort
+     * are all already applied to it, so what a user gets is what they were looking at. That is also
+     * the whole feature — the request behind it is "give me a list of what I have to work through",
+     * and a list that ignored the filter you set to narrow it down would be no use at all. Someone
+     * who wants everything clears the filter first.
+     */
+    fun exportList() {
+        val apps = uiState.value.displayedApps
+        if (apps.isEmpty()) {
+            // Not a failure: nothing was written because there was nothing to write. Saying so is
+            // the difference between "the filter is too narrow" and "the export is broken".
+            viewModelScope.launch {
+                _events.send(
+                    AppListEvent.ShowMessage(UiText.StringResource(R.string.export_list_empty))
+                )
+            }
+            return
+        }
+        viewModelScope.launch {
+            exportAppListUseCase(apps)
+                .onSuccess {
+                    _events.send(
+                        AppListEvent.ShowMessage(UiText.StringResource(R.string.export_saved, it))
+                    )
+                }
+                .onFailure { e ->
+                    Logger.e("AppListViewModel", "list export failed", e)
+                    _events.send(
+                        AppListEvent.ShowMessage(
+                            UiText.StringResource(R.string.export_list_failed)
+                        )
+                    )
+                }
+        }
+    }
+
+    /** Hand the same list straight to another app, without writing a copy to the export folder. */
+    fun shareList() {
+        val apps = uiState.value.displayedApps
+        if (apps.isEmpty()) {
+            viewModelScope.launch {
+                _events.send(
+                    AppListEvent.ShowMessage(UiText.StringResource(R.string.export_list_empty))
+                )
+            }
+            return
+        }
+        viewModelScope.launch {
+            exportAppListUseCase.shareUri(apps)
+                .onSuccess { _events.send(AppListEvent.ShareList(it, APP_LIST_MIME)) }
+                .onFailure { e ->
+                    Logger.e("AppListViewModel", "list share failed", e)
+                    _events.send(
+                        AppListEvent.ShowMessage(
+                            UiText.StringResource(R.string.export_list_failed)
+                        )
+                    )
+                }
         }
     }
 

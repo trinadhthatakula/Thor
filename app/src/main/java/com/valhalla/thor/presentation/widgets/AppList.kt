@@ -55,6 +55,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.nonInteractiveScrollbar
 import androidx.compose.runtime.Composable
@@ -134,6 +135,10 @@ fun AppList(
     onAppInfoSelected: (AppInfo) -> Unit,
     onMultiAppAction: (MultiAppAction) -> Unit = {},
     onToggleView: () -> Unit = {},
+    // Both act on the list as displayed, so they live behind the same sheet that shapes it. No-op
+    // defaults keep the preview and the widget's other callers from having to care.
+    onExportList: () -> Unit = {},
+    onShareList: () -> Unit = {},
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
@@ -292,7 +297,17 @@ fun AppList(
             onSortByChanged = onSortByChanged,
             onSortOrderChanged = onSortOrderSelected,
             onToggleView = onToggleView,
-            onListTypeChanged = onListTypeChanged
+            onListTypeChanged = onListTypeChanged,
+            // Closed first, so the toast the export produces isn't hidden behind the sheet that
+            // asked for it, and so a second tap can't start a second write over the first.
+            onExportList = {
+                showFilterSheet = false
+                onExportList()
+            },
+            onShareList = {
+                showFilterSheet = false
+                onShareList()
+            }
         )
     }
 }
@@ -1093,7 +1108,9 @@ private fun AppFilterSheet(
     onSortByChanged: (SortBy) -> Unit,
     onSortOrderChanged: (SortOrder) -> Unit,
     onToggleView: () -> Unit,
-    onListTypeChanged: (AppListType) -> Unit
+    onListTypeChanged: (AppListType) -> Unit,
+    onExportList: () -> Unit,
+    onShareList: () -> Unit
 ) {
     var activeTab by remember { mutableStateOf(SheetTab.FILTERS) }
 
@@ -1274,6 +1291,44 @@ private fun AppFilterSheet(
                 }
             }
             Spacer(Modifier.height(24.dp))
+
+            // Export sits with the controls that decide what a list *is*, not in the app-bar
+            // overflow: what gets written is whatever the tab, search, filter and sort above have
+            // narrowed the list down to, and putting the two next to each other is the only way
+            // that reads as a promise rather than a surprise.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(onClick = onExportList, modifier = Modifier.weight(1f)) {
+                    Icon(
+                        painterResource(R.drawable.list_alt),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        stringResource(R.string.export_list),
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                }
+                OutlinedButton(onClick = onShareList, modifier = Modifier.weight(1f)) {
+                    Icon(
+                        painterResource(R.drawable.share),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        stringResource(R.string.export_list_share),
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
             Button(
                 onClick = onDismiss,
                 modifier = Modifier.fillMaxWidth()

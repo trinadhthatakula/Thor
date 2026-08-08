@@ -11,10 +11,14 @@ import com.valhalla.thor.domain.model.PermissionIndex
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
 import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.domain.usecase.ExportAppListUseCase
+import com.valhalla.thor.domain.usecase.ExportAppUseCase
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.GetAppDetailsUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
+import com.valhalla.thor.presentation.FakeAppBundleBuilder
+import com.valhalla.thor.presentation.FakeAppBundleFileStore
 import com.valhalla.thor.presentation.FakeAppRepository
 import com.valhalla.thor.presentation.FakeAppShortcutController
 import com.valhalla.thor.presentation.FakeFreezerRepository
@@ -81,6 +85,7 @@ class AppListViewModelTest {
     private lateinit var system: FakeSystemRepository
     private lateinit var freezer: FakeFreezerRepository
     private lateinit var privilege: FakePrivilegeStateProvider
+    private lateinit var fileStore: FakeAppBundleFileStore
 
     @Before
     fun setUp() {
@@ -88,6 +93,7 @@ class AppListViewModelTest {
         system = FakeSystemRepository()
         freezer = FakeFreezerRepository()
         privilege = FakePrivilegeStateProvider()
+        fileStore = FakeAppBundleFileStore()
     }
 
     /** Live collectors on the app list — 1 while a scan is running, 0 once it has been torn down. */
@@ -112,6 +118,12 @@ class AppListViewModelTest {
             UserPreferences(animationIntensity = intensity, appFilterType = filterType)
         )
         val manageAppUseCase = ManageAppUseCase(system)
+        val exportAppUseCase = ExportAppUseCase(
+            FakeAppBundleBuilder(),
+            prefs,
+            fileStore,
+            mainDispatcherRule.dispatcher
+        )
         val vm = AppListViewModel(
             getInstalledAppsUseCase = GetInstalledAppsUseCase(appRepository),
             getAppDetailsUseCase = GetAppDetailsUseCase(appRepository),
@@ -127,6 +139,11 @@ class AppListViewModelTest {
             usageAccess = FakeUsageAccessGate(),
             installedAppsPermission = installedApps,
             installerLabelResolver = FakeInstallerLabelResolver(),
+            exportAppListUseCase = ExportAppListUseCase(
+                exportAppUseCase,
+                fileStore,
+                mainDispatcherRule.dispatcher
+            ),
             defaultDispatcher = mainDispatcherRule.dispatcher,
             ioDispatcher = mainDispatcherRule.dispatcher
         )
@@ -526,6 +543,151 @@ class AppListViewModelTest {
         assertEquals(
             InstalledAppsPermission.Granted,
             vm.uiState.value.installedAppsPermission
+        )
+    }
+
+    // --- Exporting the list ---------------------------------------------------------------------
+
+    /**
+     * The export writes what is on screen, not what is installed.
+     *
+     * This is the whole promise of the feature and the one place it could quietly go wrong: reading
+     * `allUserApps` instead of `displayedApps` would still produce a valid-looking CSV, just of the
+     * wrong list — and a user who filtered to "sideloaded" before exporting would have no way to
+     * tell from the file that the filter had been ignored.
+     */
+    @Test
+    fun `the export writes the displayed list, not the whole scan`() = runTest {
+        val vm = viewModel(AnimationIntensity.LOW)
+        runCurrent()
+        appRepository.apps.value = listOf(userApp("com.a"), userApp("com.b"), userApp("com.c"))
+        runCurrent()
+        vm.updateSearchQuery("com.b")
+        runCurrent()
+
+        vm.exportList()
+        runCurrent()
+
+        val csv = fileStore.written.values.single()
+        assertEquals(
+            listOf("com.b"),
+            csv.trimEnd('\n').lines().drop(1).map { it.split(",")[1] }
+        )
+    }
+
+    @Test
+    fun `a successful export names where it landed`() = runTest {
+        val vm = viewModel(AnimationIntensity.LOW)
+        val events = mutableListOf<AppListEvent>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { events += it } }
+        runCurrent()
+        appRepository.apps.value = listOf(userApp("com.a"))
+        runCurrent()
+        events.clear()
+
+        vm.exportList()
+        runCurrent()
+
+        assertEquals(
+            listOf(
+                AppListEvent.ShowMessage(
+                    UiText.StringResource(R.string.export_saved, "Downloads/Thor")
+                )
+            ),
+            events
+        )
+        assertEquals(listOf("text/csv"), fileStore.mimes)
+    }
+
+    /**
+     * An empty list is not a failure, and must not be reported as one.
+     *
+     * The two states are reached the same way — a tap on Export — but they mean opposite things:
+     * one says the filter is too narrow, the other says the write broke. Collapsing them into
+     * "Couldn't save the list" sends a user looking for a storage problem that isn't there.
+     */
+    @Test
+    fun `exporting an empty list says so instead of writing a header-only file`() = runTest {
+        val vm = viewModel(AnimationIntensity.LOW)
+        val events = mutableListOf<AppListEvent>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { events += it } }
+        runCurrent()
+        appRepository.apps.value = listOf(userApp("com.a"))
+        runCurrent()
+        vm.updateSearchQuery("nothing matches this")
+        runCurrent()
+        events.clear()
+
+        vm.exportList()
+        runCurrent()
+
+        assertEquals(
+            listOf(AppListEvent.ShowMessage(UiText.StringResource(R.string.export_list_empty))),
+            events
+        )
+        assertTrue("nothing should have been written", fileStore.written.isEmpty())
+    }
+
+    @Test
+    fun `a failed write is reported as a failure`() = runTest {
+        val vm = viewModel(AnimationIntensity.LOW)
+        val events = mutableListOf<AppListEvent>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { events += it } }
+        runCurrent()
+        appRepository.apps.value = listOf(userApp("com.a"))
+        runCurrent()
+        events.clear()
+        fileStore.writeFailure = java.io.IOException("no space left on device")
+
+        vm.exportList()
+        runCurrent()
+
+        assertEquals(
+            listOf(AppListEvent.ShowMessage(UiText.StringResource(R.string.export_list_failed))),
+            events
+        )
+    }
+
+    /**
+     * Share stages a copy and hands over a URI; it does **not** write to the export destination.
+     *
+     * A share is not a save. The user picked a messaging app, not a folder, and leaving a file in
+     * Downloads on the way there is a side effect nobody asked for — and one they would only find
+     * later, with no idea what put it there.
+     */
+    @Test
+    fun `sharing hands over a uri without writing to the export folder`() = runTest {
+        val vm = viewModel(AnimationIntensity.LOW)
+        val events = mutableListOf<AppListEvent>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { events += it } }
+        runCurrent()
+        appRepository.apps.value = listOf(userApp("com.a"))
+        runCurrent()
+        events.clear()
+
+        vm.shareList()
+        runCurrent()
+
+        val shared = events.single() as AppListEvent.ShareList
+        assertTrue(shared.uri.startsWith("content://fake/thor-apps-"))
+        assertEquals("text/csv", shared.mime)
+        assertTrue("share must not write to the export folder", fileStore.targets.isEmpty())
+    }
+
+    @Test
+    fun `sharing an empty list says so rather than sending a header`() = runTest {
+        val vm = viewModel(AnimationIntensity.LOW)
+        val events = mutableListOf<AppListEvent>()
+        backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.events.collect { events += it } }
+        runCurrent()
+        events.clear()
+
+        vm.shareList()
+        runCurrent()
+
+        assertEquals(
+            listOf(AppListEvent.ShowMessage(UiText.StringResource(R.string.export_list_empty))),
+            events
         )
     }
 }
