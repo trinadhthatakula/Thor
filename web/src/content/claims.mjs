@@ -496,15 +496,22 @@ export const claimRules = [
       // "where the platform refuses, Thor falls back to removing it".
       /\bfalls?\s+back\s+to\b[\s\S]{0,60}?\b(?:remov\w+|uninstall\w+)/i,
       // The same claim with the subject named and the fallback verb left out,
-      // which is how it reads on four of the six pages it shipped on.
-      /\b(?:Thor|Shizuku|Dhizuku|modes?|paths?)\b[\s\S]{0,60}?\b(?:remove|removes|uninstall|uninstalls)\s+(?:it|the app|the package|them)\b[\s\S]{0,50}?\bfor\s+(?:your|the)\s+(?:Android\s+)?user\b/i,
+      // which is how it reads on four of the six pages it shipped on. Anchored on
+      // a freezing word rather than on the subject: Thor really does run
+      // `pm uninstall --user N` from the Uninstall and Debloat paths, and that
+      // sentence is true wherever it appears. What is forbidden is reaching it
+      // from a freeze.
+      /\b(?:freez\w*|frozen|unfreez\w*)\b[\s\S]{0,120}?\b(?:remove|removes|uninstall|uninstalls)\s+(?:it|the app|the package|them)\b[\s\S]{0,50}?\bfor\s+(?:your|the)\s+(?:Android\s+)?user\b/i,
       // The command itself, presented as something that runs. The `unless`
       // window is what lets a page still name it while saying it was withdrawn.
       /\bpm\s+uninstall\s+-k\b/i,
       // The escalation named as a currently-available second option. "or it
       // removes" is the giveaway; a page describing the withdrawal says the
-      // opposite of "or", which is what `unless` is for.
-      /\bswitch(?:es|ed|ing)?\s+(?:it|the app|the package)\s+off\b[\s\S]{0,60}?\bor\b[\s\S]{0,30}?\b(?:remov\w+|uninstall\w+)/i,
+      // opposite of "or", which is what `unless` is for. Tailed with the
+      // for-your-user clause so it stays on the freeze rung: offering a switch-off
+      // or a full uninstall as two things the user may choose is what the Apps tab
+      // actually does, and that sentence has to remain writable.
+      /\bswitch(?:es|ed|ing)?\s+(?:it|the app|the package)\s+off\b[\s\S]{0,60}?\bor\b[\s\S]{0,40}?\b(?:remov\w+|uninstall\w+)\s+(?:it|the app|the package|them)\b[\s\S]{0,40}?\bfor\s+(?:your|the)\s+(?:Android\s+)?user\b/i,
     ],
     // NEGATED plus the words that mark this specific retraction. The window is
     // the match and the 60 characters before it, so "earlier builds substituted

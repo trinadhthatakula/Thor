@@ -147,11 +147,12 @@ another app — hands it to Thor's bottom sheet. Opening, not sharing: Thor decl
 so it will not be in a share sheet, and on Android those are two different menus even when they look
 alike.
 
-The match is on the filename extension, which a handful of file managers do not put in the URI they
-hand over — Samsung My Files is the one that gets reported. Opening the file from a different file
-manager is the fix. For people who would rather not, Settings carries an off-by-default "Show Thor
-when opening any file" switch; the [FAQ](/faq#apks-samsung-my-files) says what it widens, and why
-being that wide is the reason it is not on already.
+Thor matches on the type the sending app declares, or, when that type is a wildcard, on a filename
+ending in one of the bundle extensions. A handful of file managers supply neither — Samsung My Files
+is the one that gets reported, handing over a URI with no name in its path. Opening the file from a
+different file manager is the fix. For people who would rather not, Settings carries an off-by-default
+"Show Thor when opening any file" switch; the [FAQ](/faq#apks-samsung-my-files) says what it widens,
+and why being that wide is the reason it is not on already.
 
 <h3 id="bundle-formats">Every bundle format, handled</h3>
 
@@ -414,8 +415,11 @@ written.
 <h3 id="status-chips">Status at a glance</h3>
 
 Chips and icons mark apps that are frozen, suspended, split-APK installs, debuggable builds, and
-packages UAD flags as bloat. A system app that a freeze removed for your Android user reads as
-frozen rather than as a separate state, because Thor folds the installed flag into the same answer.
+packages UAD flags as bloat. A system app taken away from your Android user reads as frozen rather
+than as a separate state, because Thor folds the installed flag into the same answer. Nothing Thor
+does now puts an app in that state — the substitution that did was
+[withdrawn](/features#freeze-suspend-force-stop) — but a device an older build ran on can still be
+sitting in it, so the chip stays.
 
 <h3 id="home-dashboard">Home dashboard</h3>
 
