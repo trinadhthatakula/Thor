@@ -100,7 +100,8 @@ export const claimRules = [
       'page, the correction has to be too.',
     source:
       'RootSystemGateway.freezeSystemApp (rung 1 `pm disable --user`, "app data preserved"); ' +
-      'ShizukuSystemGateway.freezeSystemApp (rung 3 `pm uninstall -k`)',
+      'ShizukuSystemGateway.freezeSystemApp (rung 3 `pm uninstall -k`); ' +
+      'DhizukuSystemGateway.freezeSystemApp (same chain since PR #332, same gate, same -k)',
     allow: [],
   },
 
