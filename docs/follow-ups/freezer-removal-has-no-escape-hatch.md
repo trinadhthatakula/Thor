@@ -1,6 +1,7 @@
 # Follow-up: a watchlist row you cannot remove because the app will not thaw
 
-**Status:** OPEN — a product decision, deliberately not taken while fixing GH#310.
+**Status:** PARTIALLY RESOLVED — **option 3 shipped 2026-08-08** (`feat/band-b-freezer`, backlog row
+15). Options 1, 2 and 4 are still open, and the product decision between them is still not taken.
 **Severity:** Minor, and strictly better than what shipped before. Nothing is lost; a row the user
 asked to delete stays.
 **Effort:** small once the semantics are chosen.
@@ -63,15 +64,29 @@ Three reasons, and the third is the deciding one:
    and will no longer appear in the Freezer." Honest, and matches how the Apps tab already behaves
    (removing membership there never thaws). Needs the import prompt widened to suspended apps first,
    or it strands them.
-3. **Auto-prune rows whose package is no longer installed.** Narrow, safe, and needs no new UI — an
-   uninstalled package cannot be restored and the row has no referent. Worth doing regardless of
-   which option above wins; it removes the only *unarguable* case of litter.
+3. **Auto-prune rows whose package is no longer installed.** ✅ **SHIPPED 2026-08-08.** Narrow, safe,
+   and needed no new UI — an uninstalled package cannot be restored and the row has no referent.
+
+   One thing it *did* need, which this sketch understated: **the prune cannot key off the app list.**
+   By the time `FreezerViewModel` sees the union of scan and cache, an uninstalled package and one
+   the OS declined to report are the same thing — a `GET_INSTALLED_APPS` collapse on a Chinese ROM
+   looks exactly like a mass uninstall, and pruning on that would delete the user's entire watchlist.
+   So the rule keys off the **`ScanVerdict`** the app cache already computes, which is the only value
+   in the system that distinguishes *"the package is gone"* from *"the OS refused to answer"*, and it
+   lives beside `scanVerdict` rather than in the view model.
+
+   `prunableWatchlistRows` also carries **its own emptiness guard on top of `Accept`**:
+   `scanVerdict`'s first rule accepts unconditionally when nothing is cached, so an empty scan
+   against an empty cache arrives carrying `Accept` — a verdict about the *cache*, taken on a scan
+   that saw nothing. `FreezerRepository.removeAll` deliberately has no restore step, unlike `remove`;
+   its only caller has already proved the package absent, so an unfreeze could only fail. Both KDocs
+   say so, because the asymmetry reads like an oversight.
 4. **Offer the fix instead of the escape** — when the failure is a known-recoverable one, surface the
    action that resolves it (switch privilege mode) rather than a way to hide the row. Most work,
    best outcome, and it composes with option 1.
 
-Option 3 is independent of the others and should probably land on its own. Between 1 and 2, 1 is the
-status quo and forecloses nothing.
+Option 3 is independent of the others and landed on its own, as expected. Between 1 and 2, 1 is the
+status quo and forecloses nothing — it remains what ships today for a row that refuses to thaw.
 
 ## Notes
 

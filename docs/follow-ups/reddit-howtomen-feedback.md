@@ -1,9 +1,11 @@
 # r/howtomen feedback — verified against the code
 
 **Filed:** 2026-08-07 (UTC) · **Source:** four comment threads on the r/howtomen Thor post
-**Status:** triaged, and **band A is built** — eleven of its twelve rows shipped on `feat/band-a` the
-same day. Every claim below was checked against `origin/dev` before it was sized; the two that the
-implementation then falsified are corrected in place and labelled, not rewritten away.
+**Status:** triaged, **band A is built** — eleven of its twelve rows shipped on `feat/band-a` the same
+day — and **band B's Freezer half followed on 2026-08-08**, taking the per-group-verbs and
+too-many-confirmations asks with it. Every claim below was checked against `origin/dev` before it was
+sized; the ones the implementation then falsified are corrected in place and labelled, not rewritten
+away.
 
 Twenty-three distinct asks from four users. This document is the evidence layer: what each person
 reported, what the code actually does, and which existing row it lands on. The *ranking* lives in
@@ -244,6 +246,34 @@ diagnostic that decides the rest is still unrun. See
 > the label. Both grid labels already ellipsize, and they did before this work. The thing that
 > degrades below 100.dp is the *icon*, not the text — so anyone verifying this on a device should
 > look at the tile shape, not at the caption.
+
+---
+
+## What shipped, 2026-08-08 (`feat/band-b-freezer`)
+
+Band B's Freezer half. Two of these asks are from the table above; the rest of the branch is backlog
+rows this file never raised. Same rule as the band A section — only what the *evidence above* got
+wrong or understated is recorded here.
+
+| Ask from the table above | Shipped as |
+|---|---|
+| Custom groups with per-group freeze / suspend / kill | The remaining two verbs, in the profile row's overflow menu. Nothing is persisted on the profile — the entity stays verb-agnostic, and the verb is chosen per tap |
+| Too many confirmations when debloating | A Settings → Freezer switch, reaching `FreezeTier.NORMAL` system apps only |
+
+> **Correction — "per-group kill" is not a bulk *op*, and reading it as one would have been the
+> expensive mistake.** The ask names freeze, suspend and kill in one breath, and the table above
+> repeats that framing. Suspend genuinely is a third `BulkAction` — `bulkActionFor` already had the
+> branch. Kill is not: it does not change an app's frozen state, so putting it in `BulkOp` forces an
+> answer to *"does a kill cancel an in-flight freeze of the same profile?"* when the honest answer is
+> that they do not interact at all. It routes through the existing `MultiAppAction.Kill` instead,
+> which already has both a confirmation and a progress log.
+>
+> **The suppression ask is narrower than it sounds, too.** "Stop asking me" reads as one setting, but
+> the dialog it names has three tiers behind it. Only `NORMAL` is about tedium. `EXPERT` is a verdict
+> about a *specific* package with no backstop underneath — `FreezeAppUseCase` refuses `BLOCKED` and
+> nothing else — and `BLOCKED`'s missing confirm button *is* the refusal, so suppressing that dialog
+> would remove the safety gate rather than a prompt. A setting that took the ask literally would have
+> shipped as a way to turn off the tier system.
 
 ---
 
