@@ -14,6 +14,9 @@
     <string name="show_reinstall_card_desc">在主屏幕上显示修复商店提醒</string>
     <string name="show_installer_tile">显示安装器磁贴</string>
     <string name="show_installer_tile_desc">在主屏幕上显示“从文件安装”</string>
+    <string name="any_file_opener">打开任意文件时显示 Thor</string>
+    <string name="any_file_opener_desc">仅当你的文件管理器无法用 Thor 打开 APK 时才开启。开启后，Thor 会出现在无法识别类型的文件的打开方式中，包括并非 APK 的文件。</string>
+    <string name="any_file_opener_failed">Android 拒绝更改此设置，未开启任何内容。</string>
     <string name="show_extensions_tile">显示扩展磁贴</string>
     <string name="show_extensions_tile_desc">在主屏幕上显示扩展</string>
     <string name="default_tab">默认标签页</string>

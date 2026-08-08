@@ -15,6 +15,9 @@
     <string name="show_reinstall_card_desc">Afficher le rappel Fix Store sur l\'écran d\'accueil</string>
     <string name="show_installer_tile">Afficher la tuile d\'installation</string>
     <string name="show_installer_tile_desc">Afficher « Installer depuis un fichier » sur l\'écran d\'accueil</string>
+    <string name="any_file_opener">Afficher Thor à l\'ouverture de n\'importe quel fichier</string>
+    <string name="any_file_opener_desc">N\'activez ceci que si votre gestionnaire de fichiers n\'ouvre pas les APK avec Thor. Thor sera alors proposé pour les fichiers qu\'il ne peut pas identifier, y compris ceux qui ne sont pas des APK.</string>
+    <string name="any_file_opener_failed">Android a refusé la modification. Rien n\'a été activé.</string>
     <string name="show_extensions_tile">Afficher la tuile des extensions</string>
     <string name="show_extensions_tile_desc">Afficher les extensions sur l\'écran d\'accueil</string>
     <string name="default_tab">Onglet par défaut</string>

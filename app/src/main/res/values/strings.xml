@@ -15,6 +15,9 @@
     <string name="show_reinstall_card_desc">Show Fix Store reminder on home screen</string>
     <string name="show_installer_tile">Show Installer Tile</string>
     <string name="show_installer_tile_desc">Show Install from File on the home screen</string>
+    <string name="any_file_opener">Show Thor when opening any file</string>
+    <string name="any_file_opener_desc">Turn this on only if your file manager won\'t open APKs with Thor. Thor will then be offered for files it can\'t identify — including ones that aren\'t APKs.</string>
+    <string name="any_file_opener_failed">Android refused to change this setting. Nothing was turned on.</string>
     <string name="show_extensions_tile">Show Extensions Tile</string>
     <string name="show_extensions_tile_desc">Show Extensions on the home screen</string>
     <string name="auto_reinstall">Auto Reinstall Apps</string>

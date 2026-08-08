@@ -196,21 +196,38 @@
                 <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.apkp" />
             </intent-filter>
 
-            <!-- content:// and file:// URIs whose type nobody could name. Declaring no
-                 android:mimeType is what keeps this narrow: matchData returns NO_MATCH_TYPE for
-                 any intent that carries a type, and Intent.resolveTypeIfNeeded asks the
-                 ContentResolver before resolution, so a content:// URI only lands here when the
-                 provider's own getType() returned null too.
+        </activity>
 
-                 It deliberately declares NO android:host and NO path matchers. Under
-                 IntentFilter.matchData the path list is consulted only inside the
-                 `authorities != null` branch, so declaring a host promotes the extension patterns
-                 from "another way to match" into a mandatory gate. A file manager that hands over
-                 an opaque provider URI — Samsung My Files gives a MediaStore row id with no
-                 filename anywhere in the path — can then never satisfy any pathSuffix/pathPattern,
-                 and the filter dies on the path gate before the type is ever considered, excluding
-                 exactly the case it exists to serve (GH#161). Extension-gated matching still lives
-                 on the wildcard-MIME filter above, which keeps its host and its path matchers. -->
+        <!-- OFF BY DEFAULT. The last-resort filter for content:// and file:// URIs whose type
+             nobody could name.
+
+             Declaring no android:mimeType is what makes it *reach* those URIs: matchData returns
+             NO_MATCH_TYPE for any intent that carries a type, and Intent.resolveTypeIfNeeded asks
+             the ContentResolver first, so a content:// URI lands here only when the provider's own
+             getType() returned null too. That is the GH#161 case — Samsung My Files hands over a
+             MediaStore row id with no filename and no type.
+
+             It cannot be narrowed by path. Under IntentFilter.matchData the path list is consulted
+             only inside the `authorities != null` branch, so path matchers are inert without a host
+             and mandatory with one: adding a host to reach the patterns would make an opaque
+             provider URI unmatchable, excluding the exact case this exists to serve. There is no
+             middle setting — the filter is either this broad or it is absent.
+
+             Hence the alias, and hence android:enabled="false". Left on the activity this would put
+             Thor in the "Open with" list for every file whose type nobody can name, and always for
+             file:// (resolveType never consults a provider for it). docs/follow-ups/161-*.md ruled
+             that trade unacceptable unenabled and prescribed exactly this shape: a separate
+             component, shipped off, turned on from Settings by a user who has actually hit the bug.
+             AnyFileOpenerManager flips it; PackageManager owns the state, so there is no
+             preference mirroring it and nothing to drift.
+
+             Must stay declared after its targetActivity — the platform requires the alias to follow
+             the activity it points at. -->
+        <activity-alias
+            android:name=".presentation.installer.AnyFileInstallerAlias"
+            android:targetActivity=".presentation.installer.PortableInstallerActivity"
+            android:enabled="false"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
@@ -220,7 +237,7 @@
                 <data android:scheme="content" />
                 <data android:scheme="file" />
             </intent-filter>
-        </activity>
+        </activity-alias>
 
 
         <receiver

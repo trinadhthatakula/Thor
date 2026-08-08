@@ -15,6 +15,9 @@
     <string name="show_reinstall_card_desc">Mostrar recordatorio de Fix Store en la pantalla de inicio</string>
     <string name="show_installer_tile">Mostrar mosaico del instalador</string>
     <string name="show_installer_tile_desc">Mostrar «Instalar desde archivo» en la pantalla de inicio</string>
+    <string name="any_file_opener">Mostrar Thor al abrir cualquier archivo</string>
+    <string name="any_file_opener_desc">Actívalo solo si tu gestor de archivos no abre los APK con Thor. Thor aparecerá entonces para los archivos que no pueda identificar, incluidos los que no son APK.</string>
+    <string name="any_file_opener_failed">Android rechazó el cambio. No se activó nada.</string>
     <string name="show_extensions_tile">Mostrar mosaico de extensiones</string>
     <string name="show_extensions_tile_desc">Mostrar Extensiones en la pantalla de inicio</string>
     <string name="default_tab">Pestaña predeterminada</string>

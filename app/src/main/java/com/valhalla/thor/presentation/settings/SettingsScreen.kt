@@ -46,6 +46,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,6 +68,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.R
@@ -99,6 +101,15 @@ fun SettingsScreen(
     var showLanguageSheet by remember { mutableStateOf(false) }
     var showUnfreezeConfirmation by remember { mutableStateOf(false) }
     var showSupportSheet by remember { mutableStateOf(false) }
+
+    // The any-file switch is backed by PackageManager, not DataStore, so nothing pushes a change at
+    // us: `pm enable`, a ROM app manager, or a wipe of Thor's component state all move it silently.
+    // Re-read on every resume but the first, which the VM's init already covered.
+    var firstResume by rememberSaveable { mutableStateOf(true) }
+    LifecycleResumeEffect(Unit) {
+        if (firstResume) firstResume = false else viewModel.refreshAnyFileOpener()
+        onPauseOrDispose { }
+    }
 
     // The language the row and the picker's checkmark are allowed to name.
     //
@@ -257,6 +268,17 @@ fun SettingsScreen(
                 checked = prefs.showInstallerTile,
                 enableMarqueeOnClick = true,
                 onCheckedChange = { viewModel.setInstallerTileVisibility(it) }
+            )
+
+            // Reads its state from `uiState`, not `prefs`: this switch is backed by PackageManager
+            // component state rather than DataStore. See AnyFileOpenerController.
+            SettingsSwitchRow(
+                icon = R.drawable.apk_install,
+                title = stringResource(R.string.any_file_opener),
+                subtitle = stringResource(R.string.any_file_opener_desc),
+                checked = state.anyFileOpenerEnabled,
+                enableMarqueeOnClick = true,
+                onCheckedChange = { viewModel.setAnyFileOpenerEnabled(it) }
             )
 
             SettingsSwitchRow(
