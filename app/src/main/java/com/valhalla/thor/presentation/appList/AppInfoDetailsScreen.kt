@@ -1187,24 +1187,32 @@ private fun InfoCard(
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
     val valueLabel = stringResource(R.string.value_label)
+    // Labelled with the card's own title, so every card announces what it copies — "Copy
+    // Package name", "Copy Installer" — rather than the generic "activate" TalkBack falls back to.
+    // A fixed "Copy value" would be a verb without an object on a screen that is a list of values.
+    val copyLabel = stringResource(R.string.cd_copy_field, title)
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .clickable {
+            .clickable(onClickLabel = copyLabel) {
+                // Toast after the await, not beside the launch — setClipEntry suspends, and a
+                // success message that outruns the write tells the user their clipboard holds
+                // something it does not. Same fix as the two package-name headers; this helper is
+                // the third surface and backs all fourteen InfoCard call sites on this screen.
                 coroutineScope.launch {
                     clipboard.setClipEntry(
                         ClipEntry(
                             android.content.ClipData.newPlainText(valueLabel, value)
                         )
                     )
+                    Toast.makeText(
+                        context,
+                        R.string.toast_copy_saved,
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
-                Toast.makeText(
-                    context,
-                    (R.string.toast_copy_saved),
-                    Toast.LENGTH_SHORT
-                ).show()
             }
             .padding(16.dp)
     ) {

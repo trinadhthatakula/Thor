@@ -288,6 +288,7 @@
     <string name="toast_copied_class_name">Nombre de clase copiado</string>
     <string name="toast_copy_saved">Copiado al portapapeles</string>
     <string name="cd_copy_package_name">Copiar el nombre del paquete</string>
+    <string name="cd_copy_field">Copiar %1$s</string>
     <string name="not_available">N/D</string>
     <string name="tab_overview_title">General</string>
     <string name="tab_components">Componentes</string>

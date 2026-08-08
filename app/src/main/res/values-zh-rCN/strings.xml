@@ -281,6 +281,7 @@
     <string name="toast_copied_class_name">已复制类名</string>
     <string name="toast_copy_saved">已复制到剪贴板</string>
     <string name="cd_copy_package_name">复制软件包名称</string>
+    <string name="cd_copy_field">复制%1$s</string>
     <string name="not_available">无</string>
     <string name="tab_overview_title">常规</string>
     <string name="tab_components">组件</string>
