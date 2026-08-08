@@ -19,6 +19,7 @@ import com.valhalla.thor.domain.model.BulkScope
 import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.FreezerMode
+import com.valhalla.thor.domain.model.NoOpReason
 import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.domain.repository.AppShortcutController
 import com.valhalla.thor.domain.repository.BulkFreezeController
@@ -66,8 +67,19 @@ sealed interface FreezerEvent {
      * An event rather than a UiState flag because closing is an edge, not a condition: a state
      * field saying "the last save succeeded" would re-close the sheet the next time it is opened,
      * and clearing it would need a second call the screen has no natural place for.
+     *
+     * [editorSession] names *which* editor issued the write, echoed back from whatever the screen
+     * passed in. The editor can be dismissed by hand while its write is still running, so without
+     * this the event closes whichever editor happens to be open when the database answers — dismiss
+     * a saving editor, open another, and the first write takes the second one's draft down with it.
+     * The profile id cannot stand in for the identity, which is worth saying because it is the
+     * obvious substitute: two "new profile" editors both carry `NEW_PROFILE_ID`.
+     *
+     * Opaque here on purpose. The view model never mints or interprets it; it only has to hand
+     * back the same value it was given, which is the smallest thing that lets the screen — the only
+     * layer that knows what an editor *is* — decide whether this answer is addressed to it.
      */
-    data object ProfileSaveSucceeded : FreezerEvent
+    data class ProfileSaveSucceeded(val editorSession: Int) : FreezerEvent
 }
 
 data class FreezerUiState(
@@ -454,11 +466,17 @@ class FreezerViewModel(
             emitToast(
                 when (outcome) {
                     is BulkOutcome.Completed -> bulkResultMessage(outcome.result)
-                    // A no-op: no privilege, or nothing left to act on after the tier filter.
-                    // Saying "Froze 0 apps" would read as a failure of the freeze rather than of
-                    // the precondition, so name the precondition instead.
-                    BulkOutcome.NothingToDo ->
-                        UiText.StringResource(R.string.profile_nothing_to_do)
+                    // A no-op. Saying "Froze 0 apps" would read as a failure of the freeze rather
+                    // than of the precondition, so name the precondition — and name the *right*
+                    // one. "Nothing to do for this profile" is false when the profile is full and
+                    // Thor simply has no privilege, and it sends the user looking at the profile
+                    // instead of at the thing they can fix.
+                    is BulkOutcome.NothingToDo -> UiText.StringResource(
+                        when (outcome.reason) {
+                            NoOpReason.NO_PRIVILEGE -> R.string.tile_grant_privilege_toast
+                            NoOpReason.NO_TARGETS -> R.string.profile_nothing_to_do
+                        }
+                    )
                     // And this is not that. The run raised — Room, a dead binder — possibly after
                     // freezing part of the profile, so the one thing that must not be said is
                     // that there was nothing to do.
@@ -468,12 +486,17 @@ class FreezerViewModel(
         }
     }
 
-    fun createProfile(name: String, packageNames: List<String>) {
-        saveProfile { freezeProfileRepository.create(name, packageNames) }
+    fun createProfile(editorSession: Int, name: String, packageNames: List<String>) {
+        saveProfile(editorSession) { freezeProfileRepository.create(name, packageNames) }
     }
 
-    fun updateProfile(profileId: Long, name: String, packageNames: List<String>) {
-        saveProfile { freezeProfileRepository.update(profileId, name, packageNames) }
+    fun updateProfile(
+        editorSession: Int,
+        profileId: Long,
+        name: String,
+        packageNames: List<String>
+    ) {
+        saveProfile(editorSession) { freezeProfileRepository.update(profileId, name, packageNames) }
     }
 
     /**
@@ -493,8 +516,12 @@ class FreezerViewModel(
      * The in-flight check is a backstop, not the guard: Save is disabled from [profileSaveInFlight]
      * for the whole run, and this only covers the frame between the tap and that recomposition.
      * `finally` rather than the success path, so a failed write does not leave the button dead.
+     *
+     * [editorSession] is carried through untouched and handed back on success — see
+     * [FreezerEvent.ProfileSaveSucceeded]. It is what makes "the editor closes on the write" mean
+     * *that* editor rather than whichever one is on screen when the write lands.
      */
-    private fun saveProfile(write: suspend () -> Unit) {
+    private fun saveProfile(editorSession: Int, write: suspend () -> Unit) {
         if (_uiState.value.profileSaveInFlight) return
         _uiState.update { it.copy(profileSaveInFlight = true) }
         viewModelScope.launch(ioDispatcher) {
@@ -502,7 +529,7 @@ class FreezerViewModel(
                 val saved = runProfileWrite(R.string.error_profile_name_taken) { write() }
                 if (saved) {
                     emitToast(UiText.StringResource(R.string.profile_saved))
-                    _events.send(FreezerEvent.ProfileSaveSucceeded)
+                    _events.send(FreezerEvent.ProfileSaveSucceeded(editorSession))
                 }
             } finally {
                 _uiState.update { it.copy(profileSaveInFlight = false) }

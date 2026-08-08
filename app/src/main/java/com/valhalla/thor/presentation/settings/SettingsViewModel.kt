@@ -14,6 +14,7 @@ import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FreezerMode
+import com.valhalla.thor.domain.model.NoOpReason
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
@@ -303,10 +304,17 @@ class SettingsViewModel(
             _events.send(
                 when (outcome) {
                     is BulkOutcome.Completed -> bulkResultMessage(outcome.result)
-                    // Empty watchlist, nothing on it still frozen, or no privilege. Naming the
-                    // precondition beats "Unfroze 0 apps", which reads as a failed unfreeze.
-                    BulkOutcome.NothingToDo ->
-                        UiText.StringResource(R.string.tile_no_apps_toast)
+                    // Naming the precondition beats "Unfroze 0 apps", which reads as a failed
+                    // unfreeze. Which precondition matters: with a full watchlist and a dead
+                    // Shizuku binder, "No apps in Freezer" is a statement the user can disprove by
+                    // looking at the screen behind the toast, and it hides the one thing they could
+                    // act on.
+                    is BulkOutcome.NothingToDo -> UiText.StringResource(
+                        when (outcome.reason) {
+                            NoOpReason.NO_PRIVILEGE -> R.string.tile_grant_privilege_toast
+                            NoOpReason.NO_TARGETS -> R.string.tile_no_apps_toast
+                        }
+                    )
                     // Not the same thing: the run raised, possibly after restoring part of the
                     // watchlist, so the one claim that must not be made is that nothing happened.
                     is BulkOutcome.Failed -> UiText.StringResource(R.string.bulk_run_failed)

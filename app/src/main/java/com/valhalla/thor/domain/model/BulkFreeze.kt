@@ -132,6 +132,35 @@ fun freshParkedResult(parked: ParkedBulkResult?, nowMs: Long, ttlMs: Long): Park
     parked?.takeIf { (nowMs - it.publishedAtMs) in 0 until ttlMs }
 
 /**
+ * Why a run touched nothing.
+ *
+ * The two causes look identical from inside the runner — both end the run before the first
+ * package — and they are opposites to the person holding the phone. One is *there is nothing here
+ * to do*, which needs no answer; the other is *Thor was not allowed to*, which is fixed by granting
+ * a privilege and is worth naming for that reason alone.
+ *
+ * Reported rather than acted on: nothing here retries or prompts, because a bulk run is started
+ * from four different surfaces and each of them owns how it talks to the user.
+ */
+enum class NoOpReason {
+    /**
+     * No privilege mode resolved as active, so no package could have been acted on.
+     *
+     * Distinct from a *failure*: nothing was attempted, so nothing is half-done. The target list
+     * was never even computed.
+     */
+    NO_PRIVILEGE,
+
+    /**
+     * Thor could have acted, and the request resolved to no packages.
+     *
+     * An empty watchlist, a profile whose members are all in the state the run would have put them
+     * in, or a target set the tier filter emptied. All of them mean the same thing to the caller.
+     */
+    NO_TARGETS,
+}
+
+/**
  * How a bulk run ended, as its caller sees it.
  *
  * This exists because a nullable [BulkResult] cannot say it: the runner returned null both for
@@ -148,8 +177,16 @@ sealed interface BulkOutcome {
     /** The batch ran. [result] counts what it did, including partial and unresolved work. */
     data class Completed(val result: BulkResult) : BulkOutcome
 
-    /** No privilege, or nothing left to act on after the tier filter. No package was touched. */
-    data object NothingToDo : BulkOutcome
+    /**
+     * No package was touched, and [reason] says which of the two ways that happened.
+     *
+     * The reason is carried rather than inferred because the callers cannot infer it. This was a
+     * `data object` for exactly as long as it took a caller to be honest: `FreezerLaunchActivity`
+     * ran its own second privilege probe so it could tell the two apart, `FreezerViewModel` chose
+     * a string vague enough to be true of either, and Settings' Unfreeze-all said "No apps in
+     * Freezer" to a user whose watchlist was full and whose Shizuku binder was dead.
+     */
+    data class NothingToDo(val reason: NoOpReason) : BulkOutcome
 
     /**
      * The run raised, and it was caught so the process would survive it.

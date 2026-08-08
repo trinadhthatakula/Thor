@@ -202,6 +202,13 @@ fun scanVerdict(
  * package was never installed on this device at all — a watchlist restored from a backup onto a
  * phone that never had the app — which is the case that can never self-correct, because a package
  * that is never scanned is never cached either.
+ *
+ * **[watchlist] must have been read before [scannedPackageNames] was.** This function cannot check
+ * that and it is the caller's whole obligation: a row added *after* the scan names a package the
+ * scan had no opportunity to see, so it arrives here indistinguishable from a row whose package is
+ * gone — and gets deleted. Since adding to the Freezer freezes immediately, that produces a frozen
+ * app with no Freezer row, which is the state this function exists to clean up rather than create.
+ * `AppRepositoryImpl.watchlistSnapshot` is where the ordering is established.
  */
 fun prunableWatchlistRows(
     watchlist: Set<String>,

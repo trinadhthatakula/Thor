@@ -72,11 +72,21 @@ class AppRepositoryImpl(
      * Failure is swallowed on purpose. This is housekeeping hanging off a scan whose actual job is
      * to emit an app list; a Room error here must not take the emission down with it, and the next
      * trusted scan tries again.
+     *
+     * [watchlistBeforeScan] is passed in rather than read here, and that ordering is the whole of
+     * the rule — see [watchlistSnapshot].
      */
-    private suspend fun pruneWatchlist(scannedPackageNames: Set<String>, verdict: ScanVerdict) {
+    private suspend fun pruneWatchlist(
+        watchlistBeforeScan: Set<String>?,
+        scannedPackageNames: Set<String>,
+        verdict: ScanVerdict
+    ) {
+        // Null means the snapshot itself failed to read. Pruning against a watchlist we could not
+        // see is the one thing worse than not pruning: the empty set makes every row look absent.
+        if (watchlistBeforeScan == null) return
         try {
             val stale = prunableWatchlistRows(
-                watchlist = freezerRepository.getAllPackageNames().toSet(),
+                watchlist = watchlistBeforeScan,
                 scannedPackageNames = scannedPackageNames,
                 verdict = verdict
             )
@@ -92,6 +102,37 @@ class AppRepositoryImpl(
             Logger.e("AppRepository", "pruning the freezer watchlist failed", e)
         }
     }
+
+    /**
+     * The watchlist as it stood **before** the package scan this prune will judge it against.
+     *
+     * The order is the point. Read afterwards, a row added while the scan was running names a
+     * package the scan never had a chance to see, so it lands in the stale set and is deleted —
+     * and because adding to the Freezer freezes immediately, that leaves a frozen app with no
+     * Freezer row: precisely the unreachable state this whole prune exists to clean up. It needs a
+     * newer scan to have surfaced a fresh install while this older one is still mid-flight, which
+     * is narrow, but the fix is an ordering, not a lock.
+     *
+     * Rows added after this point are simply not candidates for this scan. The next one considers
+     * them, by which time it has seen their packages — so the error this ordering can make is
+     * always "pruned nothing", never "pruned something live".
+     *
+     * Returns null rather than an empty set on failure, and the two must not be conflated: an
+     * empty watchlist prunes nothing, while an *unread* watchlist would prune everything if it
+     * were treated as empty and compared the other way round. The read is guarded here rather than
+     * inside the scan's own `try`, whose catch swallows and loops — a Room throw there would skip
+     * the `producer.send` below and drop that scan's emission entirely, turning a housekeeping
+     * failure into a blank app list.
+     */
+    private suspend fun watchlistSnapshot(): Set<String>? =
+        try {
+            freezerRepository.getAllPackageNames().toSet()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e("AppRepository", "reading the freezer watchlist failed", e)
+            null
+        }
 
     /**
      * What the cached app labels depend on, as one comparable value.
@@ -201,6 +242,10 @@ class AppRepositoryImpl(
                     val currentLocale = localeCacheKey()
                     val forceRefresh = currentLocale != lastLocale
 
+                    // Before the scan, not after it. See [watchlistSnapshot] — a row added
+                    // between the two reads names a package the scan could not have seen.
+                    val watchlistBeforeScan = watchlistSnapshot()
+
                     val flags = PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong()
                     val installedPackages =
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -307,7 +352,7 @@ class AppRepositoryImpl(
                                     } catch (_: Exception) {}
                                 }
                             }
-                            pruneWatchlist(currentPackageNames, verdict)
+                            pruneWatchlist(watchlistBeforeScan, currentPackageNames, verdict)
                             emptyList<AppInfo>()
                         }
 

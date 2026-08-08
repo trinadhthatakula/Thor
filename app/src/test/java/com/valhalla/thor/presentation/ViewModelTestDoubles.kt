@@ -10,6 +10,7 @@ import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppPermission
 import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.model.BulkRequest
+import com.valhalla.thor.domain.model.NoOpReason
 import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.DetailedAppInfo
@@ -292,7 +293,7 @@ class FakeFreezeProfileRepository(initial: List<FreezeProfile> = emptyList()) :
  * Recording the request and answering with an already-completed [outcome] covers both members.
  */
 class FakeBulkFreezeController(
-    var outcome: BulkOutcome = BulkOutcome.NothingToDo
+    var outcome: BulkOutcome = BulkOutcome.NothingToDo(NoOpReason.NO_TARGETS)
 ) : BulkFreezeController {
 
     val launched = mutableListOf<BulkRequest>()

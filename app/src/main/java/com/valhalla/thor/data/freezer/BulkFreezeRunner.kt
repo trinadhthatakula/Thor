@@ -13,6 +13,7 @@ import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.BulkResult
 import com.valhalla.thor.domain.model.BulkScope
+import com.valhalla.thor.domain.model.NoOpReason
 import com.valhalla.thor.domain.model.ParkedBulkResult
 import com.valhalla.thor.domain.model.bulkActionFor
 import com.valhalla.thor.domain.model.freezableCandidates
@@ -348,12 +349,32 @@ class BulkFreezeRunner(
                 // stopped. Each cancelled job settles fully (body AND NonCancellable sweep)
                 // before the next cancel, and before this run reaches any package of its own.
                 if (cancelPrevious) doomed.forEach { it.cancelAndJoin() } else previous?.join()
-                // B-8: run() returns null for no-op cases (no privilege, empty target list);
-                // do not publish BulkResult(0,0,0) because the tile already communicates
-                // "nothing to freeze" — a false "Froze 0 apps" message is worse than silence.
-                // That null becomes BulkOutcome.NothingToDo here, so a caller can tell it apart
-                // from the Failed this block's catch returns.
-                val result = run(request) ?: return@async BulkOutcome.NothingToDo
+                // Awaited here rather than trusted from the caller. PrivilegeState starts at
+                // active = NONE / isReady = false, and hasAnyPrivilege is `active != NONE`, so the
+                // raw snapshot reads false until BOTH the probe and the first DataStore emission
+                // have landed — reading it directly turns a cold-start run into a silent no-op.
+                //
+                // The tile happens to be safe because it awaits `isReady` itself before calling
+                // launch() (it needs the resolved state to paint), but FreezerLaunchActivity's
+                // shortcuts run their own direct probe and call straight through. The runner must
+                // not depend on its caller having awaited anything.
+                //
+                // In this block rather than inside run(), which is the only thing that changed
+                // about it: run() returns a nullable result, so a check living in there could only
+                // report *that* the run was a no-op, never which of the two ways. Callers were
+                // each papering over that with a workaround — see NoOpReason. Same position in
+                // the sequence as before, immediately after the handoff join and before any
+                // package is read.
+                if (!privilegeManager.state.first { it.isReady }.hasAnyPrivilege) {
+                    return@async BulkOutcome.NothingToDo(NoOpReason.NO_PRIVILEGE)
+                }
+                // B-8: run() returns null for an empty target list; do not publish
+                // BulkResult(0,0,0) because the tile already communicates "nothing to freeze" —
+                // a false "Froze 0 apps" message is worse than silence. That null becomes
+                // BulkOutcome.NothingToDo here, so a caller can tell it apart from the Failed
+                // this block's catch returns.
+                val result = run(request)
+                    ?: return@async BulkOutcome.NothingToDo(NoOpReason.NO_TARGETS)
                 // Publish to _lastResult for FREEZE only. The tile is freeze-only (D1) and
                 // _lastResult is process-lifetime, so parking an UNFREEZE result here would
                 // render it in the tile subtitle the next time the shade opens — possibly
@@ -491,21 +512,13 @@ class BulkFreezeRunner(
         _lastResult.compareAndSet(shown, null)
     }
 
-    // B-8: returns null when there is nothing to act on, so the caller can skip publishing a
-    // misleading BulkResult(0,0,0).
+    // B-8: returns null when there are no targets, so the caller can skip publishing a misleading
+    // BulkResult(0,0,0). Privilege is the caller's gate, not this one's — see [launch].
     private suspend fun run(request: BulkRequest): BulkResult? {
         val op = request.op
-        // Await readiness here rather than trusting the caller to have awaited it. PrivilegeState
-        // starts at active = NONE / isReady = false, and hasAnyPrivilege is `active != NONE`, so
-        // the raw snapshot reads false until BOTH the probe and the first DataStore emission have
-        // landed — reading it directly turns a cold-start run into a silent no-op.
-        //
-        // The tile happens to be safe because it awaits `isReady` itself before calling launch()
-        // (it needs the resolved state to paint), but FreezerLaunchActivity's shortcuts run their
-        // own direct probe and call straight through. The runner must not depend on its caller
-        // having awaited anything.
-        if (!privilegeManager.state.first { it.isReady }.hasAnyPrivilege) return null
-
+        // Privilege has already been awaited by the caller in [launch] — the one caller this has —
+        // so by here it is settled and active. Null from this function now means one thing only:
+        // an empty target list.
         val targets = targetsFor(request)
         if (targets.isEmpty()) return null
 

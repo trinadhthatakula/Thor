@@ -4,7 +4,10 @@
 package com.valhalla.thor.presentation.freezer
 
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.BulkOp
+import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.model.FreezerMode
+import com.valhalla.thor.domain.model.NoOpReason
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
@@ -71,6 +74,13 @@ class FreezerViewModelTest {
     private lateinit var profiles: FakeFreezeProfileRepository
 
     /**
+     * Held as a field, not built inline, so a test can set the outcome a run answers with before
+     * the view model asks. The runner is the one collaborator here whose *result* the view model
+     * has to interpret rather than merely record.
+     */
+    private lateinit var bulkFreeze: FakeBulkFreezeController
+
+    /**
      * The three fakes' calls in one list.
      *
      * `system.calls`, `freezer.removed` and `shortcuts.disabled` each say what happened to them;
@@ -89,6 +99,7 @@ class FreezerViewModelTest {
         shortcuts = FakeAppShortcutController(trace = trace)
         privilege = FakePrivilegeStateProvider()
         profiles = FakeFreezeProfileRepository()
+        bulkFreeze = FakeBulkFreezeController()
     }
 
     private fun viewModel(): FreezerViewModel {
@@ -96,7 +107,7 @@ class FreezerViewModelTest {
         return FreezerViewModel(
             freezerRepository = freezer,
             freezeProfileRepository = profiles,
-            bulkFreeze = FakeBulkFreezeController(),
+            bulkFreeze = bulkFreeze,
             getInstalledAppsUseCase = GetInstalledAppsUseCase(appRepository),
             manageAppUseCase = manageAppUseCase,
             freezeAppUseCase = FreezeAppUseCase(appRepository, manageAppUseCase),
@@ -566,7 +577,7 @@ class FreezerViewModelTest {
             val vm = viewModel()
             val seen = events(vm)
 
-            vm.createProfile("Night", listOf("a", "b"))
+            vm.createProfile(editorSession = 4, name = "Night", packageNames = listOf("a", "b"))
             assertTrue(
                 "the flag is set on the caller's thread, so Save is down before the write starts",
                 vm.uiState.value.profileSaveInFlight
@@ -576,7 +587,7 @@ class FreezerViewModelTest {
             assertEquals(
                 listOf(
                     FreezerEvent.ShowToast(UiText.StringResource(R.string.profile_saved)),
-                    FreezerEvent.ProfileSaveSucceeded
+                    FreezerEvent.ProfileSaveSucceeded(editorSession = 4)
                 ),
                 seen
             )
@@ -601,7 +612,7 @@ class FreezerViewModelTest {
         val vm = viewModel()
         val seen = events(vm)
 
-        vm.createProfile("Night", listOf("a", "b"))
+        vm.createProfile(editorSession = 1, name = "Night", packageNames = listOf("a", "b"))
         runCurrent()
 
         assertEquals(
@@ -620,8 +631,8 @@ class FreezerViewModelTest {
         val vm = viewModel()
         val seen = events(vm)
 
-        vm.createProfile("Night", listOf("a"))
-        vm.createProfile("Night", listOf("a"))
+        vm.createProfile(editorSession = 1, name = "Night", packageNames = listOf("a"))
+        vm.createProfile(editorSession = 2, name = "Night", packageNames = listOf("a"))
         runCurrent()
 
         assertEquals(
@@ -630,5 +641,90 @@ class FreezerViewModelTest {
             vm.uiState.value.profiles.map { it.name }
         )
         assertEquals(1, seen.count { it is FreezerEvent.ProfileSaveSucceeded })
+        assertEquals(
+            "and it belongs to the tap that actually wrote, not the one that was dropped",
+            listOf(FreezerEvent.ProfileSaveSucceeded(editorSession = 1)),
+            seen.filterIsInstance<FreezerEvent.ProfileSaveSucceeded>()
+        )
+    }
+
+    /**
+     * The editor that started a write is the only one the answer is addressed to.
+     *
+     * The screen can be left in a state where the editor on screen is not the one that saved: the
+     * sheet is dismissable while its write runs, so dismiss-then-open-another is reachable in the
+     * time a Room transaction takes. Closing on the bare event would take the second editor's draft
+     * with it — the same class of bug as dismissing before the save landed, one layer along.
+     *
+     * What a JVM test can hold is the half that makes the screen's comparison possible: the session
+     * is carried through the write untouched and handed back. The comparison itself lives in
+     * `FreezerScreen` — `editorProfileId != null && event.editorSession == editorSession` — and is
+     * Compose state, so it is out of reach here and is called out as untested in the PR.
+     */
+    @Test
+    fun `the save success event names the editor that issued the write, not the current one`() =
+        runTest {
+            val vm = viewModel()
+            val seen = events(vm)
+
+            vm.createProfile(editorSession = 7, name = "Night", packageNames = listOf("a"))
+            runCurrent()
+            // A second editor, opened after the first was dismissed. Its own save lands too.
+            vm.createProfile(editorSession = 8, name = "Commute", packageNames = listOf("b"))
+            runCurrent()
+
+            assertEquals(
+                "each answer carries the session that asked, so neither closes the other",
+                listOf(
+                    FreezerEvent.ProfileSaveSucceeded(editorSession = 7),
+                    FreezerEvent.ProfileSaveSucceeded(editorSession = 8)
+                ),
+                seen.filterIsInstance<FreezerEvent.ProfileSaveSucceeded>()
+            )
+        }
+
+    /**
+     * A profile run that could not start for want of privilege must not report the profile.
+     *
+     * `NothingToDo` used to be a bare object, so this surface picked "Nothing to do for this
+     * profile" — a sentence about the profile's contents — for a run that never looked at them.
+     * With a full profile and a dead Shizuku binder that is both false and misdirecting: it sends
+     * the user to edit a profile that is fine, and says nothing about the one thing they can fix.
+     */
+    @Test
+    fun `a profile run blocked by privilege names the privilege, not the profile`() = runTest {
+        val vm = viewModel()
+        val seen = events(vm)
+
+        bulkFreeze.outcome = BulkOutcome.NothingToDo(NoOpReason.NO_PRIVILEGE)
+        vm.runProfile(profileId = 1L, op = BulkOp.FREEZE)
+        runCurrent()
+
+        assertEquals(
+            listOf(
+                FreezerEvent.ShowToast(
+                    UiText.StringResource(R.string.tile_grant_privilege_toast)
+                )
+            ),
+            seen
+        )
+    }
+
+    /** And the other half: an empty target list is still a statement about the profile. */
+    @Test
+    fun `a profile run with nothing left to act on still names the profile`() = runTest {
+        val vm = viewModel()
+        val seen = events(vm)
+
+        bulkFreeze.outcome = BulkOutcome.NothingToDo(NoOpReason.NO_TARGETS)
+        vm.runProfile(profileId = 1L, op = BulkOp.FREEZE)
+        runCurrent()
+
+        assertEquals(
+            listOf(
+                FreezerEvent.ShowToast(UiText.StringResource(R.string.profile_nothing_to_do))
+            ),
+            seen
+        )
     }
 }
