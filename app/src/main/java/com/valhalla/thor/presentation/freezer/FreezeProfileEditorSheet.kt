@@ -75,6 +75,10 @@ import kotlinx.coroutines.launch
  * The sheet holds the whole edit locally and commits once, via [onSave]. Live-committing each
  * tick would publish half-built profiles to the QS-adjacent machinery that reads them, and there
  * would be no meaning for Cancel.
+ *
+ * [onSave] does not close the sheet and must not be assumed to have succeeded — the host dismisses
+ * on the view model's save-succeeded event. [isSaving] is that write being in flight, and holds Save
+ * down for its duration; a rejected write comes back with the sheet still up and the draft intact.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,6 +90,7 @@ fun FreezeProfileEditorSheet(
     searchQuery: String,
     gridDensity: AppGridDensity = AppGridDensity.DEFAULT,
     onSearchChange: (String) -> Unit,
+    isSaving: Boolean = false,
     onSave: (name: String, packageNames: List<String>) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -155,7 +160,7 @@ fun FreezeProfileEditorSheet(
                 )
                 TextButton(
                     onClick = { onSave(name, selection.toList()) },
-                    enabled = nameError == ProfileNameError.OK
+                    enabled = nameError == ProfileNameError.OK && !isSaving
                 ) {
                     Text(stringResource(R.string.action_save))
                 }

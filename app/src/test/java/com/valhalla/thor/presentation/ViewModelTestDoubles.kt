@@ -246,6 +246,16 @@ class FakeFreezeProfileRepository(initial: List<FreezeProfile> = emptyList()) :
     private val profiles = MutableStateFlow(initial)
     private var nextId = (initial.maxOfOrNull { it.id } ?: 0L) + 1
 
+    /**
+     * Set to make every write raise instead of landing.
+     *
+     * A real one has two ways to refuse — the unique index on the name, and the members table's
+     * foreign key — and both arrive as `SQLiteConstraintException`. That class is Android-only, so
+     * the tests that need "the database said no" hand this whatever the view model's `catch` is
+     * meant to see, rather than the fake picking one.
+     */
+    var writeFailure: Exception? = null
+
     override fun observeProfiles(): Flow<List<FreezeProfile>> = profiles
 
     override suspend fun packagesOf(profileId: Long): List<String> =
@@ -255,18 +265,21 @@ class FakeFreezeProfileRepository(initial: List<FreezeProfile> = emptyList()) :
         profiles.value.flatMap { it.packageNames }.toSet()
 
     override suspend fun create(name: String, packageNames: List<String>): Long {
+        writeFailure?.let { throw it }
         val id = nextId++
         profiles.update { it + FreezeProfile(id, name, packageNames) }
         return id
     }
 
     override suspend fun update(profileId: Long, name: String, packageNames: List<String>) {
+        writeFailure?.let { throw it }
         profiles.update { list ->
             list.map { if (it.id == profileId) FreezeProfile(profileId, name, packageNames) else it }
         }
     }
 
     override suspend fun delete(profileId: Long) {
+        writeFailure?.let { throw it }
         profiles.update { list -> list.filterNot { it.id == profileId } }
     }
 }

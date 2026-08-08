@@ -59,6 +59,15 @@ data class FreezerPrompt(val packageName: String, val appName: String?)
 sealed interface FreezerEvent {
     data class ShowToast(val message: UiText) : FreezerEvent
     data class ShowFreezerPrompt(val packageName: String, val appName: String?) : FreezerEvent
+
+    /**
+     * A profile write reached the database. The *only* thing that closes the profile editor.
+     *
+     * An event rather than a UiState flag because closing is an edge, not a condition: a state
+     * field saying "the last save succeeded" would re-close the sheet the next time it is opened,
+     * and clearing it would need a second call the screen has no natural place for.
+     */
+    data object ProfileSaveSucceeded : FreezerEvent
 }
 
 data class FreezerUiState(
@@ -86,6 +95,11 @@ data class FreezerUiState(
     val addFreezerToLauncher: Boolean = false,
     val profiles: List<FreezeProfile> = emptyList(),
     val profileEditorSearchQuery: String = "",
+    /**
+     * A profile create/update is in flight. Disables the editor's Save button for as long as it
+     * runs, so the sheet that is now waiting for its write cannot have a second one issued into it.
+     */
+    val profileSaveInFlight: Boolean = false,
     /**
      * Every bulk run in flight, oldest first. Carries whole requests, not a Boolean, so a profile
      * row can show its own spinner without every other row spinning alongside it — and a list
@@ -450,19 +464,43 @@ class FreezerViewModel(
     }
 
     fun createProfile(name: String, packageNames: List<String>) {
-        viewModelScope.launch(ioDispatcher) {
-            runProfileWrite(R.string.error_profile_name_taken) {
-                freezeProfileRepository.create(name, packageNames)
-                emitToast(UiText.StringResource(R.string.profile_saved))
-            }
-        }
+        saveProfile { freezeProfileRepository.create(name, packageNames) }
     }
 
     fun updateProfile(profileId: Long, name: String, packageNames: List<String>) {
+        saveProfile { freezeProfileRepository.update(profileId, name, packageNames) }
+    }
+
+    /**
+     * Run a profile write, and announce success loudly enough for the editor to close on it.
+     *
+     * The editor used to be dismissed by its own caller the instant Save was tapped, which meant
+     * the two writes that can legitimately be refused — a name the unique index already holds, and
+     * a members-table foreign key — reported themselves as a toast floating over a sheet that had
+     * already thrown the user's draft away. The write is the thing that decides, so the write is
+     * what emits [FreezerEvent.ProfileSaveSucceeded]; a failure now leaves the sheet up with the
+     * draft in it, and the Save button the user is already looking at is the retry.
+     *
+     * The write stays on [viewModelScope] rather than being awaited inside the sheet. The editor's
+     * `rememberCoroutineScope()` dies with the composition, so a rotation mid-save would cancel
+     * `FreezeProfileDao.updateProfile` part-way through its `@Transaction`.
+     *
+     * The in-flight check is a backstop, not the guard: Save is disabled from [profileSaveInFlight]
+     * for the whole run, and this only covers the frame between the tap and that recomposition.
+     * `finally` rather than the success path, so a failed write does not leave the button dead.
+     */
+    private fun saveProfile(write: suspend () -> Unit) {
+        if (_uiState.value.profileSaveInFlight) return
+        _uiState.update { it.copy(profileSaveInFlight = true) }
         viewModelScope.launch(ioDispatcher) {
-            runProfileWrite(R.string.error_profile_name_taken) {
-                freezeProfileRepository.update(profileId, name, packageNames)
-                emitToast(UiText.StringResource(R.string.profile_saved))
+            try {
+                val saved = runProfileWrite(R.string.error_profile_name_taken) { write() }
+                if (saved) {
+                    emitToast(UiText.StringResource(R.string.profile_saved))
+                    _events.send(FreezerEvent.ProfileSaveSucceeded)
+                }
+            } finally {
+                _uiState.update { it.copy(profileSaveInFlight = false) }
             }
         }
     }
@@ -488,13 +526,18 @@ class FreezerViewModel(
      * the screen through a coroutine no one catches. [constraintMessage] is what separates them:
      * one exception type, two writes that can raise it for unrelated reasons, and only the caller
      * knows which constraint was reachable.
+     *
+     * Returns whether the write landed. A caller that only reports the outcome can ignore it; a
+     * caller that has UI riding on it — [saveProfile], which dismisses a sheet — cannot, because
+     * "the toast was shown" and "the row exists" are otherwise indistinguishable from out here.
      */
     private suspend fun runProfileWrite(
         @StringRes constraintMessage: Int,
         block: suspend () -> Unit
-    ) {
+    ): Boolean {
         try {
             block()
+            return true
         } catch (e: CancellationException) {
             throw e
         } catch (e: SQLiteConstraintException) {
@@ -504,6 +547,7 @@ class FreezerViewModel(
             Logger.e("FreezeViewModel", "profile write failed", e)
             emitToast(UiText.StringResource(R.string.error_format, e.message ?: ""))
         }
+        return false
     }
 
     // --- Snackbar from AppInfoSheet (app frozen outside freezer) ---

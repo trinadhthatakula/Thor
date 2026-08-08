@@ -68,6 +68,7 @@ class FreezerViewModelTest {
     private lateinit var freezer: FakeFreezerRepository
     private lateinit var shortcuts: FakeAppShortcutController
     private lateinit var privilege: FakePrivilegeStateProvider
+    private lateinit var profiles: FakeFreezeProfileRepository
 
     /**
      * The three fakes' calls in one list.
@@ -87,13 +88,14 @@ class FreezerViewModelTest {
         freezer = FakeFreezerRepository(trace = trace)
         shortcuts = FakeAppShortcutController(trace = trace)
         privilege = FakePrivilegeStateProvider()
+        profiles = FakeFreezeProfileRepository()
     }
 
     private fun viewModel(): FreezerViewModel {
         val manageAppUseCase = ManageAppUseCase(system)
         return FreezerViewModel(
             freezerRepository = freezer,
-            freezeProfileRepository = FakeFreezeProfileRepository(),
+            freezeProfileRepository = profiles,
             bulkFreeze = FakeBulkFreezeController(),
             getInstalledAppsUseCase = GetInstalledAppsUseCase(appRepository),
             manageAppUseCase = manageAppUseCase,
@@ -542,4 +544,91 @@ class FreezerViewModelTest {
                 trace
             )
         }
+
+    // --- The profile editor's dismiss-vs-save ordering ---
+
+    /**
+     * The other half of the same mistake this class exists for, in a different corner of the screen.
+     *
+     * `FreezerScreen` used to dismiss the profile editor in the same statement that issued the
+     * write, so the two writes a database can legitimately refuse — a name the unique index already
+     * holds, and a members-table foreign key — reported themselves as a toast floating over a sheet
+     * that had already destroyed the draft. Deleting the row before knowing it worked, deleting the
+     * draft before knowing it worked: the same shape.
+     *
+     * The screen's own state is not reachable from here, so what these pin is the contract it now
+     * closes on. [FreezerEvent.ProfileSaveSucceeded] is emitted **only** by a write that landed, and
+     * `profileSaveInFlight` covers exactly the window in which one is running.
+     */
+    @Test
+    fun `a profile save that lands says so, and hands the screen the one thing that closes it`() =
+        runTest {
+            val vm = viewModel()
+            val seen = events(vm)
+
+            vm.createProfile("Night", listOf("a", "b"))
+            assertTrue(
+                "the flag is set on the caller's thread, so Save is down before the write starts",
+                vm.uiState.value.profileSaveInFlight
+            )
+            runCurrent()
+
+            assertEquals(
+                listOf(
+                    FreezerEvent.ShowToast(UiText.StringResource(R.string.profile_saved)),
+                    FreezerEvent.ProfileSaveSucceeded
+                ),
+                seen
+            )
+            assertEquals(listOf("Night"), vm.uiState.value.profiles.map { it.name })
+            assertFalse("and the button comes back", vm.uiState.value.profileSaveInFlight)
+        }
+
+    /**
+     * The bug, at its smallest: the write is refused and the editor must stay up.
+     *
+     * The assertion is an absence, which is the only shape available — the sheet's open/closed state
+     * lives in the screen, and it now closes on nothing but the success event. If a failed write
+     * ever emits one again, the draft goes with it and the toast explaining why lands on a screen
+     * that can no longer act on it.
+     */
+    @Test
+    fun `a refused profile save reports itself and never announces success`() = runTest {
+        // Not SQLiteConstraintException: it is Android-only, so constructing one here hits the
+        // stubbed android.jar. Either branch of runProfileWrite's catch has to reach the same
+        // conclusion, and this is the one a JVM can raise.
+        profiles.writeFailure = IllegalStateException("disk is on fire")
+        val vm = viewModel()
+        val seen = events(vm)
+
+        vm.createProfile("Night", listOf("a", "b"))
+        runCurrent()
+
+        assertEquals(
+            listOf(FreezerEvent.ShowToast(UiText.StringResource(R.string.error_format, "disk is on fire"))),
+            seen
+        )
+        assertTrue("nothing was written", vm.uiState.value.profiles.isEmpty())
+        // `finally`, not the success path. A failed save that left the button dead would take the
+        // retry away at the exact moment the sheet was kept open to offer one.
+        assertFalse("and Save is usable again, because it is the retry", vm.uiState.value.profileSaveInFlight)
+    }
+
+    /** Two taps inside one frame are one write — the disabled button only covers what it can see. */
+    @Test
+    fun `a second save issued before the first lands is dropped rather than queued`() = runTest {
+        val vm = viewModel()
+        val seen = events(vm)
+
+        vm.createProfile("Night", listOf("a"))
+        vm.createProfile("Night", listOf("a"))
+        runCurrent()
+
+        assertEquals(
+            "one profile, not two rows racing the same unique index",
+            listOf("Night"),
+            vm.uiState.value.profiles.map { it.name }
+        )
+        assertEquals(1, seen.count { it is FreezerEvent.ProfileSaveSucceeded })
+    }
 }
