@@ -13,6 +13,7 @@ import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.FreezeTier
+import com.valhalla.thor.domain.model.Installers
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.fixStoreCandidates
 import com.valhalla.thor.domain.model.freezeTier
@@ -402,10 +403,13 @@ class MainViewModel(
             }
             val targetList = if (type == AppListType.USER) userApps else systemApps
 
-            // 2. Filter out self and Play Store to be safe
+            // 2. Filter out self and Play Store to be safe.
+            // BuildConfig, not a literal: `applicationIdSuffix` makes the debug build
+            // `com.valhalla.thor.debug`, so a hardcoded id stops excluding self on exactly the
+            // build where clearing Thor's own cache mid-run is most likely to be noticed.
             val safeList = targetList.filter {
-                it.packageName != "com.valhalla.thor" &&
-                        it.packageName != "com.android.vending"
+                it.packageName != BuildConfig.APPLICATION_ID &&
+                        it.packageName != Installers.PLAY_STORE
             }
 
             if (safeList.isEmpty()) {

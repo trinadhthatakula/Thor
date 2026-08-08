@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -187,7 +188,9 @@ private fun LegendItem(
             // so that entry stays a label. Anything that names an installer drills through to it.
             .then(
                 if (installer == null) Modifier
-                else Modifier.clickable { onInstallerClick(installer) }
+                // `Role.Button` so a screen reader says what it is. Without it the entry reads as
+                // text that happens to offer "double tap to activate".
+                else Modifier.clickable(role = Role.Button) { onInstallerClick(installer) }
             )
             .padding(4.dp),
         verticalAlignment = Alignment.CenterVertically

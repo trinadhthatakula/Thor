@@ -79,12 +79,17 @@ class ExportAppListUseCase(
 
     private companion object {
         /**
-         * Staging scope for the session, distinct from the bundle scopes.
+         * Staging scope for the session, distinct from every other scope on disk.
          *
          * Nothing is built into it — the CSV is already staged by the time the session opens — but
          * `openSession` requires one, and naming it after this feature keeps a future writer from
          * assuming a list export shares the single-export scope and wiping a bundle mid-stream.
+         *
+         * It must **not** equal `AppBundleFileStoreImpl.TEXT_STAGING_DIR`. That directory is where
+         * [AppBundleFileStore.stageText] puts the CSV, and it clears it on entry — so a bundle ever
+         * built into a scope of the same name would be deleted mid-stream by the next list share.
+         * The two started out sharing a value, which defeated the point of naming this at all.
          */
-        const val LIST_STAGING_DIR = "list_export"
+        const val LIST_STAGING_DIR = "list_export_session"
     }
 }

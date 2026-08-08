@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.presentation.main
 
+import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.data.backup.BackupRunner
 import com.valhalla.thor.domain.model.AppClickAction
@@ -567,8 +568,8 @@ class MainViewModelTest {
     @Test
     fun `clear all cache never clears Thor's own cache or the Play Store's`() = runTest {
         appRepository.apps.value = listOf(
-            userApp("com.valhalla.thor"),
-            userApp("com.android.vending"),
+            userApp(BuildConfig.APPLICATION_ID),
+            userApp(Installers.PLAY_STORE),
             userApp("com.example.a")
         )
         val vm = viewModel()
@@ -582,8 +583,31 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `clear all cache excludes the running application id, suffix and all`() = runTest {
+        // The literal "com.valhalla.thor" is the *release* id. `applicationIdSuffix = ".debug"`
+        // means the debug build runs as `com.valhalla.thor.debug`, so a hardcoded self-exclusion
+        // stops excluding self on exactly the build where the mistake is easiest to make and
+        // hardest to notice. Both are in the list; only the one Thor is actually running as may be
+        // spared, and the other must be treated as an ordinary third-party app.
+        appRepository.apps.value = listOf(
+            userApp("com.valhalla.thor"),
+            userApp("com.valhalla.thor.debug")
+        )
+        val vm = viewModel()
+
+        vm.clearAllCache(AppListType.USER)
+        advanceUntilIdle()
+
+        val expected = listOf("com.valhalla.thor", "com.valhalla.thor.debug")
+            .filter { it != BuildConfig.APPLICATION_ID }
+            .map { "clearCache:$it" }
+        assertEquals(expected, system.calls)
+    }
+
+    @Test
     fun `clear all cache with nothing eligible touches nothing`() = runTest {
-        appRepository.apps.value = listOf(userApp("com.valhalla.thor"), userApp("com.android.vending"))
+        appRepository.apps.value =
+            listOf(userApp(BuildConfig.APPLICATION_ID), userApp(Installers.PLAY_STORE))
         val vm = viewModel()
 
         vm.clearAllCache(AppListType.USER)

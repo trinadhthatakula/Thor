@@ -3,7 +3,6 @@
 
 package com.valhalla.thor.presentation.main
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.valhalla.thor.R
@@ -172,13 +173,22 @@ private fun FixStoreRow(
     onToggle: () -> Unit
 ) {
     Row(
+        // `toggleable` rather than `clickable` + a live checkbox: the two together are one toggle
+        // but two semantics nodes, so a screen reader gets an unlabelled container and a checkbox
+        // that names nothing. This merges them, and `Role.Checkbox` is what makes the state part
+        // of the announcement instead of "double tap to activate".
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onToggle)
+            .toggleable(
+                value = isSelected,
+                onValueChange = { onToggle() },
+                role = Role.Checkbox
+            )
             .padding(horizontal = 16.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Checkbox(checked = isSelected, onCheckedChange = { onToggle() })
+        // Null: the row above owns the click. A live handler here would be the second node again.
+        Checkbox(checked = isSelected, onCheckedChange = null)
 
         AppIcon(
             packageName = app.packageName,
