@@ -12,9 +12,49 @@ name: PR CI
 # is cheaper than a PR that cannot merge. The three release callers
 # (1-dev-publish.yml, 2-master-promote.yml, 3-production-promote.yml) and web-ci.yml do
 # filter — all four are safe to filter precisely because none of them is a required check.
+#
+# No `branches:` filter either, and for the same reason one level up: a filter here
+# does not make a PR unchecked-and-obviously-so, it makes it unchecked-and-green.
+# `pull_request.branches` matches the BASE, so while this read
+# [ "master", "dev", "production" ] a stacked PR — one opened against a feature
+# branch, which is how a dependent change is reviewed without waiting for its
+# parent — ran none of the jobs below. What it showed instead was four green
+# checks: the labeler, two Vercel no-ops, and a CodeRabbit reporting `pass` with
+# "reviews are disabled for this base branch". Nothing distinguished that from a
+# PR where everything ran and passed. Observed on #366.
+#
+# `edited` is in the types for the other half of the same problem. Changing a PR's
+# base raises `pull_request` with action `edited`, and the default types are
+# opened/synchronize/reopened — verified the hard way on #366, where a retarget
+# from a feature branch to dev fired nothing and a close/reopen was needed. The
+# stale result is not merely stale, it is wrong: the checkouts below pass no
+# `ref:`, so actions/checkout uses its default of refs/pull/N/merge and every job
+# here builds HEAD MERGED INTO THE BASE. Retarget the PR and the green on the page
+# describes a merge into a branch that is no longer the target.
+#
+# The obvious economy — keep `edited` but add
+# `if: github.event.action != 'edited' || github.event.changes.base` so a title or
+# body edit does not pay for an Android build — is deliberately NOT taken. The
+# concurrency group below is workflow-level with cancel-in-progress, and it is
+# claimed before any job's `if` is evaluated: a body edit during a real run would
+# cancel that run, then skip, and a skipped required check counts as a PASS to the
+# ruleset. That is a false green, which is the exact defect this file is being
+# edited to remove. Rerunning on a body edit only wastes minutes. Same trade as
+# the paths note above — CI time is the cheap side.
+#
+# The cost is that a stack now pays for CI twice, parent and child, on shared
+# files. That is the correct price: the alternative is the child never being built
+# until it is already merged into the parent.
+#
+# Fork PRs need no extra thought here — see the `Assemble minified release` step
+# below. This workflow exports no secret, and the release build type only assigns
+# a signingConfig when credentials exist, so a fork PR and a branch PR produce the
+# same unsigned APK. Widening the base does not widen what a PR can reach.
 on:
   pull_request:
-    branches: [ "master", "dev", "production" ]
+    # The three defaults, restated because naming any type replaces the default
+    # set rather than extending it, plus `edited` for the base-change case above.
+    types: [ opened, synchronize, reopened, edited ]
 
 # Least-privilege token — this workflow only reads the repo.
 permissions:
@@ -53,8 +93,24 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Assemble + unit test (foss debug)
-        run: ./gradlew assembleFossDebug testFossDebugUnitTest --stacktrace
+      # compileFossDebugAndroidTestKotlin is not decoration. Nothing else in this repo
+      # compiles app/src/androidTest at all: assembleFossDebug builds main, the unit-test
+      # task builds test/, lint analyses neither, and connectedAndroidTest — the task that
+      # WOULD compile it — needs a device and never runs here. So instrumented tests could
+      # be merged with a syntax error, a missing import or a reference to a symbol that was
+      # renamed three PRs ago, and every check on the page would still be green. The gap
+      # was found on #366, where a review claimed a missing import in AppActionRowTest; the
+      # claim was false, but no check would have caught it if it had been true.
+      #
+      # Compile-only, deliberately. Running the tests needs an emulator, which is minutes
+      # and a flake source; compiling them costs one extra Kotlin task against classes this
+      # step has already built. It buys the guarantee that androidTest still refers to code
+      # that exists, which is the failure mode that actually happens when a refactor sweeps
+      # main/ and leaves androidTest/ behind.
+      - name: Assemble + unit test + androidTest compile (foss debug)
+        run: >
+          ./gradlew assembleFossDebug testFossDebugUnitTest
+          :app:compileFossDebugAndroidTestKotlin --stacktrace
 
       # Enforced, not advisory: :app is at 0 errors / 0 warnings and app/build.gradle.kts sets
       # warningsAsErrors, so lint debt can only be introduced deliberately now.
