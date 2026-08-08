@@ -68,6 +68,20 @@ Two decisions the sketch did not anticipate:
 dispatching cannot replace this — Room still owns the unique index, and a check-then-write is a race
 — so it would add a second source of truth for a failure this now handles correctly.
 
+**One more thing the fix needed, caught in review of its own PR: the event has to say *which*
+editor.** Closing on the bare event moved the bug one layer along rather than fixing it. The sheet is
+still dismissable while its write runs — the guard added here says so in its comment — so dismissing
+a saving editor and opening another puts a draft on screen that the *first* write then closes. The
+profile id cannot serve as the identity, which is worth recording because it is the obvious
+substitute: two "new profile" editors both carry `NEW_PROFILE_ID`. So `ProfileSaveSucceeded` carries
+an opaque editor-session counter, minted by the screen on open and compared on close; the view model
+only hands back what it was given, since the screen is the only layer that knows what an editor is.
+All three open sites go through one `openProfileEditor` helper, because a missed increment fails
+*silently* — two editors sharing an id is exactly the state the id exists to rule out.
+
+Worth knowing for scale: `profileSaveInFlight` is global, so the replacement editor's Save is
+disabled for the whole window. The only thing at stake was the draft, never a double write.
+
 ## Test written with it
 
 `FreezerViewModel` had no test that made the profile repository *fail*; it does now. What is asserted

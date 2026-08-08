@@ -90,6 +90,24 @@ ones. The single-app and small-selection unfreezes in `FreezerViewModel`, `AppLi
 watchlist-or-profile scoped, and they are neither. Those paths can still leave a *briefly* stale
 subtitle; the TTL is what bounds it.
 
+**Two things the reroute exposed, both fixed in the same PR's review:**
+
+- **`BulkOutcome.NothingToDo` could not say why, and this call site is where that stopped being
+  survivable.** The runner returns null for *no privilege* and for *empty target list* alike, so
+  `unfreezeAll` rendered a revoked Shizuku binder as "No apps in Freezer" — to a user looking at a
+  watchlist full of apps. The type had been lossy from the start and every consumer was papering
+  over it: `FreezerLaunchActivity` ran a redundant second privilege probe purely to tell them apart,
+  and `FreezerViewModel` chose a string vague enough to be true either way. It now carries a
+  `NoOpReason`, and the privilege await moved from `run()` into the `async` body so the two causes
+  separate where they are decided. **When three call sites each work around the same missing field,
+  the field is the fix** — no new strings were needed, because `tile_grant_privilege_toast` already
+  existed and is the only message here the user can act on.
+- **`FreezerShortcutManager.refreshPinnedShortcutIcons()` died with its last caller.** Its KDoc
+  advertised it as the hook "for a caller that runs its own batch instead of going through
+  `BulkFreezeRunner` — currently only Settings' Unfreeze-all". Rerouting that caller left a public
+  method documenting the bypass as a supported pattern. Deleted, with a comment where it stood: the
+  rebuild hangs off the runner's completions, which is what that subscription is for.
+
 **The concurrency-test prerequisite did not apply.** The advice was sound for change 2 as originally
 imagined — rewriting every unfreeze path through the runner — but neither change here widens what
 mutates shared state concurrently: 1 is a pure function plus a stamp on an existing single-writer

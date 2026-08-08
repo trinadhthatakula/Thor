@@ -81,6 +81,21 @@ Three reasons, and the third is the deciding one:
    that saw nothing. `FreezerRepository.removeAll` deliberately has no restore step, unlike `remove`;
    its only caller has already proved the package absent, so an unfreeze could only fail. Both KDocs
    say so, because the asymmetry reads like an oversight.
+
+   **The two reads are ordered, and that ordering is a safety property.** The watchlist snapshot is
+   taken *before* `getInstalledPackages`, not inside the prune afterwards — caught in review of the
+   PR that shipped this. Read second, a row added while the scan was running names a package the
+   scan had no opportunity to see, so it arrives at the rule indistinguishable from a row whose
+   package is gone, and is deleted. Since adding to the Freezer freezes immediately, the result is a
+   frozen app with no Freezer row: the state this whole option exists to clean up, manufactured by
+   the cleanup. Rows added after the snapshot are simply not candidates for that scan and wait for
+   the next one, so the only error the ordering permits is *pruned nothing*.
+
+   `AppRepositoryImpl.watchlistSnapshot()` returns **null** rather than an empty set when the read
+   fails, and the two must not be conflated: an empty watchlist prunes nothing, an unread one
+   treated as empty would prune everything under the opposite comparison. It is also guarded
+   separately from the scan's own `try`, whose catch swallows and loops — a Room throw there would
+   skip `producer.send` and drop the emission, turning a housekeeping failure into a blank app list.
 4. **Offer the fix instead of the escape** — when the failure is a known-recoverable one, surface the
    action that resolves it (switch privilege mode) rather than a way to hide the row. Most work,
    best outcome, and it composes with option 1.
