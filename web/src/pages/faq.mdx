@@ -137,18 +137,11 @@ Almost always.
   packages will answer no, which is why a few third-party tools show the app as gone.
 - **Where it cannot be undone** — if a system update removes an app from the system partition while
   it is frozen, there is nothing left to reinstall from.
-- **The one case Thor refuses** — on API 37 the platform will not let a shell-level caller remove a
-  system app for a single user at all. So if you are on Shizuku, on that release, and your device
-  also refuses to switch the app off, Thor cannot freeze it and will tell you so rather than
-  half-doing it. Root is unaffected.
-
-<Callout tone="warning" title="A note on Dhizuku">
-  <p>
-    The Dhizuku engine has not been converted to this chain yet: it still removes a system app for
-    your Android user, and it does not keep the data. If you freeze preinstalled apps and care about
-    what is inside them, use Root or Shizuku until that lands.
-  </p>
-</Callout>
+- **The one case Thor refuses** — on API 37 the platform will not let anything but root remove a
+  system app for a single user. That was measured on both non-root modes: Shizuku's shell identity
+  and Dhizuku's device-owner identity get the same refusal. So if you are on Shizuku or Dhizuku, on
+  that release, and your device also refuses to switch the app off, Thor cannot freeze it and will
+  tell you so rather than half-doing it. Root is unaffected.
 
 <h3 id="cross-privilege-unsuspend">I switched from Root to Shizuku and now some apps won't unsuspend.</h3>
 

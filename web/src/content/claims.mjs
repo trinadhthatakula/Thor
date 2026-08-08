@@ -69,11 +69,12 @@ export const claimRules = [
       'does not do is preserve the whole PackageUserState. The fallback still clears FLAG_INSTALLED, so the app ' +
       'reads as uninstalled-for-this-user to anything that does not pass ' +
       'MATCH_UNINSTALLED_PACKAGES — that is worth saying, and it is not the same as losing data. ' +
-      'Dhizuku is the exception: DhizukuSystemGateway still removes the package for the user ' +
-      'unconditionally and without -k.',
+      'Dhizuku was the exception until PR #332; it now routes through the same disable chain and ' +
+      'consults the same gate as Shizuku, so it too reaches the rung only where the platform ' +
+      'actually refused, and carries -k when it does.',
     source:
       'RootSystemGateway.freezeSystemApp; ShizukuSystemGateway.freezeSystemApp; ' +
-      'FreezePolicy.uninstallFreezeFallbackAllowed; DhizukuSystemGateway.setAppDisabled',
+      'FreezePolicy.uninstallFreezeFallbackAllowed; DhizukuSystemGateway.freezeSystemApp',
     allow: [],
   },
 
@@ -99,7 +100,8 @@ export const claimRules = [
       'page, the correction has to be too.',
     source:
       'RootSystemGateway.freezeSystemApp (rung 1 `pm disable --user`, "app data preserved"); ' +
-      'ShizukuSystemGateway.freezeSystemApp (rung 3 `pm uninstall -k`)',
+      'ShizukuSystemGateway.freezeSystemApp (rung 3 `pm uninstall -k`); ' +
+      'DhizukuSystemGateway.freezeSystemApp (same chain since PR #332, same gate, same -k)',
     allow: [],
   },
 

@@ -220,17 +220,17 @@ Suspend are persistent states. Which of the two Thor uses is a single global Fre
 Under the hood, freezing a **user app** disables it. Freezing a **system app** switches it off in
 place as well — the package stays installed and its data stays on disk. Some OEM builds refuse to
 let anything but root disable their own preinstalled packages; where Thor meets that refusal under
-Shizuku, it falls back to removing the app for your Android user with `pm uninstall -k --user`. The
-`-k` is the whole point: it is `DELETE_KEEP_DATA`, and the app's data directories keep their inodes
-across the round trip. A runtime permission measured across the same round trip came back granted
-with its flags unchanged — one permission, granted from the shell rather than by tapping Allow, on
-one platform build, and app-ops were never measured, so read it for the scope it has. That fallback
-is reached only where the platform actually refused. Under Root it is never reached at all.
+Shizuku or Dhizuku, it falls back to removing the app for your Android user with
+`pm uninstall -k --user N`. The `-k` is the whole point: it is `DELETE_KEEP_DATA`, and the app's data
+directories keep their inodes across the round trip. A runtime permission measured across the same
+round trip came back granted with its flags unchanged — one permission, granted from the shell
+rather than by tapping Allow, on one platform build, and app-ops were never measured, so read it for
+the scope it has. That fallback is reached only where the platform actually refused. Under Root it
+is never reached at all.
 
 <Callout tone="warning" title="What the fallback does change">
   <p>Removing an app for your user clears its installed flag, so while it is frozen that way the app reads as not installed for you to anything that asks Android the plain question. Its files are still there, and unfreezing reinstalls the same system APK and reattaches them, but a third-party app that enumerates packages will not see it in the meantime.</p>
-  <p>On API 37 the shell user is refused <code>pm uninstall -k --user N</code> on a system app outright, where the identical command succeeded a release earlier. So a Shizuku user on API 37 whose device also refuses to disable that package cannot freeze it at all. Thor reports the failure rather than doing something else. Root is unaffected.</p>
-  <p>Dhizuku is the exception on both counts: it still removes a system app for your user unconditionally, and it does so without <code>-k</code>, so it does not preserve the app's data. If you freeze system apps, do not use Dhizuku for it.</p>
+  <p>On API 37 <code>pm uninstall -k --user N</code> on a system app is refused for every caller that is not uid 0, where the identical command succeeded a release earlier. Both non-root modes were measured against it and both get the same refusal: Shizuku's shell uid and Dhizuku's device-owner uid alike. So a Shizuku or Dhizuku user on API 37 whose device also refuses to disable that package cannot freeze it at all. Thor reports the failure rather than doing something else, and passes the platform's own sentence through. Root is unaffected.</p>
 </Callout>
 
 <h3 id="watchlist">The watchlist</h3>
@@ -336,8 +336,8 @@ bad data file would strand every frozen system app on the device.
 - **System app, frozen** — switched off in place, so nothing is removed and nothing is lost. On
   devices that refuse to switch a preinstalled app off, Thor removes it for your Android user with
   the data kept on disk, and unfreezing reinstalls the same system APK and reattaches it. Under Root
-  that fallback is never used at all; under Shizuku it is used only where the platform actually
-  refused. Dhizuku has not been converted yet and still removes without keeping data.
+  that fallback is never used at all; under Shizuku and Dhizuku it is used only where the platform
+  actually refused.
 - **System app, debloated** — recoverable with `pm install-existing`, as long as the APK is still on
   the system partition. It is the same file that shipped with your phone, so this is the normal
   case.
