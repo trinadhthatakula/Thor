@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Freezing a system app</title>
+  </head>
+  <body>
+    <main>
+      <h1>Freezing a system app</h1>
+      <!--
+        Accurate copy for two years, and still accurate in the release notes for the version most
+        people are running. That is the whole reason this needs a gate: anyone rewriting a freezing
+        page from an older draft reintroduces it, and it reads as plausible because it was true.
+        One sentence per phrasing, because the engine matches a sentence at a time.
+      -->
+      <p>
+        Thor asks Android to switch the package off and leave it where it is, and your app data
+        stays where it is. Some vendors refuse that for their own preinstalled apps, and where they
+        do, Thor falls back to removing the app so the freeze still happens. Under Shizuku it
+        switches the app off or removes it for your user, whichever the platform will allow. The
+        command underneath is pm uninstall -k, which is the flag that keeps the data directories.
+      </p>
+    </main>
+  </body>
+</html>
