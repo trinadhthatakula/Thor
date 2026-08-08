@@ -37,6 +37,8 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
@@ -93,6 +95,17 @@ class SettingsViewModel(
      * new one after every toggle. Seeded off the main thread by [refreshAnyFileOpener].
      */
     private val anyFileOpenerEnabled = MutableStateFlow(false)
+
+    /**
+     * Serialises write-then-read-back on the alias, so a fast double-tap cannot land out of order.
+     *
+     * Both halves suspend on binder IPC, and `viewModelScope.launch` starts a fresh coroutine per
+     * tap, so two toggles genuinely overlap. Unserialised, off-then-on can apply as on-then-off:
+     * the component ends up in the *earlier* tap's state, and the read-back of the later one sees a
+     * value it did not write, so it fires "Android refused to change this setting" when nothing
+     * refused — the exact false report the read-back exists to prevent.
+     */
+    private val anyFileOpenerMutex = Mutex()
 
     init {
         refreshAnyFileOpener()
@@ -277,9 +290,13 @@ class SettingsViewModel(
      */
     fun setAnyFileOpenerEnabled(enabled: Boolean) {
         viewModelScope.launch {
-            anyFileOpenerController.setEnabled(enabled)
-            val actual = anyFileOpenerController.isEnabled()
-            anyFileOpenerEnabled.value = actual
+            val actual = anyFileOpenerMutex.withLock {
+                anyFileOpenerController.setEnabled(enabled)
+                anyFileOpenerController.isEnabled().also { anyFileOpenerEnabled.value = it }
+            }
+            // Reported outside the lock: _events is a BUFFERED Channel, so send() can suspend once
+            // the buffer fills, and suspending there with the mutex held would stall every later
+            // toggle behind a Toast nobody has collected yet.
             if (actual != enabled) {
                 _events.send(UiText.StringResource(R.string.any_file_opener_failed))
             }
@@ -294,7 +311,13 @@ class SettingsViewModel(
      * so a value cached from last composition can be stale by the time it is shown.
      */
     fun refreshAnyFileOpener() {
-        viewModelScope.launch { anyFileOpenerEnabled.value = anyFileOpenerController.isEnabled() }
+        viewModelScope.launch {
+            // Same lock as the writer: a resume that lands between a toggle's write and its
+            // read-back would otherwise observe the half-applied state and publish it as the answer.
+            anyFileOpenerMutex.withLock {
+                anyFileOpenerEnabled.value = anyFileOpenerController.isEnabled()
+            }
+        }
     }
 
     fun setAnimationIntensity(intensity: AnimationIntensity) {

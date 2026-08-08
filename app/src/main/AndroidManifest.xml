@@ -214,8 +214,10 @@
              middle setting — the filter is either this broad or it is absent.
 
              Hence the alias, and hence android:enabled="false". Left on the activity this would put
-             Thor in the "Open with" list for every file whose type nobody can name, and always for
-             file:// (resolveType never consults a provider for it). docs/follow-ups/161-*.md ruled
+             Thor in the "Open with" list for every file whose type nobody can name — including any
+             untyped file:// URI, for which resolveType cannot consult a provider at all. (Only
+             untyped: resolveType returns mType first when one is set, so a setDataAndType intent is
+             rejected here like any other typed one.) docs/follow-ups/161-*.md ruled
              that trade unacceptable unenabled and prescribed exactly this shape: a separate
              component, shipped off, turned on from Settings by a user who has actually hit the bug.
              AnyFileOpenerManager flips it; PackageManager owns the state, so there is no

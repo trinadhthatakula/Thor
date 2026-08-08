@@ -94,8 +94,15 @@ A **typeless** filter rather than `*/*`: it declares two schemes and no `android
 That is narrower than the block above, because `matchData` returns `NO_MATCH_TYPE` for any intent
 carrying a type and `Intent.resolveTypeIfNeeded` asks the ContentResolver first — so a `content://`
 URI reaches it only when the provider's own `getType()` also returned null, which is the reported
-symptom. It is still unbounded: every `file://` VIEW intent matches unconditionally, since
-`resolveType` never consults a provider for that scheme.
+symptom. It is still broad, though: every `file://` VIEW intent **that carries no explicit MIME
+type** matches, since `resolveType` consults a provider only for `content://`.
+
+(An earlier revision of this section said "every `file://` VIEW intent … unconditionally". That
+overstated it. `Intent.resolveType` opens with `if (mType != null) return mType;` — verified against
+`frameworks/base/core/java/android/content/Intent.java` on `main` — so an intent built with
+`setDataAndType` resolves to its declared type and is rejected by this filter on `NO_MATCH_TYPE`
+like any other typed intent. Only the typeless ones get through. The mechanism clause was right; the
+quantifier was not.)
 
 **It cannot be narrowed by path.** Under `IntentFilter.matchData` the path list is consulted only
 inside the `authorities != null` branch, so path matchers are inert without a host and *mandatory*
