@@ -19,8 +19,13 @@ name: Web CI
 # Step in web/vercel.json — a third derived fact means editing both.
 
 on:
+  # Base-unfiltered, matching pr-ci.yml — see the long note there. The `paths`
+  # filter stays: unlike pr-ci.yml this workflow is not a required status check,
+  # so a path-skipped run reports as "skipped", not as "Expected — waiting for
+  # status", and cannot make a PR unmergeable. What the base filter was doing was
+  # different in kind — it skipped a PR that DOES touch web/, purely because of
+  # where it was aimed.
   pull_request:
-    branches: [ "master", "dev" ]
     paths:
       - 'web/**'
       - 'gradle.properties'

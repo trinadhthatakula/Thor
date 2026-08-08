@@ -12,9 +12,33 @@ name: PR CI
 # is cheaper than a PR that cannot merge. The three release callers
 # (1-dev-publish.yml, 2-master-promote.yml, 3-production-promote.yml) and web-ci.yml do
 # filter — all four are safe to filter precisely because none of them is a required check.
+#
+# No `branches:` filter either, and for the same reason one level up: a filter here
+# does not make a PR unchecked-and-obviously-so, it makes it unchecked-and-green.
+# `pull_request.branches` matches the BASE, so while this read
+# [ "master", "dev", "production" ] a stacked PR — one opened against a feature
+# branch, which is how a dependent change is reviewed without waiting for its
+# parent — ran none of the jobs below. What it showed instead was four green
+# checks: the labeler, two Vercel no-ops, and a CodeRabbit reporting `pass` with
+# "reviews are disabled for this base branch". Nothing distinguished that from a
+# PR where everything ran and passed. Observed on #366.
+#
+# Retargeting after the parent merges does not repair it. Changing a base raises
+# `pull_request` with action `edited`, and the default types are
+# opened/synchronize/reopened — so the PR keeps its stale green until someone
+# pushes or reopens it. Adding `edited` to the types would fix the retarget case
+# and nothing else; the PR is still unchecked for its whole review.
+#
+# The cost is that a stack now pays for CI twice, parent and child, on shared
+# files. That is the correct price: the alternative is the child never being built
+# until it is already merged into the parent.
+#
+# Fork PRs need no extra thought here — see the `Assemble minified release` step
+# below. This workflow exports no secret, and the release build type only assigns
+# a signingConfig when credentials exist, so a fork PR and a branch PR produce the
+# same unsigned APK. Widening the base does not widen what a PR can reach.
 on:
   pull_request:
-    branches: [ "master", "dev", "production" ]
 
 # Least-privilege token — this workflow only reads the repo.
 permissions:
