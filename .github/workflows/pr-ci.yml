@@ -93,8 +93,24 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Assemble + unit test (foss debug)
-        run: ./gradlew assembleFossDebug testFossDebugUnitTest --stacktrace
+      # compileFossDebugAndroidTestKotlin is not decoration. Nothing else in this repo
+      # compiles app/src/androidTest at all: assembleFossDebug builds main, the unit-test
+      # task builds test/, lint analyses neither, and connectedAndroidTest — the task that
+      # WOULD compile it — needs a device and never runs here. So instrumented tests could
+      # be merged with a syntax error, a missing import or a reference to a symbol that was
+      # renamed three PRs ago, and every check on the page would still be green. The gap
+      # was found on #366, where a review claimed a missing import in AppActionRowTest; the
+      # claim was false, but no check would have caught it if it had been true.
+      #
+      # Compile-only, deliberately. Running the tests needs an emulator, which is minutes
+      # and a flake source; compiling them costs one extra Kotlin task against classes this
+      # step has already built. It buys the guarantee that androidTest still refers to code
+      # that exists, which is the failure mode that actually happens when a refactor sweeps
+      # main/ and leaves androidTest/ behind.
+      - name: Assemble + unit test + androidTest compile (foss debug)
+        run: >
+          ./gradlew assembleFossDebug testFossDebugUnitTest
+          :app:compileFossDebugAndroidTestKotlin --stacktrace
 
       # Enforced, not advisory: :app is at 0 errors / 0 warnings and app/build.gradle.kts sets
       # warningsAsErrors, so lint debt can only be introduced deliberately now.
