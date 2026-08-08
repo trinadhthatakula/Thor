@@ -61,6 +61,7 @@ import coil3.compose.AsyncImage
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
+import com.valhalla.thor.domain.model.freezeNeedsConfirmation
 import com.valhalla.thor.presentation.appList.AppInfoDetailBody
 import com.valhalla.thor.presentation.appList.AppInfoDetailsViewModel
 import com.valhalla.thor.presentation.appList.ExportBottomSheet
@@ -239,8 +240,16 @@ fun AppInfoSheet(
                     onSystemSettings = { onAppAction(AppClickAction.AppInfoSettings(appInfo)) },
                     onFreezeToggle = { shouldFreeze ->
                         // Only SYSTEM apps get the safety-warning dialog; unfreezing and user apps
-                        // go straight through.
-                        if (shouldFreeze && appInfo.isSystem) {
+                        // go straight through. `freezeNeedsConfirmation` also answers the newer
+                        // half — whether the user has switched off the routine-tier confirmation —
+                        // and it is the same call `AppInfoHeaderAndActions` makes, so the two
+                        // surfaces cannot drift apart on when the dialog appears.
+                        if (shouldFreeze &&
+                            freezeNeedsConfirmation(
+                                appInfo,
+                                detailsState.skipRoutineFreezeConfirmation
+                            )
+                        ) {
                             showFreezeConfirmation = true
                         } else {
                             onAppAction(

@@ -267,6 +267,12 @@ class SettingsViewModel(
         }
     }
 
+    fun setSkipRoutineFreezeConfirmation(enabled: Boolean) {
+        viewModelScope.launch {
+            preferenceRepository.setSkipRoutineFreezeConfirmation(enabled)
+        }
+    }
+
     fun setAddFreezerToLauncher(enabled: Boolean) {
         viewModelScope.launch {
             preferenceRepository.setAddFreezerToLauncher(enabled)

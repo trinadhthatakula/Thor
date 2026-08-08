@@ -172,6 +172,8 @@ class PreferenceRepositoryImpl(
         val AUTO_FREEZE = booleanPreferencesKey("auto_freeze")
         val ADD_FREEZER_TO_LAUNCHER = booleanPreferencesKey("add_freezer_to_launcher")
         val FREEZER_MODE = stringPreferencesKey("freezer_mode")
+        val SKIP_ROUTINE_FREEZE_CONFIRMATION =
+            booleanPreferencesKey("skip_routine_freeze_confirmation")
 
         // Freezer Prompts
         //
@@ -321,6 +323,12 @@ class PreferenceRepositoryImpl(
     override suspend fun setAddFreezerToLauncher(enabled: Boolean) {
         context.dataStore.guardedWrite(SETTINGS_STORE) {
             it[Keys.ADD_FREEZER_TO_LAUNCHER] = enabled
+        }
+    }
+
+    override suspend fun setSkipRoutineFreezeConfirmation(enabled: Boolean) {
+        context.dataStore.guardedWrite(SETTINGS_STORE) {
+            it[Keys.SKIP_ROUTINE_FREEZE_CONFIRMATION] = enabled
         }
     }
 
@@ -602,6 +610,10 @@ internal fun Preferences.toUserPreferences(
         autoFreezeEnabled = prefs[Keys.AUTO_FREEZE] ?: false,
         freezerMode = freezerMode,
         addFreezerToLauncher = prefs[Keys.ADD_FREEZER_TO_LAUNCHER] ?: false,
+        // Defaults to false: an unreadable settings file must not silently stop asking before a
+        // system freeze. Same fail-closed reading as every other flag on this snapshot.
+        skipRoutineFreezeConfirmation =
+            prefs[Keys.SKIP_ROUTINE_FREEZE_CONFIRMATION] ?: false,
         // From `local`, never from `prefs`: a `true` in the settings file is either a pre-1.93
         // leftover or a restored one, and both describe a watchlist this install may not have.
         hasShownDisabledAppsPrompt =

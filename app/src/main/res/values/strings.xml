@@ -300,6 +300,8 @@
     <string name="suspend_instead_of_freeze">Suspend instead of freeze</string>
     <string name="suspend_instead_of_freeze_desc">When freezing (including auto-freeze), suspend apps instead of disabling them. Suspended apps stay visible but paused.</string>
     <string name="auto_freeze_desc">Freeze apps automatically when screen is locked</string>
+    <string name="skip_routine_freeze_confirmation">Don\'t confirm routine freezes</string>
+    <string name="skip_routine_freeze_confirmation_desc">Freeze system apps without asking first, unless the removal list flags them. Apps marked Expert still warn, and unsafe ones are still refused.</string>
     <string name="add_freezer_to_launcher">Add Freezer to launcher</string>
     <string name="add_freezer_to_launcher_desc">Show frozen apps as home-screen shortcuts you can tap to launch</string>
     <string name="add_to_home_screen">Add to Home screen</string>

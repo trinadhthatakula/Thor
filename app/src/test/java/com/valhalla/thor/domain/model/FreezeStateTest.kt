@@ -215,6 +215,64 @@ class FreezePolicyTest {
         )
     }
 
+    // ── freezeNeedsConfirmation: which freezes the user may switch the dialog off for ──
+    //
+    // Every freeze surface calls this before raising AppRiskDialog, so it is the whole gate. The
+    // dialog is also the only refusal a BLOCKED app gets on these paths, which is why the suppression
+    // lives out here rather than inside it.
+
+    private fun systemApp(recommendation: String?, uadFailed: Boolean = false) = AppInfo(
+        packageName = "com.system.app",
+        isSystem = true,
+        bloatRecommendation = recommendation,
+        isUadLoadFailed = uadFailed
+    )
+
+    @Test
+    fun `a user app is never confirmed, whether or not the setting is on`() {
+        val user = AppInfo(packageName = "com.user.app", isSystem = false)
+        assertEquals(false, freezeNeedsConfirmation(user, skipRoutineConfirmation = false))
+        assertEquals(false, freezeNeedsConfirmation(user, skipRoutineConfirmation = true))
+    }
+
+    @Test
+    fun `a routine system app is confirmed by default and skipped when asked`() {
+        // The tap the setting exists for: debloating a fresh device answers this dialog dozens of
+        // times, and the last answer carries no more information than the first.
+        val routine = systemApp("Recommended")
+        assertEquals(true, freezeNeedsConfirmation(routine, skipRoutineConfirmation = false))
+        assertEquals(false, freezeNeedsConfirmation(routine, skipRoutineConfirmation = true))
+    }
+
+    @Test
+    fun `an unclassified system app counts as routine`() {
+        // Most of the system list: present in uad_lists.json with no advice, or absent from it. It
+        // is FreezeTier.NORMAL, so leaving it out of the setting's reach would make the setting
+        // apply to almost nothing.
+        assertEquals(false, freezeNeedsConfirmation(systemApp(null), skipRoutineConfirmation = true))
+    }
+
+    @Test
+    fun `an expert system app is confirmed however the setting is set`() {
+        // The load-bearing one. EXPERT is a per-app verdict about *this* package, and nothing under
+        // the dialog re-checks it — FreezeAppUseCase refuses BLOCKED and nothing else. A "don't ask
+        // me" about tedium must not quietly become one about risk.
+        val expert = systemApp("Expert")
+        assertEquals(true, freezeNeedsConfirmation(expert, skipRoutineConfirmation = false))
+        assertEquals(true, freezeNeedsConfirmation(expert, skipRoutineConfirmation = true))
+    }
+
+    @Test
+    fun `a blocked system app still raises the dialog, because that is how it is refused`() {
+        // AppRiskDialog renders no confirm button for BLOCKED. Suppressing it here would not skip a
+        // confirmation, it would skip the refusal and freeze the app.
+        val unsafe = systemApp("Unsafe")
+        assertEquals(true, freezeNeedsConfirmation(unsafe, skipRoutineConfirmation = true))
+        // Same for the fail-closed branch: no usable UAD list at all.
+        val unreadable = systemApp("Recommended", uadFailed = true)
+        assertEquals(true, freezeNeedsConfirmation(unreadable, skipRoutineConfirmation = true))
+    }
+
     // ── killableMembers: the same question for the one profile verb outside the runner ──
 
     private fun app(

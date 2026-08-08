@@ -113,6 +113,7 @@ interface PreferenceRepository {
     suspend fun setAutoFreezeEnabled(enabled: Boolean)
     suspend fun setAddFreezerToLauncher(enabled: Boolean)
     suspend fun setFreezerMode(mode: FreezerMode)
+    suspend fun setSkipRoutineFreezeConfirmation(enabled: Boolean)
 
     // --- Freezer Prompts ---
     suspend fun setHasShownDisabledAppsPrompt(hasShown: Boolean)

@@ -665,6 +665,18 @@ fun SettingsScreen(
             )
 
             SettingsSwitchRow(
+                icon = R.drawable.danger,
+                title = stringResource(R.string.skip_routine_freeze_confirmation),
+                subtitle = if (hasPrivilege) stringResource(R.string.skip_routine_freeze_confirmation_desc) else stringResource(
+                    R.string.privilege_required_warning
+                ),
+                checked = prefs.skipRoutineFreezeConfirmation,
+                enabled = hasPrivilege,
+                enableMarqueeOnClick = true,
+                onCheckedChange = { viewModel.setSkipRoutineFreezeConfirmation(it) }
+            )
+
+            SettingsSwitchRow(
                 icon = R.drawable.frozen,
                 title = stringResource(R.string.add_freezer_to_launcher),
                 subtitle = if (hasPrivilege) stringResource(R.string.add_freezer_to_launcher_desc) else stringResource(

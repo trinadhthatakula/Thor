@@ -443,6 +443,10 @@ class FakePreferenceRepository(
         write { it.copy(freezerMode = mode) }
     }
 
+    override suspend fun setSkipRoutineFreezeConfirmation(enabled: Boolean) {
+        write { it.copy(skipRoutineFreezeConfirmation = enabled) }
+    }
+
     override suspend fun setHasShownDisabledAppsPrompt(hasShown: Boolean) {
         write { it.copy(hasShownDisabledAppsPrompt = hasShown) }
     }

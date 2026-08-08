@@ -52,6 +52,15 @@ enum class AppRiskAction {
  * package name and freeze it. So treat the blocked branch here as load-bearing, not as advice with
  * a backstop underneath it. See docs/follow-ups/single-app-freeze-tier-gate.md.
  *
+ * Whether a freeze is confirmed at all is not decided here. `freezeNeedsConfirmation` in
+ * `FreezePolicy.kt` owns that, every freeze surface calls it, and the user's
+ * "don't confirm routine freezes" setting is one of its two inputs. It stays outside this file
+ * deliberately: a dialog that decided whether to render itself is a dialog whose callers stop
+ * agreeing about when it appears, and on these paths the confirm button below is enforcement rather
+ * than courtesy. The setting reaches [FreezeTier.NORMAL] only — [FreezeTier.EXPERT] is a verdict
+ * about a specific package with nothing underneath it, and [FreezeTier.BLOCKED] needs this dialog to
+ * refuse at all.
+ *
  * [AppRiskAction.Freeze] is only ever *raised* for system apps: every user app is
  * [FreezeTier.NORMAL], and no caller brings a NORMAL app here. The freeze wording therefore only
  * covers the system case, and what it warns about is the device, not the mechanic:
