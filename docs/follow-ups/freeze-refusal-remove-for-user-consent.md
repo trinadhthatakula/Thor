@@ -21,12 +21,19 @@ all three gateways, precisely so this path has something to call. Nothing was de
 
 ## What it needs
 
-**A new gateway method, not the existing one.** `SystemGateway.uninstallApp` is a plain
-`pm uninstall` — **no `-k`** — so it destroys the app's data and falls into the `DELETE_ALL_USERS`
-trap documented at `RootSystemGateway.kt:1097`. Wiring consent to that call would turn "remove it for
-me" into "delete my data on every user", which is worse than the behaviour that was just removed. The
-signature this wants is closer to `removeForUserKeepingData(packageName: String): Result<Unit>`,
-routed to the `pm uninstall -k --user N` rung that already exists in each gateway.
+**A new gateway method, not the existing one.** `SystemGateway.uninstallApp` builds
+`pm uninstall --user N` through `uninstallCommand` (`PerUserCommands.kt:83`) — **no `-k`** — so it
+destroys the app's data. Wiring consent to that call would turn "remove it for me" into "remove it
+and delete my data", which is worse than the behaviour that was just removed. The signature this
+wants is closer to `removeForUserKeepingData(packageName: String): Result<Unit>`, routed to the
+`pm uninstall -k --user N` rung that already exists in each gateway.
+
+An earlier draft of this line said `uninstallApp` also *"falls into the `DELETE_ALL_USERS` trap"*.
+It does not, and the mistake is worth keeping visible because the comment it misread says the
+opposite: `RootSystemGateway.kt:1096-1100` explains that the call goes through the shared builder
+**precisely so it cannot lose the `--user`**, which is the only thing that would make a bare
+`pm uninstall` all-users. The trap is real, documented on `uninstallCommand`, and already avoided.
+Only the missing `-k` is a problem here.
 
 **A screen-level dialog, on four hosts.** The failure arrives *after* `AppInfoSheet` has already
 dismissed itself, so the confirmation cannot live inside the sheet — the host has to own it. The four

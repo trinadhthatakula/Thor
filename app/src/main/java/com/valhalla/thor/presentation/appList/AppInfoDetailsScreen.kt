@@ -35,6 +35,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -536,15 +537,18 @@ private fun AppDetailsHeader(
 
             // Tap to copy, exactly as the sheet's header does — the two headers are the same
             // header on two surfaces, and one of them being inert is the kind of difference nobody
-            // finds on purpose.
+            // finds on purpose. Same reasoning for the click label and the 48 dp target; see the
+            // note in AppInfoSheet. labelSmall with 2 dp of padding is the smaller of the two, so
+            // if either needed the minimum size it was this one.
             Text(
                 text = appInfo.packageName,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontFamily = firaMonoFontFamily,
                 modifier = Modifier
+                    .minimumInteractiveComponentSize()
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable {
+                    .clickable(onClickLabel = stringResource(R.string.cd_copy_package_name)) {
                         coroutineScope.launch {
                             clipboard.setClipEntry(
                                 ClipEntry(

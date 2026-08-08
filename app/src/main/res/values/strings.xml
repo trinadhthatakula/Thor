@@ -434,6 +434,7 @@
     <string name="unknown_error_occurred">Unknown error occurred</string>
     <string name="toast_copied_class_name">Copied class name</string>
     <string name="toast_copy_saved">Copied to clipboard</string>
+    <string name="cd_copy_package_name">Copy package name</string>
     <string name="not_available">N/A</string>
     <string name="tab_overview_title">General</string>
     <string name="tab_components">Components</string>

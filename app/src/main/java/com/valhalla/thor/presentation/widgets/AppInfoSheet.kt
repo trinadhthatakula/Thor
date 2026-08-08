@@ -26,6 +26,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
@@ -518,14 +519,21 @@ private fun AppHeader(appInfo: AppInfo) {
         // list's multi-select and a row tap opens this sheet, so the list itself has nowhere to put
         // this; the header the sheet already draws is where the package name is legible anyway.
         // Copying must not dismiss: `setClipEntry` suspends, and this scope dies with the sheet.
+        //
+        // onClickLabel, because the click target is a Text: without it TalkBack announces the
+        // package name and "double tap to activate" and never says what activating does. The
+        // package name is not a verb. minimumInteractiveComponentSize keeps the 48 dp touch target
+        // labelMedium plus 4 dp of padding does not reach, and reserves it in layout only — the
+        // glyphs stay the size they are.
         Text(
             text = appInfo.packageName,
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontFamily = com.valhalla.thor.presentation.theme.firaMonoFontFamily,
             modifier = Modifier
+                .minimumInteractiveComponentSize()
                 .clip(RoundedCornerShape(8.dp))
-                .clickable {
+                .clickable(onClickLabel = stringResource(R.string.cd_copy_package_name)) {
                     coroutineScope.launch {
                         clipboard.setClipEntry(
                             ClipEntry(

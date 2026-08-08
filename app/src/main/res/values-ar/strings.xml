@@ -317,6 +317,7 @@
     <string name="unknown_error_occurred">حدث خطأ غير معروف</string>
     <string name="toast_copied_class_name">تم نسخ اسم الفئة</string>
     <string name="toast_copy_saved">تم النسخ إلى الحافظة</string>
+    <string name="cd_copy_package_name">نسخ اسم الحزمة</string>
     <string name="not_available">غير متاح</string>
     <string name="tab_overview_title">عام</string>
     <string name="tab_components">المكونات</string>
