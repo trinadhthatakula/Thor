@@ -95,6 +95,43 @@ data class BulkResult(
 }
 
 /**
+ * A [BulkResult] held for a surface that is not on screen yet, with the moment it was parked.
+ *
+ * The QS tile is the only such surface, and it is why the stamp exists. `BulkFreezeRunner` lives
+ * for the whole process, so a result parked for the tile subtitle waits until the shade next opens
+ * — which may be seconds later, or the following morning. Unstamped, "Froze 12 apps" is what the
+ * user reads on a tile they pull down at breakfast about a run they started the night before, and
+ * it reads as *just now*: the subtitle is the tile's live status line everywhere else.
+ *
+ * [publishedAtMs] must come from a monotonic source (`SystemClock.elapsedRealtime`), not from wall
+ * clock time. A parked result is compared only against a later reading of the same source, and
+ * wall clock can be set backwards by the user or by NTP, which would make an hours-old report look
+ * fresh again.
+ */
+data class ParkedBulkResult(
+    val result: BulkResult,
+    val publishedAtMs: Long,
+)
+
+/**
+ * [parked] if it is still worth showing at [nowMs], or null once it has aged past [ttlMs].
+ *
+ * A pure function so the rule can be asserted at all: the only thing that parks or reads a result
+ * is `BulkFreezeRunner`, which takes four collaborators no JVM test can build.
+ *
+ * The expiry is *read-side*: nothing sweeps the parked value on a timer, and nothing needs to. The
+ * tile paints synchronously at the top of every `onStartListening`, so the only moment staleness
+ * can be observed is a moment this function is already being called at. A timer would add a
+ * process-lifetime coroutine to publish a change no one is subscribed to see.
+ *
+ * A negative age is treated as stale rather than clamped. It cannot arise from
+ * `elapsedRealtime` — but if some later caller passes a clock that can go backwards, the failure
+ * this function exists to prevent is showing an old report as new, so it fails that way.
+ */
+fun freshParkedResult(parked: ParkedBulkResult?, nowMs: Long, ttlMs: Long): ParkedBulkResult? =
+    parked?.takeIf { (nowMs - it.publishedAtMs) in 0 until ttlMs }
+
+/**
  * How a bulk run ended, as its caller sees it.
  *
  * This exists because a nullable [BulkResult] cannot say it: the runner returned null both for

@@ -160,4 +160,64 @@ class BulkFreezeTest {
             BulkRequest(BulkOp.FREEZE, BulkScope.Profile(1), FreezerMode.SUSPEND)
         )
     }
+
+    // ── freshParkedResult: how long a parked report may occupy a status line ──
+    //
+    // The tile's subtitle is its live status line, and BulkFreezeRunner outlives every surface
+    // that reads it. What is under test is the boundary and the sign of the age; the TTL's
+    // *value* is arbitrary and deliberately not asserted anywhere.
+
+    private val parked = ParkedBulkResult(
+        result = BulkResult(op = BulkOp.FREEZE, total = 12, succeeded = 12, failed = 0),
+        publishedAtMs = 1_000L,
+    )
+
+    @Test
+    fun `a result read back immediately is fresh`() {
+        assertEquals(parked, freshParkedResult(parked, nowMs = 1_000L, ttlMs = 60_000L))
+    }
+
+    @Test
+    fun `nothing parked is never fresh`() {
+        assertEquals(null, freshParkedResult(null, nowMs = 1_000L, ttlMs = 60_000L))
+    }
+
+    @Test
+    fun `the last millisecond inside the window still counts`() {
+        assertEquals(parked, freshParkedResult(parked, nowMs = 60_999L, ttlMs = 60_000L))
+    }
+
+    @Test
+    fun `a result exactly at the TTL has expired`() {
+        // Half-open on purpose: an age *equal* to the TTL is outside the window, so the two
+        // branches cannot both claim the boundary millisecond.
+        assertEquals(null, freshParkedResult(parked, nowMs = 61_000L, ttlMs = 60_000L))
+    }
+
+    @Test
+    fun `the overnight case is what this exists for`() {
+        // Freeze from the QS tile at bedtime, pull the shade down at breakfast. The runner is
+        // process-lifetime, so without expiry "Froze 12 apps" is the subtitle nine hours later,
+        // in the one place the user reads as *right now*.
+        val nineHours = 9 * 60 * 60 * 1000L
+        assertEquals(null, freshParkedResult(parked, nowMs = 1_000L + nineHours, ttlMs = 60_000L))
+    }
+
+    @Test
+    fun `a clock that has gone backwards reads as stale, not as fresh`() {
+        // Unreachable via SystemClock.elapsedRealtime, which is monotonic — this pins the
+        // fail-closed direction for any later caller that passes a clock which is not. Showing
+        // an old report as new is the failure being prevented, so an impossible age must not
+        // land on the "still fresh" side.
+        assertEquals(null, freshParkedResult(parked, nowMs = 0L, ttlMs = 60_000L))
+    }
+
+    @Test
+    fun `two identical results parked at different times are different values`() {
+        // The stamp is part of the identity, and BulkFreezeRunner.consumeResult compare-and-sets
+        // on the whole parked value. Two runs over the same watchlist routinely produce an equal
+        // BulkResult, so without the stamp a surface that displayed the first one would silently
+        // consume the second — clearing a report nobody had seen.
+        assertNotEquals(parked, parked.copy(publishedAtMs = 2_000L))
+    }
 }

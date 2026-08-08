@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.data.freezer
 
+import android.os.SystemClock
 import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.data.source.local.UadHelper
 import com.valhalla.thor.data.source.local.UadSnapshot
@@ -12,8 +13,10 @@ import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.BulkResult
 import com.valhalla.thor.domain.model.BulkScope
+import com.valhalla.thor.domain.model.ParkedBulkResult
 import com.valhalla.thor.domain.model.bulkActionFor
 import com.valhalla.thor.domain.model.freezableCandidates
+import com.valhalla.thor.domain.model.freshParkedResult
 import com.valhalla.thor.domain.repository.BulkFreezeController
 import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
@@ -92,10 +95,24 @@ class BulkFreezeRunner(
      */
     val freezableCount: StateFlow<Int?> = _freezableCount.asStateFlow()
 
-    private val _lastResult = MutableStateFlow<BulkResult?>(null)
+    private val _lastResult = MutableStateFlow<ParkedBulkResult?>(null)
 
-    /** Outcome of the last completed run, consumed once by whoever displays it. */
-    val lastResult: StateFlow<BulkResult?> = _lastResult.asStateFlow()
+    /**
+     * Outcome of the last completed run, consumed once by whoever displays it.
+     *
+     * Exposed so a surface can repaint when a result lands; read it through [freshResult] rather
+     * than off this flow, or an expired report is displayed as a current one.
+     */
+    val lastResult: StateFlow<ParkedBulkResult?> = _lastResult.asStateFlow()
+
+    /**
+     * [lastResult] if it is still recent enough to show, else null.
+     *
+     * The staleness check happens here, on read, because nothing observes a parked result until a
+     * surface comes back on screen — see [freshParkedResult].
+     */
+    fun freshResult(): ParkedBulkResult? =
+        freshParkedResult(_lastResult.value, SystemClock.elapsedRealtime(), RESULT_TTL_MS)
 
     // replay = 1 so a completion is not lost to a subscriber that has not attached yet.
     // extraBufferCapacity alone only buffers for an *already-subscribed but slow* collector; with
@@ -356,7 +373,10 @@ class BulkFreezeRunner(
                 // by awaiting this Deferred — pushing it into the tile as well would put
                 // "Froze 4 apps" over a watchlist those four may not even belong to.
                 if (request.op == BulkOp.UNFREEZE) _lastResult.value = null
-                else if (request.scope == BulkScope.Watchlist) _lastResult.value = result
+                else if (request.scope == BulkScope.Watchlist) {
+                    _lastResult.value =
+                        ParkedBulkResult(result, SystemClock.elapsedRealtime())
+                }
                 // Unconditional, unlike the lines around it: a completion is not a *report*
                 // of the run, it is the fact that package state changed. It must not inherit
                 // the tile's freeze-only rule (an unfreeze recolours icons too) nor the
@@ -461,8 +481,13 @@ class BulkFreezeRunner(
      * Clear [lastResult] after it has been shown, consuming only the exact result that was
      * displayed. Compare-and-set means a new result published between the caller's read and
      * this call is not silently dropped.
+     *
+     * Takes the parked value rather than the bare [BulkResult] so the stamp is part of the
+     * comparison: two runs over the same watchlist very often produce an *equal* result
+     * ("Froze 12 apps" twice), and without the stamp the second one would be consumed by a
+     * caller that only ever saw the first.
      */
-    fun consumeResult(shown: BulkResult) {
+    fun consumeResult(shown: ParkedBulkResult) {
         _lastResult.compareAndSet(shown, null)
     }
 
@@ -575,6 +600,12 @@ class BulkFreezeRunner(
         // purpose: the Shizuku/Dhizuku paths make blocking binder calls that ignore
         // cancellation, so an unbounded join would stall the next batch behind them.
         const val CANCEL_GRACE_MS = 2_000L
+
+        // How long a parked result stays worth showing. Five minutes is arbitrary and there is no
+        // measurement behind it — it is "long enough that the shade you open right after tapping
+        // still explains what happened, short enough that it is not describing something you have
+        // forgotten doing". Tune it freely; nothing else depends on the value.
+        const val RESULT_TTL_MS = 5 * 60_000L
 
         // How long the post-run finally waits for the candidate sweep before releasing the run.
         // Deliberately NOT CANCEL_GRACE_MS: that bounds an unwind, this bounds real work — one
