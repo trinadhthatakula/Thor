@@ -179,6 +179,12 @@ class SettingsViewModel(
      * The message is chosen by [biometricRefusalMessage], not fixed: a refusal that tells an
      * Android 9 user to "set up a screen lock" sends them to do something their prompt cannot accept,
      * which is the same mistake `BiometricUnavailableScreen` exists to avoid making.
+     *
+     * A dropped write is reported here rather than through the store-wide notice, which
+     * `setBiometricLock` deliberately does not raise. This is the one preference where "some
+     * settings could not be saved" is not enough: the user needs to know which way their front door
+     * is facing, so the message names the state the lock is *actually* in — the opposite of the one
+     * they just asked for.
      */
     fun setBiometricLock(enabled: Boolean) {
         viewModelScope.launch {
@@ -193,7 +199,14 @@ class SettingsViewModel(
                 )
                 return@launch
             }
-            preferenceRepository.setBiometricLock(enabled)
+            if (!preferenceRepository.setBiometricLock(enabled)) {
+                _events.send(
+                    UiText.StringResource(
+                        if (enabled) R.string.biometric_lock_not_saved_still_off
+                        else R.string.biometric_lock_not_saved_still_on
+                    )
+                )
+            }
         }
     }
 
@@ -221,10 +234,24 @@ class SettingsViewModel(
         viewModelScope.launch { preferenceRepository.setAutoReinstallEnabled(enabled) }
     }
 
+    /**
+     * Applying the locale is conditional on the write, because these two steps disagree about how
+     * long they last: `applyLocale` changes the running process now, the preference is what brings
+     * the choice back next launch. Applying after a dropped write hands the user an app that
+     * speaks the new language until they close it and then quietly reverts — a setting that looks
+     * like it worked, then un-chooses itself, with nothing on screen ever having said otherwise.
+     *
+     * Leaving the UI in the old language instead makes the failure visible in the plainest way
+     * available: the thing the user asked for did not happen. The message names the setting, since
+     * the store-wide notice is suppressed for this call.
+     */
     fun setLanguage(language: String?) {
         viewModelScope.launch {
-            preferenceRepository.setLanguage(language)
-            localeManager.applyLocale(language)
+            if (preferenceRepository.setLanguage(language)) {
+                localeManager.applyLocale(language)
+            } else {
+                _events.send(UiText.StringResource(R.string.language_not_saved))
+            }
         }
     }
 

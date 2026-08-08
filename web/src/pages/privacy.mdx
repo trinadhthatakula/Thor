@@ -193,21 +193,11 @@ disabling it, not removing it, and unfreezing brings it back the way you left it
 your own apps and for preinstalled system apps alike.
 
 A small number of devices, mostly some OEM builds, refuse to let a preinstalled app be switched off
-at all. On the Shizuku path only, and only where the platform actually refused, Thor falls back to
-removing the app for your Android user with the flag that means **keep the data**. The data
-directories survive the round trip with their inodes intact, and a runtime permission grant measured
-across the same round trip came back unchanged. What the flag does not do is leave the per-user
-record alone: while the app is frozen this way it reads as not installed for your user to anything
-that does not explicitly ask about uninstalled packages. Where neither approach works, Thor reports the failure rather than quietly
-doing something else.
-
-<Callout tone="warning" title="Dhizuku is the exception">
-  <p>
-    Under Dhizuku there is no disable step and no keep-the-data flag. Freezing a preinstalled app
-    removes it for your Android user outright, and its data does not survive that. Do not treat the
-    Dhizuku path as the data-preserving one; root and Shizuku are.
-  </p>
-</Callout>
+at all by anything but root. On those, Shizuku and Dhizuku cannot freeze that app, and Thor reports
+the refusal and leaves the app installed and running. It does not substitute a removal — earlier
+builds did, taking the package away for your Android user with the data kept, and that was withdrawn
+precisely because it is not what a freeze was asked to do. Nothing here removes an app unless you
+asked for an app to be removed.
 
 Everything else Thor can do to an app — force stop, clear cache, clear the app's storage, uninstall,
 reinstall — happens only when you choose it. Thor never runs a package-management command you did

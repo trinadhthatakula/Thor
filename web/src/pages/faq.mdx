@@ -124,31 +124,17 @@ and blocked rather than waved through.
 Almost always.
 
 - **User apps** — unfreezing always works, with no data loss.
-- **System apps, the normal case** — Thor switches them off in place. The app keeps its data,
-  nothing is removed, so there is nothing to restore.
-- **System apps, the fallback** — a few devices refuse to let a preinstalled app be switched off at
-  all. There Thor removes it for your Android user while keeping its data on disk, and unfreezing
-  reinstalls the same APK from the system partition and reattaches that data. Your files and
-  settings survive the round trip. A runtime permission checked across the same round trip came
-  back granted too, but that is one measurement on one Android version, so treat it as likely
-  rather than promised.
-- **What the fallback does change** — while the app is frozen that way, Android reports it as not
-  installed for you. Anything that asks "is this app present?" without also asking about uninstalled
-  packages will answer no, which is why a few third-party tools show the app as gone.
+- **System apps** — Thor switches them off in place. The app keeps its data, nothing is removed, so
+  there is nothing to restore. This is the only thing a freeze does, in every privilege mode.
+- **The devices where it doesn't happen at all** — a few OEM builds refuse to let a preinstalled app
+  be switched off by anything but root. On those, Shizuku and Dhizuku cannot freeze that app, and
+  Thor tells you so and leaves it alone. Nothing to undo, because nothing was done. Freezing those
+  apps needs Root.
+- **Debloated, rather than frozen** — recoverable with `pm install-existing` as long as the APK is
+  still on the system partition, which is the normal case: it is the same file that shipped with
+  your phone.
 - **Where it cannot be undone** — if a system update removes an app from the system partition while
   it is frozen, there is nothing left to reinstall from.
-- **The one case Thor refuses** — on API 37 the platform will not let a shell-level caller remove a
-  system app for a single user at all. So if you are on Shizuku, on that release, and your device
-  also refuses to switch the app off, Thor cannot freeze it and will tell you so rather than
-  half-doing it. Root is unaffected.
-
-<Callout tone="warning" title="A note on Dhizuku">
-  <p>
-    The Dhizuku engine has not been converted to this chain yet: it still removes a system app for
-    your Android user, and it does not keep the data. If you freeze preinstalled apps and care about
-    what is inside them, use Root or Shizuku until that lands.
-  </p>
-</Callout>
 
 <h3 id="cross-privilege-unsuspend">I switched from Root to Shizuku and now some apps won't unsuspend.</h3>
 
@@ -203,11 +189,25 @@ layout that streaming readers cannot parse. Update to the current version.
 
 <h3 id="apks-samsung-my-files">I can't open a .apks file from Samsung My Files.</h3>
 
-Known and diagnosed, not yet fixed
-([#161](https://github.com/trinadhthatakula/Thor/issues/161)). Samsung's file URIs carry no filename
-in the path, and the filter that matches by extension needs one to match. Workaround: open the file
-from a different file manager. Sharing it to Thor is not a way round it — Thor registers no share
-target at all.
+Known and diagnosed ([#161](https://github.com/trinadhthatakula/Thor/issues/161)). Samsung's file
+URIs carry no filename in the path, and the filter that matches by extension needs one to match.
+
+**Open the file from a different file manager.** That is the fix, it costs you nothing, and it is
+what I would do. Sharing the file to Thor is not a way round it — Thor registers no share target at
+all.
+
+**If you would rather not change file manager**, Settings has a switch called "Show Thor when
+opening any file", off by default. It adds a second, much wider entry point: Thor becomes an option
+for every file Android cannot put a type to, which is not the same thing as every APK. You will see
+Thor offered for files it has no business opening, and it can do nothing useful with them.
+
+Two honest caveats before you turn it on. It is aimed at exactly the shape #161 has — a file the
+system hands over with no name and no type — so it only helps if that is really what your file
+manager is doing, and **I have not been able to confirm it on a Samsung device**, only reason about
+why it should apply. And the filter cannot be narrowed, because what it exists to catch is a handover
+carrying no name and no type — there is nothing in it left to match on. Putting an extension pattern
+back would rebuild the filter that already misses these files. So it is either this broad or it is
+not there, which is why it ships switched off rather than on.
 
 <h3 id="fix-store">What is "Fix Store"?</h3>
 

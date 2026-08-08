@@ -58,22 +58,33 @@ export const claimRules = [
     ],
     unless: NEGATED,
     rationale:
-      'INVERTED by PR #314. Freezing a system app used to mean uninstalling it for the user ' +
-      'with no -k, so the app came back in factory state — the spec was written against that ' +
-      'behaviour. It is no longer true. Root tries `pm disable --user` first; the uninstall rung ' +
-      'is gated and the gate answers false for ROOT on every release, so under root it is ' +
-      'unreachable and a failed disable is reported as a failure. Where the rung is reachable it ' +
-      'carries `-k` (DELETE_KEEP_DATA), so the data directories survive the round trip — and a ' +
-      'runtime permission measured across the same round trip came back granted, though that was ' +
-      'one shell-granted permission on one API 36 build and says nothing about app-ops. What `-k` ' +
-      'does not do is preserve the whole PackageUserState. The fallback still clears FLAG_INSTALLED, so the app ' +
-      'reads as uninstalled-for-this-user to anything that does not pass ' +
-      'MATCH_UNINSTALLED_PACKAGES — that is worth saying, and it is not the same as losing data. ' +
-      'Dhizuku is the exception: DhizukuSystemGateway still removes the package for the user ' +
-      'unconditionally and without -k.',
+      'INVERTED by PR #314, then settled by band A row 1. Freezing a system app used to mean ' +
+      'uninstalling it for the user with no -k, so the app came back in factory state — the spec ' +
+      'was written against that behaviour. It is no longer true in any privilege mode: a freeze ' +
+      'now disables the package in place and never removes it, and the removal rung is ' +
+      'unreachable from a freeze on every branch of the gate. A refused disable is reported as a ' +
+      'failure and the app is left installed with its data untouched.\n\n' +
+      'That is a claim about behaviour, not about one command. The three gateways each try both a ' +
+      'shell disable (`pm disable`, or `pm disable-user --user N`) and ' +
+      '`IPackageManager.setApplicationEnabledSetting` by reflection, and they disagree about ' +
+      'which one to try first — Shizuku reflects before it shells out, Root shells out before it ' +
+      'reflects. Copy that names a single universal command is wrong about the mechanism even ' +
+      'when it is right about the outcome, so this rule is scoped to the outcome.\n\n' +
+      'The narrower history is worth keeping, because it is what the rest of this rule is scoped ' +
+      'against. Root reached that conclusion first, on the argument that its refusals ' +
+      '(`ProtectedPackages`) are not the shell-uid guard the fallback was built for. Shizuku and ' +
+      'Dhizuku followed for a different reason — not that the rung failed, but that substituting ' +
+      'a removal for a switch-off was never Thor\'s to do silently. Dhizuku had been the outlier ' +
+      'twice over: it did not consult the gate at all until PR #332, and its escalation was the ' +
+      'one branch whose `true` was never observed on hardware.\n\n' +
+      'What -k did and did not do still matters for reading old copy: it kept the data ' +
+      'directories, and it never kept FLAG_INSTALLED, so a package removed that way read as ' +
+      'uninstalled-for-this-user to anything not passing MATCH_UNINSTALLED_PACKAGES. That is the ' +
+      'cost that decided the withdrawal, and it is not the same as losing data. See C16, which ' +
+      'forbids describing the withdrawn mechanic as something Thor still does.',
     source:
       'RootSystemGateway.freezeSystemApp; ShizukuSystemGateway.freezeSystemApp; ' +
-      'FreezePolicy.uninstallFreezeFallbackAllowed; DhizukuSystemGateway.setAppDisabled',
+      'FreezePolicy.uninstallFreezeFallbackAllowed; DhizukuSystemGateway.freezeSystemApp',
     allow: [],
   },
 
@@ -98,8 +109,12 @@ export const claimRules = [
       '(they will assume they are about to lose something and not do it). If the topic is on the ' +
       'page, the correction has to be too.',
     source:
-      'RootSystemGateway.freezeSystemApp (rung 1 `pm disable --user`, "app data preserved"); ' +
-      'ShizukuSystemGateway.freezeSystemApp (rung 3 `pm uninstall -k`)',
+      'RootSystemGateway.freezeSystemApp, ShizukuSystemGateway.freezeSystemApp and ' +
+      'DhizukuSystemGateway.freezeSystemApp (one *outcome* since band A row 1 closed the removal ' +
+      'rung — each disables the package in place, by shell and by ' +
+      '`IPackageManager.setApplicationEnabledSetting`, in an order that differs per gateway, and ' +
+      'none of them can remove it — so the data claim is now true by construction rather than by ' +
+      'the -k flag it used to rest on)',
     allow: [],
   },
 
@@ -473,9 +488,89 @@ export const claimRules = [
       'A reader acts on this one: it is the sentence that decides whether they freeze a banking ' +
       'or authenticator app. Scope it or drop it; do not round it up.',
     source:
-      'ShizukuSystemGateway.freezeSystemApp (rung 3 `pm uninstall -k`, DELETE_KEEP_DATA); ' +
-      'the API 36 measurement recorded in web/src/pages/features.mdx under "the fallback", which ' +
-      'states its own scope. No app-op or user-granted-permission measurement exists.',
+      'Shizuku.freezeSystemAppForUser (the `pm uninstall -k` round trip the measurement was taken ' +
+      'across, and the KDoc that records its scope). No app-op or user-granted-permission ' +
+      'measurement exists. The features-page passage this used to cite is gone: band A row 1 made ' +
+      'the rung unreachable, so the site no longer describes the round trip at all and this rule ' +
+      'now guards only against the claim being reintroduced from an older draft.',
+    allow: [],
+  },
+
+  {
+    id: 'C16',
+    kind: 'forbid',
+    appliesTo: '**',
+    patterns: [
+      // "where the platform refuses, Thor falls back to removing it".
+      /\bfalls?\s+back\s+to\b[\s\S]{0,60}?\b(?:remov\w+|uninstall\w+)/i,
+      // The same claim with the subject named and the fallback verb left out,
+      // which is how it reads on four of the six pages it shipped on. Anchored on
+      // a freezing word rather than on the subject: Thor really does run
+      // `pm uninstall --user N` from the Uninstall and Debloat paths, and that
+      // sentence is true wherever it appears. What is forbidden is reaching it
+      // from a freeze.
+      /\b(?:freez\w*|frozen|unfreez\w*)\b[\s\S]{0,120}?\b(?:remove|removes|uninstall|uninstalls)\s+(?:it|the app|the package|them)\b[\s\S]{0,50}?\bfor\s+(?:your|the)\s+(?:Android\s+)?user\b/i,
+      // The same claim in the passive or the past, which is the shape that
+      // survived review on the status-chips paragraph of features.mdx: "a system
+      // app a freeze removed for your Android user". No fallback verb, no
+      // subject, no object pronoun, and the removal word is not one of the finite
+      // forms above — so pattern 2 walked straight past it. Kept separate rather
+      // than folded in, because dropping the object pronoun is what makes it
+      // loose enough to need the freezing word doing the anchoring on its own.
+      //
+      // Hence the much shorter window than pattern 2's, and `[^.;:]` rather than
+      // `[\s\S]`: what makes this the claim is the removal being predicated of
+      // the freeze, which puts the two words next to each other. At 120 chars of
+      // anything it also matched the download page's "already uninstalled with
+      // apps still frozen: … the app list, which shows packages uninstalled for
+      // your user too" — two true clauses, one sentence, no claim between them.
+      /\b(?:freez\w*|frozen|unfreez\w*)\b[^.;:]{0,40}?\b(?:removed|uninstalled|taken\s+away|took\s+away)\b[^.;:]{0,30}?\b(?:for|from)\s+(?:your|the)\s+(?:Android\s+)?user\b/i,
+      // The command itself, presented as something that runs. The `unless`
+      // window is what lets a page still name it while saying it was withdrawn.
+      /\bpm\s+uninstall\s+-k\b/i,
+      // The escalation named as a currently-available second option. "or it
+      // removes" is the giveaway; a page describing the withdrawal says the
+      // opposite of "or", which is what `unless` is for. Tailed with the
+      // for-your-user clause so it stays on the freeze rung: offering a switch-off
+      // or a full uninstall as two things the user may choose is what the Apps tab
+      // actually does, and that sentence has to remain writable.
+      /\bswitch(?:es|ed|ing)?\s+(?:it|the app|the package)\s+off\b[\s\S]{0,60}?\bor\b[\s\S]{0,40}?\b(?:remov\w+|uninstall\w+)\s+(?:it|the app|the package|them)\b[\s\S]{0,40}?\bfor\s+(?:your|the)\s+(?:Android\s+)?user\b/i,
+    ],
+    // The words that mark this specific retraction. The window is the match and
+    // the 60 characters before it, so "earlier builds substituted
+    // `pm uninstall -k`" is exempt and "Thor runs `pm uninstall -k`" is not.
+    //
+    // Two alternations, not one list, because a bare `not` was letting a false
+    // claim through: "Where the setting is not exposed, a Shizuku freeze removes
+    // it for your user" put an unrelated negation inside the window and the whole
+    // sentence went unread. A retraction marker ("earlier builds", "withdrawn",
+    // "instead of") is specific enough to stand alone — nothing writes those next
+    // to a removal by accident. A negation is not, so it has to attach to the
+    // removal itself, within three words and without crossing punctuation.
+    unless:
+      /\b(?:no longer|never|used to|earlier builds?|older builds?|previously|withdrawn|withdrew|removed the fallback|rather than|instead of|substituted)\b|\b(?:cannot|can'?t|won'?t|(?:is|are|was|were|do|does|did|has|have|had|can|could|will|would|should)\s*n'?t|(?:is|are|was|were|do|does|did|has|have|had|can|could|will|would|should)\s+not)\s+(?:\w+[\s-]+){0,3}?(?:remov\w+|uninstall\w+|falls?\s+back|takes?\s+away|taken\s+away)/i,
+    rationale:
+      'WITHDRAWN by band A row 1. `uninstallFreezeFallbackAllowed` now answers false on every ' +
+      'branch — SHIZUKU, DHIZUKU, ROOT and NONE — so no privilege mode can reach the removal rung ' +
+      'from a freeze. A refused disable is a reported failure and the app is left installed.\n\n' +
+      'This rule exists because the claim it forbids was true for two years and is written into ' +
+      'six passages of this site, four untracked `docs/site-content/*.md` drafts that back those ' +
+      'pages, and the release notes for the version most users are running. Anyone rewriting a ' +
+      'freezing page from those sources reintroduces it, and it reads as plausible because it ' +
+      'was.\n\n' +
+      'It is also the most consequential direction to be wrong in. The forbidden sentence tells a ' +
+      'reader that Thor may take a package away to accomplish something they asked to be ' +
+      'reversible. Publishing that while the app refuses to do it is merely wrong; publishing it ' +
+      'the other way round — which is what C1 caught for Dhizuku — talks someone into a freeze ' +
+      'whose blast radius they were not told about.\n\n' +
+      'The retraction itself must stay sayable: the pages explain what changed and why, and the ' +
+      '`unless` window is sized so an attributed or past-tense mention passes while an assertion ' +
+      'does not.',
+    source:
+      'FreezePolicy.uninstallFreezeFallbackAllowed (every `when` branch returns false); ' +
+      'ShizukuSystemGateway.freezeSystemApp and DhizukuSystemGateway.freezeSystemApp (both end ' +
+      'in a failure naming whether a refusal or a fault occurred); ' +
+      'R.string.freeze_system_app_disable_refused',
     allow: [],
   },
 ]
