@@ -612,5 +612,22 @@
         <item quantity="one">%1$d aplicación</item>
         <item quantity="other">%1$d aplicaciones</item>
     </plurals>
+    <string name="fix_store_desc">Thor reinstala cada aplicación para que Android registre Play Store como la aplicación que la instaló. Se conservan tus datos y ajustes.</string>
+    <string name="fix_store_warning">Una aplicación cuya firma no coincida con la versión de Play Store puede dejar de actualizarse. Desmarca lo que prefieras no tocar.</string>
+    <plurals name="fix_store_confirm">
+        <item quantity="one">Arreglar %1$d aplicación</item>
+        <item quantity="other">Arreglar %1$d aplicaciones</item>
+    </plurals>
+    <string name="fix_store_installed_by">Instalada por %1$s</string>
+    <string name="fix_store_installer_none">Sin instalador registrado</string>
+    <string name="select_all">Seleccionar todo</string>
+    <string name="select_none">Borrar</string>
+    <string name="log_stop">Detener</string>
+    <string name="log_stopping">Se detendrá al terminar la aplicación actual…</string>
+    <string name="log_stopped">Detenido: se procesaron %1$d de %2$d aplicaciones.</string>
+    <string name="export_list">Exportar lista</string>
+    <string name="export_list_share">Compartir lista</string>
+    <string name="export_list_empty">No hay aplicaciones en esta lista para exportar</string>
+    <string name="export_list_failed">No se pudo guardar la lista</string>
 
 </resources>

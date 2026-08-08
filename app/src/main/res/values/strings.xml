@@ -681,5 +681,22 @@
         <item quantity="one">%1$d app</item>
         <item quantity="other">%1$d apps</item>
     </plurals>
+    <string name="fix_store_desc">Thor reinstalls each app so Android records the Play Store as the app that installed it. Your data and settings are kept.</string>
+    <string name="fix_store_warning">An app whose signature doesn\'t match the Play Store version may stop updating. Uncheck anything you\'d rather leave alone.</string>
+    <plurals name="fix_store_confirm">
+        <item quantity="one">Fix %1$d app</item>
+        <item quantity="other">Fix %1$d apps</item>
+    </plurals>
+    <string name="fix_store_installed_by">Installed by %1$s</string>
+    <string name="fix_store_installer_none">No installer recorded</string>
+    <string name="select_all">Select all</string>
+    <string name="select_none">Clear</string>
+    <string name="log_stop">Stop</string>
+    <string name="log_stopping">Stopping after the current app…</string>
+    <string name="log_stopped" tools:ignore="PluralsCandidate">Stopped — %1$d of %2$d apps were processed.</string>
+    <string name="export_list">Export list</string>
+    <string name="export_list_share">Share list</string>
+    <string name="export_list_empty">There are no apps in this list to export</string>
+    <string name="export_list_failed">Couldn\'t save the list</string>
 
 </resources>
