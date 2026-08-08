@@ -1,7 +1,33 @@
 # The DataStore **write** path has no guard
 
-**Filed:** 2026-08-04 (UTC) · **Tier 3** — filed, decision still open · **Effort:** small-to-medium
+**Filed:** 2026-08-04 (UTC) · **Effort:** small-to-medium
 **Raised by:** PR #339, which guarded the *read* path and deliberately stopped there.
+
+> ## ✅ SHIPPED — band B #13, 2026-08-08
+>
+> Kept rather than deleted because it is the argument under the design, and because the count below
+> is the thing a future sweep would otherwise re-derive. Four corrections to what is written here:
+>
+> - **29 `edit { }` blocks, not 25** — across **28** write functions and **33** call sites, with
+>   **zero** `try` blocks among them. The 25 was a count taken before band A added three more.
+> - **The retry question resolved to *no retry*.** `DataStore.edit` already serialises writes and
+>   re-reads the current value inside the transform, so a second attempt re-runs the same disk
+>   operation against the same full disk. The read path retries because a transient read can
+>   genuinely succeed on the next try; a write that threw `IOException` here has nothing to wait for.
+> - **One catch covers corruption too.** `androidx.datastore.core.CorruptionException` extends
+>   `IOException` (`javap`-verified), so the narrow catch is complete. It matters that it *is*
+>   narrow: `CancellationException` is not an `IOException`, so structured concurrency survives
+>   without the rethrow a `catch (Throwable)` would have needed.
+> - **Two setters return `Boolean` instead of latching.** `setBiometricLock` and `setLanguage` have
+>   callers with something specific to say, and a failed write must not both raise the generic
+>   notice and let the caller raise its own — hence `announce = false` on those two rather than a
+>   second latch.
+>
+> What shipped: `guardedWrite` on `PreferenceRepositoryImpl`, a `settingsWriteFailed` latch on the
+> `PreferenceRepository` interface, three new strings in all five locales, and four tests in
+> `SecurityViewModelTest`. `SettingsViewModel` is still not JVM-testable — `LocaleManager` is a
+> concrete class taking a `Context` — so its `setLanguage` branch is covered by reading, not by a
+> test. That seam is the one piece of this left undone.
 
 ## What #339 fixed, and what it did not
 
