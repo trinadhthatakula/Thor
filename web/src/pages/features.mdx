@@ -230,7 +230,7 @@ is never reached at all.
 
 <Callout tone="warning" title="What the fallback does change">
   <p>Removing an app for your user clears its installed flag, so while it is frozen that way the app reads as not installed for you to anything that asks Android the plain question. Its files are still there, and unfreezing reinstalls the same system APK and reattaches them, but a third-party app that enumerates packages will not see it in the meantime.</p>
-  <p>On API 37 the shell user is refused <code>pm uninstall -k --user N</code> on a system app outright, where the identical command succeeded a release earlier. So a Shizuku user on API 37 whose device also refuses to disable that package cannot freeze it at all. Thor reports the failure rather than doing something else. Root is unaffected.</p>
+  <p>On API 37 <code>pm uninstall -k --user N</code> on a system app is refused for every caller that is not uid 0, where the identical command succeeded a release earlier. Both non-root modes were measured against it and both get the same refusal: Shizuku's shell uid and Dhizuku's device-owner uid alike. So a Shizuku or Dhizuku user on API 37 whose device also refuses to disable that package cannot freeze it at all. Thor reports the failure rather than doing something else, and passes the platform's own sentence through. Root is unaffected.</p>
 </Callout>
 
 <h3 id="watchlist">The watchlist</h3>
