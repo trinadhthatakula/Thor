@@ -223,6 +223,12 @@ class FreezerViewModel(
      * [com.valhalla.thor.presentation.appList.AppListViewModel.toggleFreezerMembership] uses for the
      * single-app case. Nothing here aborts the loop — a per-package failure is recorded and the rest
      * of the selection still runs — because the bug was never that it stopped too early.
+     *
+     * [com.valhalla.thor.domain.repository.FreezerRepository.removeAll] looks like the bulk version
+     * of this and is not: it deletes rows with no restore at all. That is not an oversight to be
+     * "fixed" by routing it through here. Its only caller is the scan-driven prune, whose entire
+     * precondition is that the package is *gone* — there is nothing installed to thaw, and an
+     * unfreeze against a package the scan just proved absent is a privileged call that can only fail.
      */
     fun removeFromFreezer(packageNames: Set<String>) {
         viewModelScope.launch(ioDispatcher) {

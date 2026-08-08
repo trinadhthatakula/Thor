@@ -19,8 +19,10 @@ import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.PermissionDetail
 import com.valhalla.thor.domain.model.ScanVerdict
+import com.valhalla.thor.domain.model.prunableWatchlistRows
 import com.valhalla.thor.domain.model.scanVerdict
 import com.valhalla.thor.domain.repository.AppRepository
+import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.InstalledAppsPermissionGate
 import com.valhalla.thor.util.LocaleRevision
 import com.valhalla.thor.util.Logger
@@ -44,10 +46,52 @@ class AppRepositoryImpl(
     private val appDao: AppDao,
     private val uadHelper: UadHelper,
     private val installedAppsPermission: InstalledAppsPermissionGate,
+    // Only for the watchlist prune below. The scan is the one place that knows whether a package's
+    // absence is real, and the Freezer's rows are the only other thing keyed on package name that
+    // outlives the package — the same class of stale artifact as the cached icon PNGs this already
+    // deletes.
+    private val freezerRepository: FreezerRepository,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : AppRepository {
 
     private val pm = context.packageManager
+
+    /**
+     * Drop Freezer watchlist rows for packages this scan proves are gone.
+     *
+     * **Here, and not in `FreezerViewModel`, because this is the only place that holds the
+     * verdict.** The Freezer screen sees a `List<AppInfo>`, and on a retained scan that list is the
+     * union of the scan and the rows Thor refused to prune — so from there a genuinely uninstalled
+     * package and a package hidden by a truncated scan look identical. [prunableWatchlistRows] holds
+     * the rule; nothing is decided here, the same division [scanVerdict] already uses above.
+     *
+     * Silent, and one `Logger` line. There is no UI surface that renders a row with no referent, so
+     * a dialog would be asking permission to tidy something the user cannot see, and naming the
+     * packages would list apps they can no longer act on.
+     *
+     * Failure is swallowed on purpose. This is housekeeping hanging off a scan whose actual job is
+     * to emit an app list; a Room error here must not take the emission down with it, and the next
+     * trusted scan tries again.
+     */
+    private suspend fun pruneWatchlist(scannedPackageNames: Set<String>, verdict: ScanVerdict) {
+        try {
+            val stale = prunableWatchlistRows(
+                watchlist = freezerRepository.getAllPackageNames().toSet(),
+                scannedPackageNames = scannedPackageNames,
+                verdict = verdict
+            )
+            if (stale.isEmpty()) return
+            freezerRepository.removeAll(stale)
+            Logger.d(
+                "AppRepository",
+                "pruned ${stale.size} freezer row(s) with no installed package"
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e("AppRepository", "pruning the freezer watchlist failed", e)
+        }
+    }
 
     /**
      * What the cached app labels depend on, as one comparable value.
@@ -263,6 +307,7 @@ class AppRepositoryImpl(
                                     } catch (_: Exception) {}
                                 }
                             }
+                            pruneWatchlist(currentPackageNames, verdict)
                             emptyList<AppInfo>()
                         }
 

@@ -220,6 +220,15 @@ class FakeFreezerRepository(
         packages.update { it - packageName }
     }
 
+    override suspend fun removeAll(packageNames: Set<String>) {
+        if (packageNames.isEmpty()) return
+        packageNames.forEach {
+            removed += it
+            trace?.add("freezer.removeAll:$it")
+        }
+        packages.update { it - packageNames }
+    }
+
     override suspend fun contains(packageName: String): Boolean = packageName in packages.value
 }
 

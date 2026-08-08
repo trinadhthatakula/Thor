@@ -25,4 +25,15 @@ interface FreezerDao {
 
     @Query("DELETE FROM freezer_apps WHERE packageName = :packageName")
     suspend fun delete(packageName: String)
+
+    /**
+     * Drop several rows in one statement.
+     *
+     * Not a loop over [delete]: the caller is the package scan's prune, which runs on every trusted
+     * rescan, and one statement is one write-ahead-log entry instead of N. Room refuses an empty
+     * `IN ()`, so callers must not pass an empty collection — the pruner's own gate already
+     * guarantees that, and a silent no-op here would hide the day it stops.
+     */
+    @Query("DELETE FROM freezer_apps WHERE packageName IN (:packageNames)")
+    suspend fun deleteAll(packageNames: Collection<String>)
 }
