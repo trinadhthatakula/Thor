@@ -142,8 +142,16 @@ suspender as a package that does not exist and the paused-app dialog then crashe
 
 <h2 id="installer">App installer</h2>
 
-Thor registers as an installer, so you can share or open a package file from anywhere — a browser, a
-file manager, another app — and Thor's bottom sheet takes over.
+Thor registers as an installer, so opening a package file from anywhere — a browser, a file manager,
+another app — hands it to Thor's bottom sheet. Opening, not sharing: Thor declares no share target,
+so it will not be in a share sheet, and on Android those are two different menus even when they look
+alike.
+
+The match is on the filename extension, which a handful of file managers do not put in the URI they
+hand over — Samsung My Files is the one that gets reported. Opening the file from a different file
+manager is the fix. For people who would rather not, Settings carries an off-by-default "Show Thor
+when opening any file" switch; the [FAQ](/faq#apks-samsung-my-files) says what it widens, and why
+being that wide is the reason it is not on already.
 
 <h3 id="bundle-formats">Every bundle format, handled</h3>
 

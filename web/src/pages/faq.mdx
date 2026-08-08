@@ -189,11 +189,24 @@ layout that streaming readers cannot parse. Update to the current version.
 
 <h3 id="apks-samsung-my-files">I can't open a .apks file from Samsung My Files.</h3>
 
-Known and diagnosed, not yet fixed
-([#161](https://github.com/trinadhthatakula/Thor/issues/161)). Samsung's file URIs carry no filename
-in the path, and the filter that matches by extension needs one to match. Workaround: open the file
-from a different file manager. Sharing it to Thor is not a way round it — Thor registers no share
-target at all.
+Known and diagnosed ([#161](https://github.com/trinadhthatakula/Thor/issues/161)). Samsung's file
+URIs carry no filename in the path, and the filter that matches by extension needs one to match.
+
+**Open the file from a different file manager.** That is the fix, it costs you nothing, and it is
+what I would do. Sharing the file to Thor is not a way round it — Thor registers no share target at
+all.
+
+**If you would rather not change file manager**, Settings has a switch called "Show Thor when
+opening any file", off by default. It adds a second, much wider entry point: Thor becomes an option
+for every file Android cannot put a type to, which is not the same thing as every APK. You will see
+Thor offered for files it has no business opening, and it can do nothing useful with them.
+
+Two honest caveats before you turn it on. It is aimed at exactly the shape #161 has — a file the
+system hands over with no name and no type — so it only helps if that is really what your file
+manager is doing, and **I have not been able to confirm it on a Samsung device**, only reason about
+why it should apply. And the filter cannot be narrowed: Android consults path patterns only for
+URIs that name a host, and the URIs this needs to reach have none, so it is either this broad or it
+is not there. That is why it ships switched off rather than on.
 
 <h3 id="fix-store">What is "Fix Store"?</h3>
 
