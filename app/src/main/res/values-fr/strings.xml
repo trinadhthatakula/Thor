@@ -478,6 +478,7 @@
     <string name="freeze_system_app_requires_root">Impossible de geler %1$s ici. Cet appareil n\'a pas laissé Thor la désactiver, et Android n\'autorise que root à supprimer une application préinstallée pour un seul utilisateur. L\'application n\'a pas été modifiée — la geler nécessite le mode Root de Thor.</string>
     <string name="freeze_system_app_removal_failed">Impossible de geler %1$s. Cet appareil n\'a pas laissé Thor la désactiver, et sa suppression pour cet utilisateur a également échoué. Android a signalé : %2$s</string>
     <string name="freeze_system_app_disable_refused">Impossible de geler %1$s. Cet appareil a refusé de la désactiver, alors Thor l\'a laissée intacte — la supprimer à la place pourrait vous déconnecter des comptes qu\'elle gère.</string>
+    <string name="freeze_system_app_disable_failed">Impossible de geler %1$s. Rien sur cet appareil n\'a refusé la demande : il s\'agit donc plus probablement d\'un bogue de Thor que d\'une restriction. L\'application est restée installée et intacte — merci de le signaler.</string>
     <string name="auto_reinstall">Réinstallation automatique d\'applications</string>
     <string name="auto_reinstall_desc">Conserver automatiquement Google Play Store comme installateur enregistré pour activer les mises à jour en arrière-plan</string>
     <string name="legacy_extension_title">Extension obsolète détectée</string>

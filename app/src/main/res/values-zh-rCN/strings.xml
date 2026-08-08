@@ -470,6 +470,7 @@
     <string name="freeze_system_app_requires_root">无法在此冻结 %1$s。本设备不允许 Thor 停用它，而 Android 只允许 root 为单个用户移除预装应用。该应用未受到任何改动——如需冻结，请将 Thor 切换到 Root 模式。</string>
     <string name="freeze_system_app_removal_failed">无法冻结 %1$s。本设备不允许 Thor 停用它，为该用户移除它也失败了。Android 报告：%2$s</string>
     <string name="freeze_system_app_disable_refused">无法冻结 %1$s。本设备拒绝停用它，因此 Thor 未对该应用做任何改动——改为移除它可能会让你退出它所管理的账号。</string>
+    <string name="freeze_system_app_disable_failed">无法冻结 %1$s。本设备并未拒绝该请求，所以这更可能是 Thor 的缺陷，而不是系统限制。该应用仍保持安装且未做改动——请反馈此问题。</string>
     <string name="auto_reinstall">自动重新安装应用</string>
     <string name="auto_reinstall_desc">自动保留 Google Play 商店作为主安装程序，以启用后台更新</string>
     <string name="legacy_extension_title">检测到旧版扩展</string>

@@ -534,6 +534,12 @@ private fun AppHeader(appInfo: AppInfo) {
                 .minimumInteractiveComponentSize()
                 .clip(RoundedCornerShape(8.dp))
                 .clickable(onClickLabel = stringResource(R.string.cd_copy_package_name)) {
+                    // The Toast is INSIDE the coroutine, after the await. setClipEntry is a suspend
+                    // call; toasting beside the launch instead of after it says "Copied" before the
+                    // write has happened — and this is a bottom sheet, so the scope it runs in can
+                    // die on dismissal between the two. That produced a success message with an
+                    // unchanged clipboard, which is worse than no message at all: the user pastes
+                    // whatever was there before and trusts it.
                     coroutineScope.launch {
                         clipboard.setClipEntry(
                             ClipEntry(
@@ -543,8 +549,9 @@ private fun AppHeader(appInfo: AppInfo) {
                                 )
                             )
                         )
+                        Toast.makeText(context, R.string.toast_copy_saved, Toast.LENGTH_SHORT)
+                            .show()
                     }
-                    Toast.makeText(context, (R.string.toast_copy_saved), Toast.LENGTH_SHORT).show()
                 }
                 .padding(horizontal = 8.dp, vertical = 4.dp)
         )

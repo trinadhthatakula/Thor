@@ -478,6 +478,7 @@
     <string name="freeze_system_app_requires_root">No se puede congelar %1$s desde aquí. Este dispositivo no ha dejado que Thor la desactive y Android solo permite que root elimine una app preinstalada para un solo usuario. La app se ha quedado intacta: para congelarla necesitas el modo Root de Thor.</string>
     <string name="freeze_system_app_removal_failed">No se puede congelar %1$s. Este dispositivo no ha dejado que Thor la desactive y eliminarla para este usuario también ha fallado. Android informó: %2$s</string>
     <string name="freeze_system_app_disable_refused">No se puede congelar %1$s. Este dispositivo se ha negado a desactivarla, así que Thor la ha dejado intacta: eliminarla en su lugar podría cerrar tu sesión en las cuentas que gestiona.</string>
+    <string name="freeze_system_app_disable_failed">No se puede congelar %1$s. Nada en este dispositivo ha rechazado la petición, así que es más probable que sea un fallo de Thor que una restricción. La aplicación sigue instalada y sin cambios: informa del problema, por favor.</string>
     <string name="auto_reinstall">Reinstalación automática de apps</string>
     <string name="auto_reinstall_desc">Mantener automáticamente Google Play Store como el instalador registrado para permitir actualizaciones en segundo plano</string>
     <string name="legacy_extension_title">Extensión heredada detectada</string>

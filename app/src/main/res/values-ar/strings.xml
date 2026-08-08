@@ -512,6 +512,7 @@
     <string name="freeze_system_app_requires_root">لا يمكن تجميد %1$s من هنا. لم يسمح هذا الجهاز لـ Thor بتعطيله، ولا يسمح Android إلا لـ root بإزالة تطبيق مثبَّت مسبقًا لمستخدم واحد. لم يطرأ أي تغيير على التطبيق — يتطلب تجميده وضع Root في Thor.</string>
     <string name="freeze_system_app_removal_failed">لا يمكن تجميد %1$s. لم يسمح هذا الجهاز لـ Thor بتعطيله، كما فشلت إزالته لهذا المستخدم. أبلغ Android عن: %2$s</string>
     <string name="freeze_system_app_disable_refused">لا يمكن تجميد %1$s. رفض هذا الجهاز تعطيله، لذلك تركه Thor دون تغيير — فإزالته بدلاً من ذلك قد تُخرجك من الحسابات التي يديرها.</string>
+    <string name="freeze_system_app_disable_failed">لا يمكن تجميد %1$s. لم يرفض أي شيء في هذا الجهاز الطلب، لذا فالأرجح أن هذا خلل في Thor وليس قيدًا من النظام. بقي التطبيق مثبّتًا دون تغيير — نرجو الإبلاغ عن المشكلة.</string>
     <string name="auto_reinstall">إعادة التثبيت التلقائي للتطبيقات</string>
     <string name="auto_reinstall_desc">الحفاظ تلقائيًا على متجر Google Play كمثبت رئيسي لتمكين التحديثات في الخلفية</string>
     <string name="legacy_extension_title">تم اكتشاف امتداد قديم</string>

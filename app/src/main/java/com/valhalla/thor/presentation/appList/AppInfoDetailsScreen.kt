@@ -549,6 +549,9 @@ private fun AppDetailsHeader(
                     .minimumInteractiveComponentSize()
                     .clip(RoundedCornerShape(8.dp))
                     .clickable(onClickLabel = stringResource(R.string.cd_copy_package_name)) {
+                        // Toast inside the coroutine, after the await — see AppInfoSheet for why.
+                        // setClipEntry suspends, so a Toast beside the launch reports a copy that
+                        // has not happened yet and may never happen if the scope is cancelled.
                         coroutineScope.launch {
                             clipboard.setClipEntry(
                                 ClipEntry(
@@ -558,12 +561,12 @@ private fun AppDetailsHeader(
                                     )
                                 )
                             )
+                            Toast.makeText(
+                                context,
+                                R.string.toast_copy_saved,
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
-                        Toast.makeText(
-                            context,
-                            (R.string.toast_copy_saved),
-                            Toast.LENGTH_SHORT
-                        ).show()
                     }
                     .padding(horizontal = 6.dp, vertical = 2.dp)
             )

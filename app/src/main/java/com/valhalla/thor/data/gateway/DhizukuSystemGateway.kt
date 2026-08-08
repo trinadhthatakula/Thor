@@ -155,16 +155,14 @@ class DhizukuSystemGateway(
             )
         ) {
             // Two different facts, two different sentences — the same split ShizukuSystemGateway
-            // makes, and deliberately the same resource, because the refusal is the platform's and
-            // reads identically whichever identity asked. A refusal is something the user can act
-            // on; anything else is a bug report.
+            // makes, and deliberately the same two resources, because neither sentence depends on
+            // which identity asked: the refusal is the platform's, and the non-refusal names Thor.
+            // See that gateway for why both are localised rather than only the refusal.
             val refused = java.io.IOException(
                 if (disable.refusedByPolicy) {
                     context.getString(R.string.freeze_system_app_disable_refused, packageName)
                 } else {
-                    "Dhizuku could not disable the system app $packageName. Nothing refused the " +
-                        "request, so this is not a device restriction — reporting the failure " +
-                        "rather than removing the app for this user."
+                    context.getString(R.string.freeze_system_app_disable_failed, packageName)
                 }
             )
             Logger.e(

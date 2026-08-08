@@ -157,18 +157,20 @@ class ShizukuSystemGateway(
                 disableRefusedByPolicy = disable.refusedByPolicy,
             )
         ) {
-            // Two different facts, two different sentences. A *refusal* is the device saying no,
-            // which the user can act on and which used to be answered by silently removing the
-            // package for them; anything else is a failure to report. Only the refusal branch is
-            // localised, because only it is a state the user is expected to do something about —
-            // the other is a bug report, and it reads the same to Thor as it does to the reporter.
+            // Two different facts, two different sentences — and both localised. An earlier
+            // revision left this branch in English on the reasoning that a non-refusal is a bug
+            // report rather than a state the user acts on. That reasoning does not survive
+            // MainViewModel.quickAction, which puts `e.message` straight into R.string.error_format
+            // and Toasts it: both branches land in the same Toast, so localising one and not the
+            // other means a Spanish user reads Spanish for a refusal and English for a bug, with
+            // nothing on screen marking the difference. The diagnostic detail that justified the
+            // English prose is not lost — it is in the Logger.e below, in more depth than a Toast
+            // could carry.
             val refused = java.io.IOException(
                 if (disable.refusedByPolicy) {
                     context.getString(R.string.freeze_system_app_disable_refused, packageName)
                 } else {
-                    "Shizuku could not disable the system app $packageName. Nothing refused the " +
-                        "request, so this is not a device restriction — reporting the failure " +
-                        "rather than removing the app for this user."
+                    context.getString(R.string.freeze_system_app_disable_failed, packageName)
                 }
             )
             Logger.e(

@@ -423,6 +423,7 @@
          while "Thor chose not to remove it" is the decision — removing a preinstalled app can sign
          the user out of every account it manages. Short enough to read in a Toast. -->
     <string name="freeze_system_app_disable_refused">Can\'t freeze %1$s. This device refused to disable it, so Thor left the app alone — removing it instead could sign you out of the accounts it manages.</string>
+    <string name="freeze_system_app_disable_failed">Can\'t freeze %1$s. Nothing on this device refused the request, so this is more likely a bug in Thor than a restriction. The app was left installed and untouched — please report it.</string>
     <string name="unfreezing_app">Unfreezing %1$s…</string>
     <string name="uninstall_success">Uninstalled %1$s</string>
     <string name="error_app_info_missing">Error: App info missing for action</string>
