@@ -85,6 +85,16 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
 
     private val failures = mutableMapOf<String, Throwable>()
 
+    /**
+     * Runs as each call is recorded, before its result is returned.
+     *
+     * The only way a test can act *between* two apps of a batch. Everything here answers without
+     * suspending and the view model's IO dispatcher is the test's own, so a batch started from a
+     * test body runs to completion before control returns — leaving no moment to, say, ask it to
+     * stop.
+     */
+    var onCall: ((String) -> Unit)? = null
+
     /** Make every call recorded as [call] fail with [error]. Keys are the [calls] format. */
     fun failWith(call: String, error: Throwable) {
         failures[call] = error
@@ -93,6 +103,7 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
     private fun record(call: String): Result<Unit> {
         calls += call
         trace?.add(call)
+        onCall?.invoke(call)
         return failures[call]?.let { Result.failure(it) } ?: Result.success(Unit)
     }
 

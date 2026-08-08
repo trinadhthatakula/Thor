@@ -6,6 +6,7 @@ package com.valhalla.thor.presentation.home
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.Installers
+import com.valhalla.thor.presentation.widgets.installerLabel
 import com.valhalla.thor.util.UiText
 
 /** Bars beyond this many collapse into Others. */
@@ -60,7 +61,7 @@ internal fun installerDistribution(
     val slices = named.map { (installer, count) ->
         InstallerSlice(
             installerPackageName = installer,
-            label = curatedLabel(installer!!) ?: UiText.DynamicString(labelFor(installer) ?: installer),
+            label = installerLabel(installer!!, labelFor),
             count = count
         )
     }
@@ -74,14 +75,4 @@ internal fun installerDistribution(
     } else {
         slices
     }
-}
-
-/** The name Thor gives an installer it knows, or null to fall back to the device's own label. */
-private fun curatedLabel(installerPackageName: String): UiText? = when (installerPackageName) {
-    Installers.PLAY_STORE -> UiText.StringResource(R.string.play_store)
-    Installers.F_DROID -> UiText.StringResource(R.string.f_droid)
-    // A device carries one of the two package-installer UIs, so these never draw as two bars both
-    // reading "Sideloaded" in practice.
-    in Installers.PACKAGE_INSTALLERS -> UiText.StringResource(R.string.sideloaded)
-    else -> null
 }

@@ -36,3 +36,29 @@ object Installers {
     /** Both system package-installer UIs, either of which means "sideloaded". */
     val PACKAGE_INSTALLERS = setOf(GOOGLE_PACKAGE_INSTALLER, AOSP_PACKAGE_INSTALLER)
 }
+
+/**
+ * The apps Fix Store would rewrite the installer record of: everything in [apps] that Play did not
+ * already install, minus Thor itself.
+ *
+ * An app with **no** recorded installer is a candidate. That is the case the feature exists for —
+ * Android records nothing for an `adb install` or a restored backup, and Play then declines to
+ * update it.
+ *
+ * Both package-installer ids are excluded, not just Google's. A sideloaded app already has an
+ * honest installer record; rewriting it buys nothing and costs the signature risk. The predicate on
+ * the Home card and the one behind the action were separate copies of this rule and only one of them
+ * knew about [Installers.AOSP_PACKAGE_INSTALLER], so a de-Googled ROM saw a badge counting apps the
+ * picker would then offer to "fix".
+ *
+ * [thorPackageName] is passed in rather than read from `BuildConfig` so this stays a pure function —
+ * and because the debug build's `applicationIdSuffix` makes the running package id something no
+ * constant in the source spells.
+ */
+fun fixStoreCandidates(apps: List<AppInfo>, thorPackageName: String): List<AppInfo> =
+    apps.filter { app ->
+        val installer = app.installerPackageName
+        app.packageName != thorPackageName &&
+                installer != Installers.PLAY_STORE &&
+                (installer == null || installer !in Installers.PACKAGE_INSTALLERS)
+    }

@@ -5,6 +5,7 @@ package com.valhalla.thor.presentation.main
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.data.backup.BackupRunner
 import com.valhalla.thor.domain.model.AppClickAction
@@ -13,6 +14,7 @@ import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.BundleFormat
 import com.valhalla.thor.domain.model.FreezeTier
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.model.fixStoreCandidates
 import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.domain.model.isActive
 import com.valhalla.thor.domain.model.isFrozen
@@ -65,7 +67,19 @@ data class LoggerState(
     val isVisible: Boolean = false,
     val title: UiText = UiText.DynamicString(""),
     val logs: List<UiText> = emptyList(),
-    val isComplete: Boolean = false
+    val isComplete: Boolean = false,
+    /**
+     * Whether this run can be stopped part-way. True only for the per-app batches, where stopping
+     * leaves a coherent result — some apps done, the rest untouched. A single shell command has no
+     * such halfway point.
+     */
+    val canStop: Boolean = false,
+    /**
+     * A stop has been asked for and the app in flight is being allowed to finish. Killing it
+     * mid-`pm install` is what leaves a package half-written, so the button reports "stopping"
+     * rather than pretending it was instant.
+     */
+    val isStopping: Boolean = false
 )
 
 /**
@@ -112,8 +126,25 @@ data class ExportProgressState(
 /**
  * Main UI State holding global feedback.
  */
+/**
+ * The Fix Store picker: the apps the action would touch, and which of them are still ticked.
+ *
+ * Everything starts ticked. The accident being prevented is "I did not know what it would touch",
+ * not "I did not mean to tap Confirm" — so showing the list is the fix, and making someone tick
+ * forty rows would punish the case the feature is for.
+ *
+ * [selected] holds package names rather than [AppInfo]s so a tick survives the list being rebuilt.
+ */
+data class FixStoreSelection(
+    val candidates: List<AppInfo> = emptyList(),
+    val selected: Set<String> = emptySet()
+) {
+    val selectedApps: List<AppInfo> get() = candidates.filter { it.packageName in selected }
+}
+
 data class MainUiState(
     val loggerState: LoggerState = LoggerState(), // For persistent Logs
+    val fixStoreSelection: FixStoreSelection? = null, // Fix Store picker, null when closed
     val freezeLoggerState: FreezeLoggerState = FreezeLoggerState(), // Compact freeze/unfreeze progress
     val exportProgress: ExportProgressState? = null, // Multi-app export, null when idle
     val selectedDestination: AppDestinations = AppDestinations.HOME, // For Bottom Nav
@@ -261,13 +292,77 @@ class MainViewModel(
         _uiState.update { it.copy(selectedDestination = destination) }
     }
 
-    private fun startLogger(title: UiText) {
+    // --- Fix Store picker ---
+
+    fun toggleFixStoreTarget(packageName: String) {
+        _uiState.update { state ->
+            val picker = state.fixStoreSelection ?: return@update state
+            val selected = if (packageName in picker.selected) {
+                picker.selected - packageName
+            } else {
+                picker.selected + packageName
+            }
+            state.copy(fixStoreSelection = picker.copy(selected = selected))
+        }
+    }
+
+    fun setAllFixStoreTargets(selectAll: Boolean) {
+        _uiState.update { state ->
+            val picker = state.fixStoreSelection ?: return@update state
+            val selected = if (selectAll) {
+                picker.candidates.mapTo(mutableSetOf()) { it.packageName }
+            } else {
+                emptySet()
+            }
+            state.copy(fixStoreSelection = picker.copy(selected = selected))
+        }
+    }
+
+    fun dismissFixStorePicker() {
+        _uiState.update { it.copy(fixStoreSelection = null) }
+    }
+
+    /**
+     * Runs Fix Store against whatever is still ticked, and closes the picker.
+     *
+     * An empty selection closes the picker and does nothing rather than starting a batch of zero —
+     * the confirm button is disabled at that point, so reaching here means the state moved out from
+     * under the click.
+     */
+    fun confirmFixStore() {
+        val targets = _uiState.value.fixStoreSelection?.selectedApps.orEmpty()
+        dismissFixStorePicker()
+        if (targets.isNotEmpty()) {
+            onMultiAppAction(MultiAppAction.ReInstall(targets))
+        }
+    }
+
+    /**
+     * Asks the batch in flight to stop once the current app finishes.
+     *
+     * Written from the main thread and read from [ioDispatcher], hence `@Volatile`. Cancelling the
+     * job instead would abandon a `pm install` mid-write; this lets the app in flight land and then
+     * stops handing out more work.
+     */
+    @Volatile
+    private var stopRequested = false
+
+    fun requestStopBatch() {
+        val logger = _uiState.value.loggerState
+        if (!logger.isVisible || logger.isComplete || !logger.canStop) return
+        stopRequested = true
+        _uiState.update { it.copy(loggerState = it.loggerState.copy(isStopping = true)) }
+    }
+
+    private fun startLogger(title: UiText, canStop: Boolean = false) {
+        stopRequested = false
         _uiState.update {
             it.copy(
                 loggerState = LoggerState(
                     isVisible = true,
                     title = title,
-                    logs = listOf(UiText.StringResource(R.string.log_initializing))
+                    logs = listOf(UiText.StringResource(R.string.log_initializing)),
+                    canStop = canStop
                 )
             )
         }
@@ -283,7 +378,9 @@ class MainViewModel(
     private fun finishLogger() {
         addLog(UiText.StringResource(R.string.log_op_complete))
         _uiState.update { state ->
-            state.copy(loggerState = state.loggerState.copy(isComplete = true))
+            state.copy(
+                loggerState = state.loggerState.copy(isComplete = true, isStopping = false)
+            )
         }
     }
 
@@ -456,10 +553,7 @@ class MainViewModel(
                         return@launch
                     }
 
-                    val targets = userApps.filter {
-                        it.installerPackageName != "com.android.vending" &&
-                                it.installerPackageName != "com.google.android.packageinstaller"
-                    }
+                    val targets = fixStoreCandidates(userApps, BuildConfig.APPLICATION_ID)
 
                     if (targets.isEmpty()) {
                         addLog(UiText.StringResource(R.string.log_no_apps_to_fix))
@@ -467,7 +561,19 @@ class MainViewModel(
                     } else {
                         addLog(UiText.StringResource(R.string.log_found_apps_to_fix, targets.size))
                         dismissLogger()
-                        onMultiAppAction(MultiAppAction.ReInstall(targets))
+                        // The scan hands over to the picker, not to the batch. What this action used
+                        // to do was reinstall every app it had just counted, behind a warning
+                        // dialog that never said which ones.
+                        _uiState.update { state ->
+                            state.copy(
+                                fixStoreSelection = FixStoreSelection(
+                                    candidates = targets.sortedBy { app ->
+                                        (app.appName ?: app.packageName).lowercase()
+                                    },
+                                    selected = targets.mapTo(mutableSetOf()) { it.packageName }
+                                )
+                            )
+                        }
                     }
                 }
 
@@ -784,13 +890,18 @@ class MainViewModel(
         apps: List<AppInfo>,
         block: suspend (AppInfo) -> Result<Unit>
     ) {
-        startLogger(title)
+        startLogger(title, canStop = apps.size > 1)
         var hasAtLeastOneSuccess = false
+        var processed = 0
 
         withContext(ioDispatcher) {
-            apps.forEachIndexed { index, app ->
+            for ((index, app) in apps.withIndex()) {
+                // Checked between apps, never during one: a batch stopped here has done some apps
+                // and left the rest untouched, which is a state the user can reason about.
+                if (stopRequested) break
                 addLog(UiText.StringResource(R.string.log_batch_step, index + 1, apps.size, app.appName ?: ""))
                 val result = block(app)
+                processed++
                 if (result.isSuccess) {
                     addLog(UiText.StringResource(R.string.log_success))
                     hasAtLeastOneSuccess = true
@@ -806,6 +917,9 @@ class MainViewModel(
             }
         }
 
+        if (stopRequested) {
+            addLog(UiText.StringResource(R.string.log_stopped, processed, apps.size))
+        }
         finishLogger()
         if (hasAtLeastOneSuccess) {
             triggerSupportPromptIfNeeded()

@@ -5,10 +5,12 @@ package com.valhalla.thor.presentation.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.fixStoreCandidates
 import com.valhalla.thor.domain.repository.InstallerLabelResolver
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
@@ -216,11 +218,11 @@ class HomeViewModel(
         val frozenCount = filteredApps.count { !it.enabled }
         val suspendedCount = filteredApps.count { it.isSuspended && it.enabled }
 
+        // The badge on the Fix Store card counts exactly what the picker will list — same predicate,
+        // one definition. It had its own copy before, which knew nothing of AOSP's package
+        // installer or of Thor itself, so the count and the list disagreed on a de-Googled ROM.
         val unknownCount = if (selectedType == AppListType.USER) {
-            userApps.count {
-                it.installerPackageName != "com.android.vending" &&
-                        it.installerPackageName != "com.google.android.packageinstaller"
-            }
+            fixStoreCandidates(userApps, BuildConfig.APPLICATION_ID).size
         } else 0
 
         // Bucketing and labelling both live in [installerDistribution] — a pure function taking the
