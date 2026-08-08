@@ -13,6 +13,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -36,7 +37,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -53,6 +56,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.nonInteractiveScrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -547,11 +551,23 @@ private fun AppListContent(
     // Shared padding for list/grid
     val padding = PaddingValues(bottom = 100.dp, top = 8.dp)
 
+    // Hoisted only so the scrollbar can read it. Both containers created their own identical state
+    // before, and both branches still mint a fresh one, so switching grid <-> list resets the scroll
+    // position exactly as it always did.
+    //
+    // `scrollIndicatorState` is nullable because `ScrollableState` defaults it to null for states
+    // that drive no indicator; both lazy states override it with a real one, so the null branch is
+    // unreachable today. Branching beats `!!` — a future null then costs the scrollbar, not the list.
     if (isGrid) {
         val metrics = gridMetricsFor(gridDensity)
+        val gridState = rememberLazyGridState()
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = metrics.minCellSize),
-            contentPadding = padding
+            state = gridState,
+            contentPadding = padding,
+            modifier = gridState.scrollIndicatorState?.let {
+                Modifier.nonInteractiveScrollbar(state = it, orientation = Orientation.Vertical)
+            } ?: Modifier
         ) {
             items(list, key = { it.packageName }) { app ->
                 AppItemGrid(
@@ -566,7 +582,14 @@ private fun AppListContent(
             }
         }
     } else {
-        LazyColumn(contentPadding = padding) {
+        val listState = rememberLazyListState()
+        LazyColumn(
+            state = listState,
+            contentPadding = padding,
+            modifier = listState.scrollIndicatorState?.let {
+                Modifier.nonInteractiveScrollbar(state = it, orientation = Orientation.Vertical)
+            } ?: Modifier
+        ) {
             items(list, key = { it.packageName }) { app ->
                 AppItemList(
                     app = app,
