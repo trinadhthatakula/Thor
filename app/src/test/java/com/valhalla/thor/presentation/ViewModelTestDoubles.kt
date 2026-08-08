@@ -5,11 +5,13 @@ package com.valhalla.thor.presentation
 
 import android.content.ContextWrapper
 import com.valhalla.thor.domain.model.AnimationIntensity
+import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppPermission
 import com.valhalla.thor.domain.model.BulkOutcome
 import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FreezeProfile
@@ -331,6 +333,10 @@ class FakePreferenceRepository(
         prefs.update { it.copy(showReinstallAllCard = isVisible) }
     }
 
+    override suspend fun setDefaultTab(tab: DefaultTab) {
+        prefs.update { it.copy(defaultTab = tab) }
+    }
+
     override suspend fun setInstallerTileVisibility(isVisible: Boolean) {
         prefs.update { it.copy(showInstallerTile = isVisible) }
     }
@@ -405,6 +411,10 @@ class FakePreferenceRepository(
 
     override suspend fun toggleFreezerIsGrid() {
         prefs.update { it.copy(freezerIsGrid = !it.freezerIsGrid) }
+    }
+
+    override suspend fun setAppGridDensity(density: AppGridDensity) {
+        prefs.update { it.copy(appGridDensity = density) }
     }
 
     override suspend fun setExtensionsUnlocked(unlocked: Boolean) {

@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.preferencesOf
 import com.valhalla.thor.data.repository.PreferenceRepositoryImpl.Keys
 import com.valhalla.thor.data.repository.PreferenceRepositoryImpl.LocalKeys
+import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.SortBy
 import com.valhalla.thor.domain.model.SortOrder
@@ -106,7 +107,33 @@ class ToUserPreferencesTest {
         assertEquals(SortOrder.ASCENDING, prefs.appSortOrder)
         assertEquals(FilterType.Source, prefs.appFilterType)
         assertEquals(ThemeMode.SYSTEM, prefs.themeMode)
+        assertEquals(DefaultTab.HOME, prefs.defaultTab)
         assertFalse(prefs.hasShownDisabledAppsPrompt)
         assertFalse(prefs.biometricLockEnabled)
+    }
+
+    /** Every entry round-trips, so a rename of one is caught here rather than on a user's device. */
+    @Test
+    fun `each default tab survives the write-read round trip`() {
+        for (tab in DefaultTab.entries) {
+            val settings = preferencesOf(Keys.DEFAULT_TAB to tab.name)
+
+            assertEquals(tab, settings.toUserPreferences().defaultTab)
+        }
+    }
+
+    /**
+     * Downgrade safety, and worth more here than for the other enums in this file.
+     *
+     * This value is read once, before the first frame, and decides which screen the app opens on: a
+     * settings file written by a newer Thor — or restored from one by Auto Backup — must degrade to
+     * Home rather than throw, because a throw on this path is a launch crash, not a wrong-looking
+     * setting.
+     */
+    @Test
+    fun `an unknown default tab degrades to Home`() {
+        val fromTheFuture = preferencesOf(Keys.DEFAULT_TAB to "EXTENSIONS")
+
+        assertEquals(DefaultTab.HOME, fromTheFuture.toUserPreferences().defaultTab)
     }
 }

@@ -31,8 +31,10 @@ import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.data.security.promptAuthenticators
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.presentation.common.ShizukuPermissionHandler
+import com.valhalla.thor.presentation.home.AppDestinations
 import com.valhalla.thor.presentation.home.HomeViewModel
 import com.valhalla.thor.presentation.main.MainScreen
+import com.valhalla.thor.presentation.main.toDestination
 import com.valhalla.thor.presentation.security.AuthState
 import com.valhalla.thor.presentation.security.BiometricScreen
 import com.valhalla.thor.presentation.security.BiometricUnavailableScreen
@@ -42,6 +44,7 @@ import com.valhalla.thor.presentation.theme.ThorTheme
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.util.AppLocale
 import com.valhalla.thor.util.Logger
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
@@ -57,6 +60,17 @@ class HomeActivity : ComponentActivity() {
 
     private val requestCode = 1001
     private var hasRequestedShizuku = false
+
+    /**
+     * The tab [MainScreen] will open on, or `null` while the preference is still being read.
+     *
+     * Deliberately tri-state, for the reason [AuthState.Loading] is: DataStore answers a beat after
+     * `setContent` returns, so folding "not read yet" into "HOME" would compose the Home tab, then
+     * jump to the user's actual choice one frame later. It is a field rather than a `remember`
+     * inside the composition so the read starts before `setContent` and survives recomposition,
+     * and the splash is held until it lands.
+     */
+    private val startTab = MutableStateFlow<AppDestinations?>(null)
 
     /** The locale tag this instance attached with; see [attachBaseContext]. */
     private var attachedLocaleTag: String? = null
@@ -90,12 +104,23 @@ class HomeActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val splashScreen = installSplashScreen()
+        // Started before setContent so the read is already in flight while the first frame is built.
+        // One shot, not a collector: this decides the *start* destination, and a user who changes
+        // the setting while standing in Settings must not be teleported out of it.
+        lifecycleScope.launch {
+            startTab.value = preferenceRepository.userPreferences.first().defaultTab.toDestination()
+        }
         // Hold the frame until the app lock has answered. The preference comes from DataStore, which
         // answers a beat after `setContent` returns, so without this the branch the user sees first
         // is decided by a race rather than by the preference — and the losing outcome is the app,
         // fully composed, behind a lock that had not finished switching on.
+        //
+        // The default tab is held on the same terms and for the same reason: MainScreen's first
+        // composition is the only one that gets to pick a tab, so it must not happen before the
+        // answer is in. Both reads are the same DataStore flow, so this costs no extra latency
+        // beyond the one already being paid.
         splashScreen.setKeepOnScreenCondition {
-            securityViewModel.authState.value == AuthState.Loading
+            securityViewModel.authState.value == AuthState.Loading || startTab.value == null
         }
         enableEdgeToEdge()
         // Settings lives inside this activity, so a language change never leaves it: without this
@@ -120,6 +145,7 @@ class HomeActivity : ComponentActivity() {
                 amoledMode = prefs.useAmoled,
             ) {
                 val authState by securityViewModel.authState.collectAsStateWithLifecycle()
+                val resolvedStartTab by startTab.collectAsStateWithLifecycle()
 
                 // The app lock promises that nothing inside is visible until you authenticate, and
                 // the Recents card is inside: Android snapshots whatever was on screen when Thor went
@@ -178,10 +204,26 @@ class HomeActivity : ComponentActivity() {
 
                     AuthState.NotRequired,
                     AuthState.Unlocked -> {
-                        MainScreen(
-                            homeViewModel = homeViewModel,
-                            onExit = { finish() }
-                        )
+                        // Copied to a local before the null check: `resolvedStartTab` is a delegated
+                        // property and does not smart-cast.
+                        val tab = resolvedStartTab
+                        if (tab == null) {
+                            // The same backdrop as AuthState.Loading, held for the same reason: the
+                            // default tab has not landed yet, and MainScreen's first composition is
+                            // the only one that chooses a tab. Composing it against a guess would
+                            // show Home and then jump. The splash is still up over this.
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.background)
+                            )
+                        } else {
+                            MainScreen(
+                                startDestination = tab,
+                                homeViewModel = homeViewModel,
+                                onExit = { finish() }
+                            )
+                        }
                     }
 
                     AuthState.Unavailable -> {

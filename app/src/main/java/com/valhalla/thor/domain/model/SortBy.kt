@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.domain.model
 
+import androidx.annotation.StringRes
 import com.valhalla.thor.R
 import kotlinx.serialization.Serializable
 
@@ -17,15 +18,23 @@ enum class SortBy {
     TARGET_SDK_VERSION,
     MIN_SDK_VERSION;
 
-    fun asGeneralName(): String = when (this) {
-        NAME -> "Name"
-        SIZE -> "Size"
-        INSTALL_DATE -> "Install Date"
-        LAST_UPDATED -> "Last Updated"
-        VERSION_CODE -> "Version Code"
-        VERSION_NAME -> "Version Name"
-        TARGET_SDK_VERSION -> "Target SDK Version"
-        MIN_SDK_VERSION -> "Min SDK Version"
+    /**
+     * The label for this sort key, as shown in the filter sheet's **Sort** tab.
+     *
+     * A string resource rather than a literal, for the same reason [FilterType.asGeneralName] is
+     * one: these eight sat one tab away from the filter categories, which were already localised,
+     * so a French or Arabic user read eight English words in an otherwise translated sheet.
+     */
+    @StringRes
+    fun asGeneralName(): Int = when (this) {
+        NAME -> R.string.sort_by_name
+        SIZE -> R.string.sort_by_size
+        INSTALL_DATE -> R.string.sort_by_install_date
+        LAST_UPDATED -> R.string.sort_by_last_updated
+        VERSION_CODE -> R.string.sort_by_version_code
+        VERSION_NAME -> R.string.sort_by_version_name
+        TARGET_SDK_VERSION -> R.string.sort_by_target_sdk
+        MIN_SDK_VERSION -> R.string.sort_by_min_sdk
     }
 }
 
@@ -38,29 +47,15 @@ fun SortBy.isSdkBased(): Boolean =
 
 fun SortBy.isNameBased(): Boolean = this == SortBy.NAME
 
+/**
+ * No `asGeneralName()` here on purpose: the order row draws its own two chips from
+ * `R.string.ascending` / `R.string.descending` and its own two arrows from
+ * `R.drawable.arrow_upward` / `arrow_downward`, so the label, icon, flip and angle helpers this
+ * enum used to carry had no caller at all. Translating four dead functions would have bought
+ * nothing; they are gone instead.
+ */
 @Serializable
 enum class SortOrder {
     ASCENDING,
-    DESCENDING;
-
-    fun asGeneralName(): String = when (this) {
-        ASCENDING -> "Ascending"
-        DESCENDING -> "Descending"
-    }
-
-    fun icon() = when (this) {
-        ASCENDING -> R.drawable.arrow_upward
-        DESCENDING -> R.drawable.arrow_downward
-    }
-
-    fun flip(): SortOrder = when (this) {
-        ASCENDING -> DESCENDING
-        DESCENDING -> ASCENDING
-    }
-
-    fun angle(): Float = when (this) {
-        ASCENDING -> 0f
-        DESCENDING -> 180f
-    }
-
+    DESCENDING
 }

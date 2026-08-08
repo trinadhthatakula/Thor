@@ -70,6 +70,7 @@ import androidx.navigation3.ui.NavDisplay
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
+import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.presentation.appList.AppInfoDetailsScreen
 import com.valhalla.thor.presentation.appList.AppListScreen
@@ -98,9 +99,30 @@ import com.valhalla.thor.presentation.widgets.ThankYouDialog
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 
+/**
+ * Resolves the persisted [DefaultTab] onto the nav bar's [AppDestinations].
+ *
+ * The single join between the two enums. It lives here rather than on either enum because
+ * [DefaultTab] is a domain type and must not see [AppDestinations], which carries `R.string` and
+ * `R.drawable` ids.
+ */
+internal fun DefaultTab.toDestination(): AppDestinations = when (this) {
+    DefaultTab.HOME -> AppDestinations.HOME
+    DefaultTab.APPS -> AppDestinations.APPS
+    DefaultTab.FREEZER -> AppDestinations.FREEZER
+    DefaultTab.SETTINGS -> AppDestinations.SETTINGS
+}
+
+/**
+ * @param startDestination the tab to open on, already resolved from `UserPreferences.defaultTab`.
+ *   Required rather than defaulted, and resolved by the caller behind the splash gate, because the
+ *   first composition is the only chance to pick it: reading the preference from here would compose
+ *   Home first and then jump.
+ */
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun MainScreen(
+    startDestination: AppDestinations,
     mainViewModel: MainViewModel = koinViewModel(),
     homeViewModel: HomeViewModel = koinViewModel(),
     appListViewModel: AppListViewModel = koinViewModel(),
@@ -116,7 +138,11 @@ fun MainScreen(
     var showExitConfirmation by remember { mutableStateOf(false) }
 
     // --- Navigation 3 Setup (Multiple Backstacks) ---
-    var activeDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
+    // Seeded from [startDestination], and deliberately *not* keyed on it: rememberSaveable's restored
+    // value has to win after a rotation or process death, because the tab the user is standing on
+    // beats the tab they chose to open on. Keying it would also re-run the seed — and play
+    // NavDisplay's slide transition — every time any unrelated preference changed.
+    var activeDestination by rememberSaveable { mutableStateOf(startDestination) }
 
     val activeTab = when (activeDestination) {
         AppDestinations.HOME -> ThorRoute.Home
@@ -206,14 +232,17 @@ fun MainScreen(
         }
     }
 
-    // 2. Switch to Home tab if at the root of a non-Home tab
-    val isNonStartRoot = activeDestination != AppDestinations.HOME && (backStacks[activeTab]?.size ?: 0) == 1
+    // 2. Switch to the start tab if at the root of any other tab.
+    // Follows [startDestination] rather than a hardcoded HOME: back has to land on the tab the app
+    // opens on, or a user whose default is Freezer gets a Home screen they never asked to see and
+    // then has to press back a second time to leave.
+    val isNonStartRoot = activeDestination != startDestination && (backStacks[activeTab]?.size ?: 0) == 1
     BackHandler(enabled = isNonStartRoot) {
-        activeDestination = AppDestinations.HOME
+        activeDestination = startDestination
     }
 
-    // 3. Show exit confirmation dialog if at the root of the Home tab
-    val isAtRoot = activeDestination == AppDestinations.HOME && (backStacks[ThorRoute.Home]?.size ?: 0) == 1
+    // 3. Show exit confirmation dialog if at the root of the start tab
+    val isAtRoot = activeDestination == startDestination && (backStacks[activeTab]?.size ?: 0) == 1
     BackHandler(enabled = isAtRoot) {
         showExitConfirmation = true
     }

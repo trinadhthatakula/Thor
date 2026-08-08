@@ -15,8 +15,13 @@
     <string name="show_reinstall_card_desc">Afficher le rappel Fix Store sur l\'écran d\'accueil</string>
     <string name="show_installer_tile">Afficher la tuile d\'installation</string>
     <string name="show_installer_tile_desc">Afficher « Installer depuis un fichier » sur l\'écran d\'accueil</string>
+    <string name="any_file_opener">Afficher Thor à l\'ouverture de n\'importe quel fichier</string>
+    <string name="any_file_opener_desc">N\'activez ceci que si votre gestionnaire de fichiers n\'ouvre pas les APK avec Thor. Thor sera alors proposé pour les fichiers qu\'il ne peut pas identifier, y compris ceux qui ne sont pas des APK.</string>
+    <string name="any_file_opener_failed">Android a refusé la modification. Rien n\'a été activé.</string>
     <string name="show_extensions_tile">Afficher la tuile des extensions</string>
     <string name="show_extensions_tile_desc">Afficher les extensions sur l\'écran d\'accueil</string>
+    <string name="default_tab">Onglet par défaut</string>
+    <string name="default_tab_desc">L\'écran que Thor ouvre au lancement</string>
     <string name="appearance">APPARENCE</string>
     <string name="theme">Thème</string>
     <string name="theme_desc">Style d\'interface visuelle</string>
@@ -103,6 +108,14 @@
     <string name="descending">Décroissant</string>
     <string name="filters">Filtres</string>
     <string name="sort_by">Trier par</string>
+    <string name="sort_by_name">Nom</string>
+    <string name="sort_by_size">Taille</string>
+    <string name="sort_by_install_date">Date d\'installation</string>
+    <string name="sort_by_last_updated">Dernière mise à jour</string>
+    <string name="sort_by_version_code">Code de version</string>
+    <string name="sort_by_version_name">Nom de version</string>
+    <string name="sort_by_target_sdk">SDK cible</string>
+    <string name="sort_by_min_sdk">SDK minimal</string>
     <string name="filter_type_state">État</string>
     <string name="filter_type_source">Source d\'installation</string>
     <string name="filter_type_permission">Autorisation</string>
@@ -146,6 +159,14 @@
     <string name="action_cache">Cache</string>
     <string name="action_uninstall">Désinstaller</string>
     <string name="action_reinstall">Réinstaller</string>
+
+    <!-- Action explainers -->
+    <string name="explain_force_stop_title">Forcer l\'arrêt</string>
+    <string name="explain_force_stop_body">Ferme l\'application et tout ce qu\'elle exécute en ce moment. Elle reste installée et redémarre dès que vous ou le système l\'ouvrez. Rien n\'est supprimé.</string>
+    <string name="explain_suspend_title">Suspendre</string>
+    <string name="explain_suspend_body">L\'application reste sur votre lanceur mais ne peut pas être ouverte : un appui affiche une boîte de dialogue système à la place. Cela persiste après un redémarrage, jusqu\'à ce que vous la rétablissiez. Rien n\'est supprimé.</string>
+    <string name="explain_freeze_title">Geler</string>
+    <string name="explain_freeze_body">Désactive complètement l\'application : elle disparaît du lanceur et ne peut plus s\'exécuter du tout, même en arrière-plan. Cela persiste après un redémarrage, jusqu\'à ce que vous la dégeliez. Rien n\'est supprimé.</string>
 
     <!-- Main Screen / Global -->
     <string name="cannot_launch_app">Impossible de lancer l\'appli</string>
@@ -218,6 +239,8 @@
         <item quantity="other">%1$d applications ajoutées au Congélateur</item>
     </plurals>
     <string name="add_to_freezer">Ajouter au congélateur</string>
+    <string name="freezer_add_warning_title">L\'ajouter la gèle aussitôt</string>
+    <string name="freezer_add_warning_body">Une application entre déjà gelée dans le Congélateur — c\'est le fonctionnement prévu, pas un défaut. Tout ce que vous n\'y avez pas enregistré est perdu, et elle reste gelée jusqu\'à ce que vous la dégeliez.</string>
 
     <!-- Extensions -->
     <string name="extensions">Extensions</string>
@@ -267,6 +290,8 @@
     <string name="unknown_error_occurred">Une erreur inconnue est survenue</string>
     <string name="toast_copied_class_name">Nom de classe copié</string>
     <string name="toast_copy_saved">Copié dans le presse-papiers</string>
+    <string name="cd_copy_package_name">Copier le nom du package</string>
+    <string name="cd_copy_field">Copier %1$s</string>
     <string name="not_available">N/D</string>
     <string name="tab_overview_title">Général</string>
     <string name="tab_components">Composants</string>
@@ -284,6 +309,7 @@
     <string name="action_clear_cache">Vider le cache</string>
     <string name="action_clear_data">Effacer les données</string>
     <string name="info_app_version">Version de l\'application</string>
+    <string name="info_package_name">Nom du paquet</string>
     <string name="info_sdk_details">Détails du SDK</string>
     <string name="info_sdk_details_format">SDK cible : %1$d   |   SDK min : %2$d</string>
     <string name="info_installer_source">Source de l\'installateur</string>
@@ -294,6 +320,7 @@
     <string name="info_obb_dir">Répertoire OBB</string>
     <string name="info_shared_data_dir">Répertoire de données partagées</string>
     <string name="info_signature_sha256">Empreinte numérique de signature SHA-256</string>
+    <string name="info_bloat_description">Pourquoi elle est signalée</string>
     <string name="no_permissions_found">Aucun permis trouvé</string>
     <string name="search_components_placeholder">Rechercher des composants&#8230;</string>
     <string name="section_activities_title">Activités (%1$d)</string>
@@ -432,6 +459,13 @@
     <string name="unlock">Déverrouiller</string>
     <string name="thank_you_support_desc">Votre abonnement est actif. Merci d\'aider à soutenir le développement de Thor !</string>
     
+    <!-- Grid density -->
+    <string name="grid_density">Densité de la grille</string>
+    <string name="grid_density_desc">Nombre d\'applications par ligne dans la grille</string>
+    <string name="grid_density_compact">Compacte</string>
+    <string name="grid_density_default">Par défaut</string>
+    <string name="grid_density_large">Grande</string>
+
     <!-- Details & Animation Intensity -->
     <string name="action_details">Détails</string>
     <string name="animation_intensity">Intensité de l\'animation</string>
@@ -447,6 +481,8 @@
     <string name="suspend_owned_by_other_privilege">Impossible de lever la suspension de %1$s ici. Elle a été suspendue par %2$s, et Android n\'autorise que le même privilège à la lever. Repassez Thor dans ce mode de privilège, puis réessayez.</string>
     <string name="freeze_system_app_requires_root">Impossible de geler %1$s ici. Cet appareil n\'a pas laissé Thor la désactiver, et Android n\'autorise que root à supprimer une application préinstallée pour un seul utilisateur. L\'application n\'a pas été modifiée — la geler nécessite le mode Root de Thor.</string>
     <string name="freeze_system_app_removal_failed">Impossible de geler %1$s. Cet appareil n\'a pas laissé Thor la désactiver, et sa suppression pour cet utilisateur a également échoué. Android a signalé : %2$s</string>
+    <string name="freeze_system_app_disable_refused">Impossible de geler %1$s. Cet appareil a refusé de la désactiver, alors Thor l\'a laissée intacte — la supprimer à la place pourrait vous déconnecter des comptes qu\'elle gère.</string>
+    <string name="freeze_system_app_disable_failed">Impossible de geler %1$s. Rien sur cet appareil n\'a refusé la demande : il s\'agit donc plus probablement d\'un bogue de Thor que d\'une restriction. L\'application est restée installée et intacte — merci de le signaler.</string>
     <string name="auto_reinstall">Réinstallation automatique d\'applications</string>
     <string name="auto_reinstall_desc">Conserver automatiquement Google Play Store comme installateur enregistré pour activer les mises à jour en arrière-plan</string>
     <string name="legacy_extension_title">Extension obsolète détectée</string>
@@ -543,6 +579,7 @@
     
     <!-- Profils de congélation -->
     <string name="freeze_profiles">Profils de congélation</string>
+    <string name="freeze_profiles_action">Profils de congélation</string>
     <string name="profile_new">Nouveau profil</string>
     <string name="profile_edit">Modifier le profil</string>
     <string name="profile_name_label">Nom du profil</string>

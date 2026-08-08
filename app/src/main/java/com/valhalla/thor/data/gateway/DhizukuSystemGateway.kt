@@ -95,26 +95,31 @@ class DhizukuSystemGateway(
      *     ([DhizukuReflector.setAppEnabledDetailed]). The package stays installed and keeps its
      *     data, and unfreezing simply re-enables it.
      *  2. **Uninstall for this user with `-k`** — only where [uninstallFreezeFallbackAllowed]
-     *     permits it, i.e. only where rung 1 was *refused* by the platform rather than merely
-     *     failing.
+     *     permits it, which is now **nowhere**.
      *
-     * Rung 1 did not exist here before this change: every system-app freeze went straight to
+     * Rung 1 did not exist here two changes ago: every system-app freeze went straight to
      * `pm uninstall --user N`, **without `-k`**, so it destroyed the app's data and judged itself
      * on `pm`'s exit code. That is the defect this method exists to remove.
+     *
+     * Rung 2 then ran only where rung 1 had been *refused* by the platform. It now runs nowhere:
+     * [uninstallFreezeFallbackAllowed] answers `false` for every privilege mode, so a refused
+     * disable ends this method in a `Result.failure` with the package left installed. Removing a
+     * package for the user is not a stronger form of disabling it, and it is not Thor's to
+     * substitute unasked. The rung's code stays because the policy — not this gateway — owns that
+     * decision, and because the deferred "remove it for this user anyway" path calls exactly it.
      *
      * **Rung 1 is unverified on hardware.** No device with Dhizuku installed was available, and the
      * measurements that exist were taken at shell uid, which is not the identity Dhizuku's commands
      * run as — `DhizukuAPI.newProcess` spawns `pm` inside the device-owner app. So rung 1 is an
-     * attempt, not a promise, and rung 2 deliberately stays reachable behind it: if the device-owner
-     * identity turns out not to be allowed to disable a system package, `PackageManagerService`
-     * answers with a `SecurityException`, the chain reports `refusedByPolicy`, and the freeze still
-     * happens the way it always did — minus the data loss.
+     * attempt, not a promise. What used to sit behind it was rung 2; what sits behind it now is an
+     * honest failure naming which of the two things happened. If the device-owner identity turns
+     * out not to be allowed to disable a system package, the user is told that rather than having
+     * the package removed for them.
      *
      * The residual risk of that arrangement, stated rather than hidden: a device that refuses rung 1
-     * *without* a SecurityException (silently ignoring the change, say) now fails the freeze instead
-     * of escalating. The fix for such a device is to widen what counts as a refusal, not to reopen
-     * the ungated fallback — an ungated fallback is what made a binder timeout cost a user their
-     * app data.
+     * *without* a SecurityException (silently ignoring the change, say) fails the freeze with the
+     * less specific of the two messages. The fix for such a device is to widen what counts as a
+     * refusal, not to reopen the fallback.
      */
     private fun freezeSystemApp(packageName: String): Result<Unit> {
         // Already frozen — by us, by an older build, or by another tool. Short-circuit before any
@@ -139,30 +144,40 @@ class DhizukuSystemGateway(
             return Result.success(Unit)
         }
 
-        // Rung 2, gated on the platform having actually refused — not on the Android version and
-        // not on "the first thing did not work". isSystem is true by construction here, but it is
-        // passed explicitly so the gate — not this call site — owns the whole rule.
+        // The rung-2 gate. It answers `false` for every privilege mode now, so in practice this is
+        // where the chain ends — but it is still asked rather than assumed, because the gate owns
+        // the rule and the explicit removal path will re-open it in one place. isSystem is true by
+        // construction here and is passed explicitly for the same reason.
         if (!uninstallFreezeFallbackAllowed(
                 isSystem = true,
                 privilegeMode = PrivilegeMode.DHIZUKU,
                 disableRefusedByPolicy = disable.refusedByPolicy,
             )
         ) {
+            // Two different facts, two different sentences — the same split ShizukuSystemGateway
+            // makes, and deliberately the same two resources, because neither sentence depends on
+            // which identity asked: the refusal is the platform's, and the non-refusal names Thor.
+            // See that gateway for why both are localised rather than only the refusal.
+            val refused = java.io.IOException(
+                if (disable.refusedByPolicy) {
+                    context.getString(R.string.freeze_system_app_disable_refused, packageName)
+                } else {
+                    context.getString(R.string.freeze_system_app_disable_failed, packageName)
+                }
+            )
             Logger.e(
                 "DhizukuSystemGateway",
-                "freeze($packageName): every disable rung ran and the package is still enabled, " +
-                    "and nothing refused us — this is a failure to report, not a platform limit " +
-                    "to work around"
+                "freeze($packageName): every disable rung ran and the package is still enabled " +
+                    "(refusedByPolicy=${disable.refusedByPolicy}); `pm uninstall -k --user N` is " +
+                    "not permitted as a substitute, so the package was left installed",
+                refused,
             )
-            return Result.failure(
-                Exception(
-                    "Dhizuku could not disable the system app $packageName. Nothing refused the " +
-                        "request, so this is not a device restriction — reporting the failure " +
-                        "rather than removing the app for this user."
-                )
-            )
+            return Result.failure(refused)
         }
 
+        // Unreachable while the gate above is shut, and kept for the reason its KDoc gives: the
+        // decision lives in the policy, not here, and the deferred "remove it for this user anyway"
+        // path calls exactly this.
         Logger.w(
             "DhizukuSystemGateway",
             "freeze($packageName): this device refuses to let Dhizuku's device-owner identity " +
@@ -225,8 +240,9 @@ class DhizukuSystemGateway(
      *
      * A device in the field can be carrying either shape:
      *  - **uninstalled for this user** — FLAG_INSTALLED is clear while `enabled` stays `true`.
-     *    Every Dhizuku build before this one produced this shape for *every* system app; this build
-     *    still produces it, but only through the gated rung 2 above;
+     *    Dhizuku builds before the disable chain existed produced this shape for *every* system
+     *    app, and the build after that one still produced it wherever rung 2 fired. This build
+     *    produces it nowhere, and still has to undo it everywhere;
      *  - **disabled** (rung 1 above) — FLAG_INSTALLED is set while `enabled` is `false`.
      *
      * So: reinstall only when the package is actually missing, re-read, then enable only when it is

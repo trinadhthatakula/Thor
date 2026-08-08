@@ -15,8 +15,13 @@
     <string name="show_reinstall_card_desc">Mostrar recordatorio de Fix Store en la pantalla de inicio</string>
     <string name="show_installer_tile">Mostrar mosaico del instalador</string>
     <string name="show_installer_tile_desc">Mostrar «Instalar desde archivo» en la pantalla de inicio</string>
+    <string name="any_file_opener">Mostrar Thor al abrir cualquier archivo</string>
+    <string name="any_file_opener_desc">Actívalo solo si tu gestor de archivos no abre los APK con Thor. Thor aparecerá entonces para los archivos que no pueda identificar, incluidos los que no son APK.</string>
+    <string name="any_file_opener_failed">Android rechazó el cambio. No se activó nada.</string>
     <string name="show_extensions_tile">Mostrar mosaico de extensiones</string>
     <string name="show_extensions_tile_desc">Mostrar Extensiones en la pantalla de inicio</string>
+    <string name="default_tab">Pestaña predeterminada</string>
+    <string name="default_tab_desc">La pantalla que abre Thor al iniciarse</string>
     <string name="appearance">APARIENCIA</string>
     <string name="theme">Tema</string>
     <string name="theme_desc">Estilo de interfaz visual</string>
@@ -103,6 +108,14 @@
     <string name="descending">Descendente</string>
     <string name="filters">Filtros</string>
     <string name="sort_by">Ordenar por</string>
+    <string name="sort_by_name">Nombre</string>
+    <string name="sort_by_size">Tamaño</string>
+    <string name="sort_by_install_date">Fecha de instalación</string>
+    <string name="sort_by_last_updated">Última actualización</string>
+    <string name="sort_by_version_code">Código de versión</string>
+    <string name="sort_by_version_name">Nombre de versión</string>
+    <string name="sort_by_target_sdk">SDK objetivo</string>
+    <string name="sort_by_min_sdk">SDK mínimo</string>
     <string name="filter_type_state">Estado</string>
     <string name="filter_type_source">Origen de instalación</string>
     <string name="filter_type_permission">Permiso</string>
@@ -146,6 +159,14 @@
     <string name="action_cache">Caché</string>
     <string name="action_uninstall">Desinstalar</string>
     <string name="action_reinstall">Reinstalar</string>
+
+    <!-- Action explainers -->
+    <string name="explain_force_stop_title">Forzar detención</string>
+    <string name="explain_force_stop_body">Cierra la aplicación y todo lo que esté ejecutando ahora mismo. Sigue instalada y arranca de nuevo en cuanto tú o el sistema la abráis. No se borra nada.</string>
+    <string name="explain_suspend_title">Suspender</string>
+    <string name="explain_suspend_body">La aplicación sigue en tu lanzador, pero no se puede abrir: al tocarla aparece un diálogo del sistema. Esto se mantiene tras reiniciar, hasta que la reanudes. No se borra nada.</string>
+    <string name="explain_freeze_title">Congelar</string>
+    <string name="explain_freeze_body">Desactiva la aplicación por completo: desaparece del lanzador y no puede ejecutarse en absoluto, ni siquiera en segundo plano. Esto se mantiene tras reiniciar, hasta que la descongeles. No se borra nada.</string>
 
     <!-- Main Screen / Global -->
     <string name="cannot_launch_app">No se puede abrir la aplicación</string>
@@ -218,6 +239,8 @@
         <item quantity="other">Se añadieron %1$d aplicaciones al Congelador</item>
     </plurals>
     <string name="add_to_freezer">Añadir al congelador</string>
+    <string name="freezer_add_warning_title">Se congela al añadirla</string>
+    <string name="freezer_add_warning_body">Una aplicación entra en el Congelador ya congelada: así funciona el Congelador, no es un fallo. Se pierde todo lo que no hayas guardado en ella y seguirá congelada hasta que la descongeles.</string>
 
     <!-- Extensions -->
     <string name="extensions">Extensiones</string>
@@ -267,6 +290,8 @@
     <string name="unknown_error_occurred">Ocurrió un error desconocido</string>
     <string name="toast_copied_class_name">Nombre de clase copiado</string>
     <string name="toast_copy_saved">Copiado al portapapeles</string>
+    <string name="cd_copy_package_name">Copiar el nombre del paquete</string>
+    <string name="cd_copy_field">Copiar %1$s</string>
     <string name="not_available">N/D</string>
     <string name="tab_overview_title">General</string>
     <string name="tab_components">Componentes</string>
@@ -284,6 +309,7 @@
     <string name="action_clear_cache">Limpiar caché</string>
     <string name="action_clear_data">Borrar datos</string>
     <string name="info_app_version">Versión de la aplicación</string>
+    <string name="info_package_name">Nombre del paquete</string>
     <string name="info_sdk_details">Detalles del SDK</string>
     <string name="info_sdk_details_format">SDK objetivo: %1$d   |   SDK mínimo: %2$d</string>
     <string name="info_installer_source">Origen del instalador</string>
@@ -294,6 +320,7 @@
     <string name="info_obb_dir">Directorio OBB</string>
     <string name="info_shared_data_dir">Directorio de datos compartidos</string>
     <string name="info_signature_sha256">Huella digital de firma SHA-256</string>
+    <string name="info_bloat_description">Por qué está marcada</string>
     <string name="no_permissions_found">No se encontraron permisos</string>
     <string name="search_components_placeholder">Buscar componentes&#8230;</string>
     <string name="section_activities_title">Actividades (%1$d)</string>
@@ -432,6 +459,13 @@
     <string name="unlock">Desbloquear</string>
     <string name="thank_you_support_desc">Tu suscripción está activa. ¡Gracias por ayudar a apoyar el desarrollo de Thor!</string>
     
+    <!-- Grid density -->
+    <string name="grid_density">Densidad de la cuadrícula</string>
+    <string name="grid_density_desc">Cuántas aplicaciones caben en una fila de la cuadrícula</string>
+    <string name="grid_density_compact">Compacta</string>
+    <string name="grid_density_default">Predeterminada</string>
+    <string name="grid_density_large">Grande</string>
+
     <!-- Details & Animation Intensity -->
     <string name="action_details">Detalles</string>
     <string name="animation_intensity">Intensidad de animación</string>
@@ -447,6 +481,8 @@
     <string name="suspend_owned_by_other_privilege">No se puede reanudar %1$s desde aquí. Fue suspendida por %2$s y Android solo permite que el mismo privilegio la reanude. Cambia Thor a ese modo de privilegio e inténtalo de nuevo.</string>
     <string name="freeze_system_app_requires_root">No se puede congelar %1$s desde aquí. Este dispositivo no ha dejado que Thor la desactive y Android solo permite que root elimine una app preinstalada para un solo usuario. La app se ha quedado intacta: para congelarla necesitas el modo Root de Thor.</string>
     <string name="freeze_system_app_removal_failed">No se puede congelar %1$s. Este dispositivo no ha dejado que Thor la desactive y eliminarla para este usuario también ha fallado. Android informó: %2$s</string>
+    <string name="freeze_system_app_disable_refused">No se puede congelar %1$s. Este dispositivo se ha negado a desactivarla, así que Thor la ha dejado intacta: eliminarla en su lugar podría cerrar tu sesión en las cuentas que gestiona.</string>
+    <string name="freeze_system_app_disable_failed">No se puede congelar %1$s. Nada en este dispositivo ha rechazado la petición, así que es más probable que sea un fallo de Thor que una restricción. La aplicación sigue instalada y sin cambios: informa del problema, por favor.</string>
     <string name="auto_reinstall">Reinstalación automática de apps</string>
     <string name="auto_reinstall_desc">Mantener automáticamente Google Play Store como el instalador registrado para permitir actualizaciones en segundo plano</string>
     <string name="legacy_extension_title">Extensión heredada detectada</string>
@@ -543,6 +579,7 @@
     
     <!-- Perfiles de congelación -->
     <string name="freeze_profiles">Perfiles de congelación</string>
+    <string name="freeze_profiles_action">Perfiles de congelación</string>
     <string name="profile_new">Nuevo perfil</string>
     <string name="profile_edit">Editar perfil</string>
     <string name="profile_name_label">Nombre del perfil</string>

@@ -1,7 +1,9 @@
 # r/howtomen feedback — verified against the code
 
 **Filed:** 2026-08-07 (UTC) · **Source:** four comment threads on the r/howtomen Thor post
-**Status:** triaged. Every claim below was checked against `origin/dev` before it was sized.
+**Status:** triaged, and **band A is built** — eleven of its twelve rows shipped on `feat/band-a` the
+same day. Every claim below was checked against `origin/dev` before it was sized; the two that the
+implementation then falsified are corrected in place and labelled, not rewritten away.
 
 Twenty-three distinct asks from four users. This document is the evidence layer: what each person
 reported, what the code actually does, and which existing row it lands on. The *ranking* lives in
@@ -16,7 +18,7 @@ the evidence under those conclusions.
 
 ## The three findings that changed something
 
-### 1. A frozen system app can be *removed for the user*, and that is the likely account-loss mechanism
+### 1. A frozen system app ~~can be~~ **could be** *removed for the user*, and that is the likely account-loss mechanism
 
 One reporter: freezing Google Play Services removed their Google accounts, and re-adding them was
 required after unfreezing. They contrasted Hail, whose Disable preserves accounts but produces
@@ -56,7 +58,27 @@ between: (a) tell them at the point of freeze, (b) let them forbid escalation an
 failure instead, or (c) both. (b) is the honest default for the user who wrote in — they would rather
 GMS refuse to freeze than lose their accounts.
 
-### 2. The debloat descriptions are already in the app, parsed, and then discarded
+> **Resolved 2026-08-07 — by *removing* the escalation, not by disclosing it.** The paragraph above
+> framed this as a disclosure problem and offered a toggle as the strongest option. What shipped is
+> (b) with no toggle at all: `uninstallFreezeFallbackAllowed` answers `false` under **every**
+> privilege mode, refused or not, and both `ShizukuSystemGateway.freezeSystemApp` and
+> `DhizukuSystemGateway.freezeSystemApp` now end at that gate the way `RootSystemGateway` already
+> did — `Result.failure`, package left installed, and on a refusal the user is told so via
+> `R.string.freeze_system_app_disable_refused`. Nothing warns you before an escalation any more,
+> because there is no longer an escalation to warn about.
+>
+> Two consequences the paragraph above does not carry. **This is a capability removal**, not only a
+> safety fix: a Shizuku or Dhizuku user on a build that refuses `pm disable-user` can no longer
+> freeze system apps at all, and that needs a release-notes line. And **the escalation code is still
+> in the tree**, unreachable but statically referenced, because the "remove it for this user anyway"
+> consent path was deferred to its own work —
+> [`freeze-refusal-remove-for-user-consent.md`](freeze-refusal-remove-for-user-consent.md).
+>
+> The ⚠️ above still stands in full. Nothing here was reproduced on a device that refuses
+> `pm disable-user`; the fix was made because the escalation is indefensible when silent, not
+> because the account-loss mechanism was confirmed.
+
+### 2. The debloat descriptions are already in the app, parsed, and ~~then discarded~~ carried all the way to the UI unrendered
 
 Both label-related asks — show the Recommended/Expert label in the *list*, and show a short
 explanation of what an app is and why it is safe to remove — are **rendering work only**. No new
@@ -79,6 +101,21 @@ The label is likewise a map lookup against an already-loaded in-memory map — *
 which is what would have made rendering it in a list expensive. The reporter's request to see the
 tier while multi-selecting is therefore cheap, and it is the one that improves the *safety* of a bulk
 debloat rather than just its convenience.
+
+> **Correction.** *"The data then stops at the API boundary … exposing it is one accessor"* was
+> checked at the wrong boundary, and building it proved so. `UadSnapshot` does expose only `removal`
+> — that half is accurate — but **the app list never goes through `UadSnapshot`.**
+> `AppRepositoryImpl` holds the raw `Map<String, UadEntry>` and already copied *both* fields onto the
+> domain model at three sites (`:205-206`, `:215-216`, `:378-379`), so `AppInfo.bloatRecommendation`
+> **and** `AppInfo.bloatDescription` existed and were populated on `origin/dev` before any of this
+> work started. `description` was not thrown away; it was carried all the way to the presentation
+> layer and then never rendered.
+>
+> The conclusion — *rendering work only, no new data source* — survives, and was in fact
+> **understated**: it needed no accessor, no new field and no plumbing through `AppList` either. Two
+> greps (`AppInfo` for the field, `presentation/` for a use of it) would have said so; the section
+> instead reasoned forward from the one accessor it had found and stopped there. A boundary that
+> exists is not evidence that the data crosses it there.
 
 ### 3. The usage-access plumbing for "abandoned apps" is already built and shipping
 
@@ -123,8 +160,10 @@ But it is ordinary work on top of a built foundation, not "add a scary permissio
 
 ## What was checked, and what it found
 
-Everything in this table was read in `origin/dev`. "Already there" means the seam exists and the ask
-is wiring, not building.
+Everything in this table was read in `origin/dev` **as of 2026-08-07, before band A was built**. It
+is a snapshot of what the code did at triage time and is deliberately left that way; what has since
+shipped is listed in the section after it. "Already there" means the seam exists and the ask is
+wiring, not building.
 
 | Ask | Verdict | Evidence |
 |---|---|---|
@@ -152,6 +191,59 @@ is wiring, not building.
 | Wants per-app notes | **Genuinely new**, but shares its storage work with tags below | — |
 | Wants per-app custom tags | **Genuinely new** — and see the roadmap correction below | — |
 | Wants to see which apps are running in the background | **Genuinely new** — nothing queries running processes. Every `isRunning` in the tree refers to a bulk *operation* in flight, not a process | — |
+
+> **Correction — the one figure in this table that was measured wrong.** *"**480 strings** … all at
+> 480"* is a **line** count wearing a name count. All five locales pack `animation_intensity_high`
+> and `suspended_app_dialog_title` onto one physical line, so the triage-time figure was **481**
+> unique `<string>` names plus 10 `<plurals>` — and the part the row got right, that all five sat at
+> the same number, held exactly. Band A took every file to **508** names and the same 10 plurals,
+> checked by diffing sorted `name=` attributes across all 25 pairs rather than by counting anything.
+>
+> The packed line is still on disk: band A inserted *around* it, not through it. So the trap is live
+> for the next person, and it is not a one-off — a line count is short by one today and by an unknown
+> amount the moment a second pair gets packed. **Diff sorted `name=` attributes.** The size of the
+> Portuguese ask is unaffected in substance: it was never 480 strings and is now 508.
+
+---
+
+## What shipped, 2026-08-07 (`feat/band-a`)
+
+Eleven of band A's twelve rows. The ranking and the row numbers live in [`README.md`](README.md),
+under *Band A — shipped*; this section records only what the *evidence above* got wrong or
+understated, because that is what this file is for.
+
+| Ask from the table above | Shipped as |
+|---|---|
+| Freezing GMS removed accounts | The escalation is gone under every privilege mode — see the resolution block in finding 1 |
+| Debloat labels only in the detail page | Tier badge in the app list (chip in list mode, coloured dot in grid mode) |
+| Canta-style short descriptions | A "why this is flagged" card on the General tab, dropped when null *or* blank |
+| No explanation of Force Stop / Suspend / Freeze | Long-press any of those three tiles for an explain-only sheet |
+| Adding to the Freezer freezes immediately | The behaviour is unchanged and intended; every add now confirms first |
+| Freeze Profiles undiscoverable | A labelled button under the Freezer's search bar, plus empty-state copy |
+| Default-tab setting | A four-way picker in Settings → General, read before the first frame |
+| Tap/hold to copy the package name | Three surfaces: both app-info headers and a General-tab card |
+| Smaller icons / more columns | A three-step density preference driving all four `GridCells.Adaptive` grids |
+| Sort tab is English in every locale | `SortBy.asGeneralName()` now returns a `@StringRes Int` |
+
+**Not shipped: the `.apks`-from-My-Files fix (band A #10) is only half done** — the typeless intent
+filter's `android:host="*"` gate and its 45 now-unreachable path matchers are gone, but the device
+diagnostic that decides the rest is still unrun. See
+[`161-apks-not-openable-from-file-managers.md`](161-apks-not-openable-from-file-managers.md).
+
+> **Correction — "smaller icons" was priced as one number, and it is not one number.** The table row
+> above is right that `minSize = 100.dp` is hardcoded in four places with no preference behind it,
+> and the ranked row read that as "put a preference behind the number". Building it showed that a
+> lone `minSize` preference **ships a rendering bug the moment it goes below 100**: `Modifier.size`
+> is declared `enforceIncoming = true`, so an icon whose cell can no longer hold it is silently
+> coerced smaller *while its corner radius stays put*, and the tile renders as a pill. 100.dp is the
+> tight bound today — `56 + 2×16 + 2×6` — not a round number someone picked. Density therefore had
+> to ship as a coordinated bundle (cell, icon, padding, corner radius, label gap, badge), with an
+> invariant that each row's cell can actually hold its icon.
+>
+> A second premise, which circulated during implementation, is **false**: small icons do **not** clip
+> the label. Both grid labels already ellipsize, and they did before this work. The thing that
+> degrades below 100.dp is the *icon*, not the text — so anyone verifying this on a device should
+> look at the tile shape, not at the caption.
 
 ---
 
@@ -187,9 +279,9 @@ Freezer screen carefully enough to request per-group actions did not find it.
 to the Freezer — is intended behaviour. It stays on the backlog as an expectation gap, which
 [`freezer-membership-toggle-semantics.md`](freezer-membership-toggle-semantics.md) had already filed
 from the opposite direction: that row observed the control means two different things on two screens,
-and this report is a user hitting exactly that.
+and this report is a user hitting exactly that. Band A #4 closed the *surprise* — every add now
+confirms first — and left that row's actual subject, the two meanings, untouched.
 
 **Nothing here displaces the engineering follow-ups.** The unguarded DataStore writes, the biometric
 capability check and cross-privilege suspend ownership are all still ahead of every item in this
 thread on risk, whatever their demand.
-

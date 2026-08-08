@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -70,14 +71,18 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
@@ -93,6 +98,7 @@ import com.valhalla.asgard.components.ConnectedButtonGroup
 import com.valhalla.asgard.components.ConnectedButtonGroupItem
 import com.valhalla.asgard.expressivePress
 import com.valhalla.thor.presentation.utils.AppIconModel
+import com.valhalla.thor.presentation.utils.getBloatRecommendationColors
 
 @Composable
 fun AppList(
@@ -107,6 +113,7 @@ fun AppList(
     searchQuery: String = "",
     isLoading: Boolean = false,
     isGrid: Boolean = true,
+    gridDensity: AppGridDensity = AppGridDensity.DEFAULT,
     isRoot: Boolean = false,
     isShizuku: Boolean = false,
     isDhizuku: Boolean = false,
@@ -230,6 +237,7 @@ fun AppList(
                 AppListContent(
                     list = appList,
                     isGrid = isGrid,
+                    gridDensity = gridDensity,
                     selectedPackageNames = selectedPackageNames, // Pass Set instead of List
                     onAppClick = { app ->
                         if (isMultiSelectMode) {
@@ -529,6 +537,7 @@ private fun MultiSelectHeader(
 private fun AppListContent(
     list: List<AppInfo>,
     isGrid: Boolean,
+    gridDensity: AppGridDensity,
     selectedPackageNames: Set<String>,
     onAppClick: (AppInfo) -> Unit,
     onAppLongClick: (AppInfo) -> Unit,
@@ -539,8 +548,9 @@ private fun AppListContent(
     val padding = PaddingValues(bottom = 100.dp, top = 8.dp)
 
     if (isGrid) {
+        val metrics = gridMetricsFor(gridDensity)
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 100.dp),
+            columns = GridCells.Adaptive(minSize = metrics.minCellSize),
             contentPadding = padding
         ) {
             items(list, key = { it.packageName }) { app ->
@@ -549,6 +559,7 @@ private fun AppListContent(
                     isSelected = selectedPackageNames.contains(app.packageName),
                     onClick = { onAppClick(app) },
                     onLongClick = { onAppLongClick(app) },
+                    metrics = metrics,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope
                 )
@@ -568,6 +579,113 @@ private fun AppListContent(
             }
         }
     }
+}
+
+/**
+ * The size every badge on a *list* row is drawn at — the status badge and the UAD tier chip.
+ *
+ * Fixed rather than density-scaled, unlike its grid counterpart in [AppGridMetrics]: a list row is
+ * floored at `ListTokens.ItemTwoLineContainerHeight` (72 dp) whatever the icon does, so nothing in
+ * this layout gets denser and a smaller badge would only get harder to see.
+ */
+private val AppRowBadgeSize = 16.dp
+
+/**
+ * The widest a list row's UAD tier chip may draw.
+ *
+ * Load-bearing, not cosmetic. In [AppItemList] the chip is an *unweighted* sibling of the app name,
+ * and `Row` measures unweighted children first against the full incoming width — the name's
+ * `weight(1f, fill = false)` only ever sees what is left, and legitimately resolves to 0 dp. Asgard's
+ * `StatusChip` is `maxLines = 1` with an ellipsis but declares no maximum width, so without a cap a
+ * long enough tier takes the whole row and the app name disappears entirely. The tier is not a fixed
+ * vocabulary: `UadHelper.buildUadMap` copies a debloat extension's `recommendation` in verbatim, so
+ * the string is only bounded by whatever the extension returns.
+ *
+ * 128 dp holds the longest tier the bundled list ships ("Recommended") with headroom at the default
+ * font scale. Past that the chip ellipsises — which is the right thing to lose, since the tier's
+ * colour still carries the whole signal while a nameless row carries none.
+ */
+private val AppRowTierChipMaxWidth = 128.dp
+
+/**
+ * Every dp a grid tile is built from, for one [AppGridDensity].
+ *
+ * A bundle rather than a lone `minSize`, because the numbers are load-bearing on each other:
+ * `Modifier.size` is declared with `enforceIncoming = true`, so an icon whose cell cannot hold it
+ * is silently coerced smaller while [cornerRadius] stays put and the tile renders as a pill. The
+ * invariant every row of [gridMetricsFor] satisfies is
+ * `minCellSize - 2 * outerPadding - 2 * innerPadding >= iconSize` — which is exactly where today's
+ * `100.dp` came from: `56 + 2 * 16 + 2 * 6`.
+ *
+ * [outerPadding] is also the grid's gutter. None of the four grids passes a `horizontalArrangement`,
+ * so the space between two tiles is these paddings back to back and nothing else.
+ *
+ * The label's own line is not in here. It ellipsizes at every step (both grid labels set
+ * `TextOverflow.Ellipsis`), and its worst case is the *current* one — a 100 dp cell leaves it 56 dp
+ * — so it needs no budget of its own; it takes whatever the tile has left.
+ */
+internal data class AppGridMetrics(
+    /** `GridCells.Adaptive(minSize = )`. A cell is never narrower than this, only wider. */
+    val minCellSize: Dp,
+    val iconSize: Dp,
+    /** The tile's padding *outside* its background — i.e. the gap between two tiles. */
+    val outerPadding: Dp,
+    /** The tile's padding *inside* its background, between the edge and the icon. */
+    val innerPadding: Dp,
+    val cornerRadius: Dp,
+    /** Gap between the icon and the label. */
+    val labelSpacing: Dp,
+    /** The status badge and the UAD tier dot, both drawn in a corner of the icon. */
+    val badgeSize: Dp
+) {
+    /**
+     * The multi-select tick, which sits in the same corner as the badge but reads as a control
+     * rather than a marker, so it is drawn half again as large.
+     *
+     * Derived rather than tabulated because the one value that matters is already pinned: at
+     * [AppGridDensity.DEFAULT] this is 24 dp, which is `Icon`'s own default size and therefore what
+     * both grids drew before this type existed.
+     */
+    val selectionSize: Dp get() = badgeSize * 1.5f
+}
+
+/**
+ * The dp table behind [AppGridDensity], kept here rather than in `domain/` because `Dp` is a Compose
+ * type — the same split `settleDelayFor` uses for `AnimationIntensity`.
+ *
+ * [AppGridDensity.DEFAULT] is today's rendering to the dp, deliberately: a user who never opens the
+ * setting must see the screen they had before it shipped.
+ */
+internal fun gridMetricsFor(density: AppGridDensity): AppGridMetrics = when (density) {
+    AppGridDensity.COMPACT -> AppGridMetrics(
+        minCellSize = 80.dp,
+        iconSize = 40.dp,
+        outerPadding = 4.dp,
+        innerPadding = 8.dp,
+        cornerRadius = 20.dp,
+        labelSpacing = 4.dp,
+        badgeSize = 12.dp
+    )
+
+    AppGridDensity.DEFAULT -> AppGridMetrics(
+        minCellSize = 100.dp,
+        iconSize = 56.dp,
+        outerPadding = 6.dp,
+        innerPadding = 16.dp,
+        cornerRadius = 32.dp,
+        labelSpacing = 8.dp,
+        badgeSize = 16.dp
+    )
+
+    AppGridDensity.LARGE -> AppGridMetrics(
+        minCellSize = 128.dp,
+        iconSize = 72.dp,
+        outerPadding = 8.dp,
+        innerPadding = 18.dp,
+        cornerRadius = 36.dp,
+        labelSpacing = 10.dp,
+        badgeSize = 20.dp
+    )
 }
 
 /**
@@ -606,6 +724,65 @@ private fun AppStatusBadge(app: AppInfo, modifier: Modifier = Modifier) {
             modifier = modifier,
             tint = MaterialTheme.colorScheme.secondary
         )
+    }
+}
+
+/**
+ * The UAD safety tier for a system app — "Recommended", "Advanced", "Expert", "Unsafe" — or nothing.
+ *
+ * It used to be painted only after you opened an app, which is precisely when it no longer helps:
+ * the decision a tier informs is the one taken over a multi-selected *list* of system apps, not the
+ * one taken on the single app you already went looking for.
+ *
+ * Two shapes, one decision. A ~100.dp grid cell has no room for a word, so the grid gets a dot in
+ * the icon's free top-left corner (the top-right is already an either/or between the selection tick
+ * and [AppStatusBadge]); the list, which has a whole row, gets the same [StatusChip] the details
+ * screen and the risk dialog draw, so the three agree letter for letter — up to
+ * [AppRowTierChipMaxWidth], past which the row's copy ellipsises so the app name survives. What must
+ * not fork is the gate and the colour above — hence one composable rather than two.
+ *
+ * The gate is `AppRiskDialog`'s, deliberately: a tier only means anything where it changes what Thor
+ * will let you do, and `FreezePolicy.freezeTierOf` discards it outright for a user app. `isUadLoadFailed`
+ * is redundant today — a failed load leaves `uadMap` empty and every recommendation null — but it is
+ * the condition that *states* the rule, and a partially-loaded list would otherwise badge some rows
+ * and not others with nothing to say which.
+ *
+ * The tier is the raw string from the UAD list, untranslated, matching all three existing renders.
+ * Extensions can contribute an arbitrary one (`UadHelper.buildUadMap`), which is why nothing here
+ * exhausts over a fixed set — an unrecognised tier falls through to a neutral colour rather than
+ * being dropped or crashing.
+ *
+ * Cold start: the first frame comes from the Room cache, which stores no bloat fields
+ * (`AppRepositoryImpl.getAllApps`), so every app arrives with a null recommendation and this draws
+ * nothing until the package rescan lands. That is the intended trade — a badge that appears a beat
+ * late is recoverable, a badge that says "Recommended" because the tier had not loaded yet is not.
+ */
+@Composable
+private fun UadTierBadge(app: AppInfo, modifier: Modifier = Modifier, asDot: Boolean = false) {
+    if (!app.isSystem || app.isUadLoadFailed) return
+    val tier = app.bloatRecommendation?.takeIf { it.isNotBlank() } ?: return
+    val (containerColor, contentColor) = getBloatRecommendationColors(tier)
+
+    if (asDot) {
+        Box(
+            modifier = modifier
+                .background(MaterialTheme.colorScheme.surface, CircleShape)
+                .padding(2.dp)
+                .semantics { contentDescription = tier }
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(containerColor, CircleShape)
+            )
+        }
+    } else {
+        // The cap belongs here rather than at the call site: the chip is measured before the app
+        // name it sits beside, so an uncapped one takes the name's space rather than its own —
+        // see [AppRowTierChipMaxWidth].
+        Box(modifier.widthIn(max = AppRowTierChipMaxWidth)) {
+            StatusChip(text = tier, color = containerColor, textColor = contentColor)
+        }
     }
 }
 
@@ -648,6 +825,9 @@ internal fun AppItemList(
             Text(
                 app.packageName,
                 maxLines = 1,
+                // Without an overflow a one-line package name is hard-cut mid-glyph, and package
+                // names are long enough that this fires on ordinary rows, not edge cases.
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -685,10 +865,14 @@ internal fun AppItemList(
                     .weight(1f, fill = false)
                     .then(textSharedModifier)
             )
+            UadTierBadge(
+                app = app,
+                modifier = Modifier.padding(start = 8.dp)
+            )
             AppStatusBadge(
                 app = app,
                 modifier = Modifier
-                    .size(16.dp)
+                    .size(AppRowBadgeSize)
                     .padding(start = 4.dp)
             )
         }
@@ -702,6 +886,7 @@ internal fun AppItemGrid(
     isSelected: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
+    metrics: AppGridMetrics = gridMetricsFor(AppGridDensity.DEFAULT),
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
@@ -709,9 +894,9 @@ internal fun AppItemGrid(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .padding(6.dp)
+            .padding(metrics.outerPadding)
             .expressivePress(interactionSource)
-            .clip(RoundedCornerShape(32.dp))
+            .clip(RoundedCornerShape(metrics.cornerRadius))
             .background(
                 if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
                 else MaterialTheme.colorScheme.surfaceContainerLow
@@ -721,14 +906,14 @@ internal fun AppItemGrid(
                 onClick = onClick,
                 onLongClick = onLongClick
             )
-            .padding(16.dp)
+            .padding(metrics.innerPadding)
     ) {
         Box {
             AppIcon(
                 packageName = app.packageName,
                 isEnabled = app.enabled,
                 isSuspended = app.isSuspended,
-                size = 56.dp,
+                size = metrics.iconSize,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope
             )
@@ -739,6 +924,7 @@ internal fun AppItemGrid(
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
+                        .size(metrics.selectionSize)
                         .background(MaterialTheme.colorScheme.surface, CircleShape)
                 )
             } else {
@@ -749,13 +935,23 @@ internal fun AppItemGrid(
                     app = app,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .size(16.dp)
+                        .size(metrics.badgeSize)
                         .background(MaterialTheme.colorScheme.surface, CircleShape)
                         .padding(2.dp)
                 )
             }
+            // Outside the selection branch above, unlike the status badge: a tier is at its most
+            // useful while rows are being ticked for a bulk debloat, which is exactly when the
+            // top-right corner is showing a tick instead.
+            UadTierBadge(
+                app = app,
+                asDot = true,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .size(metrics.badgeSize)
+            )
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(metrics.labelSpacing))
         val textSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
             with(sharedTransitionScope) {
                 Modifier.sharedBounds(
@@ -1045,7 +1241,7 @@ private fun AppFilterSheet(
                                 )
                             ) {
                                 Text(
-                                    item.asGeneralName(),
+                                    stringResource(item.asGeneralName()),
                                     maxLines = 1,
                                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )

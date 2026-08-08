@@ -33,18 +33,26 @@ import com.valhalla.thor.R
  * Explains one action in full, opened by long-pressing its tile. Half-width bento tiles have to
  * drop their description to keep the title from clipping; this is where that description goes.
  *
- * Unlike the app's other bottom sheets this one carries buttons. A long press fires onLongClick
+ * Unlike the app's other bottom sheets this one can carry buttons. A long press fires onLongClick
  * *instead of* onClick, so holding a tile no longer performs its action — [confirmLabel] hands
  * that back, letting the user read the explanation and then go ahead without a second gesture.
+ *
+ * Both [confirmLabel] and [onConfirm] are optional, and omitting them makes the sheet purely
+ * informational: one *Close* button and no way to act from here. That is the right shape wherever
+ * the tile's own tap still works and the action is destructive — a confirm button on a Force Stop
+ * or Freeze explainer would be a second trigger, reached by a gesture the user made to *ask a
+ * question*. They are declared as two parameters rather than one pair because every existing caller
+ * already passes them separately; passing only one of the two is a caller bug, and the sheet
+ * degrades to the informational form rather than rendering a button that does nothing.
  */
 @Composable
 fun InfoBottomSheet(
     title: String,
     body: String,
     icon: Int,
-    confirmLabel: String,
-    onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    confirmLabel: String? = null,
+    onConfirm: (() -> Unit)? = null,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -95,11 +103,19 @@ fun InfoBottomSheet(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
             ) {
-                TextButton(onClick = onDismiss) {
-                    Text(stringResource(R.string.cancel))
-                }
-                Button(onClick = onConfirm) {
-                    Text(confirmLabel)
+                if (confirmLabel != null && onConfirm != null) {
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(R.string.cancel))
+                    }
+                    Button(onClick = onConfirm) {
+                        Text(confirmLabel)
+                    }
+                } else {
+                    // "Close", not "Cancel": with nothing to confirm there is nothing to cancel, and
+                    // a lone Cancel on a paragraph of explanation reads as undoing something.
+                    Button(onClick = onDismiss) {
+                        Text(stringResource(R.string.close))
+                    }
                 }
             }
         }

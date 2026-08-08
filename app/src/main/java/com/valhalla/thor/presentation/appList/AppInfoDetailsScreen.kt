@@ -35,6 +35,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -469,6 +470,10 @@ private fun AppDetailsHeader(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
+    val clipboard = LocalClipboard.current
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val valueLabel = stringResource(R.string.value_label)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -530,11 +535,40 @@ private fun AppDetailsHeader(
 
             Spacer(modifier = Modifier.height(4.dp))
 
+            // Tap to copy, exactly as the sheet's header does — the two headers are the same
+            // header on two surfaces, and one of them being inert is the kind of difference nobody
+            // finds on purpose. Same reasoning for the click label and the 48 dp target; see the
+            // note in AppInfoSheet. labelSmall with 2 dp of padding is the smaller of the two, so
+            // if either needed the minimum size it was this one.
             Text(
                 text = appInfo.packageName,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontFamily = firaMonoFontFamily
+                fontFamily = firaMonoFontFamily,
+                modifier = Modifier
+                    .minimumInteractiveComponentSize()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClickLabel = stringResource(R.string.cd_copy_package_name)) {
+                        // Toast inside the coroutine, after the await — see AppInfoSheet for why.
+                        // setClipEntry suspends, so a Toast beside the launch reports a copy that
+                        // has not happened yet and may never happen if the scope is cancelled.
+                        coroutineScope.launch {
+                            clipboard.setClipEntry(
+                                ClipEntry(
+                                    android.content.ClipData.newPlainText(
+                                        valueLabel,
+                                        appInfo.packageName
+                                    )
+                                )
+                            )
+                            Toast.makeText(
+                                context,
+                                R.string.toast_copy_saved,
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -617,6 +651,26 @@ private fun GeneralTabScreen(details: DetailedAppInfo) {
             }
         }
 
+        // Directly under the tier, because on its own a tier is a verdict without a reason: "Expert"
+        // does not tell you that the package is the vendor's OTA client. Blank rather than absent is
+        // the common shape here — 64 of the 5364 UAD entries carry an empty description — and an
+        // "Why this is flagged" card with nothing under it is worse than no card, so it is dropped.
+        appInfo.bloatDescription?.takeIf { it.isNotBlank() }?.let { description ->
+            item {
+                InfoCard(
+                    title = stringResource(R.string.info_bloat_description),
+                    value = description,
+                    monospace = false
+                )
+            }
+        }
+
+        item {
+            InfoCard(
+                title = stringResource(R.string.info_package_name),
+                value = appInfo.packageName
+            )
+        }
         item {
             InfoCard(
                 title = stringResource(R.string.info_app_version),
@@ -1115,30 +1169,50 @@ private fun LibsAndFeaturesTabScreen(details: DetailedAppInfo) {
     }
 }
 
+/**
+ * One labelled fact about the app, tap to copy.
+ *
+ * [monospace] defaults to the heuristic this card has always used — a value with a `/` or a `.` in
+ * it is an identifier or a path, and reads better in Fira Mono. The parameter exists because the
+ * heuristic is wrong for exactly one caller: the UAD description is English prose, and prose
+ * containing a full stop is the common case, not the exception.
+ */
 @Composable
-private fun InfoCard(title: String, value: String) {
+private fun InfoCard(
+    title: String,
+    value: String,
+    monospace: Boolean = value.contains("/") || value.contains(".")
+) {
     val clipboard = LocalClipboard.current
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
     val valueLabel = stringResource(R.string.value_label)
+    // Labelled with the card's own title, so every card announces what it copies — "Copy
+    // Package name", "Copy Installer" — rather than the generic "activate" TalkBack falls back to.
+    // A fixed "Copy value" would be a verb without an object on a screen that is a list of values.
+    val copyLabel = stringResource(R.string.cd_copy_field, title)
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .clickable {
+            .clickable(onClickLabel = copyLabel) {
+                // Toast after the await, not beside the launch — setClipEntry suspends, and a
+                // success message that outruns the write tells the user their clipboard holds
+                // something it does not. Same fix as the two package-name headers; this helper is
+                // the third surface and backs all fourteen InfoCard call sites on this screen.
                 coroutineScope.launch {
                     clipboard.setClipEntry(
                         ClipEntry(
                             android.content.ClipData.newPlainText(valueLabel, value)
                         )
                     )
+                    Toast.makeText(
+                        context,
+                        R.string.toast_copy_saved,
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
-                Toast.makeText(
-                    context,
-                    (R.string.toast_copy_saved),
-                    Toast.LENGTH_SHORT
-                ).show()
             }
             .padding(16.dp)
     ) {
@@ -1153,7 +1227,7 @@ private fun InfoCard(title: String, value: String) {
             text = value,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface,
-            fontFamily = if (value.contains("/") || value.contains(".")) firaMonoFontFamily else bodyFontFamily
+            fontFamily = if (monospace) firaMonoFontFamily else bodyFontFamily
         )
     }
 }

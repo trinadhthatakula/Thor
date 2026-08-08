@@ -12,12 +12,17 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.asgard.components.AsgardActionItem
@@ -82,6 +87,11 @@ fun AppActionRow(
     val preferenceRepository = koinInject<PreferenceRepository>()
     val prefs by preferenceRepository.userPreferences.collectAsStateWithLifecycle(UserPreferences())
 
+    // Which of the three explainers is open, if any. rememberSaveable so a rotation with the sheet
+    // up does not drop the paragraph the user was reading.
+    var explaining by rememberSaveable { mutableStateOf<ActionExplainer?>(null) }
+    val showDetails = stringResource(R.string.show_details)
+
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -114,6 +124,8 @@ fun AppActionRow(
             ActionItem(
                 icon = freezeIcon,
                 label = freezeLabel,
+                longPressLabel = showDetails,
+                onLongPress = { explaining = ActionExplainer.FREEZE },
                 onClick = { onFreezeToggle(!isFrozen) }
             )
 
@@ -123,6 +135,8 @@ fun AppActionRow(
             ActionItem(
                 icon = suspendIcon,
                 label = suspendLabel,
+                longPressLabel = showDetails,
+                onLongPress = { explaining = ActionExplainer.SUSPEND },
                 onClick = { onSuspendToggle(!isSuspended) }
             )
 
@@ -130,6 +144,8 @@ fun AppActionRow(
                 ActionItem(
                     icon = R.drawable.force_close,
                     label = stringResource(R.string.action_force_stop),
+                    longPressLabel = showDetails,
+                    onLongPress = { explaining = ActionExplainer.FORCE_STOP },
                     onClick = onForceStop
                 )
             }
@@ -216,9 +232,48 @@ fun AppActionRow(
             )
         }
     }
+
+    // Outside the Row on purpose: it scrolls horizontally, and a sheet host belongs to the screen
+    // rather than to the strip of tiles.
+    explaining?.let { explainer ->
+        InfoBottomSheet(
+            title = stringResource(explainer.title),
+            body = stringResource(explainer.body),
+            icon = explainer.icon,
+            // No confirm button, unlike the Home bento's sheets. There the long press is the *only*
+            // way a compact tile can be explained, so the sheet has to hand the action back; here
+            // the tile's own tap still works and all three of these are destructive. A "Freeze"
+            // button on a sheet the user opened to ask what freezing *is* would be a second
+            // trigger, reached by the gesture they used to hesitate.
+            onDismiss = { explaining = null }
+        )
+    }
 }
 
 private const val PLAY_STORE_PACKAGE = "com.android.vending"
+
+/**
+ * The three actions whose names do not say what they do.
+ *
+ * Force Stop, Suspend and Freeze all leave the app installed and delete nothing, and they differ
+ * only in how long the effect lasts and whether the icon stays on the launcher — a distinction the
+ * one-word tile labels cannot carry, and the most common question asked about Thor. Long-pressing
+ * any of the three opens its entry here; the other tiles have no explainer because their labels are
+ * their explanation.
+ */
+private enum class ActionExplainer(
+    val title: Int,
+    val body: Int,
+    val icon: Int
+) {
+    FREEZE(R.string.explain_freeze_title, R.string.explain_freeze_body, R.drawable.frozen),
+    SUSPEND(R.string.explain_suspend_title, R.string.explain_suspend_body, R.drawable.warning),
+    FORCE_STOP(
+        R.string.explain_force_stop_title,
+        R.string.explain_force_stop_body,
+        R.drawable.force_close
+    )
+}
 
 @Composable
 private fun ActionItem(
@@ -226,13 +281,33 @@ private fun ActionItem(
     label: String,
     enabled: Boolean = true,
     tintColor: Color? = null,
+    longPressLabel: String? = null,
+    onLongPress: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
+    val longPress = onLongPress
     AsgardActionItem(
         icon = ImageVector.vectorResource(icon),
         label = label,
         onClick = onClick,
         enabled = enabled,
         iconTint = tintColor ?: MaterialTheme.colorScheme.primary,
+        onLongClick = longPress,
+        // AsgardActionItem takes an onLongClick but no label for it, so an assistive-technology user
+        // is told a long press exists and not what it does. Declaring the action here supplies the
+        // name: Asgard applies this `modifier` at the head of its chain, ahead of its own
+        // combinedClickable, and when two peers set the same semantics key it is the outermost
+        // non-null label and action that survive the collapse. Same handler either way, so the
+        // gesture and the accessibility action stay in step.
+        modifier = if (longPress != null) {
+            Modifier.semantics {
+                onLongClick(label = longPressLabel) {
+                    longPress()
+                    true
+                }
+            }
+        } else {
+            Modifier
+        }
     )
 }

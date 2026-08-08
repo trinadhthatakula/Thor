@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
 import com.valhalla.thor.data.launcher.FreezerShortcutContract
+import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.BulkOp
@@ -76,6 +77,12 @@ data class FreezerUiState(
     val hasShownDisabledAppsPrompt: Boolean = false,
     val appListType: AppListType = AppListType.USER,
     val isGrid: Boolean = true,
+    /**
+     * Carried on the state rather than passed to `FreezerScreen`, because the screen's only call
+     * site is `MainScreen` and the two app pickers that also need it are opened from inside the
+     * screen — so a parameter would have to be threaded through a host that has no interest in it.
+     */
+    val gridDensity: AppGridDensity = AppGridDensity.DEFAULT,
     val addFreezerToLauncher: Boolean = false,
     val profiles: List<FreezeProfile> = emptyList(),
     val profileEditorSearchQuery: String = "",
@@ -580,6 +587,7 @@ class FreezerViewModel(
                         freezerMode = prefs.freezerMode,
                         hasShownDisabledAppsPrompt = prefs.hasShownDisabledAppsPrompt,
                         isGrid = prefs.freezerIsGrid,
+                        gridDensity = prefs.appGridDensity,
                         addFreezerToLauncher = prefs.addFreezerToLauncher
                     )
                 }

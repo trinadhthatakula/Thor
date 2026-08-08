@@ -8,10 +8,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AnimationIntensity
+import com.valhalla.thor.domain.model.AppGridDensity
+import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
 import com.valhalla.thor.domain.model.UserPreferences
+import com.valhalla.thor.domain.repository.AnyFileOpenerController
 import com.valhalla.thor.domain.repository.AuthCapability
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
@@ -25,6 +28,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -33,6 +37,8 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Named
@@ -46,6 +52,7 @@ class SettingsViewModel(
     private val freezerRepository: FreezerRepository,
     private val manageAppUseCase: ManageAppUseCase,
     private val freezerShortcutManager: com.valhalla.thor.data.launcher.FreezerShortcutManager,
+    private val anyFileOpenerController: AnyFileOpenerController,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
@@ -55,7 +62,12 @@ class SettingsViewModel(
         val isShizukuAvailable: Boolean = false,
         val isDhizukuAvailable: Boolean = false,
         val canUseBiometric: Boolean = false,
-        val hasBiometricHardware: Boolean = false
+        val hasBiometricHardware: Boolean = false,
+        /**
+         * Not from [prefs] — this one lives in PackageManager's component state. See
+         * [AnyFileOpenerController] for why it is not mirrored into DataStore.
+         */
+        val anyFileOpenerEnabled: Boolean = false
     )
 
     /** Off-main-thread snapshot of the available privilege engines. */
@@ -75,8 +87,33 @@ class SettingsViewModel(
     private val _events = Channel<UiText>(Channel.BUFFERED)
     val events: Flow<UiText> = _events.receiveAsFlow()
 
+    /**
+     * Live component state of the any-file alias, re-read rather than remembered.
+     *
+     * A MutableStateFlow instead of a `flow { emit(...) }` like the privilege probe below, because
+     * this one is written from the screen: the probe only ever needs its first value, this needs a
+     * new one after every toggle. Seeded off the main thread by [refreshAnyFileOpener].
+     */
+    private val anyFileOpenerEnabled = MutableStateFlow(false)
+
+    /**
+     * Serialises write-then-read-back on the alias, so a fast double-tap cannot land out of order.
+     *
+     * Both halves suspend on binder IPC, and `viewModelScope.launch` starts a fresh coroutine per
+     * tap, so two toggles genuinely overlap. Unserialised, off-then-on can apply as on-then-off:
+     * the component ends up in the *earlier* tap's state, and the read-back of the later one sees a
+     * value it did not write, so it fires "Android refused to change this setting" when nothing
+     * refused — the exact false report the read-back exists to prevent.
+     */
+    private val anyFileOpenerMutex = Mutex()
+
+    init {
+        refreshAnyFileOpener()
+    }
+
     private val _systemStatus = combine(
         preferenceRepository.userPreferences,
+        anyFileOpenerEnabled,
         flow {
             // Availability probes hit binder IPC (Shizuku.pingBinder / DhizukuAPI). flowOn(io) below
             // keeps them off the Main thread to avoid janking the first subscription / every
@@ -89,14 +126,15 @@ class SettingsViewModel(
                 )
             )
         }.flowOn(ioDispatcher)
-    ) { prefs, status ->
+    ) { prefs, anyFileOpener, status ->
         SettingsUiState(
             prefs = prefs,
             isRootAvailable = status.root,
             isShizukuAvailable = status.shizuku,
             isDhizukuAvailable = status.dhizuku,
             canUseBiometric = biometricHelper.canAuthenticate(),
-            hasBiometricHardware = biometricHelper.hasHardware()
+            hasBiometricHardware = biometricHelper.hasHardware(),
+            anyFileOpenerEnabled = anyFileOpener
         )
     }
 
@@ -161,6 +199,10 @@ class SettingsViewModel(
 
     fun setPrivilegeMode(mode: PrivilegeMode?) {
         viewModelScope.launch { preferenceRepository.setPrivilegeMode(mode) }
+    }
+
+    fun setDefaultTab(tab: DefaultTab) {
+        viewModelScope.launch { preferenceRepository.setDefaultTab(tab) }
     }
 
     fun setReinstallAllCardVisibility(visible: Boolean) {
@@ -238,9 +280,55 @@ class SettingsViewModel(
         }
     }
 
+    /**
+     * Turn "show Thor when opening any file" on or off.
+     *
+     * Reads the state back instead of assuming the write landed: `setComponentEnabledSetting`
+     * returns nothing and the platform can refuse it. A switch that flips optimistically would show
+     * "on" for a filter that is still off, and the user's evidence for that is a file manager that
+     * silently keeps not offering Thor — the exact symptom they enabled this to fix.
+     */
+    fun setAnyFileOpenerEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            val actual = anyFileOpenerMutex.withLock {
+                anyFileOpenerController.setEnabled(enabled)
+                anyFileOpenerController.isEnabled().also { anyFileOpenerEnabled.value = it }
+            }
+            // Reported outside the lock: _events is a BUFFERED Channel, so send() can suspend once
+            // the buffer fills, and suspending there with the mutex held would stall every later
+            // toggle behind a Toast nobody has collected yet.
+            if (actual != enabled) {
+                _events.send(UiText.StringResource(R.string.any_file_opener_failed))
+            }
+        }
+    }
+
+    /**
+     * Re-read the alias state from PackageManager.
+     *
+     * Called on init and whenever Settings is resumed: the component can be changed from outside
+     * Thor (`pm enable`, a ROM's own app manager), and PackageManager is the only source of truth,
+     * so a value cached from last composition can be stale by the time it is shown.
+     */
+    fun refreshAnyFileOpener() {
+        viewModelScope.launch {
+            // Same lock as the writer: a resume that lands between a toggle's write and its
+            // read-back would otherwise observe the half-applied state and publish it as the answer.
+            anyFileOpenerMutex.withLock {
+                anyFileOpenerEnabled.value = anyFileOpenerController.isEnabled()
+            }
+        }
+    }
+
     fun setAnimationIntensity(intensity: AnimationIntensity) {
         viewModelScope.launch {
             preferenceRepository.setAnimationIntensity(intensity)
+        }
+    }
+
+    fun setAppGridDensity(density: AppGridDensity) {
+        viewModelScope.launch {
+            preferenceRepository.setAppGridDensity(density)
         }
     }
 }

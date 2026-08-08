@@ -6,6 +6,7 @@ package com.valhalla.thor.presentation.appList
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.AppGridDensity
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.FilterType
@@ -96,6 +97,7 @@ data class AppListUiState(
     val selectedAppDetails: AppInfo? = null,
     val isLoadingDetails: Boolean = false,
     val isGrid: Boolean = true,
+    val gridDensity: AppGridDensity = AppGridDensity.DEFAULT,
     val isComputingSizes: Boolean = false,
     // Holds the pull-to-refresh indicator up for a readable minimum. isLoading cannot do this job:
     // getAllApps() emits the Room cache before it starts the package rescan, so isLoading clears
@@ -165,7 +167,8 @@ class AppListViewModel(
             sortOrder = prefs.appSortOrder,
             filterType = prefs.appFilterType,
             selectedFilter = prefs.appSelectedFilter,
-            isGrid = prefs.appListIsGrid
+            isGrid = prefs.appListIsGrid,
+            gridDensity = prefs.appGridDensity
         )
         processList(mergedState)
     }

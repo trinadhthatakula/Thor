@@ -46,16 +46,19 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -65,14 +68,18 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.valhalla.thor.R
 import com.valhalla.thor.data.manager.UsageAccessManager
 import com.valhalla.thor.domain.model.AnimationIntensity
+import com.valhalla.thor.domain.model.AppGridDensity
+import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
+import com.valhalla.thor.presentation.main.toDestination
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.util.AppLanguage
 import com.valhalla.thor.util.displayedLanguage
@@ -94,6 +101,15 @@ fun SettingsScreen(
     var showLanguageSheet by remember { mutableStateOf(false) }
     var showUnfreezeConfirmation by remember { mutableStateOf(false) }
     var showSupportSheet by remember { mutableStateOf(false) }
+
+    // The any-file switch is backed by PackageManager, not DataStore, so nothing pushes a change at
+    // us: `pm enable`, a ROM app manager, or a wipe of Thor's component state all move it silently.
+    // Re-read on every resume but the first, which the VM's init already covered.
+    var firstResume by rememberSaveable { mutableStateOf(true) }
+    LifecycleResumeEffect(Unit) {
+        if (firstResume) firstResume = false else viewModel.refreshAnyFileOpener()
+        onPauseOrDispose { }
+    }
 
     // The language the row and the picker's checkmark are allowed to name.
     //
@@ -194,6 +210,48 @@ fun SettingsScreen(
                 .padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
+            // Default tab. Shaped like the Theme row in APPEARANCE — a titled row with a segmented
+            // control underneath — rather than a picker sheet, because four options fit.
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconBox(R.drawable.home)
+                    Spacer(Modifier.width(16.dp))
+                    Column {
+                        Text(
+                            stringResource(R.string.default_tab),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            stringResource(R.string.default_tab_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                // Icons, not labels, and the nav bar's own glyphs: four equal slots across a phone
+                // leave roughly 34 dp of text apiece, which turns "App List" into two characters and
+                // its longer translations into fewer. The tab name still travels — as each button's
+                // content description, which is what a screen reader announces either way.
+                ConnectedButtonGroup(
+                    items = DefaultTab.entries.map { tab ->
+                        val destination = tab.toDestination()
+                        ConnectedButtonGroupItem.Icon(
+                            icon = ImageVector.vectorResource(destination.selectedIcon),
+                            contentDescription = stringResource(destination.label)
+                        )
+                    },
+                    selectedIndex = DefaultTab.entries.indexOf(prefs.defaultTab),
+                    onItemSelected = { viewModel.setDefaultTab(DefaultTab.entries[it]) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
             SettingsSwitchRow(
                 icon = R.drawable.apk_install,
                 title = stringResource(R.string.show_reinstall_card),
@@ -210,6 +268,17 @@ fun SettingsScreen(
                 checked = prefs.showInstallerTile,
                 enableMarqueeOnClick = true,
                 onCheckedChange = { viewModel.setInstallerTileVisibility(it) }
+            )
+
+            // Reads its state from `uiState`, not `prefs`: this switch is backed by PackageManager
+            // component state rather than DataStore. See AnyFileOpenerController.
+            SettingsSwitchRow(
+                icon = R.drawable.apk_install,
+                title = stringResource(R.string.any_file_opener),
+                subtitle = stringResource(R.string.any_file_opener_desc),
+                checked = state.anyFileOpenerEnabled,
+                enableMarqueeOnClick = true,
+                onCheckedChange = { viewModel.setAnyFileOpenerEnabled(it) }
             )
 
             SettingsSwitchRow(
@@ -271,6 +340,48 @@ fun SettingsScreen(
                     items = ThemeMode.entries.map { ConnectedButtonGroupItem.Label(it.label()) },
                     selectedIndex = ThemeMode.entries.indexOf(prefs.themeMode),
                     onItemSelected = { viewModel.setThemeMode(ThemeMode.entries[it]) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            // Grid density. Same titled-row-plus-segmented-control shape as Theme above it, and it
+            // lives here rather than in GENERAL because it changes how the app looks, not what it
+            // does. One control for every grid Thor draws — the Apps tab, the Freezer, and the two
+            // pickers in the Freezer's sheets — because a per-screen density is a setting the user
+            // has to find four times.
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconBox(R.drawable.grid_view)
+                    Spacer(Modifier.width(16.dp))
+                    Column {
+                        Text(
+                            stringResource(R.string.grid_density),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            stringResource(R.string.grid_density_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                ConnectedButtonGroup(
+                    items = AppGridDensity.entries.map {
+                        val label = when (it) {
+                            AppGridDensity.COMPACT -> stringResource(R.string.grid_density_compact)
+                            AppGridDensity.DEFAULT -> stringResource(R.string.grid_density_default)
+                            AppGridDensity.LARGE -> stringResource(R.string.grid_density_large)
+                        }
+                        ConnectedButtonGroupItem.Label(label)
+                    },
+                    selectedIndex = AppGridDensity.entries.indexOf(prefs.appGridDensity),
+                    onItemSelected = { viewModel.setAppGridDensity(AppGridDensity.entries[it]) },
                     modifier = Modifier.fillMaxWidth()
                 )
             }

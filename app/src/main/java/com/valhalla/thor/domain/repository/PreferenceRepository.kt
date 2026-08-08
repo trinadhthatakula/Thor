@@ -4,6 +4,8 @@
 package com.valhalla.thor.domain.repository
 
 import com.valhalla.thor.domain.model.AnimationIntensity
+import com.valhalla.thor.domain.model.AppGridDensity
+import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
@@ -34,6 +36,9 @@ interface PreferenceRepository {
     suspend fun updateAppSortOrder(sortOrder: SortOrder)
     suspend fun updateAppFilter(filterType: FilterType, selectedFilter: String)
     suspend fun setReinstallAllCardVisibility(isVisible: Boolean)
+
+    // --- Navigation ---
+    suspend fun setDefaultTab(tab: DefaultTab)
 
     // --- Home tiles ---
     suspend fun setInstallerTileVisibility(isVisible: Boolean)
@@ -75,6 +80,7 @@ interface PreferenceRepository {
     suspend fun setFreezerIsGrid(isGrid: Boolean)
     suspend fun toggleAppListIsGrid()
     suspend fun toggleFreezerIsGrid()
+    suspend fun setAppGridDensity(density: AppGridDensity)
 
     // --- Extensions ---
     suspend fun setExtensionsUnlocked(unlocked: Boolean)

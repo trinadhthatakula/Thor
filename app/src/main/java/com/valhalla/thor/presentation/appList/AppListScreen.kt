@@ -281,6 +281,7 @@ fun AppListScreen(
                     isShizuku = state.isShizuku,
                     isDhizuku = state.isDhizuku,
                     isGrid = state.isGrid,
+                    gridDensity = state.gridDensity,
                     onToggleView = viewModel::toggleGridMode,
                     installerNameMap = installerNameMap,
                     permissionIndex = state.permissionIndex,
