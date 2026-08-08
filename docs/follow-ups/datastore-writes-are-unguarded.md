@@ -24,10 +24,25 @@
 >   second latch.
 >
 > What shipped: `guardedWrite` on `PreferenceRepositoryImpl`, a `settingsWriteFailed` latch on the
-> `PreferenceRepository` interface, three new strings in all five locales, and four tests in
-> `SecurityViewModelTest`. `SettingsViewModel` is still not JVM-testable — `LocaleManager` is a
-> concrete class taking a `Context` — so its `setLanguage` branch is covered by reading, not by a
-> test. That seam is the one piece of this left undone.
+> `PreferenceRepository` interface with an `acknowledgeSettingsWriteFailure()` beside it, five new
+> strings in all five locales, `PreferenceWriteGuardTest`, and six tests in `SecurityViewModelTest`.
+>
+> Two things the first cut of this got wrong, both caught in review before merge:
+>
+> - **The latch outlives the ViewModel that reads it.** It sits on the repository, which is a
+>   singleton, while the only collector is `SecurityViewModel`. Exit finishes the activity without
+>   ending the process, so the next launch built a fresh ViewModel that replayed a notice already
+>   delivered. Hence the acknowledgement — the latch tracks *an unreported failure*, not *a broken
+>   store*, so a later dropped write raises it again.
+> - **`setBiometricLock` returns a `Boolean` that `SettingsViewModel` discarded.** Combined with
+>   `announce = false`, a failed app-lock write from the Settings screen reached the user through no
+>   channel at all — a *quieter* failure than the crash it replaced, for the one preference whose
+>   failure the interface says must be heard in its own words. It now names which way the lock is
+>   actually facing (`biometric_lock_not_saved_still_off` / `..._still_on`).
+>
+> `SettingsViewModel` is still not JVM-testable — `LocaleManager` is a concrete class taking a
+> `Context` — so both of its branches are covered by reading plus a repository-level assertion that
+> neither reporting setter raises the generic notice. That seam is the one piece of this left undone.
 
 ## What #339 fixed, and what it did not
 

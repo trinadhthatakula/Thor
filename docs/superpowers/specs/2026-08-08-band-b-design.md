@@ -231,6 +231,28 @@ share or open a package file", which `faq.mdx` contradicts outright — Thor dec
 target at all. Left alone it would have sat two clicks from the corrected #161 answer, telling the
 reader to try the one route that cannot work.
 
+**Review corrections to the above.** Four, all from checking the new copy against the manifest rather
+than against the previous copy:
+
+- *C16 pattern 2 forbade a true sentence.* It anchored on the subject (`Thor|Shizuku|…`) rather than
+  on freezing, so "Thor removes it for your Android user" tripped it — which is exactly what the
+  Uninstall and Debloat paths do, truthfully, via `pm uninstall --user N`. A gate that forbids a true
+  claim gets suppressed rather than obeyed. Both that pattern and the switch-off-or-remove one are
+  now anchored to a freezing word.
+- *`features.mdx` said the installer matches on the filename extension.* Only one of its three VIEW
+  filters does. The other two match on MIME alone, with no host and no path — so a file manager that
+  declares a type Thor claims is matched with no filename anywhere in the URI.
+- *The #161 FAQ gave the wrong reason the filter cannot be narrowed.* It claimed Android consults
+  path patterns only for URIs naming a host, and that these URIs have none. Content URIs do name an
+  authority; the constraint is on the **filter** — `IntentFilter.matchData` reads the path list only
+  inside its `mDataAuthorities != null` branch. The honest reason is simpler and does not depend on
+  the platform detail: what the switch exists to catch is a handover with no name and no type, so
+  there is nothing left in it to match on.
+- *`features.mdx` still attributed the removed-for-your-user state to "a freeze"* 180 lines after the
+  callout saying that substitution was withdrawn. The chip behaviour is real and stays — `AppInfo`
+  folds `FLAG_INSTALLED` into `enabled` — but a device only reaches that state via an older build
+  now, so the sentence names the cause instead of the mechanism.
+
 ---
 
 ## Part B — PR1: guard the preference write path
@@ -277,6 +299,10 @@ So on failure `SecurityViewModel` suppresses that message and emits a different 
 Thor changes your lock state without asking is an entitlement the code already honours
 (`HomeActivity.kt:174-180`); being told when it *failed* is the same entitlement.
 
+This paragraph reasons entirely about the *auto-disarm* caller and, as written, missed the other
+one — the user standing in Settings flipping the switch themselves. Both callers of a `Boolean`
+setter have to consume it or the return value is decoration; see B3's review correction.
+
 **`setLanguage`.** `SettingsViewModel.kt:224-227` runs `preferenceRepository.setLanguage(language)`
 and then `localeManager.applyLocale(language)`, sequentially in one coroutine. **Today a failed
 write throws and `applyLocale` never runs — the two stay consistent by accident.** Add a guard that
@@ -297,7 +323,7 @@ Not a toast per failed write: on a genuinely full disk every toggle toasts, whic
 itself calls "its own kind of broken". Not silent: the app-lock case is the one that matters and it
 cannot be silent. Not a persistent banner: a new surface for a rare state.
 
-**As built: three strings × 5 locales, not one.** The generic latch needs its own notice, and so does
+**As built: five strings × 5 locales, not one.** The generic latch needs its own notice, and so does
 each of B2's two reporting setters — the whole reason those two return `Boolean` is that they have
 something specific to say, so reusing the generic string there would have discarded the distinction
 the return value exists to carry. Hence `settings_not_saved`, `biometric_lock_disable_not_saved` and
@@ -306,6 +332,30 @@ the return value exists to carry. Hence `settings_not_saved`, `biometric_lock_di
 That in turn forced the `announce` parameter on `guardedWrite`. Without it a failed write from a
 reporting setter both latches the generic notice *and* returns `false` for the caller's specific one,
 and the user gets two messages about one failure. The reporting setters pass `announce = false`.
+
+**Review correction: `announce = false` plus a discarded return value is worse than the crash.**
+The first cut wired `setBiometricLock`'s `Boolean` to `SecurityViewModel`'s auto-disarm and left
+`SettingsViewModel.setBiometricLock` calling it for effect. So a user turning the app lock on or off
+from Settings on a full disk got *nothing* — no crash, no toast, and no store-wide notice either,
+because this setter suppresses it. On `dev` that same tap crashed the process, which is at least
+information. Converting a loud failure into a silent one is a regression however good the guard is,
+and it landed on the single preference whose interface KDoc says its failure must be heard in its own
+words.
+
+Fixed with two more strings rather than one, because the direction is the whole point: a dropped
+`true` leaves the lock **off** after Thor appeared to arm it, a dropped `false` leaves it **on**.
+`biometric_lock_not_saved_still_off` and `biometric_lock_not_saved_still_on` name the state the lock
+is actually in. `biometric_lock_disable_not_saved` stays what it was — the auto-disarm's own message,
+which has a different thing to say ("it will ask again next launch").
+
+**Review correction: the latch has to be acknowledged.** It lives on the repository singleton; the
+only collector is `SecurityViewModel`, which does not. Exit finishes the activity without ending the
+process (`MainScreen` → `finish()`), so the next launch built a fresh ViewModel, collected a `true`
+it had already reported, and opened on a notice about nothing. `acknowledgeSettingsWriteFailure()`
+lowers it immediately after the send. It does not claim the disk recovered — the next dropped write
+raises it again — which is the distinction that makes clearing safe: the latch tracks an *unreported*
+failure, not a *broken store*. Config-change recreation was never affected; the ViewModel survives
+that.
 
 ### B4. UI state does not roll back
 
@@ -318,6 +368,15 @@ piece of state that can itself disagree with the store. The notice is the correc
 `docs/follow-ups/README.md`: mark row 13 done, strike the `docs/site-content/*.md` citations, record
 that PR0 (`master`) discharged the Dhizuku half of the unnumbered row and this PR discharges the
 fallback half, and file the two rows this design spins out (§9).
+
+**Review correction: the write guard needed its own test file.** The first cut asserted the guard
+only through `FakePreferenceRepository`, whose `write()` is a hand re-implementation of
+`guardedWrite` — so the tests proved the fake behaves like the fake. `PreferenceWriteGuardTest` now
+drives the real helper against a `DataStore<Preferences>` whose `updateData` throws, mirroring
+`PreferenceReadGuardTest`: failure returns `false` rather than throwing, the latch is raised,
+`CorruptionException` is covered by the same catch, `announce = false` stays quiet, a non-IO failure
+is rethrown untouched, `CancellationException` propagates, and the write is attempted exactly once.
+That last one is the assertion that pins the no-retry decision to something other than a comment.
 
 **As built: one gap is left open on purpose.** `SettingsViewModel` has no JVM test and this PR does
 not give it one. `LocaleManager` is a concrete class taking a `Context`, and `applyLocale` calls
