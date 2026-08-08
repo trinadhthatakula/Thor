@@ -267,4 +267,7 @@ private class RecordingStore(
     override suspend fun isTreeWritable(treeUriStr: String?): Boolean = false
 
     override fun shareUri(file: File): String = error("an export never shares")
+
+    override suspend fun stageText(fileName: String, content: String): File =
+        error("a bundle run stages through the builder, never as text")
 }

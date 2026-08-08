@@ -3,10 +3,12 @@
 
 package com.valhalla.thor.presentation.main
 
+import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.R
 import com.valhalla.thor.data.backup.BackupRunner
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppListType
+import com.valhalla.thor.domain.model.Installers
 import com.valhalla.thor.domain.model.MultiAppAction
 import com.valhalla.thor.domain.model.UserPreferences
 import com.valhalla.thor.domain.usecase.BackupAppsUseCase
@@ -35,6 +37,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -565,8 +568,8 @@ class MainViewModelTest {
     @Test
     fun `clear all cache never clears Thor's own cache or the Play Store's`() = runTest {
         appRepository.apps.value = listOf(
-            userApp("com.valhalla.thor"),
-            userApp("com.android.vending"),
+            userApp(BuildConfig.APPLICATION_ID),
+            userApp(Installers.PLAY_STORE),
             userApp("com.example.a")
         )
         val vm = viewModel()
@@ -580,8 +583,31 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `clear all cache excludes the running application id, suffix and all`() = runTest {
+        // The literal "com.valhalla.thor" is the *release* id. `applicationIdSuffix = ".debug"`
+        // means the debug build runs as `com.valhalla.thor.debug`, so a hardcoded self-exclusion
+        // stops excluding self on exactly the build where the mistake is easiest to make and
+        // hardest to notice. Both are in the list; only the one Thor is actually running as may be
+        // spared, and the other must be treated as an ordinary third-party app.
+        appRepository.apps.value = listOf(
+            userApp("com.valhalla.thor"),
+            userApp("com.valhalla.thor.debug")
+        )
+        val vm = viewModel()
+
+        vm.clearAllCache(AppListType.USER)
+        advanceUntilIdle()
+
+        val expected = listOf("com.valhalla.thor", "com.valhalla.thor.debug")
+            .filter { it != BuildConfig.APPLICATION_ID }
+            .map { "clearCache:$it" }
+        assertEquals(expected, system.calls)
+    }
+
+    @Test
     fun `clear all cache with nothing eligible touches nothing`() = runTest {
-        appRepository.apps.value = listOf(userApp("com.valhalla.thor"), userApp("com.android.vending"))
+        appRepository.apps.value =
+            listOf(userApp(BuildConfig.APPLICATION_ID), userApp(Installers.PLAY_STORE))
         val vm = viewModel()
 
         vm.clearAllCache(AppListType.USER)
@@ -654,5 +680,166 @@ class MainViewModelTest {
         assertFalse(vm.uiState.value.showSupportDeveloperPrompt)
         // Persisted, not just cleared in memory — otherwise it reappears after every process death.
         assertTrue(vm.uiState.value.prefs.hasShownSupportDeveloperPrompt)
+    }
+
+    // --- Fix Store: the picker ----------------------------------------------------------------
+
+    @Test
+    fun `fix store opens a picker instead of reinstalling everything it found`() = runTest {
+        appRepository.apps.value = listOf(
+            userApp("com.play", installerPackageName = Installers.PLAY_STORE),
+            userApp("com.sideloaded", installerPackageName = null),
+            userApp("com.fdroid", installerPackageName = Installers.F_DROID)
+        )
+        val vm = viewModel()
+
+        vm.onAppAction(AppClickAction.ReinstallAll)
+        advanceUntilIdle()
+
+        // The old action ran the batch straight off the scan. Nothing may reach the privilege layer
+        // until the picker is confirmed.
+        assertTrue(system.calls.isEmpty())
+        val picker = vm.uiState.value.fixStoreSelection!!
+        assertEquals(
+            setOf("com.sideloaded", "com.fdroid"),
+            picker.candidates.map { it.packageName }.toSet()
+        )
+        // Everything starts ticked: the accident being prevented is not knowing what it would
+        // touch, not tapping Confirm by mistake.
+        assertEquals(picker.candidates.map { it.packageName }.toSet(), picker.selected)
+    }
+
+    @Test
+    fun `fix store reinstalls only what is still ticked`() = runTest {
+        appRepository.apps.value = listOf(
+            userApp("com.keep", installerPackageName = null),
+            userApp("com.fix", installerPackageName = null)
+        )
+        val vm = viewModel()
+
+        vm.onAppAction(AppClickAction.ReinstallAll)
+        advanceUntilIdle()
+        vm.toggleFixStoreTarget("com.keep")
+        vm.confirmFixStore()
+        advanceUntilIdle()
+
+        assertEquals(listOf("reinstallAppWithGoogle:com.fix"), system.calls)
+        assertNull(vm.uiState.value.fixStoreSelection)
+    }
+
+    @Test
+    fun `confirming an empty selection starts no run`() = runTest {
+        appRepository.apps.value = listOf(userApp("com.a", installerPackageName = null))
+        val vm = viewModel()
+
+        vm.onAppAction(AppClickAction.ReinstallAll)
+        advanceUntilIdle()
+        vm.setAllFixStoreTargets(false)
+        vm.confirmFixStore()
+        advanceUntilIdle()
+
+        // The confirm button is disabled at zero, so this is the state moving out from under a
+        // click rather than a route a user can take on purpose — a batch of nothing is still wrong.
+        assertTrue(system.calls.isEmpty())
+        assertFalse(vm.uiState.value.loggerState.isVisible)
+    }
+
+    @Test
+    fun `dismissing the picker leaves every app alone`() = runTest {
+        appRepository.apps.value = listOf(userApp("com.a", installerPackageName = null))
+        val vm = viewModel()
+
+        vm.onAppAction(AppClickAction.ReinstallAll)
+        advanceUntilIdle()
+        vm.dismissFixStorePicker()
+        advanceUntilIdle()
+
+        assertNull(vm.uiState.value.fixStoreSelection)
+        assertTrue(system.calls.isEmpty())
+    }
+
+    @Test
+    fun `fix store finds nothing when every app came from Play`() = runTest {
+        appRepository.apps.value = listOf(
+            userApp("com.play", installerPackageName = Installers.PLAY_STORE)
+        )
+        val vm = viewModel()
+
+        vm.onAppAction(AppClickAction.ReinstallAll)
+        advanceUntilIdle()
+
+        // No picker; the logger says so and stays up to be read.
+        assertNull(vm.uiState.value.fixStoreSelection)
+        assertTrue(vm.uiState.value.loggerState.isVisible)
+        assertTrue(vm.uiState.value.loggerState.isComplete)
+    }
+
+    // --- Stopping a batch part-way ------------------------------------------------------------
+
+    @Test
+    fun `a stop request ends the batch after the app in flight`() = runTest {
+        val vm = viewModel()
+        // Asked for from inside the first app's call, which is the only moment a test has: the
+        // batch would otherwise run to completion before control came back.
+        system.onCall = { vm.requestStopBatch() }
+
+        vm.onMultiAppAction(
+            MultiAppAction.Kill(listOf(userApp("com.a"), userApp("com.b"), userApp("com.c")))
+        )
+        advanceUntilIdle()
+
+        // com.a completed — stopping mid-command is what leaves a package half-written — and
+        // nothing after it was started.
+        assertEquals(listOf("forceStopApp:com.a"), system.calls)
+        assertTrue(vm.uiState.value.loggerState.isComplete)
+        assertFalse(vm.uiState.value.loggerState.isStopping)
+    }
+
+    @Test
+    fun `a batch that was not stopped runs every app`() = runTest {
+        val vm = viewModel()
+
+        vm.onMultiAppAction(
+            MultiAppAction.Kill(listOf(userApp("com.a"), userApp("com.b"), userApp("com.c")))
+        )
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf("forceStopApp:com.a", "forceStopApp:com.b", "forceStopApp:com.c"),
+            system.calls
+        )
+    }
+
+    @Test
+    fun `a one-app batch offers no stop`() = runTest {
+        val vm = viewModel()
+
+        vm.onMultiAppAction(MultiAppAction.Kill(listOf(userApp("com.a"))))
+        advanceUntilIdle()
+
+        // A single app has no halfway point: by the time the button could be pressed the work is
+        // done, so offering it would only ever be a lie.
+        assertFalse(vm.uiState.value.loggerState.canStop)
+    }
+
+    @Test
+    fun `a stop asked for after the run finished is ignored`() = runTest {
+        val vm = viewModel()
+
+        vm.onMultiAppAction(MultiAppAction.Kill(listOf(userApp("com.a"), userApp("com.b"))))
+        advanceUntilIdle()
+        vm.requestStopBatch()
+
+        // The completed dialog must not flip back into "stopping" — and, more importantly, the
+        // flag must not survive to cut the *next* batch short at its first app.
+        assertFalse(vm.uiState.value.loggerState.isStopping)
+
+        vm.onMultiAppAction(MultiAppAction.Kill(listOf(userApp("com.c"), userApp("com.d"))))
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf("forceStopApp:com.a", "forceStopApp:com.b", "forceStopApp:com.c", "forceStopApp:com.d"),
+            system.calls
+        )
     }
 }

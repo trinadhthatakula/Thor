@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,7 +25,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddCircle
@@ -42,6 +45,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.nonInteractiveScrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -383,10 +387,24 @@ fun FreezerScreen(
                     }
                 } else if (state.isGrid) {
                     val metrics = gridMetricsFor(state.gridDensity)
+                    val gridState = rememberLazyGridState()
+                    // `scrollIndicatorState` is nullable because `ScrollableState` defaults it to
+                    // null for states that drive no indicator; both lazy states override it with a
+                    // real one, so the null branch is unreachable today. Branching beats `!!` — a
+                    // future null then costs the scrollbar, not the whole list.
+                    val gridScrollbar = gridState.scrollIndicatorState?.let {
+                        Modifier.nonInteractiveScrollbar(
+                            state = it,
+                            orientation = Orientation.Vertical
+                        )
+                    } ?: Modifier
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = metrics.minCellSize),
+                        state = gridState,
                         contentPadding = PaddingValues(bottom = 100.dp, top = 8.dp),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .then(gridScrollbar)
                     ) {
                         items(
                             displayedApps,
@@ -408,9 +426,19 @@ fun FreezerScreen(
                         }
                     }
                 } else {
+                    val listState = rememberLazyListState()
+                    val listScrollbar = listState.scrollIndicatorState?.let {
+                        Modifier.nonInteractiveScrollbar(
+                            state = it,
+                            orientation = Orientation.Vertical
+                        )
+                    } ?: Modifier
                     LazyColumn(
+                        state = listState,
                         contentPadding = PaddingValues(bottom = 100.dp, top = 8.dp),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .then(listScrollbar)
                     ) {
                         items(
                             displayedApps,

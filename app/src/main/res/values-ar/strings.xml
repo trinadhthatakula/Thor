@@ -659,5 +659,26 @@
         <item quantity="many">%1$d تطبيقًا</item>
         <item quantity="other">%1$d تطبيقات</item>
     </plurals>
+    <string name="fix_store_desc">يعيد Thor تثبيت كل تطبيق حتى يسجّل Android متجر Play كالتطبيق الذي ثبّته. تبقى بياناتك وإعداداتك كما هي.</string>
+    <string name="fix_store_warning">قد يتوقف تحديث أي تطبيق لا يطابق توقيعه نسخة متجر Play. أزل تحديد ما تفضّل تركه دون تغيير.</string>
+    <plurals name="fix_store_confirm">
+        <item quantity="zero">إصلاح %1$d تطبيق</item>
+        <item quantity="one">إصلاح تطبيق واحد</item>
+        <item quantity="two">إصلاح تطبيقين</item>
+        <item quantity="few">إصلاح %1$d تطبيقات</item>
+        <item quantity="many">إصلاح %1$d تطبيقًا</item>
+        <item quantity="other">إصلاح %1$d تطبيق</item>
+    </plurals>
+    <string name="fix_store_installed_by">ثبّته %1$s</string>
+    <string name="fix_store_installer_none">لا يوجد مثبّت مسجّل</string>
+    <string name="select_all">تحديد الكل</string>
+    <string name="select_none">مسح</string>
+    <string name="log_stop">إيقاف</string>
+    <string name="log_stopping">سيتوقف بعد انتهاء التطبيق الحالي…</string>
+    <string name="log_stopped">تم الإيقاف — تمت معالجة %1$d من %2$d تطبيق.</string>
+    <string name="export_list">تصدير القائمة</string>
+    <string name="export_list_share">مشاركة القائمة</string>
+    <string name="export_list_empty">لا توجد تطبيقات في هذه القائمة للتصدير</string>
+    <string name="export_list_failed">تعذّر حفظ القائمة</string>
 
 </resources>

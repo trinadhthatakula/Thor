@@ -1,11 +1,11 @@
 # r/howtomen feedback — verified against the code
 
 **Filed:** 2026-08-07 (UTC) · **Source:** four comment threads on the r/howtomen Thor post
-**Status:** triaged, **band A is built** — eleven of its twelve rows shipped on `feat/band-a` the same
-day — and **band B's Freezer half followed on 2026-08-08**, taking the per-group-verbs and
-too-many-confirmations asks with it. Every claim below was checked against `origin/dev` before it was
-sized; the ones the implementation then falsified are corrected in place and labelled, not rewritten
-away.
+**Status:** triaged, **bands A and B are built** — eleven of band A's twelve rows shipped on
+`feat/band-a` the same day, and band B followed on 2026-08-08 across three PRs, closing the
+per-group-verbs, too-many-confirmations, Fix Store, scrollbar and export-the-list asks. Every claim
+below was checked against `origin/dev` before it was sized; the ones the implementation then
+falsified are corrected in place and labelled, not rewritten away.
 
 Twenty-three distinct asks from four users. This document is the evidence layer: what each person
 reported, what the code actually does, and which existing row it lands on. The *ranking* lives in
@@ -274,6 +274,51 @@ wrong or understated is recorded here.
 > nothing else — and `BLOCKED`'s missing confirm button *is* the refusal, so suppressing that dialog
 > would remove the safety gate rather than a prompt. A setting that took the ask literally would have
 > shipped as a way to turn off the tier system.
+
+---
+
+## What shipped, 2026-08-08 (`feat/band-b-applist`)
+
+Band B's Apps-tab half, and the last of this thread's asks. Same rule again — only what the
+*evidence above* got wrong or understated.
+
+| Ask from the table above | Shipped as |
+|---|---|
+| Fix Store is opaque, all-or-nothing and uncancellable | A picker listing every candidate with the installer Android currently records for it, all pre-ticked, the count in the confirm button; a stop that lands between apps; plainer confirm copy |
+| Quick scrollbar with sort-aware snapping | The position **indicator** on both long lists. The sort-aware scrubber is deferred |
+| Export the app list to CSV/MD | CSV of `displayedApps` verbatim, saved to the existing export target or shared straight out. MD dropped |
+
+> **Correction — "the target set is computed, never chosen" understates it: the set was also
+> *wrong*, in two places that had drifted apart.** The evidence above named the real complaint
+> correctly (a user had every sideloaded app's installer rewritten and was never shown what would be
+> touched) and stopped at the missing picker. Reading the predicate to build the picker showed it
+> excluded Google's package installer but not **AOSP's** `com.android.packageinstaller`, which
+> `AppListViewModel` already classifies as Sideloaded alongside it — so on a de-Googled ROM every
+> normally-sideloaded app was a Fix Store candidate. The Home card's badge computed the same rule
+> from its own copy, drifted further still. A picker over the wrong set would have made the wrong
+> set visible, not right.
+>
+> **"The label is the whole win" was wrong about #130, and the chart had a defect nobody had
+> filed.** The drill-down half was priced at most of 1–2 days on the roadmap; the filter type, the
+> chip row, the persisted selection and the Home→Apps switch all already existed, so it came to a
+> click handler. And the chart was not merely unlabelled — it derived its bucket key from the
+> installer id's last segment, uppercased, so `com.aurora.store` drew as "STORE" and **any two
+> installers sharing a last segment were summed into one bar**. That is a wrong number on a chart,
+> which nothing in this thread reported and nobody would have noticed.
+>
+> **The scrollbar's cost was in the half that did not ship.** The row was sized medium on the
+> strength of sort-aware snapping, and band A #7 deliberately kept four `SortBy` predicates alive as
+> its seam. The *indicator* needs none of them: it is two lines per screen. Those predicates are
+> still there and still unspent, and the scrubber that will use them carries a constraint worth
+> recording now — A-Z buckets must be folded out of the list's actual order, never out of a human
+> alphabet, because switching the NAME comparator to a locale `Collator` silently reorders every
+> existing user's app list in every locale.
+>
+> **"The SAF plumbing already shipped" was half true.** It was, for saving. Sharing a list needed a
+> port method whose contract is the *opposite* of the bundle export's: `ExportAppUseCase` deletes
+> its staged copy in a `finally`, which is exactly wrong for a file handed to another app as a
+> `content://` URI, since the receiver opens it long after the call returns. `stageText` wipes its
+> directory on **entry** instead — the one moment nobody can still be reading the last one.
 
 ---
 

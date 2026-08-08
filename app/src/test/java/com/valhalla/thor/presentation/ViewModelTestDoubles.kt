@@ -34,6 +34,7 @@ import com.valhalla.thor.domain.repository.BulkFreezeController
 import com.valhalla.thor.domain.repository.FreezeProfileRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
 import com.valhalla.thor.domain.repository.InstalledAppsPermissionGate
+import com.valhalla.thor.domain.repository.InstallerLabelResolver
 import com.valhalla.thor.domain.repository.PermissionRepository
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
@@ -51,6 +52,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import java.io.File
+import java.nio.file.Files
 
 // Hand-written fakes, matching the rest of the suite — no mocking library. The point of a
 // privileged-action fake is that the *call it was asked to make* is the assertion, so these record
@@ -84,6 +86,16 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
 
     private val failures = mutableMapOf<String, Throwable>()
 
+    /**
+     * Runs as each call is recorded, before its result is returned.
+     *
+     * The only way a test can act *between* two apps of a batch. Everything here answers without
+     * suspending and the view model's IO dispatcher is the test's own, so a batch started from a
+     * test body runs to completion before control returns — leaving no moment to, say, ask it to
+     * stop.
+     */
+    var onCall: ((String) -> Unit)? = null
+
     /** Make every call recorded as [call] fail with [error]. Keys are the [calls] format. */
     fun failWith(call: String, error: Throwable) {
         failures[call] = error
@@ -92,6 +104,7 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
     private fun record(call: String): Result<Unit> {
         calls += call
         trace?.add(call)
+        onCall?.invoke(call)
         return failures[call]?.let { Result.failure(it) } ?: Result.success(Unit)
     }
 
@@ -495,10 +508,9 @@ class FakePreferenceRepository(
     override suspend fun getInstallerArg(): String = ""
 }
 
-// The share pipeline is out of reach on a plain JVM: ShareAppUseCase finishes by turning the file
-// store's path into an android.net.Uri, and Uri.parse is one of the android.jar stubs that throws
-// in unit tests. These two exist so MainViewModel can be constructed; they fail loudly rather than
-// quietly, so a future share test reports the real reason instead of a confusing null.
+// Building a bundle is out of reach on a plain JVM — it copies an installed package's APKs off
+// disk — so this one fails loudly rather than quietly, and a share test that reaches it reports the
+// real reason instead of a confusing null.
 
 class FakeAppBundleBuilder : AppBundleBuilder {
     // No default values on the override — Kotlin takes them from the interface.
@@ -511,15 +523,65 @@ class FakeAppBundleBuilder : AppBundleBuilder {
         Result.failure(UnsupportedOperationException("bundle building needs a device"))
 }
 
+/**
+ * A file store backed by a real temp directory.
+ *
+ * Functional rather than throwing, because the text half of this port — [stageText] plus a write —
+ * needs no Android at all: it is a string, a file and a destination label. Faking it as unsupported
+ * would put the app-list export beyond unit test for no reason. The bundle half still never runs
+ * here; [FakeAppBundleBuilder] fails before a bundle can reach a write.
+ */
 class FakeAppBundleFileStore : AppBundleFileStore {
-    override suspend fun writeToDownloads(file: File, mime: String): String = unsupported()
-    override suspend fun writeToTree(file: File, treeUriStr: String, mime: String): String = unsupported()
-    override suspend fun isTreeWritable(treeUriStr: String?): Boolean = unsupported()
-    override suspend fun currentTargetLabel(savedTreeUriStr: String?): String = unsupported()
-    override fun shareUri(file: File): String = unsupported()
 
-    private fun unsupported(): Nothing =
-        throw UnsupportedOperationException("file store needs a device")
+    /** Created on first use, so a test that never exports leaves no temp directory behind. */
+    private val stagingDir: File by lazy {
+        Files.createTempDirectory("thor-fake-store").toFile().apply { deleteOnExit() }
+    }
+
+    /** File name → contents, as the destination folder would hold it after the run. */
+    val written = linkedMapOf<String, String>()
+
+    /** Where each write landed, in order, so a run that split across folders is visible. */
+    val targets = mutableListOf<String>()
+
+    /** MIME each write was labelled with, in the same order as [targets]. */
+    val mimes = mutableListOf<String>()
+
+    /** The one tree URI this store will accept; anything else reads as revoked. */
+    var writableTree: String? = null
+
+    /** Set to make the next destination write fail, as a full disk or a revoked tree would. */
+    var writeFailure: Exception? = null
+
+    override suspend fun writeToDownloads(file: File, mime: String): String =
+        record(file, mime, "Downloads/Thor")
+
+    override suspend fun writeToTree(file: File, treeUriStr: String, mime: String): String =
+        record(file, mime, "Tree:$treeUriStr")
+
+    override suspend fun isTreeWritable(treeUriStr: String?): Boolean =
+        treeUriStr != null && treeUriStr == writableTree
+
+    override suspend fun currentTargetLabel(savedTreeUriStr: String?): String =
+        if (isTreeWritable(savedTreeUriStr)) "Tree:$savedTreeUriStr" else "Downloads/Thor"
+
+    override fun shareUri(file: File): String = "content://fake/${file.name}"
+
+    override suspend fun stageText(fileName: String, content: String): File {
+        // Wipes on entry exactly as the real store does, so a test can assert that the previous
+        // export's staged copy is gone once a new one starts.
+        if (stagingDir.exists()) stagingDir.deleteRecursively()
+        stagingDir.mkdirs()
+        return File(stagingDir, fileName).apply { writeText(content) }
+    }
+
+    private fun record(file: File, mime: String, target: String): String {
+        writeFailure?.let { throw it }
+        written[file.name] = file.readText()
+        targets += target
+        mimes += mime
+        return target
+    }
 }
 
 // The four ports below exist so a view model can be built without a Context. Each concrete
@@ -712,6 +774,18 @@ class FakeContext(private val cache: File) : ContextWrapper(null) {
  * A user app. `freezeTierOf` short-circuits on `!isSystem -> NORMAL`, so this is never blocked
  * whatever else it carries — which is what makes it the control in every tier-gate test.
  */
+/**
+ * Names installers from a map the test supplies.
+ *
+ * An id that isn't in the map resolves to null, which is the real resolver's answer for a store
+ * that is no longer installed — so the default, empty, fake is the "nothing is installed" device.
+ */
+class FakeInstallerLabelResolver(
+    private val labels: Map<String, String> = emptyMap()
+) : InstallerLabelResolver {
+    override fun labelFor(packageName: String): String? = labels[packageName]
+}
+
 fun userApp(
     packageName: String,
     enabled: Boolean = true,
@@ -721,6 +795,9 @@ fun userApp(
     // The permission index keys its invalidation on `packageName@lastUpdateTime`, so this is how a
     // test says "the same app, updated" as opposed to "the same app".
     lastUpdateTime: Long = 0L,
+    // Null is a real device state, not a missing default: Android records no installer for an app
+    // that arrived by `adb install` or shipped with the image.
+    installerPackageName: String? = null,
 ): AppInfo = AppInfo(
     appName = appName,
     packageName = packageName,
@@ -728,7 +805,8 @@ fun userApp(
     enabled = enabled,
     isSuspended = isSuspended,
     isDebuggable = isDebuggable,
-    lastUpdateTime = lastUpdateTime
+    lastUpdateTime = lastUpdateTime,
+    installerPackageName = installerPackageName
 )
 
 /**

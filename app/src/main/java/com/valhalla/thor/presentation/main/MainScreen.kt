@@ -72,6 +72,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.MultiAppAction
+import com.valhalla.thor.domain.repository.InstallerLabelResolver
 import com.valhalla.thor.presentation.appList.AppInfoDetailsScreen
 import com.valhalla.thor.presentation.appList.AppListScreen
 import com.valhalla.thor.presentation.appList.AppListViewModel
@@ -391,14 +392,15 @@ fun MainScreen(
                         onNavigateToFreezer = {
                             activeDestination = AppDestinations.FREEZER
                         },
-                        onReinstallAll = {
-                            checkAndProcessAction(
-                                AppClickAction.ReinstallAll,
-                                { pendingSingleAction = it },
-                                { mainViewModel.onAppAction(it) }
-                            )
-                        },
+                        // No confirmation dialog: the action now scans, then opens a picker that
+                        // names every app it would touch. Confirming a list beats confirming a
+                        // warning about a list you were never shown.
+                        onReinstallAll = { mainViewModel.onAppAction(AppClickAction.ReinstallAll) },
                         onClearAllCache = { type -> mainViewModel.clearAllCache(type) },
+                        onFilterByInstaller = { type, installer ->
+                            appListViewModel.showAppsFromInstaller(type, installer)
+                            activeDestination = AppDestinations.APPS
+                        },
                         onNavigateToExtensionManager = {
                             homeBackStack.add(ThorRoute.ExtensionManager)
                         }
@@ -686,12 +688,6 @@ fun MainScreen(
                             R.drawable.danger
                         )
 
-                        AppClickAction.ReinstallAll -> Triple(
-                            stringResource(R.string.reinstall_all),
-                            stringResource(R.string.risk_warning_desc),
-                            R.drawable.apk_install
-                        )
-
                         else -> Triple(
                             stringResource(R.string.confirm),
                             stringResource(R.string.are_you_sure),
@@ -711,11 +707,29 @@ fun MainScreen(
                     )
                 }
 
+                state.fixStoreSelection?.let { selection ->
+                    val labelResolver: InstallerLabelResolver = koinInject()
+                    FixStoreSheet(
+                        selection = selection,
+                        labelFor = labelResolver::labelFor,
+                        onToggle = { mainViewModel.toggleFixStoreTarget(it) },
+                        onSetAll = { mainViewModel.setAllFixStoreTargets(it) },
+                        onConfirm = { mainViewModel.confirmFixStore() },
+                        onDismiss = { mainViewModel.dismissFixStorePicker() }
+                    )
+                }
+
                 if (state.loggerState.isVisible) {
                     TermLoggerDialog(
                         title = state.loggerState.title,
                         logs = state.loggerState.logs,
                         isOperationComplete = state.loggerState.isComplete,
+                        isStopping = state.loggerState.isStopping,
+                        onStop = if (state.loggerState.canStop) {
+                            { mainViewModel.requestStopBatch() }
+                        } else {
+                            null
+                        },
                         onDismiss = { mainViewModel.dismissLogger() }
                     )
                 }
@@ -773,8 +787,9 @@ private fun checkAndProcessAction(
     onExecute: (AppClickAction) -> Unit
 ) {
     when (action) {
-        is AppClickAction.Kill,
-        AppClickAction.ReinstallAll -> onRequireConfirmation(action)
+        // ReinstallAll used to be here too. It confirms through its own picker now, which names
+        // the apps instead of warning about them.
+        is AppClickAction.Kill -> onRequireConfirmation(action)
 
         else -> onExecute(action)
     }

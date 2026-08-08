@@ -1,7 +1,9 @@
 # Band B — design
 
 **Date:** 2026-08-08
-**Status:** approved, not yet implemented
+**Status:** approved and **built**, 2026-08-08 — PR #368 against `master`, then #369, #370 and the
+Apps-tab PR against `dev`. Every section's *as-built* delta is recorded in place; what the band still
+owes is §9's deferred list plus the release-notes line for band A #1.
 **Scope:** rows 13–22 of `docs/follow-ups/README.md`, plus the unnumbered docs row at the head of
 band B. Four pull requests: one against `master`, three against `dev`.
 
@@ -567,6 +569,33 @@ explicitly. If confirmed dead, the action should be hidden in that mode and
 `web/src/pages/features.mdx:111` corrected — a picker that lets a Dhizuku user tick 40 apps and then
 fails 40 times is worse than an absent button. Filed with a probe (§9), not guessed at.
 
+**As built — the two target-set bugs were one bug in two copies, and the cancel is broader than this
+row.** The predicate above was not the only place the rule lived: the Home card's Fix Store badge
+computed its own version, drifted further still, so a fix applied where the picker reads it would
+have left the badge counting a different set from the one the picker lists. Both now call one pure
+`fixStoreCandidates(apps, thorPackageName)`. Thor's own id is a **parameter**, not a constant, because
+the debug build's `applicationIdSuffix` means the installed package is not the one the source spells.
+The stop landed on `performLoggedMultiAction` rather than on Fix Store, so every logged batch gets it
+— suppressed for a single-app batch, where the work is over before the button could be pressed — and
+it is checked **between** apps and never during one, since interrupting a `pm install` half-writes a
+package. The curated installer names turned out to be a *third* copy of the same `when`, folded into
+D4's `installerLabel`.
+
+**And a fourth copy, found only in self-review of the PR that claimed to have ended the drift.**
+Clear All Cache, three methods down the same file, still filtered on `"com.valhalla.thor"` and
+`"com.android.vending"` as literals. The Play Store one was merely duplicated; the other was
+**wrong** — `applicationIdSuffix = ".debug"` makes the running package `com.valhalla.thor.debug`,
+so on every debug build the self-exclusion excluded nothing and Thor cleared its own cache mid-run.
+Two tests covered that filter and both were green, because the fixture spelled Thor's package with
+the same literal: **they proved the string, not the exclusion.** The replacement puts both ids in
+the list and asserts that exactly `BuildConfig.APPLICATION_ID` is spared, so the literal cannot
+return without going red.
+
+The durable form of this, and the reason it belongs in the spec rather than in a commit message:
+*a rule expressed as a literal in one place is expressed as a literal in every place.* Finding the
+second copy is what makes it feel handled; the count is never two. Sweep the class — grep the
+literal, not the function.
+
 ### D2. Row 19 — non-interactive scrollbar
 
 `Modifier.nonInteractiveScrollbar` on the Apps tab (`AppList.kt`) and the Freezer main list
@@ -591,6 +620,12 @@ not ride in on a scrollbar.
 ⚠️ `material3 1.5.0-alpha25` is an alpha. Confirm the opt-in annotation at implementation time and
 expect the signature to move between alphas.
 
+**As built — the alpha needed no opt-in, and hoisting the state is the only structural change.** Both
+screens now hoist their `LazyListState`/`LazyGridState` solely so the scrollbar can read it; each
+branch still *mints its own*, which is what keeps grid ↔ list switching resetting the scroll position
+the way it always did. A single hoisted state shared between the two would have carried a grid index
+into a list, and the reset is existing behaviour nobody asked to change.
+
 ### D3. Row 20 — export the app list
 
 - **What:** exactly what is on screen — `displayedApps` verbatim, honouring tab, search, filter and
@@ -609,6 +644,25 @@ expect the signature to move between alphas.
   `+`, `-`, `@`, TAB or CR, on top of RFC 4180 quoting. App labels are third-party-controlled
   (`AppInfoMapper.kt:60`) and a debloater's users are precisely the group installing unknown APKs.
   The corruption this introduces is rare and *visible*; the failure it prevents is invisible.
+
+**As built — save and share had to become two entry points, and the port grew a method whose
+contract inverts the bundle path's.** Written as one call returning both a location and a share URI,
+every Share would also have written a copy into Downloads: the user picked a messaging app, not a
+folder. `ExportAppListUseCase` therefore has `invoke` (save, through `openSession` + `writeStaged`)
+and `shareUri` (stage only), sharing the CSV generation and the staging between them. The staging
+itself is the subtler half: `ExportAppUseCase.exportInto` deletes its staged copy in a `finally`,
+which is *illegal* for a shared file, because the receiving app opens the `content://` URI long after
+the call returns. `AppBundleFileStore.stageText` wipes its directory **on entry** instead — the one
+moment nobody can still be reading the previous one — mirroring `AppBundleBuilderImpl`'s per-package
+wipe.
+
+`FakeAppBundleFileStore` was throwing-unsupported with a comment about `Uri.parse`; that constraint
+belongs to `ShareAppUseCase`, not to this port, whose `shareUri` returns a plain `String`. Faking the
+text half as unsupported put the whole feature beyond unit test for no reason. Bundle *building*
+still fails loudly — that half genuinely needs a device.
+
+**MD is dropped.** The row's title says CSV/MD; a Markdown table of three hundred apps is unreadable
+by a person and unparseable by a tool, so it would be a second format serving no second use.
 
 ### D4. Row 21 — #130, friendly installer label **and** the chart drill-down
 
@@ -633,6 +687,19 @@ full view.
 id. The card already announces "Copy Installer source" to TalkBack, so the id is one tap from the
 clipboard. Concatenating both re-triggers the monospace heuristic, doubles the width problem, and is
 what gets copied.
+
+**As built — the chart was not merely unlabelled; its buckets were wrong.** The key was
+`substringAfterLast(".").uppercase()` on the installer id, so `com.aurora.store` drew as "STORE" —
+and, worse than a bad label, **any two installers sharing a last segment were silently summed into
+one bar**. Buckets now key on the package id and the label is a separate lookup. The
+`InstallerLabelResolver` port closed a second gap the row never named: the Apps tab resolved an
+installer's name by looking the installer up in the list it happened to be showing, so Aurora Store's
+apps read "Aurora Store" on the User tab and `com.aurora.store` on the System tab. A new `Installers`
+object collects the package ids that were literals in five places, two of which knew AOSP ships its
+own package-installer id and one of which did not — which is D1's bug, found here.
+
+The drill-down also carries the chart's User/System selection across with the filter, so the tap
+cannot land on a list that hides its own target. Others stays inert as designed.
 
 ---
 

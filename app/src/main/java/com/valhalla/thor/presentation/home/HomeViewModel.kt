@@ -5,10 +5,13 @@ package com.valhalla.thor.presentation.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.manager.PrivilegeManager
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.AppListType
 import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.fixStoreCandidates
+import com.valhalla.thor.domain.repository.InstallerLabelResolver
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.usecase.GetInstalledAppsUseCase
 import com.valhalla.thor.util.Logger
@@ -33,7 +36,7 @@ data class HomeUiState(
     val frozenAppCount: Int = 0,
     val suspendedAppCount: Int = 0,
     val unknownInstallerCount: Int = 0,
-    val distributionData: Map<String, Int> = emptyMap(),
+    val distribution: List<InstallerSlice> = emptyList(),
     // Status
     val isRootAvailable: Boolean = false,
     val isShizukuAvailable: Boolean = false,
@@ -57,6 +60,7 @@ class HomeViewModel(
     private val getInstalledAppsUseCase: GetInstalledAppsUseCase,
     private val privilegeManager: PrivilegeManager,
     private val preferenceRepository: PreferenceRepository, // Injected
+    private val installerLabelResolver: InstallerLabelResolver,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -88,7 +92,7 @@ class HomeViewModel(
             frozenAppCount = stats.frozenCount,
             suspendedAppCount = stats.suspendedCount,
             unknownInstallerCount = stats.unknownCount,
-            distributionData = stats.distribution,
+            distribution = stats.distribution,
             showReinstallCard = prefs.showReinstallAllCard,
             showInstallerTile = prefs.showInstallerTile,
             showExtensionsTile = prefs.showExtensionsTile,
@@ -193,7 +197,7 @@ class HomeViewModel(
         val frozenCount: Int = 0,
         val suspendedCount: Int = 0,
         val unknownCount: Int = 0,
-        val distribution: Map<String, Int> = emptyMap()
+        val distribution: List<InstallerSlice> = emptyList()
     )
 
     /**
@@ -214,44 +218,16 @@ class HomeViewModel(
         val frozenCount = filteredApps.count { !it.enabled }
         val suspendedCount = filteredApps.count { it.isSuspended && it.enabled }
 
+        // The badge on the Fix Store card counts exactly what the picker will list — same predicate,
+        // one definition. It had its own copy before, which knew nothing of AOSP's package
+        // installer or of Thor itself, so the count and the list disagreed on a de-Googled ROM.
         val unknownCount = if (selectedType == AppListType.USER) {
-            userApps.count {
-                it.installerPackageName != "com.android.vending" &&
-                        it.installerPackageName != "com.google.android.packageinstaller"
-            }
+            fixStoreCandidates(userApps, BuildConfig.APPLICATION_ID).size
         } else 0
 
-        val labelCounts = filteredApps
-            .groupBy {
-                when (val pkg = it.installerPackageName) {
-                    "com.android.vending" -> "PLAY STORE"
-                    "org.fdroid.fdroid" -> "F-DROID"
-                    "com.google.android.packageinstaller" -> "SIDELOADED"
-                    null, "Unknown" -> "OTHERS"
-                    else -> pkg.substringAfterLast(".").uppercase()
-                }
-            }
-            .mapValues { it.value.size }
-
-        // --- TOP 3 / 4 GROUPING LOGIC ---
-        val sortedLabels = labelCounts.entries.sortedByDescending { it.value }
-
-        val distribution = if (sortedLabels.size <= 4) {
-            // If 4 or fewer categories, show them exactly as they are
-            labelCounts
-        } else {
-            // If more than 4, take top 3 and bunch the rest into "Others"
-            val top3Entries = sortedLabels.take(3)
-            val restEntries = sortedLabels.drop(3)
-
-            val result = mutableMapOf<String, Int>()
-            top3Entries.forEach { result[it.key] = it.value }
-
-            val othersCount = restEntries.sumOf { it.value }
-            // Add 'othersCount' to 'OTHERS' label (merge if 'OTHERS' was already in top 3)
-            result["OTHERS"] = result.getOrDefault("OTHERS", 0) + othersCount
-            result
-        }
+        // Bucketing and labelling both live in [installerDistribution] — a pure function taking the
+        // label lookup as a parameter, so the naming rules can be unit-tested without a device.
+        val distribution = installerDistribution(filteredApps, installerLabelResolver::labelFor)
 
         return DashboardStats(
             activeCount = activeCount,

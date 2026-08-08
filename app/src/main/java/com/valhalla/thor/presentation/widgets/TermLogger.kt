@@ -19,6 +19,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,6 +42,10 @@ fun TermLoggerDialog(
     title: UiText,
     logs: List<UiText>,
     isOperationComplete: Boolean,
+    /** A stop has been asked for; the app in flight is still finishing. */
+    isStopping: Boolean = false,
+    /** Null when the running operation has no coherent halfway point to stop at. */
+    onStop: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     Dialog(
@@ -148,6 +153,23 @@ fun TermLoggerDialog(
                             .fillMaxWidth()
                     ) {
                         Text(stringResource(R.string.close))
+                    }
+                } else if (onStop != null) {
+                    // Disabled once pressed rather than hidden: the run keeps logging for as long
+                    // as the current app takes, and a button that vanished would read as "the tap
+                    // did nothing".
+                    OutlinedButton(
+                        onClick = onStop,
+                        enabled = !isStopping,
+                        modifier = Modifier
+                            .padding(top = 16.dp)
+                            .fillMaxWidth()
+                    ) {
+                        Text(
+                            stringResource(
+                                if (isStopping) R.string.log_stopping else R.string.log_stop
+                            )
+                        )
                     }
                 }
             }

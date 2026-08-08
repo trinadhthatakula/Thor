@@ -61,7 +61,7 @@ second branch opens.
 | — | **#285** | Filter app list by permission | 2–3 | done | 2 | ✅ **Merged** (#294) — mostly UI as predicted, but the group table had to be shipped by Thor (see below); close the issue |
 | 1 | **#161** | `.apks` won't open from Samsung My Files | 2 | ~~**1–2 d**~~ **half done; the rest is one diagnostic** | 2 | 🟢 **half fixed 2026-08-07** — the typeless filter's host gate is gone; whether that is enough turns on what Samsung's provider reports |
 | 2 | **#51 ph.2** | App **data** backup / transfer | **4** | root-data **5–8 d** · P2P 12–20 d | 5 | 🟡 highest remaining impact, hard-gated on root — phase 3 (P2P) stays declined |
-| 3 | **#130** | InstallWithOptions attribution + drill-down | 2 | **1–2 d** (label ≈0.25 d) | 2 | 🟡 label = trivial; attribution unreliable |
+| — | **#130** | InstallWithOptions attribution + drill-down | 2 | ~~**1–2 d**~~ **label + drill-down done** | 2 | 🟢 **both achievable halves shipped 2026-08-08 (band B #21)** — the drill-down was not the bulk; attribution stays declined |
 | 4 | **#58** | **App lock** (root/Shizuku) | 3 | **8–15 d** | 5 | 🔴 differentiator but heavy build + ongoing tax |
 | 5 | **#178** | App **tagging** | 3 | **3–5 d** | 3 | 🔴 low-risk but ~~**zero demand**~~ — **demand is no longer zero** (2026-08-07). Defer on cost, or not at all |
 | 6 | **#209** | **VirusTotal** scanner | 2 | **4–7 d** | 3 | 🔴 network stack + user API key + privacy |
@@ -82,7 +82,7 @@ platform no longer tells you which group a permission belongs to, so Thor ships 
 
 **🟡 High-value bets (scope carefully):**
 - **#51 backup, phase 2** — phase 1 (bundles only — `.apk`, `.apks` or `.xapk`, whichever the app's shape and the picker call for; **no app data**) shipped with `.xapk`, in the same session, exactly as this document proposed. What is left is the root-only data tar, a separate 5–8 d effort behind an explicit "requires root" state; bespoke phone-to-phone transport stays skipped (the exported file already rides the share sheet). The README's "BackUp App Data" promise is only half-kept until phase 2 lands.
-- **#130** — do the *achievable slice* (the friendly installer label) and explicitly decline the parts Android won't allow.
+- ~~**#130** — do the *achievable slice* (the friendly installer label) and explicitly decline the parts Android won't allow.~~ **Done 2026-08-08 (band B #21)**, and the achievable slice was bigger than "the label": the drill-down went with it, because everything it needed already existed. Attribution remains declined.
 
 **✅ Closed out since the last review:** #57 (shipped) and #210 (achievable slice shipped as the Freeze|Suspend mode). Neither issue has been closed on GitHub yet.
 
@@ -166,10 +166,13 @@ platform no longer tells you which group a permission belongs to, so Thor ships 
 - **Declined, as planned:** there is no public API to detect removal-from-recents (it needs Accessibility or UsageStats polling, at a battery and Play-policy cost) and no single-tap launcher intercept. The accessibility-based auto-refreeze stays out.
 - **Open sub-item:** cross-privilege suspend ownership — an app suspended under root cannot be unsuspended under Shizuku and vice versa, because Android only lets the recorded suspending package lift a suspension. See `docs/follow-ups/cross-privilege-suspend-ownership.md`. That is the one thing standing between "shipped" and "closed".
 
-### #130 — InstallWithOptions attribution + apps-per-installer · 🟡 · 1–2 d · impact 2
+### #130 — InstallWithOptions attribution + apps-per-installer · 🟡 · ~~1–2 d~~ · impact 2
 - **What:** (1) attribute installs from zacharee/InstallWithOptions; (2) tap an installer name → list apps it installed.
 - **Reuses:** attribution + source-filtering already exist (`getInstallSourceInfo`, `FilterType.Source`, the distribution chart). Mostly a friendly-label add + tap-to-navigate wiring.
-- **Caveat:** shell-based installs often record `com.android.shell`/null, so part (1) is inherently unreliable regardless of effort. The label is a ~0.25 d quick win; the drill-down nav is the bulk.
+- **Caveat:** shell-based installs often record `com.android.shell`/null, so part (1) is inherently unreliable regardless of effort. The label is a ~0.25 d quick win; ~~the drill-down nav is the bulk~~.
+- ✅ **Part 2 shipped as band B #21, 2026-08-08, and it was not the bulk.** Everything the drill-down needed existed — `FilterType.Source`, the chip row, the persisted selection, the Home→Apps switch — so it came to a click handler on the legend row, carrying the chart's User/System selection across so the tap cannot land on a list that hides its own target. The friendly label shipped with it, resolving **curated → `PackageManager` label → raw package id**; the curated tier stays at exactly the entries that already existed, because letting the package manager answer everything else is what makes Aurora, Obtainium and the next one work with no code change.
+- ⚠️ **The row missed a live defect in the thing it was about.** `AppDistributionChart` keyed its buckets on `substringAfterLast(".").uppercase()`, so `com.aurora.store` was drawn as "STORE" and **any two installers sharing a last segment were silently added into one bar** — a wrong number, not just a bad label. Buckets now key on the package id.
+- **Part 1 (attribution) stays declined**, on the caveat above, unchanged. Evidence: `docs/follow-ups/reddit-howtomen-feedback.md`.
 
 ### #58 — App lock (root/Shizuku) · 🔴 · 8–15 d · impact 3
 - **What:** lock apps behind biometric/credential auth, battery-friendly (event-driven).

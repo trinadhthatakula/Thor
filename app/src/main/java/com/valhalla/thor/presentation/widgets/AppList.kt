@@ -13,6 +13,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -36,7 +37,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -52,7 +55,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.nonInteractiveScrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -130,6 +135,10 @@ fun AppList(
     onAppInfoSelected: (AppInfo) -> Unit,
     onMultiAppAction: (MultiAppAction) -> Unit = {},
     onToggleView: () -> Unit = {},
+    // Both act on the list as displayed, so they live behind the same sheet that shapes it. No-op
+    // defaults keep the preview and the widget's other callers from having to care.
+    onExportList: () -> Unit = {},
+    onShareList: () -> Unit = {},
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
@@ -288,7 +297,17 @@ fun AppList(
             onSortByChanged = onSortByChanged,
             onSortOrderChanged = onSortOrderSelected,
             onToggleView = onToggleView,
-            onListTypeChanged = onListTypeChanged
+            onListTypeChanged = onListTypeChanged,
+            // Closed first, so the toast the export produces isn't hidden behind the sheet that
+            // asked for it, and so a second tap can't start a second write over the first.
+            onExportList = {
+                showFilterSheet = false
+                onExportList()
+            },
+            onShareList = {
+                showFilterSheet = false
+                onShareList()
+            }
         )
     }
 }
@@ -547,11 +566,23 @@ private fun AppListContent(
     // Shared padding for list/grid
     val padding = PaddingValues(bottom = 100.dp, top = 8.dp)
 
+    // Hoisted only so the scrollbar can read it. Both containers created their own identical state
+    // before, and both branches still mint a fresh one, so switching grid <-> list resets the scroll
+    // position exactly as it always did.
+    //
+    // `scrollIndicatorState` is nullable because `ScrollableState` defaults it to null for states
+    // that drive no indicator; both lazy states override it with a real one, so the null branch is
+    // unreachable today. Branching beats `!!` — a future null then costs the scrollbar, not the list.
     if (isGrid) {
         val metrics = gridMetricsFor(gridDensity)
+        val gridState = rememberLazyGridState()
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = metrics.minCellSize),
-            contentPadding = padding
+            state = gridState,
+            contentPadding = padding,
+            modifier = gridState.scrollIndicatorState?.let {
+                Modifier.nonInteractiveScrollbar(state = it, orientation = Orientation.Vertical)
+            } ?: Modifier
         ) {
             items(list, key = { it.packageName }) { app ->
                 AppItemGrid(
@@ -566,7 +597,14 @@ private fun AppListContent(
             }
         }
     } else {
-        LazyColumn(contentPadding = padding) {
+        val listState = rememberLazyListState()
+        LazyColumn(
+            state = listState,
+            contentPadding = padding,
+            modifier = listState.scrollIndicatorState?.let {
+                Modifier.nonInteractiveScrollbar(state = it, orientation = Orientation.Vertical)
+            } ?: Modifier
+        ) {
             items(list, key = { it.packageName }) { app ->
                 AppItemList(
                     app = app,
@@ -1070,7 +1108,9 @@ private fun AppFilterSheet(
     onSortByChanged: (SortBy) -> Unit,
     onSortOrderChanged: (SortOrder) -> Unit,
     onToggleView: () -> Unit,
-    onListTypeChanged: (AppListType) -> Unit
+    onListTypeChanged: (AppListType) -> Unit,
+    onExportList: () -> Unit,
+    onShareList: () -> Unit
 ) {
     var activeTab by remember { mutableStateOf(SheetTab.FILTERS) }
 
@@ -1251,6 +1291,44 @@ private fun AppFilterSheet(
                 }
             }
             Spacer(Modifier.height(24.dp))
+
+            // Export sits with the controls that decide what a list *is*, not in the app-bar
+            // overflow: what gets written is whatever the tab, search, filter and sort above have
+            // narrowed the list down to, and putting the two next to each other is the only way
+            // that reads as a promise rather than a surprise.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(onClick = onExportList, modifier = Modifier.weight(1f)) {
+                    Icon(
+                        painterResource(R.drawable.list_alt),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        stringResource(R.string.export_list),
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                }
+                OutlinedButton(onClick = onShareList, modifier = Modifier.weight(1f)) {
+                    Icon(
+                        painterResource(R.drawable.share),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        stringResource(R.string.export_list_share),
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
             Button(
                 onClick = onDismiss,
                 modifier = Modifier.fillMaxWidth()
