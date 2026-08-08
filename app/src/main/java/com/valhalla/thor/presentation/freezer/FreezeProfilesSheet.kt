@@ -27,6 +27,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,10 +49,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.valhalla.thor.R
+import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BulkOp
 import com.valhalla.thor.domain.model.BulkRequest
 import com.valhalla.thor.domain.model.BulkScope
 import com.valhalla.thor.domain.model.FreezeProfile
+import com.valhalla.thor.domain.model.FreezerMode
+import com.valhalla.thor.domain.model.killableMembers
 
 /**
  * The freeze-profiles list: named sets of apps the user can freeze or unfreeze in one tap.
@@ -59,14 +63,22 @@ import com.valhalla.thor.domain.model.FreezeProfile
  * Profiles are deliberately *not* a view onto the freezer watchlist — see [FreezeProfile] — so
  * this sheet never edits watchlist membership. Running one goes through `BulkFreezeRunner`,
  * which is where the tier gate is applied to a list; nothing here freezes anything itself.
+ *
+ * Four verbs, chosen per tap and never stored on the profile: freeze and unfreeze on the row, and
+ * suspend and force-stop in the overflow. [onRun]'s `mode` is what separates freeze from suspend —
+ * null means "however this user has said they want apps frozen", and only the explicit Suspend
+ * names one. [onKill] does not go through the runner at all; it hands the resolved app list to the
+ * host, which routes it into the same confirm-and-log flow every other force-stop uses.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FreezeProfilesSheet(
     profiles: List<FreezeProfile>,
+    allApps: List<AppInfo>,
     runningRequests: List<BulkRequest>,
     hasPrivilege: Boolean,
-    onRun: (profileId: Long, op: BulkOp) -> Unit,
+    onRun: (profileId: Long, op: BulkOp, mode: FreezerMode?) -> Unit,
+    onKill: (List<AppInfo>) -> Unit,
     onCreate: () -> Unit,
     onEdit: (FreezeProfile) -> Unit,
     onDelete: (profileId: Long) -> Unit,
@@ -141,13 +153,15 @@ fun FreezeProfilesSheet(
                 items(profiles, key = { it.id }) { profile ->
                     FreezeProfileRow(
                         profile = profile,
+                        allApps = allApps,
                         // Row-specific, not a global "something is running": two profiles are
                         // serialized rather than coalesced, so tapping the second must not paint
                         // the first one's spinner onto it. Both rows do spin while both are in
                         // flight, which is the truth — the second is queued, not ignored.
                         isRunning = runningRequests.any { it.scope == BulkScope.Profile(profile.id) },
                         hasPrivilege = hasPrivilege,
-                        onRun = { op -> onRun(profile.id, op) },
+                        onRun = { op, mode -> onRun(profile.id, op, mode) },
+                        onKill = onKill,
                         onEdit = { onEdit(profile) },
                         onDelete = { pendingDelete = profile }
                     )
@@ -192,13 +206,22 @@ fun FreezeProfilesSheet(
 @Composable
 private fun FreezeProfileRow(
     profile: FreezeProfile,
+    allApps: List<AppInfo>,
     isRunning: Boolean,
     hasPrivilege: Boolean,
-    onRun: (BulkOp) -> Unit,
+    onRun: (BulkOp, FreezerMode?) -> Unit,
+    onKill: (List<AppInfo>) -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+
+    // Resolved here rather than in the host so the menu item can be disabled on the real answer.
+    // "Force stop 0 apps" over a profile whose members are all frozen or uninstalled is a
+    // confirmation dialog for nothing, and the user has no way to see why from the row.
+    val killable = remember(profile.packageNames, allApps) {
+        killableMembers(profile.packageNames, allApps)
+    }
 
     Card(
         shape = RoundedCornerShape(24.dp),
@@ -243,7 +266,9 @@ private fun FreezeProfileRow(
                 }
             } else {
                 IconButton(
-                    onClick = { onRun(BulkOp.FREEZE) },
+                    // No mode: the button says "freeze", and what freezing means is the user's
+                    // standing choice. Only the explicit Suspend below overrides it.
+                    onClick = { onRun(BulkOp.FREEZE, null) },
                     enabled = hasPrivilege && profile.size > 0
                 ) {
                     Icon(
@@ -253,7 +278,7 @@ private fun FreezeProfileRow(
                     )
                 }
                 IconButton(
-                    onClick = { onRun(BulkOp.UNFREEZE) },
+                    onClick = { onRun(BulkOp.UNFREEZE, null) },
                     enabled = hasPrivilege && profile.size > 0
                 ) {
                     Icon(
@@ -272,6 +297,30 @@ private fun FreezeProfileRow(
                     )
                 }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    // The other two verbs the row was asked for. In the menu rather than on the
+                    // row because they are the rarer half of the pair each sits beside — a fifth
+                    // and sixth icon button would push the profile name into an ellipsis.
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.action_suspend)) },
+                        enabled = hasPrivilege && profile.size > 0 && !isRunning,
+                        onClick = {
+                            menuOpen = false
+                            onRun(BulkOp.FREEZE, FreezerMode.SUSPEND)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.action_force_stop)) },
+                        // Not gated on isRunning: a force-stop is orthogonal to a freeze rather
+                        // than a competing direction, so it neither coalesces with one nor
+                        // cancels it. Gated on the resolved list instead, which is what makes
+                        // "there is nothing running to stop" visible before the tap.
+                        enabled = hasPrivilege && killable.isNotEmpty(),
+                        onClick = {
+                            menuOpen = false
+                            onKill(killable)
+                        }
+                    )
+                    HorizontalDivider()
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.action_edit)) },
                         onClick = {

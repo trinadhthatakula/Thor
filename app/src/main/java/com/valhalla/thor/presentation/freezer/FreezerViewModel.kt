@@ -440,11 +440,16 @@ class FreezerViewModel(
      * The awaited result is reported as a toast. A profile run deliberately does not park its
      * result in the tile subtitle (see the runner), so this is the only surface that reports it
      * besides the notification, which the user may not have permitted.
+     *
+     * [mode] is null for the row's Freeze button, which means the user's standing choice, and
+     * [FreezerMode.SUSPEND] for the menu's explicit Suspend. It is part of the request rather than
+     * something resolved here because it is part of the run's *identity*: the runner coalesces on
+     * request equality, and a suspend of a profile is not a repeat of a disable of the same one.
      */
-    fun runProfile(profileId: Long, op: BulkOp) {
+    fun runProfile(profileId: Long, op: BulkOp, mode: FreezerMode? = null) {
         viewModelScope.launch {
             val outcome = bulkFreeze
-                .launch(BulkRequest(op, BulkScope.Profile(profileId)))
+                .launch(BulkRequest(op, BulkScope.Profile(profileId), mode))
                 .await()
             emitToast(
                 when (outcome) {

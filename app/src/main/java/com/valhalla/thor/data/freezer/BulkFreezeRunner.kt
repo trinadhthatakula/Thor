@@ -485,8 +485,11 @@ class BulkFreezeRunner(
         if (targets.isEmpty()) return null
 
         // Resolved once per run, not per package: the mode cannot change mid-batch, and the
-        // op × mode decision is a pure function so it can be unit-tested away from binders.
-        val action = bulkActionFor(op, preferenceRepository.userPreferences.first().freezerMode)
+        // op × mode decision is a pure function so it can be unit-tested away from binders. The
+        // global mode is still read — it is one emission off an already-collected DataStore flow —
+        // but it is only *consulted* when the request has no opinion: a profile row's explicit
+        // Suspend names the verb, and must not be re-decided by a global setting it overrides.
+        val action = bulkActionFor(request, preferenceRepository.userPreferences.first().freezerMode)
 
         val succeeded = AtomicInteger(0)
         val failed = AtomicInteger(0)

@@ -214,4 +214,73 @@ class FreezePolicyTest {
             )
         )
     }
+
+    // ── killableMembers: the same question for the one profile verb outside the runner ──
+
+    private fun app(
+        packageName: String,
+        enabled: Boolean = true,
+        isSuspended: Boolean = false,
+        isInstalled: Boolean = true,
+    ) = AppInfo(
+        packageName = packageName,
+        enabled = enabled,
+        isSuspended = isSuspended,
+        isInstalled = isInstalled
+    )
+
+    @Test
+    fun `a force-stop targets only the members that could be running`() {
+        val installed = listOf(
+            app("com.active.one"),
+            app("com.disabled", enabled = false),
+            app("com.suspended", isSuspended = true),
+            app("com.active.two"),
+        )
+        // "com.never.installed" is in the profile and in no snapshot row at all — the shape a
+        // profile takes on after its app is uninstalled, or after the profile came off a backup.
+        val members = listOf(
+            "com.active.one", "com.disabled", "com.suspended", "com.never.installed",
+            "com.active.two"
+        )
+
+        assertEquals(
+            listOf("com.active.one", "com.active.two"),
+            killableMembers(members, installed).map { it.packageName }
+        )
+    }
+
+    @Test
+    fun `the profile's own order survives, because the count sits under a confirmation`() {
+        val installed = listOf(app("c"), app("b"), app("a"))
+        assertEquals(
+            listOf("a", "b", "c"),
+            killableMembers(listOf("a", "b", "c"), installed).map { it.packageName }
+        )
+    }
+
+    @Test
+    fun `a member uninstalled for this user is dropped even while it reads as enabled`() {
+        // Belt and braces, and the test says so: AppInfoMapper folds FLAG_INSTALLED into `enabled`,
+        // so this row cannot be produced today. It pins the second clause against a mapper that
+        // stops folding — the alternative is force-stopping a package that is not there, silently.
+        assertEquals(
+            emptyList<String>(),
+            killableMembers(listOf("a"), listOf(app("a", isInstalled = false)))
+                .map { it.packageName }
+        )
+    }
+
+    @Test
+    fun `a profile whose members are all frozen offers nothing to stop`() {
+        // What the disabled menu item is derived from. "Force stop 0 apps" behind a confirmation
+        // dialog is the outcome this makes visible before the tap instead of after it.
+        val installed = listOf(app("a", enabled = false), app("b", isSuspended = true))
+        assertEquals(emptyList<AppInfo>(), killableMembers(listOf("a", "b"), installed))
+    }
+
+    @Test
+    fun `an empty profile is answered without touching the snapshot`() {
+        assertEquals(emptyList<AppInfo>(), killableMembers(emptyList(), listOf(app("a"))))
+    }
 }

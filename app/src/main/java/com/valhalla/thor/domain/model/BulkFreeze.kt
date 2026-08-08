@@ -23,13 +23,24 @@ sealed interface BulkScope {
 }
 
 /**
- * A bulk run's full identity: what to do, and to which list.
+ * A bulk run's full identity: what to do, to which list, and — when the caller insists — how.
  *
- * Equality is the coalescing key — two requests are the same run only if both halves match.
+ * Equality is the coalescing key: two requests are the same run only if every part matches.
+ *
+ * [mode] is null for every caller that has no opinion, which is nearly all of them — the tile, both
+ * launcher shortcuts and the Freezer's own Freeze-all all mean "freeze the way this user has said
+ * they want apps frozen", and get the [FreezerMode] out of preferences at run time. A profile row's
+ * explicit *Suspend* is the exception: it names the verb, so it carries it.
+ *
+ * Widening the key is deliberate, and is the opposite call to the one made about where a run came
+ * from (which is not part of a run's identity and must never be added here). A suspend-run and a
+ * disable-run of the same profile are genuinely different operations over the same packages, and
+ * coalescing the second onto the first would silently do the wrong one.
  */
 data class BulkRequest(
     val op: BulkOp,
     val scope: BulkScope = BulkScope.Watchlist,
+    val mode: FreezerMode? = null,
 )
 
 /**
@@ -53,6 +64,16 @@ fun bulkActionFor(op: BulkOp, mode: FreezerMode): BulkAction = when {
     mode == FreezerMode.SUSPEND -> BulkAction.SUSPEND
     else -> BulkAction.DISABLE
 }
+
+/**
+ * The same rule, with [BulkRequest.mode] deciding whether [globalMode] is consulted at all.
+ *
+ * A separate function rather than the resolution being inlined at the runner's one call site,
+ * because that call site sits behind four collaborators no JVM test can build. This is the whole
+ * of what the override means, and it is assertable.
+ */
+fun bulkActionFor(request: BulkRequest, globalMode: FreezerMode): BulkAction =
+    bulkActionFor(request.op, request.mode ?: globalMode)
 
 /**
  * Outcome of a bulk run.
