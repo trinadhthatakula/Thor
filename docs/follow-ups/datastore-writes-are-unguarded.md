@@ -40,6 +40,24 @@
 >   failure the interface says must be heard in its own words. It now names which way the lock is
 >   actually facing (`biometric_lock_not_saved_still_off` / `..._still_on`).
 >
+> Three more came from CodeRabbit on the open PR, all in the copy rather than the code:
+>
+> - **C1 and C1R described the mechanism, not the outcome.** Both said a freeze is
+>   `pm disable --user` and nothing else. The three gateways each try *both* a shell disable and
+>   `IPackageManager.setApplicationEnabledSetting` by reflection, and they disagree on the order —
+>   Shizuku reflects first, Root shells out first. The rules now assert the behaviour that is
+>   actually invariant: a freeze disables in place and never removes.
+> - **The first rewrite of the status-chip sentence was wrong in the other direction.** "Nothing
+>   Thor does now puts an app in that state" ignores Uninstall and Debloat, which still run
+>   `pm uninstall --user N`. Only the *freeze* rung stopped reaching it.
+> - **C16 missed the passive voice and a bare `not` exempted true claims.** "A system app a freeze
+>   removed for your Android user" — the exact sentence this PR had to fix — matched no pattern,
+>   and any unrelated `not` in the 60-character window switched the rule off for that sentence. A
+>   fifth pattern covers the passive, and the negation half of `unless` now has to attach to the
+>   removal itself. Its first draft was 120 chars wide and caught a true two-clause sentence on the
+>   download page, which is why it is `[^.;:]{0,40}` — the claim is the removal being predicated of
+>   the freeze, and that puts the two words next to each other.
+>
 > `SettingsViewModel` is still not JVM-testable — `LocaleManager` is a concrete class taking a
 > `Context` — so both of its branches are covered by reading plus a repository-level assertion that
 > neither reporting setter raises the generic notice. That seam is the one piece of this left undone.

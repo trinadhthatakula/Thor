@@ -132,9 +132,12 @@ renumber breaks those silently with nothing to catch it.
   (`web/src/content/claims.mjs`, rule `C1`) cannot catch this: it is a **forbid** list pointed at the
   *older* wrong claim that freezing loses your data, so copy that is merely out of date and
   reassuring passes it clean. New row in band B and in Tier 2. ⚠️ **`master` is the branch that
-  publishes**, so this is due when band A gets there, not later. **Since resolved**: the copy shipped
-  with band B #13 and rule **C16** now guards it; the release-notes line is the piece still owed on
-  the `master` merge.
+  publishes**, so the *copy* was due when band A got there, not later. **Since resolved**: the copy
+  shipped with band B #13 and rule **C16** now guards it. The release-notes retraction is the piece
+  still owed, and it is owed at the **next release**, in that release's own `github.md` — not as an
+  edit to v1.94.0's, whose line was true when it shipped and is superseded rather than erroneous.
+  `gh release view` reads the published body, which is a snapshot taken at run time, so editing the
+  repo file corrects nothing a reader sees.
 * **The roadmap was brought in line, in four places, by strikethrough rather than overwrite.**
   [`../feature-request-roadmap.md`](../feature-request-roadmap.md) had not been re-read since
   2026-07-30. It still deferred #178 on *"zero demand"* — wording this index had already replaced,

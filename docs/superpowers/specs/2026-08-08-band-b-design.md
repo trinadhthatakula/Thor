@@ -250,8 +250,11 @@ than against the previous copy:
   there is nothing left in it to match on.
 - *`features.mdx` still attributed the removed-for-your-user state to "a freeze"* 180 lines after the
   callout saying that substitution was withdrawn. The chip behaviour is real and stays — `AppInfo`
-  folds `FLAG_INSTALLED` into `enabled` — but a device only reaches that state via an older build
-  now, so the sentence names the cause instead of the mechanism.
+  folds `FLAG_INSTALLED` into `enabled` — and so is the state: **Uninstall and Debloat still put a
+  system app there**, through `pm uninstall --user N`, which is what those two are for. The first
+  rewrite of this sentence said "nothing Thor does now puts an app in that state", which swapped one
+  wrong sentence for another. Only the *freeze* rung stopped reaching it; the corrected copy names
+  the two paths that still do, and keeps the older-build device as a second reason the chip stays.
 
 ---
 
@@ -259,8 +262,11 @@ than against the previous copy:
 
 ### B1. `guardedWrite`
 
-A private helper beside the existing `guardedRead`, wrapping every one of the 29 `.edit { }` calls
-across both stores. Returns whether the write landed.
+A module-internal helper beside the existing `guardedRead`, wrapping every one of the 29 `.edit { }`
+calls across both stores. Returns whether the write landed. `internal`, not `private`, for the same
+reason `guardedRead` is — both are file-scoped extension functions, on `DataStore<Preferences>` and
+`Flow<Preferences>` respectively, and the test that drives the real helper against a throwing store
+lives in the same module.
 
 **Not a `CoroutineExceptionHandler`.** One line of diff against 29, but it silences every unrelated
 exception in `viewModelScope` for the life of the app, and it cannot tell an individual caller

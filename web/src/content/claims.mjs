@@ -61,9 +61,15 @@ export const claimRules = [
       'INVERTED by PR #314, then settled by band A row 1. Freezing a system app used to mean ' +
       'uninstalling it for the user with no -k, so the app came back in factory state — the spec ' +
       'was written against that behaviour. It is no longer true in any privilege mode: a freeze ' +
-      'is `pm disable --user` and nothing else, and the removal rung is now unreachable from a ' +
-      'freeze on every branch of the gate. A refused disable is reported as a failure and the app ' +
-      'is left installed with its data untouched.\n\n' +
+      'now disables the package in place and never removes it, and the removal rung is ' +
+      'unreachable from a freeze on every branch of the gate. A refused disable is reported as a ' +
+      'failure and the app is left installed with its data untouched.\n\n' +
+      'That is a claim about behaviour, not about one command. The three gateways each try both a ' +
+      'shell disable (`pm disable`, or `pm disable-user --user N`) and ' +
+      '`IPackageManager.setApplicationEnabledSetting` by reflection, and they disagree about ' +
+      'which one to try first — Shizuku reflects before it shells out, Root shells out before it ' +
+      'reflects. Copy that names a single universal command is wrong about the mechanism even ' +
+      'when it is right about the outcome, so this rule is scoped to the outcome.\n\n' +
       'The narrower history is worth keeping, because it is what the rest of this rule is scoped ' +
       'against. Root reached that conclusion first, on the argument that its refusals ' +
       '(`ProtectedPackages`) are not the shell-uid guard the fallback was built for. Shizuku and ' +
@@ -104,9 +110,11 @@ export const claimRules = [
       'page, the correction has to be too.',
     source:
       'RootSystemGateway.freezeSystemApp, ShizukuSystemGateway.freezeSystemApp and ' +
-      'DhizukuSystemGateway.freezeSystemApp (one chain since PR #332: `pm disable --user`, and ' +
-      'nothing else since band A row 1 closed the removal rung — so the data claim is now true by ' +
-      'construction rather than by the -k flag it used to rest on)',
+      'DhizukuSystemGateway.freezeSystemApp (one *outcome* since band A row 1 closed the removal ' +
+      'rung — each disables the package in place, by shell and by ' +
+      '`IPackageManager.setApplicationEnabledSetting`, in an order that differs per gateway, and ' +
+      'none of them can remove it — so the data claim is now true by construction rather than by ' +
+      'the -k flag it used to rest on)',
     allow: [],
   },
 
@@ -502,6 +510,21 @@ export const claimRules = [
       // sentence is true wherever it appears. What is forbidden is reaching it
       // from a freeze.
       /\b(?:freez\w*|frozen|unfreez\w*)\b[\s\S]{0,120}?\b(?:remove|removes|uninstall|uninstalls)\s+(?:it|the app|the package|them)\b[\s\S]{0,50}?\bfor\s+(?:your|the)\s+(?:Android\s+)?user\b/i,
+      // The same claim in the passive or the past, which is the shape that
+      // survived review on the status-chips paragraph of features.mdx: "a system
+      // app a freeze removed for your Android user". No fallback verb, no
+      // subject, no object pronoun, and the removal word is not one of the finite
+      // forms above — so pattern 2 walked straight past it. Kept separate rather
+      // than folded in, because dropping the object pronoun is what makes it
+      // loose enough to need the freezing word doing the anchoring on its own.
+      //
+      // Hence the much shorter window than pattern 2's, and `[^.;:]` rather than
+      // `[\s\S]`: what makes this the claim is the removal being predicated of
+      // the freeze, which puts the two words next to each other. At 120 chars of
+      // anything it also matched the download page's "already uninstalled with
+      // apps still frozen: … the app list, which shows packages uninstalled for
+      // your user too" — two true clauses, one sentence, no claim between them.
+      /\b(?:freez\w*|frozen|unfreez\w*)\b[^.;:]{0,40}?\b(?:removed|uninstalled|taken\s+away|took\s+away)\b[^.;:]{0,30}?\b(?:for|from)\s+(?:your|the)\s+(?:Android\s+)?user\b/i,
       // The command itself, presented as something that runs. The `unless`
       // window is what lets a page still name it while saying it was withdrawn.
       /\bpm\s+uninstall\s+-k\b/i,
@@ -513,11 +536,19 @@ export const claimRules = [
       // actually does, and that sentence has to remain writable.
       /\bswitch(?:es|ed|ing)?\s+(?:it|the app|the package)\s+off\b[\s\S]{0,60}?\bor\b[\s\S]{0,40}?\b(?:remov\w+|uninstall\w+)\s+(?:it|the app|the package|them)\b[\s\S]{0,40}?\bfor\s+(?:your|the)\s+(?:Android\s+)?user\b/i,
     ],
-    // NEGATED plus the words that mark this specific retraction. The window is
-    // the match and the 60 characters before it, so "earlier builds substituted
+    // The words that mark this specific retraction. The window is the match and
+    // the 60 characters before it, so "earlier builds substituted
     // `pm uninstall -k`" is exempt and "Thor runs `pm uninstall -k`" is not.
+    //
+    // Two alternations, not one list, because a bare `not` was letting a false
+    // claim through: "Where the setting is not exposed, a Shizuku freeze removes
+    // it for your user" put an unrelated negation inside the window and the whole
+    // sentence went unread. A retraction marker ("earlier builds", "withdrawn",
+    // "instead of") is specific enough to stand alone — nothing writes those next
+    // to a removal by accident. A negation is not, so it has to attach to the
+    // removal itself, within three words and without crossing punctuation.
     unless:
-      /\b(?:no longer|not|never|used to|earlier builds?|older builds?|previously|withdrawn|withdrew|removed the fallback|does not|doesn'?t|cannot|can'?t|won'?t|rather than|instead of|substituted)\b/i,
+      /\b(?:no longer|never|used to|earlier builds?|older builds?|previously|withdrawn|withdrew|removed the fallback|rather than|instead of|substituted)\b|\b(?:cannot|can'?t|won'?t|(?:is|are|was|were|do|does|did|has|have|had|can|could|will|would|should)\s*n'?t|(?:is|are|was|were|do|does|did|has|have|had|can|could|will|would|should)\s+not)\s+(?:\w+[\s-]+){0,3}?(?:remov\w+|uninstall\w+|falls?\s+back|takes?\s+away|taken\s+away)/i,
     rationale:
       'WITHDRAWN by band A row 1. `uninstallFreezeFallbackAllowed` now answers false on every ' +
       'branch — SHIZUKU, DHIZUKU, ROOT and NONE — so no privilege mode can reach the removal rung ' +
