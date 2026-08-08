@@ -221,7 +221,7 @@ Under the hood, freezing a **user app** disables it. Freezing a **system app** s
 place as well — the package stays installed and its data stays on disk. Some OEM builds refuse to
 let anything but root disable their own preinstalled packages; where Thor meets that refusal under
 Shizuku or Dhizuku, it falls back to removing the app for your Android user with
-`pm uninstall -k --user`. The `-k` is the whole point: it is `DELETE_KEEP_DATA`, and the app's data
+`pm uninstall -k --user N`. The `-k` is the whole point: it is `DELETE_KEEP_DATA`, and the app's data
 directories keep their inodes across the round trip. A runtime permission measured across the same
 round trip came back granted with its flags unchanged — one permission, granted from the shell
 rather than by tapping Allow, on one platform build, and app-ops were never measured, so read it for
