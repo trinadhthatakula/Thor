@@ -23,11 +23,24 @@ name: PR CI
 # "reviews are disabled for this base branch". Nothing distinguished that from a
 # PR where everything ran and passed. Observed on #366.
 #
-# Retargeting after the parent merges does not repair it. Changing a base raises
-# `pull_request` with action `edited`, and the default types are
-# opened/synchronize/reopened — so the PR keeps its stale green until someone
-# pushes or reopens it. Adding `edited` to the types would fix the retarget case
-# and nothing else; the PR is still unchecked for its whole review.
+# `edited` is in the types for the other half of the same problem. Changing a PR's
+# base raises `pull_request` with action `edited`, and the default types are
+# opened/synchronize/reopened — verified the hard way on #366, where a retarget
+# from a feature branch to dev fired nothing and a close/reopen was needed. The
+# stale result is not merely stale, it is wrong: the checkouts below pass no
+# `ref:`, so actions/checkout uses its default of refs/pull/N/merge and every job
+# here builds HEAD MERGED INTO THE BASE. Retarget the PR and the green on the page
+# describes a merge into a branch that is no longer the target.
+#
+# The obvious economy — keep `edited` but add
+# `if: github.event.action != 'edited' || github.event.changes.base` so a title or
+# body edit does not pay for an Android build — is deliberately NOT taken. The
+# concurrency group below is workflow-level with cancel-in-progress, and it is
+# claimed before any job's `if` is evaluated: a body edit during a real run would
+# cancel that run, then skip, and a skipped required check counts as a PASS to the
+# ruleset. That is a false green, which is the exact defect this file is being
+# edited to remove. Rerunning on a body edit only wastes minutes. Same trade as
+# the paths note above — CI time is the cheap side.
 #
 # The cost is that a stack now pays for CI twice, parent and child, on shared
 # files. That is the correct price: the alternative is the child never being built
@@ -39,6 +52,9 @@ name: PR CI
 # same unsigned APK. Widening the base does not widen what a PR can reach.
 on:
   pull_request:
+    # The three defaults, restated because naming any type replaces the default
+    # set rather than extending it, plus `edited` for the base-change case above.
+    types: [ opened, synchronize, reopened, edited ]
 
 # Least-privilege token — this workflow only reads the repo.
 permissions:

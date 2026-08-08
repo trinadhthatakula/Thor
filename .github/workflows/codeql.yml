@@ -3,11 +3,14 @@ name: CodeQL
 on:
   push:
     branches: [ "master", "dev" ]
-  # Unfiltered by base, matching pr-ci.yml — see the long note there. `push` stays
-  # scoped to the two long-lived branches because that is what populates the
-  # security tab's baseline; the PR trigger is what has to see every change, and a
-  # PR stacked on a feature branch was getting no analysis at all.
+  # Unfiltered by base, and `edited` added — see the long note in pr-ci.yml, which
+  # applies here unchanged. `push` stays scoped to the two long-lived branches
+  # because that is what populates the security tab's baseline; the PR trigger is
+  # what has to see every change, and a PR stacked on a feature branch was getting
+  # no analysis at all. Naming any type replaces the default set, so the three
+  # defaults are restated rather than extended.
   pull_request:
+    types: [ opened, synchronize, reopened, edited ]
   schedule:
     - cron: '27 3 * * 1' # weekly, Monday 03:27 UTC
 
