@@ -581,6 +581,21 @@ it is checked **between** apps and never during one, since interrupting a `pm in
 package. The curated installer names turned out to be a *third* copy of the same `when`, folded into
 D4's `installerLabel`.
 
+**And a fourth copy, found only in self-review of the PR that claimed to have ended the drift.**
+Clear All Cache, three methods down the same file, still filtered on `"com.valhalla.thor"` and
+`"com.android.vending"` as literals. The Play Store one was merely duplicated; the other was
+**wrong** — `applicationIdSuffix = ".debug"` makes the running package `com.valhalla.thor.debug`,
+so on every debug build the self-exclusion excluded nothing and Thor cleared its own cache mid-run.
+Two tests covered that filter and both were green, because the fixture spelled Thor's package with
+the same literal: **they proved the string, not the exclusion.** The replacement puts both ids in
+the list and asserts that exactly `BuildConfig.APPLICATION_ID` is spared, so the literal cannot
+return without going red.
+
+The durable form of this, and the reason it belongs in the spec rather than in a commit message:
+*a rule expressed as a literal in one place is expressed as a literal in every place.* Finding the
+second copy is what makes it feel handled; the count is never two. Sweep the class — grep the
+literal, not the function.
+
 ### D2. Row 19 — non-interactive scrollbar
 
 `Modifier.nonInteractiveScrollbar` on the Apps tab (`AppList.kt`) and the Freezer main list
