@@ -146,7 +146,9 @@ private class RecordingSystemRepository(
     override suspend fun forceStopApp(packageName: String): Result<Unit> =
         unreachable("forceStopApp")
 
-    override suspend fun clearCache(packageName: String): Result<Unit> = unreachable("clearCache")
+    override suspend fun clearCache(packageName: String): Result<Long?> = unreachable("clearCache")
+
+    override suspend fun clearAllCaches(): Result<Long?> = unreachable("clearAllCaches")
 
     override suspend fun clearAppData(packageName: String): Result<Unit> =
         unreachable("clearAppData")

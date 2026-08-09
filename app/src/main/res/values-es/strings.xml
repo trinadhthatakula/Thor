@@ -80,11 +80,15 @@
     <string name="total_apps">TOTAL: %1$d</string>
     <string name="others">Otros</string>
     <string name="clear_all_cache">Limpiar todos los cachés</string>
-    <string name="clear_cache_prompt">¿Qué aplicaciones te gustaría limpiar?</string>
     <string name="clear_all_cache_subtitle">Limpiar archivos en caché de todas las aplicaciones para recuperar espacio de almacenamiento</string>
-    <string name="clear_system_cache_title">¿Limpiar caché del sistema?</string>
-    <string name="clear_system_cache_desc">Limpiar el caché de las aplicaciones del sistema podría causar inestabilidad temporal. ¿Estás seguro de que quieres proceder?</string>
-    <string name="user_apps">Aplicaciones de usuario</string>
+    <string name="clear_all_cache_confirm_desc">Android decide qué cachés borrar y no deja elegir a Thor: se incluyen todas las aplicaciones del dispositivo, tanto las del sistema como las tuyas. No se toca nada más: tus datos, sesiones y ajustes se quedan como están. Puede que las aplicaciones tarden un poco más en abrirse la primera vez, mientras reconstruyen su caché.</string>
+    <string name="clear_all_cache_running">Limpiando…</string>
+    <string name="clear_all_cache_running_desc">Recorriendo todas las aplicaciones del dispositivo. Puede tardar un momento.</string>
+    <string name="clear_all_cache_done_title">Caché limpiada</string>
+    <string name="clear_all_cache_done_size">Se liberaron %1$s.</string>
+    <string name="clear_all_cache_done_nothing">No quedaba caché que borrar.</string>
+    <string name="clear_all_cache_done_size_unknown">Listo. Thor no pudo medir cuánto liberó.</string>
+    <string name="clear_all_cache_done_unmeasured">Listo. Thor no pudo medir cuánto liberó: concédele acceso de uso en Ajustes para ver la cifra la próxima vez.</string>
     <string name="system_apps">Aplicaciones del sistema</string>
     <string name="active">Activo</string>
     <string name="frozen">Congelado</string>
@@ -276,6 +280,7 @@
     </plurals>
     <string name="killed_success">Se detuvo %1$s</string>
     <string name="cache_cleared_success">Caché de %1$s borrada</string>
+    <string name="cache_cleared_success_size">Se borraron %2$s de caché de %1$s</string>
     <string name="data_cleared_success">Datos de %1$s borrados</string>
     <string name="suspended_success">%1$s suspendido</string>
     <string name="unsuspended_success">%1$s reanudado</string>
@@ -372,8 +377,6 @@
     <!-- Terminal Logs -->
     <string name="log_initializing">Inicializando…</string>
     <string name="log_op_complete">\nOperación completada.</string>
-    <string name="log_preparing_cache">Preparando limpieza de caché…</string>
-    <string name="log_no_eligible_apps">No se encontraron aplicaciones elegibles.</string>
     <string name="log_sharing_app">Compartiendo %1$s</string>
     <string name="log_preparing_files">Preparando archivos…</string>
     <string name="log_files_ready">✔ Archivos listos</string>

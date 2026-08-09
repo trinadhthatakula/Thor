@@ -115,12 +115,19 @@ fun MultiSelectToolBox(
                 }
             }
 
+            // Root only, unlike everything above it. Per-package cache clearing needs the
+            // signature-level `INTERNAL_DELETE_CACHE_FILES`; Shizuku's uid-2000 call is answered by
+            // PackageManagerService with "silently ignoring", so this button used to report a clean
+            // sweep of the whole selection while freeing nothing. See `AppActionRow`.
+            if (isRoot) {
+                ToolBoxItem(
+                    icon = R.drawable.clear_all,
+                    label = stringResource(R.string.action_cache),
+                    onClick = { onMultiAppAction(MultiAppAction.ClearCache(selected)) }
+                )
+            }
+
             // Standard Actions
-            ToolBoxItem(
-                icon = R.drawable.clear_all,
-                label = stringResource(R.string.action_cache),
-                onClick = { onMultiAppAction(MultiAppAction.ClearCache(selected)) }
-            )
             ToolBoxItem(
                 icon = R.drawable.share,
                 label = stringResource(R.string.action_share),

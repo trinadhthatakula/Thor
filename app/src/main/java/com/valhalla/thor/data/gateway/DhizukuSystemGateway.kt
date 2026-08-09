@@ -60,9 +60,24 @@ class DhizukuSystemGateway(
         else Result.failure(Exception("Dhizuku: Force stop failed. Shell command and reflection both denied."))
     }
 
-    override suspend fun clearCache(packageName: String): Result<Unit> {
-        return if (reflector.clearCache(packageName)) Result.success(Unit)
-        else Result.failure(Exception("Dhizuku: Clear cache failed. System reflection and shell rm -rf both failed."))
+    /**
+     * Always a failure, and that is the correction rather than a gap.
+     *
+     * `pm trim-caches` is a shell command, and Dhizuku has no shell: [executeShellCommand] runs
+     * through the Dhizuku app's own uid, which `PackageManagerShellCommand` refuses. The device
+     * owner API has no cache-clearing member at all — `DevicePolicyManager` can wipe a profile, not
+     * a cache — and the reflective `deleteApplicationCacheFiles*` rung this gateway used to carry
+     * died in a double-wrapped binder belonging to a privilege mode the user had not set up. Three
+     * doors, all shut, so this says so in a sentence the user can act on instead of failing with a
+     * shell error that reads like a bug.
+     */
+    override suspend fun clearAllCaches(targetFreeBytes: Long?): Result<Unit> {
+        return Result.failure(
+            Exception(
+                "Dhizuku cannot clear caches: it has no shell to run `pm trim-caches` in, and the " +
+                    "device owner API has no equivalent. Switch to Root or Shizuku."
+            )
+        )
     }
 
     override suspend fun clearAppData(packageName: String): Result<Unit> {
@@ -380,10 +395,6 @@ class DhizukuSystemGateway(
         } else {
             Result.failure(Exception("Dhizuku: Install failed: ${result.second}"))
         }
-    }
-
-    override suspend fun getAppCacheSize(packageName: String): Long {
-        return 0L
     }
 
     override suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> {

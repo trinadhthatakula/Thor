@@ -12,7 +12,6 @@ import com.valhalla.superuser.utils.escapeForShell
 import com.valhalla.thor.BuildConfig
 import com.valhalla.thor.data.source.local.backgroundRestrictionCommand
 import com.valhalla.thor.data.source.local.clearAppDataCommand
-import com.valhalla.thor.data.source.local.clearCachePaths
 // The enable/disable rung machinery is privilege-agnostic; it lives in the `shizuku` package
 // because that is where it was first needed, and it is imported rather than re-typed here so the
 // two privilege modes cannot drift apart on "did the platform refuse?" — the one question whose
@@ -622,113 +621,11 @@ object DhizukuHelper {
     }
 
     /**
-     * Deletes [packageName]'s cache directories **for [thorUserId]** — shell first, then a
-     * hidden-API `IPackageManager` call.
-     *
-     * The reflection overloads are tried `…AsUser` first for the same reason as
-     * [com.valhalla.thor.data.source.local.shizuku.Shizuku.clearCache], whose KDoc carries the full
-     * argument: `deleteApplicationCacheFiles(String, IPackageDataObserver)` is declared on every
-     * release this app runs on (28 through 37), so the `NoSuchMethodException` meant to reach the
-     * `…AsUser` branch never fires. Ordered the other way round, the only branch that names a user
-     * is unreachable and the branch that runs names none — `PackageManagerService` implements the
-     * no-user overload as `deleteApplicationCacheFilesAsUser(packageName, getCallingUserId(),
-     * observer)`, resolving the user from the *caller*. Here the caller is the Dhizuku app holding
-     * device owner, so from a work profile the reachable rung cleared the cache of whichever user
-     * Dhizuku itself runs as, for a package the user picked in another profile.
-     *
-     * The fallback is gated on `NoSuchMethodException` alone, never `Exception`: a *refusal* of the
-     * per-user call must not fall through to one that clears a different user's cache and reports it
-     * as this user's success.
-     *
-     * How often this rung runs at all is a separate question, and the answer is probably never:
-     * `asInterface` wraps the binder twice — Dhizuku's own wrapper, then `ShizukuBinderWrapper` on
-     * top — so on a Dhizuku-only device the call dies in a transport belonging to a privilege mode
-     * the user has not set up. `setAppDisabledDetailed` carries that argument in full. It is a
-     * reason not to expect the reorder to change behaviour today, not a reason to keep the order
-     * wrong: a rung that is dead now is still the rung a future transport fix would wake up.
-     *
-     * **A `true` from this function now comes from the shell rung or from nowhere.** Only that rung
-     * is honest — `rm -rf` exits 0 or it does not — and the reflective one has stopped claiming
-     * otherwise. Its `true` was never evidence: the call is asynchronous, PMS reports through the
-     * `IPackageDataObserver` passed as `null` here, and on a Dhizuku-only device it does not reach
-     * PMS at all. It is still issued, because on a device that also has Shizuku it may genuinely
-     * run; what changed is that "the binder call returned" is no longer allowed to reach the user as
-     * "the cache is gone".
-     */
-    // SdCardPath: absolute system paths are intentional for privileged/root file ops on app data
-    // dirs (not app-scoped storage). PrivateApi: hidden-API reflection is the core privilege
-    // mechanism, guarded by the :bypass VMRuntime unseal.
-    @SuppressLint("PrivateApi", "SdCardPath")
-    fun clearCache(packageName: String): Boolean {
-        // 1. Try shell first. The `/data/data/<pkg>/cache` and `/sdcard/Android/data/<pkg>/cache`
-        // aliases that used to sit either side of these two are gone: they are not extra coverage,
-        // they are the same directories *for user 0*, so from a secondary user they deleted another
-        // user's cache. At user 0 they resolve to exactly what remains.
-        val command =
-            "rm -rf ${clearCachePaths(packageName.escapeForShell(), thorUserId).joinToString(" ")}"
-        val shellResult = execute(command)
-        if (shellResult.first == 0) return true
-
-        // 2. Fallback to reflection — issued, and deliberately never believed.
-        //
-        // `asInterface` wraps the binder twice, Dhizuku's own wrapper and then
-        // `ShizukuBinderWrapper` on top, so on a Dhizuku-only device this call dies inside a
-        // transport belonging to a privilege mode the user never set up; [setAppDisabledDetailed]'s
-        // reflection rung carries that argument in full. The call stays — it costs nothing, and on a
-        // device that *also* has Shizuku it may genuinely run — but the `false` at the end of the
-        // block replaces a `true` that has never meant the cache was cleared. Even on a live
-        // transport it could not mean that: `deleteApplicationCacheFiles*` reports through the
-        // `IPackageDataObserver` passed as `null` here, so the old `true` only ever said "the binder
-        // call returned".
-        //
-        // An observer is deliberately not wired up in its place. On the device this rung actually
-        // runs on the call never reaches PackageManagerService, so a real observer would buy one
-        // guaranteed timeout per package — an always-red answer that teaches the user nothing and
-        // costs seconds each on a bulk clear. Honest and fast beats verified and impossible. If the
-        // transport is ever fixed, *that* is the change that earns an observer here.
-        val reflectionResult = runCatching {
-            val pm = asInterface("android.content.pm.IPackageManager", "package") ?: return@runCatching false
-            val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
-
-            try {
-                Bypass.invoke<Any?>(
-                    pm.javaClass,
-                    pm,
-                    "deleteApplicationCacheFilesAsUser",
-                    arrayOf(String::class.java, Int::class.javaPrimitiveType!!, observerClass),
-                    packageName,
-                    thorUserId,
-                    null /* IPackageDataObserver */
-                )
-            } catch (_: NoSuchMethodException) {
-                // No user id to give: this overload derives one from the calling uid. Reached only
-                // if a release stops declaring the AsUser variant, which none in 28..37 does.
-                Bypass.invoke<Any?>(
-                    pm.javaClass,
-                    pm,
-                    "deleteApplicationCacheFiles",
-                    arrayOf(String::class.java, observerClass),
-                    packageName,
-                    null
-                )
-            }
-            Logger.w(
-                "DhizukuHelper",
-                "clearCache($packageName): the reflection rung was issued but can confirm nothing, " +
-                    "so it reports failure — the shell rung above is the only one that clears a cache"
-            )
-            false
-        }.getOrDefault(false)
-
-        return reflectionResult
-    }
-
-    /**
      * Wipes [packageName]'s data **for [thorUserId]** — `pm clear` first, then a hidden-API
      * `IPackageManager` call.
      *
-     * **A `true` from this function comes from the shell rung or from nowhere**, the same contract
-     * [clearCache] states and for the same reasons. `pm clear` blocks on its own observer inside
+     * **A `true` from this function comes from the shell rung or from nowhere.** `pm clear` blocks
+     * on its own observer inside
      * `PackageManagerShellCommand` and exits non-zero when the wipe fails, so it can be believed;
      * the reflection rung below can not be, and no longer says otherwise. It used to return `true`
      * whenever the invoke did not throw, which for the single most destructive operation Thor
@@ -750,8 +647,8 @@ object DhizukuHelper {
         val result = execute(clearAppDataCommand(packageName.escapeForShell(), thorUserId))
         if (result.first == 0) return true
 
-        // 2. Fallback to reflection — issued, and deliberately never believed. Same argument as
-        // [clearCache]'s rung 2, one step worse in consequence: `clearApplicationUserData` returns
+        // 2. Fallback to reflection — issued, and deliberately never believed.
+        // `clearApplicationUserData` returns
         // `void`, so the verdict only ever arrives on the `IPackageDataObserver` that is `null`
         // here, and `asInterface`'s double-wrapped binder means that on a Dhizuku-only device the
         // call dies in a Shizuku transport before PackageManagerService sees it — the argument
@@ -760,9 +657,11 @@ object DhizukuHelper {
         // every release.
         //
         // The call stays because on a device that also has Shizuku it may genuinely run; only the
-        // claim is withdrawn. An observer is not wired up in its place for the reason [clearCache]
-        // gives — a guaranteed 15-second timeout per package on the device this rung actually runs
-        // on is a worse answer than an immediate honest one.
+        // claim is withdrawn. An observer is not wired up in its place: on the device this rung
+        // actually runs on the call never reaches PackageManagerService, so a real observer would
+        // buy one guaranteed 15-second timeout per package — an always-red answer that teaches the
+        // user nothing. Honest and fast beats verified and impossible. If the transport is ever
+        // fixed, *that* is the change that earns an observer here.
         return runCatching {
             val pm = asInterface("android.content.pm.IPackageManager", "package") ?: return@runCatching false
             val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
@@ -1104,11 +1003,11 @@ object DhizukuHelper {
             )
         }
 
-        // 2. Fallback to reflection. The call is kept for the reason [clearCache]'s rung 2 keeps
+        // 2. Fallback to reflection. The call is kept for the reason [clearAppData]'s rung 2 keeps
         // its own — `asInterface` double-wraps the binder, so on a Dhizuku-only device this dies in
         // a Shizuku transport, but on a device that also has Shizuku it may genuinely run. What is
         // refused is this rung's *self-report*: "the invoke did not throw" is not a mode. Unlike
-        // clearCache and clearAppData, an app op can actually be read back, so this rung reports
+        // clearAppData, an app op can actually be read back, so this rung reports
         // what `checkOperation` says rather than a flat `false` — a state the platform confirms is
         // not a lie, and answering `false` over a confirmed change would strand the user retrying an
         // operation that already worked. An unreadable readback still means `false` here, because

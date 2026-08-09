@@ -27,10 +27,14 @@ enum class HomeAction { REINSTALL, INSTALL, CLEAR_CACHE, EXTENSIONS }
  *
  * [narrowContainer] is for a pane too narrow to pair tiles at all (the wide-screen rail) — every
  * action then gets its own full-width row.
+ *
+ * [canClearCache] is Root **or** Shizuku, not root alone. The tile runs `pm trim-caches`, which is
+ * gated on `CLEAR_APP_CACHE` — a permission `com.android.shell` holds — so Shizuku can do it too.
+ * Only Dhizuku is left out: it has no shell to run the command in.
  */
 fun homeActionRows(
     reinstallVisible: Boolean,
-    isRoot: Boolean,
+    canClearCache: Boolean,
     hasPrivilege: Boolean,
     showInstaller: Boolean = true,
     showExtensions: Boolean = true,
@@ -38,7 +42,7 @@ fun homeActionRows(
 ): List<List<HomeAction>> {
     val actions = listOfNotNull(
         HomeAction.INSTALL.takeIf { showInstaller },
-        HomeAction.CLEAR_CACHE.takeIf { isRoot },
+        HomeAction.CLEAR_CACHE.takeIf { canClearCache },
         HomeAction.EXTENSIONS.takeIf { hasPrivilege && showExtensions },
         HomeAction.REINSTALL.takeIf { reinstallVisible },
     )

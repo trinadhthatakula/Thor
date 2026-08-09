@@ -85,11 +85,23 @@
     <string name="total_apps">TOTAL: %1$d</string>
     <string name="others">Others</string>
     <string name="clear_all_cache">Clear All Cache</string>
-    <string name="clear_cache_prompt">Which apps would you like to clear?</string>
     <string name="clear_all_cache_subtitle">Clear cached files of all apps to reclaim storage space</string>
-    <string name="clear_system_cache_title">Clear System Cache?</string>
-    <string name="clear_system_cache_desc">Clearing the cache of system apps might cause temporary instability. Are you sure you want to proceed?</string>
-    <string name="user_apps">User Apps</string>
+    <string name="clear_all_cache_confirm_desc">Android decides which caches to drop, and it does not let Thor choose — every app on the device is included, system apps as well as yours. Nothing else is touched: your data, logins and settings all stay put. Apps may open a little slower the first time while they rebuild.</string>
+    <string name="clear_all_cache_running">Clearing…</string>
+    <string name="clear_all_cache_running_desc">Working through every app on the device. This can take a moment.</string>
+    <string name="clear_all_cache_done_title">Cache cleared</string>
+    <string name="clear_all_cache_done_size">Freed %1$s.</string>
+    <!-- Shown when the measurement worked and the answer was genuinely zero — a second clear with
+         nothing left to drop. Deliberately not the _unmeasured line: that one asks for a permission
+         this user demonstrably already granted. -->
+    <string name="clear_all_cache_done_nothing">There was no cache left to clear.</string>
+    <!-- The measurement was available and still came back empty — an app refilled its cache while
+         the clear ran, or the storage service refused the reading. Says nothing about usage access:
+         this line is only ever shown to someone who already has it. -->
+    <string name="clear_all_cache_done_size_unknown">Done. Thor could not measure how much this freed.</string>
+    <!-- Shown only when the usage-access op is genuinely missing, which is what makes the advice
+         actionable. Any other unmeasured outcome uses clear_all_cache_done_size_unknown. -->
+    <string name="clear_all_cache_done_unmeasured">Done. Thor could not measure how much this freed — grant it usage access in Settings to see the figure next time.</string>
     <string name="system_apps">System Apps</string>
     <string name="active">Active</string>
     <string name="frozen">Frozen</string>
@@ -405,6 +417,9 @@
     <string name="removed_from_freezer_partial_failure" tools:ignore="PluralsCandidate">Removed %1$d/%2$d apps from Freezer (%3$d failed)</string>
     <string name="killed_success">Killed %1$s</string>
     <string name="cache_cleared_success">Cleared cache of %1$s</string>
+    <!-- %1$s is the app label, %2$s an already-formatted size ("12 MB"). Used when the freed bytes
+         could be measured; cache_cleared_success is the fallback when they could not. -->
+    <string name="cache_cleared_success_size">Cleared %2$s of cache from %1$s</string>
     <string name="data_cleared_success">Cleared data of %1$s</string>
     <string name="suspended_success">Suspended %1$s</string>
     <string name="unsuspended_success">Unsuspended %1$s</string>
@@ -530,8 +545,6 @@
     <!-- Terminal Logs -->
     <string name="log_initializing">Initializing…</string>
     <string name="log_op_complete">\nOperation Complete.</string>
-    <string name="log_preparing_cache">Preparing Cache Cleanup…</string>
-    <string name="log_no_eligible_apps">No eligible apps found.</string>
     <string name="log_sharing_app">Sharing %1$s</string>
     <string name="log_preparing_files">Preparing files…</string>
     <string name="log_files_ready">✔ Files Ready</string>

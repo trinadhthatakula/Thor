@@ -5,6 +5,7 @@ package com.valhalla.thor.presentation.main
 
 import android.content.Intent
 import android.provider.Settings
+import android.text.format.Formatter
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -92,6 +93,7 @@ import com.valhalla.thor.presentation.extension.ExtensionManagerScreen
 import com.valhalla.thor.presentation.settings.BillingProcessor
 import com.valhalla.thor.presentation.settings.SupportDeveloperHelper
 import com.valhalla.thor.presentation.widgets.AffirmationDialog
+import com.valhalla.thor.presentation.widgets.ClearAllCacheSheet
 import com.valhalla.thor.presentation.widgets.MultiAppAffirmationDialog
 import com.valhalla.thor.presentation.widgets.ExportProgressBar
 import com.valhalla.thor.presentation.widgets.FreezeLoggerDialog
@@ -396,7 +398,10 @@ fun MainScreen(
                         // names every app it would touch. Confirming a list beats confirming a
                         // warning about a list you were never shown.
                         onReinstallAll = { mainViewModel.onAppAction(AppClickAction.ReinstallAll) },
-                        onClearAllCache = { type -> mainViewModel.clearAllCache(type) },
+                        // No type argument any more: `pm trim-caches` takes no package list and
+                        // PackageManagerService evicts by LRU across the volume, so "user apps only"
+                        // was never a promise Thor could keep. The tap opens the confirmation sheet.
+                        onClearAllCache = { mainViewModel.requestClearAllCaches() },
                         onFilterByInstaller = { type, installer ->
                             appListViewModel.showAppsFromInstaller(type, installer)
                             activeDestination = AppDestinations.APPS
@@ -731,6 +736,26 @@ fun MainScreen(
                             null
                         },
                         onDismiss = { mainViewModel.dismissLogger() }
+                    )
+                }
+
+                // Hosted here rather than in HomeScreen because the clear outlives the screen that
+                // started it: switching tabs mid-operation must not cancel it or lose the byte
+                // count. The state lives in MainViewModel for the same reason.
+                state.cacheClear?.let { cacheClear ->
+                    ClearAllCacheSheet(
+                        state = cacheClear,
+                        // Formatted here, not in the ViewModel: Formatter needs a Context, and the
+                        // short form is locale-aware, so it has to be resolved at draw time.
+                        // Zero is formatted like any other number rather than being filtered out —
+                        // the sheet has a sentence for "there was nothing left", and dropping it to
+                        // null here would put a measured zero in the *unmeasured* branch and tell a
+                        // user who has usage access to go and grant usage access.
+                        formattedFreedBytes = (cacheClear as? CacheClearState.Done)
+                            ?.freedBytes
+                            ?.let { Formatter.formatShortFileSize(context, it) },
+                        onConfirm = { mainViewModel.confirmClearAllCaches() },
+                        onDismiss = { mainViewModel.dismissCacheClear() }
                     )
                 }
 

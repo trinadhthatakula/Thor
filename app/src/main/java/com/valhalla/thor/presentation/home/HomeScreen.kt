@@ -62,7 +62,13 @@ fun HomeScreen(
     onNavigateToApps: () -> Unit,
     onNavigateToFreezer: () -> Unit,
     onReinstallAll: () -> Unit,
-    onClearAllCache: (AppListType) -> Unit,
+    /**
+     * Asks for the whole-device cache clear. No [AppListType] any more, and no dialog here either:
+     * the operation clears system and user apps together — `pm trim-caches` picks its own victims —
+     * so the confirmation that says so lives with the state machine that runs it, in `MainViewModel`
+     * and `ClearAllCacheSheet`. This is only the tile.
+     */
+    onClearAllCache: () -> Unit,
     /**
      * Opens the Apps tab showing only what the given installer put there. Takes the list type as
      * well because the chart is drawn per type — a bar read off the System chart names apps the
@@ -74,8 +80,6 @@ fun HomeScreen(
     installerViewModel: InstallerViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var showCacheDialog by remember { mutableStateOf(false) }
-    var showSystemCacheConfirmDialog by remember { mutableStateOf(false) }
     var showPrivilegeDialog by remember { mutableStateOf(false) }
 
     var showInstallerSheet by remember { mutableStateOf(false) }
@@ -94,14 +98,19 @@ fun HomeScreen(
     val isWideScreen = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
     val isExpanded = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND)
     val hasPrivilege = state.activePrivilegeMode != null
-    val isRoot = state.activePrivilegeMode == PrivilegeMode.ROOT
+    // Root *or* Shizuku, which is wider than the `isRoot` this used to be. The tile no longer clears
+    // one app at a time — it runs `pm trim-caches`, and PackageManagerService gates that on
+    // CLEAR_APP_CACHE, a permission the shell uid holds. Dhizuku is still out: it has no shell to
+    // run the command in and the device-owner API has no equivalent.
+    val canClearCache = state.activePrivilegeMode == PrivilegeMode.ROOT ||
+        state.activePrivilegeMode == PrivilegeMode.SHIZUKU
     val reinstallVisible = state.activePrivilegeMode != null &&
         state.unknownInstallerCount > 0 && state.showReinstallCard
     // Both optional tiles hidden with no privilege leaves the bento with nothing to draw, so the
     // spacer that separates it from the summary row goes with it rather than leaving a bare gap.
     val hasHomeActions = homeActionRows(
         reinstallVisible = reinstallVisible,
-        isRoot = isRoot,
+        canClearCache = canClearCache,
         hasPrivilege = hasPrivilege,
         showInstaller = state.showInstallerTile,
         showExtensions = state.showExtensionsTile,
@@ -165,14 +174,14 @@ fun HomeScreen(
 
                         HomeActionsBento(
                             reinstallVisible = reinstallVisible,
-                            isRoot = isRoot,
+                            canClearCache = canClearCache,
                             hasPrivilege = hasPrivilege,
                             unknownInstallerCount = state.unknownInstallerCount,
                             selectedTypeName = state.selectedType.name.lowercase(),
                             onReinstall = onReinstallAll,
                             onDismissReinstall = { viewModel.dismissReinstallCard() },
                             onInstall = { filePickerLauncher.launch(arrayOf("*/*")) },
-                            onClearCache = { showCacheDialog = true },
+                            onClearCache = onClearAllCache,
                             onNavigateToExtensionManager = onNavigateToExtensionManager,
                             showInstaller = state.showInstallerTile,
                             showExtensions = state.showExtensionsTile,
@@ -246,14 +255,14 @@ fun HomeScreen(
 
                 HomeActionsBento(
                     reinstallVisible = reinstallVisible,
-                    isRoot = isRoot,
+                    canClearCache = canClearCache,
                     hasPrivilege = hasPrivilege,
                     unknownInstallerCount = state.unknownInstallerCount,
                     selectedTypeName = state.selectedType.name.lowercase(),
                     onReinstall = onReinstallAll,
                     onDismissReinstall = { viewModel.dismissReinstallCard() },
                     onInstall = { filePickerLauncher.launch(arrayOf("*/*")) },
-                    onClearCache = { showCacheDialog = true },
+                    onClearCache = onClearAllCache,
                     onNavigateToExtensionManager = onNavigateToExtensionManager,
                     modifier = Modifier.padding(horizontal = 24.dp),
                     showInstaller = state.showInstallerTile,
@@ -318,46 +327,11 @@ fun HomeScreen(
     }
 
     // --- Dialogs ---
-    if (showCacheDialog) {
-        AlertDialog(
-            onDismissRequest = { showCacheDialog = false },
-            icon = { Icon(painterResource(R.drawable.clear_all), null) },
-            title = { Text(stringResource(R.string.clear_all_cache)) },
-            text = { Text(stringResource(R.string.clear_cache_prompt)) },
-            confirmButton = {
-                Button(onClick = {
-                    onClearAllCache(AppListType.USER)
-                    showCacheDialog = false
-                }) { Text(stringResource(R.string.user_apps)) }
-            },
-            dismissButton = {
-                OutlinedButton(onClick = {
-                    showCacheDialog = false
-                    showSystemCacheConfirmDialog = true
-                }) { Text(stringResource(R.string.system_apps)) }
-            }
-        )
-    }
-
-    if (showSystemCacheConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showSystemCacheConfirmDialog = false },
-            icon = { Icon(painterResource(R.drawable.warning), null) },
-            title = { Text(stringResource(R.string.clear_system_cache_title)) },
-            text = { Text(stringResource(R.string.clear_system_cache_desc)) },
-            confirmButton = {
-                Button(onClick = {
-                    onClearAllCache(AppListType.SYSTEM)
-                    showSystemCacheConfirmDialog = false
-                }) { Text(stringResource(R.string.proceed)) }
-            },
-            dismissButton = {
-                OutlinedButton(onClick = { showSystemCacheConfirmDialog = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            }
-        )
-    }
+    // The two cache dialogs that used to live here are gone. They offered a choice — "user apps" or
+    // "system apps" — that `pm trim-caches` cannot honour: PackageManagerService evicts by LRU across
+    // the whole volume and takes no package argument. The replacement is `ClearAllCacheSheet`, hosted
+    // by MainScreen and driven by `MainUiState.cacheClear`, which asks once and says plainly that
+    // system apps are included too.
 
     if (showPrivilegeDialog) {
         AlertDialog(

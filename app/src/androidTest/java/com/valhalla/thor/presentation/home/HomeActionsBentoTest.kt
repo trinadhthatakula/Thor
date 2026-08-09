@@ -42,7 +42,7 @@ class HomeActionsBentoTest {
     private fun setFullGrid() = rule.setContent {
         HomeActionsBento(
             reinstallVisible = true,
-            isRoot = true,
+            canClearCache = true,
             hasPrivilege = true,
             unknownInstallerCount = 7,
             selectedTypeName = "user",
@@ -108,7 +108,7 @@ class HomeActionsBentoTest {
         rule.setContent {
             HomeActionsBento(
                 reinstallVisible = true,
-                isRoot = false,
+                canClearCache = false,
                 hasPrivilege = true,
                 unknownInstallerCount = 7,
                 selectedTypeName = "user",

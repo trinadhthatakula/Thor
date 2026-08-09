@@ -46,7 +46,7 @@ private data class HomeActionCopy(val title: String, val subtitle: String, val i
 @Composable
 fun HomeActionsBento(
     reinstallVisible: Boolean,
-    isRoot: Boolean,
+    canClearCache: Boolean,
     hasPrivilege: Boolean,
     unknownInstallerCount: Int,
     selectedTypeName: String,
@@ -61,7 +61,7 @@ fun HomeActionsBento(
     narrowContainer: Boolean = false,
 ) {
     val rows = homeActionRows(
-        reinstallVisible, isRoot, hasPrivilege, showInstaller, showExtensions, narrowContainer
+        reinstallVisible, canClearCache, hasPrivilege, showInstaller, showExtensions, narrowContainer
     )
     var explaining by rememberSaveable { mutableStateOf<HomeAction?>(null) }
     // Hiding both optional tiles with no privilege leaves nothing to draw. Emit no Column at all

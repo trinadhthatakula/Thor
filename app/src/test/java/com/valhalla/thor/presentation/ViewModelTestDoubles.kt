@@ -108,13 +108,24 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
         return failures[call]?.let { Result.failure(it) } ?: Result.success(Unit)
     }
 
+    /**
+     * What the two cache clears report as freed on success. `null` is the real "the clear worked and
+     * the measurement did not" answer, so that is the default: a test that wants a number says so.
+     */
+    var cacheFreedBytes: Long? = null
+
+    /** [record] for the two operations that return a byte count; [failWith] still applies. */
+    private fun recordBytes(call: String): Result<Long?> = record(call).map { cacheFreedBytes }
+
     override suspend fun isRootAvailable(): Boolean = true
     override suspend fun isShizukuAvailable(): Boolean = false
     override suspend fun isDhizukuAvailable(): Boolean = false
 
     override suspend fun forceStopApp(packageName: String) = record("forceStopApp:$packageName")
 
-    override suspend fun clearCache(packageName: String) = record("clearCache:$packageName")
+    override suspend fun clearCache(packageName: String) = recordBytes("clearCache:$packageName")
+
+    override suspend fun clearAllCaches() = recordBytes("clearAllCaches")
 
     override suspend fun clearAppData(packageName: String) = record("clearAppData:$packageName")
 
@@ -620,6 +631,24 @@ class FakeStorageStatsProvider(
         // Mirrors the real one: an unreadable package is *absent*, not zero.
         return sizes.filterKeys { it in packages }
     }
+
+    /**
+     * Successive answers from [cacheBytes] and [totalCacheBytes]. A cache measurement is taken twice
+     * around one clear, so a single value cannot express "18 MB before, 2 MB after" — the queue can.
+     * Empty means every reading is `null`, the real "no usage access" answer.
+     */
+    val cacheReadings = ArrayDeque<Long?>()
+
+    /** What [cacheTrimTargetBytes] answers; `null` is the unreadable case Root falls back from. */
+    var trimTarget: Long? = null
+
+    override suspend fun cacheBytes(packageName: String): Long? =
+        if (cacheReadings.isEmpty()) null else cacheReadings.removeFirst()
+
+    override suspend fun totalCacheBytes(): Long? =
+        if (cacheReadings.isEmpty()) null else cacheReadings.removeFirst()
+
+    override suspend fun cacheTrimTargetBytes(): Long? = trimTarget
 }
 
 /** Grant state is a plain flag a test can flip mid-run, matching how the app-op behaves. */

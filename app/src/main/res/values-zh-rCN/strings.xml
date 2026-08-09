@@ -79,11 +79,15 @@
     <string name="total_apps">总计: %1$d</string>
     <string name="others">其他</string>
     <string name="clear_all_cache">清除所有缓存</string>
-    <string name="clear_cache_prompt">您想清除哪些应用？</string>
     <string name="clear_all_cache_subtitle">清除所有应用的缓存文件以回收存储空间</string>
-    <string name="clear_system_cache_title">清除系统缓存？</string>
-    <string name="clear_system_cache_desc">清除系统应用的缓存可能会导致暂时不稳定。确定要继续吗？</string>
-    <string name="user_apps">用户应用</string>
+    <string name="clear_all_cache_confirm_desc">由 Android 决定清除哪些缓存，Thor 无法指定——设备上的所有应用都会被包含在内，既包括您安装的应用，也包括系统应用。其他内容不受影响：您的数据、登录状态和设置都会保留。应用首次打开时可能会稍慢，因为它们要重建缓存。</string>
+    <string name="clear_all_cache_running">正在清除…</string>
+    <string name="clear_all_cache_running_desc">正在处理设备上的所有应用，可能需要一点时间。</string>
+    <string name="clear_all_cache_done_title">缓存已清除</string>
+    <string name="clear_all_cache_done_size">已释放 %1$s。</string>
+    <string name="clear_all_cache_done_nothing">没有可清除的缓存。</string>
+    <string name="clear_all_cache_done_size_unknown">已完成。Thor 无法测量释放了多少空间。</string>
+    <string name="clear_all_cache_done_unmeasured">已完成。Thor 无法测量释放了多少空间——请在系统设置中授予使用情况访问权限，下次即可看到数值。</string>
     <string name="system_apps">系统应用</string>
     <string name="privilege_check">权限检查</string>
     <string name="active">活跃</string>
@@ -269,6 +273,7 @@
     </plurals>
     <string name="killed_success">已强行停止 %1$s</string>
     <string name="cache_cleared_success">已清除 %1$s 的缓存</string>
+    <string name="cache_cleared_success_size">已清除 %1$s 的 %2$s 缓存</string>
     <string name="data_cleared_success">已清除 %1$s 的数据</string>
     <string name="suspended_success">已暂停 %1$s</string>
     <string name="unsuspended_success">已恢复 %1$s</string>
@@ -364,8 +369,6 @@
     <!-- Terminal Logs -->
     <string name="log_initializing">正在初始化…</string>
     <string name="log_op_complete">\n操作完成。</string>
-    <string name="log_preparing_cache">正在准备缓存清理…</string>
-    <string name="log_no_eligible_apps">未找到符合条件的应用。</string>
     <string name="log_sharing_app">正在分享 %1$s</string>
     <string name="log_preparing_files">正在准备文件…</string>
     <string name="log_files_ready">✔ 文件就绪</string>
