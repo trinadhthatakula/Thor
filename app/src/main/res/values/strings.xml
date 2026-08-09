@@ -91,6 +91,10 @@
     <string name="clear_all_cache_running_desc">Working through every app on the device. This can take a moment.</string>
     <string name="clear_all_cache_done_title">Cache cleared</string>
     <string name="clear_all_cache_done_size">Freed %1$s.</string>
+    <!-- Shown when the measurement worked and the answer was genuinely zero — a second clear with
+         nothing left to drop. Deliberately not the _unmeasured line: that one asks for a permission
+         this user demonstrably already granted. -->
+    <string name="clear_all_cache_done_nothing">There was no cache left to clear.</string>
     <string name="clear_all_cache_done_unmeasured">Done. Thor could not measure how much this freed — grant it usage access in Settings to see the figure next time.</string>
     <string name="system_apps">System Apps</string>
     <string name="active">Active</string>

@@ -145,15 +145,22 @@ fun ClearAllCacheSheet(
                 text = when (state) {
                     CacheClearState.Confirming -> stringResource(R.string.clear_all_cache_confirm_desc)
                     CacheClearState.Running -> stringResource(R.string.clear_all_cache_running_desc)
-                    is CacheClearState.Done ->
-                        // formattedFreedBytes is null when the clear worked and the measurement did
-                        // not. Saying "0 B freed" there would report a missing usage-access grant as
-                        // a clear that did nothing.
-                        if (formattedFreedBytes == null) {
+                    // Three outcomes, not two, because a measured zero and an absent measurement are
+                    // different facts and the repository keeps them apart all the way to here.
+                    // `formattedFreedBytes == null` is the absent one — the clear worked and Thor
+                    // could not weigh it — and saying "0 B" there would report a missing usage-access
+                    // grant as a clear that did nothing. A real zero is the opposite: the measurement
+                    // worked, so the sheet must not send the user off to grant a permission they
+                    // already hold. Negative deltas never arrive; SystemRepositoryImpl clamps them to
+                    // null, since cache an app rebuilt mid-clear is an unmeasurable, not a zero.
+                    is CacheClearState.Done -> when {
+                        formattedFreedBytes == null ->
                             stringResource(R.string.clear_all_cache_done_unmeasured)
-                        } else {
+                        state.freedBytes == 0L ->
+                            stringResource(R.string.clear_all_cache_done_nothing)
+                        else ->
                             stringResource(R.string.clear_all_cache_done_size, formattedFreedBytes)
-                        }
+                    }
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

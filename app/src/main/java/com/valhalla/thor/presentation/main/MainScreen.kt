@@ -747,9 +747,12 @@ fun MainScreen(
                         state = cacheClear,
                         // Formatted here, not in the ViewModel: Formatter needs a Context, and the
                         // short form is locale-aware, so it has to be resolved at draw time.
+                        // Zero is formatted like any other number rather than being filtered out —
+                        // the sheet has a sentence for "there was nothing left", and dropping it to
+                        // null here would put a measured zero in the *unmeasured* branch and tell a
+                        // user who has usage access to go and grant usage access.
                         formattedFreedBytes = (cacheClear as? CacheClearState.Done)
                             ?.freedBytes
-                            ?.takeIf { it > 0L }
                             ?.let { Formatter.formatShortFileSize(context, it) },
                         onConfirm = { mainViewModel.confirmClearAllCaches() },
                         onDismiss = { mainViewModel.dismissCacheClear() }

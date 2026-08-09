@@ -85,6 +85,7 @@
     <string name="clear_all_cache_running_desc">正在处理设备上的所有应用，可能需要一点时间。</string>
     <string name="clear_all_cache_done_title">缓存已清除</string>
     <string name="clear_all_cache_done_size">已释放 %1$s。</string>
+    <string name="clear_all_cache_done_nothing">没有可清除的缓存。</string>
     <string name="clear_all_cache_done_unmeasured">已完成。Thor 无法测量释放了多少空间——请在系统设置中授予使用情况访问权限，下次即可看到数值。</string>
     <string name="system_apps">系统应用</string>
     <string name="privilege_check">权限检查</string>

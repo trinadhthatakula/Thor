@@ -86,6 +86,7 @@
     <string name="clear_all_cache_running_desc">جارٍ العمل على كل تطبيقات الجهاز. قد يستغرق ذلك لحظة.</string>
     <string name="clear_all_cache_done_title">تم مسح الذاكرة المؤقتة</string>
     <string name="clear_all_cache_done_size">تم تحرير %1$s.</string>
+    <string name="clear_all_cache_done_nothing">لم تتبقَّ أي ذاكرة تخزين مؤقت لمسحها.</string>
     <string name="clear_all_cache_done_unmeasured">تم. لم يتمكن Thor من قياس المساحة المحرّرة — امنحه إذن الوصول إلى بيانات الاستخدام في الإعدادات لرؤية الرقم في المرة القادمة.</string>
     <string name="system_apps">تطبيقات النظام</string>
     <string name="active">نشط</string>
