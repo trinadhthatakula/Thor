@@ -143,10 +143,16 @@ class SystemRepositoryImpl(
     }
 
     override suspend fun clearAllCaches(): Result<Long?> = withContext(ioDispatcher) {
-        // Read the target before the before-measurement, not after: both are binder round trips and
-        // this is the one the operation cannot proceed without.
-        val target = storageStats.cacheTrimTargetBytes()
-        measuringCacheFreed({ storageStats.totalCacheBytes() }) {
+        measuringCacheFreed({ storageStats.totalCacheBytes() }) { before ->
+            // The trim target is built from the *same* reading the freed figure is computed from,
+            // which is why the before-value is handed down here rather than measured again. A
+            // second `queryStatsForUser` would be a full walk of every app's data directory on a
+            // device without filesystem quota support, taken microseconds after the first, for a
+            // number that could differ only by whatever an app wrote in between.
+            //
+            // `null` is the no-usage-access case. Root goes on to sweep the directories by name;
+            // Shizuku has no such rung and fails with a message naming the permission.
+            val target = before?.let { storageStats.cacheTrimTargetBytes(it) }
             runGatewayAction { it.clearAllCaches(target) }
         }
     }
@@ -158,6 +164,11 @@ class SystemRepositoryImpl(
      * nothing on success and picks its own victims, and `rm -rf` prints nothing either, so neither
      * rung can report a byte count of its own.
      *
+     * [clear] receives the before-reading because the whole-volume path needs it twice — once as the
+     * baseline of the subtraction and once as the cache half of the `pm trim-caches` target — and
+     * the two must be the same number rather than two measurements of it. The per-app path ignores
+     * the argument.
+     *
      * Three things it refuses to do. It does not measure when the clear failed — a failure's delta
      * is noise, and attaching a number to it invites a caller to show it. It answers `null`, not 0,
      * when either reading is missing, because "no usage access" and "there was no cache" are
@@ -167,10 +178,10 @@ class SystemRepositoryImpl(
      */
     private suspend inline fun measuringCacheFreed(
         measure: () -> Long?,
-        clear: () -> Result<Unit>
+        clear: (before: Long?) -> Result<Unit>
     ): Result<Long?> {
         val before = measure()
-        val result = clear()
+        val result = clear(before)
         if (result.isFailure) return Result.failure(result.exceptionOrNull() ?: Exception("Cache clear failed"))
         val after = measure()
         if (before == null || after == null) return Result.success(null)

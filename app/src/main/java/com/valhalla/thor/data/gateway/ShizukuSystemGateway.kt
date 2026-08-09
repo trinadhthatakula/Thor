@@ -69,15 +69,26 @@ class ShizukuSystemGateway(
     override suspend fun clearAllCaches(targetFreeBytes: Long?): Result<Unit> {
         // No sweep fallback, unlike Root: shell uid 2000 cannot delete another package's cache
         // directory, so without a target there is nothing left to try.
+        //
+        // What is missing when this is null is the *cache total*, not free space — free space needs
+        // no permission. A `pm trim-caches` target is free-space-plus-what-to-reclaim, so the size
+        // of the cache is half the sum, and only the usage-access op can supply it. Guessing the
+        // other half is not an option: too low and PMS returns on its first line having done
+        // nothing, too high and it walks past the cache rungs into pruning shared libraries and
+        // uninstalling instant apps. Naming the op is what makes this message actionable — and it
+        // is the one message on this path the user can *act* on, which is why it comes out of
+        // resources while the diagnostic below does not. `MainViewModel.quickAction` puts
+        // `e.message` straight into R.string.error_format, so an English literal here would be an
+        // English sentence inside a translated one.
         if (targetFreeBytes == null) {
             return Result.failure(
-                Exception(
-                    "Shizuku: could not read how much free space the volume has, and `pm trim-caches` " +
-                        "needs that number — passing a round one would let PackageManagerService walk " +
-                        "past the cache rungs into pruning apps."
-                )
+                Exception(context.getString(R.string.clear_all_caches_requires_usage_access))
             )
         }
+        // `trimCaches` reports the exit code, and `pm trim-caches` exits 0 even when it frees
+        // nothing, so this true is "the command ran" and never "the cache is gone". Nothing here can
+        // do better; what the user is told comes from SystemRepositoryImpl measuring the cache on
+        // either side of this call.
         return if (reflector.trimCaches(targetFreeBytes)) Result.success(Unit)
         else Result.failure(Exception("Shizuku: `pm trim-caches` failed."))
     }

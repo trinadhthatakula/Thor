@@ -44,23 +44,40 @@ interface StorageStatsProvider {
     suspend fun totalCacheBytes(): Long?
 
     /**
-     * The free-space target to hand `pm trim-caches`, or `null` when it cannot be read.
+     * The free-space target to hand `pm trim-caches` in order to reclaim [totalCacheBytes] of cache,
+     * or `null` when free space cannot be read.
      *
-     * Deliberately `StorageStatsManager.getFreeBytes`, which is the *wrong* call for measuring what
-     * a clear freed and the *right* one for asking for it — the two uses are inverted, so read this
-     * before assuming either. `StorageStatsService.getFreeBytes` returns
-     * `path.getUsableSpace() + cacheClearable`: it already counts reclaimable cache as free, so as a
-     * measurement its before/after delta cancels to noise. As a *target* that same identity is
-     * exactly what is wanted, because it names the byte count at which every clearable cache byte
-     * has been reclaimed and not one more.
+     * **`pm trim-caches N` means "ensure N bytes are *usable*", not "free N bytes of cache".** The
+     * first line of `FreeStorageHelper.freeStorage` is `if (file.getUsableSpace() >= bytes) return;`
+     * — no reserve is added to that comparison — so a target at or below current free space is a
+     * silent no-op, and `pm` still exits 0. The target must therefore **exceed** free space by the
+     * amount to reclaim: [totalCacheBytes] on top of the volume's usable space, which is why this is
+     * a sum and not a single framework call.
      *
-     * That precision is load-bearing, not tidiness. `PackageManagerService.freeStorage` is an
-     * escalating ladder, and app cache is only rungs 4 and 8 of it: an unsatisfiable target walks
-     * on to prune unused static shared libraries (rung 5) and uninstall instant apps (rungs 7 and
-     * 10), none of which is cache and none of which a button labelled "clear cache" may do. Passing
-     * this value lets PMS return at rung 4 or 8. Passing a round number like `100G` does not.
-     * (Rungs 2 and 3 — preload caches and parsed APK data — need `FLAG_ALLOCATE_AGGRESSIVE`, which
-     * `pm trim-caches` never sets.)
+     * The cache half is a parameter rather than a second [totalCacheBytes] call because the caller
+     * has already measured it — that reading is the baseline of the freed figure the user is shown,
+     * and asking for the target must not silently re-measure it into a different number.
+     *
+     * It used to be `StorageStatsManager.getFreeBytes`, and that shipped in v1.94 as a **guaranteed
+     * no-op on real hardware**. `getFreeBytes` is `usableSpace + max(0, cacheTotal - cacheReserve)`,
+     * and the reserve is a percentage of *total* storage — tens of gigabytes on a modern phone,
+     * always larger than the device's whole app cache — so the clearable term is 0, the target
+     * collapses to `usableSpace` exactly, and PMS returns on its first line every time. The
+     * measured-zero this produced was indistinguishable from a device with no cache, on root and
+     * Shizuku alike. Reasoning that ends in "and not one byte more" is worth suspecting here: the
+     * bound that matters is the one PMS actually tests.
+     *
+     * Bounding it *is* still load-bearing, just at the other end. `freeStorage` is an escalating
+     * ladder and app cache is rungs 4 and 8; overshooting walks on to pruning unused static shared
+     * libraries (rung 5) and uninstalling instant apps (rungs 7 and 10), none of which is cache.
+     * A sum of the two real numbers stops at rung 8. `pm trim-caches 100G` does not. (Rungs 2 and 3
+     * — preload caches and parsed APK data — need `FLAG_ALLOCATE_AGGRESSIVE`, which `pm trim-caches`
+     * never sets, and rung 6, dexopt output, is `// TODO: Implement` upstream.)
+     *
+     * Consequence worth stating: a trim target now needs the usage-access op, because
+     * [totalCacheBytes] does and the caller cannot supply the argument without it. Root survives
+     * having no target — its sweep names the directories itself — and Shizuku does not, which is the
+     * one place the op is a hard requirement rather than a nicety.
      */
-    suspend fun cacheTrimTargetBytes(): Long?
+    suspend fun cacheTrimTargetBytes(totalCacheBytes: Long): Long?
 }

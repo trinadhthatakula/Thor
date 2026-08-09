@@ -632,5 +632,7 @@
     <string name="export_list_share">Partager la liste</string>
     <string name="export_list_empty">Aucune application à exporter dans cette liste</string>
     <string name="export_list_failed">Impossible d\'enregistrer la liste</string>
+    <string name="clear_all_caches_requires_usage_access">Shizuku ne peut pas vider le cache de toutes les applications sans l\'accès aux données d\'utilisation. Android doit savoir combien d\'octets libérer, et seule cette autorisation permet de mesurer la taille du cache. Accordez l\'accès aux données d\'utilisation à Thor dans les Paramètres, puis réessayez.</string>
+    <string name="clear_all_caches_unsupported_dhizuku">Dhizuku ne peut pas vider les caches. Il n\'a pas de shell pour exécuter le nettoyage de cache d\'Android, et l\'API propriétaire de l\'appareil n\'offre aucun équivalent. Passez en mode Root ou Shizuku.</string>
 
 </resources>
