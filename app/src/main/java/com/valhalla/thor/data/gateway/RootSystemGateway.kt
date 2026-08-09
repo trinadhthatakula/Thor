@@ -373,19 +373,24 @@ class RootSystemGateway(
     }
 
     /**
-     * Root's whole-volume clear: `pm trim-caches` first, then a direct sweep.
+     * Root's whole-volume clear: `pm trim-caches`, and then a direct sweep **regardless of what the
+     * trim said**.
      *
-     * The trim rung is preferred even though root does not need it, because it is
-     * `PackageManagerService` doing the deleting — it knows about volumes Thor's globs do not name,
-     * and it updates its own accounting instead of leaving PMS's view of the cache stale. As uid 0
-     * the `CLEAR_APP_CACHE` check passes unconditionally (`ActivityManager.checkComponentPermission`
-     * short-circuits `ROOT_UID`), so the rung that is the *whole* operation under Shizuku is merely
-     * the preferred one here.
+     * The two rungs are not a fallback chain, and treating them as one is what broke this in v1.94.
+     * `pm trim-caches` cannot report a result — `PackageManagerShellCommand.runTrimCaches` waits on
+     * its observer and returns 0 with no regard for how many bytes moved — so there is no success to
+     * fall back *from*. The sweep is the rung that answers for itself, and it always runs.
      *
-     * The sweep rung is why [targetFreeBytes] being `null` is survivable in this mode: it names the
-     * same three directories per package that [clearCache] does, with the package component globbed.
-     * It is also the reason the trim's exit code is checked rather than assumed — a `pm` that fails
-     * for any reason still leaves a mode that works.
+     * The trim still goes first, because it is `PackageManagerService` doing the deleting: it knows
+     * about volumes Thor's globs do not name, it reaches every Android user rather than just this
+     * one, and it leaves PMS's accounting current instead of stale. As uid 0 its `CLEAR_APP_CACHE`
+     * check passes unconditionally (`ActivityManager.checkComponentPermission` short-circuits
+     * `ROOT_UID`). Its failure is worth a log line and nothing more.
+     *
+     * The sweep is also why [targetFreeBytes] being `null` is survivable in this mode: it names the
+     * same three directories per package that [clearCache] does, with the package component globbed,
+     * so root clears caches on a device that has never granted usage access. Shizuku has no such
+     * rung and genuinely cannot proceed without the number.
      *
      * **The two rungs do not have the same reach, and the narrower one is the deliberate part.**
      * `pm trim-caches` is volume-wide, so it takes every Android user with it; the sweep is scoped to
@@ -397,12 +402,19 @@ class RootSystemGateway(
      */
     override suspend fun clearAllCaches(targetFreeBytes: Long?): Result<Unit> {
         if (targetFreeBytes != null) {
+            // The verdict is logged and then dropped on the floor, and that is the fix. This used to
+            // `return trim` on success, which made the sweep below unreachable: `runTrimCaches` waits
+            // on its observer and then `return 0`s unconditionally, so `pm trim-caches` exits 0
+            // whether it reclaimed gigabytes or bailed out on `freeStorage`'s first line. Root
+            // therefore reported success on a no-op and never ran the rung that works — measured on
+            // four devices, all answering "there was no cache left to clear".
             val trim = runCommand("pm trim-caches $targetFreeBytes")
-            if (trim.isSuccess) return trim
-            Logger.w(
-                "RootSystemGateway",
-                "pm trim-caches $targetFreeBytes failed; falling back to a direct sweep"
-            )
+            if (trim.isFailure) {
+                Logger.w(
+                    "RootSystemGateway",
+                    "pm trim-caches $targetFreeBytes failed: ${trim.exceptionOrNull()?.message}"
+                )
+            }
         }
         // The glob is expanded by the shell running as uid 0, not by Thor, so an app whose package
         // name would need escaping is covered too — `*` never matches a path separator, so this

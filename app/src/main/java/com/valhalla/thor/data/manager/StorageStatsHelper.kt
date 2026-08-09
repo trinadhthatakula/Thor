@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Environment
 import android.os.Process
 import android.os.storage.StorageManager
 import com.valhalla.thor.domain.repository.StorageStatsProvider
@@ -79,12 +80,23 @@ class StorageStatsHelper(
             .getOrNull()
     }
 
+    // Lint's UsableSpace check says to prefer `getAllocatableBytes`, "which will consider clearable
+    // cached data". That advice is sound for its stated case — deciding whether a file will fit —
+    // and is exactly the mistake this method exists to undo. `getAllocatableBytes` and
+    // `StorageStatsManager.getFreeBytes` both add back the cache the system would clear on request;
+    // `freeStorage` does not, and it is `freeStorage`'s bare `getUsableSpace()` that decides whether
+    // a trim runs. Taking lint's advice here reproduces the v1.94 no-op verbatim.
+    @Suppress("UsableSpace")
     override suspend fun cacheTrimTargetBytes(): Long? = withContext(ioDispatcher) {
-        val manager = statsManager ?: return@withContext null
-        // No permission required for this one — see StorageStatsService.getFreeBytes, which opens
-        // with a literal "NOTE: No permissions required". So a device without usage access still
-        // gets a correctly-bounded trim; it just cannot be told how much the trim freed.
-        runCatching { manager.getFreeBytes(StorageManager.UUID_DEFAULT) }.getOrNull()
+        val cache = totalCacheBytes() ?: return@withContext null
+        // Environment.getDataDirectory() and not a StorageStatsManager call: this has to be the
+        // *same* number PMS compares against, and `StorageManager.findPathForUuid(UUID_PRIVATE_
+        // INTERNAL)` resolves to exactly this file. Reading free space through any other API risks
+        // a different view of the same volume, and the whole defect being fixed here was a target
+        // that sat a hair below what PMS measured.
+        val usable = runCatching { Environment.getDataDirectory().usableSpace }.getOrNull()
+            ?: return@withContext null
+        cacheTrimTarget(usableBytes = usable, totalCacheBytes = cache)
     }
 
     private fun installedApplications(): List<ApplicationInfo> =
@@ -104,3 +116,20 @@ class StorageStatsHelper(
             pm.getApplicationInfo(pkg, 0)
         }
 }
+
+/**
+ * The number `pm trim-caches` has to be given to reclaim [totalCacheBytes] of cache.
+ *
+ * Split out of [StorageStatsHelper] because it is the whole of what went wrong in v1.94 and it is
+ * two framework calls away from being untestable. The arithmetic is the contract: PMS compares the
+ * target against `getUsableSpace()` and returns immediately when the target is already met, so the
+ * only targets that do anything are the ones **strictly greater** than [usableBytes].
+ *
+ * A zero or negative cache total deliberately yields exactly [usableBytes] — a target PMS is
+ * guaranteed to refuse. That is the honest instruction for "there is nothing to reclaim": the trim
+ * no-ops, the before/after measurement subtracts to 0, and the sheet says there was no cache left.
+ * Clamping up to "free something anyway" would spend rungs 5 and 7 — shared libraries and instant
+ * apps — to satisfy a request for zero bytes of cache.
+ */
+internal fun cacheTrimTarget(usableBytes: Long, totalCacheBytes: Long): Long =
+    if (totalCacheBytes > 0) usableBytes + totalCacheBytes else usableBytes

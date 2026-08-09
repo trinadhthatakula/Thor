@@ -639,7 +639,14 @@ class FakeStorageStatsProvider(
      */
     val cacheReadings = ArrayDeque<Long?>()
 
-    /** What [cacheTrimTargetBytes] answers; `null` is the unreadable case Root falls back from. */
+    /**
+     * What [cacheTrimTargetBytes] answers. `null` is the no-usage-access case: Root still clears
+     * (it skips the trim and sweeps the directories by name), Shizuku cannot.
+     *
+     * Deliberately not derived from [cacheReadings] even though the real helper computes the target
+     * from a cache reading — this fake stands in for the *port*, and a test that wants "the target
+     * is unreadable but the measurements are not" has to be able to say so.
+     */
     var trimTarget: Long? = null
 
     override suspend fun cacheBytes(packageName: String): Long? =
