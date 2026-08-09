@@ -200,9 +200,9 @@ guard is uid-0-only, so Dhizuku's device-owner uid is refused exactly as Shizuku
 
 * **Every PR is checked**, not only the ones aimed at a long-lived branch, and `androidTest`
   sources are compiled — nothing in the repo did that before (#367).
-* `SyntheticAccessor` is enabled in `:bypass`, with the six `private` → `internal` widenings in
-  the same change, because that module's `warningsAsErrors` makes enabling it alone an instantly
-  red build.
+* `SyntheticAccessor` is enabled in `:bypass` (#366), with the six `private` → `internal`
+  widenings in the same change, because that module's `warningsAsErrors` makes enabling it alone
+  an instantly red build.
 * The trim-target arithmetic was extracted as a pure function so the failure that shipped is
   covered by a JVM test (#374).
 * Dependency bumps: KSP 2.3.10 → 2.3.11 (#365), the GitHub Actions group (#372).
@@ -224,6 +224,7 @@ guard is uid-0-only, so Dhizuku's device-owner uid is refused exactly as Shizuku
 * `96b5b85a` — #363 drop the hi-IN changelog translations
 * `3c67b398` — #362 the three-rung release ladder
 
-#368 is not listed separately: its commits reached `dev` inside #369.
+#368 is not listed separately: it targeted `master` (the site deploys from there), and the same
+commit reached `dev` inside #369.
 
 **Full changelog**: https://github.com/trinadhthatakula/Thor/compare/v1.94.0...v1.94.1
