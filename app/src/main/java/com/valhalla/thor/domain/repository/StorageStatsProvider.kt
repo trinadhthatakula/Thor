@@ -44,7 +44,8 @@ interface StorageStatsProvider {
     suspend fun totalCacheBytes(): Long?
 
     /**
-     * The free-space target to hand `pm trim-caches`, or `null` when it cannot be read.
+     * The free-space target to hand `pm trim-caches` in order to reclaim [totalCacheBytes] of cache,
+     * or `null` when free space cannot be read.
      *
      * **`pm trim-caches N` means "ensure N bytes are *usable*", not "free N bytes of cache".** The
      * first line of `FreeStorageHelper.freeStorage` is `if (file.getUsableSpace() >= bytes) return;`
@@ -52,6 +53,10 @@ interface StorageStatsProvider {
      * silent no-op, and `pm` still exits 0. The target must therefore **exceed** free space by the
      * amount to reclaim: [totalCacheBytes] on top of the volume's usable space, which is why this is
      * a sum and not a single framework call.
+     *
+     * The cache half is a parameter rather than a second [totalCacheBytes] call because the caller
+     * has already measured it — that reading is the baseline of the freed figure the user is shown,
+     * and asking for the target must not silently re-measure it into a different number.
      *
      * It used to be `StorageStatsManager.getFreeBytes`, and that shipped in v1.94 as a **guaranteed
      * no-op on real hardware**. `getFreeBytes` is `usableSpace + max(0, cacheTotal - cacheReserve)`,
@@ -69,9 +74,10 @@ interface StorageStatsProvider {
      * — preload caches and parsed APK data — need `FLAG_ALLOCATE_AGGRESSIVE`, which `pm trim-caches`
      * never sets, and rung 6, dexopt output, is `// TODO: Implement` upstream.)
      *
-     * Consequence worth stating: this now needs the usage-access op, because [totalCacheBytes] does.
-     * Root survives a `null` — its sweep names the directories itself — and Shizuku does not, which
-     * is the one place the op is a hard requirement rather than a nicety.
+     * Consequence worth stating: a trim target now needs the usage-access op, because
+     * [totalCacheBytes] does and the caller cannot supply the argument without it. Root survives
+     * having no target — its sweep names the directories itself — and Shizuku does not, which is the
+     * one place the op is a hard requirement rather than a nicety.
      */
-    suspend fun cacheTrimTargetBytes(): Long?
+    suspend fun cacheTrimTargetBytes(totalCacheBytes: Long): Long?
 }

@@ -643,9 +643,9 @@ class FakeStorageStatsProvider(
      * What [cacheTrimTargetBytes] answers. `null` is the no-usage-access case: Root still clears
      * (it skips the trim and sweeps the directories by name), Shizuku cannot.
      *
-     * Deliberately not derived from [cacheReadings] even though the real helper computes the target
-     * from a cache reading — this fake stands in for the *port*, and a test that wants "the target
-     * is unreadable but the measurements are not" has to be able to say so.
+     * Deliberately ignores the cache total it is handed, even though the real helper adds it to free
+     * space — this fake stands in for the *port*, and a test that wants "the target is unreadable
+     * but the measurements are not" has to be able to say so.
      */
     var trimTarget: Long? = null
 
@@ -655,7 +655,7 @@ class FakeStorageStatsProvider(
     override suspend fun totalCacheBytes(): Long? =
         if (cacheReadings.isEmpty()) null else cacheReadings.removeFirst()
 
-    override suspend fun cacheTrimTargetBytes(): Long? = trimTarget
+    override suspend fun cacheTrimTargetBytes(totalCacheBytes: Long): Long? = trimTarget
 }
 
 /** Grant state is a plain flag a test can flip mid-run, matching how the app-op behaves. */

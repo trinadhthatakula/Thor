@@ -87,8 +87,7 @@ class StorageStatsHelper(
     // `freeStorage` does not, and it is `freeStorage`'s bare `getUsableSpace()` that decides whether
     // a trim runs. Taking lint's advice here reproduces the v1.94 no-op verbatim.
     @Suppress("UsableSpace")
-    override suspend fun cacheTrimTargetBytes(): Long? = withContext(ioDispatcher) {
-        val cache = totalCacheBytes() ?: return@withContext null
+    override suspend fun cacheTrimTargetBytes(totalCacheBytes: Long): Long? = withContext(ioDispatcher) {
         // Environment.getDataDirectory() and not a StorageStatsManager call: this has to be the
         // *same* number PMS compares against, and `StorageManager.findPathForUuid(UUID_PRIVATE_
         // INTERNAL)` resolves to exactly this file. Reading free space through any other API risks
@@ -96,7 +95,7 @@ class StorageStatsHelper(
         // that sat a hair below what PMS measured.
         val usable = runCatching { Environment.getDataDirectory().usableSpace }.getOrNull()
             ?: return@withContext null
-        cacheTrimTarget(usableBytes = usable, totalCacheBytes = cache)
+        cacheTrimTarget(usableBytes = usable, totalCacheBytes = totalCacheBytes)
     }
 
     private fun installedApplications(): List<ApplicationInfo> =
