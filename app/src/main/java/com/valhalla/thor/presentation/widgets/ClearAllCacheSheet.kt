@@ -145,21 +145,25 @@ fun ClearAllCacheSheet(
                 text = when (state) {
                     CacheClearState.Confirming -> stringResource(R.string.clear_all_cache_confirm_desc)
                     CacheClearState.Running -> stringResource(R.string.clear_all_cache_running_desc)
-                    // Three outcomes, not two, because a measured zero and an absent measurement are
-                    // different facts and the repository keeps them apart all the way to here.
-                    // `formattedFreedBytes == null` is the absent one — the clear worked and Thor
-                    // could not weigh it — and saying "0 B" there would report a missing usage-access
-                    // grant as a clear that did nothing. A real zero is the opposite: the measurement
-                    // worked, so the sheet must not send the user off to grant a permission they
-                    // already hold. Negative deltas never arrive; SystemRepositoryImpl clamps them to
-                    // null, since cache an app rebuilt mid-clear is an unmeasurable, not a zero.
+                    // Four outcomes, because three different things can leave the sheet without a
+                    // number and they do not deserve the same sentence. A measured zero is a real
+                    // answer — the clear ran and there was nothing left — so rendering it as "could
+                    // not measure" would send a user who has usage access off to grant usage access.
+                    // An absent measurement splits again on whether the op is actually held: without
+                    // it there is something to do, with it there is not, and the difference is the
+                    // only actionable thing on the sheet. Negative deltas never arrive here;
+                    // SystemRepositoryImpl clamps them to null, since cache an app rebuilt mid-clear
+                    // is an unmeasurable rather than a zero — and that is precisely the case
+                    // `hasUsageAccess` keeps out of the grant-it-in-Settings line.
                     is CacheClearState.Done -> when {
-                        formattedFreedBytes == null ->
-                            stringResource(R.string.clear_all_cache_done_unmeasured)
-                        state.freedBytes == 0L ->
+                        formattedFreedBytes != null && state.freedBytes == 0L ->
                             stringResource(R.string.clear_all_cache_done_nothing)
-                        else ->
+                        formattedFreedBytes != null ->
                             stringResource(R.string.clear_all_cache_done_size, formattedFreedBytes)
+                        state.hasUsageAccess ->
+                            stringResource(R.string.clear_all_cache_done_size_unknown)
+                        else ->
+                            stringResource(R.string.clear_all_cache_done_unmeasured)
                     }
                 },
                 style = MaterialTheme.typography.bodyMedium,

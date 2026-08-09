@@ -27,6 +27,7 @@ import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.domain.usecase.ShareAppUseCase
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.FreezerRepository
+import com.valhalla.thor.domain.repository.UsageAccessGate
 import com.valhalla.thor.presentation.home.AppDestinations
 import com.valhalla.thor.util.AppLocale
 import com.valhalla.thor.util.Logger
@@ -163,8 +164,14 @@ sealed interface CacheClearState {
      * [freedBytes] is `null` when the clear succeeded but Thor could not measure it — no usage
      * access, or an app that refilled its cache between the two readings. A screen must render that
      * as "cache cleared" with no number, never as "0 B freed".
+     *
+     * [hasUsageAccess] separates those two causes, and exists because the sentence they deserve is
+     * not the same one. "Grant usage access to see the figure" is advice for the first and an
+     * insult to the second: the user already granted it, so the only actionable thing on screen is
+     * an instruction to do what they have done. Sampled when the result lands rather than when it
+     * is drawn, because it describes why *this* measurement failed.
      */
-    data class Done(val freedBytes: Long?) : CacheClearState
+    data class Done(val freedBytes: Long?, val hasUsageAccess: Boolean) : CacheClearState
 }
 
 data class MainUiState(
@@ -187,6 +194,11 @@ class MainViewModel(
     private val preferenceRepository: PreferenceRepository,
     private val freezerRepository: FreezerRepository,
     private val backupRunner: BackupRunner,
+    // Only ever asked `isGranted`, and only to explain a measurement that came back empty. The
+    // interface rather than UsageAccessManager because the concrete class reaches for a Context for
+    // its Settings deep-link, which would put an Android type in this ViewModel's constructor and
+    // take it off the JVM test classpath.
+    private val usageAccessGate: UsageAccessGate,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -453,7 +465,13 @@ class MainViewModel(
         viewModelScope.launch {
             manageAppUseCase.clearAllCaches()
                 .onSuccess { freed ->
-                    _uiState.update { it.copy(cacheClear = CacheClearState.Done(freed)) }
+                    // Read only when the number is missing. `isGranted` is a local AppOps lookup,
+                    // but asking it on the happy path would still be asking a question whose answer
+                    // is already implied — a byte count arrived, so the op is held.
+                    val hasUsageAccess = freed != null || usageAccessGate.isGranted()
+                    _uiState.update {
+                        it.copy(cacheClear = CacheClearState.Done(freed, hasUsageAccess))
+                    }
                 }
                 .onFailure { e ->
                     Logger.e("MainViewModel", "clearAllCaches failed", e)

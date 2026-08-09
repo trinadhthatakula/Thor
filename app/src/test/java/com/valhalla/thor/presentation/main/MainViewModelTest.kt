@@ -23,6 +23,7 @@ import com.valhalla.thor.presentation.FakeContext
 import com.valhalla.thor.presentation.FakeFreezerRepository
 import com.valhalla.thor.presentation.FakePreferenceRepository
 import com.valhalla.thor.presentation.FakeSystemRepository
+import com.valhalla.thor.presentation.FakeUsageAccessGate
 import com.valhalla.thor.presentation.MainDispatcherRule
 import com.valhalla.thor.presentation.blockedSystemApp
 import com.valhalla.thor.presentation.systemApp
@@ -106,6 +107,10 @@ class MainViewModelTest {
     private fun TestScope.viewModel(
         preferenceRepository: FakePreferenceRepository = prefs,
         runner: BackupRunner = backupRunner(preferenceRepository),
+        // Granted by default because that is the case every other test in this file is indifferent
+        // to: with the op held, an unmeasured clear is described without mentioning permissions. The
+        // one test that cares about the ungranted branch passes false.
+        usageAccess: Boolean = true,
     ): MainViewModel {
         val vm = MainViewModel(
             manageAppUseCase = ManageAppUseCase(system),
@@ -118,6 +123,7 @@ class MainViewModelTest {
             preferenceRepository = preferenceRepository,
             freezerRepository = freezer,
             backupRunner = runner,
+            usageAccessGate = FakeUsageAccessGate(usageAccess),
             ioDispatcher = mainDispatcherRule.dispatcher
         )
         backgroundScope.launch(mainDispatcherRule.dispatcher) { vm.uiState.collect {} }
@@ -607,20 +613,57 @@ class MainViewModelTest {
         vm.confirmClearAllCaches()
         advanceUntilIdle()
 
-        assertEquals(CacheClearState.Done(18_874_368L), vm.uiState.value.cacheClear)
+        assertEquals(
+            CacheClearState.Done(18_874_368L, hasUsageAccess = true),
+            vm.uiState.value.cacheClear
+        )
+    }
+
+    /**
+     * A byte count arrived, so the op is held by definition — the gate is not consulted and the flag
+     * does not go false behind a real measurement. Belt and braces: a `Done` carrying both a number
+     * and `hasUsageAccess = false` would render as "grant usage access" *and* have a figure to show.
+     */
+    @Test
+    fun `a measured clear does not ask the gate what it already knows`() = runTest {
+        system.cacheFreedBytes = 4_096L
+        val vm = viewModel(usageAccess = false)
+
+        vm.requestClearAllCaches()
+        vm.confirmClearAllCaches()
+        advanceUntilIdle()
+
+        assertEquals(CacheClearState.Done(4_096L, hasUsageAccess = true), vm.uiState.value.cacheClear)
     }
 
     @Test
     fun `an unmeasured clear still reports Done, with a null count`() = runTest {
-        // The default. Without usage access `StorageStatsManager` answers nothing, and the clear
-        // itself still worked — reporting 0 there would read as "that freed nothing".
+        // `cacheFreedBytes` defaults to null: the clear worked and the measurement did not. Reporting
+        // 0 there would read as "that freed nothing".
         val vm = viewModel()
 
         vm.requestClearAllCaches()
         vm.confirmClearAllCaches()
         advanceUntilIdle()
 
-        assertEquals(CacheClearState.Done(null), vm.uiState.value.cacheClear)
+        assertEquals(CacheClearState.Done(null, hasUsageAccess = true), vm.uiState.value.cacheClear)
+    }
+
+    /**
+     * The same empty result, and a different sentence on the sheet. With the op missing there is
+     * something the user can do about it; with the op held — an app refilling its cache mid-clear,
+     * say — telling them to grant what they already granted is the one piece of advice on screen and
+     * it is unfollowable.
+     */
+    @Test
+    fun `an unmeasured clear records whether usage access was the reason`() = runTest {
+        val vm = viewModel(usageAccess = false)
+
+        vm.requestClearAllCaches()
+        vm.confirmClearAllCaches()
+        advanceUntilIdle()
+
+        assertEquals(CacheClearState.Done(null, hasUsageAccess = false), vm.uiState.value.cacheClear)
     }
 
     @Test
@@ -636,7 +679,19 @@ class MainViewModelTest {
         // No Done(null): that is the "it worked, we could not measure it" answer, and showing it
         // here would report a failure as a success with a missing number.
         assertNull(vm.uiState.value.cacheClear)
-        assertEquals(1, effects.size)
+        // The whole effect, not just its arity: a success message is also one effect, and the point
+        // of this path is that the reason reaches the user rather than a silent sheet close.
+        assertEquals(
+            listOf(
+                MainSideEffect.Message(
+                    UiText.StringResource(
+                        R.string.error_format,
+                        UiText.DynamicString("no privileged gateway")
+                    )
+                )
+            ),
+            effects
+        )
     }
 
     @Test

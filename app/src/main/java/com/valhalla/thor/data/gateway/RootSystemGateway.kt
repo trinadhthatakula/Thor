@@ -386,6 +386,14 @@ class RootSystemGateway(
      * same three directories per package that [clearCache] does, with the package component globbed.
      * It is also the reason the trim's exit code is checked rather than assumed — a `pm` that fails
      * for any reason still leaves a mode that works.
+     *
+     * **The two rungs do not have the same reach, and the narrower one is the deliberate part.**
+     * `pm trim-caches` is volume-wide, so it takes every Android user with it; the sweep is scoped to
+     * [thorUserId] and leaves a work profile's or a Second Space's caches alone. That is not an
+     * oversight to be widened later — `PerUserCommands` exists because deleting another user's data
+     * from a command that names no user is the defect this codebase kept finding, and an `rm -rf`
+     * across every user's tree would be the largest instance of it. A user's other profiles are not
+     * Thor's to empty on a tile tap taken in this one.
      */
     override suspend fun clearAllCaches(targetFreeBytes: Long?): Result<Unit> {
         if (targetFreeBytes != null) {

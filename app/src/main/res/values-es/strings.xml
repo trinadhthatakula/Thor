@@ -87,6 +87,7 @@
     <string name="clear_all_cache_done_title">Caché limpiada</string>
     <string name="clear_all_cache_done_size">Se liberaron %1$s.</string>
     <string name="clear_all_cache_done_nothing">No quedaba caché que borrar.</string>
+    <string name="clear_all_cache_done_size_unknown">Listo. Thor no pudo medir cuánto liberó.</string>
     <string name="clear_all_cache_done_unmeasured">Listo. Thor no pudo medir cuánto liberó: concédele acceso de uso en Ajustes para ver la cifra la próxima vez.</string>
     <string name="system_apps">Aplicaciones del sistema</string>
     <string name="active">Activo</string>

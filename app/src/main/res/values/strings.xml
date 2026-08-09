@@ -95,6 +95,12 @@
          nothing left to drop. Deliberately not the _unmeasured line: that one asks for a permission
          this user demonstrably already granted. -->
     <string name="clear_all_cache_done_nothing">There was no cache left to clear.</string>
+    <!-- The measurement was available and still came back empty — an app refilled its cache while
+         the clear ran, or the storage service refused the reading. Says nothing about usage access:
+         this line is only ever shown to someone who already has it. -->
+    <string name="clear_all_cache_done_size_unknown">Done. Thor could not measure how much this freed.</string>
+    <!-- Shown only when the usage-access op is genuinely missing, which is what makes the advice
+         actionable. Any other unmeasured outcome uses clear_all_cache_done_size_unknown. -->
     <string name="clear_all_cache_done_unmeasured">Done. Thor could not measure how much this freed — grant it usage access in Settings to see the figure next time.</string>
     <string name="system_apps">System Apps</string>
     <string name="active">Active</string>

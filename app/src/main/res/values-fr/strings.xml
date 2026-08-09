@@ -87,7 +87,8 @@
     <string name="clear_all_cache_done_title">Cache vidé</string>
     <string name="clear_all_cache_done_size">%1$s libérés.</string>
     <string name="clear_all_cache_done_nothing">Il ne restait aucun cache à vider.</string>
-    <string name="clear_all_cache_done_unmeasured">Terminé. Thor n\'a pas pu mesurer l\'espace libéré — accordez-lui l\'accès à l\'utilisation dans les Paramètres pour voir le chiffre la prochaine fois.</string>
+    <string name="clear_all_cache_done_size_unknown">Terminé. Thor n\'a pas pu mesurer l\'espace libéré.</string>
+    <string name="clear_all_cache_done_unmeasured">Terminé. Thor n\'a pas pu mesurer l\'espace libéré — accordez-lui l\'accès aux données d\'utilisation dans les Paramètres pour voir le chiffre la prochaine fois.</string>
     <string name="system_apps">Applis système</string>
     <string name="active">Actif</string>
     <string name="frozen">Gelé</string>
