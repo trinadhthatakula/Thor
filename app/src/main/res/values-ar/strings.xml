@@ -683,5 +683,7 @@
     <string name="export_list_share">مشاركة القائمة</string>
     <string name="export_list_empty">لا توجد تطبيقات في هذه القائمة للتصدير</string>
     <string name="export_list_failed">تعذّر حفظ القائمة</string>
+    <string name="clear_all_caches_requires_usage_access">لا يستطيع Shizuku مسح ذاكرة التخزين المؤقت لكل التطبيقات بدون إذن الوصول إلى الاستخدام. يجب إخبار Android بعدد البايتات المطلوب تحريرها، وهذا الإذن وحده هو ما يمكنه قياس حجم ذاكرة التخزين المؤقت. امنح Thor إذن الوصول إلى الاستخدام من الإعدادات ثم أعد المحاولة.</string>
+    <string name="clear_all_caches_unsupported_dhizuku">لا يستطيع Dhizuku مسح ذاكرة التخزين المؤقت. ليست لديه صدفة (shell) لتشغيل أداة تقليص ذاكرة التخزين المؤقت في Android، ولا تتضمن واجهة مالك الجهاز أي بديل لها. بدّل إلى وضع Root أو Shizuku.</string>
 
 </resources>

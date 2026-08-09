@@ -632,5 +632,7 @@
     <string name="export_list_share">Compartir lista</string>
     <string name="export_list_empty">No hay aplicaciones en esta lista para exportar</string>
     <string name="export_list_failed">No se pudo guardar la lista</string>
+    <string name="clear_all_caches_requires_usage_access">Shizuku no puede borrar la caché de todas las apps sin acceso de uso. Hay que indicarle a Android cuántos bytes debe liberar, y solo ese permiso puede medir cuánta caché hay. Concede a Thor el acceso de uso en Ajustes e inténtalo de nuevo.</string>
+    <string name="clear_all_caches_unsupported_dhizuku">Dhizuku no puede borrar cachés. No tiene una shell en la que ejecutar la limpieza de caché de Android, y la API de propietario del dispositivo no ofrece nada equivalente. Cambia a Root o a Shizuku.</string>
 
 </resources>

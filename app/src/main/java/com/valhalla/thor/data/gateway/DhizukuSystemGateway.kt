@@ -72,11 +72,12 @@ class DhizukuSystemGateway(
      * shell error that reads like a bug.
      */
     override suspend fun clearAllCaches(targetFreeBytes: Long?): Result<Unit> {
+        // Out of resources, for the same reason the system-app freeze refusal below is: the user
+        // reads this one and acts on it. `MainViewModel.quickAction` drops `e.message` into
+        // R.string.error_format, which would otherwise put an English sentence inside a translated
+        // one.
         return Result.failure(
-            Exception(
-                "Dhizuku cannot clear caches: it has no shell to run `pm trim-caches` in, and the " +
-                    "device owner API has no equivalent. Switch to Root or Shizuku."
-            )
+            Exception(context.getString(R.string.clear_all_caches_unsupported_dhizuku))
         )
     }
 

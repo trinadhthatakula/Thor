@@ -711,5 +711,7 @@
     <string name="export_list_share">Share list</string>
     <string name="export_list_empty">There are no apps in this list to export</string>
     <string name="export_list_failed">Couldn\'t save the list</string>
+    <string name="clear_all_caches_requires_usage_access">Shizuku can\'t clear every app\'s cache without Usage Access. Android has to be told how many bytes to reclaim, and only that permission can measure how much cache there is. Grant Thor usage access in Settings and try again.</string>
+    <string name="clear_all_caches_unsupported_dhizuku">Dhizuku can\'t clear caches. It has no shell to run Android\'s cache trim in, and the Device Owner API has no equivalent. Switch to Root or Shizuku.</string>
 
 </resources>

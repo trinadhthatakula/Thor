@@ -75,14 +75,14 @@ class ShizukuSystemGateway(
         // of the cache is half the sum, and only the usage-access op can supply it. Guessing the
         // other half is not an option: too low and PMS returns on its first line having done
         // nothing, too high and it walks past the cache rungs into pruning shared libraries and
-        // uninstalling instant apps. Naming the op is what makes this message actionable.
+        // uninstalling instant apps. Naming the op is what makes this message actionable — and it
+        // is the one message on this path the user can *act* on, which is why it comes out of
+        // resources while the diagnostic below does not. `MainViewModel.quickAction` puts
+        // `e.message` straight into R.string.error_format, so an English literal here would be an
+        // English sentence inside a translated one.
         if (targetFreeBytes == null) {
             return Result.failure(
-                Exception(
-                    "Shizuku: clearing every app's cache needs Usage Access, because `pm trim-caches` " +
-                        "has to be told how many bytes to reclaim and only that permission can measure " +
-                        "the cache. Grant Thor usage access in Settings and try again."
-                )
+                Exception(context.getString(R.string.clear_all_caches_requires_usage_access))
             )
         }
         // `trimCaches` reports the exit code, and `pm trim-caches` exits 0 even when it frees
