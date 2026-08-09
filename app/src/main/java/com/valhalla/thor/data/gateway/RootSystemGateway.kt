@@ -349,18 +349,58 @@ class RootSystemGateway(
         )
     }
 
-    override suspend fun clearCache(packageName: String): Result<Unit> {
+    /**
+     * Deletes [packageName]'s cache directories for [thorUserId].
+     *
+     * **Not an override.** This is the only privilege mode that can clear one app's cache, so it
+     * sits off [SystemGateway] rather than on it — the same shape `copyFile` and `getAppPaths`
+     * already have, and `SystemRepositoryImpl` reaches it the same way, behind `isRootAvailable()`.
+     * The Shizuku and Dhizuku implementations that used to satisfy an interface method here are
+     * gone; [SystemGateway.clearAllCaches] records why they could not have worked.
+     *
+     * Deliberately unverified, and deliberately staying that way: as uid 0 `rm -rf` is honest about
+     * its own post-condition — exit 0 means those paths are gone or were never there, non-zero means
+     * a real error — so there is no asynchronous framework call here and no `IPackageDataObserver`
+     * to wait on. A readback would re-`stat` what the shell already reported on.
+     */
+    suspend fun clearCache(packageName: String): Result<Unit> {
         if (!packageName.matches(PACKAGE_NAME_REGEX)) {
             return Result.failure(IllegalArgumentException("Invalid package name: $packageName"))
         }
         val escapedPackage = packageName.escapeForShell()
-        // Deliberately unverified, and deliberately staying that way: as uid 0 `rm -rf` is honest
-        // about its own post-condition — exit 0 means those paths are gone or were never there,
-        // non-zero means a real error — so there is no asynchronous framework call here, and no
-        // IPackageDataObserver to wire up as the reflective cache rungs in the other two gateways
-        // need. A readback would re-`stat` what the shell already reported on.
         val command = "rm -rf ${clearCachePaths(escapedPackage, thorUserId).joinToString(" ")}"
         return runCommand(command)
+    }
+
+    /**
+     * Root's whole-volume clear: `pm trim-caches` first, then a direct sweep.
+     *
+     * The trim rung is preferred even though root does not need it, because it is
+     * `PackageManagerService` doing the deleting — it knows about volumes Thor's globs do not name,
+     * and it updates its own accounting instead of leaving PMS's view of the cache stale. As uid 0
+     * the `CLEAR_APP_CACHE` check passes unconditionally (`ActivityManager.checkComponentPermission`
+     * short-circuits `ROOT_UID`), so the rung that is the *whole* operation under Shizuku is merely
+     * the preferred one here.
+     *
+     * The sweep rung is why [targetFreeBytes] being `null` is survivable in this mode: it names the
+     * same three directories per package that [clearCache] does, with the package component globbed.
+     * It is also the reason the trim's exit code is checked rather than assumed — a `pm` that fails
+     * for any reason still leaves a mode that works.
+     */
+    override suspend fun clearAllCaches(targetFreeBytes: Long?): Result<Unit> {
+        if (targetFreeBytes != null) {
+            val trim = runCommand("pm trim-caches $targetFreeBytes")
+            if (trim.isSuccess) return trim
+            Logger.w(
+                "RootSystemGateway",
+                "pm trim-caches $targetFreeBytes failed; falling back to a direct sweep"
+            )
+        }
+        // The glob is expanded by the shell running as uid 0, not by Thor, so an app whose package
+        // name would need escaping is covered too — `*` never matches a path separator, so this
+        // cannot reach outside the three parents.
+        val sweep = clearCachePaths(escapedPackage = "*", userId = thorUserId).joinToString(" ")
+        return runCommand("rm -rf $sweep")
     }
 
     override suspend fun clearAppData(packageName: String): Result<Unit> = withContext(ioDispatcher) {
@@ -1177,30 +1217,12 @@ class RootSystemGateway(
         return runCommand(sb.toString())
     }
 
-    override suspend fun getAppCacheSize(packageName: String): Long {
-        if (!packageName.matches(PACKAGE_NAME_REGEX)) {
-            return 0L
-        }
-        return try {
-            val escapedPackage = packageName.escapeForShell()
-            // The credential-encrypted cache dir for Thor's own user. `/data/data/<pkg>` is an alias
-            // of this path *for user 0* — from a secondary user it sizes the wrong copy — and at
-            // user 0 the two name the same directory, so nothing changes on a single-user device.
-            val result = shellRepository.exec("du -s /data/user/$thorUserId/$escapedPackage/cache")
-            val outputLine = (if (result.isSuccess) result.stdout.firstOrNull() else null) ?: return 0L
-
-            // Output format is usually "12345   /path/to/file"
-            // We parse this in Kotlin, not using brittle 'awk' or 'cut'
-            val sizeInBlocks =
-                outputLine.substringBefore('\t').substringBefore(' ').toLongOrNull() ?: 0L
-
-            // du usually returns 1k blocks
-            sizeInBlocks * 1024
-        } catch (e: Exception) {
-            Logger.e("RootSystemGateway", "Failed to get app cache size for $packageName", e)
-            0L
-        }
-    }
+    // getAppCacheSize() used to sit here, on all three gateways, with no caller in the app. It was
+    // also wrong: it sized only `/data/user/N/<pkg>/cache`, one of the three directories a cache
+    // clear deletes, so any number it produced under-reported by whatever sat in the DE and external
+    // caches. `StorageStatsProvider.cacheBytes` answers the same question from
+    // `StorageStatsManager`, which counts external cache too, needs no privilege beyond the usage
+    // access Thor already manages, and gives the same answer in every privilege mode.
 
     /**
      * Modernized Reinstall Logic.

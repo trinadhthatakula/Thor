@@ -170,20 +170,47 @@ class PerUserCommandsTest {
     }
 
     /**
-     * And the other half of the claim: on a single-user device this changes nothing. These are the
-     * exact directories `/data/data/<pkg>/cache` and `/sdcard/Android/data/<pkg>/cache` resolve to
-     * when the shell belongs to user 0, so the commands issued on the overwhelmingly common device
-     * are byte-for-byte the ones issued before the fix.
+     * The list is the three branches of `InstalldNativeService::clearAppData` under
+     * `FLAG_CLEAR_CACHE_ONLY` — CE, DE, external — and this pins all three in order.
+     *
+     * The CE and external entries are also what `/data/data/<pkg>/cache` and
+     * `/sdcard/Android/data/<pkg>/cache` resolve to at user 0, which is the other half of the
+     * alias claim above: on a single-user device those two commands are byte-for-byte unchanged.
      */
     @Test
-    fun `at user 0 the paths are what the old aliases pointed at`() {
+    fun `the paths are installd's three cache-only branches, in order`() {
         assertEquals(
             listOf(
                 "/data/user/0/$pkg/cache",
+                "/data/user_de/0/$pkg/cache",
                 "/storage/emulated/0/Android/data/$pkg/cache",
             ),
             clearCachePaths(pkg, 0)
         )
+    }
+
+    /**
+     * The device-encrypted directory is the entry this list spent its whole life missing, so it
+     * gets an assertion that fails for a reason rather than only inside a list comparison. PMS
+     * creates a `user_de` package directory for every installed app, so this is not a direct-boot
+     * special case — omitting it left real cache behind while reporting the clear complete.
+     */
+    @Test
+    fun `the device-encrypted cache directory is covered`() {
+        assertTrue(
+            "no /data/user_de path — device-encrypted cache would survive the clear",
+            clearCachePaths(pkg, 10).any { it == "/data/user_de/10/$pkg/cache" }
+        )
+    }
+
+    /**
+     * `code_cache` is a different installd flag (`FLAG_CLEAR_CODE_CACHE_ONLY`) that Settings' Clear
+     * cache does not touch, and it holds compiled artifacts apps expect to persist. Freeing more
+     * bytes is not a reason to diverge from the platform, so this pins the omission as deliberate.
+     */
+    @Test
+    fun `code_cache is deliberately not cleared`() {
+        assertTrue(clearCachePaths(pkg, 0).none { it.contains("code_cache") })
     }
 
     /**

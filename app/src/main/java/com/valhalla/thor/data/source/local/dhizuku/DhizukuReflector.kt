@@ -26,14 +26,12 @@ class DhizukuReflector(
         }
     }
 
-    fun clearCache(packageName: String): Boolean {
-        return try {
-            DhizukuHelper.clearCache(packageName)
-        } catch (e: Exception) {
-            Logger.e("DhizukuReflector", "clearCache failed", e)
-            false
-        }
-    }
+    // clearCache() used to sit here. Dhizuku has no cache-clearing rung left to call: its shell
+    // rung ran as the Dhizuku app's own uid, which cannot touch another package's cache directory,
+    // and its reflection rung was already documented as "issued, and deliberately never believed"
+    // because `asInterface`'s double-wrapped binder dies in a Shizuku transport the user never set
+    // up. Two rungs that could not work is not a fallback chain. `DhizukuSystemGateway` now fails
+    // this operation with a sentence naming Root as the mode that performs it.
 
     fun clearData(packageName: String): Boolean {
         return try {

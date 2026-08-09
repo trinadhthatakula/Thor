@@ -563,71 +563,107 @@ class MainViewModelTest {
         assertEquals(1, effects.size)
     }
 
-    // --- Clear-all-cache safe list ----------------------------------------------------------
+    // --- Clear-all-cache ----------------------------------------------------------------------
+    //
+    // The old block here asserted a safe list — never Thor, never the Play Store — and a USER/SYSTEM
+    // split. Both are gone with the per-package loop they described: `pm trim-caches` hands victim
+    // selection to PackageManagerService, which evicts by LRU across the whole volume and takes no
+    // package argument. A test asserting Thor still spares the Play Store would be asserting a
+    // promise the platform never let Thor make.
 
     @Test
-    fun `clear all cache never clears Thor's own cache or the Play Store's`() = runTest {
-        appRepository.apps.value = listOf(
-            userApp(BuildConfig.APPLICATION_ID),
-            userApp(Installers.PLAY_STORE),
-            userApp("com.example.a")
-        )
+    fun `the tile asks before it clears anything`() = runTest {
         val vm = viewModel()
 
-        vm.clearAllCache(AppListType.USER)
+        vm.requestClearAllCaches()
         advanceUntilIdle()
 
-        // Clearing Thor's own cache mid-run pulls the rug out from under the run itself; clearing
-        // the Play Store's is a known way to break app updates.
-        assertEquals(listOf("clearCache:com.example.a"), system.calls)
-    }
-
-    @Test
-    fun `clear all cache excludes the running application id, suffix and all`() = runTest {
-        // The literal "com.valhalla.thor" is the *release* id. `applicationIdSuffix = ".debug"`
-        // means the debug build runs as `com.valhalla.thor.debug`, so a hardcoded self-exclusion
-        // stops excluding self on exactly the build where the mistake is easiest to make and
-        // hardest to notice. Both are in the list; only the one Thor is actually running as may be
-        // spared, and the other must be treated as an ordinary third-party app.
-        appRepository.apps.value = listOf(
-            userApp("com.valhalla.thor"),
-            userApp("com.valhalla.thor.debug")
-        )
-        val vm = viewModel()
-
-        vm.clearAllCache(AppListType.USER)
-        advanceUntilIdle()
-
-        val expected = listOf("com.valhalla.thor", "com.valhalla.thor.debug")
-            .filter { it != BuildConfig.APPLICATION_ID }
-            .map { "clearCache:$it" }
-        assertEquals(expected, system.calls)
-    }
-
-    @Test
-    fun `clear all cache with nothing eligible touches nothing`() = runTest {
-        appRepository.apps.value =
-            listOf(userApp(BuildConfig.APPLICATION_ID), userApp(Installers.PLAY_STORE))
-        val vm = viewModel()
-
-        vm.clearAllCache(AppListType.USER)
-        advanceUntilIdle()
-
-        // The empty selection must short-circuit rather than start an empty batch that never
-        // finishes and leaves the log dialog spinning.
+        // The tap must not reach the repository. Every app on the device, system apps included, is
+        // not something to start from a single tap on a home-screen tile.
+        assertEquals(CacheClearState.Confirming, vm.uiState.value.cacheClear)
         assertTrue(system.calls.isEmpty())
-        assertTrue(vm.uiState.value.loggerState.isComplete)
     }
 
     @Test
-    fun `clear all cache reads the list the tab is showing`() = runTest {
-        appRepository.apps.value = listOf(userApp("com.user.app"), systemApp("com.system.app"))
+    fun `confirming runs one whole-device clear, not a per-package walk`() = runTest {
+        appRepository.apps.value = listOf(userApp("com.a"), userApp("com.b"), systemApp("com.c"))
         val vm = viewModel()
 
-        vm.clearAllCache(AppListType.SYSTEM)
+        vm.requestClearAllCaches()
+        vm.confirmClearAllCaches()
         advanceUntilIdle()
 
-        assertEquals(listOf("clearCache:com.system.app"), system.calls)
+        // One call regardless of how many apps are installed — and `clearAllCaches`, not
+        // `clearCache`, which is the root-only per-app operation.
+        assertEquals(listOf("clearAllCaches"), system.calls)
+    }
+
+    @Test
+    fun `the result carries the bytes freed`() = runTest {
+        system.cacheFreedBytes = 18_874_368L
+        val vm = viewModel()
+
+        vm.requestClearAllCaches()
+        vm.confirmClearAllCaches()
+        advanceUntilIdle()
+
+        assertEquals(CacheClearState.Done(18_874_368L), vm.uiState.value.cacheClear)
+    }
+
+    @Test
+    fun `an unmeasured clear still reports Done, with a null count`() = runTest {
+        // The default. Without usage access `StorageStatsManager` answers nothing, and the clear
+        // itself still worked — reporting 0 there would read as "that freed nothing".
+        val vm = viewModel()
+
+        vm.requestClearAllCaches()
+        vm.confirmClearAllCaches()
+        advanceUntilIdle()
+
+        assertEquals(CacheClearState.Done(null), vm.uiState.value.cacheClear)
+    }
+
+    @Test
+    fun `a failed clear closes the sheet and says why`() = runTest {
+        system.failWith("clearAllCaches", IllegalStateException("no privileged gateway"))
+        val vm = viewModel()
+        val effects = effectsOf(vm)
+
+        vm.requestClearAllCaches()
+        vm.confirmClearAllCaches()
+        advanceUntilIdle()
+
+        // No Done(null): that is the "it worked, we could not measure it" answer, and showing it
+        // here would report a failure as a success with a missing number.
+        assertNull(vm.uiState.value.cacheClear)
+        assertEquals(1, effects.size)
+    }
+
+    @Test
+    fun `confirming twice does not start a second clear`() = runTest {
+        val vm = viewModel()
+
+        vm.requestClearAllCaches()
+        vm.confirmClearAllCaches()
+        vm.confirmClearAllCaches()
+        advanceUntilIdle()
+
+        // The sheet's Proceed button is gone while Running, but the state is public and the coroutine
+        // is not instantaneous; a double-tap landing in the same frame must not queue two trims.
+        assertEquals(listOf("clearAllCaches"), system.calls)
+    }
+
+    @Test
+    fun `dismissing the confirmation clears nothing and raises no prompt`() = runTest {
+        val vm = viewModel()
+
+        vm.requestClearAllCaches()
+        vm.dismissCacheClear()
+        advanceUntilIdle()
+
+        assertNull(vm.uiState.value.cacheClear)
+        assertTrue(system.calls.isEmpty())
+        assertFalse(vm.uiState.value.showSupportDeveloperPrompt)
     }
 
     // --- The support prompt -----------------------------------------------------------------

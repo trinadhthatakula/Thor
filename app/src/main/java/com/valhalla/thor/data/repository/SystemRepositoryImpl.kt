@@ -10,6 +10,7 @@ import com.valhalla.thor.data.gateway.ShizukuSystemGateway
 import com.valhalla.thor.domain.gateway.SystemGateway
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.StorageStatsProvider
 import com.valhalla.thor.domain.repository.SystemRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -24,6 +25,7 @@ class SystemRepositoryImpl(
     private val shizukuGateway: ShizukuSystemGateway,
     private val dhizukuGateway: DhizukuSystemGateway,
     private val preferenceRepository: PreferenceRepository,
+    private val storageStats: StorageStatsProvider,
     @Named("io") private val ioDispatcher: CoroutineDispatcher
 ) : SystemRepository {
 
@@ -123,8 +125,57 @@ class SystemRepositoryImpl(
         runGatewayAction { it.forceStopApp(packageName) }
     }
 
-    override suspend fun clearCache(packageName: String): Result<Unit> = withContext(ioDispatcher) {
-        runGatewayAction { it.clearCache(packageName) }
+    // Root-gated rather than routed through runGatewayAction, and deliberately so: no other
+    // privilege mode can clear one app's cache. `SystemGateway.clearAllCaches` records the
+    // measurements behind that; the short version is that `INTERNAL_DELETE_CACHE_FILES` is
+    // signature-level, so PackageManagerService answers Shizuku's call by logging that it is
+    // silently ignoring it. This follows `copyFileWithRoot` and `getAppPaths`, the two operations
+    // that were already root-only for a reason of their own.
+    override suspend fun clearCache(packageName: String): Result<Long?> = withContext(ioDispatcher) {
+        if (!rootGateway.isRootAvailable()) {
+            return@withContext Result.failure(
+                Exception("Clearing one app's cache requires Root. Shizuku and Dhizuku can only clear every app's cache at once.")
+            )
+        }
+        measuringCacheFreed({ storageStats.cacheBytes(packageName) }) {
+            rootGateway.clearCache(packageName)
+        }
+    }
+
+    override suspend fun clearAllCaches(): Result<Long?> = withContext(ioDispatcher) {
+        // Read the target before the before-measurement, not after: both are binder round trips and
+        // this is the one the operation cannot proceed without.
+        val target = storageStats.cacheTrimTargetBytes()
+        measuringCacheFreed({ storageStats.totalCacheBytes() }) {
+            runGatewayAction { it.clearAllCaches(target) }
+        }
+    }
+
+    /**
+     * Runs [clear] between two [measure] readings and reports the difference.
+     *
+     * The subtraction is the only way to answer "how much did that free". `pm trim-caches` prints
+     * nothing on success and picks its own victims, and `rm -rf` prints nothing either, so neither
+     * rung can report a byte count of its own.
+     *
+     * Three things it refuses to do. It does not measure when the clear failed — a failure's delta
+     * is noise, and attaching a number to it invites a caller to show it. It answers `null`, not 0,
+     * when either reading is missing, because "no usage access" and "there was no cache" are
+     * different facts. And it clamps a negative delta to `null` rather than to 0: cache that an app
+     * rebuilt between the two readings can make the after-value larger, and that is a measurement
+     * Thor could not take, not a clear that freed nothing.
+     */
+    private suspend inline fun measuringCacheFreed(
+        measure: () -> Long?,
+        clear: () -> Result<Unit>
+    ): Result<Long?> {
+        val before = measure()
+        val result = clear()
+        if (result.isFailure) return Result.failure(result.exceptionOrNull() ?: Exception("Cache clear failed"))
+        val after = measure()
+        if (before == null || after == null) return Result.success(null)
+        val freed = before - after
+        return Result.success(if (freed >= 0) freed else null)
     }
 
     override suspend fun clearAppData(packageName: String): Result<Unit> = withContext(ioDispatcher) {

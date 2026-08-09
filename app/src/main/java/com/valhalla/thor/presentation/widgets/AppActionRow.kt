@@ -168,12 +168,20 @@ fun AppActionRow(
             )
         }
 
-        if (hasPrivilege) {
+        // Root, not hasPrivilege. Clearing *one* app's cache needs
+        // `android.permission.INTERNAL_DELETE_CACHE_FILES`, which is signature-level: it cannot be
+        // granted to `com.android.shell`, so PackageManagerService answers a Shizuku-delegated call
+        // by logging "silently ignoring" and returning nothing. Under Shizuku and Dhizuku this icon
+        // was a button that reported success and did nothing. The whole-device clear on Home still
+        // works for Shizuku — that one goes through `pm trim-caches`, a different permission.
+        if (isRoot) {
             ActionItem(
                 icon = R.drawable.clear_all,
                 label = stringResource(R.string.action_clear_cache),
                 onClick = onClearCache
             )
+        }
+        if (hasPrivilege) {
             ActionItem(
                 icon = R.drawable.delete,
                 label = stringResource(R.string.action_clear_data),

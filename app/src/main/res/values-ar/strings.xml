@@ -80,11 +80,13 @@
     <string name="total_apps">الإجمالي: %1$d</string>
     <string name="others">أخرى</string>
     <string name="clear_all_cache">مسح جميع الذاكرة المؤقتة</string>
-    <string name="clear_cache_prompt">أي التطبيقات ترغب في مسحها؟</string>
     <string name="clear_all_cache_subtitle">مسح الملفات المؤقتة لجميع التطبيقات لاستعادة مساحة التخزين</string>
-    <string name="clear_system_cache_title">مسح ذاكرة النظام المؤقتة؟</string>
-    <string name="clear_system_cache_desc">قد يؤدي مسح ذاكرة تطبيقات النظام المؤقتة إلى عدم استقرار مؤقت. هل أنت متأكد أنك تريد المتابعة؟</string>
-    <string name="user_apps">تطبيقات المستخدم</string>
+    <string name="clear_all_cache_confirm_desc">أندرويد هو من يقرر أي ذاكرة مؤقتة تُمسح، ولا يتيح لـ Thor الاختيار — تشمل العملية كل تطبيقات الجهاز، تطبيقات النظام وتطبيقاتك على حد سواء. لن يُمسّ أي شيء آخر: بياناتك وتسجيلات دخولك وإعداداتك تبقى كما هي. قد تفتح التطبيقات ببطء بسيط في المرة الأولى بينما تعيد بناء ذاكرتها المؤقتة.</string>
+    <string name="clear_all_cache_running">جارٍ المسح…</string>
+    <string name="clear_all_cache_running_desc">جارٍ العمل على كل تطبيقات الجهاز. قد يستغرق ذلك لحظة.</string>
+    <string name="clear_all_cache_done_title">تم مسح الذاكرة المؤقتة</string>
+    <string name="clear_all_cache_done_size">تم تحرير %1$s.</string>
+    <string name="clear_all_cache_done_unmeasured">تم. لم يتمكن Thor من قياس المساحة المحرّرة — امنحه إذن الوصول إلى بيانات الاستخدام في الإعدادات لرؤية الرقم في المرة القادمة.</string>
     <string name="system_apps">تطبيقات النظام</string>
     <string name="active">نشط</string>
     <string name="frozen">مجمد</string>
@@ -306,6 +308,7 @@
     </plurals>
     <string name="killed_success">تم إنهاء %1$s</string>
     <string name="cache_cleared_success">تم مسح ذاكرة التخزين المؤقت لـ %1$s</string>
+    <string name="cache_cleared_success_size">تم مسح %2$s من ذاكرة %1$s المؤقتة</string>
     <string name="data_cleared_success">تم مسح بيانات %1$s</string>
     <string name="suspended_success">تم تعليق %1$s</string>
     <string name="unsuspended_success">تم إلغاء تعليق %1$s</string>
@@ -406,8 +409,6 @@
     <!-- Terminal Logs -->
     <string name="log_initializing">جارٍ التهيئة…</string>
     <string name="log_op_complete">\nاكتملت العملية.</string>
-    <string name="log_preparing_cache">جارٍ تجهيز تنظيف الذاكرة المؤقتة…</string>
-    <string name="log_no_eligible_apps">لم يتم العثور على تطبيقات مؤهلة.</string>
     <string name="log_sharing_app">جارٍ مشاركة %1$s</string>
     <string name="log_preparing_files">جارٍ تجهيز الملفات…</string>
     <string name="log_files_ready">✔ الملفات جاهزة</string>

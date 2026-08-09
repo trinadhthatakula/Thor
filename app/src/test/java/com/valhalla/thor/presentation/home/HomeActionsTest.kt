@@ -15,9 +15,14 @@ import org.junit.Test
 
 /**
  * The three privilege flags all derive from one nullable field on the Home state, so only five of
- * their eight combinations are reachable: root implies privilege, and so does a visible reinstall
- * card. The two GH#344 preferences are independent of all of that and of each other, so the
- * reachable set is those five crossed with all four preference pairs.
+ * their eight combinations are reachable: `canClearCache` implies privilege, and so does a visible
+ * reinstall card. The two GH#344 preferences are independent of all of that and of each other, so
+ * the reachable set is those five crossed with all four preference pairs.
+ *
+ * `canClearCache` used to be `isRoot`. It is Root **or** Shizuku now, because the tile runs
+ * `pm trim-caches`, gated on `CLEAR_APP_CACHE` — a permission `com.android.shell` holds. Only
+ * Dhizuku is excluded, so the implication that shapes this table is unchanged: every mode that can
+ * clear caches has a privilege, and one mode with a privilege cannot clear them.
  *
  * Each privilege state is asserted on its own below, then the preference rules, then the packing
  * and visibility invariants across every combination.
@@ -27,15 +32,16 @@ class HomeActionsTest {
     /** One state the Home screen can be in: the three derived flags plus the two preferences. */
     private data class State(
         val reinstall: Boolean,
-        val root: Boolean,
+        val canClearCache: Boolean,
         val privilege: Boolean,
         val showInstaller: Boolean,
         val showExtensions: Boolean,
     ) {
-        fun rows() = homeActionRows(reinstall, root, privilege, showInstaller, showExtensions)
+        fun rows() =
+            homeActionRows(reinstall, canClearCache, privilege, showInstaller, showExtensions)
 
-        override fun toString() = "reinstall=$reinstall root=$root privilege=$privilege " +
-            "installer=$showInstaller extensions=$showExtensions"
+        override fun toString() = "reinstall=$reinstall canClearCache=$canClearCache " +
+            "privilege=$privilege installer=$showInstaller extensions=$showExtensions"
     }
 
     /** The five reachable privilege states, crossed with every preference pair. */
@@ -46,10 +52,10 @@ class HomeActionsTest {
             Triple(true, false, true),
             Triple(false, true, true),
             Triple(true, true, true),
-        ).flatMap { (reinstall, root, privilege) ->
+        ).flatMap { (reinstall, canClearCache, privilege) ->
             listOf(true, false).flatMap { installer ->
                 listOf(true, false).map { extensions ->
-                    State(reinstall, root, privilege, installer, extensions)
+                    State(reinstall, canClearCache, privilege, installer, extensions)
                 }
             }
         }
@@ -59,42 +65,42 @@ class HomeActionsTest {
     @Test fun noPrivilege_onlyInstallFullWidth() {
         assertEquals(
             listOf(listOf(INSTALL)),
-            homeActionRows(reinstallVisible = false, isRoot = false, hasPrivilege = false)
+            homeActionRows(reinstallVisible = false, canClearCache = false, hasPrivilege = false)
         )
     }
 
-    @Test fun shizukuOrDhizuku_noReinstall_isOnePair() {
+    @Test fun dhizukuOnly_noReinstall_isOnePair() {
         assertEquals(
             listOf(listOf(INSTALL, EXTENSIONS)),
-            homeActionRows(reinstallVisible = false, isRoot = false, hasPrivilege = true)
+            homeActionRows(reinstallVisible = false, canClearCache = false, hasPrivilege = true)
         )
     }
 
-    @Test fun shizukuOrDhizuku_withReinstall_leadsWide() {
+    @Test fun dhizukuOnly_withReinstall_leadsWide() {
         assertEquals(
             listOf(listOf(INSTALL), listOf(EXTENSIONS, REINSTALL)),
-            homeActionRows(reinstallVisible = true, isRoot = false, hasPrivilege = true)
+            homeActionRows(reinstallVisible = true, canClearCache = false, hasPrivilege = true)
         )
     }
 
-    @Test fun root_noReinstall_leadsWide() {
+    @Test fun rootOrShizuku_noReinstall_leadsWide() {
         assertEquals(
             listOf(listOf(INSTALL), listOf(CLEAR_CACHE, EXTENSIONS)),
-            homeActionRows(reinstallVisible = false, isRoot = true, hasPrivilege = true)
+            homeActionRows(reinstallVisible = false, canClearCache = true, hasPrivilege = true)
         )
     }
 
-    @Test fun root_withReinstall_isTwoByTwo() {
+    @Test fun rootOrShizuku_withReinstall_isTwoByTwo() {
         assertEquals(
             listOf(listOf(INSTALL, CLEAR_CACHE), listOf(EXTENSIONS, REINSTALL)),
-            homeActionRows(reinstallVisible = true, isRoot = true, hasPrivilege = true)
+            homeActionRows(reinstallVisible = true, canClearCache = true, hasPrivilege = true)
         )
     }
 
     /** Reinstall is last in the flow, so dismissing it re-packs only the tiles after it. */
     @Test fun dismissingReinstall_leavesTheOtherTilesInPlace() {
-        val withCard = homeActionRows(reinstallVisible = true, isRoot = true, hasPrivilege = true)
-        val without = homeActionRows(reinstallVisible = false, isRoot = true, hasPrivilege = true)
+        val withCard = homeActionRows(reinstallVisible = true, canClearCache = true, hasPrivilege = true)
+        val without = homeActionRows(reinstallVisible = false, canClearCache = true, hasPrivilege = true)
         assertEquals(listOf(INSTALL, CLEAR_CACHE, EXTENSIONS), without.flatten())
         assertEquals(listOf(INSTALL, CLEAR_CACHE, EXTENSIONS, REINSTALL), withCard.flatten())
     }
@@ -103,7 +109,7 @@ class HomeActionsTest {
         assertEquals(
             listOf(listOf(INSTALL), listOf(CLEAR_CACHE), listOf(EXTENSIONS), listOf(REINSTALL)),
             homeActionRows(
-                reinstallVisible = true, isRoot = true, hasPrivilege = true, narrowContainer = true
+                reinstallVisible = true, canClearCache = true, hasPrivilege = true, narrowContainer = true
             )
         )
     }
@@ -113,7 +119,7 @@ class HomeActionsTest {
     /** The 2x2 loses its leader and the survivors re-pack, rather than leaving a hole. */
     @Test fun hidingTheInstaller_dropsOnlyThatTile() {
         val rows = homeActionRows(
-            reinstallVisible = true, isRoot = true, hasPrivilege = true, showInstaller = false
+            reinstallVisible = true, canClearCache = true, hasPrivilege = true, showInstaller = false
         )
         assertTrue("Install must be gone", INSTALL !in rows.flatten())
         assertEquals(listOf(listOf(CLEAR_CACHE), listOf(EXTENSIONS, REINSTALL)), rows)
@@ -121,7 +127,7 @@ class HomeActionsTest {
 
     @Test fun hidingExtensions_dropsOnlyThatTile() {
         val rows = homeActionRows(
-            reinstallVisible = true, isRoot = true, hasPrivilege = true, showExtensions = false
+            reinstallVisible = true, canClearCache = true, hasPrivilege = true, showExtensions = false
         )
         assertTrue("Extensions must be gone", EXTENSIONS !in rows.flatten())
         assertEquals(listOf(listOf(INSTALL), listOf(CLEAR_CACHE, REINSTALL)), rows)
@@ -130,7 +136,7 @@ class HomeActionsTest {
     @Test fun hidingBoth_keepsThePrivilegedTiles() {
         val rows = homeActionRows(
             reinstallVisible = true,
-            isRoot = true,
+            canClearCache = true,
             hasPrivilege = true,
             showInstaller = false,
             showExtensions = false,
@@ -148,7 +154,7 @@ class HomeActionsTest {
             emptyList<List<HomeAction>>(),
             homeActionRows(
                 reinstallVisible = false,
-                isRoot = false,
+                canClearCache = false,
                 hasPrivilege = false,
                 showInstaller = false,
                 showExtensions = false,
@@ -159,7 +165,7 @@ class HomeActionsTest {
     /** The preference relaxes nothing: without a privilege there is no Extensions tile to keep. */
     @Test fun wantingExtensionsWithoutPrivilege_staysHidden() {
         val rows = homeActionRows(
-            reinstallVisible = false, isRoot = false, hasPrivilege = false, showExtensions = true
+            reinstallVisible = false, canClearCache = false, hasPrivilege = false, showExtensions = true
         )
         assertEquals(listOf(listOf(INSTALL)), rows)
     }
@@ -170,7 +176,7 @@ class HomeActionsTest {
             listOf(listOf(CLEAR_CACHE), listOf(REINSTALL)),
             homeActionRows(
                 reinstallVisible = true,
-                isRoot = true,
+                canClearCache = true,
                 hasPrivilege = true,
                 showInstaller = false,
                 showExtensions = false,
@@ -202,7 +208,7 @@ class HomeActionsTest {
         for (state in reachableStates) {
             val flat = state.rows().flatten()
             assertEquals("$state: Install visibility", state.showInstaller, INSTALL in flat)
-            assertEquals("$state: Clear cache visibility", state.root, CLEAR_CACHE in flat)
+            assertEquals("$state: Clear cache visibility", state.canClearCache, CLEAR_CACHE in flat)
             assertEquals(
                 "$state: Extensions visibility",
                 state.privilege && state.showExtensions,

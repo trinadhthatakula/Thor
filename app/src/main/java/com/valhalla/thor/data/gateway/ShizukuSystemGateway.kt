@@ -66,8 +66,20 @@ class ShizukuSystemGateway(
         return runAction { reflector.forceStop(packageName) }
     }
 
-    override suspend fun clearCache(packageName: String): Result<Unit> {
-        return runAction { reflector.clearCache(packageName) }
+    override suspend fun clearAllCaches(targetFreeBytes: Long?): Result<Unit> {
+        // No sweep fallback, unlike Root: shell uid 2000 cannot delete another package's cache
+        // directory, so without a target there is nothing left to try.
+        if (targetFreeBytes == null) {
+            return Result.failure(
+                Exception(
+                    "Shizuku: could not read how much free space the volume has, and `pm trim-caches` " +
+                        "needs that number — passing a round one would let PackageManagerService walk " +
+                        "past the cache rungs into pruning apps."
+                )
+            )
+        }
+        return if (reflector.trimCaches(targetFreeBytes)) Result.success(Unit)
+        else Result.failure(Exception("Shizuku: `pm trim-caches` failed."))
     }
 
     override suspend fun clearAppData(packageName: String): Result<Unit> {
@@ -391,10 +403,6 @@ class ShizukuSystemGateway(
         } else {
             Result.failure(Exception("Shizuku install failed: ${result.second}"))
         }
-    }
-
-    override suspend fun getAppCacheSize(packageName: String): Long {
-        return 0L // Requires specialized logic
     }
 
     override suspend fun reinstallAppWithGoogle(packageName: String): Result<Unit> {

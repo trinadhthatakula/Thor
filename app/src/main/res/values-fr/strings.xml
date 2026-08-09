@@ -80,11 +80,13 @@
     <string name="total_apps">TOTAL : %1$d</string>
     <string name="others">Autres</string>
     <string name="clear_all_cache">Vider tous les caches</string>
-    <string name="clear_cache_prompt">Quelles applications souhaitez-vous vider ?</string>
     <string name="clear_all_cache_subtitle">Vider les fichiers en cache de toutes les applications pour récupérer de l\'espace de stockage</string>
-    <string name="clear_system_cache_title">Vider le cache système ?</string>
-    <string name="clear_system_cache_desc">Vider le cache des applications système peut causer une instabilité temporaire. Êtes-vous sûr de vouloir continuer ?</string>
-    <string name="user_apps">Applis utilisateur</string>
+    <string name="clear_all_cache_confirm_desc">C\'est Android qui décide quels caches supprimer, et il ne laisse pas Thor choisir — toutes les applications de l\'appareil sont concernées, les applications système comme les vôtres. Rien d\'autre n\'est touché : vos données, connexions et réglages restent en place. Les applications peuvent s\'ouvrir un peu plus lentement la première fois, le temps de reconstituer leur cache.</string>
+    <string name="clear_all_cache_running">Nettoyage en cours…</string>
+    <string name="clear_all_cache_running_desc">Traitement de toutes les applications de l\'appareil. Cela peut prendre un moment.</string>
+    <string name="clear_all_cache_done_title">Cache vidé</string>
+    <string name="clear_all_cache_done_size">%1$s libérés.</string>
+    <string name="clear_all_cache_done_unmeasured">Terminé. Thor n\'a pas pu mesurer l\'espace libéré — accordez-lui l\'accès à l\'utilisation dans les Paramètres pour voir le chiffre la prochaine fois.</string>
     <string name="system_apps">Applis système</string>
     <string name="active">Actif</string>
     <string name="frozen">Gelé</string>
@@ -276,6 +278,7 @@
     </plurals>
     <string name="killed_success">%1$s arrêté</string>
     <string name="cache_cleared_success">Cache de %1$s vidé</string>
+    <string name="cache_cleared_success_size">%2$s de cache vidés pour %1$s</string>
     <string name="data_cleared_success">Données de %1$s effacées</string>
     <string name="suspended_success">%1$s suspendu</string>
     <string name="unsuspended_success">%1$s réactivé</string>
@@ -372,8 +375,6 @@
     <!-- Terminal Logs -->
     <string name="log_initializing">Initialisation…</string>
     <string name="log_op_complete">\nOpération terminée.</string>
-    <string name="log_preparing_cache">Préparation du nettoyage du cache…</string>
-    <string name="log_no_eligible_apps">Aucune application éligible trouvée.</string>
     <string name="log_sharing_app">Partage de %1$s</string>
     <string name="log_preparing_files">Préparation des fichiers…</string>
     <string name="log_files_ready">✔ Fichiers prêts</string>

@@ -41,14 +41,36 @@ internal fun clearAppDataCommand(escapedPackage: String, userId: Int): String =
     "pm clear --user $userId $escapedPackage"
 
 /**
- * The cache directories of [escapedPackage] **for [userId]**, credential-encrypted first, then
- * external.
+ * The cache directories of [escapedPackage] **for [userId]**: credential-encrypted, then
+ * device-encrypted, then external.
+ *
+ * The set is not a guess — it is the three branches of `InstalldNativeService::clearAppData` under
+ * `FLAG_CLEAR_CACHE_ONLY`, which is what the platform itself deletes when a user taps Clear cache
+ * in Settings:
+ *  - `FLAG_STORAGE_CE` → `create_data_user_ce_package_path(...) + "cache"`
+ *  - `FLAG_STORAGE_DE` → `create_data_user_de_package_path(...) + CACHE_DIR_POSTFIX`
+ *  - `FLAG_STORAGE_EXTERNAL` → `<ext>/Android/data/<pkg>/cache`
+ *
+ * The device-encrypted entry is the one this list spent its whole life missing. `/data/user_de` is
+ * not an exotic direct-boot-only location: PMS creates a `user_de` package directory for **every**
+ * installed app, and anything written through `createDeviceProtectedStorageContext().cacheDir`
+ * lands there. Clearing only CE and external therefore left a real, sometimes large, slice of cache
+ * behind while reporting the operation complete — and it is invisible in testing precisely because
+ * most apps put little there and the number that is left behind was never shown to anyone.
+ *
+ * Deliberately no `code_cache`, in either encryption. That is a *different* installd flag
+ * (`FLAG_CLEAR_CODE_CACHE_ONLY`), Settings' Clear cache does not touch it, and it holds compiled
+ * artifacts an app expects to persist. Matching the platform matters more here than freeing the
+ * largest possible number of bytes.
  *
  * Deliberately no `/data/data/<pkg>/cache` and no `/sdcard/Android/data/<pkg>/cache`. They are not
- * extra coverage: they are aliases of the first and second entries *for user 0*, so on a secondary
+ * extra coverage: they are aliases of the CE and external entries *for user 0*, so on a secondary
  * user (work profile, Xiaomi Second Space) a shell that expands them deletes a different user's
- * cache and leaves Thor's own untouched. At `userId = 0` — every single-user device — the paths
- * below resolve to exactly the directories those two aliases pointed at, so nothing changes there.
+ * cache and leaves Thor's own untouched.
+ *
+ * Only the root gateway can act on all of these. A shell-uid or device-owner caller is refused
+ * `/data/user*` outright, which is why per-app cache clearing is root-gated in
+ * `SystemRepositoryImpl` rather than attempted and reported as done.
  */
 // SdCardPath is suppressed because its advice does not apply: these are not Thor's own directories.
 // getExternalCacheDir/getFilesDir answer for the *calling* app, and the whole point of the function
@@ -58,6 +80,7 @@ internal fun clearAppDataCommand(escapedPackage: String, userId: Int): String =
 @SuppressLint("SdCardPath")
 internal fun clearCachePaths(escapedPackage: String, userId: Int): List<String> = listOf(
     "/data/user/$userId/$escapedPackage/cache",
+    "/data/user_de/$userId/$escapedPackage/cache",
     "/storage/emulated/$userId/Android/data/$escapedPackage/cache",
 )
 

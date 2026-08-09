@@ -50,8 +50,10 @@ private class RecordingSystemRepository : SystemRepository {
     override suspend fun forceStopApp(packageName: String): Result<Unit> =
         error("off the freeze path")
 
-    override suspend fun clearCache(packageName: String): Result<Unit> =
+    override suspend fun clearCache(packageName: String): Result<Long?> =
         error("off the freeze path")
+
+    override suspend fun clearAllCaches(): Result<Long?> = error("off the freeze path")
 
     override suspend fun clearAppData(packageName: String): Result<Unit> =
         error("off the freeze path")
