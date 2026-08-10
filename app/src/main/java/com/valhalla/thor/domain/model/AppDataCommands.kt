@@ -56,7 +56,13 @@ private fun isQuotableEntryName(name: String): Boolean =
  *
  * [externalStorageDir] is only consulted by the two external classes, so a device that cannot
  * resolve it still backs up CE and DE.
+ *
+ * `SdCardPath` suppressed: these paths name **another app's** private data directory, which a root
+ * shell reads directly. `Context.getFilesDir()` and similar APIs can only name Thor's own data
+ * directory and cannot express what this function returns, so the check's suggested remedy does not
+ * apply here.
  */
+@Suppress("SdCardPath")
 internal fun dataClassRoot(
     dataClass: DataClass,
     packageName: String,
