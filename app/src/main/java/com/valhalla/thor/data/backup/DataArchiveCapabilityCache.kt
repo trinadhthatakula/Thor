@@ -6,6 +6,7 @@ package com.valhalla.thor.data.backup
 import com.valhalla.thor.domain.model.PrivilegeState
 import com.valhalla.thor.domain.repository.AppDataProbe
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.koin.core.annotation.Single
@@ -29,7 +30,13 @@ class DataArchiveCapabilityCache(
     private var cached: Pair<PrivilegeState, Boolean>? = null
 
     suspend fun isSupported(): Boolean {
-        val state = privilegeState.state.value
+        // Await the first resolved state rather than reading the raw snapshot. `state.value` is the
+        // default on cold start: `isReady = false, active = NONE` — `hasAnyPrivilege` would be false
+        // and we'd return false immediately, even on a rooted device, until both the privilege probe
+        // and the first DataStore emission have landed. `isReady` is set exactly once that has
+        // happened, distinguishing "not probed yet" from "probed, nothing available". The same fix
+        // lives in BulkFreezeRunner.kt:368 for the same snapshot-read bug.
+        val state = privilegeState.state.first { it.isReady }
         // No surface to probe through. Shelling out would raise a `su` prompt on a device where the
         // user granted nothing — and the answer is derived, not measured, so it is not cached.
         if (!state.hasAnyPrivilege) return false

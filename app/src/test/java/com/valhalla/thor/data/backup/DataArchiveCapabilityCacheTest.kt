@@ -9,14 +9,18 @@ import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.PrivilegeState
 import com.valhalla.thor.domain.repository.AppDataProbe
 import com.valhalla.thor.domain.repository.PrivilegeStateProvider
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class DataArchiveCapabilityCacheTest {
 
     private class FakeProbe(var answer: Boolean = true) : AppDataProbe {
@@ -92,14 +96,44 @@ class DataArchiveCapabilityCacheTest {
 
     @Test
     fun `a cold start that has not probed yet is not cached as unsupported`() = runTest {
-        // `isReady = false` is "not known yet", and the derived answer must not outlive it.
+        // `isReady = false` is "not known yet" — isSupported() suspends rather than returning false,
+        // so the not-ready state is never committed to the cache as unsupported. Once the privilege
+        // probe lands and the state becomes ready, the real answer comes back.
         val probe = FakeProbe()
         val privilege = FakePrivilege(PrivilegeState(isReady = false))
         val cache = DataArchiveCapabilityCache(probe, privilege)
-        assertFalse(cache.isSupported())
+
+        val deferred = async { cache.isSupported() }
+        runCurrent()  // advance to the suspension point at first { it.isReady }
 
         privilege.flow.value = rooted()
+        runCurrent()  // resume and complete
 
-        assertTrue(cache.isSupported())
+        assertTrue(deferred.await())
+    }
+
+    @Test
+    fun `isSupported suspends on cold start and awaits the first ready state`() = runTest {
+        // On a cold start, `privilegeState.state.value` is the default: isReady = false, active = NONE.
+        // Reading `.value` directly returns false immediately — even on a rooted device — because
+        // `hasAnyPrivilege` is `active != NONE`. `first { it.isReady }` suspends until the privilege
+        // probe resolves and then returns the real answer. BulkFreezeRunner.kt:368 carries this fix
+        // for the same snapshot-read bug; the pattern is the same.
+        val probe = FakeProbe(answer = true)
+        val privilege = FakePrivilege(PrivilegeState(isReady = false))
+        val cache = DataArchiveCapabilityCache(probe, privilege)
+
+        // Launch isSupported() concurrently and let it reach its suspension point before the ready
+        // state arrives. With `.value`, it returns false immediately (active = NONE). With
+        // `first { it.isReady }`, it suspends here and waits.
+        val deferred = async { cache.isSupported() }
+        runCurrent()
+
+        // Emit the resolved state. With the fix, this wakes the suspended coroutine.
+        privilege.flow.value = rooted()
+        runCurrent()
+
+        assertTrue(deferred.await())
+        assertEquals(1, probe.probes)
     }
 }
