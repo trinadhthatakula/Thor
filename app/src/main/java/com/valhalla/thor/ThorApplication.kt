@@ -38,6 +38,7 @@ import kotlinx.coroutines.withContext
 import org.koin.android.ext.android.inject
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
+import org.koin.androidx.workmanager.koin.workManagerFactory
 import org.koin.core.annotation.KoinApplication
 import org.koin.plugin.module.dsl.startKoin
 
@@ -206,6 +207,10 @@ class ThorApplication : Application(), SingletonImageLoader.Factory {
         startKoin<ThorApplication> {
             androidContext(this@ThorApplication)
             androidLogger(Logger.koinLogLevel)
+            // Constructor injection for @KoinWorker workers. Reads Context out of the root scope,
+            // so it has to follow androidContext(). Also performs WorkManager.initialize(), which
+            // is why the manifest removes the androidx.startup initializer.
+            workManagerFactory()
         }
 
         Bypass.setLogger { message, throwable ->
