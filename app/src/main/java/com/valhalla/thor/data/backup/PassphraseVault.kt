@@ -5,18 +5,26 @@ package com.valhalla.thor.data.backup
 
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.valhalla.thor.util.Logger
+import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.CharBuffer
 import java.security.KeyStore
 import java.util.Base64
+import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import org.koin.core.annotation.Single
@@ -99,7 +107,17 @@ class AndroidKeystoreVaultKeyProvider : VaultKeyProvider {
     }
 }
 
-private val Context.passphraseVault by preferencesDataStore(name = "thor_passphrase_vault")
+// Corruption-handled for the same reason as PreferenceRepositoryImpl's DataStores: an interrupted
+// write or bad block can leave the file unreadable, and the default handler would rethrow forever.
+// Replacing with empty preferences means recall() returns null → the user is prompted to type the
+// passphrase, which is exactly the failure mode this cache is designed to degrade to.
+private val Context.passphraseVault by preferencesDataStore(
+    name = "thor_passphrase_vault",
+    corruptionHandler = ReplaceFileCorruptionHandler {
+        Logger.e("PassphraseVault", "thor_passphrase_vault was unreadable; replacing with empty", it)
+        emptyPreferences()
+    }
+)
 private val WRAPPED = stringPreferencesKey("wrapped_passphrase")
 
 @Single(binds = [PassphraseVaultStore::class])
@@ -110,8 +128,12 @@ class DataStorePassphraseVaultStore(private val context: Context) : PassphraseVa
     override suspend fun read(): String? = flow.first()
 
     override suspend fun write(value: String?) {
-        context.passphraseVault.edit { prefs ->
-            if (value == null) prefs.remove(WRAPPED) else prefs[WRAPPED] = value
+        try {
+            context.passphraseVault.edit { prefs ->
+                if (value == null) prefs.remove(WRAPPED) else prefs[WRAPPED] = value
+            }
+        } catch (e: IOException) {
+            Logger.e("PassphraseVault", "thor_passphrase_vault could not be written; change not saved", e)
         }
     }
 }
@@ -135,33 +157,67 @@ class PassphraseVault(
 
     val isRemembered: Flow<Boolean>
         get() = (store as? DataStorePassphraseVaultStore)?.flow?.map { it != null }
+            ?.catch { emit(false) }
             ?: kotlinx.coroutines.flow.flowOf(false)
 
     suspend fun remember(passphrase: CharArray) {
+        // Encode to bytes without creating an intermediate String — a String cannot be zeroed.
+        val byteBuffer = Charsets.UTF_8.encode(CharBuffer.wrap(passphrase))
+        val passphraseBytes = ByteArray(byteBuffer.limit())
+        byteBuffer.get(passphraseBytes)
+        if (byteBuffer.hasArray()) byteBuffer.array().fill(0)
+
         val wrapped = try {
-            keyProvider.wrap(passphrase.concatToString().toByteArray(Charsets.UTF_8))
+            keyProvider.wrap(passphraseBytes)
         } catch (e: Exception) {
             // Nothing is written: a half-written vault would claim a passphrase is stored and then
             // fail to produce it on every use.
             Logger.e("PassphraseVault", "could not wrap the passphrase", e)
             return
+        } finally {
+            passphraseBytes.fill(0)
         }
         store.write(Base64.getEncoder().encodeToString(wrapped))
     }
 
     suspend fun recall(): CharArray? {
-        val blob = store.read() ?: return null
         return try {
-            Base64.getDecoder().decode(blob)
-                .let { keyProvider.unwrap(it) }
-                .toString(Charsets.UTF_8)
-                .toCharArray()
+            val blob = store.read() ?: return null
+            // IllegalArgumentException from decode is caught below and clears the blob — an
+            // unparseable Base64 blob can never succeed on retry.
+            val wrapped = Base64.getDecoder().decode(blob)
+            val plainBytes = keyProvider.unwrap(wrapped)
+            try {
+                // Decode bytes to chars without an intermediate String — a String cannot be zeroed.
+                // ByteBuffer.wrap shares the plainBytes array; plainBytes.fill(0) in the finally
+                // below zeros it through the same reference.
+                val charBuf = Charsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(plainBytes))
+                CharArray(charBuf.limit()).also { result ->
+                    charBuf.get(result)
+                    if (charBuf.hasArray()) charBuf.array().fill(0.toChar())
+                }
+            } finally {
+                plainBytes.fill(0)
+            }
         } catch (e: Exception) {
-            // The convenience layer failed, so the user types it again. Clearing it here is what
-            // stops every later launch re-deriving the same failure while the UI keeps claiming a
-            // passphrase is stored.
-            Logger.e("PassphraseVault", "the vault key is gone; re-prompting", e)
-            store.write(null)
+            Logger.e("PassphraseVault", "vault passphrase recall failed; re-prompting", e)
+            // Only clear the blob for failures that are permanently unrecoverable:
+            //   AEADBadTagException             — authentication tag mismatch; the ciphertext can
+            //                                     never decrypt correctly under any circumstances.
+            //   KeyPermanentlyInvalidatedException — the Keystore key was wiped (biometric
+            //                                     enrolment change, factory reset); unrecoverable.
+            //   IllegalArgumentException        — the stored blob is not valid Base64 and can
+            //                                     never be decoded.
+            // Do NOT clear for UserNotAuthenticatedException or generic KeyStoreException: those
+            // can be transient. setUnlockedDeviceRequired(true) means the key is unavailable while
+            // the device is locked — clearing there would permanently destroy the cache for a state
+            // that recovers by itself once the device is unlocked.
+            if (e is AEADBadTagException ||
+                e is KeyPermanentlyInvalidatedException ||
+                e is IllegalArgumentException
+            ) {
+                store.write(null)
+            }
             null
         }
     }

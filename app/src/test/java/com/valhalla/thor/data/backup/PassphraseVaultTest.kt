@@ -3,9 +3,11 @@
 
 package com.valhalla.thor.data.backup
 
-import java.security.GeneralSecurityException
+import java.util.Base64
+import javax.crypto.AEADBadTagException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -24,15 +26,23 @@ class PassphraseVaultTest {
         override suspend fun write(value: String?) { blob = value }
     }
 
-    /** Reversible "encryption" — the vault's logic is what is under test, not AES. */
+    /**
+     * Reversible "encryption" — the vault's logic is what is under test, not AES.
+     *
+     * When [alive] is false, [wrap] and [unwrap] throw [AEADBadTagException]: a permanently failing
+     * JVM class (`javax.crypto`) that is the right stand-in for a wiped Keystore key in a JVM unit
+     * test. `KeyPermanentlyInvalidatedException` would be more semantically precise but it is
+     * Android-only and throws "not mocked" on the JVM; `AEADBadTagException` is in the permanent-
+     * clear list, so the vault's selective-clearing logic is exercised correctly.
+     */
     private class FakeProvider(var alive: Boolean = true) : VaultKeyProvider {
         override fun wrap(plaintext: ByteArray): ByteArray =
             if (alive) plaintext.map { (it + 1).toByte() }.toByteArray()
-            else throw GeneralSecurityException("key gone")
+            else throw AEADBadTagException("key gone")
 
         override fun unwrap(blob: ByteArray): ByteArray =
             if (alive) blob.map { (it - 1).toByte() }.toByteArray()
-            else throw GeneralSecurityException("key gone")
+            else throw AEADBadTagException("key gone")
     }
 
     @Test
@@ -52,7 +62,16 @@ class PassphraseVaultTest {
 
         vault.remember("correct horse".toCharArray())
 
-        assertEquals(false, store.blob!!.contains("correct horse"))
+        // Assert that the stored blob does not round-trip back to the plaintext passphrase.
+        // Checking `store.blob.contains("correct horse")` is too weak: Base64("correct horse")
+        // never contains that substring regardless of whether wrapping happened. Decoding from
+        // Base64 and then comparing to the passphrase catches the case where remember() stored the
+        // passphrase bytes unwrapped — FakeProvider's shift-by-one wrap ensures the round-trip
+        // recovers something other than "correct horse" when wrapping is applied correctly.
+        assertNotEquals(
+            "correct horse",
+            Base64.getDecoder().decode(store.blob!!).toString(Charsets.UTF_8)
+        )
     }
 
     @Test
