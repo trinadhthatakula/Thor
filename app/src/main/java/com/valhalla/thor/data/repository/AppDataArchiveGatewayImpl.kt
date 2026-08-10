@@ -22,6 +22,7 @@ import com.valhalla.thor.util.Logger
 import java.io.File
 import java.security.MessageDigest
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
@@ -43,6 +44,20 @@ private const val STAGING_DIR = "data_archive_staging"
  */
 internal fun isSafeStagingName(name: String): Boolean =
     name.isNotBlank() && !name.contains('/') && name != ".." && name != "."
+
+/**
+ * Returns true when [outCanonical] is a file inside [stagingCanonical].
+ *
+ * The trailing-slash separator in `"$stagingCanonical/"` defeats the sibling-prefix attack:
+ * a path like `data_archive_staging-evil/ce.tar.enc` starts with `data_archive_staging` but not
+ * `data_archive_staging/`, so it fails. Both arguments must already be canonical (no `..` or
+ * symlinks); this function does not call `File.canonicalPath` itself.
+ *
+ * Extracted from [AppDataArchiveGatewayImpl.tarClass]'s containment check so the security property
+ * can be pinned by a test without any Android dependencies.
+ */
+internal fun isInsideStagingRoot(outCanonical: String, stagingCanonical: String): Boolean =
+    outCanonical.startsWith("$stagingCanonical/")
 
 @Single(binds = [AppDataArchiveGateway::class])
 internal class AppDataArchiveGatewayImpl(
@@ -124,11 +139,16 @@ internal class AppDataArchiveGatewayImpl(
         // resolves `..` and symlinks, so the comparison is made on the real on-disk path.
         // Latent now (every caller passes a name Thor chose); not latent once restore parses member
         // names from an untrusted archive header and reaches this surface.
-        val stagingCanonical = withContext(ioDispatcher) { stagingRoot().canonicalPath }
+        //
+        // Both sides are wrapped in `runCatching` so an IOException from either canonicalisation
+        // refuses cleanly rather than propagating.
+        val stagingCanonical = withContext(ioDispatcher) {
+            runCatching { stagingRoot().canonicalPath }.getOrNull()
+        } ?: return TarOutcome.Failed("could not resolve canonical path for staging root")
         val outCanonical = withContext(ioDispatcher) {
             runCatching { out.canonicalPath }.getOrNull()
         } ?: return TarOutcome.Failed("could not resolve canonical path for ${out.name}")
-        if (!outCanonical.startsWith("$stagingCanonical/")) {
+        if (!isInsideStagingRoot(outCanonical, stagingCanonical)) {
             return TarOutcome.Failed("${out.name} is not inside the staging directory")
         }
 
@@ -137,50 +157,66 @@ internal class AppDataArchiveGatewayImpl(
         val command = tarCreateCommand(root, out.absolutePath, entries, compress)
             ?: return TarOutcome.Failed("refused to build a tar command for ${dataClass.id}")
 
-        val (exitCode, _) = systemRepository.executeShellCommand(command).getOrElse {
-            // Tar did not complete cleanly — the gateway threw. `out` may have been partially written,
-            // so delete it to avoid leaving plaintext app data on disk.
-            withContext(ioDispatcher) { out.delete() }
-            return TarOutcome.Failed("tar could not be run: ${it.message}")
-        }
+        // `committed` is set only when we are returning a usable archive. Any other exit —
+        // explicit failure returns and CancellationException alike — triggers cleanup in the
+        // `finally` block so plaintext app data never outlives the operation that created it.
+        var committed = false
+        try {
+            val (exitCode, _) = systemRepository.executeShellCommand(command).getOrElse {
+                // Tar did not complete cleanly — the gateway threw. `out` may have been partially written,
+                // so delete it to avoid leaving plaintext app data on disk.
+                withContext(ioDispatcher) { out.delete() }
+                return TarOutcome.Failed("tar could not be run: ${it.message}")
+            }
 
-        // Read the length *after* tar exits, and on the IO dispatcher — this is a stat call.
-        val staged = withContext(ioDispatcher) { if (out.isFile) out.length() else 0L }
-        val outcome = classifyTarExit(exitCode, staged)
-        if (outcome is TarOutcome.Failed) {
-            // A partial tar must never survive to be encrypted: it would restore a truncated tree
-            // over the app's real data.
-            withContext(ioDispatcher) { out.delete() }
-            return outcome
-        }
+            // Read the length *after* tar exits, and on the IO dispatcher — this is a stat call.
+            val staged = withContext(ioDispatcher) { if (out.isFile) out.length() else 0L }
+            val outcome = classifyTarExit(exitCode, staged)
+            if (outcome is TarOutcome.Failed) {
+                // A partial tar must never survive to be encrypted: it would restore a truncated tree
+                // over the app's real data.
+                withContext(ioDispatcher) { out.delete() }
+                return outcome
+            }
 
-        // The shell created the file as its own uid, so Thor cannot open it yet. 600, because the
-        // contents are plaintext app data.
-        val chown = chownFileCommand(out.absolutePath, android.os.Process.myUid())
-        if (chown == null) {
-            // The chown builder refused. `out` exists at this point with plaintext data — delete it
-            // before returning, or this becomes the one exit path that silently leaves a staged tar.
-            withContext(ioDispatcher) { out.delete() }
-            return TarOutcome.Failed("refused to build a chown command for ${out.name}")
-        }
+            // The shell created the file as its own uid, so Thor cannot open it yet. 600, because the
+            // contents are plaintext app data.
+            val chown = chownFileCommand(out.absolutePath, android.os.Process.myUid())
+            if (chown == null) {
+                // The chown builder refused. `out` exists at this point with plaintext data — delete it
+                // before returning, or this becomes the one exit path that silently leaves a staged tar.
+                withContext(ioDispatcher) { out.delete() }
+                return TarOutcome.Failed("refused to build a chown command for ${out.name}")
+            }
 
-        // Read the exit code rather than discarding it. `canRead()` alone is DAC-only and blind to
-        // SELinux policy; a non-zero exit is the more direct signal that the ownership transfer failed.
-        // Both signals are checked: a zero exit but an unreadable file is also a failure.
-        val (chownExit, _) = systemRepository.executeShellCommand(chown).getOrElse {
-            Logger.e(TAG, "chown of ${out.name} failed", it)
-            withContext(ioDispatcher) { out.delete() }
-            return TarOutcome.Failed("chown for ${dataClass.id} failed: ${it.message}")
-        }
-        if (chownExit != 0) {
-            withContext(ioDispatcher) { out.delete() }
-            return TarOutcome.Failed("chown exited $chownExit for ${dataClass.id}")
-        }
-        return if (withContext(ioDispatcher) { out.canRead() }) {
-            outcome
-        } else {
-            withContext(ioDispatcher) { out.delete() }
-            TarOutcome.Failed("the staged archive for ${dataClass.id} could not be read back")
+            // Read the exit code rather than discarding it. `canRead()` alone is DAC-only and blind to
+            // SELinux policy; a non-zero exit is the more direct signal that the ownership transfer failed.
+            // Both signals are checked: a zero exit but an unreadable file is also a failure.
+            val (chownExit, _) = systemRepository.executeShellCommand(chown).getOrElse {
+                Logger.e(TAG, "chown of ${out.name} failed", it)
+                withContext(ioDispatcher) { out.delete() }
+                return TarOutcome.Failed("chown for ${dataClass.id} failed: ${it.message}")
+            }
+            if (chownExit != 0) {
+                withContext(ioDispatcher) { out.delete() }
+                return TarOutcome.Failed("chown exited $chownExit for ${dataClass.id}")
+            }
+            return if (withContext(ioDispatcher) { out.canRead() }) {
+                committed = true
+                outcome
+            } else {
+                withContext(ioDispatcher) { out.delete() }
+                TarOutcome.Failed("the staged archive for ${dataClass.id} could not be read back")
+            }
+        } finally {
+            // Handles the cancellation path: if the coroutine is cancelled while `executeShellCommand`
+            // is in flight, `out` may already exist with plaintext app data and none of the explicit
+            // delete calls above will have run. `NonCancellable` ensures the deletion completes even
+            // while cancellation is in progress. The `!committed` guard prevents deleting a file that
+            // was successfully produced and is about to be returned to the caller.
+            if (!committed) {
+                withContext(NonCancellable) { out.delete() }
+            }
         }
     }
 
