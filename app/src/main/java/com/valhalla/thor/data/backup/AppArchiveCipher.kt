@@ -3,6 +3,8 @@
 
 package com.valhalla.thor.data.backup
 
+import com.valhalla.thor.domain.model.KDF_ITERATIONS
+import com.valhalla.thor.domain.model.KDF_SALT_BYTES
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -20,13 +22,7 @@ import org.koin.core.annotation.Single
 
 const val KDF_ALGORITHM = "PBKDF2WithHmacSHA256"
 
-/** OWASP's 2023 floor for PBKDF2-HMAC-SHA256. Pinned by a test; do not lower it for test speed. */
-const val KDF_ITERATIONS = 210_000
-
 private const val KDF_KEY_BITS = 256
-
-/** Fresh per archive, so one reused passphrase is not one reused key. */
-const val KDF_SALT_BYTES = 16
 
 /** Fresh per member. The GCM IV is this followed by a 4-byte big-endian chunk index. */
 const val MEMBER_NONCE_BYTES = 8

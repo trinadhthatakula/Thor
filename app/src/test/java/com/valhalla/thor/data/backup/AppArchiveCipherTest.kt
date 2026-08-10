@@ -3,6 +3,8 @@
 
 package com.valhalla.thor.data.backup
 
+import com.valhalla.thor.domain.model.KDF_ITERATIONS
+import com.valhalla.thor.domain.model.KDF_SALT_BYTES
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import javax.crypto.SecretKey
