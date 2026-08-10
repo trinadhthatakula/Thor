@@ -5,6 +5,7 @@ package com.valhalla.thor.presentation.appList
 
 import android.content.Context
 import android.icu.text.DateFormat
+import android.text.format.Formatter
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -77,6 +78,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.DetailedAppInfo
+import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PermissionDetail
 import com.valhalla.thor.domain.model.freezeNeedsConfirmation
 import com.valhalla.thor.presentation.theme.bodyFontFamily
@@ -213,7 +215,7 @@ fun AppInfoDetailsScreen(
                         }
 
                         if (!showOnlyHeaderAndActions) {
-                            AppInfoDetailBody(details)
+                            AppInfoDetailBody(details, state.obbProbe)
                         }
                     }
                 }
@@ -427,6 +429,7 @@ fun AppInfoHeaderAndActions(
 @Composable
 fun AppInfoDetailBody(
     details: DetailedAppInfo,
+    obbProbe: ObbProbe? = null,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier) {
@@ -468,7 +471,7 @@ fun AppInfoDetailBody(
         }
 
         when (selectedTab) {
-            0 -> GeneralTabScreen(details)
+            0 -> GeneralTabScreen(details, obbProbe)
             1 -> ComponentsTabScreen(details)
             2 -> LibsAndFeaturesTabScreen(details)
             3 -> PermissionsTabScreen(details.permissions)
@@ -643,7 +646,7 @@ private fun AppDetailsHeader(
 }
 
 @Composable
-private fun GeneralTabScreen(details: DetailedAppInfo) {
+private fun GeneralTabScreen(details: DetailedAppInfo, obbProbe: ObbProbe?) {
     val appInfo = details.appInfo
     val context = LocalContext.current
     val installTime = remember(appInfo.firstInstallTime, context) { formatTime(appInfo.firstInstallTime, context) }
@@ -737,9 +740,37 @@ private fun GeneralTabScreen(details: DetailedAppInfo) {
                 value = appInfo.dataDir ?: stringResource(R.string.not_available)
             )
         }
-        appInfo.obbFilePath?.let { obb ->
-            item {
-                InfoCard(title = stringResource(R.string.info_obb_dir), value = obb)
+        // Not appInfo.obbFilePath: that is computed with File(...).exists(), which returns false
+        // for another package's OBB directory on Android 11+ regardless of whether one exists —
+        // so this card was simply absent for every game on a modern device.
+        when (val probe = obbProbe) {
+            null -> Unit // still probing
+            ObbProbe.None -> item {
+                InfoCard(
+                    title = stringResource(R.string.info_obb_dir),
+                    value = stringResource(R.string.info_obb_none)
+                )
+            }
+
+            is ObbProbe.Undetermined -> item {
+                InfoCard(
+                    title = stringResource(R.string.info_obb_dir),
+                    value = stringResource(R.string.info_obb_unknown)
+                )
+            }
+
+            is ObbProbe.Present -> item {
+                InfoCard(
+                    title = stringResource(R.string.info_obb_dir),
+                    value = stringResource(
+                        R.string.info_obb_present,
+                        "Android/obb/${appInfo.packageName}",
+                        Formatter.formatShortFileSize(
+                            context,
+                            probe.files.sumOf { it.sizeBytes }
+                        )
+                    )
+                )
             }
         }
         if (appInfo.sharedDataDir.isNotEmpty()) {

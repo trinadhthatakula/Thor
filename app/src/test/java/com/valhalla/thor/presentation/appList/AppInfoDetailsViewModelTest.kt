@@ -4,6 +4,8 @@
 package com.valhalla.thor.presentation.appList
 
 import com.valhalla.thor.domain.model.DetailedAppInfo
+import com.valhalla.thor.domain.model.ObbFile
+import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.usecase.FreezeAppUseCase
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import com.valhalla.thor.presentation.FakeAppRepository
@@ -22,6 +24,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -96,6 +99,9 @@ class AppInfoDetailsViewModelTest {
         val vm = viewModel()
         vm.loadAppDetails("a")
         runCurrent()
+        // The detail load probes for expansion files, which is setup noise here: this assertion is
+        // about what the removal reaches at the privilege boundary, not about what loading did.
+        system.calls.clear()
 
         vm.addOrRemoveFromFreezer("a")
         runCurrent()
@@ -172,6 +178,10 @@ class AppInfoDetailsViewModelTest {
         val vm = viewModel()
         vm.loadAppDetails("a")
         runCurrent()
+        // The detail load probes for expansion files. Cleared rather than expected, because
+        // threading a setup call into the expectation would turn "no privileged call belongs on the
+        // add path" into "one particular list of them does" — which asserts nothing about the add.
+        system.calls.clear()
 
         vm.addOrRemoveFromFreezer("a")
         runCurrent()
@@ -248,5 +258,72 @@ class AppInfoDetailsViewModelTest {
         runCurrent()
 
         assertTrue(vm.uiState.value.skipRoutineFreezeConfirmation)
+    }
+
+    // ── the OBB probe ────────────────────────────────────────────────────────
+    //
+    // The app-info card used to be drawn from `AppInfo.obbFilePath`, computed with
+    // `File(...).exists()` — false for another package's OBB directory on Android 11+ whether or not
+    // one is there, so the card never appeared on a modern device. It now reads the probe, and what
+    // has to hold here is that the load asks and that all three answers survive the trip.
+
+    @Test
+    fun `the detail load asks for the OBB verdict and publishes it`() = runTest {
+        loaded(userApp("a"))
+        system.obbProbe = ObbProbe.Present(listOf(ObbFile("main.obb", 1024)), otherEntryCount = 0)
+        val vm = viewModel()
+        vm.loadAppDetails("a")
+        runCurrent()
+
+        assertTrue(
+            "the card cannot be right if the load never asked",
+            "probeObb:a" in system.calls
+        )
+        assertEquals(
+            "the verdict has to reach the state, or the card renders from nothing",
+            ObbProbe.Present(listOf(ObbFile("main.obb", 1024)), otherEntryCount = 0),
+            vm.uiState.value.obbProbe
+        )
+    }
+
+    /**
+     * The reason the verdict is a tri-state. `Undetermined` says "this privilege cannot read
+     * `Android/obb`", which is not "the app has no expansion files" — folding the two back together
+     * is precisely the GH#164 defect, and it fails in the direction that looks like success.
+     */
+    @Test
+    fun `an unreadable OBB directory stays Undetermined`() = runTest {
+        loaded(userApp("a"))
+        system.obbProbe = ObbProbe.Undetermined("dhizuku cannot read external storage")
+        val vm = viewModel()
+        vm.loadAppDetails("a")
+        runCurrent()
+
+        assertEquals(
+            "'cannot see it' must not arrive as 'there is none'",
+            ObbProbe.Undetermined("dhizuku cannot read external storage"),
+            vm.uiState.value.obbProbe
+        )
+    }
+
+    @Test
+    fun `the verdict is absent until the probe answers, not None`() = runTest {
+        loaded(userApp("a"))
+        val vm = viewModel()
+        runCurrent()
+
+        assertNull(
+            "null is the absence of an answer; None is an answer, and the card says so",
+            vm.uiState.value.obbProbe
+        )
+
+        vm.loadAppDetails("a")
+        runCurrent()
+
+        assertEquals(
+            "the answer has to replace the absence once the probe returns",
+            ObbProbe.None,
+            vm.uiState.value.obbProbe
+        )
     }
 }
