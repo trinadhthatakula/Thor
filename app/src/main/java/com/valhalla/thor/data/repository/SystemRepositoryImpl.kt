@@ -296,10 +296,20 @@ class SystemRepositoryImpl(
      * everything either side of it is pure string work.
      */
     override suspend fun probeObb(packageName: String): ObbProbe {
-        val command = obbProbeCommand(
-            Environment.getExternalStorageDirectory()?.absolutePath.orEmpty(),
-            packageName
-        ) ?: return ObbProbe.Undetermined("\"$packageName\" is not a usable package name")
+        // Two distinct refusals, named separately: obbProbeCommand returns null for an unusable
+        // package name *or* an unusable storage root, and folding them together reported the package
+        // name as the cause of a missing external volume. The reason is the diagnostic, so it has to
+        // name the thing that actually failed.
+        val externalRoot = Environment.getExternalStorageDirectory()?.absolutePath
+            ?: return ObbProbe.Undetermined("this device's shared storage is unavailable")
+        val command = obbProbeCommand(externalRoot, packageName)
+            ?: return ObbProbe.Undetermined(
+                if (isUsablePackageName(packageName)) {
+                    "\"$externalRoot\" is not a usable storage path"
+                } else {
+                    "\"$packageName\" is not a usable package name"
+                }
+            )
 
         return executeShellCommand(command).fold(
             onSuccess = { (exitCode, output) -> parseObbProbe(exitCode, output) },

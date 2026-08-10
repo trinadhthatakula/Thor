@@ -67,6 +67,35 @@ class ObbProbeParserTest {
     }
 
     @Test
+    fun `a stat failure is Undetermined, not an empty directory`() {
+        // What the shell produces when `stat` cannot describe a file the *.obb glob matched: the
+        // sentinel, no size line, and — because the script exits early — no THOR_END either. The
+        // trailing THOR_OTHER 0 is the shape the *unguarded* script produced, and reading it as None
+        // is GH#164: an expansion file exists, Thor cannot measure it, and the export would offer a
+        // .xapk and pack nothing.
+        assertTrue(
+            parseObbProbe(0, listing("THOR_STATFAIL")) is ObbProbe.Undetermined
+        )
+        assertTrue(
+            parseObbProbe(
+                0,
+                listing("THOR_STATFAIL", "THOR_OTHER 0", "THOR_END")
+            ) is ObbProbe.Undetermined
+        )
+    }
+
+    @Test
+    fun `the stat call in the command fails closed`() {
+        val command = obbProbeCommand("/storage/emulated/0", "com.example.game")!!
+
+        // The guard, not just the sentinel: `stat` writes its complaint to stderr and the loop would
+        // otherwise carry on to print THOR_OTHER 0 and THOR_END with exit code 0.
+        assertTrue(command, command.contains("|| { echo $SENTINEL_STATFAIL; exit 0; }"))
+        // And the format string is built from the constant the parser reads, so the two cannot drift.
+        assertTrue(command, command.contains("stat -c '${PREFIX_OBB}%s %n'"))
+    }
+
+    @Test
     fun `a non-zero exit is Undetermined`() {
         assertTrue(parseObbProbe(1, listing("THOR_NODIR")) is ObbProbe.Undetermined)
     }

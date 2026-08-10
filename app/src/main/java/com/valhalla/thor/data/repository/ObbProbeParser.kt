@@ -6,7 +6,7 @@ package com.valhalla.thor.data.repository
 import com.valhalla.thor.domain.model.ObbFile
 import com.valhalla.thor.domain.model.ObbProbe
 
-// These five are `internal` rather than `private` so a test fixture that synthesises probe output
+// These six are `internal` rather than `private` so a test fixture that synthesises probe output
 // references the same constant the parser reads. A fixture that spells the literal out again can go
 // stale against the parser and still pass, which is how a wrong rule hides behind a green test.
 
@@ -26,6 +26,19 @@ internal const val PREFIX_OBB = "THOR_OBB "
 
 /** Prefix of the count of directory entries that are not depth-1 `*.obb` files. */
 internal const val PREFIX_OTHER = "THOR_OTHER "
+
+/**
+ * Emitted when `stat` could not describe a `*.obb` file the glob matched.
+ *
+ * Without it the script fails **open**: `stat` writes its complaint to stderr, the loop carries on,
+ * `THOR_OTHER 0` and [SENTINEL_END] still print, the exit code is still 0 — and the parser reads an
+ * expansion it could not measure as an empty directory. The export then offers `.xapk` (the chip is
+ * gated on `Undetermined`, not on `None`) and packs no game data: GH#164 exactly, reached from a new
+ * direction. `stat -c` is a toybox option whose availability across ROMs is precisely what the
+ * device checks for this feature set out to establish, so this is the one failure that must not be
+ * silent.
+ */
+internal const val SENTINEL_STATFAIL = "THOR_STATFAIL"
 
 /**
  * Proof the script ran to completion.
@@ -51,7 +64,8 @@ private val PACKAGE_NAME = Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)*")
  *    the Dhizuku device-owner app process does not. This is what separates `None` from
  *    `Undetermined`, and nothing else in the output can.
  *  - **`stat -c 'THOR_OBB %s %n'` puts the size first**, so a name containing spaces parses by
- *    splitting on the *first* space only.
+ *    splitting on the *first* space only. Its exit code is checked — see [SENTINEL_STATFAIL] for why
+ *    an unmeasurable expansion may not be allowed to look like an empty directory.
  *  - **The prefixes are checked, not assumed.** A name containing a newline splits across lines;
  *    the tail then fails the prefix test and the head fails the `.obb` extension test.
  *  - **[SENTINEL_END] is printed last** so a truncated reply is detectable.
@@ -78,7 +92,8 @@ internal fun obbProbeCommand(externalStorageDir: String, packageName: String): S
         append("for f in '").append(dir).append("'/*; do\n")
         append("  if [ -f \"\$f\" ]; then\n")
         append("    case \"\$f\" in\n")
-        append("      *.obb) stat -c 'THOR_OBB %s %n' \"\$f\" ;;\n")
+        append("      *.obb) stat -c '").append(PREFIX_OBB).append("%s %n' \"\$f\"")
+        append(" || { echo ").append(SENTINEL_STATFAIL).append("; exit 0; } ;;\n")
         append("      *) n=\$((n+1)) ;;\n")
         append("    esac\n")
         append("  elif [ -e \"\$f\" ]; then\n")
@@ -96,10 +111,10 @@ internal fun isUsablePackageName(value: String): Boolean = PACKAGE_NAME.matches(
 /**
  * Turn one probe run into a verdict.
  *
- * The order of the checks is the contract. `THOR_NOPRIV` and `THOR_NODIR` are both tested before
- * the end sentinel because both of those branches `exit 0` without ever reaching the `echo
- * THOR_END` at the bottom of the script. Only the listing path prints the sentinel, so only the
- * listing path may require it.
+ * The order of the checks is the contract. `THOR_NOPRIV`, `THOR_NODIR` and `THOR_STATFAIL` are all
+ * tested before the end sentinel because each of those branches `exit 0` without ever reaching the
+ * `echo THOR_END` at the bottom of the script. Only the listing path prints the sentinel, so only
+ * the listing path may require it.
  */
 internal fun parseObbProbe(exitCode: Int, output: String?): ObbProbe {
     if (exitCode != 0) {
@@ -114,6 +129,9 @@ internal fun parseObbProbe(exitCode: Int, output: String?): ObbProbe {
         return ObbProbe.Undetermined("this access mode cannot list Android/obb")
     }
     if (lines.any { it == SENTINEL_NODIR }) return ObbProbe.None
+    if (lines.any { it == SENTINEL_STATFAIL }) {
+        return ObbProbe.Undetermined("an expansion file could not be measured")
+    }
     if (lines.none { it == SENTINEL_END }) {
         return ObbProbe.Undetermined("the privileged shell reply was truncated")
     }
