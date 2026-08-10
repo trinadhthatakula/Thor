@@ -235,6 +235,27 @@ Design points, each load-bearing:
 - **A `Result.failure` from the gateway is `Undetermined`**, with the throwable's message as the
   reason.
 
+> **Amended as built.** The command above fails **open** in two ways, both found in review after the
+> implementation was complete, and both of them reproduce GH#164 from inside the fix for GH#164 — the
+> `.xapk` chip is gated on `Undetermined`, not on `None`, so any corrupt reply that reads as `None`
+> offers a bundle and packs no game data. The shipped command therefore differs:
+>
+> 1. **`stat`'s exit code is checked** (`|| { echo THOR_STATFAIL; exit 0; }`). As written above,
+>    `stat` writes its complaint to stderr, the loop carries on, `THOR_END` still prints and the exit
+>    code is still 0 — so an expansion file Thor could not measure arrives as an empty directory.
+>    Whether `stat -c` is available across ROMs is exactly what device check 8 exists to establish, so
+>    it is the one failure that may not be silent.
+> 2. **A `*.obb` name containing CR or LF is refused before `stat` runs** (`THOR_BADNAME`). `%n`
+>    prints the name raw, and the name is the only field in this output Thor does not author, so
+>    `main.obb<LF>THOR_NODIR` splits into a well-formed record plus a line the parser would read as
+>    the script's own "no OBB directory" verdict. The target app writes `Android/obb/<pkg>` with no
+>    permission at all — that made the directory-is-empty verdict a switch the app itself could flip.
+>    The parser also now disbelieves any `THOR_NODIR` accompanied by listing output, since the genuine
+>    branch `exit 0`s before the loop can print anything.
+>
+> The loop consequently iterates `"$p"/*` rather than `"$p"/*.obb`, dispatching on a `case` — which it
+> had to anyway, to count `otherEntryCount` (§4.4).
+
 ### 4.4 Documented limitation
 
 Only `*.obb` files at depth 1 are captured. Subdirectories and non-`.obb` files inside
@@ -437,7 +458,11 @@ Pure helpers, so the logic is testable without a device:
 
 - **Probe output parser** — `THOR_NOPRIV`, `THOR_NODIR`, a normal listing, a listing with no
   `THOR_END` (must be `Undetermined`), filenames containing spaces, garbage lines, empty output,
-  non-zero exit.
+  non-zero exit. Plus the two fail-open shapes from the §4.3 amendment, each of which must be
+  `Undetermined` rather than `None`: `THOR_STATFAIL`, `THOR_BADNAME`, and a `THOR_NODIR` planted in a
+  listing by a filename. The command builder is asserted on too — the `stat` guard is present, and the
+  CR/LF `case` arm precedes the `*.obb` arm (`case` takes the first match, so the order *is* the
+  guard).
 - **Export plan builder** — probe output → `expansions` entries + archive entry names; leaf
   collisions; a package name needing no escaping vs one that does.
 - **Install-side validation** — a hostile table: `../../etc/passwd`, absolute `/data/...`,

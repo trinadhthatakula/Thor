@@ -96,6 +96,50 @@ class ObbProbeParserTest {
     }
 
     @Test
+    fun `THOR_BADNAME is Undetermined, not an empty directory`() {
+        assertTrue(parseObbProbe(0, listing(SENTINEL_BADNAME)) is ObbProbe.Undetermined)
+    }
+
+    @Test
+    fun `the command refuses a line terminator in an obb name before stat runs`() {
+        val command = obbProbeCommand("/storage/emulated/0", "com.example.game")!!
+
+        // `stat -c %n` prints the name raw, so a file called `main.obb<LF>suffix.obb` would emit two
+        // lines and the head would be a well-formed record for a file that does not exist. Both
+        // terminators are refused, and both patterns still end in `.obb` so a control character in a
+        // name Thor never prints is merely counted.
+        val badName = "*\"\n\"*.obb|*\"\r\"*.obb) echo $SENTINEL_BADNAME; exit 0 ;;"
+        assertTrue(command, command.contains(badName))
+        // Order is the whole point: this arm has to precede the *.obb arm or `case` takes the first
+        // match and stats the file anyway.
+        assertTrue(
+            command,
+            command.indexOf(badName) < command.indexOf("*.obb) stat -c")
+        )
+    }
+
+    @Test
+    fun `a THOR_NODIR planted by a file name does not read as an empty directory`() {
+        // What an *unguarded* `stat -c %n` would print for a file called `main.obb<LF>THOR_NODIR`:
+        // one well-formed OBB record, then a line the parser would otherwise trust as the script's
+        // own "this app has no OBB directory" verdict. Reading it as None is GH#164 handed to the
+        // target app as a switch — name one file that way and Thor offers a .xapk and packs no game
+        // data. The give-away is that the genuine THOR_NODIR branch exits before the listing loop, so
+        // it can never be accompanied by THOR_OTHER or THOR_END.
+        val probe = parseObbProbe(
+            0,
+            listing(
+                "THOR_OBB 5 /storage/emulated/0/Android/obb/com.example.game/main.obb",
+                SENTINEL_NODIR,
+                "THOR_OTHER 0",
+                "THOR_END"
+            )
+        )
+
+        assertTrue("$probe should be Undetermined", probe is ObbProbe.Undetermined)
+    }
+
+    @Test
     fun `a non-zero exit is Undetermined`() {
         assertTrue(parseObbProbe(1, listing("THOR_NODIR")) is ObbProbe.Undetermined)
     }
@@ -144,11 +188,13 @@ class ObbProbeParserTest {
 
     @Test
     fun `a non-obb name on an OBB line makes the probe Undetermined`() {
-        // A file name containing a newline splits across two lines; the tail is garbage and the head
-        // loses its extension. The shell only prints THOR_OBB for a *.obb glob match, so this line
-        // is proof an expansion file exists that we could not characterise. Dropping it would let
-        // the builder pack a .xapk missing that file — GH#164 from a new direction — so it fails
-        // closed instead.
+        // One way to reach this line is a file name whose newline falls before the suffix —
+        // `main<LF>1.obb` splits into a head that has lost its extension and a tail that is garbage.
+        // (A newline *after* the suffix does not: see the THOR_BADNAME tests below, which is why the
+        // shell refuses such names outright rather than leaving this check to catch them.) The shell
+        // only prints THOR_OBB for a *.obb glob match, so this line is proof an expansion file exists
+        // that we could not characterise. Dropping it would let the builder pack a .xapk missing that
+        // file — GH#164 from a new direction — so it fails closed instead.
         val probe = parseObbProbe(
             0,
             listing(

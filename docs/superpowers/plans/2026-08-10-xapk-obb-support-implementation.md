@@ -2950,9 +2950,9 @@ The unit tests cover every pure decision, but nothing here proves the privileged
 
 ---
 
-## Review pass on PR #376 — four defects this plan did not anticipate
+## Review pass on PR #376 — five defects this plan did not anticipate
 
-Automated review of the pushed branch found four things wrong with what shipped. All four are fixed
+Automated review of the pushed branch found five things wrong with what shipped. All five are fixed
 on the branch; recorded here so the plan stops disagreeing with the code.
 
 1. **Task 1's probe script failed *open* on `stat`.** The `*.obb` branch ran `stat` unguarded, so a
@@ -2980,6 +2980,22 @@ on the branch; recorded here so the plan stops disagreeing with the code.
    truncated or malformed reply from a shell Thor *does* have. That is the same mistake as the
    explain string this feature retracted, re-committed one screen away from the retraction. The copy
    now states what is certain and offers the usual cause without asserting it, in all five locales.
+5. **Task 1's `%n` handed the target app a switch for its own probe verdict.** `stat -c '%s %n'`
+   prints the filename **raw**, and the filename is the one field in that output Thor does not author
+   — `Android/obb/<pkg>` is the app's own directory, writable with no permission at all. So a file
+   named `main.obb<LF>THOR_NODIR` made `stat` emit two lines: a well-formed `THOR_OBB` record, then a
+   line the parser trusted as the script's own "this app has no OBB directory" verdict, which it
+   checked *first*. `None` again, chip enabled again, empty bundle again — this time triggerable by
+   the app being backed up. Defect 1's own KDoc had claimed this case was already covered because "the
+   head fails the `.obb` extension test", which is true of `main<LF>1.obb` and false of
+   `main.obb<LF>1.obb`; the reasoning had been checked against one half of the split and not the
+   other. Fixed at both layers: the shell refuses a CR or LF in a `*.obb` name before `stat` runs
+   (`THOR_BADNAME`, and the arm has to precede the `*.obb` arm because `case` takes the first match),
+   and the parser now disbelieves any `THOR_NODIR` that arrives beside listing output, since the
+   genuine branch `exit 0`s before the loop can print `THOR_OBB`, `THOR_OTHER` or `THOR_END`.
+   **Lesson: ordering the checks was not the fix — the fix was finding a property that separates the
+   real sentinel from a forged one.** `THOR_NODIR` is the only sentinel worth forging, because it is
+   the only one whose verdict is not `Undetermined`.
 
 Two review findings were **not** acted on, deliberately: `markdownlint`'s MD018 on
 `docs/follow-ups/README.md:53` (nothing in this repo runs markdownlint, and `#51` without a following

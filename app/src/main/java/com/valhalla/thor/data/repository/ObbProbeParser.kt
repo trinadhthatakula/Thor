@@ -6,7 +6,7 @@ package com.valhalla.thor.data.repository
 import com.valhalla.thor.domain.model.ObbFile
 import com.valhalla.thor.domain.model.ObbProbe
 
-// These six are `internal` rather than `private` so a test fixture that synthesises probe output
+// These seven are `internal` rather than `private` so a test fixture that synthesises probe output
 // references the same constant the parser reads. A fixture that spells the literal out again can go
 // stale against the parser and still pass, which is how a wrong rule hides behind a green test.
 
@@ -41,6 +41,22 @@ internal const val PREFIX_OTHER = "THOR_OTHER "
 internal const val SENTINEL_STATFAIL = "THOR_STATFAIL"
 
 /**
+ * Emitted when a `*.obb` file's own name contains a carriage return or a line feed.
+ *
+ * `%n` prints the name raw, and the name is the one field in this output Thor does not author — so a
+ * file called `main.obb<LF>suffix.obb` makes `stat` emit **two** lines. The head,
+ * `THOR_OBB <size> …/main.obb`, is a perfectly well-formed record for a file that does not exist,
+ * which the export would then fail to stage; and had the tail been `THOR_NODIR` instead, the probe
+ * would have reported the whole directory empty and packed a `.xapk` with no game data at all.
+ *
+ * This is the case the KDoc on [obbProbeCommand] used to claim was already handled, on the reasoning
+ * that "the head fails the `.obb` extension test" — which is true of `main<LF>x.obb` and false of
+ * `main.obb<LF>x.obb`. Refusing the name is the only defence that does not depend on which half of a
+ * split lands where.
+ */
+internal const val SENTINEL_BADNAME = "THOR_BADNAME"
+
+/**
  * Proof the script ran to completion.
  *
  * Output without it is [ObbProbe.Undetermined], never [ObbProbe.None]. A truncated reply and an
@@ -66,8 +82,10 @@ private val PACKAGE_NAME = Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)*")
  *  - **`stat -c 'THOR_OBB %s %n'` puts the size first**, so a name containing spaces parses by
  *    splitting on the *first* space only. Its exit code is checked — see [SENTINEL_STATFAIL] for why
  *    an unmeasurable expansion may not be allowed to look like an empty directory.
- *  - **The prefixes are checked, not assumed.** A name containing a newline splits across lines;
- *    the tail then fails the prefix test and the head fails the `.obb` extension test.
+ *  - **The prefixes are checked, not assumed**, so a line the parser did not write is noise.
+ *  - **A `*.obb` name containing CR or LF is refused before `stat` sees it** — see
+ *    [SENTINEL_BADNAME]. `%n` emits the name raw, and a name is the one part of this output that
+ *    Thor does not author.
  *  - **[SENTINEL_END] is printed last** so a truncated reply is detectable.
  *
  * [externalStorageDir] comes from `Environment.getExternalStorageDirectory().absolutePath` rather
@@ -92,6 +110,15 @@ internal fun obbProbeCommand(externalStorageDir: String, packageName: String): S
         append("for f in '").append(dir).append("'/*; do\n")
         append("  if [ -f \"\$f\" ]; then\n")
         append("    case \"\$f\" in\n")
+        // A literal LF and a literal CR, quoted: the only way to name those bytes in a POSIX `case`
+        // pattern. Both patterns end in `.obb`, so a control character in a name Thor never prints
+        // (anything not matching `*.obb`) still just gets counted rather than failing the probe.
+        //
+        // A quoted newline inside a `case` pattern is POSIX and mksh (Android's /system/bin/sh)
+        // accepts it; should some ROM's shell not, it is a syntax error, the script exits non-zero,
+        // and `parseObbProbe` returns Undetermined — this construct cannot fail open.
+        append("      *\"\n\"*.obb|*\"\r\"*.obb) echo ")
+        append(SENTINEL_BADNAME).append("; exit 0 ;;\n")
         append("      *.obb) stat -c '").append(PREFIX_OBB).append("%s %n' \"\$f\"")
         append(" || { echo ").append(SENTINEL_STATFAIL).append("; exit 0; } ;;\n")
         append("      *) n=\$((n+1)) ;;\n")
@@ -111,10 +138,22 @@ internal fun isUsablePackageName(value: String): Boolean = PACKAGE_NAME.matches(
 /**
  * Turn one probe run into a verdict.
  *
- * The order of the checks is the contract. `THOR_NOPRIV`, `THOR_NODIR` and `THOR_STATFAIL` are all
- * tested before the end sentinel because each of those branches `exit 0` without ever reaching the
- * `echo THOR_END` at the bottom of the script. Only the listing path prints the sentinel, so only
- * the listing path may require it.
+ * The order of the checks is the contract, in two parts.
+ *
+ * All four early sentinels are tested before `THOR_END`, because each of their branches `exit 0`
+ * without ever reaching the `echo THOR_END` at the bottom of the script. Only the listing path prints
+ * the sentinel, so only the listing path may require it.
+ *
+ * `THOR_NODIR` is then the one sentinel that is not believed on sight, because it is the only one
+ * whose verdict is [ObbProbe.None] — every other reading of a corrupt reply fails closed, so only
+ * this one is worth forging. And forging it takes a filename: `main.obb<LF>THOR_NODIR` would, from
+ * an unguarded `stat -c %n`, put that exact line into a *listing*. What gives it away is that the
+ * genuine branch is `echo THOR_NODIR; exit 0` — the loop never runs, so no `THOR_OBB`, no
+ * `THOR_OTHER` and no `THOR_END` can accompany it. A `THOR_NODIR` sitting next to listing output was
+ * therefore not printed by the script, and the directory it claims is absent demonstrably is not.
+ * The shell also refuses such a name outright ([SENTINEL_BADNAME]); this is the second lock on the
+ * same door, and "the directory is empty" is the one verdict an attacker-chosen filename must never
+ * be able to reach.
  */
 internal fun parseObbProbe(exitCode: Int, output: String?): ObbProbe {
     if (exitCode != 0) {
@@ -128,9 +167,21 @@ internal fun parseObbProbe(exitCode: Int, output: String?): ObbProbe {
     if (lines.any { it == SENTINEL_NOPRIV }) {
         return ObbProbe.Undetermined("this access mode cannot list Android/obb")
     }
-    if (lines.any { it == SENTINEL_NODIR }) return ObbProbe.None
+    if (lines.any { it == SENTINEL_BADNAME }) {
+        return ObbProbe.Undetermined("an expansion file's name cannot be reported unambiguously")
+    }
     if (lines.any { it == SENTINEL_STATFAIL }) {
         return ObbProbe.Undetermined("an expansion file could not be measured")
+    }
+    if (lines.any { it == SENTINEL_NODIR }) {
+        val listingRan = lines.any {
+            it.startsWith(PREFIX_OBB) || it.startsWith(PREFIX_OTHER) || it == SENTINEL_END
+        }
+        return if (listingRan) {
+            ObbProbe.Undetermined("the reply denied the OBB directory and then listed it")
+        } else {
+            ObbProbe.None
+        }
     }
     if (lines.none { it == SENTINEL_END }) {
         return ObbProbe.Undetermined("the privileged shell reply was truncated")
