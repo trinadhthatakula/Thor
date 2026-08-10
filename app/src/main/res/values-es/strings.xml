@@ -323,6 +323,9 @@
     <string name="info_apk_path">Ruta de origen del APK</string>
     <string name="info_data_dir">Directorio de datos</string>
     <string name="info_obb_dir">Directorio OBB</string>
+    <string name="info_obb_present">%1$s: %2$s de datos del juego</string>
+    <string name="info_obb_none">Sin datos de juego</string>
+    <string name="info_obb_unknown">No se puede comprobar sin root ni Shizuku</string>
     <string name="info_shared_data_dir">Directorio de datos compartidos</string>
     <string name="info_signature_sha256">Huella digital de firma SHA-256</string>
     <string name="info_bloat_description">Por qué está marcada</string>
@@ -498,7 +501,10 @@
     <string name="action_export">Exportar</string>
     <string name="export_explain_apk">Thor guarda esta aplicación como un único archivo de instalación (.apk) en la carpeta de abajo. Úsala para hacer una copia de seguridad o reinstalarla más tarde.</string>
     <string name="export_explain_apks">Esta aplicación consta de varias partes divididas, que se agrupan en un único paquete (.apks) en la carpeta de abajo. Reinstálala en cualquier momento con el instalador de Thor.</string>
-    <string name="export_explain_xapk">Thor agrupa las partes de esta aplicación en un único archivo (.xapk) en la carpeta de abajo, un formato que también entienden otros instaladores. Los datos de juego (archivos OBB) no se incluyen porque Android 11 y versiones posteriores impiden que cualquier aplicación lea la carpeta OBB de otra; un juego grande se instalará desde este archivo, pero puede que no funcione.</string>
+    <string name="export_explain_xapk">Thor empaqueta las partes de esta app en un único .xapk en la carpeta de abajo, un formato que otros instaladores también entienden. Los datos del juego (archivos OBB) se incluyen cuando el modo de acceso actual de Thor puede leerlos.</string>
+    <string name="export_xapk_unavailable">.xapk necesita root o Shizuku para que Thor pueda leer los datos del juego. El modo de acceso actual no puede, y un .xapk sin ellos instalaría un juego que no funciona.</string>
+    <string name="export_obb_included">Incluye %1$s de datos del juego.</string>
+    <string name="export_obb_partial">Algunos elementos de la carpeta de datos de esta app no son archivos de expansión y no se incluirán.</string>
     <string name="export_format">Formato</string>
     <string name="export_save_to">Guardar en</string>
     <string name="export_change">Cambiar</string>

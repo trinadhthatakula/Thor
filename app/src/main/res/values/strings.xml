@@ -195,7 +195,10 @@
     <string name="action_export">Export</string>
     <string name="export_explain_apk">Thor saves this app as a single installer file (.apk) to the folder below. Use it to back up the app or reinstall it later.</string>
     <string name="export_explain_apks">This app ships as several split parts, packed into one bundle (.apks) in the folder below. Reinstall it anytime with Thor\'s installer.</string>
-    <string name="export_explain_xapk">Thor packs this app\'s parts into a single .xapk in the folder below, a format other installers understand too. Game data (OBB files) is left out because Android 11 and later stops any app from reading another app\'s OBB folder; a large game will install from this file but may not run.</string>
+    <string name="export_explain_xapk">Thor packs this app\'s parts into a single .xapk in the folder below, a format other installers understand too. Game data (OBB files) is included when Thor\'s current access mode can read it.</string>
+    <string name="export_xapk_unavailable">.xapk needs root or Shizuku so Thor can read this app\'s game data. The current access mode can\'t, and a .xapk without it would install a game that doesn\'t run.</string>
+    <string name="export_obb_included">Includes %1$s of game data.</string>
+    <string name="export_obb_partial">Some items in this app\'s game data folder aren\'t expansion files and won\'t be included.</string>
     <string name="export_format">Format</string>
     <string name="export_save_to">Save to</string>
     <string name="export_change">Change</string>
@@ -484,6 +487,9 @@
     <string name="info_apk_path">APK source path</string>
     <string name="info_data_dir">Data directory</string>
     <string name="info_obb_dir">OBB directory</string>
+    <string name="info_obb_present">%1$s — %2$s of game data</string>
+    <string name="info_obb_none">No game data</string>
+    <string name="info_obb_unknown">Can\'t check without root or Shizuku</string>
     <string name="info_shared_data_dir">Shared data directory</string>
     <string name="info_signature_sha256">SHA-256 signature fingerprint</string>
     <!-- Label for the UAD debloat note. The note itself ships in uad_lists.json and is English

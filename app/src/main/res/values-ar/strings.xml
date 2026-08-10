@@ -353,6 +353,9 @@
     <string name="info_apk_path">مسار ملف APK</string>
     <string name="info_data_dir">دليل البيانات</string>
     <string name="info_obb_dir">دليل OBB</string>
+    <string name="info_obb_present">%1$s — %2$s من بيانات اللعبة</string>
+    <string name="info_obb_none">لا توجد بيانات لعبة</string>
+    <string name="info_obb_unknown">لا يمكن التحقق بدون الروت أو Shizuku</string>
     <string name="info_shared_data_dir">دليل البيانات المشتركة</string>
     <string name="info_signature_sha256">بصمة توقيع SHA-256</string>
     <string name="info_bloat_description">سبب هذا التصنيف</string>
@@ -532,7 +535,10 @@
     <string name="action_export">تصدير</string>
     <string name="export_explain_apk">يقوم Thor بحفظ هذا التطبيق كملف تثبيت فردي (.apk) في المجلد أدناه. استخدمه لنسخ التطبيق احتياطيًا أو إعادة تثبيته لاحقًا.</string>
     <string name="export_explain_apks">يأتي هذا التطبيق في أجزاء متعددة ومقسمة، تُحزم في حزمة واحدة (.apks) في المجلد أدناه. يمكنك إعادة تثبيتها في أي وقت باستخدام مثبت Thor.</string>
-    <string name="export_explain_xapk">يحزم Thor أجزاء هذا التطبيق في ملف واحد (.xapk) في المجلد أدناه، وهي صيغة تفهمها المثبتات الأخرى أيضًا. لا تُضمَّن بيانات الألعاب (ملفات OBB) لأن Android 11 والإصدارات الأحدث تمنع أي تطبيق من قراءة مجلد OBB الخاص بتطبيق آخر؛ لذا ستُثبَّت اللعبة الكبيرة من هذا الملف لكنها قد لا تعمل.</string>
+    <string name="export_explain_xapk">يحزم ثور أجزاء هذا التطبيق في ملف ‎.xapk واحد داخل المجلد أدناه، وهي صيغة تفهمها برامج التثبيت الأخرى أيضًا. تُضمَّن بيانات اللعبة (ملفات OBB) عندما يستطيع وضع الوصول الحالي قراءتها.</string>
+    <string name="export_xapk_unavailable">تحتاج صيغة ‎.xapk إلى الروت أو Shizuku ليتمكن ثور من قراءة بيانات اللعبة. وضع الوصول الحالي لا يستطيع ذلك، وملف ‎.xapk بدونها سيثبّت لعبة لا تعمل.</string>
+    <string name="export_obb_included">يتضمن %1$s من بيانات اللعبة.</string>
+    <string name="export_obb_partial">بعض العناصر في مجلد بيانات هذا التطبيق ليست ملفات توسعة ولن تُضمَّن.</string>
     <string name="export_format">الصيغة</string>
     <string name="export_save_to">حفظ في</string>
     <string name="export_change">تغيير</string>
