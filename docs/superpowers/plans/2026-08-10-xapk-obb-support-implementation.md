@@ -2335,6 +2335,56 @@ After the `when (mode)` block, still inside the `try`:
             }
 ```
 
+> **As shipped, this gate is wrong and was corrected (commit `70a9cd00`).** `isInstalled(packageName)`
+> immediately after the `when (mode)` is not a completed-install check. Only the `pm`-based rungs
+> finish synchronously; `performPackageInstallerInstall` ends at `session.commit()`, which returns
+> **before** the platform has installed anything — the outcome arrives later as a broadcast to
+> `InstallReceiver`. So for a *first-time* install through a session the condition is `false`, the
+> `place()` call never runs, and the OBB is dropped **in silence**: the exact failure #164 reports,
+> reintroduced on a different path. It is reachable today, not hypothetically — Shizuku's shell rung
+> failing falls through to a session.
+>
+> The shipped shape:
+>
+> ```kotlin
+>                 // EXTERNAL is excluded because nothing has been installed yet on that path.
+>                 // carriesExpansions() comes first so an archive with no game data pays one
+>                 // central-directory read and nothing else — in particular, never the wait below.
+>                 if (mode != InstallMode.EXTERNAL && packageName != null &&
+>                     obbInstaller.carriesExpansions(staged.file, packageName)
+>                 ) {
+>                     val name = staged.displayName ?: packageName
+>                     if (!awaitInstalled(packageName)) { /* stated error, see below */ }
+>                     else when (val placement = obbInstaller.place(staged.file, packageName)) { … }
+>                 }
+> ```
+>
+> with `ObbInstaller.carriesExpansions(bundle, packageName): Boolean` (a `withContext(ioDispatcher)`
+> wrapper over the private `declaredExpansions`) and, in the repository:
+>
+> ```kotlin
+>     private suspend fun awaitInstalled(packageName: String): Boolean {
+>         if (isInstalled(packageName)) return true
+>         return withTimeoutOrNull(OBB_INSTALL_WAIT_MS) {
+>             while (!isInstalled(packageName)) delay(OBB_INSTALL_POLL_MS)
+>             true
+>         } == true
+>     }
+>     // file-level: OBB_INSTALL_WAIT_MS = 90_000L, OBB_INSTALL_POLL_MS = 250L
+> ```
+>
+> Three things that shape are deliberately not: it is **not** a receiver handoff (`InstallerViewModel.onCleared()`
+> discards the staged bundle, so the file may be gone by the time the broadcast lands), it is **not**
+> event-bus coupling (the bus is `replay = 1` and app-scoped, so a stale Success would satisfy the
+> wait), and the timeout does **not** fall through to placing anyway — a rung that fell through to the
+> default installer may still be sitting behind the system's own confirmation dialog, so the wait ends
+> in a stated error:
+> *"Thor could not confirm <name> finished installing, so its game data was not placed. Install it
+> again to place the game data."*
+>
+> `awaitInstalled` is not JVM-unit-testable (it reads a real `PackageManager`), so it carries a device
+> check in Task 12 instead: *Shizuku shell rung fails → fallback session → OBB still placed.*
+
 and add the two helpers:
 
 ```kotlin
@@ -2847,6 +2897,7 @@ The unit tests cover every pure decision, but nothing here proves the privileged
 - [ ] Under **Dhizuku**, the `.xapk` chip is disabled and the reason is legible.
 - [ ] Install that `.xapk` on a device where the game is absent, and **launch the game** — an install that reports success but leaves an unplayable game is the bug, not the fix.
 - [ ] Install a third-party APKPure `.xapk` with expansions, to prove the wire format matches what other tools actually write rather than only what Thor writes.
+- [ ] **Shizuku with its shell rung failing** — force the fallback to a `PackageInstaller` session (e.g. a package the `pm install` rung refuses) and confirm the OBB is still placed. This is the only cover for `awaitInstalled`, which reads a real `PackageManager` and so has no JVM unit test; before the fix in `70a9cd00` this exact path dropped the OBB in silence.
 - [ ] Confirm shell-written files in `externalCacheDir` are readable **and deletable** by Thor. If they are not, the staging directory grows without bound on every export.
 - [ ] Round-trip a game whose expansions exceed 4 GiB, to exercise Zip64.
 - [ ] Confirm `stat -c '%s %n'` behaves on the target's toybox build. It is the probe's only sizing mechanism, and a toybox that rejects the format would make every probe `Undetermined` — which fails closed, but silently disables the feature.
