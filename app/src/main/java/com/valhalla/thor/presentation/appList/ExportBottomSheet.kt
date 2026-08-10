@@ -112,7 +112,12 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
         obbProbe = systemRepository.probeObb(appInfo.packageName)
     }
 
-    LaunchedEffect(obbProbe) {
+    // Keyed on `format` as well as on the verdict, so the invariant "XAPK is never the selection
+    // once the probe says Undetermined" holds whichever of the two moved last. Keyed on the verdict
+    // alone it would depend on the chip's `enabled` being the only way `format` can change — a
+    // guarantee that lives in a sibling composable and would break silently if that changed.
+    // Terminates because formatOptions.first() is autoFor(), which is only ever APK or APKS.
+    LaunchedEffect(obbProbe, format) {
         if (obbProbe is ObbProbe.Undetermined && format == BundleFormat.XAPK) {
             format = formatOptions.first()
         }
@@ -307,7 +312,7 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                     Text(
                         text = stringResource(
                             R.string.export_obb_included,
-                            Formatter.formatShortFileSize(LocalContext.current, totalObbBytes)
+                            Formatter.formatShortFileSize(context, totalObbBytes)
                         ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant

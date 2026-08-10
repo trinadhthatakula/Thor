@@ -2592,6 +2592,10 @@ Extend the existing `LaunchedEffect(Unit) { targetLabel = ... }` only if it is c
 Replace the chip's `enabled` and add a reason line. The chip currently reads `enabled = !exporting`; make it:
 
 ```kotlin
+                    // `is Undetermined` is false while obbProbe is still null, so the chip stays
+                    // enabled for the length of the probe rather than flickering disabled and back.
+                    // A selection made in that window is re-checked by the builder, which fails the
+                    // export rather than writing an incomplete bundle.
                     val xapkBlocked = option == BundleFormat.XAPK && obbProbe is ObbProbe.Undetermined
                     FilterChip(
                         selected = option == format,
@@ -2612,10 +2616,11 @@ Replace the chip's `enabled` and add a reason line. The chip currently reads `en
 
 Add, immediately after the chip row:
 
+The reason always has a chip to explain: `formatOptions` is `listOf(BundleFormat.autoFor(appInfo), BundleFormat.XAPK)` and `autoFor` returns only `APK` or `APKS`, so `XAPK` is always offered and `formatOptions.first()` is never `XAPK` — which is also what makes the fallback below terminate.
+
 ```kotlin
-                // The probe is still running: leave the chip enabled rather than flickering it
-                // disabled and back. A selection made in that window is re-checked by the builder,
-                // which fails the export rather than writing an incomplete bundle.
+                // Sits under the chip row, not under the explain text, because it explains why a
+                // chip the user can see cannot be pressed.
                 if (obbProbe is ObbProbe.Undetermined) {
                     Text(
                         text = stringResource(R.string.export_xapk_unavailable),
