@@ -2708,6 +2708,8 @@ the policy is that the user finds out why. Refs #164."
 **Files:**
 - Modify: `app/src/main/java/com/valhalla/thor/presentation/appList/AppInfoDetailsViewModel.kt`
 - Modify: `app/src/main/java/com/valhalla/thor/presentation/appList/AppInfoDetailsScreen.kt`
+- Modify: `app/src/main/java/com/valhalla/thor/presentation/widgets/AppInfoSheet.kt` — *added in review; see the note after Step 3*
+- Modify: `app/src/test/java/com/valhalla/thor/presentation/appList/AppInfoDetailsViewModelTest.kt` — *ditto*
 
 **Interfaces:**
 - Consumes: `SystemRepository.probeObb` (already injected into the view model), the strings from Task 9.
@@ -2791,7 +2793,46 @@ with:
         }
 ```
 
-Add `android.text.format.Formatter`, `androidx.compose.ui.platform.LocalContext` and `com.valhalla.thor.domain.model.ObbProbe` to the imports if absent.
+Add `android.text.format.Formatter`, `androidx.compose.ui.platform.LocalContext` and `com.valhalla.thor.domain.model.ObbProbe` to the imports if absent. `LocalContext` was already imported and `GeneralTabScreen` already holds `val context = LocalContext.current` (used by the install-size card), so use that local rather than a second lookup.
+
+> **This task listed two files and needed four.** Both gaps were found in review, not by the compiler, and both would have shipped silently:
+>
+> **1. `AppInfoSheet` renders the card too, and never got the probe** (fixed in `bd13c19e`).
+> `presentation/widgets/AppInfoSheet.kt:322` hosts the same `AppInfoDetailBody` from the same
+> `AppInfoDetailsViewModel` — it calls `loadAppDetails` on expansion, so it *pays* for the probe — but
+> it called the body with `details` and `modifier` only. `obbProbe` is defaulted because the function
+> is public, so the omission compiled cleanly and left the card on its `null -> Unit` branch forever.
+> The sheet is the unified app-info surface most users reach, so the new card would have been invisible
+> everywhere except the full detail screen. Pass `obbProbe = detailsState.obbProbe`. **The general
+> lesson: a defaulted parameter added to a public composable hides every call site that should have
+> been updated — grep for the callers, do not trust the build.**
+>
+> **2. Adding a `probeObb` call to `loadAppDetails` breaks assertions in `AppInfoDetailsViewModelTest`.**
+> `FakeSystemRepository.probeObb` records `calls += "probeObb:$packageName"`, so any test that loads
+> details and then asserts on `system.calls` changes meaning. Two were affected: *"removing a disabled
+> and suspended app undoes both halves"* and *"adding to the watchlist freezes nothing"* (whose
+> `calls.isEmpty()` assertion, message *"no privileged call belongs on the add path"*, stops meaning
+> anything at all if the expected value becomes a non-empty list). Fixed with `system.calls.clear()`
+> after the load setup — **not** by adding `"probeObb:a"` to the expectations, and **not** by removing
+> the recording from the fake, which is what lets a test prove the probe ran. Three tests added
+> (verdict lands in state; `Undetermined` is not collapsed to `None`; `null` before the probe answers),
+> 924 → 927.
+>
+> Two smaller things this task's text did not settle, decided in the code:
+> - **Where the probe goes when the load fails.** "After the existing state emission" and "after the
+>   `copy(isLoading = false, detailedInfo = …)` update" name different sites when `details == null`. It
+>   went after the whole if/else, so a package whose details fail still gets a verdict behind the error
+>   screen. Harmless either way, but it was a choice.
+> - **`otherEntryCount` has no branch in this card**, which reads against `ObbProbe.Present`'s KDoc
+>   (*"a note shown to the user"*). The note lives on the export sheet, where "what won't be packed" is
+>   actionable; a read-only card cannot act on it. Recorded in a comment at the card site so nobody
+>   reads the absence as an oversight. Consequence: `Present(files = emptyList(), otherEntryCount > 0)`
+>   renders `Android/obb/<pkg> — 0 B of game data`.
+>
+> One caveat on the "screen renders first" comment: it is true of production and not of the tests.
+> `StateFlow` conflates and the update is synchronous, so the intermediate "details loaded, probe
+> pending" value is only observable because the real `probeObb` suspends. `FakeSystemRepository` does
+> not, which is why the nullness test asserts from the pre-load state rather than a mid-load snapshot.
 
 - [ ] **Step 4: Build**
 
