@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.FreezeTier
+import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.freezeTier
 import com.valhalla.thor.presentation.freezer.FreezerPrompt
 import com.valhalla.thor.domain.repository.AppRepository
@@ -53,6 +54,8 @@ data class AppInfoDetailsUiState(
      * the freeze action is reachable at the partial detent, where no detail load has run.
      */
     val skipRoutineFreezeConfirmation: Boolean = false,
+    /** Null until the probe answers. See [com.valhalla.thor.domain.model.ObbProbe]. */
+    val obbProbe: ObbProbe? = null,
     val errorMessage: UiText? = null
 )
 
@@ -100,7 +103,13 @@ class AppInfoDetailsViewModel(
         _uiState.update {
             it.copy(
                 isLoading = true,
-                errorMessage = null
+                errorMessage = null,
+                // Cleared, not carried: the details land before the probe answers (see below), so a
+                // verdict left over from the previous app would be rendered against the new one —
+                // "1.2 GB of game data" for an app that has none, and an enabled .xapk chip for one
+                // whose expansions Thor cannot read. `null` is the "still asking" state both
+                // consumers already handle.
+                obbProbe = null
             )
         }
         viewModelScope.launch {
@@ -141,6 +150,11 @@ class AppInfoDetailsViewModel(
                     )
                 }
             }
+
+            // Deliberately after the details land: the probe shells out, and the rest of the
+            // screen should not wait on it.
+            val probe = systemRepository.probeObb(packageName)
+            _uiState.update { it.copy(obbProbe = probe) }
         }
     }
 

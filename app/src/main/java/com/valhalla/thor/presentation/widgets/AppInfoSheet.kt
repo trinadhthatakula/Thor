@@ -319,8 +319,13 @@ fun AppInfoSheet(
                         when {
                             // Kept ahead of the error and loading branches so a failed or in-flight
                             // refresh never blanks details that are already on screen.
+                            // obbProbe is passed explicitly even though it is defaulted. It is the
+                            // same view model that ran the probe, so omitting it would pay the
+                            // privileged round-trip and then render the card's "still probing"
+                            // branch forever — on the surface most users reach, not the full screen.
                             details != null -> AppInfoDetailBody(
                                 details = details,
+                                obbProbe = detailsState.obbProbe,
                                 modifier = Modifier.fillMaxSize()
                             )
 

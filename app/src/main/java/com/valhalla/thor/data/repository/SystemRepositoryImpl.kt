@@ -3,11 +3,13 @@
 
 package com.valhalla.thor.data.repository
 
+import android.os.Environment
 import android.os.SystemClock
 import com.valhalla.thor.data.gateway.DhizukuSystemGateway
 import com.valhalla.thor.data.gateway.RootSystemGateway
 import com.valhalla.thor.data.gateway.ShizukuSystemGateway
 import com.valhalla.thor.domain.gateway.SystemGateway
+import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.repository.PreferenceRepository
 import com.valhalla.thor.domain.repository.StorageStatsProvider
@@ -283,6 +285,37 @@ class SystemRepositoryImpl(
         withContext(ioDispatcher) {
             runGatewayAction { it.executeShellCommand(command) }
         }
+
+    /**
+     * Deliberately built on [executeShellCommand] rather than on `runGatewayAction` directly: the
+     * probe and the copy that follows it must run through the *same* privileged surface, or a
+     * successful probe stops being evidence that the files can actually be captured — which is
+     * what lets the export sheet leave the `.xapk` chip enabled on a `Present` result.
+     *
+     * No `withContext(ioDispatcher)` here: [executeShellCommand] already makes that hop, and
+     * everything either side of it is pure string work.
+     */
+    override suspend fun probeObb(packageName: String): ObbProbe {
+        // Two distinct refusals, named separately: obbProbeCommand returns null for an unusable
+        // package name *or* an unusable storage root, and folding them together reported the package
+        // name as the cause of a missing external volume. The reason is the diagnostic, so it has to
+        // name the thing that actually failed.
+        val externalRoot = Environment.getExternalStorageDirectory()?.absolutePath
+            ?: return ObbProbe.Undetermined("this device's shared storage is unavailable")
+        val command = obbProbeCommand(externalRoot, packageName)
+            ?: return ObbProbe.Undetermined(
+                if (isUsablePackageName(packageName)) {
+                    "\"$externalRoot\" is not a usable storage path"
+                } else {
+                    "\"$packageName\" is not a usable package name"
+                }
+            )
+
+        return executeShellCommand(command).fold(
+            onSuccess = { (exitCode, output) -> parseObbProbe(exitCode, output) },
+            onFailure = { ObbProbe.Undetermined(it.message ?: "no privileged shell is available") }
+        )
+    }
 
     private companion object {
         // TTL for the resolved-gateway cache; ~3s comfortably covers a single batch operation

@@ -94,6 +94,32 @@ class SystemRepositorySurfaceTest {
     }
 
     /**
+     * A presence lock, the mirror of the absence lock above.
+     *
+     * `probeObb` is the seam three consumers depend on — the export sheet's chip gating, the bundle
+     * builder's pack step and the app-info OBB card — and none of those can be unit-tested on the
+     * JVM (they need gateways, and `rikka.shizuku.Shizuku`'s static initialiser throws "not
+     * mocked"). This reflection check is the cheapest thing that fails if the method is renamed or
+     * dropped, and it reuses [surfaceNames]'s de-mangling, so a `Result`-returning or `internal`
+     * redeclaration would not slip past it.
+     *
+     * It rides on the anti-vacuity guard above rather than repeating one: the same [surfaceNames]
+     * call that has to see `forceStopApp` and `clearCache` is the one asked about `probeObb` here,
+     * so a reflection that came back empty fails that test rather than passing this one quietly.
+     */
+    @Test
+    fun `probeObb is declared`() {
+        val names = surfaceNames()
+
+        assertTrue(
+            "SystemRepository no longer declares probeObb; the sweep found $names. The export " +
+                "sheet, the bundle builder and the app-info OBB card all read OBB state through " +
+                "it, and each of them silently degrades to \"no OBB\" without it",
+            "probeObb" in names
+        )
+    }
+
+    /**
      * The source-text lock, for the re-add that never appears on this interface at all.
      *
      * `fun SystemRepository.aggressiveCleanup(pkg: String): Result<Unit>` compiles into whatever

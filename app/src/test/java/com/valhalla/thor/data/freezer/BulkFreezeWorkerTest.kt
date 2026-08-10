@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.data.freezer
 
+import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.ManageAppUseCase
 import kotlinx.coroutines.CancellationException
@@ -186,6 +187,8 @@ private class RecordingSystemRepository(
 
     override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> =
         unreachable("executeShellCommand")
+
+    override suspend fun probeObb(packageName: String): ObbProbe = unreachable("probeObb")
 
     private fun unreachable(name: String): Nothing =
         throw UnsupportedOperationException("$name is not reachable from a bulk freeze worker")

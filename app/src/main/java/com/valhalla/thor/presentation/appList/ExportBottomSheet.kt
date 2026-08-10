@@ -7,6 +7,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.text.format.Formatter
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -58,7 +59,9 @@ import coil3.compose.AsyncImage
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.BundleFormat
+import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.domain.usecase.ExportAppUseCase
 import com.valhalla.thor.presentation.utils.AppIconModel
 import kotlinx.coroutines.launch
@@ -74,6 +77,7 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val exportUseCase = koinInject<ExportAppUseCase>()
     val preferenceRepository = koinInject<PreferenceRepository>()
+    val systemRepository = koinInject<SystemRepository>()
     val scope = rememberCoroutineScope()
 
     // Two options, never three. The native container for this app — .apk for a monolithic app,
@@ -99,8 +103,25 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
     // Defaults to autoFor(), i.e. the format the builder has always picked on its own, so an
     // export where nobody touches the row is byte-for-byte what shipped before the selector existed.
     var format by remember(appInfo.packageName) { mutableStateOf(formatOptions.first()) }
+    // null while the probe is in flight — distinct from ObbProbe.None, which is an answer.
+    var obbProbe by remember(appInfo.packageName) { mutableStateOf<ObbProbe?>(null) }
 
     LaunchedEffect(Unit) { targetLabel = exportUseCase.currentTargetLabel() }
+
+    LaunchedEffect(appInfo.packageName) {
+        obbProbe = systemRepository.probeObb(appInfo.packageName)
+    }
+
+    // Keyed on `format` as well as on the verdict, so the invariant "XAPK is never the selection
+    // once the probe says Undetermined" holds whichever of the two moved last. Keyed on the verdict
+    // alone it would depend on the chip's `enabled` being the only way `format` can change — a
+    // guarantee that lives in a sibling composable and would break silently if that changed.
+    // Terminates because formatOptions.first() is autoFor(), which is only ever APK or APKS.
+    LaunchedEffect(obbProbe, format) {
+        if (obbProbe is ObbProbe.Undetermined && format == BundleFormat.XAPK) {
+            format = formatOptions.first()
+        }
+    }
 
     val runExport = {
         exporting = true
@@ -235,10 +256,18 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 formatOptions.forEach { option ->
+                    // `is Undetermined` is false while obbProbe is still null, so the chip stays
+                    // enabled for the length of the probe rather than flickering disabled and back.
+                    // A selection made in that window is re-checked by the builder, which fails the
+                    // export rather than writing an incomplete bundle.
+                    val xapkBlocked = option == BundleFormat.XAPK && obbProbe is ObbProbe.Undetermined
                     FilterChip(
                         selected = option == format,
                         onClick = { format = option },
-                        enabled = !exporting,
+                        // Disabled, not hidden. Under the "only offer .xapk when the OBB is
+                        // capturable" policy a vanishing chip would leave the user with no way to
+                        // learn why the format they came for is missing.
+                        enabled = !exporting && !xapkBlocked,
                         // A file extension, not copy — the same token in every locale, so it is
                         // built from BundleFormat rather than from a translated string.
                         label = { Text(".${option.extension}") },
@@ -250,8 +279,20 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                 }
             }
 
-            // Plain-language explanation of the selected format. For .xapk this is the only place
-            // the user is told the OBB assets are left out, so it has to follow the selection.
+            // Sits under the chip row, not under the explain text, because it explains why a
+            // chip the user can see cannot be pressed.
+            if (obbProbe is ObbProbe.Undetermined) {
+                Text(
+                    text = stringResource(R.string.export_xapk_unavailable),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+
+            // Plain-language explanation of the selected format, plus what the .xapk will actually
+            // carry. This is the only place the user learns whether their game data is going in,
+            // so it has to follow the selection rather than sit above it.
             Text(
                 text = stringResource(
                     when (format) {
@@ -263,6 +304,31 @@ fun ExportBottomSheet(appInfo: AppInfo, onDismiss: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            val present = obbProbe as? ObbProbe.Present
+            if (format == BundleFormat.XAPK && present != null) {
+                val totalObbBytes = present.files.sumOf { it.sizeBytes }
+                if (totalObbBytes > 0) {
+                    Text(
+                        text = stringResource(
+                            R.string.export_obb_included,
+                            Formatter.formatShortFileSize(context, totalObbBytes)
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (present.otherEntryCount > 0) {
+                    // Not a refusal. The format cannot carry anything but .obb files, so a bundle
+                    // without those extras is complete by the format's own definition — the user is
+                    // told, and decides.
+                    Text(
+                        text = stringResource(R.string.export_obb_partial),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
 
             // Destination
             Text(

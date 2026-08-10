@@ -316,6 +316,9 @@
     <string name="info_apk_path">APK 源路径</string>
     <string name="info_data_dir">数据目录</string>
     <string name="info_obb_dir">OBB 目录</string>
+    <string name="info_obb_present">%1$s — %2$s 游戏数据</string>
+    <string name="info_obb_none">无游戏数据</string>
+    <string name="info_obb_unknown">暂时无法检查</string>
     <string name="info_shared_data_dir">共享数据目录</string>
     <string name="info_signature_sha256">SHA-256 签名指纹</string>
     <string name="info_bloat_description">被标记的原因</string>
@@ -490,7 +493,10 @@
     <string name="action_export">导出</string>
     <string name="export_explain_apk">Thor 将此应用保存为单个安装文件 (.apk) 到下方文件夹中。您可以使用它备份应用或在以后重新安装。</string>
     <string name="export_explain_apks">此应用包含多个拆分部分，它们会被打包为一个捆绑包 (.apks) 并保存到下方文件夹中。可随时使用 Thor 安装程序重新安装。</string>
-    <string name="export_explain_xapk">Thor 会将此应用的各个部分打包为单个文件 (.xapk) 并保存到下方文件夹中，其他安装器也能识别这种格式。游戏数据（OBB 文件）不会包含在内，因为 Android 11 及更高版本禁止任何应用读取其他应用的 OBB 文件夹；大型游戏可以通过此文件安装，但可能无法运行。</string>
+    <string name="export_explain_xapk">Thor 会把此应用的各个部分打包成下方文件夹中的单个 .xapk，其他安装器也能识别这种格式。当 Thor 当前的访问方式可以读取时，游戏数据（OBB 文件）会一并打包。</string>
+    <string name="export_xapk_unavailable">Thor 暂时无法读取该应用的游戏数据——通常这说明需要 Root 或 Shizuku。缺少游戏数据的 .xapk 装上后游戏也无法运行。</string>
+    <string name="export_obb_included">包含 %1$s 游戏数据。</string>
+    <string name="export_obb_partial">此应用游戏数据文件夹中有些内容不是扩展文件，不会被打包。</string>
     <string name="export_format">格式</string>
     <string name="export_save_to">保存至</string>
     <string name="export_change">更改</string>

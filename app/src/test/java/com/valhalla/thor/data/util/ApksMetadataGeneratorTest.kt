@@ -8,6 +8,7 @@ import com.valhalla.thor.domain.model.AppInfo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -237,5 +238,83 @@ class ApksMetadataGeneratorTest {
             listOf("base.apk", "split_config.arm64_v8a.apk"),
             manifest.splitApkFiles()
         )
+    }
+
+    @Test
+    fun xapkManifest_roundTripsExpansionsFromTheWriterIntoTheReader() {
+        val json = ApksMetadataGenerator().generateManifestJson(
+            appInfo = app(),
+            totalSize = 123L,
+            iconName = "icon.png",
+            staged = staged("$baseDir/base.apk"),
+            expansions = listOf(
+                XapkExpansion(
+                    file = "Android/obb/com.example.game/main.12.com.example.game.obb",
+                    installPath = "Android/obb/com.example.game/main.12.com.example.game.obb"
+                )
+            )
+        )
+
+        // The wire keys are what third-party installers read; they are not ours to rename.
+        assertTrue(json, json.contains("\"expansions\""))
+        assertTrue(json, json.contains("\"install_path\""))
+        assertTrue(json, json.contains("\"install_location\":\"EXTERNAL_STORAGE\""))
+
+        val parsed = parseXapkManifest(json)!!
+        assertEquals(1, parsed.expansions.size)
+        assertEquals(
+            "Android/obb/com.example.game/main.12.com.example.game.obb",
+            parsed.expansions.first().file
+        )
+        assertEquals(
+            "Android/obb/com.example.game/main.12.com.example.game.obb",
+            parsed.expansions.first().installPath
+        )
+    }
+
+    /**
+     * `encodeDefaults` is true on `xapkJson`, so a defaulted `emptyList()` would write
+     * `"expansions":[]` into every `.xapk` Thor produces — changing the bytes of bundles this
+     * feature does not touch. The field is nullable precisely so absence stays absence.
+     */
+    @Test
+    fun xapkManifest_omitsExpansionsEntirelyWhenThereAreNone() {
+        val json = ApksMetadataGenerator().generateManifestJson(
+            appInfo = app(),
+            totalSize = 123L,
+            iconName = "icon.png",
+            staged = staged("$baseDir/base.apk")
+        )
+
+        // Guard that this is the .xapk overload and not the .apks one, which uses a different Json
+        // instance: without it the assertion below passes for the wrong reason.
+        assertTrue(json, json.contains("\"total_size\":123"))
+        assertFalse(json, json.contains("expansions"))
+    }
+
+    @Test
+    fun xapkManifest_readsAMissingExpansionsKeyAsAnEmptyListRatherThanNull() {
+        val parsed = parseXapkManifest(
+            """{"package_name":"com.example.game","name":"Game","version_code":"12"}"""
+        )!!
+
+        assertTrue(parsed.expansions.isEmpty())
+    }
+
+    /**
+     * A hostile or merely old archive must not make the manifest unreadable — losing the manifest
+     * would lose the split list too, breaking an install that could have worked.
+     */
+    @Test
+    fun xapkManifest_readsAnExpansionMissingInstallPathAsNullRatherThanFailingTheManifest() {
+        val parsed = parseXapkManifest(
+            """
+            {"package_name":"com.example.game","name":"Game","version_code":"12",
+             "expansions":[{"file":"main.obb"}]}
+            """.trimIndent()
+        )!!
+
+        assertEquals(1, parsed.expansions.size)
+        assertNull(parsed.expansions.first().installPath)
     }
 }

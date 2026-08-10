@@ -3,6 +3,8 @@
 
 package com.valhalla.thor.domain.repository
 
+import com.valhalla.thor.domain.model.ObbProbe
+
 interface SystemRepository {
 
     suspend fun isRootAvailable(): Boolean
@@ -49,4 +51,16 @@ interface SystemRepository {
 
     // Raw shell execution via the active privilege gateway (used by extensions).
     suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>>
+
+    /**
+     * Look at `Android/obb/<packageName>` through the active privilege gateway.
+     *
+     * Not root-only: this goes through [executeShellCommand], which `SystemRepositoryImpl` routes
+     * via `runGatewayAction`, so root and Shizuku both answer it. The Dhizuku device-owner process
+     * cannot see another package's external directories and gets [ObbProbe.Undetermined].
+     *
+     * Never throws. Every failure — bad package name, gateway error, truncated reply — is
+     * `Undetermined`, which callers must not collapse into `None`.
+     */
+    suspend fun probeObb(packageName: String): ObbProbe
 }

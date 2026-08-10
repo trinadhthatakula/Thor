@@ -5,6 +5,7 @@ package com.valhalla.thor.presentation.appList
 
 import android.content.Context
 import android.icu.text.DateFormat
+import android.text.format.Formatter
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -77,6 +78,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppClickAction
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.DetailedAppInfo
+import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PermissionDetail
 import com.valhalla.thor.domain.model.freezeNeedsConfirmation
 import com.valhalla.thor.presentation.theme.bodyFontFamily
@@ -213,7 +215,7 @@ fun AppInfoDetailsScreen(
                         }
 
                         if (!showOnlyHeaderAndActions) {
-                            AppInfoDetailBody(details)
+                            AppInfoDetailBody(details, state.obbProbe)
                         }
                     }
                 }
@@ -420,13 +422,22 @@ fun AppInfoHeaderAndActions(
 /**
  * The tabbed detail body: everything below the action row.
  *
- * Takes a fully-loaded [DetailedAppInfo] and nothing else, so a host is free to render the header
- * and actions from a cheap [AppInfo] it already has and only pay for this once the details land.
+ * Takes a fully-loaded [DetailedAppInfo], so a host is free to render the header and actions from a
+ * cheap [AppInfo] it already has and only pay for this once the details land.
+ *
+ * [obbProbe] is **required with no default**, deliberately. Both hosts drive this from the same
+ * `AppInfoDetailsViewModel` that runs the probe, and a default of `null` reads as "still probing" —
+ * so a host that forgot to pass it would compile, pay the privileged round-trip and then render an
+ * empty card forever. That is not hypothetical: `AppInfoSheet` did exactly that while the parameter
+ * was optional. Requiring it turns the omission into a compile error. (Compose lint also wants
+ * `modifier` to be the first optional parameter, which an optional `obbProbe` ahead of it violates —
+ * the two constraints agree here.)
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppInfoDetailBody(
     details: DetailedAppInfo,
+    obbProbe: ObbProbe?,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier) {
@@ -468,7 +479,7 @@ fun AppInfoDetailBody(
         }
 
         when (selectedTab) {
-            0 -> GeneralTabScreen(details)
+            0 -> GeneralTabScreen(details, obbProbe)
             1 -> ComponentsTabScreen(details)
             2 -> LibsAndFeaturesTabScreen(details)
             3 -> PermissionsTabScreen(details.permissions)
@@ -643,7 +654,7 @@ private fun AppDetailsHeader(
 }
 
 @Composable
-private fun GeneralTabScreen(details: DetailedAppInfo) {
+private fun GeneralTabScreen(details: DetailedAppInfo, obbProbe: ObbProbe?) {
     val appInfo = details.appInfo
     val context = LocalContext.current
     val installTime = remember(appInfo.firstInstallTime, context) { formatTime(appInfo.firstInstallTime, context) }
@@ -737,9 +748,42 @@ private fun GeneralTabScreen(details: DetailedAppInfo) {
                 value = appInfo.dataDir ?: stringResource(R.string.not_available)
             )
         }
-        appInfo.obbFilePath?.let { obb ->
-            item {
-                InfoCard(title = stringResource(R.string.info_obb_dir), value = obb)
+        // Not appInfo.obbFilePath: that is computed with File(...).exists(), which returns false
+        // for another package's OBB directory on Android 11+ regardless of whether one exists —
+        // so this card was simply absent for every game on a modern device.
+        when (val probe = obbProbe) {
+            null -> Unit // still probing
+            ObbProbe.None -> item {
+                InfoCard(
+                    title = stringResource(R.string.info_obb_dir),
+                    value = stringResource(R.string.info_obb_none)
+                )
+            }
+
+            is ObbProbe.Undetermined -> item {
+                InfoCard(
+                    title = stringResource(R.string.info_obb_dir),
+                    value = stringResource(R.string.info_obb_unknown)
+                )
+            }
+
+            // otherEntryCount is deliberately not rendered here. It answers "what won't be packed",
+            // which is only actionable while choosing an export format, so the export sheet shows it
+            // and this read-only card does not. The consequence is that an OBB directory holding
+            // nothing but non-.obb content reads "0 B of game data" — accurate about the expansion
+            // files, which is what this card is about, and still discloses that the directory exists.
+            is ObbProbe.Present -> item {
+                InfoCard(
+                    title = stringResource(R.string.info_obb_dir),
+                    value = stringResource(
+                        R.string.info_obb_present,
+                        "Android/obb/${appInfo.packageName}",
+                        Formatter.formatShortFileSize(
+                            context,
+                            probe.files.sumOf { it.sizeBytes }
+                        )
+                    )
+                )
             }
         }
         if (appInfo.sharedDataDir.isNotEmpty()) {

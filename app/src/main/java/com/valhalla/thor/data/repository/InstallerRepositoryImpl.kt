@@ -33,8 +33,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import kotlinx.coroutines.flow.first
@@ -54,6 +56,8 @@ class InstallerRepositoryImpl(
     private val rootGateway: RootSystemGateway,
     private val shizukuReflector: ShizukuReflector,
     private val preferenceRepository: PreferenceRepository,
+    // The only part of the install path that writes outside app storage; see ObbInstaller.
+    private val obbInstaller: ObbInstaller,
     // Carries the session writes, the APK extraction and the hashing.
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
     // Only installWithExternal() uses this: handing the URI to the system's installer chooser is a
@@ -109,6 +113,25 @@ class InstallerRepositoryImpl(
     ) =
         withContext(ioDispatcher) {
             try {
+                // Refuse before installing, not after. An archive whose game data cannot be placed
+                // would otherwise leave an installed game that starts and immediately fails — the
+                // same broken outcome #164 reports, arrived at from the other direction.
+                //
+                // Null for everything that is not an XAPK carrying a readable manifest.json, which
+                // is what keeps a plain APK, an .apks and an .apkm on exactly the path they were on
+                // before: one extra read of the central directory and no shell command at all.
+                val packageName = resolvePackageNameForObb(staged.file)
+                if (packageName != null) {
+                    obbInstaller.refusalReason(staged.file, packageName)?.let { reason ->
+                        eventBus.emit(InstallState.Error(UiText.DynamicString(reason)))
+                        return@withContext
+                    }
+                }
+
+                // Read *before* installing, because for an update the answer changes and nothing
+                // afterwards can reconstruct it. See [awaitInstalled].
+                val stampBefore = packageName?.let { installStamp(it) }
+
                 when (mode) {
                     InstallMode.ROOT -> {
                         installWithRoot(staged, canDowngrade)
@@ -240,6 +263,54 @@ class InstallerRepositoryImpl(
                         installWithExternal(uri)
                     }
                 }
+
+                // The install rungs emit InstallState.Success themselves and do not reliably throw
+                // on failure, so "did it install?" is answered by asking the package manager rather
+                // than by the absence of an exception.
+                //
+                // EXTERNAL is excluded because nothing has been installed yet on that path: the
+                // chooser has only just been handed the URI, so the package manager there answers
+                // about whatever copy was already on the device, and placing game data for a version
+                // the user has not confirmed yet would hand it to an install that is entitled to
+                // wipe Android/obb/<pkg> when it runs.
+                //
+                // The carriesExpansions() gate comes first so that an archive with no game data pays
+                // one central-directory read and nothing else — in particular, never the wait below.
+                if (mode != InstallMode.EXTERNAL && packageName != null &&
+                    obbInstaller.carriesExpansions(staged.file, packageName)
+                ) {
+                    val name = staged.displayName ?: packageName
+                    when (awaitInstalled(packageName, stampBefore)) {
+                        InstallWait.INSTALLED ->
+                            when (val placement = obbInstaller.place(staged.file, packageName)) {
+                                is ObbPlacement.Failed -> eventBus.emit(
+                                    InstallState.Error(
+                                        UiText.DynamicString(
+                                            "$name installed, but its game data could not be " +
+                                                "placed: ${placement.reason}"
+                                        )
+                                    )
+                                )
+
+                                is ObbPlacement.Placed, ObbPlacement.NotNeeded -> Unit
+                            }
+
+                        // Silent on purpose. The install itself failed — a declined confirmation
+                        // dialog is the common way — and InstallReceiver has already put the real
+                        // reason on the bus. A second error about game data would bury the cause
+                        // under one of its consequences.
+                        InstallWait.FAILED -> Unit
+
+                        InstallWait.UNCONFIRMED -> eventBus.emit(
+                            InstallState.Error(
+                                UiText.DynamicString(
+                                    "Thor could not confirm $name finished installing, so its game " +
+                                        "data was not placed. Install it again to place the game data."
+                                )
+                            )
+                        )
+                    }
+                }
             } catch (e: Throwable) {
                 // Throwable, matching the per-mode catches above: a bounded read still leaves
                 // OutOfMemoryError reachable through the platform parser, and an Error escaping
@@ -248,6 +319,82 @@ class InstallerRepositoryImpl(
                 eventBus.emit(InstallState.Error(UiText.DynamicString(e.message ?: "Unknown error during installation")))
             }
         }
+
+    /**
+     * The package an archive installs, from its own manifest — null when it cannot be read.
+     *
+     * Deliberately manifest-only, and therefore null for a plain APK, an `.apks` and an `.apkm`:
+     * OBB is an XAPK-only convention, so anything without a readable `manifest.json` at the archive
+     * root has no expansions by definition and must not pay for the question being asked.
+     *
+     * `isUsablePackageName` here as well as inside `ObbInstaller` — this name is read out of an
+     * untrusted archive and is the *only* input that decides which directory the placement shell
+     * creates.
+     */
+    private fun resolvePackageNameForObb(bundle: File): String? = try {
+        BundleZip.read(bundle, setOf("manifest.json")).bytes["manifest.json"]
+            ?.let { parseXapkManifest(it.decodeToString()) }
+            ?.packageName
+            ?.takeIf { isUsablePackageName(it) }
+    } catch (_: Exception) {
+        null
+    }
+
+    /**
+     * `lastUpdateTime` for [packageName], or null when it is not installed.
+     *
+     * The platform stamps this on every successful install of an existing package, which makes a
+     * *change* in it the one locally observable proof that this install finished. Package presence
+     * cannot do that job: for an update it is already true before `commit()` has done anything.
+     */
+    private fun installStamp(packageName: String): Long? = try {
+        context.packageManager.getPackageInfo(packageName, 0).lastUpdateTime
+    } catch (_: Exception) {
+        null
+    }
+
+    /** How [awaitInstalled] ended. Three outcomes because "not installed" has two very different causes. */
+    private enum class InstallWait { INSTALLED, FAILED, UNCONFIRMED }
+
+    /**
+     * Wait until this install has actually landed, it has failed, or we give up.
+     *
+     * Only the `pm`-based rungs finish synchronously. `performPackageInstallerInstall` ends at
+     * `session.commit()`, which returns before the platform has installed anything — the outcome
+     * arrives later as a broadcast to `InstallReceiver`. Reading "not installed yet" as "no install,
+     * so no game data to place" would drop the OBB silently, which is exactly the bug this feature
+     * exists to fix. It is reachable today: Shizuku's shell rung failing falls through to a session.
+     *
+     * Two things this must get right, and a presence check gets neither:
+     *
+     *  - **An update is already "installed" before it starts.** [stampBefore] is compared, not
+     *    presence, so the wait ends when the copy on disk changed rather than when a copy exists.
+     *    Placing expansions against a session still in flight is the hazard `ObbInstaller` describes,
+     *    and the update is the common case for a game.
+     *  - **A failure never arrives as a package.** A declined confirmation dialog or a rejected
+     *    session means the stamp never moves, so polling alone spins out the whole timeout and then
+     *    reports "could not confirm" on top of the real error `InstallReceiver` already delivered.
+     *    [InstallerEventBus.latest] answers that in one read per tick. A *previous* install's error
+     *    cannot be misread as this one's: every session path emits `Installing(1.0f)` before this
+     *    gate, and `InstallerViewModel` emits `Parsing` before that, so both overwrite the bus.
+     *
+     * The wait engages only when needed and so costs nothing on the synchronous rungs, which have
+     * already moved the stamp by the time they return. It cannot substitute for real completion
+     * plumbing, so the timeout ends in a stated failure rather than in silence.
+     */
+    private suspend fun awaitInstalled(packageName: String, stampBefore: Long?): InstallWait {
+        fun landed() = installStamp(packageName)?.let { it != stampBefore } == true
+
+        if (landed()) return InstallWait.INSTALLED
+        val settled = withTimeoutOrNull(OBB_INSTALL_WAIT_MS) {
+            while (!landed()) {
+                if (eventBus.latest is InstallState.Error) return@withTimeoutOrNull InstallWait.FAILED
+                delay(OBB_INSTALL_POLL_MS)
+            }
+            InstallWait.INSTALLED
+        }
+        return settled ?: InstallWait.UNCONFIRMED
+    }
 
     // Create a PackageInstaller using Dhizuku's binder wrapper but make the installer package
     // be this app's package name so created sessions belong to the app UID (avoids UID mismatch).
@@ -812,6 +959,19 @@ class InstallerRepositoryImpl(
 
 /** Exit code the integrity guard uses; distinct from anything `pm` itself returns. */
 internal const val INTEGRITY_CHECK_EXIT_CODE = 90
+
+/**
+ * How long to wait for an asynchronously committed install to appear before giving up on placing an
+ * archive's game data.
+ *
+ * Long enough for a privileged session on a slow device and for a user tapping through the system
+ * installer's confirmation; short enough that an install which failed does not leave the sheet
+ * waiting indefinitely for a package that is never coming.
+ */
+private const val OBB_INSTALL_WAIT_MS = 90_000L
+
+/** Poll interval for the above. Cheap: a `getPackageInfo` on a name, no IPC storm. */
+private const val OBB_INSTALL_POLL_MS = 250L
 
 /**
  * The entries of a bundle that get written into an install session: the first entry per wanted

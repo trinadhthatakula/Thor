@@ -7,6 +7,7 @@ import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.AppInfo
 import com.valhalla.thor.domain.model.DetailedAppInfo
 import com.valhalla.thor.domain.model.FreezerMode
+import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.UiText
@@ -91,6 +92,8 @@ private class RecordingSystemRepository : SystemRepository {
 
     override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> =
         error("off the freeze path")
+
+    override suspend fun probeObb(packageName: String): ObbProbe = error("off the freeze path")
 }
 
 /**
