@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backup and restore strings (#51 phase 2). Untranslated for now: these ship
+  English-only and are exempted from MissingTranslation at the file level, the
+  same way values/non-translatable.xml is. Translating them is a follow-up row,
+  not a blocker — see docs/follow-ups/app-data-backup-and-xapk-export.md.
+  Do NOT move these into values/strings.xml until values-ar, values-es,
+  values-fr and values-zh-rCN all carry them, or lint turns fatal.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <!-- consumed by ThorJobNotifications — task 8 -->
+    <string name="job_backing_up" tools:ignore="UnusedResources">Backing up</string>
+    <!-- consumed by ThorJobNotifications — task 8 -->
+    <string name="job_restoring" tools:ignore="UnusedResources">Restoring</string>
+    <!-- consumed by ThorJobNotifications — task 8 -->
+    <string name="job_channel_name" tools:ignore="UnusedResources">Backup and restore</string>
+    <!-- consumed by ThorJobNotifications — task 8 -->
+    <string name="job_channel_description" tools:ignore="UnusedResources">Progress for backups and restores running in the background</string>
+</resources>
