@@ -51,21 +51,25 @@ fun jobTag(kind: ThorJobKind, target: String): String = "thor.job.${kind.id}.$ta
 /**
  * What a running job reports.
  *
- * @param totalBytes 0 when the size is not known — an app whose `du` returned nothing usable. Then
- *   [percent] is null and the UI shows an indeterminate bar. Never render an unknown total as 0%.
+ * [completed] and [total] are unit-agnostic: callers may carry byte counts (a restore streaming a
+ * large file) or class indices (a backup iterating over `DataClass.entries`). [total] == 0 means the
+ * quantity is not known — [percent] is null and the UI shows an indeterminate bar.
+ *
+ * Never render an unknown total as 0%; that is the tri-state rule every size field on this branch
+ * already carries, applied here.
  */
 data class ThorJobProgress(
     val stage: ThorJobStage,
     val label: String,
-    val completedBytes: Long = 0L,
-    val totalBytes: Long = 0L,
+    val completed: Long = 0L,
+    val total: Long = 0L,
 ) {
 
     val percent: Int?
-        get() = if (totalBytes > 0L) {
+        get() = if (total > 0L) {
             // `du` reports apparent size; the tar that follows disagrees with it routinely, in both
             // directions. Clamping is the expected case, not a guard against a bug.
-            ((completedBytes * 100L) / totalBytes).coerceIn(0L, 100L).toInt()
+            ((completed * 100L) / total).coerceIn(0L, 100L).toInt()
         } else {
             null
         }

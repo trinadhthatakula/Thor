@@ -257,8 +257,14 @@ uid had to *write* files the shell would read. Here Thor only needs to *read*, a
 anywhere — so there is no reason to leave a multi-gigabyte plaintext tar of someone's credentials on
 shared storage where any all-files-access app can read it.
 
-Fallback to `externalCacheDir` only where the privileged shell cannot write internally, with the
-exposure recorded as a known limitation (§14).
+**No `externalCacheDir` fallback ships.** An earlier draft of this section allowed one where the
+privileged shell could not write internally. Implementation retired it on two grounds. First, it is a
+security downgrade for exactly the payload that least tolerates one: a multi-gigabyte plaintext tar
+on shared storage, readable by any all-files-access app, is the thing the paragraph above exists to
+prevent — so "only as a fallback" still means "on the devices that take the fallback, always".
+Second, the trigger condition is unreachable: §6's capability probe already excludes the channels
+that cannot write internally (a shell-uid Shizuku fails the probe and never reaches staging), so no
+device loses the feature by the fallback's absence. Staging is internal or the job fails.
 
 ### 7.2 Sequence
 
@@ -578,8 +584,10 @@ A non-code deliverable, easy to forget until a store upload bounces:
 
 - **Process death ends a run.** The key cannot be persisted, so a killed process means "re-run",
   not "resume". Stated in the UI rather than hidden.
-- **`externalCacheDir` fallback.** Where the shell cannot write to internal cache, the staged
-  plaintext tar is briefly on shared storage and readable by an all-files-access app.
+- **Staging is internal-only, with no fallback.** Where the privileged shell cannot write to Thor's
+  internal `cacheDir`, the job fails rather than staging the plaintext tar on shared storage. See
+  §7.1: the `externalCacheDir` fallback an earlier draft allowed was retired during implementation,
+  because it traded the exposure this design exists to avoid for a case §6's probe already excludes.
 - **The bundle is staged.** `AppBundleBuilderImpl` writes to a `File`, so APK bytes stage where they
   could have streamed from `/data/app`. Typically tens to a few hundred MB; the OBB portion was
   already in the staging budget. Eliminating it means teaching the builder to write to an

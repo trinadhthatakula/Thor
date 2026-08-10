@@ -52,14 +52,14 @@ class ThorJobTest {
     fun `an unknown total reports no percentage rather than zero`() {
         // Same tri-state rule as DataClassSize and ObbProbe: "not known" is not "none". A bar pinned
         // at 0% for a job that is running reads as broken.
-        val progress = ThorJobProgress(ThorJobStage.MEASURING, "Measuring", completedBytes = 0, totalBytes = 0)
+        val progress = ThorJobProgress(ThorJobStage.MEASURING, "Measuring", completed = 0, total = 0)
 
         assertNull(progress.percent)
     }
 
     @Test
     fun `a known total reports a percentage`() {
-        val progress = ThorJobProgress(ThorJobStage.WRITING, "Writing", completedBytes = 512, totalBytes = 2_048)
+        val progress = ThorJobProgress(ThorJobStage.WRITING, "Writing", completed = 512, total = 2_048)
 
         assertEquals(25, progress.percent)
     }
@@ -68,7 +68,7 @@ class ThorJobTest {
     fun `a percentage never exceeds one hundred`() {
         // `du` reports apparent size and the tar is built afterwards; the two disagree routinely, so
         // completed > total is an ordinary outcome, not a bug to assert against.
-        val progress = ThorJobProgress(ThorJobStage.WRITING, "Writing", completedBytes = 900, totalBytes = 100)
+        val progress = ThorJobProgress(ThorJobStage.WRITING, "Writing", completed = 900, total = 100)
 
         assertEquals(100, progress.percent)
     }
@@ -77,7 +77,7 @@ class ThorJobTest {
     fun `a negative completed count cannot drive the bar below zero`() {
         // Nothing should produce one, but a `du` parse and a byte counter feed this from two
         // directions and the clamp is one expression.
-        val progress = ThorJobProgress(ThorJobStage.WRITING, "Writing", completedBytes = -5, totalBytes = 100)
+        val progress = ThorJobProgress(ThorJobStage.WRITING, "Writing", completed = -5, total = 100)
 
         assertEquals(0, progress.percent)
     }

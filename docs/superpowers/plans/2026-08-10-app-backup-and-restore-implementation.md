@@ -8781,7 +8781,7 @@ private const val TAG = "AppArchiveWorker"
  * `AppInfo` lookup, the `.xapk` build, the OBB probe — and hands the results down.
  */
 @KoinWorker
-class ArchiveBackupWorker(
+internal class ArchiveBackupWorker(
     appContext: Context,
     params: WorkerParameters,
     notifications: ThorJobNotifications,
@@ -8791,7 +8791,7 @@ class ArchiveBackupWorker(
     private val appRepository: AppRepository,
     private val bundleBuilder: AppBundleBuilder,
     private val systemRepository: SystemRepository,
-) : ThorJobWorker(appContext, params, notifications, registry) {
+) : ThorJobWorker(appContext, params, notifications, registry, keys) {
 
     override val kind = ThorJobKind.ARCHIVE_BACKUP
 
@@ -8882,7 +8882,7 @@ class ArchiveBackupWorker(
  * `installFirst` is not an input.
  */
 @KoinWorker
-class ArchiveRestoreWorker(
+internal class ArchiveRestoreWorker(
     appContext: Context,
     params: WorkerParameters,
     notifications: ThorJobNotifications,
@@ -8893,7 +8893,7 @@ class ArchiveRestoreWorker(
     private val restore: RestoreAppArchiveUseCase,
     private val appRepository: AppRepository,
     private val gateway: AppDataArchiveGateway,
-) : ThorJobWorker(appContext, params, notifications, registry) {
+) : ThorJobWorker(appContext, params, notifications, registry, keys) {
 
     override val kind = ThorJobKind.ARCHIVE_RESTORE
 

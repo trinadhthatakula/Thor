@@ -33,6 +33,9 @@ import java.util.zip.Deflater
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import javax.crypto.SecretKey
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Factory
 
 private const val TAG = "BackupAppArchive"
@@ -95,7 +98,7 @@ internal class BackupAppArchiveUseCase(
         // field is one a later Thor would have to either refuse or trust.
         val signer = gateway.signerSha256(request.packageName)
         if (signer == null) {
-            destination.discard()
+            withContext(NonCancellable) { destination.discard() }
             return ArchiveBackupOutcome.Failed("the app's signing certificate could not be read")
         }
 
@@ -124,16 +127,19 @@ internal class BackupAppArchiveUseCase(
             // Iterated in DataClass order, not the request's set order, so two runs over the same
             // selection produce members in the same order.
             val selected = DataClass.entries.filter { it in request.classes }
+            // total = selected.size + 1 so we never claim 100 % before the last class is done:
+            // the final slot is consumed by FINISHING (which emits with total = 0 = indeterminate).
+            val progressTotal = (selected.size + 1).toLong()
             for ((index, dataClass) in selected.withIndex()) {
                 onProgress(
                     ThorJobProgress(
                         stage = ThorJobStage.CAPTURING,
                         label = dataClass.id,
-                        // Brief had index.toLong() which gives 0 for the first class — a literal 0%
-                        // while work is in flight. The test explicitly forbids that. Using index+1 so
-                        // the first class reads as "1 of N in progress" (≥ 50%), not "0 of N done".
-                        completedBytes = (index + 1).toLong(),
-                        totalBytes = selected.size.toLong(),
+                        // completed carries the 1-based class index — not bytes. The field is
+                        // `completed` (not `completedBytes`) precisely because this use case carries
+                        // class indices here while restore callers carry byte counts.
+                        completed = (index + 1).toLong(),
+                        total = progressTotal,
                     )
                 )
 
@@ -160,8 +166,10 @@ internal class BackupAppArchiveUseCase(
                 members += member
             }
 
-            if (members.isEmpty()) {
-                // An archive with no members is a file that looks like a backup and restores nothing.
+            // §6: an install-only archive (bundle present, no app data) is a valid outcome — exactly
+            // the case for devices that have no privileged data access. Only refuse when there is
+            // truly nothing in the container (no bundle and no data classes).
+            if (members.isEmpty() && bundle == null) {
                 return ArchiveBackupOutcome.Failed("no data could be captured for ${request.packageName}")
             }
 
@@ -214,14 +222,19 @@ internal class BackupAppArchiveUseCase(
             } else {
                 ArchiveBackupOutcome.Failed("the archive could not be moved to its final name")
             }
+        } catch (e: CancellationException) {
+            // Rethrow so the coroutine machinery sees the cancellation. The finally below discards
+            // the partial destination before the coroutine unwinds further.
+            throw e
         } catch (e: Exception) {
             Logger.e(TAG, "backup of ${request.packageName} failed", e)
             return ArchiveBackupOutcome.Failed(e.message ?: "the backup failed")
         } finally {
-            // Runs on cancellation too. A `.part` left behind is fine — the launch-time sweep removes
-            // it — but a *published* `.thorbak` that is half-written is not, so discard is
-            // unconditional here and idempotent in `BaseDestination`.
-            if (!published) destination.discard()
+            // NonCancellable: `discard()` is a suspend call and may itself call `withContext`. On a
+            // cancelled coroutine any suspension point throws immediately, so wrapping is required.
+            // Precedent: `AppDataArchiveGatewayImpl.kt:218`. A partial `.thorbak` that looks like a
+            // real archive is worse than no archive — this cleanup must complete regardless.
+            if (!published) withContext(NonCancellable) { destination.discard() }
         }
     }
 

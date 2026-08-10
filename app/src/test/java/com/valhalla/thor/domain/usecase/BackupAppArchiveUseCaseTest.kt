@@ -13,7 +13,9 @@ import com.valhalla.thor.domain.model.ClassEntries
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.DataClassSize
 import com.valhalla.thor.domain.model.TarOutcome
+import com.valhalla.thor.domain.model.THORBAK_BUNDLE_ENTRY
 import com.valhalla.thor.domain.model.THORBAK_HEADER_ENTRY
+import com.valhalla.thor.domain.model.thorbakFileName
 import com.valhalla.thor.domain.repository.AppDataArchiveGateway
 import com.valhalla.thor.domain.repository.AppDataProbe
 import com.valhalla.thor.domain.repository.AppArchiveStore
@@ -26,6 +28,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -239,7 +242,9 @@ class BackupAppArchiveUseCaseTest {
         // the header says `none`, so the reader does not try to gunzip it.
         val destination = RecordingDestination()
         var firstCall = true
-        // tracks compress flags for the two tarClass calls — not asserted, but required for compilation
+        // Records compress flag for each tarClass call so the assertion below can pin what the retry
+        // sent. Without this check, an implementation that retried with compress=true while labelling
+        // the member `none` would produce a member that looks plain but is actually gzip — unrestorable.
         val calls = mutableListOf<Boolean>()
         val gateway = object : AppDataArchiveGateway by FakeGateway(
             entries = mapOf(DataClass.CE to listOf("files")),
@@ -267,6 +272,9 @@ class BackupAppArchiveUseCaseTest {
         val member = header(destination.bytes.toByteArray()).member(DataClass.CE)!!
         assertEquals(ArchiveCompression.NONE.id, member.compression)
         assertEquals("ce.tar.enc", member.fileName)
+        // The first attempt tried gzip; the retry switched to no compression.
+        // If this list were [true, true], the label "none" and the gzip bytes would disagree.
+        assertEquals(listOf(true, false), calls)
     }
 
     @Test
@@ -327,19 +335,37 @@ class BackupAppArchiveUseCaseTest {
 
     @Test
     fun `the staged tar is deleted before the next class is staged`() = runTest {
-        // The property that keeps peak disk at one class. Checked by observing that no staging file
-        // survives the run.
-        val gateway = FakeGateway(
+        // The property that keeps peak disk at one class. Asserted by recording how many previously
+        // staged files are still alive (exist AND have length > 0) at the moment each new staging
+        // file is requested. A collect-all-then-zip implementation would show 1 alive file when DE
+        // is staged; the correct implementation shows 0 because CE was deleted first.
+        val liveAtRequest = mutableListOf<Int>()
+        val allStagedFiles = mutableListOf<File>()
+
+        val gateway = object : AppDataArchiveGateway by FakeGateway(
             entries = mapOf(DataClass.CE to listOf("files"), DataClass.DE to listOf("files")),
-        )
+        ) {
+            override suspend fun stagingFile(name: String): File {
+                // Count files that were written (length > 0) and not yet deleted.
+                liveAtRequest += allStagedFiles.count { it.exists() && it.length() > 0L }
+                val file = temp.newFile(name)
+                allStagedFiles.add(file)
+                return file
+            }
+        }
 
         useCase(gateway, FakeStore(RecordingDestination()))(
             request(DataClass.CE, DataClass.DE),
             key(),
         ) {}
 
-        val leftovers = temp.root.listFiles()?.filter { it.isFile && it.length() > 0L }.orEmpty()
-        assertTrue(leftovers.map { it.name }.toString(), leftovers.isEmpty())
+        // At CE's request, no prior files exist — both must be 0. A collect-all-then-zip
+        // implementation gives [0, 1] because CE is still live when DE is requested.
+        assertEquals(
+            "CE must be deleted before DE is staged",
+            listOf(0, 0),
+            liveAtRequest,
+        )
     }
 
     @Test
@@ -358,7 +384,110 @@ class BackupAppArchiveUseCaseTest {
         // Null is "indeterminate" and is allowed; a literal 0 while work is in flight is the bug the
         // tri-state discipline exists to prevent.
         assertTrue(seen.toString(), seen.none { it == 0 })
+        // Progress must not claim 100 % before the last class has been captured: the total is sized
+        // so that 100 % is unreachable during the class loop.
+        val classPercents = seen.filterNotNull()
+        assertTrue(
+            "100% should not appear during the class loop: $classPercents",
+            classPercents.none { it == 100 },
+        )
     }
+
+    // --- bundle and version parameters ----------------------------------------------------------
+
+    @Test
+    fun `the archive file name includes the version code`() = runTest {
+        val store = FakeStore(RecordingDestination())
+        val gateway = FakeGateway(entries = mapOf(DataClass.CE to listOf("files")))
+
+        useCase(gateway, store)(
+            request = request(DataClass.CE),
+            key = key(),
+            versionCode = 1941L,
+        ) {}
+
+        assertEquals(thorbakFileName("com.example.app", 1941L), store.openedName)
+    }
+
+    @Test
+    fun `version code and version name appear in the header`() = runTest {
+        val destination = RecordingDestination()
+        val gateway = FakeGateway(entries = mapOf(DataClass.CE to listOf("files")))
+
+        val outcome = useCase(gateway, FakeStore(destination))(
+            request = request(DataClass.CE),
+            key = key(),
+            versionCode = 1941L,
+            versionName = "1.94.1",
+        ) as ArchiveBackupOutcome.Completed
+
+        assertEquals("com.example.app-1941.thorbak", outcome.fileName)
+        assertEquals(1941L, outcome.header.versionCode)
+        assertEquals("1.94.1", outcome.header.versionName)
+    }
+
+    @Test
+    fun `a bundle is written as the first container entry`() = runTest {
+        // The bundle precedes encrypted data members so a restore can install the APK before it needs
+        // a privileged unpacker — the install step is always possible, the data step may not be.
+        val destination = RecordingDestination()
+        val gateway = FakeGateway(entries = mapOf(DataClass.CE to listOf("files")))
+        val bundleFile = temp.newFile("app.xapk").also { it.writeBytes(ByteArray(1024) { 3 }) }
+
+        useCase(gateway, FakeStore(destination))(
+            request = request(DataClass.CE),
+            key = key(),
+            bundle = bundleFile,
+            bundleObbCapture = "captured",
+            bundleObbCount = 2,
+        ) {}
+
+        assertEquals(THORBAK_BUNDLE_ENTRY, entryNames(destination.bytes.toByteArray()).first())
+        val appBundle = header(destination.bytes.toByteArray()).appBundle!!
+        assertEquals("captured", appBundle.obbCapture)
+        assertEquals(2, appBundle.obbCount)
+    }
+
+    @Test
+    fun `a bundle with no capturable data class produces an install-only archive`() = runTest {
+        // §6: an install-only archive is explicitly supported for devices that have no privileged
+        // data access. Discarding it would make the feature unavailable on exactly those devices.
+        val destination = RecordingDestination()
+        // No entries for any class → all roots absent, members will be empty.
+        val gateway = FakeGateway()
+        val bundleFile = temp.newFile("app.xapk").also { it.writeBytes(ByteArray(512)) }
+
+        val outcome = useCase(gateway, FakeStore(destination))(
+            request = request(DataClass.CE),
+            key = key(),
+            bundle = bundleFile,
+        ) {}
+
+        assertTrue(outcome.toString(), outcome is ArchiveBackupOutcome.Completed)
+        assertTrue(destination.published)
+        assertNotNull(header(destination.bytes.toByteArray()).appBundle)
+        // No data members, only the bundle and the header.
+        val names = entryNames(destination.bytes.toByteArray())
+        assertEquals(listOf(THORBAK_BUNDLE_ENTRY, THORBAK_HEADER_ENTRY), names)
+    }
+
+    @Test
+    fun `a run with neither bundle nor data discards rather than producing an empty archive`() =
+        runTest {
+            // Belt-and-suspenders: the §6 install-only case requires at least a bundle; nothing at
+            // all is still a failure.
+            val destination = RecordingDestination()
+
+            val outcome = useCase(FakeGateway(), FakeStore(destination))(
+                request = request(DataClass.CE),
+                key = key(),
+                bundle = null,
+            ) {}
+
+            assertTrue(outcome.toString(), outcome is ArchiveBackupOutcome.Failed)
+            assertFalse(destination.published)
+            assertTrue(destination.discarded)
+        }
 
     // --- §7.4 pre-flight space -----------------------------------------------------------------
 
