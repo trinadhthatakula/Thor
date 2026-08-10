@@ -759,6 +759,11 @@ private fun GeneralTabScreen(details: DetailedAppInfo, obbProbe: ObbProbe?) {
                 )
             }
 
+            // otherEntryCount is deliberately not rendered here. It answers "what won't be packed",
+            // which is only actionable while choosing an export format, so the export sheet shows it
+            // and this read-only card does not. The consequence is that an OBB directory holding
+            // nothing but non-.obb content reads "0 B of game data" — accurate about the expansion
+            // files, which is what this card is about, and still discloses that the directory exists.
             is ObbProbe.Present -> item {
                 InfoCard(
                     title = stringResource(R.string.info_obb_dir),
