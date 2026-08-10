@@ -12,6 +12,12 @@
 
 ## Global Constraints
 
+- **The code blocks below are drafts, not verified source.** Task 1 shipped with two contradictions
+  between its test block and its implementation block, one of which was a real runtime defect (the
+  sentinel-ordering bug that would have made every OBB-less app probe as `Undetermined`). Run each
+  task's tests before believing its implementation; when the two disagree, work out which side the
+  rest of the system agrees with rather than editing whichever is easier. Report every deviation.
+
 - **Branch:** `feat/xapk-obb-support`, already created off `dev` at `69d74ecf`. Never commit to `dev` or `master`. The PR targets `dev`.
 - **Never add a `Co-Authored-By: Claude` trailer to any commit.**
 - **Never `git add -A` or `git add .`** — stage explicit paths only. `docs/discussions/` must stay untracked and `gradle/libs.versions.toml` carries a pre-existing unrelated AGP bump that must stay unstaged.
@@ -207,9 +213,12 @@ class ObbProbeParserTest {
     }
 
     @Test
-    fun `a non-obb name on an OBB line is dropped`() {
-        // A file name containing a newline splits across two lines; the tail is garbage and the
-        // head loses its extension. Re-checking the extension in Kotlin makes that fail closed.
+    fun `a non-obb name on an OBB line makes the probe Undetermined`() {
+        // The shell only emits THOR_OBB for a *.obb glob match, so a THOR_OBB line whose name is
+        // not a .obb means data was lost in transit — most plausibly a file name containing a
+        // newline, which splits across two lines and leaves the head without its extension.
+        // Dropping the line would tell the builder to pack zero expansions and ship a .xapk
+        // without the game's data: #164 again, from a new direction.
         val probe = parseObbProbe(
             0,
             listing(
@@ -219,11 +228,13 @@ class ObbProbeParserTest {
             )
         )
 
-        assertEquals(ObbProbe.Present(emptyList(), 1), probe)
+        assertTrue("$probe should be Undetermined", probe is ObbProbe.Undetermined)
     }
 
     @Test
-    fun `an unparseable size on an OBB line is dropped rather than counted as zero`() {
+    fun `an unparseable size makes the probe Undetermined`() {
+        // Present(emptyList(), 0) would be the worst of the three answers available here: it
+        // claims the directory holds nothing at all, when we have just been told a file is in it.
         val probe = parseObbProbe(
             0,
             listing(
@@ -233,7 +244,7 @@ class ObbProbeParserTest {
             )
         )
 
-        assertEquals(ObbProbe.Present(emptyList(), 0), probe)
+        assertTrue("$probe should be Undetermined", probe is ObbProbe.Undetermined)
     }
 
     @Test
@@ -335,17 +346,21 @@ package com.valhalla.thor.data.repository
 import com.valhalla.thor.domain.model.ObbFile
 import com.valhalla.thor.domain.model.ObbProbe
 
+// The sentinels are `internal`, not `private`: a later fixture that synthesises probe output must
+// be able to reference them rather than repeat the literal. A repeated literal in a fixture is how
+// a green test hides a defect in the code it is meant to be checking.
+
 /** Emitted when the parent `Android/obb` cannot be listed — i.e. this privilege cannot see it. */
-private const val SENTINEL_NOPRIV = "THOR_NOPRIV"
+internal const val SENTINEL_NOPRIV = "THOR_NOPRIV"
 
 /** Emitted when the parent listed fine but the package has no OBB directory. */
-private const val SENTINEL_NODIR = "THOR_NODIR"
+internal const val SENTINEL_NODIR = "THOR_NODIR"
 
 /** Prefix of a size+path line for one `*.obb` file. */
-private const val PREFIX_OBB = "THOR_OBB "
+internal const val PREFIX_OBB = "THOR_OBB "
 
 /** Prefix of the count of directory entries that are not depth-1 `*.obb` files. */
-private const val PREFIX_OTHER = "THOR_OTHER "
+internal const val PREFIX_OTHER = "THOR_OTHER "
 
 /**
  * Proof the script ran to completion.
@@ -354,7 +369,7 @@ private const val PREFIX_OTHER = "THOR_OTHER "
  * empty directory look identical otherwise, and one of those two readings silently drops a game's
  * data out of the bundle.
  */
-private const val SENTINEL_END = "THOR_END"
+internal const val SENTINEL_END = "THOR_END"
 
 /**
  * The ordinary package-name shape. Deliberately stricter than the platform: this string is
@@ -416,8 +431,16 @@ internal fun isUsablePackageName(value: String): Boolean = PACKAGE_NAME.matches(
 /**
  * Turn one probe run into a verdict.
  *
- * The order of the checks is the contract. `THOR_NOPRIV` is tested before the end sentinel because
- * that branch exits without printing one; everything after it requires the sentinel.
+ * The order of the checks is the contract. **Both** `THOR_NOPRIV` and `THOR_NODIR` are tested
+ * before the end sentinel, because each of those branches `exit 0`s without ever reaching the
+ * `echo THOR_END`. Testing the sentinel first would classify every app that simply has no OBB
+ * directory — the overwhelmingly common case — as `Undetermined`, disabling the `.xapk` chip
+ * almost everywhere.
+ *
+ * A malformed `THOR_OBB` line is fatal, while an unrecognised line is not. The shell only emits
+ * that prefix for a `*.obb` glob match, so a line carrying it that will not parse means an
+ * expansion file exists and could not be characterised; anything without the prefix is shell noise
+ * on a merged stderr and must stay harmless.
  */
 internal fun parseObbProbe(exitCode: Int, output: String?): ObbProbe {
     if (exitCode != 0) {
@@ -431,20 +454,26 @@ internal fun parseObbProbe(exitCode: Int, output: String?): ObbProbe {
     if (lines.any { it == SENTINEL_NOPRIV }) {
         return ObbProbe.Undetermined("this access mode cannot list Android/obb")
     }
+    if (lines.any { it == SENTINEL_NODIR }) return ObbProbe.None
     if (lines.none { it == SENTINEL_END }) {
         return ObbProbe.Undetermined("the privileged shell reply was truncated")
     }
-    if (lines.any { it == SENTINEL_NODIR }) return ObbProbe.None
 
-    val files = lines.mapNotNull { line ->
-        if (!line.startsWith(PREFIX_OBB)) return@mapNotNull null
+    val files = mutableListOf<ObbFile>()
+    lines.forEach { line ->
+        if (!line.startsWith(PREFIX_OBB)) return@forEach
         val rest = line.removePrefix(PREFIX_OBB)
         val space = rest.indexOf(' ')
-        if (space <= 0) return@mapNotNull null
-        val size = rest.substring(0, space).toLongOrNull() ?: return@mapNotNull null
+        if (space <= 0) {
+            return ObbProbe.Undetermined("a game data entry could not be read: $line")
+        }
+        val size = rest.substring(0, space).toLongOrNull()
+            ?: return ObbProbe.Undetermined("a game data file's size could not be read: $line")
         val name = rest.substring(space + 1).substringAfterLast('/')
-        if (!name.endsWith(".obb", ignoreCase = true)) return@mapNotNull null
-        ObbFile(name, size)
+        if (!name.endsWith(".obb", ignoreCase = true)) {
+            return ObbProbe.Undetermined("a game data file's name could not be read: $line")
+        }
+        files += ObbFile(name, size)
     }
 
     val other = lines.firstOrNull { it.startsWith(PREFIX_OTHER) }
