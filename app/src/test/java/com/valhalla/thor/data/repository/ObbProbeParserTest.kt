@@ -119,6 +119,24 @@ class ObbProbeParserTest {
     }
 
     @Test
+    fun `THOR_SYMLINK is Undetermined, not an empty directory`() {
+        assertTrue(parseObbProbe(0, listing(SENTINEL_SYMLINK)) is ObbProbe.Undetermined)
+    }
+
+    @Test
+    fun `the command tests for a symlink before anything that would follow one`() {
+        val command = obbProbeCommand("/storage/emulated/0", "com.example.game")!!
+
+        assertTrue(command, command.contains("*.obb) echo $SENTINEL_SYMLINK; exit 0 ;;"))
+        // `[ -f ]` calls a link-to-a-regular-file a regular file and `stat` measures whatever it
+        // points at, so testing -L second would be testing it never.
+        assertTrue(
+            command,
+            command.indexOf("[ -L \"\$f\" ]") < command.indexOf("[ -f \"\$f\" ]")
+        )
+    }
+
+    @Test
     fun `a THOR_NODIR planted by a file name does not read as an empty directory`() {
         // What an *unguarded* `stat -c %n` would print for a file called `main.obb<LF>THOR_NODIR`:
         // one well-formed OBB record, then a line the parser would otherwise trust as the script's

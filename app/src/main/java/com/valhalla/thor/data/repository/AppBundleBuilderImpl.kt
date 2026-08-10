@@ -549,6 +549,12 @@ internal fun zipSourcesFor(
  * (0700), and Thor cannot open another package's `Android/obb`. `chmod 644` follows the copy
  * because a file the shell creates is owned by the shell, and Thor has to be able to delete it
  * afterwards.
+ *
+ * **The source is refused if it is a symlink.** The probe already rejects one
+ * ([SENTINEL_SYMLINK]), but that is a check-then-use across two shell invocations and the directory
+ * belongs to the app being exported, so the copy re-tests rather than inheriting the conclusion.
+ * `cp` follows links, and following one here would put the target's bytes into the user's archive
+ * under a game-data name — read with the shell's privilege, not the app's.
  */
 internal fun obbCopyCommand(
     externalStorageDir: String,
@@ -567,7 +573,7 @@ internal fun obbCopyCommand(
     if ((externalStorageDir + destPath + leaf).any { it == '\'' || it == '\n' }) return null
 
     val source = "$externalStorageDir/${expansionDirFor(packageName)}/$leaf"
-    return "cp -f '$source' '$destPath' && chmod 644 '$destPath'"
+    return "[ ! -L '$source' ] && cp -f '$source' '$destPath' && chmod 644 '$destPath'"
 }
 
 /**

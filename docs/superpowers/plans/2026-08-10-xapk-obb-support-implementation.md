@@ -2946,13 +2946,14 @@ The unit tests cover every pure decision, but nothing here proves the privileged
 - [ ] **Shizuku with its shell rung failing** — force the fallback to a `PackageInstaller` session (e.g. a package the `pm install` rung refuses) and confirm the OBB is still placed. This is the only cover for `awaitInstalled`, which reads a real `PackageManager` and so has no JVM unit test; before the fix in `70a9cd00` this exact path dropped the OBB in silence.
 - [ ] Confirm shell-written files in `externalCacheDir` are readable **and deletable** by Thor. If they are not, the staging directory grows without bound on every export.
 - [ ] Round-trip a game whose expansions exceed 4 GiB, to exercise Zip64.
-- [ ] Confirm `stat -c '%s %n'` behaves on the target's toybox build. It is the probe's only sizing mechanism, and a toybox that rejects the format would make every probe `Undetermined` — which fails closed, but silently disables the feature.
+- [ ] Confirm `stat -c '%s %n'` behaves on the target's toybox build. It is the probe's only sizing mechanism, and a toybox that rejects the format would make every probe `Undetermined` — which fails closed, but silently disables the feature. This also exercises the `THOR_STATFAIL` path added after review.
+- [ ] Try to create a symlink inside `Android/obb/<pkg>/` — from an app's own uid, from the shell, and from root. This is the premise behind calling the symlink guards hardening rather than a fix for a live hole, and it is currently asserted from the FUSE/sdcardfs design rather than observed. If a link *can* be created, confirm the export chip goes `Undetermined` rather than exporting, and that an install over that link fails instead of writing through it.
 
 ---
 
-## Review pass on PR #376 — five defects this plan did not anticipate
+## Review pass on PR #376 — six defects this plan did not anticipate
 
-Automated review of the pushed branch found five things wrong with what shipped. All five are fixed
+Automated review of the pushed branch found six things wrong with what shipped. All six are fixed
 on the branch; recorded here so the plan stops disagreeing with the code.
 
 1. **Task 1's probe script failed *open* on `stat`.** The `*.obb` branch ran `stat` unguarded, so a
@@ -2961,7 +2962,9 @@ on the branch; recorded here so the plan stops disagreeing with the code.
    `.xapk` chip enabled, so the export would have offered a bundle and packed no game data: GH#164
    again. The whole task was built around not folding "cannot see it" into "there is none", and it
    folded them anyway at the one place the plan never questioned — because `stat -c` availability
-   across ROMs is exactly what device check 8 was written to find out. Now `THOR_STATFAIL` →
+   across ROMs is exactly what the `stat -c` device check above was written to find out (spec §8.3
+   item 4 — it was "device check 8" until the Shizuku-fallback check was inserted ahead of it, which
+   is why this reference is now by name). Now `THOR_STATFAIL` →
    `Undetermined`. **Lesson: a tri-state is only as honest as its narrowest failure path.**
 2. **Task 8's gate could not tell an update from a completed install.** `awaitInstalled` asked
    `getPackageInfo`, which for an update is already true *before* `commit()` does anything — so the
@@ -2996,6 +2999,27 @@ on the branch; recorded here so the plan stops disagreeing with the code.
    **Lesson: ordering the checks was not the fix — the fix was finding a property that separates the
    real sentinel from a forged one.** `THOR_NODIR` is the only sentinel worth forging, because it is
    the only one whose verdict is not `Undetermined`.
+6. **Every OBB path followed symlinks, in both directions.** `[ -f ]`, `stat`, `cp` and `mkdir -p`
+   all follow links, and `Android/obb/<pkg>` belongs to the app on either side of the transfer. On
+   export that made a symlinked `main.obb` a root-privileged **read** of any file root can reach,
+   copied into an archive the user then shares. On install it was worse and the review only gestured
+   at it: the app-owned path is the *destination*, and `cp -f` unlinks only when the open fails — so
+   an existing `<leaf>` symlink turned a root `cp` into an **arbitrary write** and the following
+   `chmod 644` into an arbitrary chmod. `obbMkdirCommand` had the same hole a level up, since
+   `mkdir -p` succeeds silently on a symlink to a directory.
+
+   Fixed at all four sites: probe (`THOR_SYMLINK`, with `-L` tested *before* `-f` — testing it after
+   is testing it never), export copy (`[ ! -L ]`), placement (`rm -f` first, which does not follow),
+   mkdir (`&& [ ! -L ]`). The probe's verdict is deliberately **not** inherited by the copies: a probe
+   check is check-then-use across two shell invocations into a directory somebody else owns.
+
+   Honest severity: primary external storage is FUSE-backed (sdcardfs before Android 11) and creating
+   a symlink there is expected to fail, so this is hardening, not a demonstrated exploit — do not
+   write it up as one. But a privileged shell often sees the lower ext4 at `/data/media/0` where links
+   are ordinary, ROM behaviour here is exactly the kind of thing this app keeps being surprised by,
+   and a stale link from a "move OBB to SD" script needs no attacker at all. **Lesson: the review
+   named one call site; the bug was a property of an API (`cp`/`stat`/`test` all follow links) and so
+   belonged to every call site — the dev-branch audit's dominant finding, again.**
 
 Two review findings were **not** acted on, deliberately: `markdownlint`'s MD018 on
 `docs/follow-ups/README.md:53` (nothing in this repo runs markdownlint, and `#51` without a following

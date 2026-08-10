@@ -29,10 +29,25 @@ class ObbPlacementTest {
     }
 
     @Test
-    fun `the mkdir command quotes the destination`() {
+    fun `the mkdir command quotes the destination and refuses a symlinked directory`() {
         val command = obbMkdirCommand(root, pkg)!!
 
-        assertEquals("mkdir -p '/storage/emulated/0/Android/obb/com.example.game'", command)
+        val dir = "/storage/emulated/0/Android/obb/com.example.game"
+        // `mkdir -p` succeeds silently when the path is a symlink to a directory, and every
+        // placement after it would then land wherever that link points — from a path the target app
+        // owns, written with the shell's privilege.
+        assertEquals("mkdir -p '$dir' && [ ! -L '$dir' ]", command)
+    }
+
+    @Test
+    fun `the copy unlinks the destination before writing it`() {
+        val command = obbPlaceCommand(root, pkg, "main.obb", "/tmp/main.obb", 1L)!!
+        val dest = "/storage/emulated/0/Android/obb/com.example.game/main.obb"
+
+        // `cp -f` unlinks only when the *open* fails, so an existing symlink at the destination is
+        // followed — an arbitrary root write, plus an arbitrary chmod, into whatever it names. `rm`
+        // does not follow links, so it removes the link rather than the target.
+        assertTrue(command, command.startsWith("rm -f '$dest' && cp -f "))
     }
 
     @Test

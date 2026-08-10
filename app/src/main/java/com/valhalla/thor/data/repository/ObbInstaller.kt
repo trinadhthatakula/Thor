@@ -253,9 +253,16 @@ internal fun obbDestinationDir(externalStorageDir: String, packageName: String):
     return "$externalStorageDir/${expansionDirFor(packageName)}"
 }
 
-/** `mkdir -p` for [obbDestinationDir], or null when that directory is not one Thor will create. */
+/**
+ * `mkdir -p` for [obbDestinationDir], or null when that directory is not one Thor will create.
+ *
+ * The `-L` test is the point of the `&&`: `mkdir -p` succeeds silently when the path already exists
+ * *as a symlink to a directory*, and every subsequent placement would then land wherever that link
+ * points — with the shell's privilege, from a path the target app owns. Failing here turns that into
+ * a reported install failure instead.
+ */
 internal fun obbMkdirCommand(externalStorageDir: String, packageName: String): String? =
-    obbDestinationDir(externalStorageDir, packageName)?.let { "mkdir -p '$it'" }
+    obbDestinationDir(externalStorageDir, packageName)?.let { "mkdir -p '$it' && [ ! -L '$it' ]" }
 
 /**
  * The privileged copy that puts one staged expansion into `Android/obb/<packageName>/[leaf]`, or
@@ -265,6 +272,12 @@ internal fun obbMkdirCommand(externalStorageDir: String, packageName: String): S
  * name, the leaf and both paths are each checked here rather than assumed from having passed through
  * `resolveExpansions` and `extractExpansions` first.
  *
+ *  - **The destination is unlinked first, not overwritten.** `cp -f` only unlinks when the *open*
+ *    fails, so an existing `<leaf>` that is a symlink is followed — and this runs as root into a
+ *    directory the target app owns, which makes it an arbitrary write, and `chmod 644` an arbitrary
+ *    chmod, on whatever the link names. `rm -f` does not follow links, so it removes the link itself;
+ *    on a path that does not exist it succeeds, and on a directory it fails and the install reports
+ *    it. This is the write-side twin of the read-side guard in `obbCopyCommand`.
  *  - **644, not the shell's default.** The file is created by the shell's uid and read by the game's.
  *  - **[expectedBytes] is verified inside the same invocation.** `cp` can exit 0 having written
  *    short when the volume fills, and from API 30 Thor cannot stat `Android/obb/<pkg>/` itself to
@@ -290,6 +303,6 @@ internal fun obbPlaceCommand(
     if ((sourcePath + leaf).any { it == '\'' || it == '\n' }) return null
 
     val dest = "$destDir/$leaf"
-    return "cp -f '$sourcePath' '$dest' && chmod 644 '$dest' && " +
+    return "rm -f '$dest' && cp -f '$sourcePath' '$dest' && chmod 644 '$dest' && " +
         "{ S=\$(stat -c %s '$dest' 2>/dev/null); [ -z \"\$S\" ] || [ \"\$S\" = \"$expectedBytes\" ]; }"
 }

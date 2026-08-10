@@ -107,6 +107,23 @@ class AppBundleBuilderTest {
     }
 
     @Test
+    fun `the copy refuses a source that is a symlink`() {
+        val command = obbCopyCommand(
+            externalStorageDir = "/storage/emulated/0",
+            packageName = "com.example.game",
+            leaf = "main.obb",
+            destPath = "/tmp/x/main.obb"
+        )!!
+
+        // The probe rejects a symlinked expansion too, but that is a check-then-use across two shell
+        // invocations into a directory the exported app owns. `cp` follows links, and following one
+        // here reads a file with the shell's privilege and writes its bytes into the user's archive
+        // labelled as game data.
+        val source = "/storage/emulated/0/Android/obb/com.example.game/main.obb"
+        assertTrue(command, command.startsWith("[ ! -L '$source' ] && cp -f "))
+    }
+
+    @Test
     fun `expansions are declared with the entry name as the install path`() {
         // What a third-party installer reads. file == install_path is the shape the reference
         // installers assume, and it also means a manifest-blind installer that scans for *.obb

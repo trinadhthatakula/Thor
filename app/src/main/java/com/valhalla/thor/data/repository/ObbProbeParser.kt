@@ -6,7 +6,7 @@ package com.valhalla.thor.data.repository
 import com.valhalla.thor.domain.model.ObbFile
 import com.valhalla.thor.domain.model.ObbProbe
 
-// These seven are `internal` rather than `private` so a test fixture that synthesises probe output
+// These eight are `internal` rather than `private` so a test fixture that synthesises probe output
 // references the same constant the parser reads. A fixture that spells the literal out again can go
 // stale against the parser and still pass, which is how a wrong rule hides behind a green test.
 
@@ -62,6 +62,24 @@ internal const val SENTINEL_STATFAIL = "THOR_STATFAIL"
 internal const val SENTINEL_BADNAME = "THOR_BADNAME"
 
 /**
+ * Emitted when a `*.obb` entry is a symbolic link.
+ *
+ * `[ -f ]`, `stat` and `cp` all **follow** links, so without this the probe would report the
+ * *target's* size and the export's privileged `cp` would copy the *target's bytes* into the archive
+ * under a game-data name. Since `Android/obb/<pkg>` is the target app's own directory, that is a
+ * root-powered read of any file root can reach, deposited in an archive the user then shares.
+ *
+ * How reachable that is depends on the volume: primary external storage is served by FUSE (sdcardfs
+ * before Android 11) and creating a symlink there is expected to fail, but a privileged shell often
+ * sees the **lower** ext4 at `/data/media/0`, where links are ordinary — and a link left by a
+ * "move OBB to SD" script needs no attacker at all. Refusing costs one `test`.
+ *
+ * `Undetermined` rather than "count it as another entry", because a silently-skipped expansion is
+ * GH#164: the chip would stay enabled and the bundle would ship without the file.
+ */
+internal const val SENTINEL_SYMLINK = "THOR_SYMLINK"
+
+/**
  * Proof the script ran to completion.
  *
  * Output without it is [ObbProbe.Undetermined], never [ObbProbe.None]. A truncated reply and an
@@ -91,6 +109,8 @@ private val PACKAGE_NAME = Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)*")
  *  - **A `*.obb` name containing CR or LF is refused before `stat` sees it** — see
  *    [SENTINEL_BADNAME]. `%n` emits the name raw, and a name is the one part of this output that
  *    Thor does not author.
+ *  - **A `*.obb` that is a symlink is refused before anything follows it** — see [SENTINEL_SYMLINK].
+ *    This test comes first in the loop precisely because the others do follow links.
  *  - **[SENTINEL_END] is printed last** so a truncated reply is detectable.
  *
  * [externalStorageDir] comes from `Environment.getExternalStorageDirectory().absolutePath` rather
@@ -113,7 +133,14 @@ internal fun obbProbeCommand(externalStorageDir: String, packageName: String): S
         append(SENTINEL_NODIR).append("; exit 0; }\n")
         append("n=0\n")
         append("for f in '").append(dir).append("'/*; do\n")
-        append("  if [ -f \"\$f\" ]; then\n")
+        // `-L` is tested first because every other test here follows the link: `[ -f ]` would call a
+        // link-to-a-regular-file a regular file, and `stat` would then measure whatever it points at.
+        append("  if [ -L \"\$f\" ]; then\n")
+        append("    case \"\$f\" in\n")
+        append("      *.obb) echo ").append(SENTINEL_SYMLINK).append("; exit 0 ;;\n")
+        append("      *) n=\$((n+1)) ;;\n")
+        append("    esac\n")
+        append("  elif [ -f \"\$f\" ]; then\n")
         append("    case \"\$f\" in\n")
         // A literal LF and a literal CR, quoted: the only way to name those bytes in a POSIX `case`
         // pattern. Both patterns end in `.obb`, so a control character in a name Thor never prints
@@ -177,6 +204,9 @@ internal fun parseObbProbe(exitCode: Int, output: String?): ObbProbe {
     }
     if (lines.any { it == SENTINEL_STATFAIL }) {
         return ObbProbe.Undetermined("an expansion file could not be measured")
+    }
+    if (lines.any { it == SENTINEL_SYMLINK }) {
+        return ObbProbe.Undetermined("an expansion file is a link to somewhere else")
     }
     if (lines.any { it == SENTINEL_NODIR }) {
         val listingRan = lines.any {

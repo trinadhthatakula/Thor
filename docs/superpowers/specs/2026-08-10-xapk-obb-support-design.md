@@ -243,8 +243,8 @@ Design points, each load-bearing:
 > 1. **`stat`'s exit code is checked** (`|| { echo THOR_STATFAIL; exit 0; }`). As written above,
 >    `stat` writes its complaint to stderr, the loop carries on, `THOR_END` still prints and the exit
 >    code is still 0 — so an expansion file Thor could not measure arrives as an empty directory.
->    Whether `stat -c` is available across ROMs is exactly what device check 8 exists to establish, so
->    it is the one failure that may not be silent.
+>    Whether `stat -c` is available across ROMs is what §8.3 item 4 exists to establish, so it is the
+>    one failure that may not be silent.
 > 2. **A `*.obb` name containing CR or LF is refused before `stat` runs** (`THOR_BADNAME`). `%n`
 >    prints the name raw, and the name is the only field in this output Thor does not author, so
 >    `main.obb<LF>THOR_NODIR` splits into a well-formed record plus a line the parser would read as
@@ -253,8 +253,28 @@ Design points, each load-bearing:
 >    The parser also now disbelieves any `THOR_NODIR` accompanied by listing output, since the genuine
 >    branch `exit 0`s before the loop can print anything.
 >
+> 3. **A `*.obb` that is a symlink is refused** (`THOR_SYMLINK`), and the `-L` test runs *before*
+>    `[ -f ]` because `[ -f ]`, `stat` and `cp` all follow links. Following one would have the probe
+>    report the target's size and the export's privileged `cp` write the target's bytes into the
+>    archive under a game-data name — a read performed with the shell's privilege, not the app's, and
+>    `Android/obb/<pkg>` is the app's own directory. Primary external storage is FUSE-backed and
+>    creating a link there is expected to fail, so this is hardening rather than a demonstrated
+>    exploit; but a privileged shell frequently sees the lower ext4 at `/data/media/0`, where links
+>    are ordinary, and a link left behind by a "move OBB to SD" script needs no attacker at all.
+>
 > The loop consequently iterates `"$p"/*` rather than `"$p"/*.obb`, dispatching on a `case` — which it
 > had to anyway, to count `otherEntryCount` (§4.4).
+>
+> The same reasoning applies twice more outside the probe, and both are fixed with it — a check in the
+> probe is a check-then-use across two shell invocations, so neither site inherits its conclusion:
+>
+> - **§5.2 export copy.** `obbCopyCommand` is now `[ ! -L '<src>' ] && cp -f …`.
+> - **§6.3 install placement**, which is the worse direction, because there the app-owned path is the
+>   **destination**. `cp -f` unlinks only when the *open* fails, so an existing `<leaf>` that is a
+>   symlink is followed — making a root `cp` into an arbitrary write and the `chmod 644` after it an
+>   arbitrary chmod. `obbPlaceCommand` now starts `rm -f '<dest>' &&`; `rm` does not follow links.
+>   `obbMkdirCommand` gains `&& [ ! -L '<dir>' ]` for the same reason one level up: `mkdir -p`
+>   succeeds silently on a symlink to a directory.
 
 ### 4.4 Documented limitation
 
@@ -459,10 +479,12 @@ Pure helpers, so the logic is testable without a device:
 - **Probe output parser** — `THOR_NOPRIV`, `THOR_NODIR`, a normal listing, a listing with no
   `THOR_END` (must be `Undetermined`), filenames containing spaces, garbage lines, empty output,
   non-zero exit. Plus the two fail-open shapes from the §4.3 amendment, each of which must be
-  `Undetermined` rather than `None`: `THOR_STATFAIL`, `THOR_BADNAME`, and a `THOR_NODIR` planted in a
-  listing by a filename. The command builder is asserted on too — the `stat` guard is present, and the
-  CR/LF `case` arm precedes the `*.obb` arm (`case` takes the first match, so the order *is* the
-  guard).
+  `Undetermined` rather than `None`: `THOR_STATFAIL`, `THOR_BADNAME`, `THOR_SYMLINK`, and a
+  `THOR_NODIR` planted in a listing by a filename. The command builder is asserted on too — the `stat`
+  guard is present, the CR/LF `case` arm precedes the `*.obb` arm (`case` takes the first match, so
+  the order *is* the guard), and `[ -L ]` precedes `[ -f ]`.
+- **The privileged copies** — the export copy refuses a symlinked source, the placement `rm -f`s its
+  destination before writing, and the `mkdir` refuses a symlinked directory.
 - **Export plan builder** — probe output → `expansions` entries + archive entry names; leaf
   collisions; a package name needing no escaping vs one that does.
 - **Install-side validation** — a hostile table: `../../etc/passwd`, absolute `/data/...`,
