@@ -322,9 +322,14 @@ sealed interface ObbProbe {
 
     /**
      * The active privilege could not read `Android/obb` at all — the Dhizuku device-owner process,
-     * a gateway failure, a truncated reply.
+     * a gateway failure, a truncated reply, a malformed listing.
      *
      * **Never treat this as [None].** It is the whole reason this type is a tri-state.
+     *
+     * [reason] is diagnostic, for logs. **Do not render it in the UI.** The user-facing explanation
+     * is `R.string.export_xapk_unavailable`, which is translated and says something a user can act
+     * on; `reason` is English-only and, in the malformed-listing cases, describes a line that may
+     * contain an attacker-chosen file name.
      */
     data class Undetermined(val reason: String) : ObbProbe
 }
