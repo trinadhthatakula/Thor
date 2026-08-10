@@ -2481,8 +2481,8 @@ and next to `info_obb_dir` (line ~486):
 In `app/src/main/res/values-ar/strings.xml`, replace `export_explain_xapk` (line ~535) and add the rest:
 
 ```xml
-    <string name="export_explain_xapk">يحزم ثور أجزاء هذا التطبيق في ملف ‎.xapk واحد داخل المجلد أدناه، وهي صيغة تفهمها برامج التثبيت الأخرى أيضًا. تُضمَّن بيانات اللعبة (ملفات OBB) عندما يستطيع وضع الوصول الحالي قراءتها.</string>
-    <string name="export_xapk_unavailable">تحتاج صيغة ‎.xapk إلى الروت أو Shizuku ليتمكن ثور من قراءة بيانات اللعبة. وضع الوصول الحالي لا يستطيع ذلك، وملف ‎.xapk بدونها سيثبّت لعبة لا تعمل.</string>
+    <string name="export_explain_xapk">يحزم Thor أجزاء هذا التطبيق في ملف ‎.xapk واحد داخل المجلد أدناه، وهي صيغة تفهمها برامج التثبيت الأخرى أيضًا. تُضمَّن بيانات اللعبة (ملفات OBB) عندما يستطيع وضع الوصول الحالي قراءتها.</string>
+    <string name="export_xapk_unavailable">تحتاج صيغة ‎.xapk إلى الروت أو Shizuku ليتمكن Thor من قراءة بيانات اللعبة. وضع الوصول الحالي لا يستطيع ذلك، وملف ‎.xapk بدونها سيثبّت لعبة لا تعمل.</string>
     <string name="export_obb_included">يتضمن %1$s من بيانات اللعبة.</string>
     <string name="export_obb_partial">بعض العناصر في مجلد بيانات هذا التطبيق ليست ملفات توسعة ولن تُضمَّن.</string>
     <string name="info_obb_present">%1$s — %2$s من بيانات اللعبة</string>

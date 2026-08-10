@@ -535,8 +535,8 @@
     <string name="action_export">تصدير</string>
     <string name="export_explain_apk">يقوم Thor بحفظ هذا التطبيق كملف تثبيت فردي (.apk) في المجلد أدناه. استخدمه لنسخ التطبيق احتياطيًا أو إعادة تثبيته لاحقًا.</string>
     <string name="export_explain_apks">يأتي هذا التطبيق في أجزاء متعددة ومقسمة، تُحزم في حزمة واحدة (.apks) في المجلد أدناه. يمكنك إعادة تثبيتها في أي وقت باستخدام مثبت Thor.</string>
-    <string name="export_explain_xapk">يحزم ثور أجزاء هذا التطبيق في ملف ‎.xapk واحد داخل المجلد أدناه، وهي صيغة تفهمها برامج التثبيت الأخرى أيضًا. تُضمَّن بيانات اللعبة (ملفات OBB) عندما يستطيع وضع الوصول الحالي قراءتها.</string>
-    <string name="export_xapk_unavailable">تحتاج صيغة ‎.xapk إلى الروت أو Shizuku ليتمكن ثور من قراءة بيانات اللعبة. وضع الوصول الحالي لا يستطيع ذلك، وملف ‎.xapk بدونها سيثبّت لعبة لا تعمل.</string>
+    <string name="export_explain_xapk">يحزم Thor أجزاء هذا التطبيق في ملف ‎.xapk واحد داخل المجلد أدناه، وهي صيغة تفهمها برامج التثبيت الأخرى أيضًا. تُضمَّن بيانات اللعبة (ملفات OBB) عندما يستطيع وضع الوصول الحالي قراءتها.</string>
+    <string name="export_xapk_unavailable">تحتاج صيغة ‎.xapk إلى الروت أو Shizuku ليتمكن Thor من قراءة بيانات اللعبة. وضع الوصول الحالي لا يستطيع ذلك، وملف ‎.xapk بدونها سيثبّت لعبة لا تعمل.</string>
     <string name="export_obb_included">يتضمن %1$s من بيانات اللعبة.</string>
     <string name="export_obb_partial">بعض العناصر في مجلد بيانات هذا التطبيق ليست ملفات توسعة ولن تُضمَّن.</string>
     <string name="export_format">الصيغة</string>
