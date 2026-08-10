@@ -110,7 +110,9 @@ private val PACKAGE_NAME = Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)*")
  *    [SENTINEL_BADNAME]. `%n` emits the name raw, and a name is the one part of this output that
  *    Thor does not author.
  *  - **A `*.obb` that is a symlink is refused before anything follows it** — see [SENTINEL_SYMLINK].
- *    This test comes first in the loop precisely because the others do follow links.
+ *    This test comes first in the loop precisely because the others do follow links, and the package
+ *    directory is tested the same way before the loop starts: a `-L` test only ever examines a path's
+ *    **final component**, so guarding the leaves does nothing about a link one level up.
  *  - **[SENTINEL_END] is printed last** so a truncated reply is detectable.
  *
  * [externalStorageDir] comes from `Environment.getExternalStorageDirectory().absolutePath` rather
@@ -129,6 +131,11 @@ internal fun obbProbeCommand(externalStorageDir: String, packageName: String): S
     return buildString {
         append("ls -1 '").append(parent).append("' >/dev/null 2>&1 || { echo ")
         append(SENTINEL_NOPRIV).append("; exit 0; }\n")
+        // The directory itself, before the leaves: `for f in '<dir>'/*` expands *through* a
+        // symlinked `<dir>`, and the per-leaf `-L` below only ever tests a path's final component —
+        // so a link one level up redirects the whole listing past every guard beneath it.
+        append("[ -L '").append(dir).append("' ] && { echo ")
+        append(SENTINEL_SYMLINK).append("; exit 0; }\n")
         append("[ -d '").append(dir).append("' ] || { echo ")
         append(SENTINEL_NODIR).append("; exit 0; }\n")
         append("n=0\n")

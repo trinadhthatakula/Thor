@@ -572,8 +572,12 @@ internal fun obbCopyCommand(
     // read why it is strict.
     if ((externalStorageDir + destPath + leaf).any { it == '\'' || it == '\n' }) return null
 
-    val source = "$externalStorageDir/${expansionDirFor(packageName)}/$leaf"
-    return "[ ! -L '$source' ] && cp -f '$source' '$destPath' && chmod 644 '$destPath'"
+    val sourceDir = "$externalStorageDir/${expansionDirFor(packageName)}"
+    val source = "$sourceDir/$leaf"
+    // Both components, because `-L` only ever tests a path's final one: a link at `<pkg>` redirects
+    // the read just as effectively as a link at the leaf, and passes a test aimed at the leaf.
+    return "[ ! -L '$sourceDir' ] && [ ! -L '$source' ] && " +
+        "cp -f '$source' '$destPath' && chmod 644 '$destPath'"
 }
 
 /**

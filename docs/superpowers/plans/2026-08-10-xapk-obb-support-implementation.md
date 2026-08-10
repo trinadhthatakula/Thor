@@ -3013,6 +3013,18 @@ on the branch; recorded here so the plan stops disagreeing with the code.
    mkdir (`&& [ ! -L ]`). The probe's verdict is deliberately **not** inherited by the copies: a probe
    check is check-then-use across two shell invocations into a directory somebody else owns.
 
+   **The first cut of this fix guarded only the leaves, and was wrong.** `-L` tests a path's *final
+   component*, so a symlink at `<pkg>` passes every leaf-aimed test — and `for f in '<dir>'/*` expands
+   straight through it, redirecting the entire listing past all the guards underneath. Each of the
+   three commands now tests the package directory as well as the leaf, and the placement re-tests the
+   directory in its own invocation rather than trusting the earlier `mkdir`. Residual TOCTOU is
+   documented in `obbPlaceCommand`'s KDoc rather than papered over: `openat(O_NOFOLLOW)` per component
+   is the real answer and no shell command expresses it, while a shell command is the only instrument
+   available — Thor's own uid cannot open these paths, which is why this code exists at all.
+   Ancestors above `<pkg>` are deliberately trusted: system-created, not app-writable.
+   **Lesson: a path guard that names the wrong component is worth nothing, and `-L` only ever means
+   the last one.**
+
    Honest severity: primary external storage is FUSE-backed (sdcardfs before Android 11) and creating
    a symlink there is expected to fail, so this is hardening, not a demonstrated exploit — do not
    write it up as one. But a privileged shell often sees the lower ext4 at `/data/media/0` where links

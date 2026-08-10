@@ -119,8 +119,13 @@ class AppBundleBuilderTest {
         // invocations into a directory the exported app owns. `cp` follows links, and following one
         // here reads a file with the shell's privilege and writes its bytes into the user's archive
         // labelled as game data.
-        val source = "/storage/emulated/0/Android/obb/com.example.game/main.obb"
-        assertTrue(command, command.startsWith("[ ! -L '$source' ] && cp -f "))
+        // Both components: `-L` tests only a path's final one, so a link at `<pkg>` redirects the
+        // read exactly as well as a link at the leaf while passing a leaf-aimed test.
+        val dir = "/storage/emulated/0/Android/obb/com.example.game"
+        assertTrue(
+            command,
+            command.startsWith("[ ! -L '$dir' ] && [ ! -L '$dir/main.obb' ] && cp -f ")
+        )
     }
 
     @Test

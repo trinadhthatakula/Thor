@@ -128,6 +128,12 @@ class ObbProbeParserTest {
         val command = obbProbeCommand("/storage/emulated/0", "com.example.game")!!
 
         assertTrue(command, command.contains("*.obb) echo $SENTINEL_SYMLINK; exit 0 ;;"))
+        // The package directory too, and before the loop: `for f in '<dir>'/*` expands *through* a
+        // symlinked <dir>, and a -L test only ever examines a path's final component — so the
+        // per-leaf guard is blind to a link one level up.
+        val dir = "/storage/emulated/0/Android/obb/com.example.game"
+        assertTrue(command, command.contains("[ -L '$dir' ] && { echo $SENTINEL_SYMLINK; exit 0; }"))
+        assertTrue(command, command.indexOf("[ -L '$dir' ]") < command.indexOf("for f in"))
         // `[ -f ]` calls a link-to-a-regular-file a regular file and `stat` measures whatever it
         // points at, so testing -L second would be testing it never.
         assertTrue(

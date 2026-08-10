@@ -47,7 +47,13 @@ class ObbPlacementTest {
         // `cp -f` unlinks only when the *open* fails, so an existing symlink at the destination is
         // followed — an arbitrary root write, plus an arbitrary chmod, into whatever it names. `rm`
         // does not follow links, so it removes the link rather than the target.
-        assertTrue(command, command.startsWith("rm -f '$dest' && cp -f "))
+        //
+        // The directory is re-tested in this same invocation rather than trusted from the earlier
+        // `mkdir`: `-L` examines only a path's final component, so the leaf guard says nothing about
+        // a link at `<pkg>`, and the mkdir ran in a different shell. That narrows the swap window to
+        // one invocation without closing it — see the KDoc.
+        val dir = "/storage/emulated/0/Android/obb/com.example.game"
+        assertTrue(command, command.startsWith("[ ! -L '$dir' ] && rm -f '$dest' && cp -f "))
     }
 
     @Test

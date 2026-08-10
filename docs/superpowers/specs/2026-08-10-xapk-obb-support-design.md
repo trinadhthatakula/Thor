@@ -268,13 +268,27 @@ Design points, each load-bearing:
 > The same reasoning applies twice more outside the probe, and both are fixed with it — a check in the
 > probe is a check-then-use across two shell invocations, so neither site inherits its conclusion:
 >
-> - **§5.2 export copy.** `obbCopyCommand` is now `[ ! -L '<src>' ] && cp -f …`.
+> - **§5.2 export copy.** `obbCopyCommand` is now `[ ! -L '<dir>' ] && [ ! -L '<src>' ] && cp -f …`.
 > - **§6.3 install placement**, which is the worse direction, because there the app-owned path is the
 >   **destination**. `cp -f` unlinks only when the *open* fails, so an existing `<leaf>` that is a
 >   symlink is followed — making a root `cp` into an arbitrary write and the `chmod 644` after it an
->   arbitrary chmod. `obbPlaceCommand` now starts `rm -f '<dest>' &&`; `rm` does not follow links.
->   `obbMkdirCommand` gains `&& [ ! -L '<dir>' ]` for the same reason one level up: `mkdir -p`
->   succeeds silently on a symlink to a directory.
+>   arbitrary chmod. `obbPlaceCommand` now starts `[ ! -L '<dir>' ] && rm -f '<dest>' &&`; `rm` does
+>   not follow links. `obbMkdirCommand` gains `&& [ ! -L '<dir>' ]` for the same reason one level up:
+>   `mkdir -p` succeeds silently on a symlink to a directory.
+>
+> **`-L` tests only a path's final component**, which is why every one of these guards the package
+> directory as well as the leaf — a link at `<pkg>` redirects the whole operation while passing a
+> leaf-aimed test, and `for f in '<dir>'/*` expands straight through it. The first cut of this fix
+> guarded only leaves and was wrong for exactly that reason.
+>
+> **Residual risk, recorded rather than hidden.** These are check-then-use, so a directory swapped
+> between the test and the `cp` two commands later still wins. Closing that needs
+> `openat(O_NOFOLLOW)` per component, which no shell command expresses — and a shell command is the
+> only instrument available, since the premise of this whole feature is that Thor's own uid cannot
+> open these paths. Each guard now sits in the same invocation as the operation it protects, which
+> narrows the window to one shell invocation; it does not eliminate it. Ancestors above `<pkg>`
+> (`Android/obb`, `Android`) are not guarded: they are system-created and not app-writable, so
+> treating them as trusted is a deliberate boundary, not an oversight.
 
 ### 4.4 Documented limitation
 

@@ -272,6 +272,16 @@ internal fun obbMkdirCommand(externalStorageDir: String, packageName: String): S
  * name, the leaf and both paths are each checked here rather than assumed from having passed through
  * `resolveExpansions` and `extractExpansions` first.
  *
+ *  - **The destination directory is re-tested here**, not trusted from [obbMkdirCommand], which ran
+ *    in a previous shell invocation. A `-L` test only examines a path's final component, so the leaf
+ *    guard below says nothing about a link at `<packageName>`.
+ *
+ *    What this does **not** close is the race itself: the directory could be swapped between this
+ *    test and the `cp` two commands later. Closing that needs `openat(O_NOFOLLOW)` per component,
+ *    which is not expressible as a shell command — and a shell command is the only tool available,
+ *    since the reason this code exists is that Thor's own uid cannot open these paths at all. The
+ *    residual window is one shell invocation wide, against a directory whose owner would first have
+ *    to be able to create a symlink on external storage at all. Recorded rather than hidden.
  *  - **The destination is unlinked first, not overwritten.** `cp -f` only unlinks when the *open*
  *    fails, so an existing `<leaf>` that is a symlink is followed — and this runs as root into a
  *    directory the target app owns, which makes it an arbitrary write, and `chmod 644` an arbitrary
@@ -303,6 +313,10 @@ internal fun obbPlaceCommand(
     if ((sourcePath + leaf).any { it == '\'' || it == '\n' }) return null
 
     val dest = "$destDir/$leaf"
-    return "rm -f '$dest' && cp -f '$sourcePath' '$dest' && chmod 644 '$dest' && " +
+    // `obbMkdirCommand` already refused a symlinked directory, but that ran in an *earlier* shell
+    // invocation and this one runs once per expansion — so the check is repeated here, inside the
+    // same invocation as the `rm`/`cp`/`chmod` it protects. See the KDoc on what that does and does
+    // not buy.
+    return "[ ! -L '$destDir' ] && rm -f '$dest' && cp -f '$sourcePath' '$dest' && chmod 644 '$dest' && " +
         "{ S=\$(stat -c %s '$dest' 2>/dev/null); [ -z \"\$S\" ] || [ \"\$S\" = \"$expectedBytes\" ]; }"
 }
