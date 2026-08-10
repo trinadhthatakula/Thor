@@ -7,10 +7,10 @@ import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.os.Build
-import androidx.core.net.toUri
 import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.MediaStore
+import androidx.core.net.toUri
 import com.valhalla.thor.domain.model.ExportTargetChoice
 import com.valhalla.thor.domain.model.THORBAK_MIME
 import com.valhalla.thor.domain.model.resolveExportTarget
@@ -203,11 +203,14 @@ private abstract class BaseDestination(override val output: OutputStream) : Arch
     /**
      * Idempotent, because the calling shape is `try { … publish() } finally { discard() }` — a
      * discard after a successful publish is the *normal* path and must do nothing.
+     *
+     * Both the stream close and [onDiscard] are guarded: this runs when something has already gone
+     * wrong, and a cleanup failure must never replace the original error.
      */
     override suspend fun discard() {
         if (settled) return
         settled = true
         runCatching { output.close() }
-        onDiscard()
+        runCatching { onDiscard() }.onFailure { Logger.e(TAG, "discard failed", it) }
     }
 }
