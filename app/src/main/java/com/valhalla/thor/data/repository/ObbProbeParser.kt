@@ -51,8 +51,13 @@ internal const val SENTINEL_STATFAIL = "THOR_STATFAIL"
  *
  * This is the case the KDoc on [obbProbeCommand] used to claim was already handled, on the reasoning
  * that "the head fails the `.obb` extension test" — which is true of `main<LF>x.obb` and false of
- * `main.obb<LF>x.obb`. Refusing the name is the only defence that does not depend on which half of a
- * split lands where.
+ * `main.obb<LF>x.obb`. Refusing the name outright is the only defence that does not depend on which
+ * half of a split lands where; [parseObbProbe] then holds the second lock, refusing to believe a
+ * `THOR_NODIR` that arrives beside listing output.
+ *
+ * Worth being precise about who the adversary is: `Android/obb/<pkg>` is the target app's own
+ * directory, which it writes with no permission at all. Every name here is chosen by the app being
+ * backed up.
  */
 internal const val SENTINEL_BADNAME = "THOR_BADNAME"
 
