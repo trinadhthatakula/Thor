@@ -475,8 +475,14 @@ internal fun parseObbProbe(exitCode: Int, output: String?): ObbProbe {
         val size = rest.substring(0, space).toLongOrNull()
             ?: return ObbProbe.Undetermined("a game data file's size could not be read: $line")
         val name = rest.substring(space + 1).substringAfterLast('/')
-        if (!name.endsWith(".obb", ignoreCase = true)) {
-            return ObbProbe.Undetermined("a game data file's name could not be read: $line")
+        // As shipped this is `if (!isSafeObbLeafName(name))` — the same predicate Task 4 defines and
+        // Task 6's copy command is gated on, so that Present means "capturable" and not merely
+        // "these files exist". A name only this stricter form rejects would otherwise be reported as
+        // Present, the export sheet would offer .xapk on the strength of it, and the export would
+        // fail later at staging. The shipped reason strings also quote no filename: they are
+        // diagnostic, and the name comes from a directory the target app writes freely.
+        if (!isSafeObbLeafName(name)) {
+            return ObbProbe.Undetermined("an expansion file listing named a file Thor cannot capture")
         }
         files += ObbFile(name, size)
     }
@@ -1640,14 +1646,24 @@ First, declare the staging dir **before** the `try`, immediately after the exist
 Then, inside the zip branch, after `val totalApkSize = apkFiles.sumOf { it.length() }`:
 
 ```kotlin
-                // Only .xapk carries expansions, and only when the probe positively found some. An
-                // Undetermined probe cannot reach this point: the export sheet disables the .xapk
-                // chip on that result, so the format is not selectable. Re-checking here anyway
-                // keeps the builder honest if it is ever called from somewhere without that gate.
+                // Only .xapk carries expansions. The export sheet disables the .xapk chip on an
+                // Undetermined probe, so in practice this format is not even selectable then — but
+                // that gate is in the UI, and this is the only place that knows whether the bundle
+                // it is about to write is complete. Treating Undetermined as "no expansions" would
+                // make a lost privilege between rendering the chip and pressing Export produce a
+                // silently OBB-less .xapk, which is GH#164 reached from a new direction. So it
+                // fails instead, and the chip becomes defence in depth rather than the whole
+                // defence. (`autoFor` never returns XAPK, so no caller reaches this by default.)
                 val probe = if (format == BundleFormat.XAPK) {
                     systemRepository.probeObb(appInfo.packageName)
                 } else {
                     ObbProbe.None
+                }
+                if (probe is ObbProbe.Undetermined) {
+                    throw IOException(
+                        "whether this app has game data could not be determined, so a .xapk " +
+                            "might be incomplete"
+                    )
                 }
                 val obbFiles = (probe as? ObbProbe.Present)?.files.orEmpty()
 
