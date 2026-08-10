@@ -1815,8 +1815,15 @@ The install-side reader. Expansions need their own byte budget: `MAX_EXTRACTED_T
 - Consumes: `ResolvedExpansion` (Task 4), the existing `copyAtMostTo`, `InstallRefusedException`.
 - Produces:
   - `internal const val MAX_EXPANSION_TOTAL_BYTES = 16L * 1024 * 1024 * 1024`
+  - `internal const val MAX_EXPANSION_ENTRIES = 32`
   - `internal data class ExtractedExpansion(val file: File, val leafName: String)`
-  - `internal fun extractExpansions(zip: File, expansions: List<ResolvedExpansion>, outDir: File, maxTotalBytes: Long = MAX_EXPANSION_TOTAL_BYTES): List<ExtractedExpansion>`
+  - `internal fun extractExpansions(zip: File, expansions: List<ResolvedExpansion>, outDir: File, maxTotalBytes: Long = MAX_EXPANSION_TOTAL_BYTES, maxEntries: Int = MAX_EXPANSION_ENTRIES): List<ExtractedExpansion>`
+
+**As shipped, three things this section did not specify** (commit `1dcc55d3`, after the review of the first implementation):
+
+- **An entry-count cap, because the byte budget is not one.** A manifest-free `.xapk` has every `*.obb` entry treated as an expansion, so a million one-byte entries costs a million inodes and a million `cp` invocations while spending almost none of the 16 GiB. The check runs before `outDir` is created, so a refused archive leaves nothing behind at all.
+- **A repeated leaf refuses** rather than overwriting. `resolveExpansions` drops repeats, so this only fires for a caller that built its list another way — but overwriting would replace the first file's bytes, return two entries pointing at one `File`, and charge the budget twice. Keyed on `lowercase()`: the staging volume is usually emulated or FAT.
+- **`ExtractedExpansion` carries no digest and should not gain one.** `ExtractedApk.sha256` closes a real window — on API 28-29 an app with `WRITE_EXTERNAL_STORAGE` can overwrite a staged file in `externalCacheDir` between the write and the install. That window exists here too, but on exactly those versions `Android/obb/<pkg>/` is writable by that same app, so an attacker who could win the race can write the destination directly instead. From API 30 the staging dir is sandboxed and the race is gone. A digest would buy nothing and cost a second full read of gigabytes per install.
 
 - [ ] **Step 1: Write the failing test**
 
