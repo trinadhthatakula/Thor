@@ -54,6 +54,8 @@ class InstallerRepositoryImpl(
     private val rootGateway: RootSystemGateway,
     private val shizukuReflector: ShizukuReflector,
     private val preferenceRepository: PreferenceRepository,
+    // The only part of the install path that writes outside app storage; see ObbInstaller.
+    private val obbInstaller: ObbInstaller,
     // Carries the session writes, the APK extraction and the hashing.
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
     // Only installWithExternal() uses this: handing the URI to the system's installer chooser is a
@@ -109,6 +111,21 @@ class InstallerRepositoryImpl(
     ) =
         withContext(ioDispatcher) {
             try {
+                // Refuse before installing, not after. An archive whose game data cannot be placed
+                // would otherwise leave an installed game that starts and immediately fails — the
+                // same broken outcome #164 reports, arrived at from the other direction.
+                //
+                // Null for everything that is not an XAPK carrying a readable manifest.json, which
+                // is what keeps a plain APK, an .apks and an .apkm on exactly the path they were on
+                // before: one extra read of the central directory and no shell command at all.
+                val packageName = resolvePackageNameForObb(staged.file)
+                if (packageName != null) {
+                    obbInstaller.refusalReason(staged.file, packageName)?.let { reason ->
+                        eventBus.emit(InstallState.Error(UiText.DynamicString(reason)))
+                        return@withContext
+                    }
+                }
+
                 when (mode) {
                     InstallMode.ROOT -> {
                         installWithRoot(staged, canDowngrade)
@@ -240,6 +257,30 @@ class InstallerRepositoryImpl(
                         installWithExternal(uri)
                     }
                 }
+
+                // The install rungs emit InstallState.Success themselves and do not reliably throw
+                // on failure, so "did it install?" is answered by asking the package manager rather
+                // than by the absence of an exception.
+                //
+                // EXTERNAL is excluded because nothing has been installed yet on that path: the
+                // chooser has only just been handed the URI, so isInstalled() there answers about
+                // whatever copy was already on the device, and placing game data for a version the
+                // user has not confirmed yet would hand it to an install that is entitled to wipe
+                // Android/obb/<pkg> when it runs.
+                if (mode != InstallMode.EXTERNAL && packageName != null && isInstalled(packageName)) {
+                    when (val placement = obbInstaller.place(staged.file, packageName)) {
+                        is ObbPlacement.Failed -> eventBus.emit(
+                            InstallState.Error(
+                                UiText.DynamicString(
+                                    "${staged.displayName ?: packageName} installed, but its game " +
+                                        "data could not be placed: ${placement.reason}"
+                                )
+                            )
+                        )
+
+                        is ObbPlacement.Placed, ObbPlacement.NotNeeded -> Unit
+                    }
+                }
             } catch (e: Throwable) {
                 // Throwable, matching the per-mode catches above: a bounded read still leaves
                 // OutOfMemoryError reachable through the platform parser, and an Error escaping
@@ -248,6 +289,33 @@ class InstallerRepositoryImpl(
                 eventBus.emit(InstallState.Error(UiText.DynamicString(e.message ?: "Unknown error during installation")))
             }
         }
+
+    /**
+     * The package an archive installs, from its own manifest — null when it cannot be read.
+     *
+     * Deliberately manifest-only, and therefore null for a plain APK, an `.apks` and an `.apkm`:
+     * OBB is an XAPK-only convention, so anything without a readable `manifest.json` at the archive
+     * root has no expansions by definition and must not pay for the question being asked.
+     *
+     * `isUsablePackageName` here as well as inside `ObbInstaller` — this name is read out of an
+     * untrusted archive and is the *only* input that decides which directory the placement shell
+     * creates.
+     */
+    private fun resolvePackageNameForObb(bundle: File): String? = try {
+        BundleZip.read(bundle, setOf("manifest.json")).bytes["manifest.json"]
+            ?.let { parseXapkManifest(it.decodeToString()) }
+            ?.packageName
+            ?.takeIf { isUsablePackageName(it) }
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun isInstalled(packageName: String): Boolean = try {
+        context.packageManager.getPackageInfo(packageName, 0)
+        true
+    } catch (_: Exception) {
+        false
+    }
 
     // Create a PackageInstaller using Dhizuku's binder wrapper but make the installer package
     // be this app's package name so created sessions belong to the app UID (avoids UID mismatch).
