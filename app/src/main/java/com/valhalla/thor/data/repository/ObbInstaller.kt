@@ -85,6 +85,17 @@ class ObbInstaller(
         }
 
     /**
+     * Whether this archive carries game data at all.
+     *
+     * Exists so the caller can tell the two silences apart before it commits to waiting for an
+     * install to finish: an archive with no expansions must cost nothing, while one that has them
+     * has to be followed through to a placement or to a stated failure. Reads the central directory
+     * and never the shell.
+     */
+    suspend fun carriesExpansions(bundle: File, packageName: String): Boolean =
+        withContext(ioDispatcher) { declaredExpansions(bundle, packageName).isNotEmpty() }
+
+    /**
      * Unpack the archive's expansions and move them into place. Call only after the package is
      * confirmed installed.
      *

@@ -33,8 +33,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import kotlinx.coroutines.flow.first
@@ -267,13 +269,28 @@ class InstallerRepositoryImpl(
                 // whatever copy was already on the device, and placing game data for a version the
                 // user has not confirmed yet would hand it to an install that is entitled to wipe
                 // Android/obb/<pkg> when it runs.
-                if (mode != InstallMode.EXTERNAL && packageName != null && isInstalled(packageName)) {
-                    when (val placement = obbInstaller.place(staged.file, packageName)) {
+                //
+                // The carriesExpansions() gate comes first so that an archive with no game data pays
+                // one central-directory read and nothing else — in particular, never the wait below.
+                if (mode != InstallMode.EXTERNAL && packageName != null &&
+                    obbInstaller.carriesExpansions(staged.file, packageName)
+                ) {
+                    val name = staged.displayName ?: packageName
+                    if (!awaitInstalled(packageName)) {
+                        eventBus.emit(
+                            InstallState.Error(
+                                UiText.DynamicString(
+                                    "Thor could not confirm $name finished installing, so its game " +
+                                        "data was not placed. Install it again to place the game data."
+                                )
+                            )
+                        )
+                    } else when (val placement = obbInstaller.place(staged.file, packageName)) {
                         is ObbPlacement.Failed -> eventBus.emit(
                             InstallState.Error(
                                 UiText.DynamicString(
-                                    "${staged.displayName ?: packageName} installed, but its game " +
-                                        "data could not be placed: ${placement.reason}"
+                                    "$name installed, but its game data could not be placed: " +
+                                        "${placement.reason}"
                                 )
                             )
                         )
@@ -315,6 +332,29 @@ class InstallerRepositoryImpl(
         true
     } catch (_: Exception) {
         false
+    }
+
+    /**
+     * Wait until [packageName] is present, or give up.
+     *
+     * Only the `pm`-based rungs finish synchronously. `performPackageInstallerInstall` ends at
+     * `session.commit()`, which returns before the platform has installed anything — the outcome
+     * arrives later as a broadcast to `InstallReceiver`. Asking `isInstalled` right after it
+     * therefore answers **false** for a first-time install, and reading that as "no install, so no
+     * game data to place" would drop the OBB silently, which is exactly the bug this feature exists
+     * to fix. It is reachable today: Shizuku's shell rung failing falls through to a session.
+     *
+     * The wait engages only when needed and so costs nothing on the synchronous rungs, which are
+     * already installed by the time they return. It cannot substitute for real completion plumbing —
+     * the rung that fell through to the default installer may still be showing the system's own
+     * confirmation dialog — so the timeout ends in a stated failure rather than in silence.
+     */
+    private suspend fun awaitInstalled(packageName: String): Boolean {
+        if (isInstalled(packageName)) return true
+        return withTimeoutOrNull(OBB_INSTALL_WAIT_MS) {
+            while (!isInstalled(packageName)) delay(OBB_INSTALL_POLL_MS)
+            true
+        } == true
     }
 
     // Create a PackageInstaller using Dhizuku's binder wrapper but make the installer package
@@ -880,6 +920,19 @@ class InstallerRepositoryImpl(
 
 /** Exit code the integrity guard uses; distinct from anything `pm` itself returns. */
 internal const val INTEGRITY_CHECK_EXIT_CODE = 90
+
+/**
+ * How long to wait for an asynchronously committed install to appear before giving up on placing an
+ * archive's game data.
+ *
+ * Long enough for a privileged session on a slow device and for a user tapping through the system
+ * installer's confirmation; short enough that an install which failed does not leave the sheet
+ * waiting indefinitely for a package that is never coming.
+ */
+private const val OBB_INSTALL_WAIT_MS = 90_000L
+
+/** Poll interval for the above. Cheap: a `getPackageInfo` on a name, no IPC storm. */
+private const val OBB_INSTALL_POLL_MS = 250L
 
 /**
  * The entries of a bundle that get written into an install session: the first entry per wanted
