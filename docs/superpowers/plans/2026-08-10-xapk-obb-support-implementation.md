@@ -2950,6 +2950,46 @@ The unit tests cover every pure decision, but nothing here proves the privileged
 
 ---
 
+## Review pass on PR #376 — four defects this plan did not anticipate
+
+Automated review of the pushed branch found four things wrong with what shipped. All four are fixed
+on the branch; recorded here so the plan stops disagreeing with the code.
+
+1. **Task 1's probe script failed *open* on `stat`.** The `*.obb` branch ran `stat` unguarded, so a
+   file it could not describe produced no `THOR_OBB` line while `THOR_OTHER 0`, `THOR_END` and exit
+   code 0 all still arrived — and the parser read that as an empty directory. `None` leaves the
+   `.xapk` chip enabled, so the export would have offered a bundle and packed no game data: GH#164
+   again. The whole task was built around not folding "cannot see it" into "there is none", and it
+   folded them anyway at the one place the plan never questioned — because `stat -c` availability
+   across ROMs is exactly what device check 8 was written to find out. Now `THOR_STATFAIL` →
+   `Undetermined`. **Lesson: a tri-state is only as honest as its narrowest failure path.**
+2. **Task 8's gate could not tell an update from a completed install.** `awaitInstalled` asked
+   `getPackageInfo`, which for an update is already true *before* `commit()` does anything — so the
+   gate returned immediately and placed expansions against a session still in flight, and an update
+   is the common case for a game. It also had no failure signal at all: a declined confirmation
+   dialog never produces a package, so it spun the full 90 s and then emitted "could not confirm" on
+   top of the real error `InstallReceiver` had already delivered. Now: `lastUpdateTime` captured
+   before the install as the completion signal, plus `InstallerEventBus.latest` read each tick as the
+   failure signal, and the failure branch is silent.
+3. **Task 11's card rendered the previous app's verdict.** `loadAppDetails` cleared `errorMessage`
+   but not `obbProbe`, and the probe deliberately resolves *after* the details — so a second load
+   showed the new app's details next to the old app's game-data size, and left `.xapk` enabled for an
+   app whose expansions Thor had not read. Fixed and regression-tested.
+4. **Task 9's strings asserted a cause they cannot know.** `export_xapk_unavailable` and
+   `info_obb_unknown` both said "needs root or Shizuku", but `Undetermined` also covers a failed,
+   truncated or malformed reply from a shell Thor *does* have. That is the same mistake as the
+   explain string this feature retracted, re-committed one screen away from the retraction. The copy
+   now states what is certain and offers the usual cause without asserting it, in all five locales.
+
+Two review findings were **not** acted on, deliberately: `markdownlint`'s MD018 on
+`docs/follow-ups/README.md:53` (nothing in this repo runs markdownlint, and `#51` without a following
+space is not an ATX heading under CommonMark — GitHub renders it as text) and MD040 on this design's
+bare code fences (six other docs including four specs use bare fences; enforcing it here alone is
+noise). Two more were doc drift and are fixed in the design: its stale `not yet implemented` status,
+and a `copyFileWithRoot` fallback it specified that the builder does not implement — dropped, because
+`externalCacheDir` is null exactly when the volume holding `Android/obb` is unavailable, so the
+fallback could only ever run when its input does not exist.
+
 ## Self-Review
 
 **Spec coverage.** Every section of `docs/superpowers/specs/2026-08-10-xapk-obb-support-design.md` maps to a task: §4 probe → Tasks 1–2; §2/§5.3 wire format → Task 3; §5.1 entry names → Task 5; §6.1 validation → Task 4; §5.2/§5.4 staging and space → Task 6; §6.2 extraction → Task 7; §6.3 placement → Task 8; §7 UI and strings → Tasks 9–11; §8 testing → per-task tests plus Task 12; §9 scope boundary (`.apks` carries no expansions, no `MANAGE_EXTERNAL_STORAGE`) → enforced in Tasks 5 and in Global Constraints.

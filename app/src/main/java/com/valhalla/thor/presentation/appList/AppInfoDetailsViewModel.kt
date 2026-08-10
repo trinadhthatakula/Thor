@@ -103,7 +103,13 @@ class AppInfoDetailsViewModel(
         _uiState.update {
             it.copy(
                 isLoading = true,
-                errorMessage = null
+                errorMessage = null,
+                // Cleared, not carried: the details land before the probe answers (see below), so a
+                // verdict left over from the previous app would be rendered against the new one —
+                // "1.2 GB of game data" for an app that has none, and an enabled .xapk chip for one
+                // whose expansions Thor cannot read. `null` is the "still asking" state both
+                // consumers already handle.
+                obbProbe = null
             )
         }
         viewModelScope.launch {

@@ -2,7 +2,8 @@
 
 **Issue:** GH#164 — *"xapk files are ignoring obb files"*
 **Date:** 2026-08-10
-**Status:** Design approved, not yet implemented
+**Status:** Implemented on `feat/xapk-obb-support` (PR #376) — **device verification pending**, nine
+checks listed in `docs/superpowers/plans/2026-08-10-xapk-obb-support-implementation.md` Task 12 Step 6
 **Branch:** `feat/xapk-obb-support`
 
 Supersedes the *"Missing OBB"* device-verification item in
@@ -158,8 +159,15 @@ Shell uid can write there; Thor owns it and needs no permission. **Both directio
 extracts OBB out to there, then copies into place via a privileged `cp`. Under root this is
 unnecessary but harmless, and one path is better than two.
 
-If `externalCacheDir` is null (no external volume mounted), fall back to `copyFileWithRoot` into
-internal cache — which restricts that fallback to root, correctly.
+If `externalCacheDir` is null (no external volume mounted), **fail** — `AppBundleBuilderImpl` throws
+rather than falling back.
+
+> **Amended as built.** This section originally called for a fallback to `copyFileWithRoot` into
+> internal cache, restricted to root. It was dropped, not forgotten: `externalCacheDir` is null
+> exactly when the primary external volume is unavailable, and `Android/obb/<pkg>` lives on that same
+> volume. So there is nothing to stage — the probe cannot read the OBB either, and the `.xapk` chip is
+> already disabled. A fallback for that state would be code that can only run when its input does not
+> exist.
 
 ---
 

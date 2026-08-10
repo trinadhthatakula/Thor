@@ -326,4 +326,36 @@ class AppInfoDetailsViewModelTest {
             vm.uiState.value.obbProbe
         )
     }
+
+    /**
+     * The probe deliberately resolves *after* the details, so on a second load there is a window
+     * where the new app's details are on screen. A verdict carried into that window is read against
+     * the wrong app: the card claims game data the app does not have, and the export sheet leaves
+     * `.xapk` enabled for an app whose expansions Thor never managed to read.
+     */
+    @Test
+    fun `a second load clears the previous verdict before the new probe answers`() = runTest {
+        loaded(userApp("a"))
+        appRepository.details["b"] = DetailedAppInfo(appInfo = userApp("b"))
+        system.obbProbe = ObbProbe.Present(listOf(ObbFile("main.obb", 1024)), otherEntryCount = 0)
+        val vm = viewModel()
+        vm.loadAppDetails("a")
+        runCurrent()
+        assertEquals(
+            ObbProbe.Present(listOf(ObbFile("main.obb", 1024)), otherEntryCount = 0),
+            vm.uiState.value.obbProbe
+        )
+
+        system.obbProbe = ObbProbe.None
+        vm.loadAppDetails("b")
+
+        assertNull(
+            "app a's expansions must not be attributed to app b while b's probe is still running",
+            vm.uiState.value.obbProbe
+        )
+
+        runCurrent()
+
+        assertEquals(ObbProbe.None, vm.uiState.value.obbProbe)
+    }
 }

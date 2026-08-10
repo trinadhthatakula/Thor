@@ -102,10 +102,21 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
         failures[call] = error
     }
 
-    private fun record(call: String): Result<Unit> {
+    /**
+     * The three shared side effects of any call reaching this fake.
+     *
+     * Split out of [record] for the overrides that do not return `Result<Unit>` — they used to
+     * append to [calls] and nothing else, so a test observing the privilege layer through [trace] or
+     * steering it through [onCall] could neither see nor intercept them.
+     */
+    private fun note(call: String) {
         calls += call
         trace?.add(call)
         onCall?.invoke(call)
+    }
+
+    private fun record(call: String): Result<Unit> {
+        note(call)
         return failures[call]?.let { Result.failure(it) } ?: Result.success(Unit)
     }
 
@@ -156,12 +167,12 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
         record("revokePermission:$packageName:$permissionName")
 
     override suspend fun getAppPaths(packageName: String): Result<List<String>> {
-        calls += "getAppPaths:$packageName"
+        note("getAppPaths:$packageName")
         return Result.success(emptyList())
     }
 
     override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> {
-        calls += "executeShellCommand:$command"
+        note("executeShellCommand:$command")
         return Result.success(0 to null)
     }
 
@@ -175,7 +186,7 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
     var obbProbe: ObbProbe = ObbProbe.None
 
     override suspend fun probeObb(packageName: String): ObbProbe {
-        calls += "probeObb:$packageName"
+        note("probeObb:$packageName")
         return obbProbe
     }
 }

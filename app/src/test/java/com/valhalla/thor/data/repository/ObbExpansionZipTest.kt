@@ -19,8 +19,13 @@ class ObbExpansionZipTest {
     @get:Rule
     val temp = TemporaryFolder()
 
+    // A counter, not `entries.hashCode()`: that is an *array*, so its hash is the identity hash —
+    // unstable between runs and free to collide, and a collision fails `newFile` for a reason that
+    // has nothing to do with what the test is checking.
+    private var zipCount = 0
+
     private fun zipOf(vararg entries: Pair<String, ByteArray>): File {
-        val file = temp.newFile("bundle-${entries.size}-${entries.hashCode()}.xapk")
+        val file = temp.newFile("bundle-${entries.size}-${zipCount++}.xapk")
         ZipOutputStream(file.outputStream()).use { out ->
             entries.forEach { (name, bytes) ->
                 out.putNextEntry(ZipEntry(name))
