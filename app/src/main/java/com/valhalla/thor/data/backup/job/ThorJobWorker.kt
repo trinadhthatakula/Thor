@@ -61,21 +61,21 @@ abstract class ThorJobWorker(
         )
 
     final override suspend fun doWork(): Result {
-        // On API 31+ a foreground service cannot be started from the background, and a user who
-        // backgrounds Thor between tapping and this line makes that a real outcome. The job then runs
-        // without a foreground notification — more killable, but running — rather than crashing
-        // before it starts. CancellationException is rethrown explicitly: runCatching catches Throwable
-        // and would otherwise swallow a cancellation delivered during setForeground, causing runJob()
-        // to execute on an already-cancelled coroutine.
-        try {
-            setForeground(getForegroundInfo())
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Logger.e(TAG, "${kind.id}: continuing without a foreground notification", e)
-        }
-
         return try {
+            // setForeground is inside the outer try so that a CancellationException from it —
+            // or from getForegroundInfo() — still reaches finally and all three cleanups run.
+            // On API 31+ a foreground service cannot be started from the background; the inner
+            // catch degrades that non-cancellation failure to running without a foreground
+            // notification rather than failing the whole job. CancellationException is rethrown
+            // explicitly so it is not swallowed by the inner catch(Exception).
+            try {
+                setForeground(getForegroundInfo())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e(TAG, "${kind.id}: continuing without a foreground notification", e)
+            }
+
             runJob()
         } catch (e: CancellationException) {
             // The user pressed Cancel, or WorkManager stopped the worker. Rethrow so the coroutine
@@ -86,7 +86,8 @@ abstract class ThorJobWorker(
             Logger.e(TAG, "${kind.id} failed", e)
             Result.failure(workDataOf(JOB_ERROR_KEY to (e.message ?: "unknown error")))
         } finally {
-            // All three run on cancellation too, because the rethrow above passes through here.
+            // Runs on every exit: normal return, Result.failure, exception from runJob(),
+            // cancellation during runJob(), and cancellation during setForeground/getForegroundInfo().
             //
             // registry: the UI reads WorkManager's own persisted WorkInfo.State for the terminal
             // outcome, so dropping in-memory progress loses nothing and bounds the map.
@@ -99,8 +100,9 @@ abstract class ThorJobWorker(
             // cannot be covered here — Task 15's enqueue path is responsible for that branch.
             keyHolder.drop(id.toString())
             //
-            // notification: on the happy path WorkManager cancels the id it received via
-            // setForeground; on the setForeground-failed path this is the only cleanup. Idempotent.
+            // notification: always runs; idempotent. On the happy path WorkManager already cancelled
+            // the id it owns via setForeground — this is a no-op there and the actual cleanup on
+            // both the setForeground-failed path and the cancellation-during-setForeground path.
             notifications.cancel(kind)
         }
     }
