@@ -1,0 +1,77 @@
+// SPDX-FileCopyrightText: 2025-2026 Trinadh Thatakula <github.com/trinadhthatakula/Thor>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package com.valhalla.thor.data.repository
+
+import com.valhalla.thor.domain.model.BundleFormat
+import org.junit.Assert.assertEquals
+import org.junit.Test
+import java.io.File
+
+/**
+ * What goes into the zip, in what order, and under what name.
+ *
+ * `zipFiles` derived every entry name from `file.name`, which is right for the flat APK/sidecar
+ * layout and wrong for `Android/obb/<pkg>/main.obb`. [zipSourcesFor] is the seam that separates the
+ * two decisions, and it is pure, so the ordering rule is checkable without a device.
+ *
+ * `stagedApkNames`'s coverage stays in `StagedApkNamesTest`; this class is about names the file
+ * cannot supply.
+ */
+class AppBundleBuilderTest {
+
+    @Test
+    fun `xapk puts the sidecars first and the expansions last`() {
+        // Sidecar-first is not cosmetic: an installer that streams the archive reads manifest.json
+        // before it has to decide what to do with anything else. Expansions go last because they
+        // are the largest entries and the least urgent to reach.
+        val sources = zipSourcesFor(
+            format = BundleFormat.XAPK,
+            apkFiles = listOf(File("/tmp/base.apk"), File("/tmp/split_a.apk")),
+            sidecars = listOf(File("/tmp/manifest.json"), File("/tmp/icon.png")),
+            expansions = listOf(
+                ZipSource(File("/tmp/staged/main.obb"), "Android/obb/com.example.game/main.obb")
+            )
+        )
+
+        assertEquals(
+            listOf(
+                "manifest.json",
+                "icon.png",
+                "base.apk",
+                "split_a.apk",
+                "Android/obb/com.example.game/main.obb"
+            ),
+            sources.map { it.entryName }
+        )
+    }
+
+    @Test
+    fun `apks keeps apks first and carries no expansions`() {
+        // .apks is SAI's format and has no expansion convention. Passing some in is a caller bug,
+        // and dropping them beats writing entries no reader will look for.
+        val sources = zipSourcesFor(
+            format = BundleFormat.APKS,
+            apkFiles = listOf(File("/tmp/base.apk")),
+            sidecars = listOf(File("/tmp/meta.sai_v2.json")),
+            expansions = listOf(
+                ZipSource(File("/tmp/staged/main.obb"), "Android/obb/com.example.game/main.obb")
+            )
+        )
+
+        assertEquals(listOf("base.apk", "meta.sai_v2.json"), sources.map { it.entryName })
+    }
+
+    @Test
+    fun `a plain file keeps its own name as the entry name`() {
+        val sources = zipSourcesFor(
+            BundleFormat.XAPK,
+            apkFiles = listOf(File("/tmp/staging/base.apk")),
+            sidecars = emptyList(),
+            expansions = emptyList()
+        )
+
+        assertEquals(listOf("base.apk"), sources.map { it.entryName })
+        assertEquals(listOf(File("/tmp/staging/base.apk")), sources.map { it.file })
+    }
+}

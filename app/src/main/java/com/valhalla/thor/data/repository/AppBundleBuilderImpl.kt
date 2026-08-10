@@ -146,17 +146,14 @@ class AppBundleBuilderImpl(
                 }
 
                 val sidecars = listOfNotNull(metadataFile, manifestFile, iconFile)
-                // A .xapk gets its sidecars first: SAI reads manifest.json + icon.png and a
-                // streaming reader would otherwise scan past every APK to reach them. .apks
-                // keeps the historical order, which readers using the central directory
-                // (Thor's BundleZip included) are indifferent to either way.
-                val filesToZip = if (format == BundleFormat.XAPK) {
-                    sidecars + apkFiles
-                } else {
-                    apkFiles + sidecars
-                }
-
-                zipFiles(filesToZip, finalFile)
+                // Entry order and entry names are zipSourcesFor's decision now; see its KDoc for
+                // why a .xapk leads with its sidecars. No expansions yet — nothing here stages an
+                // OBB, so this produces exactly the entry list, in exactly the order, that it did
+                // before the name and the file were separated.
+                zipFiles(
+                    zipSourcesFor(format, apkFiles, sidecars, expansions = emptyList()),
+                    finalFile
+                )
                 tempSplitDir.deleteRecursively()
             }
             Result.success(finalFile)
@@ -274,7 +271,7 @@ class AppBundleBuilderImpl(
         }
     }
 
-    private suspend fun zipFiles(files: List<File>, zipFile: File) {
+    private suspend fun zipFiles(sources: List<ZipSource>, zipFile: File) {
         ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { out ->
             // APK entries are already DEFLATEd, so re-compressing them is pure CPU for ~0%
             // saving. Measurable when a bulk share zips dozens of apps in a row.
@@ -285,10 +282,10 @@ class AppBundleBuilderImpl(
             out.setLevel(Deflater.NO_COMPRESSION)
             // 8 KB buffer — 1 KB is needlessly slow when zipping multi-MB APK splits.
             val data = ByteArray(COPY_BUFFER_BYTES)
-            files.forEach { file ->
-                FileInputStream(file).use { fi ->
+            sources.forEach { source ->
+                FileInputStream(source.file).use { fi ->
                     BufferedInputStream(fi).use { origin ->
-                        val entry = ZipEntry(file.name)
+                        val entry = ZipEntry(source.entryName)
                         out.putNextEntry(entry)
                         while (true) {
                             // Same reason as copyCancellable: zipping a split app is the other
@@ -343,4 +340,37 @@ internal fun stagedApkNames(paths: List<String>): List<Pair<String, String>> {
         while (!taken.add(candidate)) candidate = "${stem}_${suffix++}$extension"
         path to candidate
     }
+}
+
+/**
+ * A file plus the name it takes inside the zip.
+ *
+ * Until OBB support, every entry name was `file.name` and the archive was flat. An expansion has
+ * to land at `Android/obb/<pkg>/<leaf>`, so the entry name stops being derivable from the file and
+ * becomes a decision the caller makes.
+ */
+internal data class ZipSource(val file: File, val entryName: String)
+
+/**
+ * The entry order for one bundle.
+ *
+ * `.xapk` puts the sidecars first — an installer reading the archive as a stream reaches
+ * `manifest.json` before anything large — and the expansions last, because they are the biggest
+ * entries and nothing needs them early. `.apks` keeps its existing APKs-then-sidecars order, and
+ * drops expansions entirely: that format has no expansion convention, and writing entries no
+ * reader looks for would only inflate the file.
+ *
+ * The `.apks` order is historical rather than load-bearing — a reader working from the central
+ * directory (SAI, Thor's own `BundleZip`) is indifferent to it either way — which is exactly why
+ * it is preserved here instead of unified with the `.xapk` order.
+ */
+internal fun zipSourcesFor(
+    format: BundleFormat,
+    apkFiles: List<File>,
+    sidecars: List<File>,
+    expansions: List<ZipSource>
+): List<ZipSource> {
+    val apks = apkFiles.map { ZipSource(it, it.name) }
+    val extras = sidecars.map { ZipSource(it, it.name) }
+    return if (format == BundleFormat.XAPK) extras + apks + expansions else apks + extras
 }
