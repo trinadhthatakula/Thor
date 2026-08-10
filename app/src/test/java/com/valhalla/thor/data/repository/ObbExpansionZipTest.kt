@@ -130,6 +130,51 @@ class ObbExpansionZipTest {
     }
 
     @Test
+    fun `too many expansions refuses without creating the staging directory`() {
+        // The byte budget does not bound the entry count: a manifest-free archive has every *.obb
+        // entry treated as an expansion, and a million one-byte entries costs a million inodes and a
+        // million cp invocations while spending almost none of that budget.
+        val entries = (1..MAX_EXPANSION_ENTRIES + 1).map {
+            "Android/obb/com.example.game/p$it.obb" to ByteArray(1)
+        }
+        val zip = zipOf(*entries.toTypedArray())
+        val out = File(temp.root, "out-never-created")
+
+        assertThrows(InstallRefusedException::class.java) {
+            extractExpansions(
+                zip,
+                entries.map { (name, _) -> ResolvedExpansion(name, name.substringAfterLast('/')) },
+                out
+            )
+        }
+        assertFalse(out.exists())
+    }
+
+    @Test
+    fun `the same leaf twice refuses rather than overwriting`() {
+        // Unreachable through resolveExpansions, which drops repeats. Reaching it means a caller
+        // built the list some other way, and overwriting would return two entries pointing at one
+        // file and charge the budget twice. Case-insensitive: the staging volume usually is.
+        val zip = zipOf(
+            "Android/obb/com.example.game/main.obb" to ByteArray(8) { 1 },
+            "Android/obb/com.example.game/other.obb" to ByteArray(8) { 2 }
+        )
+        val out = temp.newFolder("dup-out")
+
+        assertThrows(InstallRefusedException::class.java) {
+            extractExpansions(
+                zip,
+                listOf(
+                    ResolvedExpansion("Android/obb/com.example.game/main.obb", "main.obb"),
+                    ResolvedExpansion("Android/obb/com.example.game/other.obb", "MAIN.OBB")
+                ),
+                out
+            )
+        }
+        assertEquals(emptyList<File>(), out.listFiles()?.toList().orEmpty())
+    }
+
+    @Test
     fun `an unsafe leaf refuses even if it somehow reached this far`() {
         // Defence in depth: resolveExpansions is the gate, but this function writes files and
         // must not depend on having been called correctly.
