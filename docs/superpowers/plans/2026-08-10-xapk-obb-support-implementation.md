@@ -1065,7 +1065,7 @@ class ObbExpansionsTest {
         assertFalse(isSafeObbLeafName(".."))
         assertFalse(isSafeObbLeafName("a/b.obb"))
         assertFalse(isSafeObbLeafName("a\\b.obb"))
-        assertFalse(isSafeObbLeafName("main.obb "))
+        assertFalse(isSafeObbLeafName("main.obb "))
         assertFalse(isSafeObbLeafName("main.obb\n"))
         assertFalse(isSafeObbLeafName("main.txt"))
     }
