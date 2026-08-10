@@ -5,6 +5,8 @@ package com.valhalla.thor.data.repository
 
 import com.valhalla.thor.domain.model.BundleFormat
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
@@ -73,5 +75,57 @@ class AppBundleBuilderTest {
 
         assertEquals(listOf("base.apk"), sources.map { it.entryName })
         assertEquals(listOf(File("/tmp/staging/base.apk")), sources.map { it.file })
+    }
+
+    @Test
+    fun `the copy command quotes both paths and refuses a hostile leaf`() {
+        val command = obbCopyCommand(
+            externalStorageDir = "/storage/emulated/0",
+            packageName = "com.example.game",
+            leaf = "main.12.com.example.game.obb",
+            destPath = "/storage/emulated/0/Android/data/com.valhalla.thor/cache/obb/main.obb"
+        )!!
+
+        assertTrue(
+            command,
+            command.contains("'/storage/emulated/0/Android/obb/com.example.game/main.12.com.example.game.obb'")
+        )
+        assertTrue(
+            command,
+            command.contains("'/storage/emulated/0/Android/data/com.valhalla.thor/cache/obb/main.obb'")
+        )
+
+        assertNull(
+            obbCopyCommand("/storage/emulated/0", "com.example.game", "../../evil.obb", "/tmp/x")
+        )
+        assertNull(
+            obbCopyCommand("/storage/emulated/0", "com.example.game", "main.obb", "/tmp/it's")
+        )
+        assertNull(
+            obbCopyCommand("/storage/emulated/0", "bad;name", "main.obb", "/tmp/x")
+        )
+    }
+
+    @Test
+    fun `expansions are declared with the entry name as the install path`() {
+        // What a third-party installer reads. file == install_path is the shape the reference
+        // installers assume, and it also means a manifest-blind installer that scans for *.obb
+        // entries lands them in the right place by accident.
+        val declared = expansionDescriptors(
+            listOf(
+                ZipSource(File("/tmp/a"), "Android/obb/com.example.game/main.obb"),
+                ZipSource(File("/tmp/b"), "Android/obb/com.example.game/patch.obb")
+            )
+        )
+
+        assertEquals(
+            listOf(
+                "Android/obb/com.example.game/main.obb",
+                "Android/obb/com.example.game/patch.obb"
+            ),
+            declared.map { it.file }
+        )
+        assertEquals(declared.map { it.file }, declared.map { it.installPath })
+        assertTrue(declared.all { it.installLocation == "EXTERNAL_STORAGE" })
     }
 }
