@@ -67,7 +67,8 @@ data class XapkManifestInfo(
     @SerialName("version_name") val versionName: String? = null,
     @SerialName("permissions") val permissions: List<String> = emptyList(),
     @SerialName("icon") val iconFile: String? = null,
-    @SerialName("split_apks") val splitApks: List<XapkSplitApkInfo> = emptyList()
+    @SerialName("split_apks") val splitApks: List<XapkSplitApkInfo> = emptyList(),
+    @SerialName("expansions") val expansions: List<XapkExpansionInfo> = emptyList()
 ) {
     /** File name of the entry flagged as `id == "base"`, if any. */
     fun baseApkFile(): String? = splitApks.firstOrNull { it.id.equals("base", ignoreCase = true) }?.file
@@ -80,6 +81,20 @@ data class XapkManifestInfo(
 data class XapkSplitApkInfo(
     @SerialName("file") val file: String,
     @SerialName("id") val id: String = ""
+)
+
+/**
+ * Reader-side mirror of the writer's expansion descriptor
+ * ([com.valhalla.thor.data.util.XapkExpansion]).
+ *
+ * Both fields are nullable and default to null on purpose: this parses an archive someone else
+ * built, and a missing key must not take the whole manifest — and with it the split list — down.
+ * Validation of what these strings actually mean lives in `resolveExpansions`, not here.
+ */
+@Serializable
+data class XapkExpansionInfo(
+    @SerialName("file") val file: String? = null,
+    @SerialName("install_path") val installPath: String? = null
 )
 
 /**
