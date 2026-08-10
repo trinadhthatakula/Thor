@@ -31,6 +31,19 @@ private const val TAG = "AppDataArchiveGateway"
 /** Where the shell writes the per-class tars. One directory so a crashed job's leftovers are findable. */
 private const val STAGING_DIR = "data_archive_staging"
 
+/**
+ * True when [name] is safe as a per-class staging filename.
+ *
+ * Only the ENTIRE name being `.` or `..` is rejected (path-traversal components). A name that merely
+ * contains a dot — `ce.tar`, `ce.tar.gz.enc`, `ext-data.tar.enc` — is accepted. No `/` is allowed
+ * because that would escape the staging directory via `File(dir, name)`.
+ *
+ * Extracted from [AppDataArchiveGatewayImpl.stagingFile]'s `require` so the predicate can be pinned
+ * by a test without instantiating the Android class.
+ */
+internal fun isSafeStagingName(name: String): Boolean =
+    name.isNotBlank() && !name.contains('/') && name != ".." && name != "."
+
 @Single(binds = [AppDataArchiveGateway::class])
 internal class AppDataArchiveGatewayImpl(
     private val context: Context,
@@ -46,20 +59,24 @@ internal class AppDataArchiveGatewayImpl(
     }
 
     /**
-     * Resolves and creates the single staging directory. All `stagingFile` calls land here, so the
+     * Resolves and creates the single staging directory. All [stagingFile] calls land here, so the
      * canonical path used in [tarClass]'s traversal guard is always the same base.
+     *
+     * §7.1 provides for an `externalCacheDir` fallback when internal cache is unavailable. This
+     * implementation does not provide one (§14 limitation). A staged tar is plaintext app data;
+     * external cache is on the shared external storage volume and is world-readable on some device
+     * configurations. Writing plaintext app data there would defeat the exact property the rest of
+     * this feature is built around. If `cacheDir` is unavailable the job will fail loudly rather than
+     * silently downgrade to a less secure location.
      */
     private suspend fun stagingRoot(): File = withContext(ioDispatcher) {
         File(context.cacheDir, STAGING_DIR).also { it.mkdirs() }
     }
 
     override suspend fun stagingFile(name: String): File = withContext(ioDispatcher) {
-        // Simple filename only — no path separator, no `.` or `..` component. `isQuotableAbsolutePath`
-        // does not normalise, so a name like `../../etc/passwd` would pass that check and let a root
-        // `tar` write anywhere on the filesystem. This check is the first line of defence; the second
-        // is in [tarClass], which compares canonical paths before handing `out` to the shell.
-        // Latent now; not latent once restore parses member names from an untrusted archive header.
-        require(name.isNotBlank() && !name.contains('/') && name != ".." && name != ".") {
+        // Plain filename only — no path separator, no `.` or `..` component. See [isSafeStagingName]
+        // for the exact predicate and why ordinary dotted names (`ce.tar`, `ce.tar.gz.enc`) pass.
+        require(isSafeStagingName(name)) {
             "stagingFile requires a plain filename with no path components, got: $name"
         }
         File(stagingRoot(), name)
@@ -70,7 +87,7 @@ internal class AppDataArchiveGatewayImpl(
         //   1. No package-name validation — the raw string reaches a root shell directly.
         //   2. No `--user` — a bare `am force-stop` kills the package in every profile.
         //   3. The exit code from the privileged runner is not meaningful here anyway.
-        // `forceStopApp` already routes through the active gateway and includes the `--user` scoping.
+        // `forceStopApp` already routes through the active gateway and includes user scoping.
         // A failure is logged, not fatal: an app that was not running produces one, and refusing the
         // backup over it would refuse most backups.
         systemRepository.forceStopApp(packageName)
@@ -107,7 +124,7 @@ internal class AppDataArchiveGatewayImpl(
         // resolves `..` and symlinks, so the comparison is made on the real on-disk path.
         // Latent now (every caller passes a name Thor chose); not latent once restore parses member
         // names from an untrusted archive header and reaches this surface.
-        val stagingCanonical = stagingRoot().canonicalPath
+        val stagingCanonical = withContext(ioDispatcher) { stagingRoot().canonicalPath }
         val outCanonical = withContext(ioDispatcher) {
             runCatching { out.canonicalPath }.getOrNull()
         } ?: return TarOutcome.Failed("could not resolve canonical path for ${out.name}")
@@ -121,6 +138,9 @@ internal class AppDataArchiveGatewayImpl(
             ?: return TarOutcome.Failed("refused to build a tar command for ${dataClass.id}")
 
         val (exitCode, _) = systemRepository.executeShellCommand(command).getOrElse {
+            // Tar did not complete cleanly — the gateway threw. `out` may have been partially written,
+            // so delete it to avoid leaving plaintext app data on disk.
+            withContext(ioDispatcher) { out.delete() }
             return TarOutcome.Failed("tar could not be run: ${it.message}")
         }
 
@@ -137,9 +157,24 @@ internal class AppDataArchiveGatewayImpl(
         // The shell created the file as its own uid, so Thor cannot open it yet. 600, because the
         // contents are plaintext app data.
         val chown = chownFileCommand(out.absolutePath, android.os.Process.myUid())
-            ?: return TarOutcome.Failed("refused to build a chown command for ${out.name}")
-        systemRepository.executeShellCommand(chown).onFailure {
+        if (chown == null) {
+            // The chown builder refused. `out` exists at this point with plaintext data — delete it
+            // before returning, or this becomes the one exit path that silently leaves a staged tar.
+            withContext(ioDispatcher) { out.delete() }
+            return TarOutcome.Failed("refused to build a chown command for ${out.name}")
+        }
+
+        // Read the exit code rather than discarding it. `canRead()` alone is DAC-only and blind to
+        // SELinux policy; a non-zero exit is the more direct signal that the ownership transfer failed.
+        // Both signals are checked: a zero exit but an unreadable file is also a failure.
+        val (chownExit, _) = systemRepository.executeShellCommand(chown).getOrElse {
             Logger.e(TAG, "chown of ${out.name} failed", it)
+            withContext(ioDispatcher) { out.delete() }
+            return TarOutcome.Failed("chown for ${dataClass.id} failed: ${it.message}")
+        }
+        if (chownExit != 0) {
+            withContext(ioDispatcher) { out.delete() }
+            return TarOutcome.Failed("chown exited $chownExit for ${dataClass.id}")
         }
         return if (withContext(ioDispatcher) { out.canRead() }) {
             outcome
