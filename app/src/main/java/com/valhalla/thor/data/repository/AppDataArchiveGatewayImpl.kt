@@ -45,17 +45,35 @@ internal class AppDataArchiveGatewayImpl(
         Environment.getExternalStorageDirectory()?.absolutePath ?: ""
     }
 
+    /**
+     * Resolves and creates the single staging directory. All `stagingFile` calls land here, so the
+     * canonical path used in [tarClass]'s traversal guard is always the same base.
+     */
+    private suspend fun stagingRoot(): File = withContext(ioDispatcher) {
+        File(context.cacheDir, STAGING_DIR).also { it.mkdirs() }
+    }
+
     override suspend fun stagingFile(name: String): File = withContext(ioDispatcher) {
-        val dir = File(context.cacheDir, STAGING_DIR)
-        dir.mkdirs()
-        File(dir, name)
+        // Simple filename only — no path separator, no `.` or `..` component. `isQuotableAbsolutePath`
+        // does not normalise, so a name like `../../etc/passwd` would pass that check and let a root
+        // `tar` write anywhere on the filesystem. This check is the first line of defence; the second
+        // is in [tarClass], which compares canonical paths before handing `out` to the shell.
+        // Latent now; not latent once restore parses member names from an untrusted archive header.
+        require(name.isNotBlank() && !name.contains('/') && name != ".." && name != ".") {
+            "stagingFile requires a plain filename with no path components, got: $name"
+        }
+        File(stagingRoot(), name)
     }
 
     override suspend fun forceStop(packageName: String) {
-        // Routed through the same executeShellCommand every other command uses, so it follows the
-        // active gateway rather than assuming root. A failure is logged, not fatal: an app that was
-        // not running produces one, and refusing the backup over it would refuse most backups.
-        systemRepository.executeShellCommand("am force-stop '$packageName'")
+        // Delegated to `forceStopApp` rather than hand-rolled. Hand-rolling has three defects:
+        //   1. No package-name validation — the raw string reaches a root shell directly.
+        //   2. No `--user` — a bare `am force-stop` kills the package in every profile.
+        //   3. The exit code from the privileged runner is not meaningful here anyway.
+        // `forceStopApp` already routes through the active gateway and includes the `--user` scoping.
+        // A failure is logged, not fatal: an app that was not running produces one, and refusing the
+        // backup over it would refuse most backups.
+        systemRepository.forceStopApp(packageName)
             .onFailure { Logger.e(TAG, "force-stop of $packageName failed", it) }
     }
 
@@ -84,6 +102,19 @@ internal class AppDataArchiveGatewayImpl(
         out: File,
         compress: Boolean,
     ): TarOutcome {
+        // Guard against path traversal before `out.absolutePath` reaches a root shell. `absolutePath`
+        // does not normalise, so `..` components survive `isQuotableAbsolutePath`. `canonicalPath`
+        // resolves `..` and symlinks, so the comparison is made on the real on-disk path.
+        // Latent now (every caller passes a name Thor chose); not latent once restore parses member
+        // names from an untrusted archive header and reaches this surface.
+        val stagingCanonical = stagingRoot().canonicalPath
+        val outCanonical = withContext(ioDispatcher) {
+            runCatching { out.canonicalPath }.getOrNull()
+        } ?: return TarOutcome.Failed("could not resolve canonical path for ${out.name}")
+        if (!outCanonical.startsWith("$stagingCanonical/")) {
+            return TarOutcome.Failed("${out.name} is not inside the staging directory")
+        }
+
         val root = dataClassRoot(dataClass, packageName, thorUserId(), externalStorageDir())
             ?: return TarOutcome.Failed("no usable path for ${dataClass.id}")
         val command = tarCreateCommand(root, out.absolutePath, entries, compress)

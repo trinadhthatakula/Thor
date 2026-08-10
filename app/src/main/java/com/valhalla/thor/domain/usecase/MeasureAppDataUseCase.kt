@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.domain.usecase
 
+import com.valhalla.thor.data.backup.DataArchiveCapabilityCache
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.DataClassSize
 import com.valhalla.thor.domain.model.isUsablePackageName
@@ -21,8 +22,18 @@ data class AppDataMeasurement(
     val sizes: Map<DataClass, DataClassSize>,
 )
 
+/**
+ * `domain` → `data` import is deliberate. [DataArchiveCapabilityCache] lives in `data/backup`; this
+ * use case in `domain/usecase` imports it directly, the same shape as the archive use cases importing
+ * `AppArchiveCipher`. The cache holds the `hasAnyPrivilege` short-circuit (no `su` prompt on an
+ * ungrantd-Magisk device at sheet open) and the per-[PrivilegeState] cache (one shell round trip, not
+ * one per sheet open). Bypassing it via [AppDataProbe] directly loses both properties.
+ */
 @Factory
-class MeasureAppDataUseCase(private val probe: AppDataProbe) {
+class MeasureAppDataUseCase(
+    private val cache: DataArchiveCapabilityCache,
+    private val probe: AppDataProbe,
+) {
 
     suspend operator fun invoke(packageName: String): AppDataMeasurement {
         // Checked here as well as inside every command builder. The builders refuse individually and
@@ -31,7 +42,7 @@ class MeasureAppDataUseCase(private val probe: AppDataProbe) {
         if (!isUsablePackageName(packageName)) {
             return AppDataMeasurement(supported = false, sizes = emptyMap())
         }
-        if (!probe.probeDataArchiveCapability()) {
+        if (!cache.isSupported()) {
             // Deliberately no measurements: four shell round trips that will each fail, rendered as
             // four "unknown" rows, is a worse answer than one honest refusal.
             return AppDataMeasurement(supported = false, sizes = emptyMap())
