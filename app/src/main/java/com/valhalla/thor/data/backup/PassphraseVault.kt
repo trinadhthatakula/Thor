@@ -165,6 +165,8 @@ class PassphraseVault(
         val byteBuffer = Charsets.UTF_8.encode(CharBuffer.wrap(passphrase))
         val passphraseBytes = ByteArray(byteBuffer.limit())
         byteBuffer.get(passphraseBytes)
+        // hasArray() is false for direct (off-heap) ByteBuffers; Charset.encode() always returns a
+        // heap buffer on the JDK, so zeroing is effective in practice — the guard is for safety.
         if (byteBuffer.hasArray()) byteBuffer.array().fill(0)
 
         val wrapped = try {
@@ -194,6 +196,7 @@ class PassphraseVault(
                 val charBuf = Charsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(plainBytes))
                 CharArray(charBuf.limit()).also { result ->
                     charBuf.get(result)
+                    // Same hasArray() tradeoff as in remember(): direct CharBuffers are not zeroed.
                     if (charBuf.hasArray()) charBuf.array().fill(0.toChar())
                 }
             } finally {
@@ -216,7 +219,15 @@ class PassphraseVault(
                 e is KeyPermanentlyInvalidatedException ||
                 e is IllegalArgumentException
             ) {
-                store.write(null)
+                // Guard the clear: a failure here must not escape recall() — the never-throw
+                // contract matters more than whether the stale blob is removed on this call.
+                // DataStorePassphraseVaultStore.write() already catches IOException; this outer
+                // guard covers anything else (e.g. a DataStore internal error).
+                try {
+                    store.write(null)
+                } catch (clearEx: Exception) {
+                    Logger.e("PassphraseVault", "could not clear stale vault blob; next launch will retry", clearEx)
+                }
             }
             null
         }

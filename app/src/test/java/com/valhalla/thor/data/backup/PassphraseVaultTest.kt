@@ -130,4 +130,30 @@ class PassphraseVaultTest {
 
         assertNull(store.blob)
     }
+
+    @Test
+    fun `a transient failure does not clear the blob`() = runTest {
+        // Pins the non-clearing branch of the selective-clear guard. A locked device raises a
+        // generic KeyStoreException — not KeyPermanentlyInvalidatedException — so setUnlockedDevice
+        // Required(true) causes a transient failure that recovers once the device is unlocked.
+        // Clearing the blob on that failure permanently destroys the cache for a recoverable state.
+        // RuntimeException stands in for KeyStoreException here because KeyStoreException is an
+        // Android class that would need mocking; the vault catches Exception broadly, so any
+        // non-listed throwable exercises the no-clear path.
+        val store = FakeStore()
+        PassphraseVault(store, FakeProvider()).remember("correct horse".toCharArray())
+        val blobBefore = checkNotNull(store.blob) { "store should have a blob after remember()" }
+
+        val result = PassphraseVault(
+            store,
+            object : VaultKeyProvider {
+                override fun wrap(plaintext: ByteArray) = plaintext
+                override fun unwrap(blob: ByteArray): ByteArray =
+                    throw RuntimeException("device temporarily locked")
+            }
+        ).recall()
+
+        assertNull(result)
+        assertEquals(blobBefore, store.blob) // blob must survive a transient failure
+    }
 }
