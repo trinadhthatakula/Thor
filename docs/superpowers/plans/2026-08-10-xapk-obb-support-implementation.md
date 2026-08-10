@@ -1151,11 +1151,25 @@ internal fun expansionEntryName(packageName: String, leaf: String): String =
     "${expansionDirFor(packageName)}/$leaf"
 
 /**
- * A file name Thor is willing to create inside `Android/obb/<pkg>/`.
+ * A file name Thor is willing to create inside `Android/obb/<pkg>/`, or to hand to a root shell.
  *
- * Stricter than `isSafeEntryFileName` by one rule — the `.obb` extension — because that extension
- * is what the platform's own expansion loader looks for, and because it keeps a hostile archive
- * from dropping an arbitrarily-typed file into a world-readable directory.
+ * Stricter than `isSafeEntryFileName` by two rules:
+ *
+ *  - **The `.obb` extension**, because that is what the platform's own expansion loader looks for,
+ *    and it keeps a hostile archive from dropping an arbitrarily-typed file into a world-readable
+ *    directory.
+ *  - **No single quote.** This is a shell-injection guard, not tidiness. The leaf is interpolated
+ *    into single-quoted `cp` commands that run as root, and it is untrusted in *both* directions:
+ *    on the pack side it comes from `stat` on the target app's own `Android/obb/<pkg>/`, a
+ *    directory that app can write to with no permission at all. So any installed app could pick a
+ *    name like `main'; id > /sdcard/pwned; echo '.obb` and choose bytes Thor feeds to a root
+ *    shell. Scoped to `'` only, matching `obbProbeCommand`'s reasoning — single-quoted, so the one
+ *    character that breaks out is the quote itself. Interior spaces stay legal: `main 1.obb` is a
+ *    real name and `ObbProbeParserTest` locks it as valid.
+ *
+ * The guard lives here rather than in each caller because this is the single definition both
+ * directions share. If a call site ever switches to double quotes, fix this predicate — `"`,
+ * `` ` `` and `$` would then all be live — rather than patching the call site.
  */
 internal fun isSafeObbLeafName(name: String): Boolean =
     name.isNotBlank() &&
@@ -1163,6 +1177,7 @@ internal fun isSafeObbLeafName(name: String): Boolean =
         name != ".." &&
         !name.contains('/') &&
         !name.contains('\\') &&
+        !name.contains('\'') &&
         name.none { it.isISOControl() } &&
         name.endsWith(".obb", ignoreCase = true)
 
@@ -1184,7 +1199,11 @@ internal data class ResolvedExpansion(val entryName: String, val leafName: Strin
  *     dropped rather than treated as an error, so a manifest listing an optional patch file that
  *     was not shipped still installs.
  *  5. Two declarations resolving to the same leaf keep the first. Later ones would silently
- *     overwrite the earlier extraction.
+ *     overwrite the earlier extraction. The key is `leaf.lowercase()`, not `leaf`: the volumes
+ *     this writes to — emulated external storage, FAT/exFAT — are case-insensitive, so `main.obb`
+ *     and `MAIN.OBB` are one file, and a case-sensitive key lets the second declaration through to
+ *     perform exactly the overwrite this rule exists to prevent. The no-arg `lowercase()` is
+ *     locale-invariant, which is what a filesystem comparison wants.
  *  6. **Manifest-free fallback:** when nothing is declared, any entry already at
  *     `Android/obb/<packageName>/<leaf>.obb` is taken at its own path. APKPure archives in the
  *     wild omit the block while carrying the files, and the reference installer does exactly this.
@@ -1208,7 +1227,7 @@ internal fun resolveExpansions(
         val leaf = installPath.removePrefix(prefix)
         if (!isSafeObbLeafName(leaf)) return
         if (entryName !in present) return
-        if (!seenLeaves.add(leaf)) return
+        if (!seenLeaves.add(leaf.lowercase())) return
         out += ResolvedExpansion(entryName, leaf)
     }
 
@@ -1291,7 +1310,7 @@ the first path write in an installer that is otherwise flat. Refs #164."
 
 **Files:**
 - Modify: `app/src/main/java/com/valhalla/thor/data/repository/AppBundleBuilderImpl.kt`
-- Test: `app/src/test/java/com/valhalla/thor/data/repository/AppBundleBuilderTest.kt` (the existing file that covers `stagedApkNames`; create it only if absent)
+- Test: `app/src/test/java/com/valhalla/thor/data/repository/AppBundleBuilderTest.kt` — **a new file.** `stagedApkNames`'s existing coverage lives in `StagedApkNamesTest.kt` and stays there; do not move it, and do not expect it to appear in this class's results.
 
 **Interfaces:**
 - Consumes: the existing private `zipFiles(files: List<File>, zipFile: File)`.
@@ -1450,7 +1469,7 @@ The `emptyList()` is deliberate and temporary — Task 6 supplies the real list.
 ```
 cd /Users/trinadhthatakula/StudioProjects/Thor && rm -rf app/build/test-results/testFossDebugUnitTest && ./gradlew :app:testFossDebugUnitTest --rerun-tasks --tests "com.valhalla.thor.data.repository.AppBundleBuilderTest"
 ```
-Expected: PASS, with the pre-existing `stagedApkNames` tests still green.
+Expected: PASS. `stagedApkNames`'s own tests live in `StagedApkNamesTest.kt` and will not appear here — run the full suite if you want them confirmed.
 
 - [ ] **Step 6: Commit**
 
@@ -1571,7 +1590,11 @@ internal fun obbCopyCommand(
     if (!isSafeObbLeafName(leaf)) return null
     if (externalStorageDir.isBlank() || !externalStorageDir.startsWith('/')) return null
     if (!destPath.startsWith('/')) return null
-    if ((externalStorageDir + destPath).any { it == '\'' || it == '\n' }) return null
+    // `leaf` is in this sum as well as the other two, even though isSafeObbLeafName already
+    // rejects a quote. Defence in depth: this command runs as root, and the cost of the redundant
+    // check is nothing next to the cost of the predicate ever being relaxed by someone who did not
+    // read why it is strict.
+    if ((externalStorageDir + destPath + leaf).any { it == '\'' || it == '\n' }) return null
 
     val source = "$externalStorageDir/${expansionDirFor(packageName)}/$leaf"
     return "cp -f '$source' '$destPath' && chmod 644 '$destPath'"
