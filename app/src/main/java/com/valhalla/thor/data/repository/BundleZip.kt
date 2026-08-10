@@ -29,6 +29,17 @@ internal const val MAX_METADATA_ENTRY_BYTES = 8L * 1024 * 1024
 internal const val MAX_EXTRACTED_TOTAL_BYTES = 4L * 1024 * 1024 * 1024
 
 /**
+ * Ceiling on the total bytes of expansion files one archive may unpack.
+ *
+ * Separate from [MAX_EXTRACTED_TOTAL_BYTES], and much larger, because it bounds a different thing.
+ * That constant caps a set of APKs, where 4 GiB is already absurd; a single game's expansion set
+ * legitimately reaches gigabytes, so sharing the cap would reject real archives. This is a
+ * zip-bomb backstop, not a policy about how big a game may be — the free-space check in
+ * `ObbInstaller` is what actually protects the device.
+ */
+internal const val MAX_EXPANSION_TOTAL_BYTES = 16L * 1024 * 1024 * 1024
+
+/**
  * The archive was refused, not installed.
  *
  * Its own type rather than a bare IOException because the mode ladders in InstallerRepositoryImpl
@@ -349,4 +360,75 @@ object BundleZip {
         }
         return out
     }
+}
+
+/** One expansion unpacked into Thor's staging directory, flat, named by its leaf. */
+internal data class ExtractedExpansion(val file: File, val leafName: String)
+
+/**
+ * Unpack the resolved expansions into [outDir], flat.
+ *
+ * Top-level rather than a member of [BundleZip] because everything else about expansions is
+ * top-level in this package ([resolveExpansions], [isSafeObbLeafName], [expansionEntryName]), and
+ * because this function's contract is the pure one those state — it is not part of the
+ * random-access-reading abstraction [BundleZip] exists to be.
+ *
+ * All-or-nothing, exactly like [BundleZip.extractEntries]: on any refusal every file written by this
+ * call is deleted, because half a game's expansion data left in the staging directory would be
+ * picked up as complete by the next attempt.
+ *
+ * The output is flat even though the destination is not. Building `Android/obb/<pkg>/` here would
+ * mean creating directories from archive-supplied names inside Thor's own storage for no benefit —
+ * `ObbInstaller` knows the destination and derives it from the *package being installed*, never
+ * from the archive.
+ *
+ * Callers must pass expansions that came from [resolveExpansions]. The leaf is re-validated anyway;
+ * this function writes files and does not get to assume it was called correctly.
+ */
+internal fun extractExpansions(
+    zip: File,
+    expansions: List<ResolvedExpansion>,
+    outDir: File,
+    maxTotalBytes: Long = MAX_EXPANSION_TOTAL_BYTES
+): List<ExtractedExpansion> {
+    if (expansions.isEmpty()) return emptyList()
+
+    val written = mutableListOf<ExtractedExpansion>()
+
+    fun refuse(message: String): Nothing {
+        written.forEach { it.file.delete() }
+        throw InstallRefusedException(message)
+    }
+
+    if (!outDir.isDirectory && !outDir.mkdirs()) {
+        throw InstallRefusedException(
+            "this device would not let Thor create a staging directory for the game data."
+        )
+    }
+
+    var budget = maxTotalBytes
+    ZipFile(zip).use { archive ->
+        expansions.forEach { expansion ->
+            if (!isSafeObbLeafName(expansion.leafName)) {
+                refuse("this archive names a game data file Thor will not create.")
+            }
+            val entry = archive.getEntry(expansion.entryName)
+                ?: refuse("this archive lists game data it does not contain.")
+            if (entry.isDirectory) {
+                refuse("this archive lists a folder where a game data file should be.")
+            }
+
+            val dest = File(outDir, expansion.leafName)
+            val copied = archive.getInputStream(entry).use { input ->
+                dest.outputStream().use { output -> input.copyAtMostTo(output, budget) }
+            }
+            if (copied == null) {
+                dest.delete()
+                refuse("this archive's game data is larger than Thor will unpack.")
+            }
+            budget -= copied
+            written += ExtractedExpansion(dest, expansion.leafName)
+        }
+    }
+    return written
 }
