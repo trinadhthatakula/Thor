@@ -70,10 +70,22 @@ Three design decisions worth not re-litigating:
 
 Neither is desk-testable, and a green install hides both:
 
-1. **Missing OBB.** A real XAPK carries `Android/obb/<pkg>/*.obb` and Thor exports none. Export an
-   app that *has* an OBB directory, install the result, and launch it: it will install cleanly and
-   fail at play time. Assert the absence deliberately rather than letting a green install imply the
-   assets travelled. The explain string already says so up front.
+1. ~~**Missing OBB.**~~ ✅ **Fixed, both directions** — GH#164's OBB gap, shipped on
+   `feat/xapk-obb-support` (design `docs/superpowers/specs/2026-08-10-xapk-obb-support-design.md`,
+   plan `docs/superpowers/plans/2026-08-10-xapk-obb-support-implementation.md`). Export probes
+   `Android/obb/<pkg>` through the privileged shell, stages each expansion via `externalCacheDir` —
+   the only location Thor's uid and the shell's uid can both reach — writes them at
+   `Android/obb/<pkg>/<leaf>.obb` and declares them in the manifest's `expansions` block. Install
+   validates a bundled block against the package being installed and places the files, refusing
+   **before** installing anything when placement is impossible. **Not root-only:**
+   `executeShellCommand` is routed through `runGatewayAction`, so Shizuku works too; only Dhizuku's
+   device-owner process cannot see another package's external directories, and there the `.xapk`
+   chip is disabled with the reason shown. The explain string that *asserted* the gap has been
+   retracted in all five locales — it claimed Android 11 stops any app reading another app's OBB
+   folder, which is true of an ordinary app and false of Thor. The device checks this row asked for
+   have moved into the plan's Task 12 Step 6 (nine of them, root and Shizuku both) and are still
+   **unrun** — treat the feature as desk-verified only: 927 unit tests cover every pure decision and
+   none of the privileged paths.
 2. **Metadata a different reader rejects.** Thor writes `manifest.json` for its own consumption, so
    nothing has validated it against a third-party parser. Check the split names, `total_size` and
    the split list against what SAI and APKPure actually read — a field Thor emits but nobody else
@@ -121,3 +133,11 @@ Phase 2 is its own branch behind a root gate and should not block a release.
 
 **#164 can be closed now** — everything in that issue is either shipped or deliberately declined
 (the raw split-folder output). **#51 stays open** on phase 2.
+
+**Amended 2026-08-10.** #164 *was* closed on 2026-08-03, and reopened: on 2026-08-06 `playagain96`
+posted a screen recording of an export whose `.xapk` carried no OBB *"even tho app has it visible and
+accessible"* — which is the row above, reported by the person the row was written for. A limitation
+stated in an explain string is still a missing feature. It is now fixed and #164 closes again on the
+merge of `feat/xapk-obb-support`, this time with nothing about it deferred. The sequencing note still
+holds for phase 2: nothing in the OBB work touches `/data/data`, so the root gate is still ahead of
+that work, not behind it.
