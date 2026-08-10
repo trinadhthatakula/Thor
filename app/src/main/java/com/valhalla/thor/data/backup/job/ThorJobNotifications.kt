@@ -3,7 +3,6 @@
 
 package com.valhalla.thor.data.backup.job
 
-import android.annotation.SuppressLint
 import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.ServiceInfo
@@ -16,11 +15,23 @@ import androidx.work.WorkManager
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.ThorJobProgress
+import com.valhalla.thor.util.Logger
 import java.util.UUID
 import org.koin.core.annotation.Single
 
+private const val TAG = "ThorJobNotifications"
+
 @Single
 class ThorJobNotifications(private val context: Context) {
+
+    // Hoisted out of the per-tick path — each from() call is a system service lookup.
+    private val notificationManager = NotificationManagerCompat.from(context)
+
+    init {
+        // Channel creation is idempotent; calling it once here avoids an IPC on every notification
+        // post rather than relying on the caller to guard it.
+        ensureChannel()
+    }
 
     fun foregroundInfo(
         kind: ThorJobKind,
@@ -39,20 +50,38 @@ class ThorJobNotifications(private val context: Context) {
         }
     }
 
-    // MissingPermission: areNotificationsEnabled() is the runtime guard. NotificationManagerCompat
-    // is annotated @RequiresPermission(POST_NOTIFICATIONS) but lint cannot model that check as
-    // satisfying the annotation — it sees the method call, not the guard above it. A foreground
-    // service's own notification is exempt from POST_NOTIFICATIONS on the platform, but this call
-    // updates the notification content directly; the guard above handles API 33+ runtime revocation.
-    @SuppressLint("MissingPermission")
+    /**
+     * Post or refresh the progress notification.
+     *
+     * Returns early when notifications are globally disabled — the foreground service still runs,
+     * surfaced in the system's Task Manager row rather than the shade; the cancel PendingIntent
+     * WorkManager built keeps working on that surface. This early return is a cheap IPC guard, not a
+     * gate on POST_NOTIFICATIONS specifically.
+     *
+     * `POST_NOTIFICATIONS` can be revoked while the job runs. If a revocation races a [notify] call,
+     * the resulting [SecurityException] is caught so that a revoked permission does not fail the backup.
+     */
     fun update(kind: ThorJobKind, progress: ThorJobProgress, jobId: UUID) {
-        val manager = NotificationManagerCompat.from(context)
-        ensureChannel(manager)
-        // No POST_NOTIFICATIONS gate: a foreground service's own notification is exempt from that
-        // permission, and gating it would silently drop the progress UI on API 33+ devices where the
-        // user declined the prompt Thor shows for the bulk-result notification.
-        if (!manager.areNotificationsEnabled()) return
-        manager.notify(notificationId(kind), build(kind, progress, jobId))
+        if (!notificationManager.areNotificationsEnabled()) return
+        try {
+            notificationManager.notify(notificationId(kind), build(kind, progress, jobId))
+        } catch (e: SecurityException) {
+            // POST_NOTIFICATIONS revoked between areNotificationsEnabled() and notify(). The backup
+            // continues; the shade row is lost for the remainder of this run. areNotificationsEnabled
+            // can race a revocation — this is the BulkResultNotifier precedent applied to a longer window.
+            Logger.e(TAG, "${kind.id}: notify() denied after revocation, continuing", e)
+        }
+    }
+
+    /**
+     * Cancel the notification for [kind].
+     *
+     * On the happy path WorkManager cancels the id it owns via setForeground when the job finishes.
+     * On the setForeground-failed path nothing else cancels it, so [ThorJobWorker] calls this from
+     * its `finally` on every terminal path. Idempotent — a double cancel is safe.
+     */
+    fun cancel(kind: ThorJobKind) {
+        notificationManager.cancel(notificationId(kind))
     }
 
     private fun build(kind: ThorJobKind, progress: ThorJobProgress, jobId: UUID) =
@@ -83,8 +112,8 @@ class ThorJobNotifications(private val context: Context) {
 
     private fun notificationId(kind: ThorJobKind) = BASE_NOTIFICATION_ID + kind.ordinal
 
-    private fun ensureChannel(manager: NotificationManagerCompat) {
-        manager.createNotificationChannel(
+    private fun ensureChannel() {
+        notificationManager.createNotificationChannel(
             NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManager.IMPORTANCE_LOW)
                 .setName(context.getString(R.string.job_channel_name))
                 .setDescription(context.getString(R.string.job_channel_description))

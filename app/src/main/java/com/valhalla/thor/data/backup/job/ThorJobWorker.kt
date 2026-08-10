@@ -18,6 +18,12 @@ import kotlinx.coroutines.CancellationException
 private const val TAG = "ThorJobWorker"
 
 /**
+ * Minimum interval between notification updates on a single job. The in-memory [JobRegistry] is
+ * updated on every [publish] call regardless; only the IPC to NotificationManagerService is throttled.
+ */
+private const val NOTIFICATION_INTERVAL_MS = 1_000L
+
+/**
  * Base class for Thor's long-running work: foreground notification, progress reporting, and one
  * failure policy.
  *
@@ -33,6 +39,7 @@ abstract class ThorJobWorker(
     params: WorkerParameters,
     private val notifications: ThorJobNotifications,
     private val registry: JobRegistry,
+    private val keyHolder: ArchiveKeyHolder,
 ) : CoroutineWorker(appContext, params) {
 
     protected abstract val kind: ThorJobKind
@@ -41,6 +48,10 @@ abstract class ThorJobWorker(
     protected abstract val initialLabel: String
 
     protected abstract suspend fun runJob(): Result
+
+    // Throttle state — one ThorJobWorker instance per WorkManager execution, so fields are safe.
+    private var lastNotifyMs = 0L
+    private var lastNotifyStage: ThorJobStage? = null
 
     final override suspend fun getForegroundInfo(): ForegroundInfo =
         notifications.foregroundInfo(
@@ -53,9 +64,16 @@ abstract class ThorJobWorker(
         // On API 31+ a foreground service cannot be started from the background, and a user who
         // backgrounds Thor between tapping and this line makes that a real outcome. The job then runs
         // without a foreground notification — more killable, but running — rather than crashing
-        // before it starts.
-        runCatching { setForeground(getForegroundInfo()) }
-            .onFailure { Logger.e(TAG, "${kind.id}: continuing without a foreground notification", it) }
+        // before it starts. CancellationException is rethrown explicitly: runCatching catches Throwable
+        // and would otherwise swallow a cancellation delivered during setForeground, causing runJob()
+        // to execute on an already-cancelled coroutine.
+        try {
+            setForeground(getForegroundInfo())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e(TAG, "${kind.id}: continuing without a foreground notification", e)
+        }
 
         return try {
             runJob()
@@ -68,21 +86,43 @@ abstract class ThorJobWorker(
             Logger.e(TAG, "${kind.id} failed", e)
             Result.failure(workDataOf(JOB_ERROR_KEY to (e.message ?: "unknown error")))
         } finally {
-            // Runs on cancellation too, because the rethrow above passes through it. The UI reads
-            // WorkManager's own persisted `WorkInfo.State` for the terminal outcome, so dropping the
-            // in-memory progress here loses nothing and bounds the map.
+            // All three run on cancellation too, because the rethrow above passes through here.
+            //
+            // registry: the UI reads WorkManager's own persisted WorkInfo.State for the terminal
+            // outcome, so dropping in-memory progress loses nothing and bounds the map.
             registry.clear(id)
+            //
+            // keyHolder: drop() ensures key material is not held beyond this job's lifetime. It
+            // covers cancellation and any throw that fires before the concrete worker's own take().
+            // If take() already ran, drop() is a no-op (ConcurrentHashMap.remove on an absent key).
+            // The path where the job is cancelled between put() and WorkManager starting doWork()
+            // cannot be covered here — Task 15's enqueue path is responsible for that branch.
+            keyHolder.drop(id.toString())
+            //
+            // notification: on the happy path WorkManager cancels the id it received via
+            // setForeground; on the setForeground-failed path this is the only cleanup. Idempotent.
+            notifications.cancel(kind)
         }
     }
 
     /**
      * Report progress to the UI and the notification.
      *
+     * [registry] is updated on every call — it is a cheap in-memory [StateFlow] write and the UI
+     * wants every tick. The notification is throttled: at most one update per [NOTIFICATION_INTERVAL_MS],
+     * or immediately on a stage change. This keeps IPC to NotificationManagerService off the hot path;
+     * without it, a gigabyte-scale copy publishing at 1 MiB chunks would fire ~1000 IPCs per job.
+     *
      * `setProgress` is deliberately absent — see [JobRegistry]. Calling it here would put an SQLite
      * write on the copy loop's hot path and cap observed updates at roughly one a second.
      */
     protected fun publish(progress: ThorJobProgress) {
         registry.publish(id, progress)
-        notifications.update(kind, progress, id)
+        val now = System.currentTimeMillis()
+        if (now - lastNotifyMs >= NOTIFICATION_INTERVAL_MS || progress.stage != lastNotifyStage) {
+            lastNotifyMs = now
+            lastNotifyStage = progress.stage
+            notifications.update(kind, progress, id)
+        }
     }
 }

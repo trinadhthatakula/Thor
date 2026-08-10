@@ -8,12 +8,8 @@
   values-fr and values-zh-rCN all carry them, or lint turns fatal.
 -->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
-    <!-- consumed by ThorJobNotifications — task 8 -->
-    <string name="job_backing_up" tools:ignore="UnusedResources">Backing up</string>
-    <!-- consumed by ThorJobNotifications — task 8 -->
-    <string name="job_restoring" tools:ignore="UnusedResources">Restoring</string>
-    <!-- consumed by ThorJobNotifications — task 8 -->
-    <string name="job_channel_name" tools:ignore="UnusedResources">Backup and restore</string>
-    <!-- consumed by ThorJobNotifications — task 8 -->
-    <string name="job_channel_description" tools:ignore="UnusedResources">Progress for backups and restores running in the background</string>
+    <string name="job_backing_up">Backing up</string>
+    <string name="job_restoring">Restoring</string>
+    <string name="job_channel_name">Backup and restore</string>
+    <string name="job_channel_description">Progress for backups and restores running in the background</string>
 </resources>
