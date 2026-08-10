@@ -128,14 +128,24 @@ class AppBundleBuilderImpl(
                 // because the XAPK manifest has to carry this number.
                 val totalApkSize = apkFiles.sumOf { it.length() }
 
-                // Only .xapk carries expansions, and only when the probe positively found some. An
-                // Undetermined probe cannot reach this point: the export sheet disables the .xapk
-                // chip on that result, so the format is not selectable. Re-checking here anyway
-                // keeps the builder honest if it is ever called from somewhere without that gate.
+                // Only .xapk carries expansions. The export sheet disables the .xapk chip on an
+                // Undetermined probe, so in practice this format is not even selectable then — but
+                // that gate is in the UI, and this is the only place that knows whether the bundle
+                // it is about to write is complete. Treating Undetermined as "no expansions" would
+                // make a lost privilege between rendering the chip and pressing Export produce a
+                // silently OBB-less .xapk, which is GH#164 reached from a new direction. So it
+                // fails instead, and the chip becomes defence in depth rather than the whole
+                // defence. (`autoFor` never returns XAPK, so no caller reaches this by default.)
                 val probe = if (format == BundleFormat.XAPK) {
                     systemRepository.probeObb(appInfo.packageName)
                 } else {
                     ObbProbe.None
+                }
+                if (probe is ObbProbe.Undetermined) {
+                    throw IOException(
+                        "whether this app has game data could not be determined, so a .xapk " +
+                            "might be incomplete"
+                    )
                 }
                 val obbFiles = (probe as? ObbProbe.Present)?.files.orEmpty()
 

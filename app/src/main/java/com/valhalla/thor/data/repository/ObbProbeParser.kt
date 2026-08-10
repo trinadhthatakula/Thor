@@ -144,8 +144,14 @@ internal fun parseObbProbe(exitCode: Int, output: String?): ObbProbe {
         val size = rest.substring(0, space).toLongOrNull()
             ?: return ObbProbe.Undetermined("an expansion file listing had an unreadable size")
         val name = rest.substring(space + 1).substringAfterLast('/')
-        if (!name.endsWith(".obb", ignoreCase = true)) {
-            return ObbProbe.Undetermined("an expansion file listing named a file that is not an .obb")
+        // The same predicate the copy command is gated on, deliberately. A name this rejects — not
+        // an .obb, or one Thor cannot safely hand to a shell — would pass here and then fail during
+        // staging, which makes Present a verdict the export cannot honour. The export sheet reads
+        // Present as "capturable", so anything uncapturable has to be caught here or that promise
+        // is a lie. The reason string names no filename: it is diagnostic, and the name is
+        // attacker-chosen.
+        if (!isSafeObbLeafName(name)) {
+            return ObbProbe.Undetermined("an expansion file listing named a file Thor cannot capture")
         }
         files += ObbFile(name, size)
     }

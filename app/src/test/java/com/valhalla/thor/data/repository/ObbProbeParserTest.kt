@@ -133,6 +133,27 @@ class ObbProbeParserTest {
     }
 
     @Test
+    fun `an obb Thor could not safely copy makes the probe Undetermined`() {
+        // The parser is gated on the same predicate as the copy command, so Present means "this is
+        // capturable" rather than merely "these files exist". Without that, a name the shell
+        // command refuses would be reported as Present, the export sheet would offer .xapk on the
+        // strength of it, and the export would then fail at staging time.
+        //
+        // A quote is the case that matters: the target app writes its own Android/obb directory
+        // with no permission at all, so the name is attacker-chosen input to a root shell.
+        val probe = parseObbProbe(
+            0,
+            listing(
+                "THOR_OBB 5 /storage/emulated/0/Android/obb/com.example.game/main'; id #.obb",
+                "THOR_OTHER 0",
+                "THOR_END"
+            )
+        )
+
+        assertTrue("$probe should be Undetermined", probe is ObbProbe.Undetermined)
+    }
+
+    @Test
     fun `an unparseable size makes the probe Undetermined`() {
         // Present(emptyList(), 0) would be the worst available answer here: it claims the directory
         // holds nothing at all, when in fact it holds an expansion file whose size we could not read.
