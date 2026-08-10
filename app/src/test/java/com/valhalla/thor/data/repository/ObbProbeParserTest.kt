@@ -1,0 +1,175 @@
+// SPDX-FileCopyrightText: 2025-2026 Trinadh Thatakula <github.com/trinadhthatakula/Thor>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package com.valhalla.thor.data.repository
+
+import com.valhalla.thor.domain.model.ObbFile
+import com.valhalla.thor.domain.model.ObbProbe
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class ObbProbeParserTest {
+
+    private fun listing(vararg lines: String) = lines.joinToString("\n")
+
+    @Test
+    fun `a normal listing yields Present with sizes`() {
+        val probe = parseObbProbe(
+            0,
+            listing(
+                "THOR_OBB 1048576 /storage/emulated/0/Android/obb/com.example.game/main.12.com.example.game.obb",
+                "THOR_OBB 2048 /storage/emulated/0/Android/obb/com.example.game/patch.12.com.example.game.obb",
+                "THOR_OTHER 0",
+                "THOR_END"
+            )
+        )
+
+        assertEquals(
+            ObbProbe.Present(
+                files = listOf(
+                    ObbFile("main.12.com.example.game.obb", 1048576L),
+                    ObbFile("patch.12.com.example.game.obb", 2048L)
+                ),
+                otherEntryCount = 0
+            ),
+            probe
+        )
+    }
+
+    @Test
+    fun `THOR_NODIR means the app genuinely has no OBB`() {
+        assertEquals(ObbProbe.None, parseObbProbe(0, listing("THOR_NODIR")))
+    }
+
+    @Test
+    fun `an empty OBB directory is None`() {
+        assertEquals(ObbProbe.None, parseObbProbe(0, listing("THOR_OTHER 0", "THOR_END")))
+    }
+
+    @Test
+    fun `THOR_NOPRIV is Undetermined, never None`() {
+        val probe = parseObbProbe(0, listing("THOR_NOPRIV"))
+        assertTrue("$probe should be Undetermined", probe is ObbProbe.Undetermined)
+    }
+
+    @Test
+    fun `a listing without the end sentinel is Undetermined`() {
+        // Truncated output — the shell died mid-script, or the gateway dropped the tail. Reading
+        // this as None is the exact failure the tri-state exists to prevent: it would offer a
+        // .xapk and silently build it without the game data.
+        val probe = parseObbProbe(
+            0,
+            listing("THOR_OBB 10 /storage/emulated/0/Android/obb/com.example.game/main.obb")
+        )
+        assertTrue("$probe should be Undetermined", probe is ObbProbe.Undetermined)
+    }
+
+    @Test
+    fun `a non-zero exit is Undetermined`() {
+        assertTrue(parseObbProbe(1, listing("THOR_NODIR")) is ObbProbe.Undetermined)
+    }
+
+    @Test
+    fun `null and blank output are Undetermined`() {
+        assertTrue(parseObbProbe(0, null) is ObbProbe.Undetermined)
+        assertTrue(parseObbProbe(0, "   ") is ObbProbe.Undetermined)
+    }
+
+    @Test
+    fun `a file name containing spaces survives, because only the first space is a separator`() {
+        val probe = parseObbProbe(
+            0,
+            listing(
+                "THOR_OBB 99 /storage/emulated/0/Android/obb/com.example.game/main 1.obb",
+                "THOR_OTHER 0",
+                "THOR_END"
+            )
+        )
+
+        assertEquals(listOf(ObbFile("main 1.obb", 99L)), (probe as ObbProbe.Present).files)
+    }
+
+    @Test
+    fun `garbage lines are ignored rather than fatal`() {
+        // Shells warn on stderr-merged streams and toybox versions differ; an unrecognised line
+        // must not turn a good listing into a refusal.
+        //
+        // This is the counterpart to the two Undetermined tests below, and the line between them is
+        // the prefix: a line WITHOUT THOR_OBB is somebody else's output and is skipped, while a
+        // malformed line WITH it is Thor's own and is fatal. Making noise fatal would refuse good
+        // listings on every chatty ROM.
+        val probe = parseObbProbe(
+            0,
+            listing(
+                "sh: something harmless",
+                "THOR_OBB 5 /storage/emulated/0/Android/obb/com.example.game/main.obb",
+                "THOR_OTHER 2",
+                "THOR_END"
+            )
+        )
+
+        assertEquals(ObbProbe.Present(listOf(ObbFile("main.obb", 5L)), 2), probe)
+    }
+
+    @Test
+    fun `a non-obb name on an OBB line makes the probe Undetermined`() {
+        // A file name containing a newline splits across two lines; the tail is garbage and the head
+        // loses its extension. The shell only prints THOR_OBB for a *.obb glob match, so this line
+        // is proof an expansion file exists that we could not characterise. Dropping it would let
+        // the builder pack a .xapk missing that file — GH#164 from a new direction — so it fails
+        // closed instead.
+        val probe = parseObbProbe(
+            0,
+            listing(
+                "THOR_OBB 5 /storage/emulated/0/Android/obb/com.example.game/main.obb.part",
+                "THOR_OTHER 1",
+                "THOR_END"
+            )
+        )
+
+        assertTrue("$probe should be Undetermined", probe is ObbProbe.Undetermined)
+    }
+
+    @Test
+    fun `an unparseable size makes the probe Undetermined`() {
+        // Present(emptyList(), 0) would be the worst available answer here: it claims the directory
+        // holds nothing at all, when in fact it holds an expansion file whose size we could not read.
+        val probe = parseObbProbe(
+            0,
+            listing(
+                "THOR_OBB notanumber /storage/emulated/0/Android/obb/com.example.game/main.obb",
+                "THOR_OTHER 0",
+                "THOR_END"
+            )
+        )
+
+        assertTrue("$probe should be Undetermined", probe is ObbProbe.Undetermined)
+    }
+
+    @Test
+    fun `the command quotes both interpolated values`() {
+        val command = obbProbeCommand("/storage/emulated/0", "com.example.game")
+
+        assertTrue(command!!, command.contains("'/storage/emulated/0/Android/obb'"))
+        assertTrue(command, command.contains("'/storage/emulated/0/Android/obb/com.example.game'"))
+        assertTrue(command, command.contains("THOR_END"))
+    }
+
+    @Test
+    fun `a package name that is not a package name yields no command at all`() {
+        // This string is assembled into a shell command. It comes from PackageManager rather than
+        // from user input, but a validator here means the shell does not have to be trusted with
+        // that assumption.
+        assertNull(obbProbeCommand("/storage/emulated/0", "com.example.game; rm -rf /"))
+        assertNull(obbProbeCommand("/storage/emulated/0", "../../etc"))
+        assertNull(obbProbeCommand("/storage/emulated/0", ""))
+        assertNull(obbProbeCommand("/storage/emulated/0", "com..example"))
+    }
+
+    @Test
+    fun `an external storage dir containing a quote is rejected too`() {
+        assertNull(obbProbeCommand("/storage/emu'lated/0", "com.example.game"))
+    }
+}
