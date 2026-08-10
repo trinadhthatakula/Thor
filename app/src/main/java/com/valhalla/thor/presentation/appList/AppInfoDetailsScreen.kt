@@ -422,14 +422,22 @@ fun AppInfoHeaderAndActions(
 /**
  * The tabbed detail body: everything below the action row.
  *
- * Takes a fully-loaded [DetailedAppInfo] and nothing else, so a host is free to render the header
- * and actions from a cheap [AppInfo] it already has and only pay for this once the details land.
+ * Takes a fully-loaded [DetailedAppInfo], so a host is free to render the header and actions from a
+ * cheap [AppInfo] it already has and only pay for this once the details land.
+ *
+ * [obbProbe] is **required with no default**, deliberately. Both hosts drive this from the same
+ * `AppInfoDetailsViewModel` that runs the probe, and a default of `null` reads as "still probing" —
+ * so a host that forgot to pass it would compile, pay the privileged round-trip and then render an
+ * empty card forever. That is not hypothetical: `AppInfoSheet` did exactly that while the parameter
+ * was optional. Requiring it turns the omission into a compile error. (Compose lint also wants
+ * `modifier` to be the first optional parameter, which an optional `obbProbe` ahead of it violates —
+ * the two constraints agree here.)
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppInfoDetailBody(
     details: DetailedAppInfo,
-    obbProbe: ObbProbe? = null,
+    obbProbe: ObbProbe?,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier) {
