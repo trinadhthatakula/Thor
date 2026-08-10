@@ -18,6 +18,7 @@ import com.valhalla.thor.domain.model.FilterType
 import com.valhalla.thor.domain.model.FreezeProfile
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.InstalledAppsPermission
+import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.PermissionIndex
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.PrivilegeState
@@ -162,6 +163,20 @@ class FakeSystemRepository(private val trace: CallTrace? = null) : SystemReposit
     override suspend fun executeShellCommand(command: String): Result<Pair<Int, String?>> {
         calls += "executeShellCommand:$command"
         return Result.success(0 to null)
+    }
+
+    /**
+     * What [probeObb] answers. `None` — a device where the app genuinely has no expansion files —
+     * rather than `Undetermined`, because the honest default for a fake is the successful read of
+     * an empty directory, not a privilege failure. A test that wants `Present` or `Undetermined`
+     * assigns it; the two must stay distinguishable at every consumer, so a fake that only ever
+     * says `None` would let a consumer that collapses them pass.
+     */
+    var obbProbe: ObbProbe = ObbProbe.None
+
+    override suspend fun probeObb(packageName: String): ObbProbe {
+        calls += "probeObb:$packageName"
+        return obbProbe
     }
 }
 
