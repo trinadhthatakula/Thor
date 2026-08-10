@@ -6,8 +6,10 @@ package com.valhalla.thor.data.backup
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import javax.crypto.SecretKey
+import javax.crypto.spec.SecretKeySpec
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -55,7 +57,14 @@ class AppArchiveCipherTest {
 
         assertEquals(3, stats.chunkCount)
         assertEquals(plain.size.toLong(), stats.plainBytes)
-        assertArrayEquals(plain, decrypt(bytes, stats.chunkCount))
+        // cipherBytes must account for every length-prefix byte and every tag byte; a missing or
+        // wrong prefix (e.g. wrong endianness) would ship a header that the next reader cannot parse.
+        assertEquals(bytes.size.toLong(), stats.cipherBytes)
+
+        val out = ByteArrayOutputStream()
+        val written = cipher.decryptMember(member, ByteArrayInputStream(bytes), out, key(), nonce, stats.chunkCount)
+        assertArrayEquals(plain, out.toByteArray())
+        assertEquals(plain.size.toLong(), written)
     }
 
     @Test
@@ -103,11 +112,14 @@ class AppArchiveCipherTest {
     fun `a stream that ends a chunk early is detected`() {
         val (bytes, stats) = encrypt(ByteArray(CHUNK_PLAINTEXT_BYTES + 500) { 1 })
 
-        // Truncation at a chunk boundary: the last frame is gone entirely, and every frame that
-        // remains authenticates. Only `chunkCount` catches this — AAD alone does not.
-        val cut = bytes.copyOf(bytes.size - 600)
+        // Arithmetic: frame0 = 4+1048576+16 = 1048596 B, frame1 = 4+500+16 = 520 B.
+        // Removing exactly 520 bytes strips frame1 cleanly, leaving frame0 intact. Every intact
+        // frame authenticates — only `chunkCount` detects this truncation, so `frameLength`'s
+        // "ended before chunk N" branch is the one that must fire.
+        val cut = bytes.copyOf(bytes.size - 520)
 
-        assertThrows(ArchiveIntegrityException::class.java) { decrypt(cut, stats.chunkCount) }
+        val ex = assertThrows(ArchiveIntegrityException::class.java) { decrypt(cut, stats.chunkCount) }
+        assertTrue(ex.message?.contains("ended before chunk 1") == true)
     }
 
     @Test
@@ -177,6 +189,19 @@ class AppArchiveCipherTest {
         assertNotEquals(right.toList(), wrong.toList())
         // Stable: the same passphrase and salt must verify against an archive made yesterday.
         assertArrayEquals(right, cipher.verifier(key("correct horse")))
+        // verify() uses constant-time MessageDigest.isEqual; callers must not reach for contentEquals.
+        assertTrue(cipher.verify(key("correct horse"), right))
+        assertFalse(cipher.verify(key("wrong horse"), right))
+    }
+
+    @Test
+    fun `ArchivePassphraseException is-a ArchiveIntegrityException`() {
+        // Callers that throw ArchivePassphraseException when verify() returns false stay compatible
+        // with any catch-block that already handles the broader ArchiveIntegrityException.
+        // assertThrows checks isInstance, which is true for subtypes.
+        assertThrows(ArchiveIntegrityException::class.java) {
+            throw ArchivePassphraseException("typed it wrong")
+        }
     }
 
     @Test
@@ -208,5 +233,41 @@ class AppArchiveCipherTest {
         assertEquals(16, VERIFIER_BYTES)
         // 256-bit key.
         assertTrue(key().encoded.size == 32)
+    }
+
+    @Test
+    fun `known-answer vector pins the frame layout and byte order`() {
+        // Key: 32 sequential bytes (bypasses PBKDF2 — this is a layout pin, not a KDF test).
+        // Nonce: [0..7], plaintext: [0..15], member: "kat", single chunk → isFinal=true.
+        // AAD is "kat|0|1".toByteArray(UTF_8). IV is nonce || big-endian 0x00000000.
+        //
+        // Expected frame = 4-byte big-endian length (0x00000020 = 32) || ciphertext (16) || tag (16).
+        // Verified by hand: first four bytes are 0x00 0x00 0x00 0x20 = big-endian 32 ✓,
+        // total frame = 36 = 4 + 16 + 16 ✓.
+        // Any change to endianness, AAD encoding, tag width, or IV construction breaks this.
+        val katKey = SecretKeySpec(ByteArray(32) { it.toByte() }, "AES")
+        val katNonce = ByteArray(MEMBER_NONCE_BYTES) { it.toByte() }
+        val katPlain = ByteArray(16) { it.toByte() }
+        val expectedHex = "000000202905546776064d218ae4f69c629932ea3083733b5321915c935ddb74f04d89fd"
+
+        val out = ByteArrayOutputStream()
+        val stats = cipher.encryptMember("kat", ByteArrayInputStream(katPlain), out, katKey, katNonce)
+        val frame = out.toByteArray()
+
+        assertEquals("frame must be 4 + 16 + 16 = 36 bytes", 36, frame.size)
+        // Prefix is big-endian 32 (= 0x20).
+        assertEquals(0x00, frame[0].toInt() and 0xFF)
+        assertEquals(0x00, frame[1].toInt() and 0xFF)
+        assertEquals(0x00, frame[2].toInt() and 0xFF)
+        assertEquals(0x20, frame[3].toInt() and 0xFF)
+        assertEquals(1, stats.chunkCount)
+        // Full frame pin — catches any bilateral drift in layout, endianness, or AAD.
+        assertEquals(expectedHex, frame.joinToString("") { "%02x".format(it) })
+
+        // Confirm the KAT also decrypts cleanly.
+        val decOut = ByteArrayOutputStream()
+        val written = cipher.decryptMember("kat", ByteArrayInputStream(frame), decOut, katKey, katNonce, 1)
+        assertArrayEquals(katPlain, decOut.toByteArray())
+        assertEquals(katPlain.size.toLong(), written)
     }
 }

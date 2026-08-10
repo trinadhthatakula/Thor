@@ -7,6 +7,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.security.GeneralSecurityException
+import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.Mac
@@ -44,9 +45,23 @@ private const val FRAME_LENGTH_BYTES = 4
  * declared chunk count, a frame that does not belong where it was found.
  *
  * An `IOException` so a caller that already handles I/O failure cannot accidentally not handle this
- * one — but always reported to the user as a refusal, never as a partial success.
+ * one. Note: [AppArchiveCipher.decryptMember] writes chunks as they authenticate, so chunks 0..N−1
+ * may already be in the output stream when a failure on chunk N throws this. The caller must treat
+ * any stream passed to `decryptMember` as a staging target and discard it on throw.
  */
-class ArchiveIntegrityException(message: String, cause: Throwable? = null) : IOException(message, cause)
+open class ArchiveIntegrityException(message: String, cause: Throwable? = null) : IOException(message, cause)
+
+/**
+ * The passphrase does not match the archive's verifier.
+ *
+ * A subtype of [ArchiveIntegrityException] so existing catch-blocks cover it, but distinct so the
+ * UI layer can show "wrong passphrase" rather than "your backup is damaged".
+ *
+ * Thrown by callers when [AppArchiveCipher.verify] returns false — not by [AppArchiveCipher] itself,
+ * since [AppArchiveCipher.decryptMember] cannot distinguish a wrong passphrase from a corrupt frame.
+ */
+class ArchivePassphraseException(message: String, cause: Throwable? = null) :
+    ArchiveIntegrityException(message, cause)
 
 /** What one encrypted member turned out to be, for the header. */
 data class MemberStats(
@@ -115,6 +130,16 @@ class AppArchiveCipher {
     }
 
     /**
+     * Compare [expected] (stored in the archive header) against the verifier for [key] in
+     * constant time.
+     *
+     * Returns `false` when the passphrase is wrong; the caller should then throw
+     * [ArchivePassphraseException] rather than proceeding to [decryptMember].
+     */
+    fun verify(key: SecretKey, expected: ByteArray): Boolean =
+        MessageDigest.isEqual(verifier(key), expected)
+
+    /**
      * Encrypt [plaintext] into [ciphertext], returning what the header must record.
      *
      * Neither stream is closed here: the output is one entry of a zip the caller keeps open for the
@@ -167,9 +192,14 @@ class AppArchiveCipher {
      * Decrypt exactly [chunkCount] frames from [ciphertext] into [plaintext], returning the byte
      * count written.
      *
+     * **[plaintext] must be a staging target** the caller discards on throw: chunks are written as
+     * they authenticate, so a failure on chunk N leaves chunks 0..N−1 already in the stream.
+     *
      * Throws [ArchiveIntegrityException] on anything that is not exactly that: a bad tag, a frame
      * that ends early, a declared length outside the format's bounds, or a byte after the last
-     * frame.
+     * frame. A nonce length mismatch also throws [ArchiveIntegrityException] (not
+     * [IllegalArgumentException]) because the nonce comes from the archive header and a corrupt
+     * header must be refused rather than crashed on.
      */
     fun decryptMember(
         memberName: String,
@@ -179,7 +209,9 @@ class AppArchiveCipher {
         nonce: ByteArray,
         chunkCount: Int,
     ): Long {
-        require(nonce.size == MEMBER_NONCE_BYTES) { "nonce must be $MEMBER_NONCE_BYTES bytes" }
+        if (nonce.size != MEMBER_NONCE_BYTES) {
+            throw ArchiveIntegrityException("$memberName nonce is ${nonce.size} bytes")
+        }
         if (chunkCount <= 0) {
             throw ArchiveIntegrityException("$memberName declares $chunkCount chunks")
         }
