@@ -325,10 +325,12 @@ fun AppInfoHeaderAndActions(
             onShare = { onAppAction(AppClickAction.Share(appInfo)) },
             onExport = { showExportSheet = true },
             // Not optional in practice, whatever the defaulted parameter suggests. `MainScreen`
-            // routes to this screen whenever a detail pane exists and for landscape phones, and
-            // `AppInfoSheet` is never shown on those layouts — so leaving this out is not "the sheet
-            // carries backup and the details screen does not", it is "tablets and landscape phones
-            // have no way to reach backup at all".
+            // pushes this screen's route only where a detail pane exists, so on those layouts an
+            // app-list tap lands here and never opens `AppInfoSheet` — leaving this out is not "the
+            // sheet carries backup and the details screen does not", it is "the app list has no
+            // route to backup at all on a tablet". Not *no* route anywhere: `FreezerScreen` hosts
+            // `AppInfoSheet` with no layout gate, so a watchlisted app could already reach backup
+            // through that tab. Every app that is not on the watchlist could not.
             onBackup = { showBackupSheet = true }
         )
     }

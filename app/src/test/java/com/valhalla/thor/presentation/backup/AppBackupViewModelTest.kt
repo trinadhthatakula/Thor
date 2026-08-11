@@ -425,6 +425,35 @@ class AppBackupViewModelTest {
     }
 
     @Test
+    fun `a start the sheet rejects still wipes the passphrase it was handed`() =
+        runTest(dispatcher) {
+            // The double-tap. The first tap sets `running` synchronously, so `canStart` is already
+            // false when the second click of the same input batch arrives — before recomposition has
+            // disabled the Button. That second call returns at the guard clause, and the array it was
+            // handed is a *fresh* one: `AppBackupSheet` builds a new `toCharArray()` per click. It
+            // never reaches the coroutine, so the `finally` that wipes every other path cannot see it.
+            val launcher = FakeLauncher()
+            val vm = viewModel(launcher = launcher)
+            vm.start("com.example.app", "Example")
+            testScheduler.advanceUntilIdle()
+
+            // Distinct contents, same length: it is the only way the last assertion can tell "the
+            // second call was rejected" from "the second call ran and looked identical".
+            val first = "correct horse".toCharArray()
+            val second = "second tap!!!".toCharArray()
+            vm.beginBackup(first, remember = false)
+            // Deliberately before the scheduler runs: this is the frame the second tap lands in, and
+            // the assertion below would be trivially satisfied once the first job's `finally` had run.
+            assertEquals(false, vm.uiState.value.canStart)
+            vm.beginBackup(second, remember = false)
+
+            assertEquals(" ".repeat(13), second.concatToString())
+            // The rejected call must be a no-op apart from the wipe: only one job may be enqueued.
+            testScheduler.advanceUntilIdle()
+            assertEquals("correct horse", launcher.startedWith)
+        }
+
+    @Test
     fun `use a different passphrase asks again even with a filled vault`() = runTest(dispatcher) {
         val vm = viewModel(vaultStore = FakeVaultStore(initial = "d29yZA"))
         vm.start("com.example.app", "Example")
@@ -686,6 +715,43 @@ class AppBackupViewModelTest {
 
         assertNull(vm.uiState.value.finished)
         assertEquals(false, vm.uiState.value.running)
+    }
+
+    @Test
+    fun `a job whose row has not landed yet is not reported as finished`() = runTest(dispatcher) {
+        // `Gone` is a null `WorkInfo`, and there are two ways to get one: the row was pruned, or it
+        // has not been written yet. `ThorJobLauncher` does not await `enqueue()` — WorkManager writes
+        // the row on its own executor — so this collector can subscribe first and read null before
+        // the job it just enqueued exists. Treating that as terminal takes the bar down a frame after
+        // the tap and re-enables Start over a job that is about to run.
+        //
+        // Only the order separates the two readings, which is why the arm is guarded on having seen
+        // the job alive rather than on anything about the value.
+        val launcher = FakeLauncher(statuses = MutableStateFlow(ThorJobStatus.Gone))
+        val vm = viewModel(launcher = launcher)
+        vm.start("com.example.app", "Example")
+        testScheduler.advanceUntilIdle()
+        vm.beginBackup("correct horse".toCharArray(), remember = false)
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(true, vm.uiState.value.running)
+        assertNull(vm.uiState.value.finished)
+
+        // The row lands. `Pending` is the state it lands in — an appended job is ENQUEUED or BLOCKED
+        // long before it is RUNNING — so this is the arm that has to mark the job as seen, and the
+        // one a `Running`-only guard would miss.
+        launcher.statuses.value = ThorJobStatus.Pending
+        testScheduler.advanceUntilIdle()
+        assertEquals(true, vm.uiState.value.queued)
+
+        // The same value again, now meaning the other thing: pruned. Terminal this time, and the
+        // watcher has to still be attached to see it — this launcher's `runningJobFor` only ever
+        // emits null, so nothing could have re-attached one.
+        launcher.statuses.value = ThorJobStatus.Gone
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(false, vm.uiState.value.running)
+        assertNull(vm.uiState.value.finished)
     }
 
     @Test

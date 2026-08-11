@@ -175,12 +175,29 @@ class AppBackupViewModel(
 
     /**
      * @param typed what the user entered, or an empty array when the field was not shown. **Zeroed
-     *   before this returns to the caller's coroutine**, on every path — see the `finally` below.
+     *   before this function's work ends** — synchronously by the guard clause below, which is the
+     *   one path that never starts a coroutine, and in a `finally` on every path the coroutine does
+     *   reach.
+     *
+     *   One hole is left, and it cannot be closed from here: if this view model is cleared before the
+     *   launched block is dispatched, the block and its `finally` never run. `AppBackupSheet` scopes
+     *   the view model to its own composition with `rememberViewModelStoreOwner()`, so a dismissal
+     *   landing in that window leaves the array intact. Stated rather than papered over, because the
+     *   layer below cites this contract: `ThorJobLauncher.startBackup` documents that the caller owns
+     *   the passphrase and that the callee will not clear it.
      * @param remember whether to cache [typed] in the vault. Ignored when [typed] is empty.
      */
     fun beginBackup(typed: CharArray, remember: Boolean) {
         val state = _uiState.value
-        if (!state.canStart) return
+        if (!state.canStart) {
+            // A second tap in the frame before the Button recomposes disabled arrives here holding a
+            // *fresh* array — `AppBackupSheet` builds one with `toCharArray()` on every click — so
+            // this is a second live copy of the passphrase that nothing downstream will ever see and
+            // nothing below will ever wipe. There is no state to change on this path; the wipe is the
+            // whole of what the branch does.
+            typed.fill(' ')
+            return
+        }
         // Cleared synchronously, before the coroutine that enqueues. Nothing is watching yet — the
         // passphrase recall and the enqueue both have to complete first — so for that whole window
         // this is the only thing that can take the previous run's bar down.
@@ -264,16 +281,28 @@ class AppBackupViewModel(
                     _uiState.update { it.copy(progress = progress) }
                 }
             }
+            // `Gone` is a null `WorkInfo`, and a row that has not been written yet is null too:
+            // `ThorJobLauncher` does not await `enqueue()`, so WorkManager writes the row on its own
+            // executor after `startBackup` has returned and this collector has already subscribed.
+            // Both readings arrive as the same value, and only the order tells them apart — a `Gone`
+            // that arrives *before* the job has ever been seen alive is the not-yet-written one.
+            //
+            // Whether that ordering actually occurs is **unverified**: nothing prevents it, and
+            // nothing on this branch has run on hardware. The guard is written for the case where it
+            // does, and costs nothing where it does not.
+            var seenLive = false
             launcher.status(jobId).collect { status ->
                 when (status) {
                     // Both are "the job exists and has not finished", which is why they share
                     // `running`. `queued` is the part that differs and the part the user can act on.
-                    is ThorJobStatus.Pending -> _uiState.update {
-                        it.copy(running = true, queued = true)
+                    is ThorJobStatus.Pending -> {
+                        seenLive = true
+                        _uiState.update { it.copy(running = true, queued = true) }
                     }
 
-                    is ThorJobStatus.Running -> _uiState.update {
-                        it.copy(running = true, queued = false)
+                    is ThorJobStatus.Running -> {
+                        seenLive = true
+                        _uiState.update { it.copy(running = true, queued = false) }
                     }
 
                     is ThorJobStatus.Succeeded -> finish(BackupFinish.Succeeded)
@@ -283,10 +312,16 @@ class AppBackupViewModel(
                     // with `doWork` never called. Reporting it as anything but a failure would tell
                     // the user an archive exists when none was written.
                     is ThorJobStatus.Cancelled -> finish(BackupFinish.Failed(null))
-                    // Reached when a finished job's record has been pruned — which is what a
-                    // reattach after a long absence sees. Terminal like the three above, so it
+                    // After the job has been seen alive: a finished record has been pruned, which is
+                    // what a reattach after a long absence sees. Terminal like the three above, so it
                     // releases the watcher the same way; it just has no outcome to report.
-                    is ThorJobStatus.Gone -> finish(result = null)
+                    //
+                    // Before that: the row has not landed. Ignored rather than treated as terminal —
+                    // finishing here would take the bar down a frame after the tap, re-enable Start
+                    // and invite a duplicate enqueue. The residue if the row never lands at all is a
+                    // sheet that keeps showing the bar; dismissing it clears this view model with the
+                    // composition, so reopening asks WorkManager again from scratch.
+                    is ThorJobStatus.Gone -> if (seenLive) finish(result = null)
                 }
             }
         }
@@ -300,9 +335,11 @@ class AppBackupViewModel(
      * so cleanup does not belong there. The `progressOf` child collector is cancelled with it.
      *
      * @param result null for a terminal state with nothing to say: a pruned job is over, but it is
-     *   not a failure and it is not a success this sheet witnessed. Writing null cannot erase an
-     *   earlier banner, because [finish] is the only thing that ever sets one and it takes the
-     *   watcher down with it — so no watcher is ever alive while [AppBackupUiState.finished] is set.
+     *   not a failure and it is not a success this sheet witnessed. Writing null cannot erase a
+     *   banner the user has not read yet, but not because this is the only writer of one — the other
+     *   is [beginBackup]'s enqueue-failure branch. That branch attaches no watcher, so no watcher is
+     *   alive to reach this line while its banner is up; and the watcher that *is* alive got here
+     *   through [watch], which clears the banner before its first status arrives.
      */
     private fun finish(result: BackupFinish?) {
         _uiState.update { it.copy(running = false, queued = false, finished = result) }
