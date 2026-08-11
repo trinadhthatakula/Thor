@@ -32,7 +32,15 @@ data class ArchiveBreadcrumb(
  */
 interface ArchiveBreadcrumbStore {
 
-    suspend fun write(packageName: String, appLabel: String)
+    /**
+     * @return false when the notice could not be recorded — a full or unwritable `filesDir`.
+     *
+     * It returns a value rather than swallowing the failure because the caller cannot make the write
+     * succeed but *can* stop being silent about it: a destructive phase that runs with no breadcrumb
+     * behind it is precisely the silence §8.5 exists to prevent, and the user is owed the warning
+     * that an interruption from here on will not be reported.
+     */
+    suspend fun write(packageName: String, appLabel: String): Boolean
 
     /** Null when no restore is recorded as in flight. */
     suspend fun read(): ArchiveBreadcrumb?

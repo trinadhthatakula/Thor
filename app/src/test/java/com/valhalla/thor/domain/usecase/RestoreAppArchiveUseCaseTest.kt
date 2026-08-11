@@ -103,6 +103,13 @@ class RestoreAppArchiveUseCaseTest {
         private val signer: String? = SIGNER,
         /** Runs inside [stagingFile], before the file is handed back. The cancellation seam. */
         private val onStagingFile: () -> Unit = {},
+        /**
+         * The staging name to hand back as a **directory**. Opening one for write throws
+         * `FileNotFoundException`, which is how a JVM test reaches the ENOSPC path: an
+         * `IOException` out of the decrypt is not an `ArchiveIntegrityException` and nothing else
+         * catches it.
+         */
+        private val unwritableStaging: String? = null,
     ) : AppDataArchiveGateway {
         val stagedFiles = mutableListOf<File>()
 
@@ -121,7 +128,10 @@ class RestoreAppArchiveUseCaseTest {
         override suspend fun stagingFile(name: String): File {
             liveAtHandout += stagedFiles.filter { it.exists() && it.length() > 0L }.map(File::getName)
             onStagingFile()
-            return temp.newFile("staged-${stagedFiles.size}-$name").also(stagedFiles::add)
+            val handedOut = "staged-${stagedFiles.size}-$name"
+            val file =
+                if (name == unwritableStaging) temp.newFolder(handedOut) else temp.newFile(handedOut)
+            return file.also(stagedFiles::add)
         }
 
         override suspend fun forceStop(packageName: String) { calls += "force-stop" }
@@ -173,13 +183,16 @@ class RestoreAppArchiveUseCaseTest {
         }
     }
 
-    private class RecordingBreadcrumbs : ArchiveBreadcrumbStore {
+    /** @param writes false stands in for a full or unwritable `filesDir`. */
+    private class RecordingBreadcrumbs(private val writes: Boolean = true) : ArchiveBreadcrumbStore {
         var current: ArchiveBreadcrumb? = null
         val history = mutableListOf<String>()
 
-        override suspend fun write(packageName: String, appLabel: String) {
-            current = ArchiveBreadcrumb(packageName, appLabel, startedAt = 1L)
+        override suspend fun write(packageName: String, appLabel: String): Boolean {
             history += "write"
+            if (!writes) return false
+            current = ArchiveBreadcrumb(packageName, appLabel, startedAt = 1L)
+            return true
         }
 
         override suspend fun read(): ArchiveBreadcrumb? = current
@@ -228,13 +241,18 @@ class RestoreAppArchiveUseCaseTest {
         // per class and a restore reported as partial when it was complete.
         val (header, source) = archive(listOf(DataClass.EXTERNAL_DATA, DataClass.EXTERNAL_MEDIA))
 
-        useCase(FakeGateway(), FakeInstaller(calls = calls), RecordingBreadcrumbs())(
+        val outcome = useCase(FakeGateway(), FakeInstaller(calls = calls), RecordingBreadcrumbs())(
             source, header, key,
             listOf(DataClass.EXTERNAL_DATA, DataClass.EXTERNAL_MEDIA),
             installFirst = false,
             restoreObb = false,
         )
 
+        // Asserted positively first: an absence alone is satisfied by a restore that failed before
+        // the loop and issued no commands at all, which would leave this green over a regression.
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Completed)
+        assertTrue(calls.toString(), calls.contains("extract:${DataClass.EXTERNAL_DATA.id}"))
+        assertTrue(calls.toString(), calls.contains("swap:${DataClass.EXTERNAL_MEDIA.id}"))
         assertFalse(calls.toString(), calls.any { it.startsWith("chown") || it.startsWith("relabel") })
     }
 
@@ -319,11 +337,15 @@ class RestoreAppArchiveUseCaseTest {
     fun `install-first installs before any data call`() = runTest {
         val (header, source) = archive(listOf(DataClass.CE))
 
-        useCase(FakeGateway(), FakeInstaller(calls = calls), RecordingBreadcrumbs())(
+        val outcome = useCase(FakeGateway(), FakeInstaller(calls = calls), RecordingBreadcrumbs())(
             source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false,
         )
 
+        // "install came first" is also true of a run that installed and then failed, so the data
+        // calls are asserted too — otherwise the ordering is pinned over an empty tail.
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Completed)
         assertEquals("install", calls.first())
+        assertTrue(calls.toString(), calls.contains("swap:${DataClass.CE.id}"))
     }
 
     @Test
@@ -642,18 +664,94 @@ class RestoreAppArchiveUseCaseTest {
     }
 
     @Test
-    fun `progress never reports a literal zero percent`() = runTest {
-        val (header, source) = archive(listOf(DataClass.CE))
+    fun `progress reports an unknown total until the first class lands`() = runTest {
+        // The byte counter only moves when a *whole class* lands, so before the first one does,
+        // nothing has been measured: that is `total = 0` — an indeterminate bar — not a literal 0 %,
+        // which through a multi-gigabyte decrypt is indistinguishable from a stalled job. Asserted on
+        // `total` rather than on `percent`, because a *genuine* integer zero later (a 1 KB class out
+        // of 10 GB) is a known zero and is allowed.
+        val (header, source) = archive(listOf(DataClass.CE, DataClass.DE))
         val seen = mutableListOf<ThorJobProgress>()
 
         useCase(FakeGateway(), FakeInstaller(calls = calls), RecordingBreadcrumbs())(
-            source, header, key, listOf(DataClass.CE),
+            source, header, key, listOf(DataClass.CE, DataClass.DE),
             installFirst = false, restoreObb = false,
             onProgress = { seen += it },
         )
 
         assertTrue(seen.isNotEmpty())
-        assertFalse(seen.toString(), seen.any { it.percent == 0 })
+        assertEquals(0L, seen.first().total)
+        // And it stops being unknown once a class has landed — `total = 0` forever would be the same
+        // defect from the other side.
+        assertTrue(seen.toString(), seen.drop(1).any { it.total > 0L })
+    }
+
+    @Test
+    fun `a cache that cannot be written fails with the classes that did land`() = runTest {
+        // Running out of room in Thor's internal cache is *the* expected failure for a multi-gigabyte
+        // restore, and an `IOException` is not an `ArchiveIntegrityException`. Letting it escape as a
+        // throw takes `classesRestored` with it — and "CE is already replaced" is the whole difference
+        // between a message the user can act on and one they cannot.
+        val (header, source) = archive(listOf(DataClass.CE, DataClass.DE))
+        val crumbs = RecordingBreadcrumbs()
+
+        val outcome = useCase(
+            FakeGateway(unwritableStaging = "restore-${DataClass.DE.id}.tar"),
+            FakeInstaller(calls = calls),
+            crumbs,
+        )(
+            source, header, key,
+            listOf(DataClass.CE, DataClass.DE),
+            installFirst = false,
+            restoreObb = false,
+        )
+
+        val failed = outcome as ArchiveRestoreOutcome.Failed
+        assertEquals(listOf(DataClass.CE), failed.classesRestored)
+        assertTrue(failed.reason, failed.reason.contains(DataClass.DE.id))
+        // CE was replaced before DE's decrypt died, so this is an interrupted restore.
+        assertNotNull(crumbs.current)
+    }
+
+    @Test
+    fun `a data-only archive asked for game data restores the data and warns`() = runTest {
+        // "Restore game data" left on over a backup that holds no `.xapk` is not a failure to place —
+        // there is nothing to place. Failing here wrote no data at all and told the user the bundle
+        // "could not be read" about an archive that never claimed to have one.
+        val (header, source) = archive(listOf(DataClass.CE), withBundle = false)
+        val crumbs = RecordingBreadcrumbs()
+
+        val outcome = useCase(FakeGateway(), FakeInstaller(calls = calls), crumbs)(
+            source, header, key, listOf(DataClass.CE), installFirst = false, restoreObb = true,
+        )
+
+        val completed = outcome as ArchiveRestoreOutcome.Completed
+        assertEquals(listOf(DataClass.CE), completed.classesRestored)
+        assertTrue(completed.warnings.toString(), completed.warnings.any { it.contains("no game data") })
+        assertFalse(calls.toString(), calls.contains("obb"))
+        assertNull(completed.obb)
+        assertNull(crumbs.current)
+    }
+
+    @Test
+    fun `a breadcrumb that could not be written is a warning, not a silent restore`() = runTest {
+        // The restore still runs — refusing it would mean a flag file's failure costs the user their
+        // data restore — but §8.5's notice is now unavailable, and saying so is the only way the user
+        // learns that an interruption from here on would have gone unreported.
+        val (header, source) = archive(listOf(DataClass.CE))
+
+        val outcome = useCase(
+            FakeGateway(),
+            FakeInstaller(calls = calls),
+            RecordingBreadcrumbs(writes = false),
+        )(source, header, key, listOf(DataClass.CE), installFirst = false, restoreObb = false)
+
+        val completed = outcome as ArchiveRestoreOutcome.Completed
+        assertEquals(listOf(DataClass.CE), completed.classesRestored)
+        assertTrue(
+            completed.warnings.toString(),
+            completed.warnings.any { it.contains("interrupted") },
+        )
     }
 
     private companion object {

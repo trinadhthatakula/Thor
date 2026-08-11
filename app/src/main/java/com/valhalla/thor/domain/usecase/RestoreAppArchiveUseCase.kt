@@ -19,10 +19,12 @@ import com.valhalla.thor.domain.repository.ArchiveBreadcrumbStore
 import com.valhalla.thor.domain.repository.ArchiveInstallOutcome
 import com.valhalla.thor.domain.repository.ArchiveSource
 import com.valhalla.thor.util.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import org.koin.core.annotation.Factory
 import java.io.File
+import java.io.IOException
 import java.util.Base64
 import javax.crypto.SecretKey
 
@@ -75,8 +77,33 @@ internal class RestoreAppArchiveUseCase(
 ) {
 
     /**
+     * **Precondition: the caller has already run `evaluateArchiveRestoreGate`** (§8.1, in
+     * `domain/model/ArchiveRestoreGate.kt`) against this [header] and the live app, and got back an
+     * `ArchiveRestoreDecision.Allowed`. This use case does **not** re-run that gate, and must never be
+     * called on a `Refused` decision.
+     *
+     * That matters most for the signer. When [installFirst] is false there is **no signer comparison
+     * anywhere in this class** — the gate already made it against the installed app, and repeating it
+     * here would compare the same two values twice. A path that enqueues a restore without the gate —
+     * a deep link, a retry button, a "restore again" affordance — therefore restores an archive over a
+     * same-named, differently-signed package, which is the attack `ArchiveHeader.signerSha256`'s own
+     * KDoc exists to name and the one refusal §8.1 allows no override for. It would also skip
+     * `SCHEMA_TOO_NEW`, `INVALID_PACKAGE_NAME` and `INVALID_USER_ID`, all of which feed untrusted
+     * header fields into the paths this use case writes to.
+     *
+     * @param installFirst take it from `ArchiveRestoreDecision.Allowed.installFirst`, never from a
+     *   fresh "is it installed?" check: the two can disagree, and this one is the one the user was
+     *   shown. True means the app is absent and is installed from the archive's bundle first, after
+     *   which the signer *is* checked here — the gate could not check an absent app's.
+     * @param restoreObb "place the archive's game data". On an archive that holds no bundle
+     *   (`header.appBundle == null` — a data-only backup) there is nothing to place, so this is
+     *   satisfied by doing nothing and saying so in [ArchiveRestoreOutcome.Completed.warnings]; it is
+     *   **not** a failure, and the data restore proceeds. It is a failure only when the header
+     *   declares a bundle the container does not hold.
      * @param onProgress called on the calling coroutine, like [BackupAppArchiveUseCase]'s. The worker
-     *   forwards it to `JobRegistry`.
+     *   forwards it to `JobRegistry`. This use case takes no dispatcher of its own and does blocking
+     *   work — the decrypt and the bundle copy — on the caller's, so **the worker must call it on
+     *   `@Named("io")`**.
      */
     suspend operator fun invoke(
         source: ArchiveSource,
@@ -94,12 +121,27 @@ internal class RestoreAppArchiveUseCase(
 
         // The bundle is needed for an install and for OBB, and only then. Extracting it otherwise
         // would cost the app's whole download for nothing.
-        val bundle = if (installFirst || restoreObb) extractBundle(source, header) else null
+        val staging =
+            if (installFirst || restoreObb) extractBundle(source, header) else BundleStaging.None
+        val bundle = (staging as? BundleStaging.Staged)?.file
         try {
-            if ((installFirst || restoreObb) && bundle == null) {
+            // The three reasons there is no bundle mean three different things and are kept apart.
+            // Collapsing them is how "restore game data, left on, over a data-only archive" became a
+            // whole failed restore that wrote nothing and blamed the archive.
+            if (staging is BundleStaging.Unreadable) {
+                // The header declares one and the container does not deliver it. Both consumers need
+                // those exact bytes, so this stops here — before anything is destroyed.
+                return ArchiveRestoreOutcome.Failed(staging.reason, restored)
+            }
+            if (installFirst && bundle == null) {
                 return ArchiveRestoreOutcome.Failed(
-                    "this archive's app bundle could not be read", restored
+                    "this archive holds only data, so $appLabel cannot be installed from it", restored
                 )
+            }
+            if (restoreObb && staging is BundleStaging.None) {
+                // Nothing to place is not a failure to place. The data restore goes ahead; the user is
+                // told why no game data appeared rather than being sent back to the checkbox.
+                warnings += "this archive holds no game data, so none was placed"
             }
 
             if (installFirst) {
@@ -155,7 +197,14 @@ internal class RestoreAppArchiveUseCase(
                 )
 
             gateway.forceStop(pkg)
-            breadcrumbs.write(pkg, appLabel)
+            if (!breadcrumbs.write(pkg, appLabel)) {
+                // The notice is the only thing that would tell the user a kill mid-swap left this
+                // app's data half-replaced. It cannot be made to work from here, but proceeding
+                // without saying so is the silence §8.5 exists to prevent.
+                Logger.e(TAG, "the restore breadcrumb could not be written; proceeding without it")
+                warnings += "Thor could not record that this restore started, " +
+                    "so it will not be able to report it if the restore is interrupted"
+            }
 
             val totalBytes = classes.sumOf { header.member(it)?.plainBytes ?: 0L }
             var doneBytes = 0L
@@ -174,11 +223,13 @@ internal class RestoreAppArchiveUseCase(
                 doneBytes += member.plainBytes
             }
 
-            if (restoreObb && !installFirst && header.appBundle != null) {
+            // `bundle`, not `header.appBundle`: a data-only archive has nothing staged and nothing to
+            // place, and the warning for that was already recorded above.
+            if (restoreObb && !installFirst && bundle != null) {
                 onProgress(restoring(appLabel, doneBytes, totalBytes))
                 // A failed placement is a warning: the data landed, and telling the user the restore
                 // failed sends them to run it again, which destroys and rewrites data that is correct.
-                val placement = installer.placeBundleObb(bundle!!, pkg)
+                val placement = installer.placeBundleObb(bundle, pkg)
                 if (placement is ObbPlacement.Failed) {
                     warnings += "the game data could not be placed: ${placement.reason}"
                 }
@@ -221,8 +272,16 @@ internal class RestoreAppArchiveUseCase(
     ): String? {
         val staged = gateway.stagingFile("restore-${dataClass.id}.tar")
         try {
-            val ciphertext = source.openEntry(member.fileName)
-                ?: return "this archive is missing ${member.fileName}"
+            val ciphertext = try {
+                source.openEntry(member.fileName)
+                    ?: return "this archive is missing ${member.fileName}"
+            } catch (e: IOException) {
+                // A truncated or damaged container throws here (`ZipException` is an `IOException`)
+                // rather than returning null, and a throw out of `invoke` costs the caller
+                // `classesRestored`.
+                Logger.e(TAG, "could not open ${member.fileName}", e)
+                return "this archive could not be read: ${e.message}"
+            }
             val nonce = runCatching { Base64.getDecoder().decode(member.nonce) }.getOrNull()
                 ?: return "this archive's ${dataClass.id} member has an unreadable nonce"
 
@@ -235,6 +294,15 @@ internal class RestoreAppArchiveUseCase(
             } catch (e: ArchiveIntegrityException) {
                 Logger.e(TAG, "${member.fileName} failed integrity", e)
                 return "this archive's ${dataClass.id} data is damaged and was not restored"
+            } catch (e: IOException) {
+                // Not an integrity failure and not exotic: running out of room in Thor's internal
+                // cache is *the* expected failure for a multi-gigabyte restore, and neither
+                // `staged.outputStream()` nor `plaintext.write(chunk)` raises anything an
+                // `ArchiveIntegrityException` catch would see. Letting it escape `invoke` would throw
+                // away `classesRestored` with it — and "CE is already replaced" is exactly what
+                // separates an actionable message from a useless one.
+                Logger.e(TAG, "${member.fileName} could not be staged", e)
+                return "${dataClass.id} could not be written to Thor's cache: ${e.message}"
             }
 
             // The decrypt above is this use case's one long stretch with no suspension point in it, and
@@ -295,20 +363,46 @@ internal class RestoreAppArchiveUseCase(
         return ArchiveRestoreOutcome.Failed(reason, restored.toList())
     }
 
-    private suspend fun extractBundle(source: ArchiveSource, header: ArchiveHeader): File? {
-        if (header.appBundle == null) return null
+    /**
+     * What staging the container's `.xapk` produced.
+     *
+     * Three outcomes rather than a nullable [File] because they mean three different things to the
+     * user: a data-only archive has nothing to install or place and that is fine, while a header that
+     * promises a bundle the container does not hold is an archive to distrust. One null for both said
+     * "this archive's app bundle could not be read" about an archive that never claimed one.
+     */
+    private sealed interface BundleStaging {
+
+        /** `header.appBundle == null` — a data-only backup. */
+        data object None : BundleStaging
+
+        data class Staged(val file: File) : BundleStaging
+
+        /** The header declares a bundle; the container did not deliver it. */
+        data class Unreadable(val reason: String) : BundleStaging
+    }
+
+    private suspend fun extractBundle(source: ArchiveSource, header: ArchiveHeader): BundleStaging {
+        val declared = header.appBundle ?: return BundleStaging.None
         // The header's `appBundle` is a claim about the container; the container is the authority. A
         // header promising a bundle the zip does not hold stops here rather than handing the installer
         // an empty file.
-        val entry = source.openEntry(header.appBundle.fileName) ?: return null
+        val entry = source.openEntry(declared.fileName)
+            ?: return BundleStaging.Unreadable(
+                "this archive says it holds ${declared.fileName}, but that file is not in it"
+            )
         val out = gateway.stagingFile(THORBAK_BUNDLE_ENTRY)
         return runCatching {
             entry.use { input -> out.outputStream().use(input::copyTo) }
-            out
+            BundleStaging.Staged(out)
         }.getOrElse {
+            // `runCatching` catches `Throwable`, so a cancellation would otherwise come back as a
+            // failed restore instead of a cancelled one. `copyTo` has no suspension point today; the
+            // rethrow is here so that stays true the moment it is chunked or made suspending.
+            if (it is CancellationException) throw it
             Logger.e(TAG, "could not stage the app bundle", it)
             out.delete()
-            null
+            BundleStaging.Unreadable("this archive's app bundle could not be unpacked: ${it.message}")
         }
     }
 
