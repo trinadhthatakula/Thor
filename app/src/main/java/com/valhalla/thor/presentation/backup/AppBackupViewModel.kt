@@ -312,8 +312,11 @@ class AppBackupViewModel(
                     // with `doWork` never called. Reporting it as anything but a failure would tell
                     // the user an archive exists when none was written.
                     is ThorJobStatus.Cancelled -> finish(BackupFinish.Failed(null))
-                    // After the job has been seen alive: a finished record has been pruned, which is
-                    // what a reattach after a long absence sees. Terminal like the three above, so it
+                    // After the job has been seen alive: the record went away underneath a live
+                    // watcher — WorkManager dropped a row this collector had already observed in a
+                    // non-`Gone` state. Not the reattach path, despite how that reads: `runningJobFor`
+                    // matches on `!state.isFinished`, so a job whose record is already gone hands back
+                    // no id and no watcher is ever attached to it. Terminal like the three above, so it
                     // releases the watcher the same way; it just has no outcome to report.
                     //
                     // Before that: the row has not landed. Ignored rather than treated as terminal —
@@ -335,11 +338,14 @@ class AppBackupViewModel(
      * so cleanup does not belong there. The `progressOf` child collector is cancelled with it.
      *
      * @param result null for a terminal state with nothing to say: a pruned job is over, but it is
-     *   not a failure and it is not a success this sheet witnessed. Writing null cannot erase a
-     *   banner the user has not read yet, but not because this is the only writer of one — the other
-     *   is [beginBackup]'s enqueue-failure branch. That branch attaches no watcher, so no watcher is
-     *   alive to reach this line while its banner is up; and the watcher that *is* alive got here
-     *   through [watch], which clears the banner before its first status arrives.
+     *   not a failure and it is not a success this sheet witnessed. Null here cannot erase a banner
+     *   the user has not read yet — though not because this is the only writer of one. The other is
+     *   [beginBackup]'s enqueue-failure branch, and a watcher *can* be alive while that branch's
+     *   banner is up: the `runningJobFor` collector in [start] attaches one for a job this sheet did
+     *   not enqueue, and it does not consult `canStart`. What makes the claim hold is ordering, not
+     *   exclusivity. Every route to a live watcher clears the banner on the way in — [beginBackup]
+     *   synchronously before it launches, [watch] before its first status arrives — so by the time
+     *   any watcher reaches this line, the banner it might have erased is already gone.
      */
     private fun finish(result: BackupFinish?) {
         _uiState.update { it.copy(running = false, queued = false, finished = result) }
