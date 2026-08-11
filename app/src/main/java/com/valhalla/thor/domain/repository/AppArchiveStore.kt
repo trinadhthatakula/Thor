@@ -49,4 +49,15 @@ interface AppArchiveStore {
 
     /** Human-readable destination, for the confirm sheet. Mirrors `AppBundleFileStore`'s. */
     suspend fun currentTargetLabel(): String
+
+    /**
+     * Delete the named `.part` containers from wherever this store writes.
+     *
+     * @param names exact file names, from `PartialArchiveLedger`. Never a pattern: this store writes
+     *   into a folder the user chose, and §10 is explicit that the sweep must not guess.
+     * @return the subset actually removed. A name that could not be deleted — an unmounted volume, a
+     *   revoked SAF grant — stays in the ledger for the next launch rather than being forgotten with
+     *   the file still there.
+     */
+    suspend fun discardOrphans(names: Set<String>): Set<String>
 }

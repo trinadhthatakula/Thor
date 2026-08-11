@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Environment
 import com.valhalla.thor.data.source.local.thorUserId
+import com.valhalla.thor.domain.model.AppDataArchiveStagingDir
 import com.valhalla.thor.domain.model.ClassEntries
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.TarOutcome
@@ -32,9 +33,6 @@ import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 
 private const val TAG = "AppDataArchiveGateway"
-
-/** Where the shell writes the per-class tars. One directory so a crashed job's leftovers are findable. */
-private const val STAGING_DIR = "data_archive_staging"
 
 /**
  * True when [name] is safe as a per-class staging filename.
@@ -89,7 +87,10 @@ internal class AppDataArchiveGatewayImpl(
      * silently downgrade to a less secure location.
      */
     private suspend fun stagingRoot(): File = withContext(ioDispatcher) {
-        File(context.cacheDir, STAGING_DIR).also { it.mkdirs() }
+        // The name comes from AppDataArchiveStagingDir, not a private constant: ArchiveOrphanSweeper
+        // empties this directory at launch and a second copy of the name is a sweep pointed at the
+        // wrong place.
+        File(context.cacheDir, AppDataArchiveStagingDir.NAME).also { it.mkdirs() }
     }
 
     override suspend fun stagingFile(name: String): File = withContext(ioDispatcher) {

@@ -76,6 +76,13 @@ class BackupAppArchiveUseCaseTest {
         }
 
         override suspend fun currentTargetLabel(): String = "Downloads/Thor"
+
+        /**
+         * Task 15 added this to the port. The backup use case never sweeps — the launch-time
+         * [com.valhalla.thor.data.backup.ArchiveOrphanSweeper] does, and it has its own fake — so the
+         * honest answer here is "removed nothing", not a recorded call nobody asserts on.
+         */
+        override suspend fun discardOrphans(names: Set<String>): Set<String> = emptySet()
     }
 
     /**

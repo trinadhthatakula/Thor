@@ -9,11 +9,14 @@ import androidx.room.Room
 import com.valhalla.superuser.ktx.RealShellRepository
 import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.data.backup.ArchiveOrphanSweeper
 import com.valhalla.thor.data.backup.FileArchiveBreadcrumbStore
+import com.valhalla.thor.data.backup.PartialArchiveLedger
 import com.valhalla.thor.data.source.local.room.AppDao
 import com.valhalla.thor.data.source.local.room.AppDatabase
 import com.valhalla.thor.data.source.local.room.FreezeProfileDao
 import com.valhalla.thor.data.source.local.room.FreezerDao
+import com.valhalla.thor.domain.repository.AppArchiveStore
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumbStore
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -90,4 +93,18 @@ class AppModule {
     @Single
     fun archiveBreadcrumbStore(context: Context): ArchiveBreadcrumbStore =
         FileArchiveBreadcrumbStore(context.filesDir)
+
+    /** `filesDir`, for the same reason as the breadcrumb store: a record the platform may evict lies. */
+    @Single
+    fun partialArchiveLedger(context: Context): PartialArchiveLedger =
+        PartialArchiveLedger(context.filesDir)
+
+    /** `cacheDir` here, because everything it sweeps besides the ledger's names lives under it. */
+    @Single
+    fun archiveOrphanSweeper(
+        ledger: PartialArchiveLedger,
+        archiveStore: AppArchiveStore,
+        breadcrumbs: ArchiveBreadcrumbStore,
+        context: Context,
+    ): ArchiveOrphanSweeper = ArchiveOrphanSweeper(ledger, archiveStore, breadcrumbs, context.cacheDir)
 }

@@ -118,6 +118,18 @@ abstract class ThorJobWorker(
      * `setProgress` is deliberately absent — see [JobRegistry]. Calling it here would put an SQLite
      * write on the copy loop's hot path and cap observed updates at roughly one a second.
      */
+    /**
+     * `Result.failure` carrying a sentence, never `Result.retry`.
+     *
+     * A retry re-runs in a process where [ArchiveKeyHolder.take] returns null, so it cannot succeed —
+     * and it would report the failure long after the moment the user was watching.
+     *
+     * Lives here rather than at file level in the workers because `ListenableWorker.Result` is a
+     * nested type: a top-level helper would have to name it fully qualified at every call site, and
+     * the point of this is that a subclass never has to think about which `Result` it means.
+     */
+    protected fun fail(reason: String): Result = Result.failure(workDataOf(JOB_ERROR_KEY to reason))
+
     protected fun publish(progress: ThorJobProgress) {
         registry.publish(id, progress)
         val now = System.currentTimeMillis()

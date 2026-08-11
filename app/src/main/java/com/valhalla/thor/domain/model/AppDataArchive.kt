@@ -209,3 +209,45 @@ data class ArchiveSkip(
     val name: String,
     val reason: String,
 )
+
+/**
+ * [ObbProbe]'s answer as the string [ArchiveBundleInfo.obbCapture] records — three names for three
+ * answers.
+ *
+ * Lowercase ids, matching how [DataClass.id] and [ArchiveCompression.id] are spelled in the same
+ * format. **Never fold `Undetermined` onto `"none"`:** an archive that records "no OBB" when Thor
+ * merely could not look is one a restore will happily call complete.
+ */
+fun ObbProbe.captureName(): String = when (this) {
+    is ObbProbe.None -> "none"
+    is ObbProbe.Present -> "present"
+    is ObbProbe.Undetermined -> "undetermined"
+}
+
+/**
+ * The one name for Thor's private archive staging directory under `cacheDir`.
+ *
+ * `AppDataArchiveGatewayImpl` creates files in it; `ArchiveOrphanSweeper` empties it at launch. Those
+ * two live in different layers and neither may hold its own copy of the name — a sweep pointed at the
+ * wrong directory either deletes nothing or deletes something else.
+ */
+object AppDataArchiveStagingDir {
+    /**
+     * Deliberately the value `AppDataArchiveGatewayImpl` already shipped with, not a fresh one: this
+     * object exists to give the two layers **one** name, and renaming the directory as a side effect
+     * of centralising it would strand whatever a killed job left under the old one.
+     */
+    const val NAME = "data_archive_staging"
+}
+
+/**
+ * The one name for the `cacheDir` subtree `ArchiveBackupWorker` builds its `.xapk` into.
+ *
+ * Shared for the same reason as [AppDataArchiveStagingDir]: the worker passes it to
+ * `AppBundleBuilder.build(cacheSubDir = …)` and `ArchiveOrphanSweeper` removes it at launch. The
+ * worker deletes only the file the builder handed back, so the directory — and anything a kill left
+ * half-written inside it — is the sweep's to clear.
+ */
+object ArchiveBundleCacheDir {
+    const val NAME = "archive_bundle"
+}

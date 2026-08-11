@@ -119,4 +119,21 @@ class AppDataArchiveTest {
             DataClass.entries.filter { it.isInternal },
         )
     }
+
+    @Test
+    fun `every ObbProbe answer has its own capture name`() {
+        assertEquals("none", ObbProbe.None.captureName())
+        assertEquals("present", ObbProbe.Present(emptyList(), otherEntryCount = 0).captureName())
+        assertEquals("undetermined", ObbProbe.Undetermined("no privilege").captureName())
+        // Three names for three answers. Folding Undetermined onto "none" is the exact mistake
+        // ObbProbe exists to prevent, and it would make a restore claim game data it does not hold.
+        assertEquals(
+            3,
+            setOf(
+                ObbProbe.None.captureName(),
+                ObbProbe.Present(emptyList(), 0).captureName(),
+                ObbProbe.Undetermined("x").captureName(),
+            ).size,
+        )
+    }
 }
