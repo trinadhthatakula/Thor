@@ -15,6 +15,7 @@ import com.valhalla.thor.domain.model.ObbPlacement
 import com.valhalla.thor.domain.model.TarOutcome
 import com.valhalla.thor.domain.model.THORBAK_BUNDLE_ENTRY
 import com.valhalla.thor.domain.model.ThorJobProgress
+import com.valhalla.thor.domain.model.ThorJobStage
 import com.valhalla.thor.domain.repository.AppArchiveInstaller
 import com.valhalla.thor.domain.repository.AppDataArchiveGateway
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumb
@@ -682,8 +683,13 @@ class RestoreAppArchiveUseCaseTest {
         assertTrue(seen.isNotEmpty())
         assertEquals(0L, seen.first().total)
         // And it stops being unknown once a class has landed — `total = 0` forever would be the same
-        // defect from the other side.
-        assertTrue(seen.toString(), seen.drop(1).any { it.total > 0L })
+        // defect from the other side. Pinned to a RESTORING emission on purpose: the FINISHING one at
+        // the end always carries the full total, so an `any {}` over every stage would pass even if
+        // the bar stayed indeterminate for the whole restore.
+        assertTrue(
+            seen.toString(),
+            seen.drop(1).any { it.stage == ThorJobStage.RESTORING && it.total > 0L },
+        )
     }
 
     @Test
