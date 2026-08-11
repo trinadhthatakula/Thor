@@ -12,6 +12,7 @@ import com.valhalla.thor.domain.model.ArchiveHeader
 import com.valhalla.thor.domain.model.ArchiveKdf
 import com.valhalla.thor.domain.model.THORBAK_HEADER_ENTRY
 import com.valhalla.thor.domain.repository.ArchiveSource
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -21,6 +22,7 @@ import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.util.Base64
+import kotlin.coroutines.CoroutineContext
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class OpenArchiveUseCaseTest {
@@ -92,7 +94,11 @@ class OpenArchiveUseCaseTest {
         val oversized = ByteArray(MAX_HEADER_BYTES + 1) { 'x'.code.toByte() }
         val outcome = useCase.readHeader(FakeSource(mapOf(THORBAK_HEADER_ENTRY to oversized)))
 
-        assertTrue(outcome.toString(), outcome is ArchiveHeaderOutcome.NotAnArchive)
+        val reason = (outcome as ArchiveHeaderOutcome.NotAnArchive).reason
+        // The reason must mention the limit — if it were merely a parse failure (the behaviour
+        // before readAtMost was introduced), the reason would mention the JSON error, not the size.
+        // This distinguishes the deflate-bomb defence from ordinary corrupt-JSON handling.
+        assertTrue(reason, reason.contains("exceeds") && reason.contains(MAX_HEADER_BYTES.toString()))
     }
 
     @Test
@@ -130,7 +136,7 @@ class OpenArchiveUseCaseTest {
     @Test
     fun `an absurd iteration count is refused instead of derived`() = runTest {
         // A header is attacker-controlled data. `iterations = 2_000_000_000` is a PBKDF2 call that
-        // never returns, on the UI thread's coroutine, with a progress notification already showing.
+        // never returns; it runs on the IO dispatcher and hangs the restore worker indefinitely.
         val outcome = useCase.unlock(header().copy(kdf = ArchiveKdf(iterations = MAX_KDF_ITERATIONS + 1, salt = "AAAA")), "x".toCharArray())
 
         assertTrue(outcome.toString(), outcome is ArchiveUnlockOutcome.Unsupported)
@@ -218,6 +224,42 @@ class OpenArchiveUseCaseTest {
         useCase.unlock(header(), passphrase)
 
         assertEquals("correct horse", String(passphrase))
+    }
+
+    @Test
+    fun `readHeader and unlock hand their work to the injected io dispatcher`() = runTest {
+        // Every other test in this file uses `UnconfinedTestDispatcher`, which runs the
+        // `withContext` body inline on the calling thread — so all of them stay green if
+        // `withContext(ioDispatcher)` is deleted, and even a thread-identity assertion would be
+        // vacuous under it. This test counts dispatches instead: a dispatcher that is not the
+        // caller's own is asked to dispatch only if the production code really moved the work onto
+        // it. Delete `withContext(ioDispatcher)` from either function and its count stays at zero.
+        //
+        // (A second `TestCoroutineScheduler` is not an option — `runTest` rejects it outright with
+        // "Detected use of different schedulers".)
+        val io = CountingDispatcher()
+        val dispatching = OpenArchiveUseCase(cipher, io)
+
+        dispatching.readHeader(sourceFor(header()))
+        val afterReadHeader = io.dispatches
+        dispatching.unlock(header(), "correct horse".toCharArray())
+
+        assertTrue("readHeader must dispatch onto the io dispatcher", afterReadHeader > 0)
+        assertTrue("unlock must dispatch onto the io dispatcher", io.dispatches > afterReadHeader)
+    }
+
+    /**
+     * Runs the block inline — the work still happens on the test thread — but records that it was
+     * asked to. The recording, not the threading, is what pins `withContext(ioDispatcher)`.
+     */
+    private class CountingDispatcher : CoroutineDispatcher() {
+        var dispatches = 0
+            private set
+
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            dispatches++
+            block.run()
+        }
     }
 
     @Test

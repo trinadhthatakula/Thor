@@ -71,7 +71,8 @@ class OpenArchiveUseCase(
             source.openEntry(THORBAK_HEADER_ENTRY)?.use { stream ->
                 val raw = stream.readAtMost(MAX_HEADER_BYTES + 1)
                 // A hostile `thorbak.json` could be gigabytes after deflate; cap to avoid OOM.
-                // Return null here so the caller's `?: return@withContext` fires with a clear reason.
+                // A non-local return@withContext here surfaces the over-size outcome directly,
+                // distinct from the "no header entry" message that follows.
                 if (raw.size > MAX_HEADER_BYTES) {
                     return@withContext ArchiveHeaderOutcome.NotAnArchive(
                         "this file's $THORBAK_HEADER_ENTRY exceeds $MAX_HEADER_BYTES bytes"

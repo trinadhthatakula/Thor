@@ -16,6 +16,7 @@ import java.io.IOException
 import java.util.zip.CRC32
 import java.util.zip.Deflater
 import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
 class ZipArchiveSourceTest {
@@ -150,14 +151,12 @@ class ZipArchiveSourceTest {
         // The real writer (BackupAppArchiveUseCase, commit 0a32b8a3) uses STORED for thorbak.json and
         // level-0 DEFLATED for every data member. `ZipFile.getInputStream` decodes both transparently,
         // but neither combination appeared in the original fixtures — this pins the read-side contract.
-        val source = ZipArchiveSource(
-            mixedMethodZip(
-                headerBody = "{\"schema\":1}",
-                "ce.tar.gz.enc" to "cedata",
-                "de.tar.enc" to "dedata",
-            ),
-            "mixed.thorbak",
+        val containerFile = mixedMethodZip(
+            headerBody = "{\"schema\":1}",
+            "ce.tar.gz.enc" to "cedata",
+            "de.tar.enc" to "dedata",
         )
+        val source = ZipArchiveSource(containerFile, "mixed.thorbak")
 
         source.use {
             assertEquals(
@@ -167,6 +166,22 @@ class ZipArchiveSourceTest {
             assertEquals("{\"schema\":1}", it.openEntry("thorbak.json")!!.readBytes().decodeToString())
             assertEquals("cedata", it.openEntry("ce.tar.gz.enc")!!.readBytes().decodeToString())
             assertEquals("dedata", it.openEntry("de.tar.enc")!!.readBytes().decodeToString())
+        }
+
+        // Assert that the fixture is genuinely mixed-method. Without this, dropping the
+        // method/size/crc block from mixedMethodZip makes every entry DEFLATED and the test
+        // still passes — it would no longer cover the STORED read path it names.
+        ZipFile(containerFile).use { zf ->
+            assertEquals(
+                "thorbak.json must be STORED (as the real writer writes it)",
+                ZipEntry.STORED,
+                zf.getEntry("thorbak.json").method,
+            )
+            assertEquals(
+                "data entries must be DEFLATED",
+                ZipEntry.DEFLATED,
+                zf.getEntry("ce.tar.gz.enc").method,
+            )
         }
     }
 }
