@@ -4,6 +4,7 @@
 package com.valhalla.thor.data.repository
 
 import android.content.Context
+import android.content.pm.PackageManager
 import androidx.core.net.toUri
 import com.valhalla.thor.domain.InstallState
 import com.valhalla.thor.domain.InstallerEventBus
@@ -11,7 +12,6 @@ import com.valhalla.thor.domain.model.ObbPlacement
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.StagedPackage
 import com.valhalla.thor.domain.repository.AppArchiveInstaller
-import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.ArchiveInstallOutcome
 import com.valhalla.thor.domain.repository.InstallMode
 import com.valhalla.thor.domain.repository.InstallerRepository
@@ -33,14 +33,13 @@ import java.io.File
 
 @Single(binds = [AppArchiveInstaller::class])
 class AppArchiveInstallerImpl(
-    // Only ever used to resolve the bus's `UiText` into the reason an outcome carries. Koin binds
-    // the Application, whose `getResources()` follows the applied language (see `AppLocale`), so a
-    // string resolved here is in the language the user picked rather than the one the process
-    // started in.
+    // Two uses, both narrow: resolving the bus's `UiText` into the reason an outcome carries, and
+    // the `PackageManager` [installStamp] reads. Koin binds the Application, whose `getResources()`
+    // follows the applied language (see `AppLocale`), so a string resolved here is in the language
+    // the user picked rather than the one the process started in.
     private val context: Context,
     private val installerRepository: InstallerRepository,
     private val eventBus: InstallerEventBus,
-    private val appRepository: AppRepository,
     private val obbInstaller: ObbInstaller,
     private val privilegeState: PrivilegeStateProvider,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
@@ -102,15 +101,26 @@ class AppArchiveInstallerImpl(
      *    inline — so a collector that subscribes afterwards is relying on the replay cache to have
      *    kept exactly the value it wants. It also means the wait below genuinely starts when the
      *    install does.
-     *  - **The last terminal state wins, not the first.** This is the precondition the plain
-     *    `first { … }` breaks here: `installPackage` emits `Success` and *then*, for an
-     *    OBB-carrying archive, spends minutes placing game data and can emit `Error` after it
-     *    (`InstallerRepositoryImpl`'s "installed, but its game data could not be placed"). A
-     *    subscribe-early collector that stopped at the first terminal state would return `Installed`
-     *    and throw that error away — worse than the late subscribe it replaced, which at least read
-     *    the last value out of the replay cache. So the collector records terminal states and the
-     *    verdict is taken once `installPackage` has returned, i.e. once it has said everything it
-     *    is going to say.
+     *  - **The verdict is the last word the bus was *given*, not the last one the watcher has
+     *    *processed*.** `installPackage` emits `Success` and then, for an OBB-carrying archive,
+     *    spends minutes placing game data and can emit `Error` after it (`InstallerRepositoryImpl`'s
+     *    "installed, but its game data could not be placed"). Both are terminal and the second one
+     *    is the true outcome, so a collector that stopped at the first would report `Installed` for
+     *    a game that lost its expansions. Recording terminal states into a `MutableStateFlow` and
+     *    reading it afterwards does not fix that either, and this is the precondition worth stating:
+     *    `filterNotNull().first()` on a `StateFlow` returns the *current* value without suspending,
+     *    `MutableSharedFlow.emit` under `DROP_OLDEST` never suspends, and this caller is already on
+     *    `ioDispatcher` so `installPackage`'s own `withContext` resumes undispatched — there is no
+     *    yield anywhere between that `Error` reaching the bus and the read, so the watcher is
+     *    normally still holding `Success` and the error is discarded. The read therefore goes to
+     *    [InstallerEventBus.latest], the `replay = 1` cache, which the emitting thread fills
+     *    synchronously before `installPackage` returns. [settledArchiveInstallState] states that
+     *    rule as a pure function of the two values, so it is decided by data rather than by which
+     *    thread won, and it is tested.
+     *  - **The watcher is still what makes the fallback safe.** On a session rung the outcome
+     *    arrives *after* `installPackage` returns — `InstallReceiver` answers a commit that has
+     *    already been made — so the cache's last word is only `Installing`. Subscribing after that
+     *    read would race the broadcast; subscribing before the install, as below, cannot.
      *  - **[INSTALL_WAIT_MS] bounds the whole operation.** The install call is inside the budget,
      *    not just the wait after it, so a rung that never returns ends in `Unconfirmed` instead of
      *    hanging the restore worker with no outcome at all.
@@ -158,7 +168,13 @@ class AppArchiveInstallerImpl(
                         mode = mode,
                         canDowngrade = true,
                     )
-                    terminal.filterNotNull().first()
+                    // `latest` is the last word the bus was given; `terminal.value` is only the
+                    // last word this watcher has caught up with. They differ on exactly the path
+                    // this outcome type exists for — see the second bullet above.
+                    settledArchiveInstallState(
+                        lastWord = eventBus.latest,
+                        watched = terminal.value,
+                    ) ?: terminal.filterNotNull().first()
                 } finally {
                     // `events` is a SharedFlow and never completes, so the collector never ends on
                     // its own and the enclosing scope would wait for it forever.
@@ -181,21 +197,43 @@ class AppArchiveInstallerImpl(
         val stampAfter = installStamp(packageName)
         return archiveInstallOutcome(
             settled = settled,
-            landed = stampAfter != null && stampAfter != stampBefore,
+            landed = installLanded(before = stampBefore, after = stampAfter),
             reason = (settled as? InstallState.Error)?.message?.asString(context),
         )
     }
 
     /**
-     * The platform's `lastUpdateTime` for [packageName], or null when it cannot see the package.
+     * What the platform can say about [packageName]'s `lastUpdateTime` right now.
      *
-     * A *change* in this value is the one locally observable proof that this install landed. The
+     * A *change* in that value is the one locally observable proof that this install landed. The
      * platform stamps it on every completed install, including a reinstall of the same version, so
      * it answers "did this operation put an app on the device?" where presence answers only "is
      * there an app of this name?".
+     *
+     * Asked of `PackageManager` directly, and **not** through `AppRepository.getAppDetails`: that
+     * builds a whole `AppInfo` — a label loaded out of the target app's resources, an
+     * `Environment` lookup, `getInstallSourceInfo`, a UAD-map hit — twice per restore, to read one
+     * `Long`. `InstallerRepositoryImpl.installStamp` already reads it this way for the same purpose.
+     *
+     * The three-way return is the point rather than a detail. `getAppDetails` swallows every
+     * exception and returns null, which makes "there is no such package" and "the question could
+     * not be answered" the same value — and answering the second one as the first is what lets a
+     * failed update be scored as a landing. See [installLanded].
+     *
+     * Not `suspend`, and no `CancellationException` catch: `getPackageInfo` is one synchronous
+     * binder call with no suspension point, so a cancellation cannot be delivered inside this `try`
+     * and a catch for it would be the dead idiom rather than the guard it looks like.
      */
-    private suspend fun installStamp(packageName: String): Long? =
-        appRepository.getAppDetails(packageName)?.lastUpdateTime
+    private fun installStamp(packageName: String): InstallStamp = try {
+        InstallStamp.At(context.packageManager.getPackageInfo(packageName, 0).lastUpdateTime)
+    } catch (_: PackageManager.NameNotFoundException) {
+        InstallStamp.Absent
+    } catch (e: Exception) {
+        // A binder hiccup, or a ROM that filters package visibility on this call. Logged because
+        // it silently costs the caller the difference between `Failed` and a data restore.
+        Logger.e(TAG, "could not read the install stamp for $packageName", e)
+        InstallStamp.Unknown
+    }
 
     override suspend fun placeBundleObb(
         bundle: File,
@@ -238,6 +276,82 @@ internal fun endsArchiveInstallWait(state: InstallState): Boolean =
         state is InstallState.UserConfirmationRequired
 
 /**
+ * The terminal state a restore's install wait has actually reached, or null when it has not.
+ *
+ * Two sources, in this order, and the order is the whole content of this function:
+ *
+ *  - [lastWord] is `InstallerEventBus.latest`, the `replay = 1` cache. The emitting thread fills it
+ *    synchronously, so once `installPackage` has returned it holds the last thing that call said —
+ *    including an `Error` emitted **after** a `Success` on the same install, which is what an
+ *    OBB-carrying archive whose expansions could not be placed produces. It wins.
+ *  - [watched] is the last terminal state a subscribed collector has processed. It is a *lagging*
+ *    view: nothing forces that collector to have run before this is read. It is used only when the
+ *    bus's last word is not terminal at all — a session rung has committed and `InstallReceiver`
+ *    has not answered yet, so the cache holds `Installing` while the collector may already hold the
+ *    outcome from a moment ago.
+ *
+ * Null means neither source has a verdict and the caller must keep waiting. The `Idle` that
+ * `installBundle` puts on the bus before installing lands here, which is what stops the reset from
+ * being read as an outcome.
+ *
+ * Pure, and separated from the coroutine that feeds it, precisely because the defect it fixes was a
+ * thread race: a test of the racing code would be flaky, whereas a test of this is red or green.
+ */
+internal fun settledArchiveInstallState(
+    lastWord: InstallState?,
+    watched: InstallState?,
+): InstallState? = lastWord?.takeIf { endsArchiveInstallWait(it) } ?: watched
+
+/**
+ * What `PackageManager` could say about a package's `lastUpdateTime` at one moment.
+ *
+ * Three cases, not a nullable `Long`, because "no stamp" has two meanings that must not be folded
+ * together: [Absent] is the platform stating the package is not installed, and [Unknown] is the
+ * platform failing to answer. [installLanded] scores those differently, and treating the second as
+ * the first is how a restore writes one app version's data into another.
+ */
+internal sealed interface InstallStamp {
+
+    /** The platform's stamp, in milliseconds. */
+    data class At(val millis: Long) : InstallStamp
+
+    /** The platform said there is no such package. */
+    data object Absent : InstallStamp
+
+    /** The platform could not be asked — a binder failure, or filtered package visibility. */
+    data object Unknown : InstallStamp
+}
+
+/**
+ * Whether *this* install put an app on the device, from the stamp on either side of it.
+ *
+ * The rules, and why each is what it is:
+ *
+ *  - **[InstallStamp.Unknown] on either side is never a landing.** A read that failed is not
+ *    evidence, and this side is not symmetric in consequence: a false `landed` on an error turns
+ *    `Failed` into `InstalledWithoutGameData`, whose contract tells the restore to go on and write
+ *    app data — into whatever copy was already there. `getAppDetails` returning null for a binder
+ *    hiccup used to reach exactly that, because a swallowed exception and an uninstalled package
+ *    were the same value.
+ *  - **[InstallStamp.Absent] before and a stamp after is a landing.** Nothing was there, something
+ *    is now.
+ *  - **Two stamps are compared, not ordered.** `!=`, so a clock that moved backwards between the
+ *    two reads still reads as a change rather than as no install.
+ *  - **The same stamp on both sides is not a landing**, which is the case presence gets wrong: a
+ *    failed *update* leaves the previous copy installed for `PackageManager` to answer yes about.
+ *  - **No stamp afterwards is never a landing**, whichever kind of no-stamp it is.
+ */
+internal fun installLanded(before: InstallStamp, after: InstallStamp): Boolean = when (after) {
+    is InstallStamp.At -> when (before) {
+        is InstallStamp.At -> after.millis != before.millis
+        InstallStamp.Absent -> true
+        InstallStamp.Unknown -> false
+    }
+
+    InstallStamp.Absent, InstallStamp.Unknown -> false
+}
+
+/**
  * The verdict `AppArchiveInstallerImpl.installAndAwait` reaches, as a pure function of what it saw.
  *
  * Top-level and `internal` for testability, the same trade [streamObbEntries] makes in this package:
@@ -267,6 +381,7 @@ internal fun endsArchiveInstallWait(state: InstallState): Boolean =
  * @param landed whether the package's `lastUpdateTime` moved while this install ran — i.e. whether
  *   *this* operation put an app on the device. Not "is something of that name installed": a failed
  *   update leaves the old copy behind, and restoring over an existing install is the normal case.
+ *   Computed by [installLanded], which also refuses to call a stamp it could not read a landing.
  * @param reason the settled error's own message, resolved, or null when there is none to carry.
  */
 internal fun archiveInstallOutcome(

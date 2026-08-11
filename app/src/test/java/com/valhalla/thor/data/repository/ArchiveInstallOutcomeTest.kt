@@ -9,16 +9,24 @@ import com.valhalla.thor.domain.repository.ArchiveInstallOutcome
 import com.valhalla.thor.util.UiText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The verdict `AppArchiveInstallerImpl.installAndAwait` reaches, hoisted into
- * [archiveInstallOutcome] so it can be checked without a `Context`.
+ * The verdict `AppArchiveInstallerImpl.installAndAwait` reaches, hoisted into three pure functions —
+ * [settledArchiveInstallState] (which terminal state is the outcome), [installLanded] (did *this*
+ * install put an app on the device), and [archiveInstallOutcome] (what those two mean together) — so
+ * they can be checked without a `Context`.
  *
  * Same trade the rest of this task makes: `AppArchiveInstallerImpl` takes `ObbInstaller`, which needs
  * a `Context`, and there is no mocking library on this classpath — so the decision worth locking down
  * is the one that is pure, and it is locked down here rather than left to a device.
+ *
+ * The first of the three exists in this shape for a second reason. The bug it fixes was a **thread
+ * race** — the verdict was read off a lagging collector, so the same archive produced `Installed` or
+ * `InstalledWithoutGameData` depending on which thread won. A test of the racing code would be flaky
+ * rather than red. Expressed as "given these two values, which is the outcome?" it is neither.
  *
  * What is actually at stake is whether restore writes someone's data into the wrong app, and whether
  * the one sentence the user will ever see about a failure is the platform's or a guess. Every case
@@ -174,5 +182,111 @@ class ArchiveInstallOutcomeTest {
                 )
             )
         )
+    }
+
+    @Test
+    fun `the bus's last word beats the one the watcher happened to have processed`() {
+        // The regression this function exists for. On the one path that emits two terminal states —
+        // root rung, APKs land, `Success`; then minutes of OBB copying fails, `Error` — the
+        // collector is normally still holding `Success` when the verdict is read, because nothing
+        // yields between the emit and the read. Taking the collector's value reports a clean
+        // `Installed` for a game that lost its expansion files, which is #164's own failure mode.
+        assertEquals(
+            error("game data could not be placed"),
+            settledArchiveInstallState(
+                lastWord = error("game data could not be placed"),
+                watched = InstallState.Success,
+            ),
+        )
+    }
+
+    @Test
+    fun `an install still in flight is not a verdict yet`() {
+        // A session rung returns at `commit()`, before `InstallReceiver` has answered. The cache's
+        // last word is `Installing`, and reading that as the outcome would end the wait on a state
+        // that says nothing about how the install went.
+        assertNull(
+            settledArchiveInstallState(lastWord = InstallState.Installing(1.0f), watched = null),
+        )
+    }
+
+    @Test
+    fun `a terminal state the bus has since moved past is still the verdict`() {
+        // The fallback, and why it is not decoration: the collector is the only record of a terminal
+        // state that a later non-terminal emission has pushed out of the replay cache. Dropping it
+        // would turn a decided install back into a ten-minute wait.
+        assertEquals(
+            InstallState.Success,
+            settledArchiveInstallState(
+                lastWord = InstallState.Installing(1.0f),
+                watched = InstallState.Success,
+            ),
+        )
+    }
+
+    @Test
+    fun `the reset that clears the bus is not mistaken for an outcome`() {
+        // `installBundle` puts `Idle` on the bus before installing, so the cache is never a previous
+        // install's terminal state. That only works if `Idle` reads as "no verdict yet".
+        assertNull(settledArchiveInstallState(lastWord = InstallState.Idle, watched = null))
+    }
+
+    @Test
+    fun `an obb failure after the app landed survives the read and is not a clean install`() {
+        // The same trace end to end, through both functions, as the outcome a caller would act on.
+        // This is the assertion that would have gone red on the round it regressed: `Installed`
+        // tells Task 14 to proceed as though everything worked.
+        val obbFailure = "Some Game installed, but its game data could not be placed: no space left"
+        val settled = settledArchiveInstallState(
+            lastWord = error(obbFailure),
+            watched = InstallState.Success,
+        )
+
+        assertEquals(
+            ArchiveInstallOutcome.InstalledWithoutGameData(obbFailure),
+            archiveInstallOutcome(settled = settled, landed = true, reason = obbFailure),
+        )
+    }
+
+    @Test
+    fun `a stamp that could not be read before the install is not a landing`() {
+        // The data-corruption case. `PackageManager` failing on the pre-install read — a binder
+        // hiccup, or a ROM that filters package visibility — must not look like "nothing was
+        // installed before, and something is now". If it did, a *failed* update would score as
+        // landed, and `InstalledWithoutGameData` tells the caller to write the new version's app
+        // data into the old copy still sitting on disk.
+        assertFalse(
+            installLanded(before = InstallStamp.Unknown, after = InstallStamp.At(1_000L)),
+        )
+    }
+
+    @Test
+    fun `a package that was absent and now has a stamp landed`() {
+        // The genuine "not installed before" case, which is the one `Unknown` must not be folded
+        // into: here the platform actually said so.
+        assertTrue(installLanded(before = InstallStamp.Absent, after = InstallStamp.At(1_000L)))
+    }
+
+    @Test
+    fun `a failed update leaves the stamp where it was and has not landed`() {
+        // The case presence gets wrong: the old copy is still installed, so `PackageManager`
+        // answers yes about a version that never arrived.
+        assertFalse(installLanded(before = InstallStamp.At(1_000L), after = InstallStamp.At(1_000L)))
+    }
+
+    @Test
+    fun `a stamp that changed is a landing even when the clock moved backwards`() {
+        // Compared, not ordered. A device whose clock stepped back mid-install would fail an
+        // `after > before` test for an install that plainly happened.
+        assertTrue(installLanded(before = InstallStamp.At(9_000L), after = InstallStamp.At(1_000L)))
+    }
+
+    @Test
+    fun `neither absence nor an unreadable stamp afterwards is a landing`() {
+        // Both directions of "no stamp after". The install did not put an app on the device, or
+        // nothing can say that it did — and the caller must stop either way.
+        assertFalse(installLanded(before = InstallStamp.At(1_000L), after = InstallStamp.Absent))
+        assertFalse(installLanded(before = InstallStamp.At(1_000L), after = InstallStamp.Unknown))
+        assertFalse(installLanded(before = InstallStamp.Absent, after = InstallStamp.Unknown))
     }
 }
