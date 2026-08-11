@@ -4,7 +4,7 @@
 package com.valhalla.thor.presentation.backup
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
+import com.valhalla.thor.data.backup.DataArchiveCapabilityCache
 import com.valhalla.thor.data.backup.PassphraseVault
 import com.valhalla.thor.data.backup.job.JobRegistry
 import com.valhalla.thor.domain.model.ArchiveHeader
@@ -28,6 +28,7 @@ import com.valhalla.thor.domain.usecase.ArchiveHeaderOutcome
 import com.valhalla.thor.domain.usecase.ArchiveUnlockOutcome
 import com.valhalla.thor.domain.usecase.OpenArchiveUseCase
 import com.valhalla.thor.domain.usecase.ReadInstalledAppFactsUseCase
+import com.valhalla.thor.presentation.launchGuarded
 import java.util.UUID
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -95,7 +96,10 @@ sealed interface RestoreFinish {
      *   all — reachable here, since Thor installs a Koin factory — and that never enters `doWork`. It is
      *   reported as "the device may have been touched" anyway; see [workerRan] for why that direction.
      */
-    data class Failed(val reason: String?, override val workerRan: Boolean) : RestoreFinish
+    data class Failed(
+        val reason: ArchiveRestoreMessage?,
+        override val workerRan: Boolean,
+    ) : RestoreFinish
 
     /**
      * The job reached a terminal CANCELLED state.
@@ -113,13 +117,72 @@ sealed interface RestoreFinish {
     data class Cancelled(override val workerRan: Boolean) : RestoreFinish
 }
 
+/**
+ * A sentence for the user, in a form a view model is allowed to hold.
+ *
+ * This screen's failure copy has two origins and they cannot be represented the same way. Some of it
+ * is written *here* — four fixed sentences this view model decides for itself — and some of it arrives
+ * as free text from below, where the layer that produced it knows something this one does not
+ * (`ArchiveHeaderOutcome.NotAnArchive.reason` names the entry it could not find;
+ * `ArchiveUnlockOutcome.Unsupported.reason` names the cipher it does not implement; a `WorkInfo`
+ * carries the worker's own sentence).
+ *
+ * The four written here used to be Kotlin string literals in this file. That is the shape the branch
+ * already ruled against once: `PassphraseSettingsViewModel` exposes `PassphraseError` and lets
+ * `PassphraseSettingsSheet` map it to `R`, so the view model stays free of Android resources and stays
+ * JVM-testable. A literal is worse than untranslated — it is *invisible*, because lint cannot see
+ * inside a Kotlin string, so when `strings_backup.xml` is translated these would have been the only
+ * English left on the screen with nothing pointing at them.
+ *
+ * Free text keeps its own arm rather than being forced into an id, because inventing an id for it
+ * would mean discarding the detail it exists to carry.
+ */
+sealed interface ArchiveRestoreMessage {
+
+    /** Free text from a layer below the presentation one. Shown as it arrived. */
+    data class FromBelow(val text: String) : ArchiveRestoreMessage
+
+    /** One of this screen's own sentences. `ArchiveRestoreScreen` resolves it against `R`. */
+    data class Known(val reason: ArchiveRestoreReason) : ArchiveRestoreMessage
+}
+
+/**
+ * The sentences [ArchiveRestoreViewModel] decides for itself.
+ *
+ * Enumerable because all four are properties of a decision this class makes, not of anything it was
+ * told. [ArchiveRestoreScreen] owns the mapping to `R`, in the same file and for the same reason
+ * `refusalLabel` and `warningLabel` live there.
+ */
+enum class ArchiveRestoreReason {
+    /** `ArchiveSourceFactory` could not open the URI at all — no header was ever read. */
+    FILE_UNREADABLE,
+
+    /** The archive is intact; the key derived from what was typed does not open it. */
+    WRONG_PASSPHRASE,
+
+    /**
+     * The check itself did not complete — the derivation or the read threw.
+     *
+     * Separate from [WRONG_PASSPHRASE] because it is not a claim about the passphrase. A failure to
+     * *test* an answer is not the answer being wrong, and conflating them tells a user to change
+     * something that may be correct.
+     */
+    UNLOCK_CHECK_FAILED,
+
+    /** Unlocked earlier, but the passphrase is gone by the time Restore was pressed. */
+    PASSPHRASE_LOST,
+
+    /** The header's stored salt will not decode, so no key can be derived from it. */
+    SALT_UNREADABLE,
+}
+
 data class ArchiveRestoreUiState(
     val loading: Boolean = false,
     /** The archive's own display name, for a message. Never a path. */
     val fileName: String? = null,
     val header: ArchiveHeader? = null,
     /** Why this file cannot be used at all — not a gate refusal, which needs a readable header. */
-    val error: String? = null,
+    val error: ArchiveRestoreMessage? = null,
     val supported: Boolean? = null,
     val refusal: ArchiveRestoreRefusal? = null,
     val warnings: List<ArchiveRestoreWarning> = emptyList(),
@@ -129,7 +192,7 @@ data class ArchiveRestoreUiState(
     val obbOffered: Boolean = false,
     val restoreObb: Boolean = false,
     val passphraseNeeded: Boolean = false,
-    val passphraseError: String? = null,
+    val passphraseError: ArchiveRestoreMessage? = null,
     val unlocked: Boolean = false,
     /** The user has read what "replace" means and agreed to it. */
     val confirmed: Boolean = false,
@@ -170,7 +233,20 @@ data class ArchiveRestoreUiState(
 internal class ArchiveRestoreViewModel(
     private val sources: ArchiveSourceFactory,
     private val openArchive: OpenArchiveUseCase,
-    private val probe: AppDataProbe,
+    /**
+     * The cache, never [AppDataProbe] directly.
+     *
+     * This screen was the one production call site of `probeDataArchiveCapability()` outside
+     * [DataArchiveCapabilityCache], and it lost both of the properties that class exists to provide.
+     * The gate: the cache returns false without probing when `PrivilegeState.hasAnyPrivilege` is
+     * false, precisely so opening a `.thorbak` on a device where the user has granted nothing cannot
+     * shell out and raise a `su` prompt. The memoisation: the answer is keyed on the whole privilege
+     * state, so the round trip happens once rather than on every file the user opens.
+     *
+     * `MeasureAppDataUseCase` routes through the same object and its KDoc says why in as many words;
+     * two test files carry comments asserting that this call site does not exist.
+     */
+    private val capability: DataArchiveCapabilityCache,
     private val installedFacts: ReadInstalledAppFactsUseCase,
     private val vault: PassphraseVault,
     private val launcher: ArchiveJobLauncher,
@@ -206,7 +282,12 @@ internal class ArchiveRestoreViewModel(
     init {
         // Not gated on a file being picked: the Settings entry point arrives with no URI, and after a
         // crash that is exactly how the user gets here.
-        viewModelScope.launch {
+        //
+        // No `onFailure`: a breadcrumb that cannot be read is a banner that does not appear, which is
+        // the state the screen is in for every user who has never had a restore interrupted. Guarded
+        // all the same — this runs in the constructor, so an unguarded throw here would take the
+        // process down as the screen opens, which is the least recoverable moment there is.
+        launchGuarded {
             breadcrumbs.read()?.let { crumb -> _uiState.update { it.copy(interrupted = crumb) } }
         }
     }
@@ -256,16 +337,32 @@ internal class ArchiveRestoreViewModel(
             )
         }
 
-        viewModelScope.launch {
-            val supported = probe.probeDataArchiveCapability()
+        launchGuarded(
+            // Without this the spinner set above is permanent: `loading = true` is written
+            // synchronously and every path that clears it lives inside this block, so a throw from the
+            // source factory or the header reader left a screen that span until the user backed out of
+            // it. Reported as the file being unopenable, which is what a throw on this path means.
+            onFailure = {
+                _uiState.update {
+                    it.copy(
+                        loading = false,
+                        error = ArchiveRestoreMessage.Known(ArchiveRestoreReason.FILE_UNREADABLE),
+                    )
+                }
+            }
+        ) {
+            val supported = capability.isSupported()
             _uiState.update { it.copy(supported = supported) }
 
             val source = sources.open(uriString)
             if (source == null) {
                 _uiState.update {
-                    it.copy(loading = false, error = "Thor could not open that file")
+                    it.copy(
+                        loading = false,
+                        error = ArchiveRestoreMessage.Known(ArchiveRestoreReason.FILE_UNREADABLE),
+                    )
                 }
-                return@launch
+                return@launchGuarded
             }
 
             // Closed as soon as the header is out. Holding it open would hold a ParcelFileDescriptor
@@ -274,8 +371,15 @@ internal class ArchiveRestoreViewModel(
             val header = when (outcome) {
                 is ArchiveHeaderOutcome.Read -> outcome.header
                 is ArchiveHeaderOutcome.NotAnArchive -> {
-                    _uiState.update { it.copy(loading = false, error = outcome.reason) }
-                    return@launch
+                    // `FromBelow`: this sentence names the archive entry that was missing, which is
+                    // detail only the reader has. An id here would throw it away.
+                    _uiState.update {
+                        it.copy(
+                            loading = false,
+                            error = ArchiveRestoreMessage.FromBelow(outcome.reason),
+                        )
+                    }
+                    return@launchGuarded
                 }
             }
 
@@ -331,7 +435,10 @@ internal class ArchiveRestoreViewModel(
     fun dismissResult() = _uiState.update { it.copy(finished = null, progress = null) }
 
     fun acknowledgeInterruption() {
-        viewModelScope.launch {
+        // No `onFailure`: a breadcrumb that would not clear leaves the banner up, which is the state
+        // the user just asked to leave but is not a state they are stuck in — the store is asked again
+        // on the next launch, and the banner's own button is still there to press.
+        launchGuarded {
             breadcrumbs.clear()
             _uiState.update { it.copy(interrupted = null) }
         }
@@ -342,13 +449,53 @@ internal class ArchiveRestoreViewModel(
      *   on: kept on the accepted path, zeroed on both refused ones.
      */
     fun submitPassphrase(typed: CharArray) {
-        val header = _uiState.value.header ?: run {
+        val state = _uiState.value
+        val header = state.header ?: run {
             // No header means no archive to test it against, and nothing downstream will ever see
             // this array. The wipe is the whole of what this branch does.
             typed.fill(' ')
             return
         }
-        viewModelScope.launch {
+        // The re-entry guard, and it is the reason `loading` below is not merely cosmetic. A
+        // derivation takes 210,000 PBKDF2 iterations — comfortably over a second on a minSdk-28-era
+        // device — and the screen clears its text field the moment Unlock is pressed. Retyping and
+        // pressing again used to put two derivations in flight whose completion order decided whether
+        // `unlocked` or `passphraseError` won, so the second attempt could overwrite the first
+        // attempt's success with a stale refusal. This array is wiped rather than parked: nothing
+        // downstream will see it.
+        if (state.loading) {
+            typed.fill(' ')
+            return
+        }
+        // The spinner at the top of the screen is already wired to this flag and was never set here —
+        // `open()` was its only writer, which is why the *automatic* unlock through
+        // `tryRememberedPassphrase` showed progress and the manual one showed nothing at all. Set
+        // synchronously, before the coroutine, so the frame that clears the text field is also the
+        // frame that explains why.
+        _uiState.update { it.copy(loading = true) }
+        launchGuarded(
+            // `loading` is cleared on every path below, including this one — a throw out of the key
+            // derivation must not leave a spinner that never stops over a field the user cannot use.
+            //
+            // `UNLOCK_CHECK_FAILED`, deliberately not `WRONG_PASSPHRASE`: a throw is not evidence
+            // about what was typed. `unlock` answers `WrongPassphrase` for that and `Unsupported` for
+            // a cipher it does not implement, so anything reaching here is a third thing — and telling
+            // a user their passphrase is wrong when it may well be right sends them to change a
+            // passphrase that was never the problem.
+            onFailure = {
+                typed.fill(' ')
+                _uiState.update {
+                    it.copy(
+                        loading = false,
+                        unlocked = false,
+                        passphraseNeeded = true,
+                        passphraseError = ArchiveRestoreMessage.Known(
+                            ArchiveRestoreReason.UNLOCK_CHECK_FAILED
+                        ),
+                    )
+                }
+            }
+        ) {
             when (val outcome = openArchive.unlock(header, typed)) {
                 // The key is discarded: this call is a yes/no answer. `ThorJobLauncher` derives the
                 // real one, so there is one enqueue path rather than two.
@@ -357,7 +504,12 @@ internal class ArchiveRestoreViewModel(
                     wipePassphrase()
                     passphrase = typed
                     _uiState.update {
-                        it.copy(unlocked = true, passphraseNeeded = false, passphraseError = null)
+                        it.copy(
+                            loading = false,
+                            unlocked = true,
+                            passphraseNeeded = false,
+                            passphraseError = null,
+                        )
                     }
                 }
 
@@ -365,19 +517,29 @@ internal class ArchiveRestoreViewModel(
                     typed.fill(' ')
                     _uiState.update {
                         it.copy(
+                            loading = false,
                             unlocked = false,
                             passphraseNeeded = true,
-                            passphraseError = "that passphrase does not open this backup",
+                            passphraseError = ArchiveRestoreMessage.Known(
+                                ArchiveRestoreReason.WRONG_PASSPHRASE
+                            ),
                         )
                     }
                 }
 
                 // A property of the archive, not of the passphrase, so it goes to `error` where the
-                // screen shows it instead of blaming what the user typed.
+                // screen shows it instead of blaming what the user typed. `FromBelow`, because the
+                // sentence names the cipher or the KDF the archive asked for and this layer does not
+                // know one from another.
                 is ArchiveUnlockOutcome.Unsupported -> {
                     typed.fill(' ')
                     _uiState.update {
-                        it.copy(unlocked = false, passphraseNeeded = false, error = outcome.reason)
+                        it.copy(
+                            loading = false,
+                            unlocked = false,
+                            passphraseNeeded = false,
+                            error = ArchiveRestoreMessage.FromBelow(outcome.reason),
+                        )
                     }
                 }
             }
@@ -411,7 +573,7 @@ internal class ArchiveRestoreViewModel(
                     unlocked = false,
                     passphraseNeeded = true,
                     finished = RestoreFinish.Failed(
-                        reason = "Thor no longer has the passphrase for this backup — unlock it again",
+                        reason = ArchiveRestoreMessage.Known(ArchiveRestoreReason.PASSPHRASE_LOST),
                         workerRan = false,
                     ),
                 )
@@ -426,7 +588,7 @@ internal class ArchiveRestoreViewModel(
             _uiState.update {
                 it.copy(
                     finished = RestoreFinish.Failed(
-                        reason = "this archive's salt could not be read",
+                        reason = ArchiveRestoreMessage.Known(ArchiveRestoreReason.SALT_UNREADABLE),
                         workerRan = false,
                     )
                 )
@@ -435,7 +597,22 @@ internal class ArchiveRestoreViewModel(
         }
 
         _uiState.update { it.copy(running = true, queued = false, finished = null) }
-        viewModelScope.launch {
+        launchGuarded(
+            // `running` is set synchronously above and only this block can clear it, so an unguarded
+            // throw out of `startRestore` left a permanently disabled Restore button with a bar over
+            // it — a state the user cannot leave without killing the app. Reported exactly as the
+            // enqueue-returned-null branch below reports itself, because it is the same fact: no job
+            // exists, so nothing on the device was touched.
+            onFailure = {
+                _uiState.update {
+                    it.copy(
+                        running = false,
+                        queued = false,
+                        finished = RestoreFinish.Failed(reason = null, workerRan = false),
+                    )
+                }
+            }
+        ) {
             val request = ArchiveRestoreRequest(
                 uriString = uri,
                 packageName = header.packageName,
@@ -516,7 +693,9 @@ internal class ArchiveRestoreViewModel(
 
     private fun watchForExistingJob(packageName: String) {
         reattach?.cancel()
-        reattach = viewModelScope.launch {
+        // No `onFailure`: nothing has been claimed to the user by this point, and a screen that failed
+        // to re-attach to someone else's job is a screen showing its form, which is where it started.
+        reattach = launchGuarded {
             launcher.runningJobFor(ThorJobKind.ARCHIVE_RESTORE, packageName).collect { id ->
                 if (id != null && watching == null) watch(id)
             }
@@ -531,7 +710,13 @@ internal class ArchiveRestoreViewModel(
      */
     private fun watch(jobId: UUID) {
         watching?.cancel()
-        watching = viewModelScope.launch {
+        watching = launchGuarded(
+            // Without this a throw out of either collector leaves `running` true with no watcher left
+            // to clear it: the bar stays, Restore stays disabled, and the only way out is killing the
+            // app. `finish(null)` is the existing "terminal, nothing to say" path, so it releases the
+            // watcher without claiming the restore did or did not touch the device.
+            onFailure = { finish(result = null) }
+        ) {
             // `running` ahead of the first status rather than waiting for it: WorkManager's flow is
             // not guaranteed to answer in the same frame, and a Restore button over a job that is
             // already writing invites a second one.
@@ -575,7 +760,15 @@ internal class ArchiveRestoreViewModel(
                     // The one FAILED that does not mean the worker ran is a `WorkerFactory` that could
                     // not build it; that is over-reported here on purpose (see `RestoreFinish.workerRan`).
                     is ThorJobStatus.Failed ->
-                        finish(RestoreFinish.Failed(reason = status.reason, workerRan = true))
+                        finish(
+                            RestoreFinish.Failed(
+                                // The worker's own sentence, which is why it is `FromBelow`: it names
+                                // the class or the step that failed, and nothing here could re-derive
+                                // that from an id. Null when WorkManager failed the row itself.
+                                reason = status.reason?.let(ArchiveRestoreMessage::FromBelow),
+                                workerRan = true,
+                            )
+                        )
 
                     // The one terminal state that does not say for itself whether work happened.
                     // Unobserved RUNNING is read as "it did not run": the common cancel is a chain

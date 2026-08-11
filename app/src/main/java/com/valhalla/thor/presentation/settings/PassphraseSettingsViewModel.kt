@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.valhalla.thor.data.backup.MIN_PASSPHRASE_LENGTH
 import com.valhalla.thor.data.backup.PassphraseVault
+import com.valhalla.thor.presentation.launchGuarded
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -52,7 +53,10 @@ class PassphraseSettingsViewModel(private val vault: PassphraseVault) : ViewMode
     val uiState = _uiState.asStateFlow()
 
     init {
-        viewModelScope.launch {
+        // No `onFailure`: `remembered` defaults to false, and a vault this cannot read is one the sheet
+        // should not be claiming holds anything. Guarded all the same — this runs in the constructor,
+        // so a throw out of the DataStore collector would kill the process as the sheet opens.
+        launchGuarded {
             vault.isRemembered.collect { remembered ->
                 _uiState.update { it.copy(remembered = remembered) }
             }
@@ -132,11 +136,16 @@ class PassphraseSettingsViewModel(private val vault: PassphraseVault) : ViewMode
                 // throw is not swallowed` asserts both halves, so turning this into a `catch` fails a
                 // test rather than passing quietly.
                 //
-                // Whether it *should* be caught is a branch-level question this task does not settle.
-                // `AppBackupViewModel.beginBackup` is `try`/`finally` with no `catch` around its own
-                // `vault.remember` call, so a throw escapes `viewModelScope` there in exactly the same
-                // way; `PassphraseVault.recall` is the one place that does catch. Two shapes, and the
-                // choice between them belongs above this method.
+                // This is now the **last** unguarded `viewModelScope.launch` in the three view models:
+                // every other one goes through `launchGuarded`, including `beginBackup`, which used to
+                // have this exact shape around its own `vault.remember` call. It is left bare on
+                // purpose rather than by omission. The throw this would swallow comes from the
+                // DataStore write inside `PassphraseVault.remember`, and the fix for it belongs
+                // *there*, beside the guard `recall()` already has — `remember` returning false is a
+                // result both call sites already handle, and this one maps it to
+                // `PassphraseError.STORE_FAILED`. Wrapping it here instead would report the store
+                // failure as nothing at all and leave `recall`'s asymmetry in place. See the
+                // cross-area hand-off in the presentation fix report.
                 passphrase.fill(' ')
                 _uiState.update { it.copy(busy = false) }
             }
@@ -144,7 +153,10 @@ class PassphraseSettingsViewModel(private val vault: PassphraseVault) : ViewMode
     }
 
     fun forget() {
-        viewModelScope.launch {
+        // No `onFailure`: `remembered` is owned by the `init` collector, so a forget that did not take
+        // leaves the sheet still saying a passphrase is stored — which is the truth, and the button is
+        // still there to press again. Nothing to report that the state does not already say.
+        launchGuarded {
             vault.forget()
             // `remembered` is deliberately not written here — the collector in `init` owns it.
             _uiState.update { it.copy(saved = false, error = null) }

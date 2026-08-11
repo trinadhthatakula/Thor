@@ -222,8 +222,11 @@ fun PassphraseSettingsSheet(onDismiss: () -> Unit) {
  * silent at compile time, but it is the shape `StringFormatMatches` exists to flag, and `lint.xml`
  * must not be widened for it.
  */
+// `internal`, not `private`: `AppBackupSheet` renders the same two refusals against the same rule, and
+// a second `when` over `PassphraseError` is a second place for the mapping — and for the argument-count
+// discipline above — to drift. Same reasoning as `dataClassLabel` and `sizeLabel` in that file.
 @Composable
-private fun passphraseErrorText(error: PassphraseError): String = when (error) {
+internal fun passphraseErrorText(error: PassphraseError): String = when (error) {
     PassphraseError.TOO_SHORT ->
         stringResource(R.string.passphrase_error_too_short, MIN_PASSPHRASE_LENGTH)
 

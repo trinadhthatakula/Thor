@@ -5,6 +5,7 @@ package com.valhalla.thor.presentation.backup
 
 import com.valhalla.thor.data.backup.AppArchiveCipher
 import com.valhalla.thor.data.backup.DataArchiveCapabilityCache
+import com.valhalla.thor.data.backup.MIN_PASSPHRASE_LENGTH
 import com.valhalla.thor.data.backup.PassphraseVault
 import com.valhalla.thor.data.backup.PassphraseVaultStore
 import com.valhalla.thor.data.backup.VaultKeyProvider
@@ -27,6 +28,7 @@ import com.valhalla.thor.domain.repository.PrivilegeStateProvider
 import com.valhalla.thor.domain.repository.ThorJobStatus
 import com.valhalla.thor.domain.usecase.MeasureAppDataUseCase
 import com.valhalla.thor.presentation.MainDispatcherRule
+import com.valhalla.thor.presentation.settings.PassphraseError
 import java.util.UUID
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -330,15 +332,26 @@ class AppBackupViewModelTest {
     }
 
     @Test
-    fun `the bundle alone is a valid backup`() = runTest(dispatcher) {
-        // A data-only archive is explicitly supported (§4.2), so its mirror image has to be too: an
-        // installer-only archive is a perfectly good "let me reinstall this app later".
+    fun `the bundle alone is not a backup this app can offer`() = runTest(dispatcher) {
+        // This test asserted the opposite, on the reasoning that a data-only archive is supported
+        // (§4.2) so an installer-only one should mirror it. The mirror does not hold, and the
+        // authority is the restore side: `evaluateArchiveRestoreGate` refuses an empty selection with
+        // `NOTHING_SELECTED` unconditionally — before it looks at `installFirst`, before it looks at
+        // the bundle — so an installer-only `.thorbak` is a file Thor will happily write and then
+        // refuse to read for the rest of its life. Backup must not offer what restore refuses.
+        //
+        // Pinned here rather than left to the gate's own tests because this is the side that has to
+        // stay narrow: widening `canStart` again means widening the gate first, and this assertion is
+        // what makes the second half of that sentence unavoidable.
         val vm = viewModel()
         vm.start("com.example.app", "Example")
         testScheduler.advanceUntilIdle()
         DataClass.entries.forEach { vm.toggleClass(it) }
+        vm.setIncludeBundle(true)
 
-        assertEquals(true, vm.uiState.value.canStart)
+        assertEquals(emptySet<DataClass>(), vm.uiState.value.selected)
+        assertEquals(true, vm.uiState.value.includeBundle)
+        assertEquals(false, vm.uiState.value.canStart)
     }
 
     // --- passphrase ----------------------------------------------------------------------------
@@ -676,7 +689,9 @@ class AppBackupViewModelTest {
         testScheduler.advanceUntilIdle()
 
         assertEquals(
-            BackupFinish.Failed("choose a folder for Thor's backups first"),
+            // `workerRan = true`: a FAILED `WorkInfo` is `doWork` returning `Result.failure()` in
+            // every shape Thor itself produces, so the sheet may say the run happened.
+            BackupFinish.Failed("choose a folder for Thor's backups first", workerRan = true),
             vm.uiState.value.finished,
         )
     }
@@ -821,26 +836,78 @@ class AppBackupViewModelTest {
         }
 
     @Test
-    fun `a cancelled job is reported as a failure, not as a success`() = runTest(dispatcher) {
-        // Reachable rather than defensive: every job is appended to one chain, and WorkManager
-        // cancels the dependents of a prerequisite that returns `Result.failure()`. A backup queued
-        // behind a failing job therefore lands here with `doWork` never called — and "Backup saved."
-        // would name an archive that was never written.
+    fun `a cancelled job is not reported as a success, and not as a failure either`() =
+        runTest(dispatcher) {
+            // Reachable rather than defensive: every job is appended to one chain, and WorkManager
+            // cancels the dependents of a prerequisite that returns `Result.failure()`. A backup queued
+            // behind a failing job therefore lands here with `doWork` never called — and "Backup saved."
+            // would name an archive that was never written.
+            //
+            // It used to be reported as `Failed`, which was half right. "Backup failed: it stopped
+            // without saying why" describes an attempt, and there was no attempt: the queue never got
+            // to this job. `Cancelled(workerRan = false)` is the state, and the sheet renders it as
+            // "Thor did not run this backup … Try again", which is both true and actionable where the
+            // failure sentence was neither.
+            val launcher = FakeLauncher(statuses = MutableStateFlow(ThorJobStatus.Pending))
+            val vm = viewModel(launcher = launcher)
+            vm.start("com.example.app", "Example")
+            testScheduler.advanceUntilIdle()
+            vm.beginBackup("correct horse".toCharArray(), remember = false)
+            testScheduler.advanceUntilIdle()
+            assertEquals(true, vm.uiState.value.queued)
+
+            launcher.statuses.value = ThorJobStatus.Cancelled
+            testScheduler.advanceUntilIdle()
+
+            // `workerRan = false`: this watcher saw `Pending` and never `Running`, which is exactly
+            // the chain case above.
+            assertEquals(BackupFinish.Cancelled(workerRan = false), vm.uiState.value.finished)
+            assertEquals(false, vm.uiState.value.running)
+            assertEquals(false, vm.uiState.value.queued)
+        }
+
+    @Test
+    fun `a cancel after the job was seen running says so`() = runTest(dispatcher) {
+        // The other arm of the same terminal state, and the reason `workerRan` is read off the history
+        // rather than off the state: CANCELLED alone cannot say whether anything happened. A watcher
+        // that observed RUNNING has seen WorkManager hand the job to a built worker, so the sheet must
+        // not claim nothing was started.
         val launcher = FakeLauncher(statuses = MutableStateFlow(ThorJobStatus.Pending))
         val vm = viewModel(launcher = launcher)
         vm.start("com.example.app", "Example")
         testScheduler.advanceUntilIdle()
         vm.beginBackup("correct horse".toCharArray(), remember = false)
         testScheduler.advanceUntilIdle()
-        assertEquals(true, vm.uiState.value.queued)
 
+        launcher.statuses.value = ThorJobStatus.Running
+        testScheduler.advanceUntilIdle()
         launcher.statuses.value = ThorJobStatus.Cancelled
         testScheduler.advanceUntilIdle()
 
-        assertTrue(vm.uiState.value.finished is BackupFinish.Failed)
-        assertEquals(false, vm.uiState.value.running)
-        assertEquals(false, vm.uiState.value.queued)
+        assertEquals(BackupFinish.Cancelled(workerRan = true), vm.uiState.value.finished)
     }
+
+    @Test
+    fun `an enqueue that never happened is reported as one that never started`() =
+        runTest(dispatcher) {
+            // The pre-flight arm of `Failed`. `startBackup` handing back no id means no job was
+            // created, so the second sentence the sheet draws is "Nothing was started" rather than the
+            // one about a run that stopped part-way. The flag is what tells them apart, and nothing
+            // downstream can re-derive it later.
+            val launcher = FakeLauncher(fail = true)
+            val vm = viewModel(launcher = launcher)
+            vm.start("com.example.app", "Example")
+            testScheduler.advanceUntilIdle()
+
+            vm.beginBackup("correct horse".toCharArray(), remember = false)
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(
+                BackupFinish.Failed(reason = null, workerRan = false),
+                vm.uiState.value.finished,
+            )
+            assertEquals(false, vm.uiState.value.running)
+        }
 
     @Test
     fun `a queued job is not shown as one that is writing`() = runTest(dispatcher) {
@@ -968,4 +1035,54 @@ class AppBackupViewModelTest {
 
         assertEquals(DataClass.entries.size, sweeps)
     }
+
+    // --- the passphrase rule the sheet enforces -------------------------------------------------
+
+    @Test
+    fun `a passphrase of exactly the minimum length is accepted`() {
+        // The boundary, from the accepting side. `AppBackupSheet` used to hold its own copy of this
+        // rule written the other way round (`length >= MIN_PASSPHRASE_LENGTH`), pinned by nothing,
+        // because there were no Compose tests — so flipping that `>=` to `>` passed the whole suite.
+        // The rule lives here now and this is what stops that.
+        val exact = "x".repeat(MIN_PASSPHRASE_LENGTH)
+
+        assertNull(backupPassphraseRefusal(needed = true, passphrase = exact, confirmation = exact))
+    }
+
+    @Test
+    fun `one character below the minimum is refused`() {
+        // The other side of the same boundary, and the reason both exist: an off-by-one here is
+        // invisible in the UI — the button is simply grey — so only a test can see it.
+        val short = "x".repeat(MIN_PASSPHRASE_LENGTH - 1)
+
+        assertEquals(
+            PassphraseError.TOO_SHORT,
+            backupPassphraseRefusal(needed = true, passphrase = short, confirmation = short),
+        )
+    }
+
+    @Test
+    fun `a mismatch is reported as a mismatch, not as a length problem`() {
+        // Order matters: a long-enough passphrase with a typo'd confirmation must name the typo. The
+        // length check runs first, so this pins that it does not swallow the case.
+        val typed = "x".repeat(MIN_PASSPHRASE_LENGTH)
+
+        assertEquals(
+            PassphraseError.MISMATCH,
+            backupPassphraseRefusal(
+                needed = true,
+                passphrase = typed,
+                confirmation = typed + "y",
+            ),
+        )
+    }
+
+    @Test
+    fun `nothing is refused when the vault is supplying the passphrase`() {
+        // `needed = false` is the remembered-passphrase case, where the sheet draws no fields at all.
+        // An empty string is shorter than the minimum, so a rule that ignored this flag would grey out
+        // the button on precisely the path that needs no typing.
+        assertNull(backupPassphraseRefusal(needed = false, passphrase = "", confirmation = ""))
+    }
+
 }

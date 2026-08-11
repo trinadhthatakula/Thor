@@ -45,12 +45,13 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.rememberViewModelStoreOwner
 import com.valhalla.thor.R
-import com.valhalla.thor.data.backup.MIN_PASSPHRASE_LENGTH
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.DataClassSize
 import com.valhalla.thor.domain.model.SizeLabelKind
 import com.valhalla.thor.domain.model.labelKind
 import com.valhalla.thor.domain.repository.PreferenceRepository
+import com.valhalla.thor.presentation.settings.PassphraseError
+import com.valhalla.thor.presentation.settings.passphraseErrorText
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
@@ -206,6 +207,56 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
                         }
                     }
 
+                    // Beside the destination, because the destination is what it is about: the file
+                    // name is derived from the app and its version code, so a second backup of the
+                    // same version lands on the first one. What that does depends on which of the
+                    // three backends is answering — `renameTo` on legacy Downloads replaces it
+                    // outright — and the user was previously told none of it.
+                    Text(
+                        text = stringResource(R.string.backup_overwrite_notice),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    if (state.selected.isEmpty()) {
+                        // The other half of C1's fix. `canStart` now refuses an empty selection, and a
+                        // button that greys out for a reason the sheet does not give is the defect
+                        // this feature already had once (see the passphrase field below). The user
+                        // ticking only *Include the app installer* has made a deliberate choice and
+                        // needs to be told why it is not one Thor can honour.
+                        Text(
+                            text = stringResource(R.string.backup_nothing_selected),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+
+                    // The rule itself lives in the view model, next to `canStart`, so it is pinned by
+                    // JVM tests on both sides of the minimum rather than by nothing. This file used to
+                    // hold a second copy of it, written in the opposite direction (`length >= MIN`),
+                    // which is how the sheet came to enforce a rule it never explained.
+                    val refusal = backupPassphraseRefusal(
+                        needed = state.passphraseNeeded,
+                        passphrase = passphrase,
+                        confirmation = confirmation,
+                    )
+                    // What to *show* is a narrower question than what to refuse: an empty field is too
+                    // short, and telling a user their passphrase is too short before they have typed a
+                    // character is nagging, not help. So the refusal still greys the button from the
+                    // first frame; the sentence appears once there is something to say it about. The
+                    // pre-existing `isError` on the confirmation field used the same rule.
+                    val shownRefusal = refusal?.takeIf {
+                        when (it) {
+                            PassphraseError.TOO_SHORT -> passphrase.isNotEmpty()
+                            PassphraseError.MISMATCH -> confirmation.isNotEmpty()
+                            // Not produced by `backupPassphraseRefusal` — it is the settings sheet's
+                            // report of a vault write that failed, which is not a refusal of anything
+                            // typed here. Enumerated rather than caught by an `else` so that adding a
+                            // fourth error breaks this `when` instead of silently hiding it.
+                            PassphraseError.STORE_FAILED -> false
+                        }
+                    }
+
                     if (state.passphraseNeeded) {
                         OutlinedTextField(
                             value = passphrase,
@@ -214,6 +265,10 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
                             visualTransformation = PasswordVisualTransformation(),
                             singleLine = true,
                             enabled = !state.running,
+                            isError = shownRefusal == PassphraseError.TOO_SHORT,
+                            supportingText = shownRefusal
+                                ?.takeIf { it == PassphraseError.TOO_SHORT }
+                                ?.let { { Text(passphraseErrorText(it)) } },
                             modifier = Modifier.fillMaxWidth()
                         )
                         OutlinedTextField(
@@ -223,7 +278,12 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
                             visualTransformation = PasswordVisualTransformation(),
                             singleLine = true,
                             enabled = !state.running,
-                            isError = confirmation.isNotEmpty() && confirmation != passphrase,
+                            isError = shownRefusal == PassphraseError.MISMATCH,
+                            // The mismatch was already marked with `isError` and nothing else; the
+                            // supporting text is what turns a red outline into a reason.
+                            supportingText = shownRefusal
+                                ?.takeIf { it == PassphraseError.MISMATCH }
+                                ?.let { { Text(passphraseErrorText(it)) } },
                             modifier = Modifier.fillMaxWidth()
                         )
                         Text(
@@ -279,38 +339,109 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
                         }
                     }
 
-                    val passphraseUsable = !state.passphraseNeeded ||
-                        (passphrase.length >= MIN_PASSPHRASE_LENGTH && passphrase == confirmation)
-
                     Button(
                         onClick = {
                             viewModel.beginBackup(passphrase.toCharArray(), rememberIt)
                         },
-                        enabled = state.canStart && passphraseUsable,
+                        enabled = state.canStart && refusal == null,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(stringResource(R.string.backup_start))
                     }
 
                     state.finished?.let { finish ->
-                        Text(
-                            text = when (finish) {
-                                BackupFinish.Succeeded -> stringResource(R.string.backup_done)
-                                is BackupFinish.Failed -> stringResource(
-                                    R.string.backup_failed,
-                                    finish.reason ?: stringResource(R.string.backup_failed_unknown)
-                                )
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (finish is BackupFinish.Failed) {
-                                MaterialTheme.colorScheme.error
-                            } else {
-                                MaterialTheme.colorScheme.primary
-                            }
-                        )
+                        BackupOutcome(finish = finish, onDismiss = viewModel::dismissResult)
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * How a finished backup is reported.
+ *
+ * Three outcomes, five sentences, split on [BackupFinish.workerRan] — the same shape as
+ * `RestoreOutcome` in `ArchiveRestoreScreen`, because the same three things can happen and the user
+ * needs to be able to tell them apart. Previously all three rendered as *"Backup failed: it stopped
+ * without saying why"*, which was the honest sentence for exactly one of them.
+ *
+ * | Outcome | Copy |
+ * |---|---|
+ * | `Succeeded` | it was saved |
+ * | `Failed(workerRan = true)` | the worker's reason, then *no file was saved and your data is untouched* |
+ * | `Failed(workerRan = false)` | the reason, then *nothing was started* |
+ * | `Cancelled(workerRan = false)` | the chain cancelled it; nothing was saved |
+ * | `Cancelled(workerRan = true)` | it was cancelled after it started, then the same *nothing saved* line |
+ *
+ * The second sentence is **not** `restore_failed_partial`'s counterpart in meaning, only in position.
+ * A restore that stops part-way leaves the app's data half-written, so its damage sentence tells the
+ * user to go and look; a backup that stops part-way leaves the app alone — it only ever read it — and
+ * publishes nothing, because `AppArchiveStoreImpl` writes to a `.part` name and renames on success
+ * only. Copying restore's sentence across would have invented damage that cannot happen here, which is
+ * the same class of error in the opposite direction.
+ */
+@Composable
+private fun BackupOutcome(finish: BackupFinish, onDismiss: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        when (finish) {
+            BackupFinish.Succeeded -> Text(
+                text = stringResource(R.string.backup_done),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            is BackupFinish.Failed -> {
+                Text(
+                    text = stringResource(
+                        R.string.backup_failed,
+                        finish.reason ?: stringResource(R.string.backup_failed_unknown)
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
+                Text(
+                    text = stringResource(
+                        if (finish.workerRan) {
+                            R.string.backup_failed_nothing_saved
+                        } else {
+                            // The enqueue returned no id, or the block around it threw. Both are
+                            // decided before a job exists.
+                            R.string.backup_failed_not_started
+                        }
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
+            is BackupFinish.Cancelled -> if (finish.workerRan) {
+                Text(
+                    text = stringResource(R.string.backup_cancelled_after_start),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
+                Text(
+                    text = stringResource(R.string.backup_failed_nothing_saved),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            } else {
+                // The common cancel: a dependent of a failed job, cancelled before `doWork`. Its own
+                // string, ending in "Try again", because there is nothing wrong with the request —
+                // only with the job that happened to be ahead of it.
+                Text(
+                    text = stringResource(R.string.backup_cancelled),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+        // The dismiss `dismissResult()` was written for and never given. Without it a *success* message
+        // sat under a still-enabled Back up button for as long as the sheet stayed open, and the only
+        // way to clear it was to start another backup.
+        TextButton(onClick = onDismiss) {
+            Text(stringResource(R.string.backup_outcome_dismiss))
         }
     }
 }

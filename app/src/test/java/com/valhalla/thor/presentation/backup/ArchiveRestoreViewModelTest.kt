@@ -4,6 +4,7 @@
 package com.valhalla.thor.presentation.backup
 
 import com.valhalla.thor.data.backup.AppArchiveCipher
+import com.valhalla.thor.data.backup.DataArchiveCapabilityCache
 import com.valhalla.thor.data.backup.PassphraseVault
 import com.valhalla.thor.data.backup.PassphraseVaultStore
 import com.valhalla.thor.data.backup.VaultKeyProvider
@@ -21,6 +22,8 @@ import com.valhalla.thor.domain.model.ArchiveRestoreWarning
 import com.valhalla.thor.domain.model.ClassEntries
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.DataClassSize
+import com.valhalla.thor.domain.model.PrivilegeMode
+import com.valhalla.thor.domain.model.PrivilegeState
 import com.valhalla.thor.domain.model.THORBAK_HEADER_ENTRY
 import com.valhalla.thor.domain.model.TarOutcome
 import com.valhalla.thor.domain.model.ThorJobKind
@@ -33,6 +36,7 @@ import com.valhalla.thor.domain.repository.ArchiveBreadcrumbStore
 import com.valhalla.thor.domain.repository.ArchiveJobLauncher
 import com.valhalla.thor.domain.repository.ArchiveSource
 import com.valhalla.thor.domain.repository.ArchiveSourceFactory
+import com.valhalla.thor.domain.repository.PrivilegeStateProvider
 import com.valhalla.thor.domain.repository.ThorJobStatus
 import com.valhalla.thor.domain.usecase.OpenArchiveUseCase
 import com.valhalla.thor.domain.usecase.ReadInstalledAppFactsUseCase
@@ -46,6 +50,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -166,12 +171,28 @@ class ArchiveRestoreViewModelTest {
     }
 
     private class FakeProbe(val capable: Boolean = true) : AppDataProbe {
-        override suspend fun probeDataArchiveCapability(): Boolean = capable
+        var probes = 0
+
+        override suspend fun probeDataArchiveCapability(): Boolean {
+            probes++
+            return capable
+        }
+
         override suspend fun measureDataClass(
             packageName: String,
             dataClass: DataClass,
         ): DataClassSize = DataClassSize.Undetermined
     }
+
+    private class FakePrivilege(initial: PrivilegeState) : PrivilegeStateProvider {
+        override val state: StateFlow<PrivilegeState> = MutableStateFlow(initial)
+    }
+
+    /** A rooted, resolved state: `hasAnyPrivilege` is true, so the cache calls through to the probe. */
+    private fun rooted() = PrivilegeState(root = true, active = PrivilegeMode.ROOT, isReady = true)
+
+    /** Nothing granted: `hasAnyPrivilege` is false, so the cache refuses without probing at all. */
+    private fun noPrivilege() = PrivilegeState(isReady = true)
 
     /**
      * Only [signerSha256] is exercised here; the rest are inert.
@@ -305,6 +326,7 @@ class ArchiveRestoreViewModelTest {
         ),
         signer: String? = SIGNER,
         probe: AppDataProbe = FakeProbe(),
+        privilegeState: PrivilegeState = rooted(),
         launcher: ArchiveJobLauncher = FakeLauncher(),
         vaultStore: PassphraseVaultStore = FakeVaultStore(),
         breadcrumbs: ArchiveBreadcrumbStore = FakeBreadcrumbs(),
@@ -313,7 +335,15 @@ class ArchiveRestoreViewModelTest {
     ) = ArchiveRestoreViewModel(
         sources = sources,
         openArchive = OpenArchiveUseCase(cipher, dispatcher),
-        probe = probe,
+        // A real [DataArchiveCapabilityCache] over fake parts, as `AppBackupViewModelTest` and
+        // `MeasureAppDataUseCaseTest` both build it. This screen used to call
+        // `probeDataArchiveCapability()` directly, which skipped the cache's `hasAnyPrivilege`
+        // short-circuit — on a Magisk device with root installed but not granted, that reaches
+        // `isRootGranted()` and can raise an `su` prompt the user never asked for. Constructing the
+        // real cache here means a regression to the direct call fails
+        // `an ungranted privilege state is refused without any probe at all` rather than passing
+        // quietly.
+        capability = DataArchiveCapabilityCache(probe, FakePrivilege(privilegeState)),
         installedFacts = ReadInstalledAppFactsUseCase(
             appRepository = FakeAppRepository(installedApps),
             gateway = FakeArchiveGateway(signer),
@@ -396,7 +426,12 @@ class ArchiveRestoreViewModelTest {
         vm.open(URI)
         testScheduler.advanceUntilIdle()
 
-        assertTrue(vm.uiState.value.error!!.contains(THORBAK_HEADER_ENTRY))
+        // `FromBelow`, not an id: the reader's sentence names the archive entry that was missing, and
+        // that entry name is detail only the reader has. Asserting the type as well as the text is
+        // what stops it being re-routed through a fixed string that drops the name.
+        val error = vm.uiState.value.error
+        assertTrue(error is ArchiveRestoreMessage.FromBelow)
+        assertTrue((error as ArchiveRestoreMessage.FromBelow).text.contains(THORBAK_HEADER_ENTRY))
         assertNull(vm.uiState.value.header)
         assertEquals(false, vm.uiState.value.canStart)
     }
@@ -408,7 +443,13 @@ class ArchiveRestoreViewModelTest {
         vm.open(URI)
         testScheduler.advanceUntilIdle()
 
-        assertTrue(vm.uiState.value.error!!.isNotBlank())
+        // A reason id rather than a sentence: there is no layer below to have produced one — the
+        // factory simply returned null — so the wording belongs to the screen and lives in
+        // `strings_backup.xml`.
+        assertEquals(
+            ArchiveRestoreMessage.Known(ArchiveRestoreReason.FILE_UNREADABLE),
+            vm.uiState.value.error,
+        )
         assertEquals(false, vm.uiState.value.loading)
     }
 
@@ -421,6 +462,46 @@ class ArchiveRestoreViewModelTest {
 
         assertEquals(false, vm.uiState.value.supported)
         assertEquals(false, vm.uiState.value.canStart)
+    }
+
+    @Test
+    fun `an ungranted privilege state is refused without any probe at all`() = runTest(dispatcher) {
+        // The reason this screen takes `DataArchiveCapabilityCache` rather than `AppDataProbe`. With
+        // nothing granted the cache answers false off the privilege state alone; a direct
+        // `probeDataArchiveCapability()` would shell out here, and on a device with Magisk installed
+        // but not granted that raises an `su` prompt merely because a file was opened.
+        val probe = FakeProbe(capable = true)
+        val vm = viewModel(probe = probe, privilegeState = noPrivilege())
+
+        vm.open(URI)
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(false, vm.uiState.value.supported)
+        assertEquals(0, probe.probes)
+    }
+
+    @Test
+    fun `two files in a row ask the device once`() = runTest(dispatcher) {
+        // The other half of what the cache provides. Opening a second archive re-runs `open()`, and
+        // the capability answer is a property of the device, not of the file — memoised on the whole
+        // privilege state, so it costs one shell round trip per session rather than one per file.
+        val other = "content://com.example.docs/document/2"
+        val probe = FakeProbe(capable = true)
+        val sources = CountingSources(
+            mapOf(
+                URI to FakeSource(header().encode()),
+                other to FakeSource(header(packageName = "com.example.other").encode()),
+            )
+        )
+        val vm = viewModel(probe = probe, sources = sources)
+
+        vm.open(URI)
+        testScheduler.advanceUntilIdle()
+        vm.open(other)
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(listOf(URI, other), sources.opens)
+        assertEquals(1, probe.probes)
     }
 
     // --- the gate, shown before anything destructive ---------------------------------------------
@@ -604,9 +685,42 @@ class ArchiveRestoreViewModelTest {
         testScheduler.advanceUntilIdle()
 
         assertEquals(false, vm.uiState.value.unlocked)
-        assertTrue(vm.uiState.value.passphraseError!!.isNotBlank())
+        // `WRONG_PASSPHRASE`, and the distinction is load-bearing: `UNLOCK_CHECK_FAILED` is what a
+        // *throw* out of the derivation reports, and the two must not be collapsed — telling a user
+        // their passphrase is wrong when the check merely failed sends them to change a passphrase
+        // that was never the problem, and §5.4 makes a replaced one unrecoverable.
+        assertEquals(
+            ArchiveRestoreMessage.Known(ArchiveRestoreReason.WRONG_PASSPHRASE),
+            vm.uiState.value.passphraseError,
+        )
         assertEquals(true, vm.uiState.value.passphraseNeeded)
+        // The spinner `submitPassphrase` now raises must come back down on the refusal path too,
+        // otherwise the field the user has to retype in stays disabled behind it.
+        assertEquals(false, vm.uiState.value.loading)
     }
+
+    @Test
+    fun `a second attempt while the first is still deriving is ignored, not raced`() =
+        runTest(dispatcher) {
+            // 210,000 PBKDF2 rounds take over a second on a minSdk-28-era device, and the screen
+            // clears its field the moment Unlock is pressed — so retyping and pressing again is the
+            // ordinary thing to do. With two derivations in flight, completion order decided the
+            // outcome: the wrong one landing second overwrote the right one's success.
+            val vm = viewModel()
+            vm.open(URI)
+            testScheduler.advanceUntilIdle()
+
+            val second = "wrong one".toCharArray()
+            vm.submitPassphrase(passphrase.toCharArray())
+            vm.submitPassphrase(second)
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(true, vm.uiState.value.unlocked)
+            assertNull(vm.uiState.value.passphraseError)
+            // Ignored is not dropped: the refused array is wiped before the guard returns, because
+            // nothing downstream will ever see it.
+            assertTrue(second.all { it == ' ' })
+        }
 
     @Test
     fun `the right typed passphrase unlocks it`() = runTest(dispatcher) {
@@ -868,7 +982,12 @@ class ArchiveRestoreViewModelTest {
             testScheduler.advanceUntilIdle()
 
             assertEquals(
-                RestoreFinish.Failed("ce was already replaced", workerRan = true),
+                // `FromBelow`: the worker's own sentence names which class was already replaced, and
+                // no fixed string on this screen can know that.
+                RestoreFinish.Failed(
+                    ArchiveRestoreMessage.FromBelow("ce was already replaced"),
+                    workerRan = true,
+                ),
                 vm.uiState.value.finished,
             )
         }

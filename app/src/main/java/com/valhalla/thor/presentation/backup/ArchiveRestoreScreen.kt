@@ -40,7 +40,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.rememberViewModelStoreOwner
 import com.valhalla.thor.R
 import com.valhalla.thor.domain.model.ArchiveRestoreRefusal
 import com.valhalla.thor.domain.model.ArchiveRestoreWarning
@@ -68,6 +67,31 @@ private fun warningLabel(warning: ArchiveRestoreWarning): Int = when (warning) {
 }
 
 /**
+ * The `R` half of [ArchiveRestoreMessage], kept here beside [refusalLabel] and [warningLabel] so
+ * `ArchiveRestoreViewModel` holds no Android resource ids and stays JVM-testable.
+ *
+ * Two arms, because the screen draws two kinds of sentence: one this feature wrote and translates, and
+ * one produced below it that arrives already worded. The distinction is deliberate rather than a
+ * fallback — see [ArchiveRestoreMessage].
+ */
+@Composable
+private fun messageText(message: ArchiveRestoreMessage): String = when (message) {
+    is ArchiveRestoreMessage.FromBelow -> message.text
+    is ArchiveRestoreMessage.Known -> stringResource(reasonLabel(message.reason))
+}
+
+@StringRes
+private fun reasonLabel(reason: ArchiveRestoreReason): Int = when (reason) {
+    ArchiveRestoreReason.FILE_UNREADABLE -> R.string.restore_error_unreadable_file
+    ArchiveRestoreReason.WRONG_PASSPHRASE -> R.string.restore_error_wrong_passphrase
+    ArchiveRestoreReason.UNLOCK_CHECK_FAILED -> R.string.restore_error_unlock_check_failed
+    // The two that are interpolated into `restore_failed` ("Restore failed: %1$s") rather than drawn
+    // on their own, which is why neither is capitalised or stopped.
+    ArchiveRestoreReason.PASSPHRASE_LOST -> R.string.restore_failed_passphrase_lost
+    ArchiveRestoreReason.SALT_UNREADABLE -> R.string.restore_failed_salt_unreadable
+}
+
+/**
  * §10's restore entry point.
  *
  * @param uriString null when the user arrived from Settings and has yet to pick a file. Not defaulted:
@@ -76,14 +100,25 @@ private fun warningLabel(warning: ArchiveRestoreWarning): Int = when (warning) {
  */
 @Composable
 internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
-    // Scoped to this composable for the same reason `AppBackupSheet` scopes its own: the default owner
-    // outlives one visit, and this screen is reachable twice with two different archives — from
-    // Settings with no URI, and from a VIEW intent with one. A view model held over from the previous
-    // visit would answer with the previous archive's header. A restore already running is not lost
-    // with it: `runningJobFor` re-attaches to it when the screen is opened again.
-    val viewModel = koinViewModel<ArchiveRestoreViewModel>(
-        viewModelStoreOwner = rememberViewModelStoreOwner()
-    )
+    // The default owner, which here is the `NavEntry` for `ThorRoute.ArchiveRestore` — `MainScreen`
+    // installs `rememberViewModelStoreNavEntryDecorator()` on every back stack it builds, so the
+    // nearest `LocalViewModelStoreOwner` at this call site is the entry, not the Activity. That store
+    // is created when the route is pushed and cleared when it is popped, which is exactly how a visit
+    // to this screen ends, and `ThorRoute.ArchiveRestore` carries `uriString` as part of its key, so
+    // two archives are two keys, two entries and two stores. Both of the things a composition-scoped
+    // owner would have been protecting against are therefore already impossible.
+    //
+    // This deliberately does **not** copy `AppBackupSheet`, whose `rememberViewModelStoreOwner()` is
+    // correct for a reason this screen does not share: that sheet is a conditional composable inside
+    // another entry's composition, at one call site reused for every app, so its default owner really
+    // does outlive it and really would hand app B's sheet app A's view model. A screen that *is* an
+    // entry does not meet that condition. Scoping here instead bought a risk — the owner keys on the
+    // composite key hash, so a pane-count change (unfolding, resizing a split window) could plausibly
+    // re-key it and reset the screen to "Choose a file", losing the parsed header, the unlocked
+    // passphrase and the ticked confirmation.
+    //
+    // A restore already running survives either way: `runningJobFor` re-attaches to it.
+    val viewModel = koinViewModel<ArchiveRestoreViewModel>()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var passphrase by remember { mutableStateOf("") }
 
@@ -141,7 +176,7 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
 
         state.error?.let {
             Text(
-                text = it,
+                text = messageText(it),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.error
             )
@@ -260,7 +295,7 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
                         visualTransformation = PasswordVisualTransformation(),
                         singleLine = true,
                         isError = state.passphraseError != null,
-                        supportingText = state.passphraseError?.let { { Text(it) } },
+                        supportingText = state.passphraseError?.let { { Text(messageText(it)) } },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Button(
@@ -272,7 +307,11 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
                             // one that survives until the screen closes.
                             passphrase = ""
                         },
-                        enabled = passphrase.isNotEmpty() && !state.running,
+                        // `!state.loading` as well as `!state.running`: the derivation behind this
+                        // button takes 210,000 PBKDF2 iterations, and the view model refuses a second
+                        // submission while one is in flight. The button has to say so — a control that
+                        // silently discards a tap is the thing that makes a user tap it again.
+                        enabled = passphrase.isNotEmpty() && !state.running && !state.loading,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(stringResource(R.string.restore_unlock))
@@ -348,10 +387,16 @@ internal fun ArchiveRestoreScreen(uriString: String?, onBack: () -> Unit) {
                 RestoreOutcome(finish = finish, onDismiss = viewModel::dismissResult)
             }
 
-            if (!state.running) {
+            if (!state.running && state.finished !is RestoreFinish.Succeeded) {
                 // The way back out of a file that turned out to be the wrong one. Without it the
                 // "choose a file" button is gone for good the moment a header loads, and a user who
                 // picked the wrong backup has to leave the screen to pick another.
+                //
+                // Withdrawn after a *successful* restore, which is the one moment the wrong-file case
+                // cannot apply: the card directly above says "Restore finished. Open the app to check
+                // it works", and offering "Choose a different file" under it puts a destructive
+                // operation one tap from an app that is now correct. Dismissing the outcome brings it
+                // back, so nothing is lost — the user just has to acknowledge the result first.
                 TextButton(onClick = { picker.launch(arrayOf("*/*")) }) {
                     Text(stringResource(R.string.restore_pick_another))
                 }
@@ -420,7 +465,8 @@ private fun RestoreOutcome(finish: RestoreFinish, onDismiss: () -> Unit) {
                 Text(
                     text = stringResource(
                         R.string.restore_failed,
-                        finish.reason ?: stringResource(R.string.backup_failed_unknown)
+                        finish.reason?.let { messageText(it) }
+                            ?: stringResource(R.string.restore_failed_unknown)
                     ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error
@@ -464,8 +510,11 @@ private fun RestoreOutcome(finish: RestoreFinish, onDismiss: () -> Unit) {
                 )
             }
         }
+        // `restore_outcome_dismiss`, not `restore_interrupted_dismiss`: that one is named and commented
+        // for the §8.5 breadcrumb banner at the top of this screen. Same word today, two owners, so
+        // rewording the breadcrumb's button cannot silently reword this one.
         TextButton(onClick = onDismiss) {
-            Text(stringResource(R.string.restore_interrupted_dismiss))
+            Text(stringResource(R.string.restore_outcome_dismiss))
         }
     }
 }
