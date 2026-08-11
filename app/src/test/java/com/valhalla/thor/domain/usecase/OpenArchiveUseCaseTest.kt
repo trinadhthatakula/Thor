@@ -4,12 +4,16 @@
 package com.valhalla.thor.domain.usecase
 
 import com.valhalla.thor.data.backup.AppArchiveCipher
+import com.valhalla.thor.data.backup.KDF_ALGORITHM
+import com.valhalla.thor.data.backup.VERIFIER_BYTES
 import com.valhalla.thor.domain.model.ARCHIVE_SCHEMA_VERSION
 import com.valhalla.thor.domain.model.ArchiveBundleInfo
 import com.valhalla.thor.domain.model.ArchiveHeader
 import com.valhalla.thor.domain.model.ArchiveKdf
 import com.valhalla.thor.domain.model.THORBAK_HEADER_ENTRY
 import com.valhalla.thor.domain.repository.ArchiveSource
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -18,10 +22,14 @@ import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.util.Base64
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class OpenArchiveUseCaseTest {
 
     private val cipher = AppArchiveCipher()
-    private val useCase = OpenArchiveUseCase(cipher)
+
+    // `UnconfinedTestDispatcher` runs eagerly in the same thread — appropriate for a use case whose
+    // I/O and KDF are synchronous blocking operations with no delay-based concurrency to observe.
+    private val useCase = OpenArchiveUseCase(cipher, UnconfinedTestDispatcher())
     private val salt = ByteArray(16) { it.toByte() }
 
     /** In-memory [ArchiveSource]. The port is `File`/`String`-only precisely so this is four lines. */
@@ -78,6 +86,16 @@ class OpenArchiveUseCaseTest {
     }
 
     @Test
+    fun `a header entry that exceeds MAX_HEADER_BYTES is refused`() = runTest {
+        // A deflate-bomb thorbak.json expands to gigabytes; the ceiling turns that into a small,
+        // bounded allocation that maps to NotAnArchive rather than OOM.
+        val oversized = ByteArray(MAX_HEADER_BYTES + 1) { 'x'.code.toByte() }
+        val outcome = useCase.readHeader(FakeSource(mapOf(THORBAK_HEADER_ENTRY to oversized)))
+
+        assertTrue(outcome.toString(), outcome is ArchiveHeaderOutcome.NotAnArchive)
+    }
+
+    @Test
     fun `the header is read without a passphrase`() = runTest {
         // §8.1: the restore screen shows package, version, date and classes held *before* it asks for
         // anything. If reading the header needed the key, the gate could not run first.
@@ -126,6 +144,36 @@ class OpenArchiveUseCaseTest {
     }
 
     @Test
+    fun `an unrecognised KDF algorithm is refused as Unsupported`() = runTest {
+        // An archive declaring PBKDF2WithHmacSHA512 would be silently derived with SHA-256 and the
+        // correct passphrase would be reported as wrong. Detect it here and tell the user why.
+        val badKdf = ArchiveKdf(
+            algorithm = "PBKDF2WithHmacSHA512",
+            iterations = 4,
+            salt = Base64.getEncoder().encodeToString(salt),
+        )
+
+        val outcome = useCase.unlock(header().copy(kdf = badKdf), "correct horse".toCharArray())
+
+        val unsupported = outcome as ArchiveUnlockOutcome.Unsupported
+        assertTrue(unsupported.reason, unsupported.reason.contains("PBKDF2WithHmacSHA512"))
+    }
+
+    @Test
+    fun `the known KDF algorithm is accepted`() = runTest {
+        // Regression pin: KDF_ALGORITHM must not be reported as unsupported.
+        val goodKdf = ArchiveKdf(
+            algorithm = KDF_ALGORITHM,
+            iterations = 4,
+            salt = Base64.getEncoder().encodeToString(salt),
+        )
+
+        val outcome = useCase.unlock(header().copy(kdf = goodKdf), "correct horse".toCharArray())
+
+        assertTrue(outcome.toString(), outcome is ArchiveUnlockOutcome.Unlocked)
+    }
+
+    @Test
     fun `a salt that is not base64 is refused rather than throwing`() = runTest {
         val outcome = useCase.unlock(header().copy(kdf = ArchiveKdf(iterations = 4, salt = "not base64 !!")), "x".toCharArray())
 
@@ -146,6 +194,17 @@ class OpenArchiveUseCaseTest {
     @Test
     fun `a verifier that is not base64 is refused rather than throwing`() = runTest {
         val outcome = useCase.unlock(header().copy(verifier = "not base64 !!"), "correct horse".toCharArray())
+
+        assertTrue(outcome.toString(), outcome is ArchiveUnlockOutcome.Unsupported)
+    }
+
+    @Test
+    fun `a verifier of the wrong length is refused as Unsupported, not WrongPassphrase`() = runTest {
+        // A truncated-but-valid-Base64 verifier makes the user retry a correct passphrase forever.
+        // Catch it as a corrupt header (Unsupported) rather than silently returning WrongPassphrase.
+        val shortVerifier = Base64.getEncoder().encodeToString(ByteArray(VERIFIER_BYTES - 1))
+
+        val outcome = useCase.unlock(header().copy(verifier = shortVerifier), "correct horse".toCharArray())
 
         assertTrue(outcome.toString(), outcome is ArchiveUnlockOutcome.Unsupported)
     }
