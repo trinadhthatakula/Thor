@@ -44,6 +44,26 @@ internal fun isUsablePackageName(value: String): Boolean = PACKAGE_NAME.matches(
 internal fun isQuotableAbsolutePath(path: String): Boolean =
     path.startsWith('/') && path.none { it == '\'' || it == '\n' }
 
+/**
+ * True when [root] is safe to use as the root of a destructive command.
+ *
+ * Extends [isQuotableAbsolutePath] with two additional rejections that matter for commands that
+ * delete or move the root's entire contents:
+ *
+ * - **`..` components**: a root like `/data/user/0/pkg/../../../system` passes the quotability check
+ *   but `find` resolves the traversal and `rm -rf`s `/system`'s children.
+ * - **`/` and bare top-level directories**: `swapStagedEntriesCommand("/")` would delete the device
+ *   root filesystem.
+ *
+ * The minimum segment count is 2: CE/DE roots look like `/data/user/0/<pkg>` (4 segments). A path
+ * with only one segment — `/data` — is still a system directory the command must not touch.
+ */
+private fun isNormalisedRoot(root: String): Boolean {
+    if (!isQuotableAbsolutePath(root)) return false
+    val segments = root.split('/').filter { it.isNotEmpty() }
+    return segments.size >= 2 && segments.none { it == ".." }
+}
+
 /** True when [name] is safe as a quoted `tar` operand. */
 private fun isQuotableEntryName(name: String): Boolean =
     name.isNotEmpty() &&
@@ -250,7 +270,7 @@ internal fun chownFileCommand(path: String, uid: Int): String? {
 const val STAGING_DIR_NAME = ".thorbak-staging"
 
 internal fun stagingDirPath(root: String): String? {
-    if (!isQuotableAbsolutePath(root)) return null
+    if (!isNormalisedRoot(root)) return null
     return "$root/$STAGING_DIR_NAME"
 }
 
@@ -260,26 +280,43 @@ internal fun stagingDirPath(root: String): String? {
  * @param compressed must match the member's recorded `compression`. Guessing would either fail on a
  *   plain tar or, worse, succeed partially.
  *
- * The `-L` test is not redundant with `mkdir -p`: `mkdir -p` exits 0 when the path is a symlink to a
- * directory, and the extraction would then write through it with root's privilege, into a path the
- * target app controls.
+ * Three safeguards, in order:
+ *
+ * 1. The `-L` test is not redundant with `mkdir -p`: `mkdir -p` exits 0 when the path is a symlink
+ *    to a directory, and the extraction would then write through it with root's privilege, into a
+ *    path the target app controls.
+ * 2. **Member-name containment.** Before the actual extraction, `tar -t` lists every member name and
+ *    `grep` refuses the whole extraction if any name starts with `/` (absolute path) or contains
+ *    `..` as a path component. Thor does not choose its tar binary — the grep runs on every member
+ *    name, so the check does not depend on the tar implementation stripping them. A member that
+ *    violates the pattern makes `grep -qE` exit 0, `!` inverts to exit 1, and the `&&` chain
+ *    short-circuits, leaving the staging directory empty and staging intact.
+ * 3. Extraction uses `-C '$staging'`, so a name that slips through the grep check is still bounded
+ *    by the staging directory root.
  */
 internal fun extractCommand(root: String, tarPath: String, compressed: Boolean): String? {
     val staging = stagingDirPath(root) ?: return null
     if (!isQuotableAbsolutePath(tarPath)) return null
     val flags = if (compressed) "-xzf" else "-xf"
-    return "mkdir -p '$staging' && [ ! -L '$staging' ] && tar $flags '$tarPath' -C '$staging'"
+    return "mkdir -p '$staging' && [ ! -L '$staging' ] && " +
+        "! tar -tf '$tarPath' | grep -qE '^/|^\\.\\./|/\\.\\./|/\\.\\.\$' && " +
+        "tar $flags '$tarPath' -C '$staging'"
 }
 
 /**
  * Replace the class root's contents with the staged extraction, then remove the staging directory.
  *
- * Three properties, each of which has a test:
+ * Four properties, each of which has a test:
  *
+ * - **Staging must be non-empty.** The guard `[ -n "$(ls -A '$staging')" ]` runs first. An empty
+ *   staging — caused by an empty tar, a tar of only excluded entries, or a `tar` that exits 0 having
+ *   written nothing — makes `ls -A` produce no output, `[ -n "" ]` evaluates false, and the `&&`
+ *   chain short-circuits before any data is deleted. Without this guard, an attacker-chosen empty
+ *   archive destroys the app's live data, exits 0, and reports success.
  * - The deletion **excludes [STAGING_DIR_NAME]**. A `rm -rf <root>/\*` would delete the very directory
  *   holding the data being restored, after the original is already gone.
  * - Both halves use `find`, not a glob. A shell glob does not match dotfiles, and app data is full of
- *   them; `mv <staging>/\* <root>/` silently leaves every dot entry behind.
+ *   them; `mv <staging>/\*` silently leaves every dot entry behind.
  * - `-mindepth 1 -maxdepth 1` so the walk is one level: the entries, not their contents, and not the
  *   root itself.
  *
@@ -288,7 +325,8 @@ internal fun extractCommand(root: String, tarPath: String, compressed: Boolean):
  */
 internal fun swapStagedEntriesCommand(root: String): String? {
     val staging = stagingDirPath(root) ?: return null
-    return "find '$root' -mindepth 1 -maxdepth 1 ! -name '$STAGING_DIR_NAME' -exec rm -rf {} + && " +
+    return "[ -n \"\$(ls -A '$staging')\" ] && " +
+        "find '$root' -mindepth 1 -maxdepth 1 ! -name '$STAGING_DIR_NAME' -exec rm -rf {} + && " +
         "find '$staging' -mindepth 1 -maxdepth 1 -exec mv -f {} '$root/' \\; && " +
         "rmdir '$staging'"
 }
@@ -299,13 +337,17 @@ internal fun swapStagedEntriesCommand(root: String): String? {
  * A reinstalled app has a *new* uid, so the numeric owners inside the archive are always wrong; the
  * caller reads this from `PackageManager` **after** the install lands (§8.2). Not called for the two
  * external classes: `Android/data` on FUSE has synthesized ownership and `chown` there is meaningless.
+ *
+ * `-h` (`--no-dereference`) is required: without it, toybox's `chown` follows a symlink and chowns
+ * the *target*, so a symlink planted inside the extracted tree hands another app's data directory to
+ * the restored uid. With `-h`, the symlink itself is re-owned and the target is untouched.
  */
 internal fun chownRecursiveCommand(root: String, uid: Int): String? {
-    if (!isQuotableAbsolutePath(root)) return null
-    // A negative uid is what `appUid()`'s null becomes if a caller coerces it. `chown -R -1:-1` is
+    if (!isNormalisedRoot(root)) return null
+    // A negative uid is what `appUid()`'s null becomes if a caller coerces it. `chown -Rh -1:-1` is
     // parsed as an option by some toybox builds.
     if (uid < 0) return null
-    return "chown -R $uid:$uid '$root'"
+    return "chown -Rh $uid:$uid '$root'"
 }
 
 /**
@@ -317,6 +359,6 @@ internal fun chownRecursiveCommand(root: String, uid: Int): String? {
  * feature exists to avoid.
  */
 internal fun restoreconCommand(root: String): String? {
-    if (!isQuotableAbsolutePath(root)) return null
+    if (!isNormalisedRoot(root)) return null
     return "restorecon -RF '$root'"
 }

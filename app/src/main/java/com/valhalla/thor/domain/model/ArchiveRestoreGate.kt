@@ -33,6 +33,22 @@ enum class ArchiveRestoreRefusal {
 
     /** Written by a newer Thor. Reading it partially would restore an incomplete tree. */
     SCHEMA_TOO_NEW,
+
+    /**
+     * The header's `packageName` is not a valid package name.
+     *
+     * This field is read from untrusted archive JSON and is used in filesystem paths. An invalid
+     * value cannot be sanitised — the gate fails closed.
+     */
+    INVALID_PACKAGE_NAME,
+
+    /**
+     * The header's `userId` is negative.
+     *
+     * A negative user id cannot appear in a valid data directory path and indicates a corrupt or
+     * crafted archive.
+     */
+    INVALID_USER_ID,
 }
 
 /** A condition the user is told about and may proceed through. */
@@ -72,6 +88,14 @@ fun evaluateArchiveRestoreGate(
 ): ArchiveRestoreDecision {
     if (header.schemaVersion > ARCHIVE_SCHEMA_VERSION) {
         return ArchiveRestoreDecision.Refused(ArchiveRestoreRefusal.SCHEMA_TOO_NEW)
+    }
+    // Validate untrusted header fields that become filesystem paths. The gate is the security
+    // boundary; it does not inherit validation from `dataClassRoot` — it asserts it explicitly.
+    if (!isUsablePackageName(header.packageName)) {
+        return ArchiveRestoreDecision.Refused(ArchiveRestoreRefusal.INVALID_PACKAGE_NAME)
+    }
+    if (header.userId < 0) {
+        return ArchiveRestoreDecision.Refused(ArchiveRestoreRefusal.INVALID_USER_ID)
     }
     if (selectedClasses.isEmpty()) {
         return ArchiveRestoreDecision.Refused(ArchiveRestoreRefusal.NOTHING_SELECTED)

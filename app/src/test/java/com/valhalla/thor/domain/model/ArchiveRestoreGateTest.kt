@@ -21,12 +21,14 @@ class ArchiveRestoreGateTest {
         signerSha256: String = signer,
         withBundle: Boolean = true,
         classes: List<DataClass> = listOf(DataClass.CE, DataClass.DE),
+        packageName: String = "com.example.app",
+        userId: Int = 0,
     ) = ArchiveHeader(
         createdAt = 1_000L,
         thorVersionCode = 1950,
-        packageName = "com.example.app",
+        packageName = packageName,
         versionCode = versionCode,
-        userId = 0,
+        userId = userId,
         signerSha256 = signerSha256,
         appBundle = if (withBundle) ArchiveBundleInfo(bytes = 10L, obbCapture = "none", obbCount = 0) else null,
         kdf = ArchiveKdf(iterations = 210_000, salt = "c2FsdHNhbHRzYWx0c2E="),
@@ -211,5 +213,37 @@ class ArchiveRestoreGateTest {
         val decision = evaluateArchiveRestoreGate(header(), installed = null, setOf(DataClass.CE, DataClass.DE))
 
         assertTrue(decision.toString(), decision is ArchiveRestoreDecision.Allowed)
+    }
+
+    @Test
+    fun `a malformed package name in the header is refused`() {
+        // header.packageName is untrusted JSON and becomes a filesystem path in dataClassRoot().
+        // The gate is the security boundary; it validates rather than inheriting from callers.
+        val decision = evaluateArchiveRestoreGate(
+            header(packageName = "not..valid"),
+            installed(),
+            setOf(DataClass.CE, DataClass.DE),
+        )
+
+        assertEquals(
+            ArchiveRestoreRefusal.INVALID_PACKAGE_NAME,
+            (decision as ArchiveRestoreDecision.Refused).reason,
+        )
+    }
+
+    @Test
+    fun `a negative user id in the header is refused`() {
+        // header.userId is untrusted JSON and becomes a filesystem path component. A negative value
+        // cannot appear in a valid data directory path and cannot be sanitised.
+        val decision = evaluateArchiveRestoreGate(
+            header(userId = -1),
+            installed(),
+            setOf(DataClass.CE, DataClass.DE),
+        )
+
+        assertEquals(
+            ArchiveRestoreRefusal.INVALID_USER_ID,
+            (decision as ArchiveRestoreDecision.Refused).reason,
+        )
     }
 }
