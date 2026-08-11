@@ -136,8 +136,13 @@ class UriArchiveSourceFactory(
  * `AppDataArchiveGatewayImpl` uses the same `committed`/[NonCancellable] shape *without* an explicit
  * check only because its `try` really does suspend. The idiom does not transfer on its own.
  *
- * [release] runs under [NonCancellable] because cleanup that is itself cancelled leaks exactly what
- * it was written to free.
+ * Be exact about what the [NonCancellable] at the cleanup site buys, because the obvious reading is
+ * wrong: [release] is a plain `(ArchiveSource?) -> Unit`, so it has no suspension point and cannot
+ * itself be cancelled — `release(built)` on its own line would behave identically. What
+ * [NonCancellable] is load-bearing *for* is the `withContext` around it: on the cancellation path
+ * this coroutine is already cancelled, and any other `withContext` would throw before running its
+ * block at all. So the pairing is all-or-nothing — keep both or drop both; dropping only
+ * [NonCancellable] reintroduces the leak.
  *
  * Top-level and `internal` so the cancellation contract is JVM-testable: the enclosing `open` needs
  * a `ContentResolver` and a real `ParcelFileDescriptor`, neither of which exists on the unit-test
