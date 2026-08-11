@@ -358,9 +358,13 @@ internal val ARCHIVE_MEMBER_REFUSAL_PATTERN: String =
  *    is one this command created, rather than one an interrupted run left behind with whatever the
  *    previous archive planted in it. On a symlinked staging path `rm -rf` removes the link, not its
  *    target.
- * 2. The `-L` test is still not redundant: it closes the window between the `mkdir` and the
- *    extraction, where `mkdir -p` would exit 0 on a symlink to a directory and the extraction would
- *    write through it with root's privilege, into a path the target app controls.
+ * 2. The `-L` test is still not redundant, but be exact about which window it closes: it is the
+ *    `rm`→`mkdir` one. `mkdir -p` exits 0 on a symlink to a directory, so if anything recreates the
+ *    link between the removal and the `mkdir`, this test catches it and the chain stops. It does
+ *    **not** close the `mkdir`→extraction window — a race that recreates the path there is not
+ *    detected, and if what lands is a real directory rather than a symlink its contents are promoted
+ *    by [swapStagedEntriesCommand]. Winning that race needs write access to Thor's own data
+ *    directory, which is the assumption every other guard here already rests on.
  * 3. **The listing must be producible.** `tar -tv` is listed with the *same* compression the
  *    extraction will use — never `-tf` against a gzipped archive on the hope that the implementation
  *    auto-detects — and `|| echo $THOR_LIST_FAILED` injects a sentinel line if it does not succeed.

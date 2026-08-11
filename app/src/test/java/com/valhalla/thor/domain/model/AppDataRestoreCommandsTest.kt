@@ -200,10 +200,13 @@ class AppDataRestoreCommandsTest {
 
     @Test
     fun `the pattern uses only portable ERE syntax`() {
-        // Compiling as a Java regex is proved by the `refusal` field above; this pins the other half,
-        // that grep can compile it too. Since the guard now proceeds only on grep's exit 1, a pattern
-        // grep rejects fails CLOSED — but a restore that refuses every archive is still a broken
-        // restore, so the portability is worth asserting rather than assuming.
+        // Compiling as a Java regex is proved by the `refusal` field above. This is weaker and should
+        // not be read as its counterpart: a blacklist of PCRE-isms cannot prove grep compiles the
+        // pattern — `\<`, an unbalanced `(`, and a stray `\+` would all pass it. What it catches is the
+        // realistic regression, someone reaching for `\d` or `\s` while editing the pattern in an IDE
+        // that only knows Java's engine. Since the guard proceeds only on grep's exit 1, an ERE grep
+        // rejects fails CLOSED — no unchecked extraction — but a restore that refuses every archive is
+        // still a broken restore, so the cheap half of the check is worth having.
         listOf("\\d", "\\s", "\\w", "\\b", "[[:", "*?", "+?", "(?", "\\1").forEach {
             assertFalse(it, ARCHIVE_MEMBER_REFUSAL_PATTERN.contains(it))
         }
