@@ -753,9 +753,20 @@ fun SettingsScreen(
                     onClick = { showPassphrase = true }
                 )
 
-                // Hosted at its row, as every other sheet in this screen is. A ModalBottomSheet draws
-                // in its own window over the whole screen regardless of where it is composed, so being
-                // inside this Column costs it nothing.
+                // Hosted at its row, which is the exception in this composable and not the
+                // convention. The three other overlays here — the unfreeze-all AlertDialog, the
+                // language sheet and the support sheet — all sit at the screen root with only their
+                // trigger down among the rows: the dialog before this scrolling Column opens, the two
+                // sheets after it closes. This one is the first that keeps its state and its host
+                // beside the row they belong to.
+                //
+                // (Written without line numbers on purpose. The first draft of this comment cited
+                // three, and editing the comment itself moved one of them — and asserted a shared
+                // "after the Column closes" that was only ever true of two of the three.)
+                //
+                // Still correct where it is: a ModalBottomSheet draws in its own window over the
+                // whole screen no matter where it is composed, so being inside this Column costs it
+                // nothing.
                 if (showPassphrase) {
                     PassphraseSettingsSheet(onDismiss = { showPassphrase = false })
                 }

@@ -8,10 +8,12 @@ import com.valhalla.thor.data.backup.PassphraseVault
 import com.valhalla.thor.data.backup.PassphraseVaultStore
 import com.valhalla.thor.data.backup.VaultKeyProvider
 import java.security.GeneralSecurityException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -21,6 +23,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Test
 
@@ -64,6 +67,34 @@ class PassphraseSettingsViewModelTest {
     private class PlainKeyProvider : VaultKeyProvider {
         override fun wrap(plaintext: ByteArray): ByteArray = plaintext.copyOf()
         override fun unwrap(blob: ByteArray): ByteArray = blob.copyOf()
+    }
+
+    /**
+     * A store whose [write] parks until [release] completes, so "the save is in flight" is a state a
+     * test can stand in and look at. Without it `busy` is only ever observable before and after, and
+     * both of those are false.
+     */
+    private class GatedVaultStore : PassphraseVaultStore {
+        private val state = MutableStateFlow<String?>(null)
+        val release = CompletableDeferred<Unit>()
+
+        override val isSet: Flow<Boolean> = state.map { it != null }
+        override suspend fun read(): String? = state.value
+        override suspend fun write(value: String?) {
+            release.await()
+            state.value = value
+        }
+    }
+
+    /**
+     * A store that fails with something other than the `IOException`
+     * `DataStorePassphraseVaultStore.write` swallows, so the throw escapes `PassphraseVault.remember`
+     * — which wraps only the *Keystore* call in a `try` — and then escapes `save`'s `try` as well.
+     */
+    private class ThrowingVaultStore : PassphraseVaultStore {
+        override val isSet: Flow<Boolean> = flowOf(false)
+        override suspend fun read(): String? = null
+        override suspend fun write(value: String?): Unit = throw IllegalStateException("store is gone")
     }
 
     /** A Keystore that is not there: never created, or invalidated by an enrolment change. */
@@ -288,6 +319,65 @@ class PassphraseSettingsViewModelTest {
 
         assertEquals("     ", typed.concatToString())
         assertEquals("     ", confirmation.concatToString())
+    }
+
+    // --- the flag that disables the screen -------------------------------------------------------
+
+    @Test
+    fun `busy is set while a save is in flight and cleared when it settles`() = runTest(dispatcher) {
+        val store = GatedVaultStore()
+        val vm = PassphraseSettingsViewModel(PassphraseVault(store, PlainKeyProvider()))
+
+        vm.save(pass("correct horse"), pass("correct horse"))
+        advanceUntilIdle()
+
+        // Parked inside the store's write. Both text fields and the Save button are disabled while
+        // this holds, which is the point of the flag: a second save cannot be started over the top of
+        // this one. (The Forget button is not on screen in this scenario — nothing is stored yet.)
+        assertEquals(true, vm.uiState.value.busy)
+        assertEquals(false, vm.uiState.value.saved)
+
+        store.release.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(false, vm.uiState.value.busy)
+        assertEquals(true, vm.uiState.value.saved)
+    }
+
+    @Test
+    fun `busy is cleared when the store throws, and the throw is not swallowed`() {
+        // The throw is *meant* to escape `viewModelScope`: `save` clears the flag in a `finally`, not
+        // a `catch`. kotlinx-coroutines-test collects any exception that reaches the global handler
+        // and `runTest` rethrows it at the end of the body, so the escape is what this test asserts
+        // rather than something it works around — hence `assertThrows` *outside* `runTest` instead of
+        // the usual `= runTest(dispatcher)` expression body. (Moving the throw outside a `runTest`
+        // does not dodge the collector, it defers it: the exception is then reported against whichever
+        // test runs next, as `UncaughtExceptionsBeforeTest`.)
+        //
+        // Asserting the escape is half the test, not decoration: clearing `busy` in a `catch` would
+        // satisfy the first assertion while silently swallowing every failure out of the store.
+        // Whether it *should* be caught is a branch-level question about `viewModelScope.launch` that
+        // this task does not settle — `AppBackupViewModel.beginBackup` has the same shape — and
+        // pinning it here means a later answer has to change this test deliberately.
+        var busyAfterThrow: Boolean? = null
+        val escaped = assertThrows(IllegalStateException::class.java) {
+            runTest(dispatcher) {
+                val vm = PassphraseSettingsViewModel(
+                    PassphraseVault(ThrowingVaultStore(), PlainKeyProvider())
+                )
+
+                vm.save(pass("correct horse"), pass("correct horse"))
+                advanceUntilIdle()
+
+                busyAfterThrow = vm.uiState.value.busy
+            }
+        }
+
+        // The state the user cannot get out of if this is wrong: `dismiss()` does not reset `busy`,
+        // and this view model is activity-scoped, so a stuck flag survives closing and reopening the
+        // sheet — leaving the app would be the only way back.
+        assertEquals(false, busyAfterThrow)
+        assertEquals("store is gone", escaped.message)
     }
 
     // --- the outcome is per visit --------------------------------------------------------------

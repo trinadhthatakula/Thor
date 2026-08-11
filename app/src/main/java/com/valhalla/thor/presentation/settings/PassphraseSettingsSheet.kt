@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -24,6 +26,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -49,6 +52,39 @@ fun PassphraseSettingsSheet(onDismiss: () -> Unit) {
 
     var passphrase by remember { mutableStateOf("") }
     var confirmation by remember { mutableStateOf("") }
+    var confirmForget by remember { mutableStateOf(false) }
+
+    if (confirmForget) {
+        AlertDialog(
+            onDismissRequest = { confirmForget = false },
+            icon = {
+                Icon(
+                    painter = painterResource(R.drawable.warning),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text(stringResource(R.string.passphrase_forget_confirm_title)) },
+            text = { Text(stringResource(R.string.passphrase_forget_confirm_desc)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.forget()
+                        passphrase = ""
+                        confirmation = ""
+                        confirmForget = false
+                    }
+                ) {
+                    Text(stringResource(R.string.proceed))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmForget = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
 
     ModalBottomSheet(
         onDismissRequest = {
@@ -89,7 +125,13 @@ fun PassphraseSettingsSheet(onDismiss: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            if (state.remembered) {
+            // `&& !state.saved`, because after a successful save both flags are true — a pairing the
+            // view-model test `a saved passphrase is remembered and comes back out` asserts, so it is
+            // the pinned behaviour and not an edge case. Without the guard the sheet reports "A
+            // passphrase is saved on this device." immediately above "Saved on this device.": one fact
+            // said twice, which reads as two. The `saved` line is the one that survives, because it is
+            // the answer to what the user just did.
+            if (state.remembered && !state.saved) {
                 Text(
                     text = stringResource(R.string.passphrase_settings_stored),
                     style = MaterialTheme.typography.bodyMedium
@@ -137,8 +179,10 @@ fun PassphraseSettingsSheet(onDismiss: () -> Unit) {
                 Button(
                     onClick = {
                         // Fresh arrays on every click, and the view model owns each one from here: it
-                        // wipes both on every path it can take. The `String`s they were made from stay
-                        // in this composition until the sheet leaves it, which is why the wipe there is
+                        // wipes both on every path it takes, with the one exception its `save` KDoc
+                        // names — a view model cleared before the launched block is dispatched never
+                        // runs that block's `finally`. The `String`s these were made from stay in this
+                        // composition until the sheet leaves it, which is why the wipe there is
                         // described as narrowing the window rather than closing it.
                         viewModel.save(passphrase.toCharArray(), confirmation.toCharArray())
                     },
@@ -149,11 +193,14 @@ fun PassphraseSettingsSheet(onDismiss: () -> Unit) {
                 }
                 if (state.remembered) {
                     TextButton(
-                        onClick = {
-                            viewModel.forget()
-                            passphrase = ""
-                            confirmation = ""
-                        },
+                        // Behind a confirmation, unlike the brief's bare control: this sheet's own
+                        // copy says Thor cannot recover the passphrase, and forgetting it costs the
+                        // ability to open every .thorbak ever written under it, not just the copy
+                        // this device is holding. There is nothing to offer as an undo afterwards.
+                        // The settings screen that hosts this sheet already puts a bulk action behind
+                        // an AlertDialog with a warning icon (`showUnfreezeConfirmation`, over
+                        // "Unfreeze all apps") — and that one can at least be re-applied app by app.
+                        onClick = { confirmForget = true },
                         enabled = !state.busy,
                         modifier = Modifier.weight(1f)
                     ) {

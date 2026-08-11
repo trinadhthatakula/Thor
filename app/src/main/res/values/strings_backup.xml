@@ -148,9 +148,27 @@
     <string name="passphrase_settings_forget">Forget it</string>
     <string name="passphrase_settings_saved">Saved on this device.</string>
     <!--
-      PluralsCandidate fires on the %1$d, the same way it does on restore_archive_version above. It is
-      a minimum — a threshold the passphrase has to clear — not a count of anything present, so there
-      is no quantity for a plural form to agree with.
+      The confirmation body has to carry the scope of the loss, because the button label cannot: what
+      goes is the ability to open every .thorbak already written under that passphrase, not merely the
+      copy this device is holding. The consequence is then spelled out as something the user will have
+      to do (type it again) rather than left at "it cannot be recovered", so a user who does still know
+      their passphrase can see this is survivable and proceed.
+    -->
+    <string name="passphrase_forget_confirm_title">Forget this passphrase?</string>
+    <string name="passphrase_forget_confirm_desc">Thor will stop remembering it on this device. It cannot be recovered — you will have to type it again for every backup you make, and for every backup you already made with it.</string>
+    <!--
+      Load-bearing, not decorative: without it lint fails the build with
+      `Error: Formatting %d followed by words ("characters") … [PluralsCandidate]`.
+
+      Kept because the argument is always MIN_PASSPHRASE_LENGTH, a compile-time constant — so this
+      string renders one number and only ever that number, and no plural form can vary. It is NOT
+      kept on the grounds that "characters" is uncounted: lint names that noun and it is right to,
+      and values-ar (on the translation list, where 8 takes a different form from 1 and 2) would
+      otherwise be a real problem. Do not lean on restore_archive_version's precedent here; that one
+      is exempt because a version code is not a count at all, which is a different argument.
+
+      If MIN_PASSPHRASE_LENGTH ever becomes user-configurable or varies by build, this reasoning
+      expires with it and the string becomes a genuine <plurals>.
     -->
     <string name="passphrase_error_too_short" tools:ignore="PluralsCandidate">Use at least %1$d characters.</string>
     <string name="passphrase_error_mismatch">The two passphrases do not match.</string>

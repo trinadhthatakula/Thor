@@ -70,6 +70,14 @@ class PassphraseSettingsViewModel(private val vault: PassphraseVault) : ViewMode
      * earlier, and no `fill` can reach that. It is done anyway, and for the same reason: every layer
      * beneath pays real complexity to keep key material short-lived, and none of it means anything if
      * the caller's copy is simply dropped in the clear.
+     *
+     * One hole is left, the same one `beginBackup`'s KDoc names: if this view model is cleared before
+     * the launched block is dispatched, the block and its `finally` never run, and [passphrase] is left
+     * intact. It is **narrower here than there**, which is worth stating because the disclosure reads
+     * the other way round. `AppBackupSheet` scopes its view model with `rememberViewModelStoreOwner()`,
+     * so its window opens on every dismissal; this sheet uses the default, activity-scoped owner, so
+     * the window opens only when the activity finishes for good — at which point the process is going
+     * anyway. Narrow is not closed, so it is written down rather than left to be rediscovered.
      */
     fun save(passphrase: CharArray, confirmation: CharArray) {
         // Length before match: see the test that names this. Both checks run before the vault is
@@ -96,16 +104,35 @@ class PassphraseSettingsViewModel(private val vault: PassphraseVault) : ViewMode
                 val stored = vault.remember(passphrase)
                 _uiState.update {
                     it.copy(
-                        busy = false,
                         saved = stored,
                         error = if (stored) null else PassphraseError.STORE_FAILED,
                     )
                 }
             } finally {
-                // In a `finally` so a throw out of the vault cannot leave the characters behind.
-                // `remember` catches its own wrapping failures and reports them as `false`, so this
-                // covers the store beneath it rather than the Keystore.
+                // Both of these are in the `finally` because a throw out of the vault must not leave
+                // either one behind. `remember` catches its own wrapping failures and reports them as
+                // `false`, so what reaches here is the store beneath it rather than the Keystore.
+                //
+                // `busy` is cleared **here and nowhere else** — deliberately not folded into the
+                // completion update above, which only ever runs on the path that already worked. A
+                // `busy` left true disables both text fields and every button the sheet is showing,
+                // `dismiss()` does not reset it, and this view model is scoped to the activity, so the
+                // flag would survive closing and reopening the sheet: the user's only way out would be
+                // to leave the app. The cost of putting it here is one extra emission on the happy
+                // path.
+                //
+                // Clearing the flag is not catching the exception: this is a `finally`, not a `catch`,
+                // so the throw still leaves. The test `busy is cleared when the store throws, and the
+                // throw is not swallowed` asserts both halves, so turning this into a `catch` fails a
+                // test rather than passing quietly.
+                //
+                // Whether it *should* be caught is a branch-level question this task does not settle.
+                // `AppBackupViewModel.beginBackup` is `try`/`finally` with no `catch` around its own
+                // `vault.remember` call, so a throw escapes `viewModelScope` there in exactly the same
+                // way; `PassphraseVault.recall` is the one place that does catch. Two shapes, and the
+                // choice between them belongs above this method.
                 passphrase.fill(' ')
+                _uiState.update { it.copy(busy = false) }
             }
         }
     }
