@@ -1,0 +1,662 @@
+// SPDX-FileCopyrightText: 2025-2026 Trinadh Thatakula <github.com/trinadhthatakula/Thor>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package com.valhalla.thor.domain.usecase
+
+import com.valhalla.thor.data.backup.AppArchiveCipher
+import com.valhalla.thor.domain.model.ArchiveBundleInfo
+import com.valhalla.thor.domain.model.ArchiveCompression
+import com.valhalla.thor.domain.model.ArchiveHeader
+import com.valhalla.thor.domain.model.ArchiveKdf
+import com.valhalla.thor.domain.model.ArchiveMember
+import com.valhalla.thor.domain.model.ClassEntries
+import com.valhalla.thor.domain.model.DataClass
+import com.valhalla.thor.domain.model.ObbPlacement
+import com.valhalla.thor.domain.model.TarOutcome
+import com.valhalla.thor.domain.model.THORBAK_BUNDLE_ENTRY
+import com.valhalla.thor.domain.model.ThorJobProgress
+import com.valhalla.thor.domain.repository.AppArchiveInstaller
+import com.valhalla.thor.domain.repository.AppDataArchiveGateway
+import com.valhalla.thor.domain.repository.ArchiveBreadcrumb
+import com.valhalla.thor.domain.repository.ArchiveBreadcrumbStore
+import com.valhalla.thor.domain.repository.ArchiveInstallOutcome
+import com.valhalla.thor.domain.repository.ArchiveSource
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.InputStream
+import java.util.Base64
+import javax.crypto.SecretKey
+
+class RestoreAppArchiveUseCaseTest {
+
+    @get:Rule
+    val temp = TemporaryFolder()
+
+    private val cipher = AppArchiveCipher()
+    private val salt = ByteArray(16) { it.toByte() }
+    private val key: SecretKey = cipher.deriveKey("pass".toCharArray(), salt, iterations = 4)
+
+    /** Every gateway call, in order, as `"<verb>:<class>"` — the assertion surface for §8.3's sequence. */
+    private val calls = mutableListOf<String>()
+
+    private class FakeSource(private val entries: Map<String, ByteArray>) : ArchiveSource {
+        override val displayName = "com.example.app-100.thorbak"
+        override fun entryNames() = entries.keys.toList()
+        override fun openEntry(name: String): InputStream? = entries[name]?.let(::ByteArrayInputStream)
+        override fun close() = Unit
+    }
+
+    /** One encrypted member plus the stats the header must record for it. */
+    private fun member(dataClass: DataClass, body: String = "tar bytes for ${dataClass.id}"): Pair<ArchiveMember, ByteArray> {
+        val nonce = cipher.newNonce()
+        val out = ByteArrayOutputStream()
+        val name = dataClass.memberName(compressed = true)
+        val stats = cipher.encryptMember(name, ByteArrayInputStream(body.toByteArray()), out, key, nonce)
+        return ArchiveMember(
+            dataClass = dataClass.id,
+            fileName = name,
+            nonce = Base64.getEncoder().encodeToString(nonce),
+            plainBytes = stats.plainBytes,
+            chunkCount = stats.chunkCount,
+            compression = ArchiveCompression.GZIP.id,
+        ) to out.toByteArray()
+    }
+
+    private fun archive(
+        classes: List<DataClass>,
+        withBundle: Boolean = true,
+    ): Pair<ArchiveHeader, FakeSource> {
+        val built = classes.map(::member)
+        val entries = built.associate { (m, bytes) -> m.fileName to bytes }.toMutableMap()
+        if (withBundle) entries[THORBAK_BUNDLE_ENTRY] = "xapk bytes".toByteArray()
+        val header = ArchiveHeader(
+            createdAt = 1_000L,
+            thorVersionCode = 1950,
+            packageName = "com.example.app",
+            versionCode = 100L,
+            userId = 0,
+            signerSha256 = SIGNER,
+            appBundle = if (withBundle) ArchiveBundleInfo(bytes = 10L, obbCapture = "present", obbCount = 2) else null,
+            kdf = ArchiveKdf(iterations = 4, salt = Base64.getEncoder().encodeToString(salt)),
+            verifier = Base64.getEncoder().encodeToString(cipher.verifier(key)),
+            members = built.map { it.first },
+        )
+        return header to FakeSource(entries)
+    }
+
+    private inner class FakeGateway(
+        private val failOn: String? = null,
+        private val uid: Int? = 10123,
+        private val signer: String? = SIGNER,
+        /** Runs inside [stagingFile], before the file is handed back. The cancellation seam. */
+        private val onStagingFile: () -> Unit = {},
+    ) : AppDataArchiveGateway {
+        val stagedFiles = mutableListOf<File>()
+
+        /**
+         * Every previously handed-out staging file that still had bytes in it when the *next* one was
+         * asked for.
+         *
+         * This is what makes "peak disk is one class" testable rather than merely asserted at the end:
+         * a `finally` folded up into `invoke` still deletes every tar eventually, so an end-of-run
+         * check alone stays green under exactly the edit the invariant exists to forbid.
+         */
+        val liveAtHandout = mutableListOf<String>()
+
+        override suspend fun thorUserId() = 0
+        override suspend fun externalStorageDir() = "/storage/emulated/0"
+        override suspend fun stagingFile(name: String): File {
+            liveAtHandout += stagedFiles.filter { it.exists() && it.length() > 0L }.map(File::getName)
+            onStagingFile()
+            return temp.newFile("staged-${stagedFiles.size}-$name").also(stagedFiles::add)
+        }
+
+        override suspend fun forceStop(packageName: String) { calls += "force-stop" }
+        override suspend fun listClass(packageName: String, dataClass: DataClass) =
+            ClassEntries(kept = emptyList(), skipped = emptyList(), rootAbsent = true)
+
+        override suspend fun tarClass(
+            packageName: String,
+            dataClass: DataClass,
+            entries: List<String>,
+            out: File,
+            compress: Boolean,
+        ) = TarOutcome.Succeeded
+
+        override suspend fun appUid(packageName: String) = uid
+        override suspend fun signerSha256(packageName: String) = signer
+
+        override suspend fun extractInto(packageName: String, dataClass: DataClass, tar: File, compressed: Boolean) =
+            record("extract", dataClass)
+
+        override suspend fun swapStaged(packageName: String, dataClass: DataClass) = record("swap", dataClass)
+        override suspend fun chownClass(packageName: String, dataClass: DataClass, uid: Int) = record("chown", dataClass)
+        override suspend fun relabelClass(packageName: String, dataClass: DataClass) = record("relabel", dataClass)
+
+        private fun record(verb: String, dataClass: DataClass): Boolean {
+            val call = "$verb:${dataClass.id}"
+            calls += call
+            return call != failOn
+        }
+    }
+
+    private class FakeInstaller(
+        private val outcome: ArchiveInstallOutcome = ArchiveInstallOutcome.Installed,
+        private val placement: ObbPlacement = ObbPlacement.Placed(2),
+        private val calls: MutableList<String>,
+    ) : AppArchiveInstaller {
+        override suspend fun installBundle(bundle: File, packageName: String): ArchiveInstallOutcome {
+            calls += "install"
+            return outcome
+        }
+
+        override suspend fun placeBundleObb(
+            bundle: File,
+            packageName: String,
+            onFile: (String, Int, Int) -> Unit,
+        ): ObbPlacement {
+            calls += "obb"
+            return placement
+        }
+    }
+
+    private class RecordingBreadcrumbs : ArchiveBreadcrumbStore {
+        var current: ArchiveBreadcrumb? = null
+        val history = mutableListOf<String>()
+
+        override suspend fun write(packageName: String, appLabel: String) {
+            current = ArchiveBreadcrumb(packageName, appLabel, startedAt = 1L)
+            history += "write"
+        }
+
+        override suspend fun read(): ArchiveBreadcrumb? = current
+        override suspend fun clear() {
+            current = null
+            history += "clear"
+        }
+    }
+
+    private fun useCase(
+        gateway: AppDataArchiveGateway,
+        installer: AppArchiveInstaller,
+        breadcrumbs: ArchiveBreadcrumbStore,
+    ) = RestoreAppArchiveUseCase(gateway, installer, breadcrumbs, cipher)
+
+    @Test
+    fun `each internal class is extracted, swapped, chowned and relabelled in that order`() = runTest {
+        val (header, source) = archive(listOf(DataClass.CE, DataClass.DE))
+        val crumbs = RecordingBreadcrumbs()
+
+        val outcome = useCase(FakeGateway(), FakeInstaller(calls = calls), crumbs)(
+            source = source,
+            header = header,
+            key = key,
+            classes = listOf(DataClass.CE, DataClass.DE),
+            installFirst = false,
+            restoreObb = false,
+        )
+
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Completed)
+        assertEquals(
+            listOf(
+                "force-stop",
+                "extract:ce", "swap:ce", "chown:ce", "relabel:ce",
+                "extract:de", "swap:de", "chown:de", "relabel:de",
+                "force-stop",
+            ),
+            calls,
+        )
+    }
+
+    @Test
+    fun `external classes are neither chowned nor relabelled`() = runTest {
+        // FUSE synthesizes ownership from the caller, so `chown` there changes nothing and
+        // `restorecon` has no label to apply. Issuing them anyway would produce two failed commands
+        // per class and a restore reported as partial when it was complete.
+        val (header, source) = archive(listOf(DataClass.EXTERNAL_DATA, DataClass.EXTERNAL_MEDIA))
+
+        useCase(FakeGateway(), FakeInstaller(calls = calls), RecordingBreadcrumbs())(
+            source, header, key,
+            listOf(DataClass.EXTERNAL_DATA, DataClass.EXTERNAL_MEDIA),
+            installFirst = false,
+            restoreObb = false,
+        )
+
+        assertFalse(calls.toString(), calls.any { it.startsWith("chown") || it.startsWith("relabel") })
+    }
+
+    @Test
+    fun `the app is force-stopped before the first destructive call and once more at the end`() = runTest {
+        // Twice, not per class: §8.3 steps 2 and 5. The second one is there because a broadcast can
+        // wake the app mid-restore, and an app running on top of half-replaced data writes over it.
+        val (header, source) = archive(listOf(DataClass.CE))
+
+        useCase(FakeGateway(), FakeInstaller(calls = calls), RecordingBreadcrumbs())(
+            source, header, key, listOf(DataClass.CE), installFirst = false, restoreObb = false,
+        )
+
+        assertEquals(2, calls.count { it == "force-stop" })
+        assertEquals("force-stop", calls.first())
+        assertEquals("force-stop", calls.last())
+    }
+
+    @Test
+    fun `the breadcrumb is written before the first destructive call and cleared on success`() = runTest {
+        val (header, source) = archive(listOf(DataClass.CE))
+        val crumbs = RecordingBreadcrumbs()
+
+        useCase(FakeGateway(), FakeInstaller(calls = calls), crumbs)(
+            source, header, key, listOf(DataClass.CE), installFirst = false, restoreObb = false,
+        )
+
+        assertEquals(listOf("write", "clear"), crumbs.history)
+        assertNull(crumbs.current)
+    }
+
+    @Test
+    fun `a failure leaves the breadcrumb in place`() = runTest {
+        // This is the whole point of §8.5. Clearing on failure converts "the restore of X was
+        // interrupted and its data may be incomplete" into silence, and the user finds out when the
+        // app crashes.
+        val (header, source) = archive(listOf(DataClass.CE))
+        val crumbs = RecordingBreadcrumbs()
+
+        val outcome = useCase(FakeGateway(failOn = "swap:ce"), FakeInstaller(calls = calls), crumbs)(
+            source, header, key, listOf(DataClass.CE), installFirst = false, restoreObb = false,
+        )
+
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Failed)
+        assertNotNull(crumbs.current)
+        assertFalse(crumbs.history.toString(), crumbs.history.contains("clear"))
+    }
+
+    @Test
+    fun `a member that fails integrity leaves its class root untouched`() = runTest {
+        // The ordering that matters most: decrypt fully, *then* extract, *then* swap. A corrupt
+        // archive discovered after the swap has already deleted the data it was replacing.
+        val (header, source) = archive(listOf(DataClass.CE))
+        val corrupted = FakeSource(
+            source.entryNames().associateWith { name ->
+                source.openEntry(name)!!.readBytes().also { if (name.endsWith(".enc")) it[it.size - 1]++ }
+            }
+        )
+
+        val outcome = useCase(FakeGateway(), FakeInstaller(calls = calls), RecordingBreadcrumbs())(
+            corrupted, header, key, listOf(DataClass.CE), installFirst = false, restoreObb = false,
+        )
+
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Failed)
+        assertFalse(calls.toString(), calls.any { it.startsWith("extract") || it.startsWith("swap") })
+    }
+
+    @Test
+    fun `a member the container does not hold is a failure, not a silent skip`() = runTest {
+        val (header, _) = archive(listOf(DataClass.CE))
+        val empty = FakeSource(emptyMap())
+
+        val outcome = useCase(FakeGateway(), FakeInstaller(calls = calls), RecordingBreadcrumbs())(
+            empty, header, key, listOf(DataClass.CE), installFirst = false, restoreObb = false,
+        )
+
+        val reason = (outcome as ArchiveRestoreOutcome.Failed).reason
+        assertTrue(reason, reason.contains(DataClass.CE.memberName(compressed = true)))
+    }
+
+    @Test
+    fun `install-first installs before any data call`() = runTest {
+        val (header, source) = archive(listOf(DataClass.CE))
+
+        useCase(FakeGateway(), FakeInstaller(calls = calls), RecordingBreadcrumbs())(
+            source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false,
+        )
+
+        assertEquals("install", calls.first())
+    }
+
+    @Test
+    fun `an install that does not land writes no data and leaves no breadcrumb`() = runTest {
+        // Nothing was destroyed, so a breadcrumb saying otherwise would make the user go looking for
+        // damage that is not there.
+        val (header, source) = archive(listOf(DataClass.CE))
+        val crumbs = RecordingBreadcrumbs()
+
+        val outcome = useCase(
+            FakeGateway(),
+            FakeInstaller(outcome = ArchiveInstallOutcome.Unconfirmed, calls = calls),
+            crumbs,
+        )(source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false)
+
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Failed)
+        assertEquals(listOf("install"), calls)
+        assertNull(crumbs.current)
+    }
+
+    @Test
+    fun `an unconfirmed install is not reported as a failed one`() = runTest {
+        // `session.commit()` is fire-and-forget, so an install Thor could not confirm may well have
+        // succeeded. The reason must say that and not "the app could not be installed", or the user
+        // is told a false thing about a package that may be sitting on their device.
+        val (header, source) = archive(listOf(DataClass.CE))
+
+        val outcome = useCase(
+            FakeGateway(),
+            FakeInstaller(outcome = ArchiveInstallOutcome.Unconfirmed, calls = calls),
+            RecordingBreadcrumbs(),
+        )(source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false, appLabel = "Example")
+
+        val reason = (outcome as ArchiveRestoreOutcome.Failed).reason
+        assertTrue(reason, reason.contains("could not confirm"))
+        assertTrue(reason, reason.contains("Example"))
+    }
+
+    @Test
+    fun `a failed install reports the platform's own words`() = runTest {
+        // The reason on `Failed` is the message the install path put on the bus. Replacing it with a
+        // flat sentence throws away the only actionable thing the user will ever see.
+        val (header, source) = archive(listOf(DataClass.CE))
+
+        val outcome = useCase(
+            FakeGateway(),
+            FakeInstaller(outcome = ArchiveInstallOutcome.Failed("INSTALL_FAILED_VERSION_DOWNGRADE"), calls = calls),
+            RecordingBreadcrumbs(),
+        )(source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false)
+
+        assertEquals(
+            "INSTALL_FAILED_VERSION_DOWNGRADE",
+            (outcome as ArchiveRestoreOutcome.Failed).reason,
+        )
+    }
+
+    @Test
+    fun `an install that landed without its game data still restores the data, and warns`() = runTest {
+        // The fourth outcome, added after this task's brief was written. The package is installed and
+        // current — only its expansions are missing — so stopping here would leave the user with an
+        // installed, empty app and no path forward. The warning has to survive, because a game whose
+        // expansions are missing starts and then crashes.
+        val (header, source) = archive(listOf(DataClass.CE))
+        val crumbs = RecordingBreadcrumbs()
+
+        val outcome = useCase(
+            FakeGateway(),
+            FakeInstaller(
+                outcome = ArchiveInstallOutcome.InstalledWithoutGameData("no room for the expansions"),
+                calls = calls,
+            ),
+            crumbs,
+        )(source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false)
+
+        val completed = outcome as ArchiveRestoreOutcome.Completed
+        assertEquals(listOf(DataClass.CE), completed.classesRestored)
+        assertTrue(
+            completed.warnings.toString(),
+            completed.warnings.any { it.contains("no room for the expansions") },
+        )
+        assertTrue(calls.toString(), calls.contains("swap:ce"))
+        assertNull(crumbs.current)
+    }
+
+    @Test
+    fun `a signer mismatch after the install stops the restore`() = runTest {
+        // The gate (Task 11) cannot check an absent app's signer, so this is the only place that check
+        // can happen for an install-first restore. Without it, "app not installed" is a hole straight
+        // through the one refusal §8.1 allows no override for.
+        val (header, source) = archive(listOf(DataClass.CE))
+
+        val outcome = useCase(
+            FakeGateway(signer = "CD".repeat(32)),
+            FakeInstaller(calls = calls),
+            RecordingBreadcrumbs(),
+        )(source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false)
+
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Failed)
+        assertFalse(calls.toString(), calls.any { it.startsWith("swap") })
+    }
+
+    @Test
+    fun `an unreadable signer after the install stops the restore`() = runTest {
+        // Null is "the question could not be answered", never "it matches". Reading it as a pass is
+        // the same defect `installLanded` refuses on the stamp.
+        val (header, source) = archive(listOf(DataClass.CE))
+
+        val outcome = useCase(
+            FakeGateway(signer = null),
+            FakeInstaller(calls = calls),
+            RecordingBreadcrumbs(),
+        )(source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false)
+
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Failed)
+        assertEquals(listOf("install"), calls)
+    }
+
+    @Test
+    fun `the signer is not checked when the app was already installed`() = runTest {
+        // Task 11's gate already ran that comparison against the live app. Repeating it here would be
+        // harmless; *only* doing it here would not be, which is why the install-first case has its own
+        // test above.
+        val (header, source) = archive(listOf(DataClass.CE))
+
+        val outcome = useCase(
+            FakeGateway(signer = "CD".repeat(32)),
+            FakeInstaller(calls = calls),
+            RecordingBreadcrumbs(),
+        )(source, header, key, listOf(DataClass.CE), installFirst = false, restoreObb = false)
+
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Completed)
+    }
+
+    @Test
+    fun `an unreadable uid stops the restore before anything is force-stopped`() = runTest {
+        val (header, source) = archive(listOf(DataClass.CE))
+
+        val outcome = useCase(FakeGateway(uid = null), FakeInstaller(calls = calls), RecordingBreadcrumbs())(
+            source, header, key, listOf(DataClass.CE), installFirst = false, restoreObb = false,
+        )
+
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Failed)
+        assertEquals(emptyList<String>(), calls)
+    }
+
+    @Test
+    fun `the staged tar of one class is gone before the next is decrypted`() = runTest {
+        // Peak disk is one class, same invariant the backup side holds. A `finally` folded up into the
+        // outer `try` breaks this and only this.
+        val gateway = FakeGateway()
+        val (header, source) = archive(listOf(DataClass.CE, DataClass.DE, DataClass.EXTERNAL_DATA))
+
+        useCase(gateway, FakeInstaller(calls = calls), RecordingBreadcrumbs())(
+            source, header, key,
+            listOf(DataClass.CE, DataClass.DE, DataClass.EXTERNAL_DATA),
+            installFirst = false,
+            restoreObb = false,
+        )
+
+        // Checked at each hand-out, not only at the end: an end-of-run check alone survives moving
+        // the deletion out of the loop, which is exactly the edit this pins.
+        assertEquals(emptyList<String>(), gateway.liveAtHandout)
+        assertEquals(
+            emptyList<File>(),
+            gateway.stagedFiles.filter { it.exists() && it.length() > 0L },
+        )
+    }
+
+    @Test
+    fun `a failed restore leaves no staged bundle behind`() = runTest {
+        // The bundle is the app's whole download. Leaking one copy of it into Thor's internal cache
+        // per failed restore is the same defect the per-class `finally` exists to prevent, one level
+        // up.
+        val gateway = FakeGateway()
+        val (header, source) = archive(listOf(DataClass.CE))
+
+        useCase(
+            gateway,
+            FakeInstaller(outcome = ArchiveInstallOutcome.Failed("nope"), calls = calls),
+            RecordingBreadcrumbs(),
+        )(source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false)
+
+        assertEquals(
+            emptyList<File>(),
+            gateway.stagedFiles.filter { it.exists() && it.length() > 0L },
+        )
+    }
+
+    @Test
+    fun `an archive whose bundle entry is missing fails before anything is destroyed`() = runTest {
+        // The header's `appBundle` is a claim; the container is the authority. A header that promises
+        // a bundle the zip does not hold must not reach the installer with an empty file.
+        val (header, _) = archive(listOf(DataClass.CE))
+        val noBundle = FakeSource(
+            header.members.associate { it.fileName to ByteArray(0) }
+        )
+
+        val outcome = useCase(FakeGateway(), FakeInstaller(calls = calls), RecordingBreadcrumbs())(
+            noBundle, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = false,
+        )
+
+        assertTrue(outcome.toString(), outcome is ArchiveRestoreOutcome.Failed)
+        assertEquals(emptyList<String>(), calls)
+    }
+
+    @Test
+    fun `OBB is placed for an already-installed app when asked`() = runTest {
+        val (header, source) = archive(listOf(DataClass.CE))
+
+        val outcome = useCase(FakeGateway(), FakeInstaller(calls = calls), RecordingBreadcrumbs())(
+            source, header, key, listOf(DataClass.CE), installFirst = false, restoreObb = true,
+        )
+
+        assertTrue(calls.toString(), calls.contains("obb"))
+        assertEquals(ObbPlacement.Placed(2), (outcome as ArchiveRestoreOutcome.Completed).obb)
+    }
+
+    @Test
+    fun `OBB is not placed twice after an install`() = runTest {
+        // The install path places the bundle's expansions itself. Doing it again would re-copy every
+        // gigabyte for no change.
+        val (header, source) = archive(listOf(DataClass.CE))
+
+        useCase(FakeGateway(), FakeInstaller(calls = calls), RecordingBreadcrumbs())(
+            source, header, key, listOf(DataClass.CE), installFirst = true, restoreObb = true,
+        )
+
+        assertFalse(calls.toString(), calls.contains("obb"))
+    }
+
+    @Test
+    fun `a failed OBB placement is a warning, not a failed restore`() = runTest {
+        // The data landed. Reporting the whole restore as failed would send the user to try it again,
+        // which destroys and rewrites the data that is already correct.
+        val (header, source) = archive(listOf(DataClass.CE))
+
+        val outcome = useCase(
+            FakeGateway(),
+            FakeInstaller(placement = ObbPlacement.Failed("no space"), calls = calls),
+            RecordingBreadcrumbs(),
+        )(source, header, key, listOf(DataClass.CE), installFirst = false, restoreObb = true)
+
+        val completed = outcome as ArchiveRestoreOutcome.Completed
+        assertTrue(completed.warnings.toString(), completed.warnings.any { it.contains("no space") })
+    }
+
+    @Test
+    fun `the OBB branch still force-stops and clears the breadcrumb`() = runTest {
+        // Its own return path, so §8.3 steps 5 and 6 have to be repeated on it. They were not, once.
+        val (header, source) = archive(listOf(DataClass.CE))
+        val crumbs = RecordingBreadcrumbs()
+
+        useCase(FakeGateway(), FakeInstaller(calls = calls), crumbs)(
+            source, header, key, listOf(DataClass.CE), installFirst = false, restoreObb = true,
+        )
+
+        assertEquals(2, calls.count { it == "force-stop" })
+        assertEquals("force-stop", calls.last())
+        assertNull(crumbs.current)
+    }
+
+    @Test
+    fun `a failure reports the classes that did land`() = runTest {
+        // "Restore failed" over a CE that is already replaced tells the user nothing they can act on.
+        val (header, source) = archive(listOf(DataClass.CE, DataClass.DE))
+
+        val outcome = useCase(FakeGateway(failOn = "swap:de"), FakeInstaller(calls = calls), RecordingBreadcrumbs())(
+            source, header, key, listOf(DataClass.CE, DataClass.DE), installFirst = false, restoreObb = false,
+        )
+
+        assertEquals(listOf(DataClass.CE), (outcome as ArchiveRestoreOutcome.Failed).classesRestored)
+    }
+
+    @Test
+    fun `a class the archive does not hold is a failure that keeps the breadcrumb`() = runTest {
+        // Reached only when a caller asks for a class the header never recorded. It happens after the
+        // breadcrumb is written, so it must take the same exit as any other mid-run failure.
+        val (header, source) = archive(listOf(DataClass.CE))
+        val crumbs = RecordingBreadcrumbs()
+
+        val outcome = useCase(FakeGateway(), FakeInstaller(calls = calls), crumbs)(
+            source, header, key, listOf(DataClass.CE, DataClass.DE), installFirst = false, restoreObb = false,
+        )
+
+        val failed = outcome as ArchiveRestoreOutcome.Failed
+        assertTrue(failed.reason, failed.reason.contains(DataClass.DE.id))
+        assertEquals(listOf(DataClass.CE), failed.classesRestored)
+        assertNotNull(crumbs.current)
+    }
+
+    @Test
+    fun `a cancellation between the decrypt and the destructive call stops the restore`() = runTest {
+        // The decrypt is the one long stretch of this use case with no suspension point in it, so a
+        // cancellation arriving during it is not observed by anything downstream on its own — a
+        // `withContext` onto the dispatcher the caller is already on resumes undispatched and does not
+        // check. Without the explicit checkpoint, a cancelled restore goes on to replace the class
+        // root anyway.
+        val (header, source) = archive(listOf(DataClass.CE))
+        val job = Job()
+        val gateway = FakeGateway(onStagingFile = { job.cancel() })
+        val crumbs = RecordingBreadcrumbs()
+
+        val thrown = runCatching {
+            withContext(job) {
+                useCase(gateway, FakeInstaller(calls = calls), crumbs)(
+                    source, header, key, listOf(DataClass.CE), installFirst = false, restoreObb = false,
+                )
+            }
+        }.exceptionOrNull()
+
+        assertTrue(thrown.toString(), thrown is CancellationException)
+        assertFalse(calls.toString(), calls.any { it.startsWith("extract") || it.startsWith("swap") })
+        // An interrupted restore is exactly what §8.5's breadcrumb is for; a cancellation must not
+        // clear it.
+        assertNotNull(crumbs.current)
+    }
+
+    @Test
+    fun `progress never reports a literal zero percent`() = runTest {
+        val (header, source) = archive(listOf(DataClass.CE))
+        val seen = mutableListOf<ThorJobProgress>()
+
+        useCase(FakeGateway(), FakeInstaller(calls = calls), RecordingBreadcrumbs())(
+            source, header, key, listOf(DataClass.CE),
+            installFirst = false, restoreObb = false,
+            onProgress = { seen += it },
+        )
+
+        assertTrue(seen.isNotEmpty())
+        assertFalse(seen.toString(), seen.any { it.percent == 0 })
+    }
+
+    private companion object {
+        const val SIGNER = "AB"
+    }
+}

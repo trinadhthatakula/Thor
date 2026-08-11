@@ -9,10 +9,12 @@ import androidx.room.Room
 import com.valhalla.superuser.ktx.RealShellRepository
 import com.valhalla.superuser.ktx.ShellRepository
 import com.valhalla.thor.BuildConfig
+import com.valhalla.thor.data.backup.FileArchiveBreadcrumbStore
 import com.valhalla.thor.data.source.local.room.AppDao
 import com.valhalla.thor.data.source.local.room.AppDatabase
 import com.valhalla.thor.data.source.local.room.FreezeProfileDao
 import com.valhalla.thor.data.source.local.room.FreezerDao
+import com.valhalla.thor.domain.repository.ArchiveBreadcrumbStore
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import org.koin.core.annotation.ComponentScan
@@ -81,4 +83,11 @@ class AppModule {
     // scan scope — the component scan only sees com.valhalla.thor.
     @Single
     fun shellRepository(): ShellRepository = RealShellRepository()
+
+    // Bound here rather than annotated on the class: FileArchiveBreadcrumbStore takes a File so it
+    // stays JVM-testable, and there is no File in the graph for the scan to inject. With
+    // compileSafety on, an annotation on the class is a build failure, not a runtime one.
+    @Single
+    fun archiveBreadcrumbStore(context: Context): ArchiveBreadcrumbStore =
+        FileArchiveBreadcrumbStore(context.filesDir)
 }
