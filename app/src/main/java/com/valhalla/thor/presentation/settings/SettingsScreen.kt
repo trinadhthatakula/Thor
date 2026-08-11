@@ -45,6 +45,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -79,6 +80,8 @@ import com.valhalla.thor.domain.model.DefaultTab
 import com.valhalla.thor.domain.model.FreezerMode
 import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.ThemeMode
+import com.valhalla.thor.domain.repository.ArchiveBreadcrumb
+import com.valhalla.thor.domain.repository.ArchiveBreadcrumbStore
 import com.valhalla.thor.presentation.main.toDestination
 import com.valhalla.thor.presentation.utils.ObserveAsEvents
 import com.valhalla.thor.util.AppLanguage
@@ -92,6 +95,9 @@ import org.koin.compose.koinInject
 @Composable
 fun SettingsScreen(
     onNavigateToExtensionManager: () -> Unit,
+    // Not defaulted, so the one call site has to supply it. A default would leave a Restore row that
+    // navigates nowhere, and nothing would fail to compile.
+    onNavigateToRestore: () -> Unit,
     viewModel: SettingsViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -687,6 +693,50 @@ fun SettingsScreen(
                 enableMarqueeOnClick = true,
                 onCheckedChange = { viewModel.setAddFreezerToLauncher(it) }
             )
+        }
+
+        // ── BACKUP & RESTORE ────────────────────────────────────────────────
+        // Root/Shizuku/Dhizuku only: there is no unprivileged path to another app's data, so an
+        // unprivileged user offered this would reach a screen whose only content is a refusal.
+        if (hasPrivilege) {
+            Spacer(Modifier.height(32.dp))
+
+            SettingsSectionLabel(stringResource(R.string.action_backup))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(32.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                    .padding(8.dp)
+            ) {
+                // §8.5's notice, where a user who is not looking for it will still see it. Read
+                // through produceState rather than through SettingsViewModel: it is one small file
+                // read that no other part of Settings needs, and threading it through the view model
+                // would put a backup concern in the screen that owns every other preference.
+                // `read()` moves itself to IO (FileArchiveBreadcrumbStore), so this is not a file
+                // read on the main thread.
+                val breadcrumbs = koinInject<ArchiveBreadcrumbStore>()
+                val interrupted by produceState<ArchiveBreadcrumb?>(initialValue = null) {
+                    value = breadcrumbs.read()
+                }
+                // Not dismissible here on purpose: the row beneath it leads to the screen that can
+                // clear it, and a dismiss in two places is two chances to lose the notice.
+                interrupted?.let { crumb ->
+                    Text(
+                        text = stringResource(R.string.restore_interrupted, crumb.appLabel),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
+                    )
+                }
+                SettingsClickRow(
+                    icon = R.drawable.settings_backup_restore,
+                    title = stringResource(R.string.restore_settings_title),
+                    subtitle = stringResource(R.string.restore_settings_desc),
+                    onClick = onNavigateToRestore
+                )
+            }
         }
 
         // ── EXTENSIONS ──────────────────────────────────────────────────────

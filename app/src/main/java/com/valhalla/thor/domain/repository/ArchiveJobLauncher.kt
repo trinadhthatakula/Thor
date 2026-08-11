@@ -13,7 +13,17 @@ import kotlinx.coroutines.flow.Flow
 sealed interface ThorJobStatus {
     data object Pending : ThorJobStatus
     data object Running : ThorJobStatus
-    data object Succeeded : ThorJobStatus
+
+    /**
+     * @param warnings the sentences the worker put in `JOB_WARNINGS_KEY`, in order. Empty is the
+     *   ordinary case and means "nothing to add", never "unknown".
+     *
+     * A class rather than an object because a job can succeed *and* have something the user has to
+     * be told — a restore that placed the data but not the game data is the case this exists for.
+     * WorkManager keeps output `Data` only on the terminal result, which is why this rides the
+     * status rather than the progress registry.
+     */
+    data class Succeeded(val warnings: List<String> = emptyList()) : ThorJobStatus
 
     /**
      * @param reason the sentence the worker put in `JOB_ERROR_KEY`, or null.

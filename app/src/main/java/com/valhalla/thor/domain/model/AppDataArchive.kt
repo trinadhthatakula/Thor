@@ -189,6 +189,22 @@ data class ArchiveKdf(
     val salt: String,
 )
 
+/**
+ * The KDF salt as bytes, or null when the header's Base64 will not decode.
+ *
+ * `java.util.Base64`, never `android.util.Base64`: the latter throws "not mocked" under a JVM test,
+ * and this is called from `domain`, which every test can reach.
+ *
+ * Null is an answer, not an exception — a header from a corrupted download reaches this, and
+ * `deriveKey` has a `require` on the salt length that would otherwise crash a worker.
+ *
+ * One decoder because there are two readers: `OpenArchiveUseCase.unlock` derives the key to check the
+ * verifier, and the restore screen hands the same bytes to `ArchiveJobLauncher.startRestore`. Two
+ * copies of that decode is how those two come to disagree about what this archive's salt is.
+ */
+fun ArchiveKdf.saltBytes(): ByteArray? =
+    runCatching { java.util.Base64.getDecoder().decode(salt) }.getOrNull()
+
 @Serializable
 data class ArchiveMember(
     /** [DataClass.id]. A string, not an enum, so a v2 class name does not break a v1 reader. */

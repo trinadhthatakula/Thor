@@ -13,6 +13,7 @@ import com.valhalla.thor.data.backup.AppArchiveCipher
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
 import com.valhalla.thor.domain.model.ArchiveRestoreRequest
 import com.valhalla.thor.domain.model.JOB_ERROR_KEY
+import com.valhalla.thor.domain.model.JOB_WARNINGS_KEY
 import com.valhalla.thor.domain.model.THOR_JOB_CHAIN
 import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.jobTag
@@ -125,7 +126,11 @@ class ThorJobLauncher(
                 null -> ThorJobStatus.Gone
                 WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> ThorJobStatus.Pending
                 WorkInfo.State.RUNNING -> ThorJobStatus.Running
-                WorkInfo.State.SUCCEEDED -> ThorJobStatus.Succeeded
+                // `getStringArray` is null when the worker returned a bare `Result.success()` —
+                // every backup does — and an absent array is an empty warning list, not a missing one.
+                WorkInfo.State.SUCCEEDED -> ThorJobStatus.Succeeded(
+                    info.outputData.getStringArray(JOB_WARNINGS_KEY)?.toList().orEmpty()
+                )
                 WorkInfo.State.CANCELLED -> ThorJobStatus.Cancelled
                 // `outputData` is where the worker's own sentence is; `getString` gives null when the
                 // failure came from WorkManager rather than from `fail(...)`, which Failed allows.

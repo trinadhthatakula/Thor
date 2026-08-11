@@ -47,4 +47,60 @@
     <string name="backup_done">Backup saved.</string>
     <string name="backup_failed">Backup failed: %1$s</string>
     <string name="backup_failed_unknown">it stopped without saying why</string>
+
+    <string name="restore_title">Restore a backup</string>
+    <string name="restore_pick_prompt">Choose a Thor backup file (.thorbak) to see what it holds.</string>
+    <string name="restore_pick_file">Choose a file</string>
+    <string name="restore_pick_another">Choose a different file</string>
+    <!--
+      PluralsCandidate fires on the %2$d. It is a version code — an identifier the app displays
+      alongside the version name — so there is no quantity to agree with and no plural form to pick.
+    -->
+    <string name="restore_archive_version" tools:ignore="PluralsCandidate">Version %1$s (%2$d)</string>
+    <string name="restore_archive_created">Backed up %1$s</string>
+    <string name="restore_will_install_first">This app is not installed. Thor will install it from the backup first.</string>
+    <plurals name="restore_include_obb">
+        <item quantity="one">Also restore game data (%1$d file)</item>
+        <item quantity="other">Also restore game data (%1$d files)</item>
+    </plurals>
+    <string name="restore_unlock">Unlock</string>
+    <string name="restore_unlocked">Unlocked with the saved passphrase.</string>
+    <string name="restore_confirm_replace">I understand this replaces the app\'s current data. Anything not in this backup is deleted.</string>
+    <string name="restore_start">Restore</string>
+    <string name="restore_back">Back</string>
+    <string name="restore_done">Restore finished. Open the app to check it works.</string>
+    <!--
+      Heading for the sentences a *successful* run still has to report — game data that could not be
+      placed, an archive that turned out to hold none, a breadcrumb Thor could not write. The data
+      landed, so this is not phrased as a failure: a user told "restore failed" runs it again, which
+      deletes and rewrites data that is already correct.
+    -->
+    <string name="restore_done_warnings">Some parts did not finish:</string>
+    <string name="restore_failed">Restore failed: %1$s</string>
+    <!--
+      Never "nothing was changed". A restore deletes each class before it writes it, and on the
+      install-first path it may have installed the app before it failed — so the honest instruction is
+      to go and look, not to be reassured.
+    -->
+    <string name="restore_failed_partial">This stopped part-way, so the app\'s data may be incomplete — and if Thor installed the app from this backup, it is still installed. Restoring again is the fix.</string>
+    <!--
+      The one outcome where "nothing was changed" is true: the job was cancelled before it was ever
+      started, so its work never ran. Jobs share one chain, and WorkManager cancels the dependents of
+      a job that fails.
+    -->
+    <string name="restore_cancelled">Thor did not run this restore — the job ahead of it in the queue failed, so this one was cancelled before it started. Nothing was changed. Try again.</string>
+    <string name="restore_interrupted">The restore of %1$s did not finish. That app\'s data may be incomplete — restoring it again is the fix.</string>
+    <string name="restore_interrupted_dismiss">Got it</string>
+    <string name="restore_refused_signer_mismatch">This backup was made from an app signed by a different developer. Restoring it would hand one app another\'s data, so Thor will not do it.</string>
+    <string name="restore_refused_signer_unverifiable">Thor could not read the installed app\'s signature, so it cannot check that this backup belongs to it.</string>
+    <string name="restore_refused_app_absent">This app is not installed and this backup holds no installer to add it from.</string>
+    <string name="restore_refused_class_missing">This backup does not hold one of the things selected.</string>
+    <string name="restore_refused_nothing_selected">Nothing is selected.</string>
+    <string name="restore_refused_schema_too_new">This backup was made by a newer version of Thor. Update Thor to restore it.</string>
+    <string name="restore_refused_invalid_package_name">This backup names an app in a way Thor will not accept. The file is damaged, or it was not written by Thor.</string>
+    <string name="restore_refused_invalid_user_id">This backup names a user profile Thor will not accept. The file is damaged, or it was not written by Thor.</string>
+    <string name="restore_warning_version_older">The installed app is older than this backup. Apps can crash on data from a newer version — update the app first if it does.</string>
+    <string name="restore_warning_ce_without_de">Startup data is in this backup but not selected. Some apps need both, and may behave as though half-migrated.</string>
+    <string name="restore_settings_title">Restore a backup</string>
+    <string name="restore_settings_desc">Read a .thorbak file and put an app\'s data back.</string>
 </resources>

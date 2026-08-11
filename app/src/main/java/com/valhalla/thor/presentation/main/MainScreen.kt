@@ -88,6 +88,7 @@ import com.valhalla.asgard.navigation.AsgardNavigationBar
 import com.valhalla.asgard.navigation.AsgardNavigationRail
 import com.valhalla.thor.presentation.permission.PermissionManagerScreen
 import com.valhalla.thor.presentation.settings.SettingsScreen
+import com.valhalla.thor.presentation.backup.ArchiveRestoreScreen
 import com.valhalla.thor.presentation.extension.ExtensionBrowseScreen
 import com.valhalla.thor.presentation.extension.ExtensionManagerScreen
 import com.valhalla.thor.presentation.settings.BillingProcessor
@@ -121,11 +122,16 @@ internal fun DefaultTab.toDestination(): AppDestinations = when (this) {
  *   Required rather than defaulted, and resolved by the caller behind the splash gate, because the
  *   first composition is the only chance to pick it: reading the preference from here would compose
  *   Home first and then jump.
+ * @param pendingRestoreUri the `.thorbak` this launch was opened on, or null for an ordinary launch.
+ *   Required rather than defaulted for the same reason [startDestination] is — a default would
+ *   compile at the one call site that has to pass it, and the only symptom would be that opening a
+ *   backup file lands on Home.
  */
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun MainScreen(
     startDestination: AppDestinations,
+    pendingRestoreUri: String?,
     mainViewModel: MainViewModel = koinViewModel(),
     homeViewModel: HomeViewModel = koinViewModel(),
     appListViewModel: AppListViewModel = koinViewModel(),
@@ -169,6 +175,20 @@ fun MainScreen(
     }
 
     val currentBackStack = backStacks[activeTab] ?: homeBackStack
+
+    // Consumed once. rememberSaveable, not remember: after a rotation the route is already on the
+    // back stack, and re-adding it would stack a second copy of the restore screen behind the first.
+    // Settings is the host tab because that is where the Settings entry point pushes the same route —
+    // one tab owns restore, so there is one place a half-finished one is found again.
+    var restoreUriConsumed by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(pendingRestoreUri) {
+        val uri = pendingRestoreUri
+        if (uri != null && !restoreUriConsumed) {
+            restoreUriConsumed = true
+            activeDestination = AppDestinations.SETTINGS
+            settingsBackStack.add(ThorRoute.ArchiveRestore(uri))
+        }
+    }
 
     val adaptiveInfo = currentWindowAdaptiveInfoV2()
 
@@ -500,6 +520,22 @@ fun MainScreen(
                     SettingsScreen(
                         onNavigateToExtensionManager = {
                             settingsBackStack.add(ThorRoute.ExtensionManager)
+                        },
+                        onNavigateToRestore = {
+                            settingsBackStack.add(ThorRoute.ArchiveRestore())
+                        }
+                    )
+                }
+
+                entry<ThorRoute.ArchiveRestore>(
+                    metadata = ListDetailSceneStrategy.detailPane()
+                ) { route ->
+                    ArchiveRestoreScreen(
+                        uriString = route.uriString,
+                        onBack = {
+                            if (currentBackStack.size > 1) {
+                                currentBackStack.removeLastOrNull()
+                            }
                         }
                     )
                 }

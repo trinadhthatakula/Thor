@@ -9,6 +9,7 @@ import com.valhalla.thor.data.backup.VERIFIER_BYTES
 import com.valhalla.thor.domain.model.ArchiveHeader
 import com.valhalla.thor.domain.model.KDF_SALT_BYTES
 import com.valhalla.thor.domain.model.THORBAK_HEADER_ENTRY
+import com.valhalla.thor.domain.model.saltBytes
 import com.valhalla.thor.domain.repository.ArchiveSource
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -122,7 +123,7 @@ class OpenArchiveUseCase(
 
             // Decoded rather than trusted: `deriveKey` has a `require` on the salt length, and an
             // IllegalArgumentException escaping a worker is a crash, not a message.
-            val salt = header.kdf.salt.decodeBase64()
+            val salt = header.kdf.saltBytes()
                 ?: return@withContext ArchiveUnlockOutcome.Unsupported(
                     "this archive's salt could not be read"
                 )

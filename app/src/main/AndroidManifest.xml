@@ -77,6 +77,54 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Opening a .thorbak. The path constraint is load-bearing, not decoration:
+                 PortableInstallerActivity already claims content: + application/octet-stream and
+                 application/zip with no path constraint at all, which is what providers report for a
+                 .thorbak — so a filter without one would put a second Thor entry in the chooser for
+                 every zip and every unknown binary on the device.
+
+                 Two layers, the same pair the installer's extension filter below uses and for the
+                 same reasons:
+                   (1) android:pathSuffix (API 31+) is a literal endsWith, so it matches any dot
+                       count. Silently ignored on API 28-30.
+                   (2) SIMPLE_GLOB pathPattern for API 28-30, whose ".*" latches onto the FIRST
+                       occurrence of the next literal with NO backtracking. ".*\.thorbak" therefore
+                       matches only single-dot names — and Thor's own file name is
+                       "<packageName>-<versionCode>.thorbak", which always has at least two dots, so
+                       that one pattern alone would match nothing Thor ever writes. Hence one pattern
+                       per dot count.
+
+                 Two known limitations, both shared with that filter:
+                   - Intent matching tests Uri.getPath(), so this fires for providers whose document
+                     URI ends in the file name (com.android.externalstorage.documents) and not for
+                     those whose URI is an opaque id (the Downloads provider).
+                   - host="*" matches any NON-EMPTY authority, and a file:// URI has an empty one, so
+                     in practice only content: reaches here. It is declared because lint's
+                     AppLinkUrlError makes a host mandatory once any path attribute is present, and
+                     file:// URIs have been unusable across app boundaries since API 24 anyway.
+                 Restore from Settings is unaffected by either. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:mimeType="*/*" />
+
+                <data android:pathSuffix=".thorbak" />
+                <data android:pathSuffix=".THORBAK" />
+                <data android:pathPattern=".*\\.thorbak" />
+                <data android:pathPattern=".*\\.THORBAK" />
+                <data android:pathPattern=".*\\..*\\.thorbak" />
+                <data android:pathPattern=".*\\..*\\..*\\.thorbak" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.thorbak" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.thorbak" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.thorbak" />
+            </intent-filter>
         </activity>
 
         <service

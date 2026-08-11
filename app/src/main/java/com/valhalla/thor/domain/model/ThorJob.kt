@@ -19,6 +19,16 @@ const val THOR_JOB_CHAIN = "thor.job.chain"
 const val JOB_ERROR_KEY = "thor.job.error"
 
 /**
+ * Set on a **succeeded** job's output `Data`: the sentences the job finished in spite of.
+ *
+ * A `String[]`, because a job can have more than one and `Data` has no list type. Its counterpart is
+ * [JOB_ERROR_KEY] — that one says why nothing happened, this one says what happened that the user
+ * still needs to know. A restore whose game data could not be placed succeeds, and the app it
+ * restored starts and then crashes; without this the only record is logcat.
+ */
+const val JOB_WARNINGS_KEY = "thor.job.warnings"
+
+/**
  * The long-running jobs Thor runs through WorkManager.
  *
  * Two for now. Exports and bulk actions are meant to join them — that is why nothing in this file or

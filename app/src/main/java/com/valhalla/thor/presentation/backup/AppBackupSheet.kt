@@ -61,8 +61,11 @@ import org.koin.compose.koinInject
  * `R` lives here rather than on [DataClass] — a `@StringRes` on a `domain/model` enum would put an
  * Android type in the layer that is defined by not having any.
  */
+// `internal`, not `private`: the restore screen names the same four classes, and a second `when` over
+// `DataClass` is a second place for the mapping to drift. Kept in this file because this is where it
+// was written and moving it would touch a green one for no gain.
 @StringRes
-private fun dataClassLabel(dataClass: DataClass): Int = when (dataClass) {
+internal fun dataClassLabel(dataClass: DataClass): Int = when (dataClass) {
     DataClass.CE -> R.string.backup_class_ce
     DataClass.DE -> R.string.backup_class_de
     DataClass.EXTERNAL_DATA -> R.string.backup_class_external_data
@@ -318,8 +321,11 @@ fun AppBackupSheet(packageName: String, appLabel: String, onDismiss: () -> Unit)
  * `Formatter.formatShortFileSize` is what every other size in Thor goes through — the export sheet,
  * the app detail body, the bundle builder — so this reads in the same units the rest of the app uses.
  */
+// `internal` so the restore screen shares it rather than copying it. The copy is the danger: this
+// function carries the "never render Undetermined as 0 B" rule, and a second implementation is a
+// second place for that rule to rot.
 @Composable
-private fun sizeLabel(size: DataClassSize?): String = when (val kind = size?.labelKind()) {
+internal fun sizeLabel(size: DataClassSize?): String = when (val kind = size?.labelKind()) {
     // Null is "not measured yet", which is not the same claim as Unknown ("measured, and failed").
     null -> stringResource(R.string.backup_size_measuring)
     is SizeLabelKind.Bytes -> Formatter.formatShortFileSize(LocalContext.current, kind.value)
@@ -329,7 +335,7 @@ private fun sizeLabel(size: DataClassSize?): String = when (val kind = size?.lab
 }
 
 @Composable
-private fun CheckRow(
+internal fun CheckRow(
     checked: Boolean,
     enabled: Boolean,
     label: String,

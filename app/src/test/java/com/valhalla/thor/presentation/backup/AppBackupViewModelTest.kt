@@ -594,7 +594,7 @@ class AppBackupViewModelTest {
         // The first job has to *finish* before a second is startable — `canStart` is false while
         // `running`, which is the same refusal a second tap gets in the sheet. `dismissResult` alone
         // would leave `running` true and silently make this a comparison of one salt with itself.
-        launcher.statuses.value = ThorJobStatus.Succeeded
+        launcher.statuses.value = ThorJobStatus.Succeeded()
         testScheduler.advanceUntilIdle()
         vm.dismissResult()
         vm.beginBackup("correct horse".toCharArray(), remember = false)
@@ -656,7 +656,7 @@ class AppBackupViewModelTest {
         vm.beginBackup("correct horse".toCharArray(), remember = false)
         testScheduler.advanceUntilIdle()
 
-        launcher.statuses.value = ThorJobStatus.Succeeded
+        launcher.statuses.value = ThorJobStatus.Succeeded()
         testScheduler.advanceUntilIdle()
 
         assertEquals(BackupFinish.Succeeded, vm.uiState.value.finished)
@@ -803,7 +803,7 @@ class AppBackupViewModelTest {
                 launcher.jobId,
                 ThorJobProgress(ThorJobStage.WRITING, "Example", completed = 6L, total = 10L),
             )
-            launcher.statuses.value = ThorJobStatus.Succeeded
+            launcher.statuses.value = ThorJobStatus.Succeeded()
             testScheduler.advanceUntilIdle()
             assertEquals(60, vm.uiState.value.progress?.percent)
             assertEquals(BackupFinish.Succeeded, vm.uiState.value.finished)
@@ -896,7 +896,7 @@ class AppBackupViewModelTest {
             launcher.jobId,
             ThorJobProgress(ThorJobStage.WRITING, "Example", completed = 6L, total = 10L),
         )
-        launcher.statuses.value = ThorJobStatus.Succeeded
+        launcher.statuses.value = ThorJobStatus.Succeeded()
         testScheduler.advanceUntilIdle()
         assertEquals(60, vm.uiState.value.progress?.percent)
 

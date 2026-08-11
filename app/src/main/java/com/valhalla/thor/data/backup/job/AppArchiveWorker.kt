@@ -5,6 +5,7 @@ package com.valhalla.thor.data.backup.job
 
 import android.content.Context
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import com.valhalla.thor.domain.model.ArchiveBackupOutcome
 import com.valhalla.thor.domain.model.ArchiveBackupRequest
 import com.valhalla.thor.domain.model.ArchiveBundleCacheDir
@@ -12,14 +13,13 @@ import com.valhalla.thor.domain.model.ArchiveRestoreDecision
 import com.valhalla.thor.domain.model.ArchiveRestoreRequest
 import com.valhalla.thor.domain.model.BACKUP_PACKAGE_KEY
 import com.valhalla.thor.domain.model.BundleFormat
-import com.valhalla.thor.domain.model.InstalledAppFacts
+import com.valhalla.thor.domain.model.JOB_WARNINGS_KEY
 import com.valhalla.thor.domain.model.ObbProbe
 import com.valhalla.thor.domain.model.RESTORE_PACKAGE_KEY
 import com.valhalla.thor.domain.model.ThorJobKind
 import com.valhalla.thor.domain.model.captureName
 import com.valhalla.thor.domain.model.evaluateArchiveRestoreGate
 import com.valhalla.thor.domain.repository.AppBundleBuilder
-import com.valhalla.thor.domain.repository.AppDataArchiveGateway
 import com.valhalla.thor.domain.repository.AppRepository
 import com.valhalla.thor.domain.repository.ArchiveSourceFactory
 import com.valhalla.thor.domain.repository.SystemRepository
@@ -28,6 +28,7 @@ import com.valhalla.thor.domain.usecase.ArchiveHeaderOutcome
 import com.valhalla.thor.domain.usecase.ArchiveRestoreOutcome
 import com.valhalla.thor.domain.usecase.BackupAppArchiveUseCase
 import com.valhalla.thor.domain.usecase.OpenArchiveUseCase
+import com.valhalla.thor.domain.usecase.ReadInstalledAppFactsUseCase
 import com.valhalla.thor.domain.usecase.RestoreAppArchiveUseCase
 import com.valhalla.thor.util.Logger
 import java.io.File
@@ -180,8 +181,10 @@ internal class ArchiveRestoreWorker(
     private val sources: ArchiveSourceFactory,
     private val openArchive: OpenArchiveUseCase,
     private val restore: RestoreAppArchiveUseCase,
+    // Still here after the facts moved out: the progress label is `appName`, and the use case is
+    // handed it so the shade shows "Clash of Clans" rather than `com.supercell.clashofclans`.
     private val appRepository: AppRepository,
-    private val gateway: AppDataArchiveGateway,
+    private val installedFacts: ReadInstalledAppFactsUseCase,
     @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : ThorJobWorker(appContext, params, notifications, registry, keys) {
 
@@ -211,13 +214,10 @@ internal class ArchiveRestoreWorker(
             }
 
             val app = appRepository.getAppDetails(request.packageName)
-            val installed = app?.let { installedApp ->
-                InstalledAppFacts(
-                    signerSha256 = gateway.signerSha256(request.packageName),
-                    versionCode = installedApp.versionCode,
-                    versionName = installedApp.versionName,
-                )
-            }
+            // The same assembly the restore screen ran before it offered the button, from the same
+            // use case: two spellings of "installed" is two gates, and only one of them would have
+            // been the one the user was shown.
+            val installed = installedFacts(request.packageName)
             // Re-run, not replay. The app may have arrived or gone while this waited on the chain,
             // and this gate is the only signer comparison in the whole restore: when it answers
             // installFirst = false the use case deliberately performs none of its own, because the
@@ -262,7 +262,12 @@ internal class ArchiveRestoreWorker(
             ) {
                 is ArchiveRestoreOutcome.Completed -> {
                     outcome.warnings.forEach { Logger.w(TAG, it) }
-                    Result.success()
+                    // Carried out on the *success* result, not only logged. These are the sentences a
+                    // restore finished in spite of — game data that could not be placed, a breadcrumb
+                    // that could not be written — and a user whose game now starts and crashes has no
+                    // other way to learn why. `Data` caps at 10 KB; the use case produces at most
+                    // three short sentences.
+                    Result.success(workDataOf(JOB_WARNINGS_KEY to outcome.warnings.toTypedArray()))
                 }
 
                 is ArchiveRestoreOutcome.Failed -> fail(
