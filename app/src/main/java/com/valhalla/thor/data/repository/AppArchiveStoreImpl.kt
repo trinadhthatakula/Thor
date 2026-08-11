@@ -61,6 +61,13 @@ fun publishedName(fileName: String): String = fileName.removeSuffix(PARTIAL_SUFF
  *
  * `contains`, not `endsWith`: SAF providers may de-duplicate a colliding name, and the recorded name
  * is the one the provider actually assigned — which can be `foo.thorbak.part (1)`.
+ *
+ * That does make the suffix clause wider than it reads: `notes.part.txt` would satisfy it. **What
+ * keeps that safe is the source of the names, not this rule** — every candidate comes from
+ * [PartialArchiveLedger], written by Thor for a container Thor created, and is then matched for exact
+ * equality against a display name. No directory is ever listed for things that look sweepable. Widen
+ * the *input* to this function — a scan, a user-supplied name — and this clause is no longer enough on
+ * its own.
  */
 internal fun isSweepableOrphanName(name: String): Boolean =
     name.isNotBlank() &&
@@ -302,7 +309,17 @@ class AppArchiveStoreImpl(
         }
     }
 
-    private fun displayNameOf(resolver: ContentResolver, docUri: Uri): String? = runCatching {
+    /**
+     * Null when the provider will not say. The caller falls back to the requested name, which is the
+     * right answer whenever the provider did not rename anything — the common case.
+     *
+     * `catch (CancellationException) { throw it }` before `catch (Exception)`, and not
+     * `runCatching { }.getOrNull()`: the query is not suspending today, so nothing here can be
+     * cancelled today, but `runCatching` swallows a `CancellationException` whole and this file's one
+     * other guard already spells the pair out. Three of those swallows have already had to be fixed on
+     * this branch.
+     */
+    private fun displayNameOf(resolver: ContentResolver, docUri: Uri): String? = try {
         resolver.query(
             docUri,
             arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),
@@ -310,7 +327,12 @@ class AppArchiveStoreImpl(
             null,
             null,
         )?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
-    }.getOrNull()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Logger.e(TAG, "could not read the display name the provider assigned", e)
+        null
+    }
 
     /**
      * API 28's Downloads directory as a plain `File`. `renameTo` within one volume is atomic, which
@@ -341,8 +363,12 @@ class AppArchiveStoreImpl(
  * Closing before publishing is not tidiness — it is what flushes the stream. Publishing while a
  * buffered chunk is still in memory produces an archive that passes every check except its own chunk
  * count.
+ *
+ * `internal` rather than `private`, so the two invariants above — settle exactly once, and run
+ * [onSettled] on *both* settle paths — are reachable from a JVM test. Nothing outside this file
+ * constructs one; the three backends are all anonymous subclasses in [AppArchiveStoreImpl].
  */
-private abstract class BaseDestination(
+internal abstract class BaseDestination(
     override val output: OutputStream,
     /**
      * Runs once, on **both** settle paths.

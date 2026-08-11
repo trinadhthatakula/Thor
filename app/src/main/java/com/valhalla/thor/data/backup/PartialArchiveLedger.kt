@@ -3,6 +3,7 @@
 
 package com.valhalla.thor.data.backup
 
+import com.valhalla.thor.util.Logger
 import java.io.File
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -47,6 +48,11 @@ class PartialArchiveLedger(private val directory: File) {
         return runCatching { json.decodeFromString<Set<String>>(file.readText()) }
             .getOrElse {
                 // A truncated write. Left in place, every launch would try to parse it again.
+                //
+                // Reported, not swallowed: what is being deleted here is the record of every `.part`
+                // container in flight, so the files those names pointed at are now unsweepable. The
+                // failure is survivable, which is exactly why it must not also be silent.
+                Logger.e(TAG, "the partial-archive ledger could not be read; removing it", it)
                 file.delete()
                 emptySet()
             }
@@ -56,11 +62,19 @@ class PartialArchiveLedger(private val directory: File) {
         runCatching {
             directory.mkdirs()
             if (names.isEmpty()) file.delete() else file.writeText(json.encodeToString(names))
+        }.onFailure {
+            // Same class of failure as `FileArchiveBreadcrumbStore.write`, and reported for the same
+            // reason. A write that fails on `add` leaves a `.part` file nothing knows the name of, so
+            // the launch sweep will never remove it; on `forget`, it leaves a name the sweep will
+            // retry forever. This log is the only place either says so.
+            Logger.e(TAG, "could not write the partial-archive ledger", it)
         }
     }
 
     companion object {
         const val FILE_NAME = "partial-archives.json"
+
+        private const val TAG = "PartialArchiveLedger"
         private val json = Json { ignoreUnknownKeys = true }
     }
 }

@@ -251,3 +251,21 @@ object AppDataArchiveStagingDir {
 object ArchiveBundleCacheDir {
     const val NAME = "archive_bundle"
 }
+
+/**
+ * The one name for the **external** cache subtree an export stages expansion (`.obb`) files into.
+ *
+ * Not under `cacheDir`, and that is the whole reason this constant exists. `AppBundleBuilderImpl`
+ * stages expansions in `externalCacheDir/<NAME>/<pkg>` because the privileged shell that copies out of
+ * `Android/obb/<pkg>/` cannot write into `/data/data/<thor>` (0700) — so nothing that empties
+ * `cacheDir`, including [ArchiveBundleCacheDir]'s sweep, reaches them. For a large game they are the
+ * *bigger* half of a bundle, so a process killed mid-build strands gigabytes there.
+ *
+ * The builder deletes its own subtree on success and on both failure paths; `ArchiveOrphanSweeper`
+ * removes the whole directory at launch, which is the only thing that covers the kill. Two spellings
+ * of this name would put the sweep on a directory nothing writes to — the drift `STAGING_DIR` had
+ * before it was consolidated.
+ */
+object ObbExportStagingDir {
+    const val NAME = "obb_out"
+}

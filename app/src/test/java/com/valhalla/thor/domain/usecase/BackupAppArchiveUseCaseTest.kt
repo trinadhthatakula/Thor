@@ -542,6 +542,47 @@ class BackupAppArchiveUseCaseTest {
             assertTrue(destination.discarded)
         }
 
+    /**
+     * Round-1 review I5. `ThorJobNotifications.build` puts `progress.label` straight into
+     * `setContentText`, so whatever this use case publishes is what the user reads on the lock screen.
+     * Two of the four ticks used to carry an internal name — the staged bundle's file name, then the
+     * `DataClass` id — which reached the user as "app.xapk" and "ce".
+     */
+    @Test
+    fun `every progress tick carries the app label, never an internal name`() = runTest {
+        val gateway = FakeGateway(entries = mapOf(DataClass.CE to listOf("files")))
+        val bundleFile = temp.newFile("labelled.xapk").also { it.writeBytes(ByteArray(256)) }
+        val labels = mutableListOf<String>()
+
+        useCase(gateway, FakeStore(RecordingDestination()))(
+            request = request(DataClass.CE),
+            key = key(),
+            bundle = bundleFile,
+            appLabel = "Clash of Clans",
+        ) { labels += it.label }
+
+        assertEquals(listOf("Clash of Clans"), labels.distinct())
+        // Not vacuous: the run has to have reached all four ticks — prepare, bundle, the class loop
+        // and finish — for `distinct()` to have anything to disagree about.
+        assertEquals(4, labels.size)
+    }
+
+    /**
+     * The default exists so the sheet in Task 16 cannot leave the notification empty by forgetting the
+     * parameter. It is a package name, which is worse than a label and better than a blank.
+     */
+    @Test
+    fun `a caller that passes no label falls back to the package name`() = runTest {
+        val labels = mutableListOf<String>()
+
+        useCase(FakeGateway(entries = mapOf(DataClass.CE to listOf("files"))), FakeStore(RecordingDestination()))(
+            request = request(DataClass.CE),
+            key = key(),
+        ) { labels += it.label }
+
+        assertEquals(listOf("com.example.app"), labels.distinct())
+    }
+
     // --- §7.4 pre-flight space -----------------------------------------------------------------
 
     @Test

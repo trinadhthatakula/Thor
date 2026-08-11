@@ -66,6 +66,7 @@ class ArchiveOrphanSweeperTest {
             archiveStore = FakeStore(emptySet()),
             breadcrumbs = FakeBreadcrumbs(null),
             cacheDir = cache,
+            externalCacheDir = temp.newFolder("ext1"),
         )
 
         val report = sweeper.sweep()
@@ -82,6 +83,7 @@ class ArchiveOrphanSweeperTest {
         val (cache, staging) = cacheWith("ce.tar")
         val sweeper = ArchiveOrphanSweeper(
             PartialArchiveLedger(temp.newFolder("files2")), FakeStore(emptySet()), FakeBreadcrumbs(null), cache,
+            temp.newFolder("ext2"),
         )
 
         sweeper.sweep()
@@ -96,14 +98,19 @@ class ArchiveOrphanSweeperTest {
         val keep = File(cache, "image_cache.bin").apply { writeText("keep me") }
         val sweeper = ArchiveOrphanSweeper(
             PartialArchiveLedger(temp.newFolder("files3")), FakeStore(emptySet()), FakeBreadcrumbs(null), cache,
+            temp.newFolder("ext3"),
         )
 
-        sweeper.sweep()
+        val report = sweeper.sweep()
 
         assertEquals(false, copy.exists())
         // Coil, Room and the bundle builder all keep files in cacheDir. A pattern sweep here would
         // delete another subsystem's working set.
         assertTrue(keep.exists())
+        // Round-1 review m5: this row used to claim it caught a `sweepReadCopy` that mis-reports its
+        // count, while asserting only on the file system — the report went unread, so the claim was
+        // its sibling's. Reading the count here makes the claim true of this test.
+        assertEquals(1, report.stagedFilesRemoved)
     }
 
     @Test
@@ -112,7 +119,7 @@ class ArchiveOrphanSweeperTest {
         val ledger = PartialArchiveLedger(temp.newFolder("files4"))
         ledger.add("Thor-com.example.app-100.thorbak.part")
         val store = FakeStore(setOf("Thor-com.example.app-100.thorbak.part"))
-        val sweeper = ArchiveOrphanSweeper(ledger, store, FakeBreadcrumbs(null), cache)
+        val sweeper = ArchiveOrphanSweeper(ledger, store, FakeBreadcrumbs(null), cache, temp.newFolder("ext4"))
 
         val report = sweeper.sweep()
 
@@ -129,7 +136,7 @@ class ArchiveOrphanSweeperTest {
         ledger.add("gone.thorbak.part")
         ledger.add("still-there.thorbak.part")
         val sweeper = ArchiveOrphanSweeper(
-            ledger, FakeStore(setOf("gone.thorbak.part")), FakeBreadcrumbs(null), cache,
+            ledger, FakeStore(setOf("gone.thorbak.part")), FakeBreadcrumbs(null), cache, temp.newFolder("ext5"),
         )
 
         sweeper.sweep()
@@ -145,6 +152,7 @@ class ArchiveOrphanSweeperTest {
         val crumbs = FakeBreadcrumbs(ArchiveBreadcrumb("com.example.app", "Example", startedAt = 5L))
         val sweeper = ArchiveOrphanSweeper(
             PartialArchiveLedger(temp.newFolder("files6")), FakeStore(emptySet()), crumbs, cache,
+            temp.newFolder("ext6"),
         )
 
         val report = sweeper.sweep()
@@ -159,6 +167,7 @@ class ArchiveOrphanSweeperTest {
         val cache = temp.newFolder("cache-clean")
         val sweeper = ArchiveOrphanSweeper(
             PartialArchiveLedger(temp.newFolder("files7")), FakeStore(emptySet()), FakeBreadcrumbs(null), cache,
+            temp.newFolder("ext7"),
         )
 
         val report = sweeper.sweep()
@@ -179,6 +188,7 @@ class ArchiveOrphanSweeperTest {
         File(bundleDir, "app.xapk").writeText("many gigabytes, pretend")
         val sweeper = ArchiveOrphanSweeper(
             PartialArchiveLedger(temp.newFolder("files8")), FakeStore(emptySet()), FakeBreadcrumbs(null), cache,
+            temp.newFolder("ext8"),
         )
 
         val report = sweeper.sweep()
@@ -198,11 +208,63 @@ class ArchiveOrphanSweeperTest {
         val store = FakeStore(setOf("anything"))
         val sweeper = ArchiveOrphanSweeper(
             PartialArchiveLedger(temp.newFolder("files9")), store, FakeBreadcrumbs(null), cache,
+            temp.newFolder("ext9"),
         )
 
         sweeper.sweep()
 
         assertEquals(0, store.callCount)
         assertEquals(emptySet<String>(), store.asked)
+    }
+
+    /**
+     * The other half of the same killed build, and the half `cacheDir.deleteRecursively()` cannot
+     * reach: `AppBundleBuilderImpl` stages expansions in `externalCacheDir/obb_out/<pkg>` because the
+     * privileged shell that copies them out of `Android/obb/<pkg>/` cannot write into `/data/data`.
+     * For an OBB game that is the *bigger* half — gigabytes stranded until the same package is backed
+     * up again successfully.
+     */
+    @Test
+    fun `the expansion files a killed backup staged outside cacheDir are deleted`() = runTest {
+        val (cache, _) = cacheWith()
+        val external = temp.newFolder("ext-obb")
+        // The literal, not ObbExportStagingDir.NAME. The constant's job is to keep the builder and
+        // the sweep pointing at the same directory; a test that read it from the same constant would
+        // follow a rename, and a rename strands every expansion an *older* Thor staged under the old
+        // name — the one orphan no future sweep can reach. This is the name that shipped.
+        val obbStaging = File(external, "obb_out/com.example.game").apply { mkdirs() }
+        File(obbStaging, "main.1.com.example.game.obb").writeText("four gigabytes, pretend")
+        // Everything else in external cache is somebody else's; the sweep names one directory.
+        val keep = File(external, "coil_disk_cache").apply { mkdirs() }
+        val sweeper = ArchiveOrphanSweeper(
+            PartialArchiveLedger(temp.newFolder("files10")), FakeStore(emptySet()), FakeBreadcrumbs(null), cache,
+            external,
+        )
+
+        val report = sweeper.sweep()
+
+        assertEquals(false, File(external, "obb_out").exists())
+        assertTrue(keep.isDirectory)
+        assertEquals(1, report.stagedFilesRemoved)
+    }
+
+    /**
+     * `Context.getExternalCacheDir()` is nullable — external storage can be unmounted or unavailable
+     * at launch, which is exactly when the sweep runs. Null is the ordinary case, not an error: the
+     * builder reads the same nullable value, so nothing was staged there either.
+     */
+    @Test
+    fun `a null external cache directory is not an error`() = runTest {
+        val (cache, staging) = cacheWith("ce.tar")
+        val sweeper = ArchiveOrphanSweeper(
+            PartialArchiveLedger(temp.newFolder("files11")), FakeStore(emptySet()), FakeBreadcrumbs(null), cache,
+            externalCacheDir = null,
+        )
+
+        val report = sweeper.sweep()
+
+        // The rest of the sweep still runs — a missing external volume must not skip the internal half.
+        assertEquals(emptyList<File>(), staging.listFiles()?.toList() ?: emptyList<File>())
+        assertEquals(1, report.stagedFilesRemoved)
     }
 }

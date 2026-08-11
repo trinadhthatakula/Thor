@@ -58,6 +58,7 @@ internal class ArchiveBackupWorker(
     private val appRepository: AppRepository,
     private val bundleBuilder: AppBundleBuilder,
     private val systemRepository: SystemRepository,
+    @Named("io") private val ioDispatcher: CoroutineDispatcher,
 ) : ThorJobWorker(appContext, params, notifications, registry, keys) {
 
     override val kind = ThorJobKind.ARCHIVE_BACKUP
@@ -67,7 +68,10 @@ internal class ArchiveBackupWorker(
      *
      * `getForegroundInfo()` runs before `doWork` and cannot afford a `PackageManager` round trip on
      * the path that has to promote the service within a few seconds. The first `publish()` from the
-     * use case replaces it with the label, well before a user reads the shade.
+     * use case replaces it with the label, well before a user reads the shade — but only because
+     * `runJob` resolves the `AppInfo` and hands `appLabel` down. Without that parameter the use case
+     * publishes `request.packageName`, then the `.xapk` file name, then a `DataClass` id, and the
+     * shade shows `com.supercell.clashofclans` for the whole job. See the `backup(…)` call below.
      */
     override val initialLabel: String
         get() = inputData.getString(BACKUP_PACKAGE_KEY).orEmpty()
@@ -101,20 +105,31 @@ internal class ArchiveBackupWorker(
             }
 
             when (
-                val outcome = backup(
-                    request = request,
-                    key = key,
-                    bundle = bundle,
-                    bundleObbCapture = probe.captureName(),
-                    bundleObbCount = (probe as? ObbProbe.Present)?.files?.size ?: 0,
-                    versionCode = appInfo.versionCode,
-                    versionName = appInfo.versionName,
-                    // Never left to default. The parameter defaults to 0L, which the use case reads as
-                    // "unmeasurable" and fails §7.4's free-space check open — silently turning the one
-                    // check that stops a backup from filling the device into a no-op.
-                    usableStagingBytes = usableStagingBytes(),
-                    onProgress = ::publish,
-                )
+                // `withContext(ioDispatcher)`, symmetric with ArchiveRestoreWorker and for the same
+                // reason: `doWork()` runs on Dispatchers.Default, the use case takes no dispatcher of
+                // its own, and it blocks the caller's thread for the whole `.xapk` copy and every
+                // `encryptMember`. Left on Default, a 4 GB game pins one of that pool's few threads —
+                // 4 on a quad-core device — for minutes, against everything else in the app.
+                val outcome = withContext(ioDispatcher) {
+                    backup(
+                        request = request,
+                        key = key,
+                        bundle = bundle,
+                        bundleObbCapture = probe.captureName(),
+                        bundleObbCount = (probe as? ObbProbe.Present)?.files?.size ?: 0,
+                        versionCode = appInfo.versionCode,
+                        versionName = appInfo.versionName,
+                        // Never left to default. The parameter defaults to 0L, which the use case reads
+                        // as "unmeasurable" and fails §7.4's free-space check open — silently turning
+                        // the one check that stops a backup from filling the device into a no-op.
+                        usableStagingBytes = usableStagingBytes(),
+                        // The label the shade shows for the whole job. Without it the use case falls
+                        // back to the package name and then publishes the bundle file name and each
+                        // DataClass id, so a user watching a backup reads `internal_data`.
+                        appLabel = appInfo.appName ?: request.packageName,
+                        onProgress = ::publish,
+                    )
+                }
             ) {
                 is ArchiveBackupOutcome.Completed -> Result.success()
                 is ArchiveBackupOutcome.Failed -> fail(outcome.reason)

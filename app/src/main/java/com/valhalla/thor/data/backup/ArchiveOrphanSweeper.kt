@@ -6,6 +6,7 @@ package com.valhalla.thor.data.backup
 import com.valhalla.thor.data.repository.UriArchiveSourceFactory
 import com.valhalla.thor.domain.model.AppDataArchiveStagingDir
 import com.valhalla.thor.domain.model.ArchiveBundleCacheDir
+import com.valhalla.thor.domain.model.ObbExportStagingDir
 import com.valhalla.thor.domain.repository.AppArchiveStore
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumb
 import com.valhalla.thor.domain.repository.ArchiveBreadcrumbStore
@@ -15,19 +16,22 @@ import java.io.File
 /**
  * §10's launch sweep, plus §8.5's interruption report.
  *
- * Four things get cleaned, by three different rules:
+ * Five things get cleaned, by three different rules:
  * 1. **Thor's own staging directory** under `cacheDir` — emptied wholesale. Nothing but staged tars
  *    and staged bundles is ever written there, and the Odin shell dies with the process, so anything
  *    surviving a restart is garbage.
  * 2. **The bundle build tree** `ArchiveBackupWorker` hands to `AppBundleBuilder` — also emptied
  *    wholesale, and for the same reason. Not in the plan's list of three; see the class KDoc on
  *    [ArchiveBundleCacheDir]. The worker deletes only the `.xapk` it was handed back, so a kill
- *    between "split copied" and "bundle returned" strands a whole app's APKs, which for a large game
- *    is the single biggest thing this feature can leak.
- * 3. **The read-copy** [UriArchiveSourceFactory] may leave in `cacheDir` — deleted by its exact name.
+ *    between "split copied" and "bundle returned" strands a whole app's APKs.
+ * 3. **The staged expansion files** under `externalCacheDir` — the other half of the same killed
+ *    build, and for a large game the *bigger* half. They are not under `cacheDir` at all (see
+ *    [ObbExportStagingDir]), so target 2 does not reach them; between them, 2 and 3 are the largest
+ *    single thing this feature can leak.
+ * 4. **The read-copy** [UriArchiveSourceFactory] may leave in `cacheDir` — deleted by its exact name.
  *    `cacheDir` itself is shared with Coil, Room and the bundle builder; a pattern sweep there would
  *    delete another subsystem's working set.
- * 4. **`.part` containers in the user's folder** — only the names [PartialArchiveLedger] recorded, and
+ * 5. **`.part` containers in the user's folder** — only the names [PartialArchiveLedger] recorded, and
  *    a name is forgotten only once the file is gone.
  *
  * What it does **not** do is clear the breadcrumb. It reports it. Clearing it here would make the
@@ -35,12 +39,17 @@ import java.io.File
  *
  * **Not `@Single`-annotated**: it takes a `File`, which the Koin compiler plugin cannot resolve and
  * `compileSafety` turns into a build failure. Bound by a `@Single` function in `di/Modules.kt`.
+ *
+ * @param externalCacheDir nullable, because `Context.getExternalCacheDir()` is: external storage can
+ *   be unmounted or unavailable at launch. Null means target 3 is skipped — the builder could not have
+ *   staged anything there either, since it reads the same nullable value.
  */
 class ArchiveOrphanSweeper(
     private val ledger: PartialArchiveLedger,
     private val archiveStore: AppArchiveStore,
     private val breadcrumbs: ArchiveBreadcrumbStore,
     private val cacheDir: File,
+    private val externalCacheDir: File?,
 ) {
 
     data class SweepReport(
@@ -51,7 +60,7 @@ class ArchiveOrphanSweeper(
     )
 
     suspend fun sweep(): SweepReport {
-        val staged = sweepStaging() + sweepBundleCache() + sweepReadCopy()
+        val staged = sweepStaging() + sweepBundleCache() + sweepObbStaging() + sweepReadCopy()
         val containers = sweepContainers()
         val interrupted = breadcrumbs.read()
         if (interrupted != null) {
@@ -80,6 +89,27 @@ class ArchiveOrphanSweeper(
      */
     private fun sweepBundleCache(): Int {
         val dir = File(cacheDir, ArchiveBundleCacheDir.NAME)
+        return if (dir.exists() && dir.deleteRecursively()) 1 else 0
+    }
+
+    /**
+     * The other half of a killed bundle build, and the half [sweepBundleCache] cannot reach.
+     *
+     * `AppBundleBuilderImpl` stages expansion files in `externalCacheDir/obb_out/<pkg>` — outside
+     * `cacheDir`, because the privileged shell that copies them out of `Android/obb/<pkg>/` cannot
+     * write into `/data/data/<thor>` (0700). It deletes that subtree on success and on both failure
+     * paths, so the only way one survives is a process kill mid-build, which is the case this sweep
+     * exists for. For an OBB game those files are gigabytes.
+     *
+     * The whole `obb_out` directory, not one package's subtree: the sweep does not know which package
+     * was in flight, nothing else writes there, and any export — archive or share — that was still
+     * using it died with the process. Counted as one for the same reason as [sweepBundleCache].
+     *
+     * Null [externalCacheDir] is the ordinary "external storage not available" case, not an error:
+     * the builder reads the same nullable value and stages nothing when it is null.
+     */
+    private fun sweepObbStaging(): Int {
+        val dir = File(externalCacheDir ?: return 0, ObbExportStagingDir.NAME)
         return if (dir.exists() && dir.deleteRecursively()) 1 else 0
     }
 

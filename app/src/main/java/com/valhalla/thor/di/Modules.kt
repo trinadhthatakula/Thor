@@ -99,12 +99,17 @@ class AppModule {
     fun partialArchiveLedger(context: Context): PartialArchiveLedger =
         PartialArchiveLedger(context.filesDir)
 
-    /** `cacheDir` here, because everything it sweeps besides the ledger's names lives under it. */
+    /**
+     * `cacheDir` for most of what it sweeps — and `externalCacheDir` as well, because the staged
+     * expansion files are deliberately **not** under `cacheDir`: the privileged shell that copies them
+     * cannot write into `/data/data/<thor>`. `externalCacheDir` is nullable and the sweeper handles it.
+     */
     @Single
     fun archiveOrphanSweeper(
         ledger: PartialArchiveLedger,
         archiveStore: AppArchiveStore,
         breadcrumbs: ArchiveBreadcrumbStore,
         context: Context,
-    ): ArchiveOrphanSweeper = ArchiveOrphanSweeper(ledger, archiveStore, breadcrumbs, context.cacheDir)
+    ): ArchiveOrphanSweeper =
+        ArchiveOrphanSweeper(ledger, archiveStore, breadcrumbs, context.cacheDir, context.externalCacheDir)
 }

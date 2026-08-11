@@ -115,6 +115,14 @@ class ThorJobLauncher(
      *
      * Dropping first also makes the ordering safe the other way round: if the worker is already
      * running, it has already `take`n the key and this drop is a no-op on an absent entry.
+     *
+     * **This covers only an explicit cancel.** A job can also be cancelled with nobody calling this:
+     * `beginUniqueWork(…, APPEND_OR_REPLACE, …)` appends to a live chain as a *dependent*, and
+     * WorkManager cancels the dependents of a prerequisite that returns `Result.failure()` — so a
+     * failed backup cancels the restore queued behind it, `doWork` never runs, and nothing here
+     * observes it. That branch is closed by [ArchiveKeyHolder]'s own expiry rather than by an observer
+     * here: the policy came from the plan and is not this class's to change, and an expiry can be
+     * pinned by a JVM test where a `WorkInfo` observer cannot.
      */
     fun cancel(jobId: UUID) {
         keys.drop(jobId.toString())

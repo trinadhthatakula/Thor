@@ -79,6 +79,13 @@ internal class BackupAppArchiveUseCase(
      *   number comes from `data` (which has a `Context`) and the rule lives here. `0` means "could not
      *   be measured", and the rule fails open on it, which is why `0` is also the default: a caller
      *   that does not measure gets today's behaviour rather than a refusal.
+     * @param appLabel what every [ThorJobProgress] this run emits is labelled with — and therefore the
+     *   only thing the notification's content text ever says. Mirrors [RestoreAppArchiveUseCase]'s
+     *   parameter of the same name, and for the same reason: resolving an `AppInfo` needs a
+     *   `PackageManager`, which is the worker's to have, not this function's. Defaults to the package
+     *   name so a caller that has no label still labels every tick with something stable — the
+     *   internal names of the thing being captured (`bundle.name`, `dataClass.id`) are progress
+     *   detail, not a caption for a user.
      */
     suspend operator fun invoke(
         request: ArchiveBackupRequest,
@@ -89,6 +96,7 @@ internal class BackupAppArchiveUseCase(
         versionCode: Long = 0L,
         versionName: String? = null,
         usableStagingBytes: Long = 0L,
+        appLabel: String = request.packageName,
         onProgress: (ThorJobProgress) -> Unit = {},
     ): ArchiveBackupOutcome {
         val fileName = thorbakFileName(request.packageName, versionCode)
@@ -109,7 +117,7 @@ internal class BackupAppArchiveUseCase(
         var published = false
 
         try {
-            onProgress(ThorJobProgress(ThorJobStage.PREPARING, request.packageName))
+            onProgress(ThorJobProgress(ThorJobStage.PREPARING, appLabel))
             // §7.2 step 4: once, before the first class. Not per class.
             gateway.forceStop(request.packageName)
 
@@ -120,7 +128,9 @@ internal class BackupAppArchiveUseCase(
             val zip = ZipOutputStream(destination.output).apply { setLevel(Deflater.NO_COMPRESSION) }
 
             if (bundle != null) {
-                onProgress(ThorJobProgress(ThorJobStage.CAPTURING, bundle.name))
+                // [appLabel], not `bundle.name`: this label is the notification's whole content text,
+                // and a user watching their game back up should not read a generated `.xapk` file name.
+                onProgress(ThorJobProgress(ThorJobStage.CAPTURING, appLabel))
                 zip.putNextEntry(ZipEntry(THORBAK_BUNDLE_ENTRY))
                 bundle.inputStream().use { it.copyTo(zip) }
                 zip.closeEntry()
@@ -136,7 +146,10 @@ internal class BackupAppArchiveUseCase(
                 onProgress(
                     ThorJobProgress(
                         stage = ThorJobStage.CAPTURING,
-                        label = dataClass.id,
+                        // [appLabel], not `dataClass.id`: `internal_data` is an on-disk class name,
+                        // not something to show a user. Which class is in flight is carried by
+                        // `completed`/`total`, and the stage says what is happening.
+                        label = appLabel,
                         // completed carries the 1-based class index — not bytes. The field is
                         // `completed` (not `completedBytes`) precisely because this use case carries
                         // class indices here while restore callers carry byte counts.
@@ -175,7 +188,7 @@ internal class BackupAppArchiveUseCase(
                 return ArchiveBackupOutcome.Failed("no data could be captured for ${request.packageName}")
             }
 
-            onProgress(ThorJobProgress(ThorJobStage.FINISHING, request.packageName))
+            onProgress(ThorJobProgress(ThorJobStage.FINISHING, appLabel))
             val header = ArchiveHeader(
                 createdAt = System.currentTimeMillis(),
                 thorVersionCode = BuildConfig.VERSION_CODE,

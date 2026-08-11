@@ -97,7 +97,10 @@ abstract class ThorJobWorker(
             // covers cancellation and any throw that fires before the concrete worker's own take().
             // If take() already ran, drop() is a no-op (ConcurrentHashMap.remove on an absent key).
             // The path where the job is cancelled between put() and WorkManager starting doWork()
-            // cannot be covered here — Task 15's enqueue path is responsible for that branch.
+            // cannot be covered here: doWork never runs, so neither does this finally. An explicit
+            // user cancel goes through ThorJobLauncher.cancel, which drops first; a job cancelled by
+            // the chain (WorkManager cancels the dependents of a failed prerequisite) reaches neither,
+            // and is covered by ArchiveKeyHolder's own expiry.
             keyHolder.drop(id.toString())
             //
             // notification: always runs; idempotent. On the happy path WorkManager already cancelled
@@ -106,6 +109,23 @@ abstract class ThorJobWorker(
             notifications.cancel(kind)
         }
     }
+
+    /**
+     * `Result.failure` carrying a sentence, never `Result.retry`.
+     *
+     * A retry re-runs in a process where [ArchiveKeyHolder.take] returns null, so it cannot succeed —
+     * and it would report the failure long after the moment the user was watching.
+     *
+     * Lives here rather than at file level in the workers because `ListenableWorker.Result` is a
+     * nested type: a top-level helper would have to name it fully qualified at every call site, and
+     * the point of this is that a subclass never has to think about which `Result` it means.
+     *
+     * Declared **above** [publish]'s doc comment on purpose: Kotlin attaches the last doc comment
+     * before a declaration, so inserting this between that comment and `publish` would silently
+     * orphan it — the comment would vanish from `publish` in the IDE and in Dokka and read as this
+     * function's preamble instead.
+     */
+    protected fun fail(reason: String): Result = Result.failure(workDataOf(JOB_ERROR_KEY to reason))
 
     /**
      * Report progress to the UI and the notification.
@@ -118,18 +138,6 @@ abstract class ThorJobWorker(
      * `setProgress` is deliberately absent — see [JobRegistry]. Calling it here would put an SQLite
      * write on the copy loop's hot path and cap observed updates at roughly one a second.
      */
-    /**
-     * `Result.failure` carrying a sentence, never `Result.retry`.
-     *
-     * A retry re-runs in a process where [ArchiveKeyHolder.take] returns null, so it cannot succeed —
-     * and it would report the failure long after the moment the user was watching.
-     *
-     * Lives here rather than at file level in the workers because `ListenableWorker.Result` is a
-     * nested type: a top-level helper would have to name it fully qualified at every call site, and
-     * the point of this is that a subclass never has to think about which `Result` it means.
-     */
-    protected fun fail(reason: String): Result = Result.failure(workDataOf(JOB_ERROR_KEY to reason))
-
     protected fun publish(progress: ThorJobProgress) {
         registry.publish(id, progress)
         val now = System.currentTimeMillis()
