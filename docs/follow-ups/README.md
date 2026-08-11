@@ -172,7 +172,9 @@ detail?"* Every row appears in both — this section adds an order, not new work
 **Read the bands, not the exact numbers.** The gap between 3 and 5 is noise; the gap between band A
 and band C is not.
 
-**Bands A and B are built — start at #23.** Every numbered row from 1 to 22 has shipped except band
+**Bands A and B are built, and #23 is built but has never run on a device — start at #24.** Rows 24
+and 25 are the same Room migration described twice, so they are sequenced together or neither. Every
+numbered row from 1 to 22 has shipped except band
 A #10, which is half done and waiting on a device diagnostic. ~~The one thing band B leaves behind is
 the **release-notes line** retracting band A #1's capability removal, which is due on the `master`
 merge~~ — ✅ **that shipped**: `release-notes/v1.94.1/github.md:17` opens with a *"Correction to the
@@ -223,7 +225,7 @@ argument, not the status. **None of it has run on a device.**
 
 | # | Item | Kind | Effort | Why here |
 |:-:|---|---|---|---|
-| 23 | [#51 phase 2 — app **data** backup](app-data-backup-and-xapk-export.md) | feature | 5–8 d | Highest-impact item left (4/5), and `README.md` has promised it for a year. Root-only, hard-gated |
+| 23 | [#51 phase 2 — app **data** backup](app-data-backup-and-xapk-export.md) | feature | 5–8 d | ✅ **built, desk-verified, zero device checks run.** `.thorbak` = a zip holding `thorbak.json` + `app.xapk` + one AES-256-GCM member per storage class, on a reusable WorkManager foreground-job seam. ⚠️ **Two things block a `store` release**: the Play Console **Foreground Service declaration** for `FOREGROUND_SERVICE_DATA_SYNC` (demo bulk APK export, *not* backup — Play cannot root a device), and the device checks in the linked doc |
 | 24 | [#178 — app tagging + per-app notes](../feature-request-roadmap.md) | feature | 3–5 d | **Demand is no longer zero** — two users, one thread. Notes and tags are one Room migration, so build them together or neither |
 | 25 | Change history + update history | feature | medium–large | Room has no event table and `AppEntity` overwrites the version on every scan, so *both* need the same new table. Do them as one piece of work |
 | 26 | [`BulkFreezeRunner` concurrency tests](bulk-freeze-runner-concurrency-tests.md) | tests | medium | Still blocked: 3 of 4 collaborators need a seam before the runner can be built in a JVM test |

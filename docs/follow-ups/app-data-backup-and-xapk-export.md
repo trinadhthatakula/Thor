@@ -95,30 +95,134 @@ Neither is desk-testable, and a green install hides both:
 Also worth one negative test: export a split app, delete one split from the zip, and confirm the
 installer reports a real error rather than installing a partial app.
 
+### Phase 2's own checks — **21 items, every one unrun**
+
+Kept separate from the two above on purpose: a device check that passed for phase 1 and the `.xapk`
+work says nothing about phase 2. Nothing below has been executed — the whole feature is
+desk-verified, every task's gate was a build plus JVM unit tests, and no task in the plan had a
+device step.
+
+**Cryptography and storage — the parts JVM tests fake**
+
+- [ ] **A non-ASCII passphrase, end to end.** Write a backup with one (CJK, emoji, combining marks),
+      then restore it. The encode path goes through `CharBuffer` and UTF-8 rather than `String`, so a
+      surrogate pair split across a buffer boundary is a real failure mode no ASCII fixture reaches.
+- [ ] **The real `AndroidKeyStore` and DataStore path.** Every JVM test fakes both — `VaultKeyProvider`
+      stands in for the Keystore, `PassphraseVaultStore` for DataStore, which is why those seams
+      exist. Untested on hardware: key generation under `setUnlockedDeviceRequired(true)`, the
+      invalidation-on-biometric-re-enrolment path, and the DataStore corruption handler.
+- [ ] **`STORE_FAILED` actually renders.** Producing it needs a device whose Keystore key is gone or
+      uncreatable. The sheet must show the refusal and must **not** show "Saved on this device."
+- [ ] **Save / replace / forget round trip in the Settings sheet**, and that "Forget it" makes the
+      next backup prompt for a passphrase rather than using a stale one.
+- [ ] **The SELinux label of the staged tar.** A file written by a root shell into Thor's staging
+      directory can carry a label the app process cannot read back.
+
+**The privileged shells**
+
+- [ ] **Shizuku's 300 s `EXECUTE_TIMEOUT_MS` against one `tar -xzf` per data class on a multi-GB
+      app.** Four classes, one invocation each; a large app can exceed the timeout on a single class,
+      and the failure then arrives as a timeout rather than as a tar error.
+- [ ] **A root-rung OBB failure yields `InstalledWithoutGameData` *every* time**, not sometimes a
+      generic failure. That outcome is the difference between "your save data is missing" and "the
+      restore failed", and the user acts differently on each.
+- [ ] **The `ObbInstaller` port convergence row** — root and Shizuku reach the same outcome for the
+      same input rather than diverging on one rung.
+
+**Zip and the archive**
+
+- [ ] **`ZipFile` against `/proc/self/fd/N`** — how the archive is read from a SAF file descriptor. It
+      depends on the platform allowing a `ZipFile` over that path.
+- [ ] **Android libcore's duplicate-zip-entry resolution.** Which of two same-named members wins is
+      libcore's choice, not the JDK's, and the archive's integrity story assumes one of them.
+
+**The job seam**
+
+- [ ] **Both `internal` `@KoinWorker` classes resolve out of the Koin worker factory.** `internal`
+      visibility plus a generated factory is precisely where a binding compiles and then fails to
+      resolve at runtime.
+- [ ] **Foreground promotion happens inside the platform's window.** Miss it and Android 14 throws
+      rather than warns.
+- [ ] **`APPEND_OR_REPLACE` with a backup and a restore enqueued back to back.** The chain semantics
+      are what make a queued job's cancellation meaningful.
+- [ ] **SAF `discardOrphans` finds a real `.part` document.** The sweeper has only run against a fake
+      provider.
+
+**The backup sheet**
+
+- [ ] **A provider refusing a persistable grant reaches the toast, not a crash.** The
+      `SecurityException` is thrown inside a result callback, where an uncaught one takes the process.
+- [ ] **`Pending` is observable long enough for the queued row to earn its space.** If the state is
+      never seen, the row is dead UI.
+- [ ] **The enqueue-vs-first-status executor ordering behind the `seenLive` guard.**
+
+**Restore**
+
+- [ ] **Opening a `.thorbak` from a file manager on API 31+ *and separately* on API 28–30.** Two
+      devices, not one: the `pathPattern` rung is the only one below 31, so a pass on either alone
+      proves nothing about the other.
+- [ ] **A queued restore whose prerequisite fails** — the only path that renders "Nothing was
+      changed", and the only one entitled to say it.
+- [ ] **The interruption banner on an unfolded / tablet window.**
+- [ ] **Start a restore on an expanded window while watching the Settings section.** No banner while
+      it runs; a banner if the job ends badly. This is the defect `ObserveInterruptedRestoreUseCase`
+      exists to prevent, and the one item here with no test at all.
+
 ---
 
-## Phase 2 — Root-only data backup (5–8 days)
+## Phase 2 — built 2026-08-10 (desk-verified only)
 
-**Hard blocker, unchanged:** private-data backup requires **root**.
-- Shizuku runs as the shell uid and cannot read `/data/data/<pkg>`.
-- Dhizuku has no file access at all.
-- `adb backup` is dead on modern Android.
+Built across 18 tasks on `feat/app-backup-restore`, to the spec at
+`docs/superpowers/specs/2026-08-10-app-backup-and-restore-design.md` and the plan beside it. Every
+task's gate was a build plus JVM unit tests; **no part of this has run on a device.** The checks that
+have to run are in the section above.
 
-Restore is the harder half: files must land with the correct uid/gid *and* the right SELinux context
-(`restorecon` after extraction), or the app crashes on next launch in a way the user will blame on
-Thor. Plan for:
-- `tar` inside the root shell rather than pulling bytes across the Binder — Odin's `exec()` returns a
-  real exit code now, so failures are detectable.
-- An explicit privilege gate in the UI. This must be visibly root-only, not a feature that silently
-  degrades: a backup that appears to succeed and restores nothing is worse than a disabled button.
-- Excluding caches (`cache/`, `code_cache/`, `no_backup/`) — they bloat the archive and restore
-  nothing of value.
-- Force-stopping the app before reading, and after restoring, so nothing is written underneath.
+`.thorbak` is a plain zip named `<pkg>-<versionCode>.thorbak`, holding `thorbak.json`, `app.xapk`,
+and one AES-256-GCM member per selected storage class, written on a reusable WorkManager
+foreground-job seam. The privilege gate is a **probe**, not a root check: it runs through
+`executeShellCommand`, which `runGatewayAction` routes to whichever gateway is active, so a
+root-started Shizuku shell passes it — "requires Root" would have been a lie on that device.
 
-**The manifest is already shaped for it.** `BackupIndex.schemaVersion` is written even when it
+### Release checklist — obligations, not advice
+
+- File the Play Console **Foreground Service declaration** *before* the first `store` upload carrying
+  `FOREGROUND_SERVICE_DATA_SYNC`. It is not a post-release fix: the upload is rejected.
+- Declare the type as **`dataSync`**, matching what `SystemForegroundService` and the workers'
+  `ForegroundInfo` already use. A manifest that disagrees with the `ForegroundInfo` is a crash on
+  Android 14, not a warning — fix whichever is wrong, never suppress the lint check.
+- Record the demonstration video on **bulk APK export on an unrooted device**. Not on a backup: a
+  data backup needs root, Play will not review on a rooted device, so the backup path is not one a
+  reviewer can run. Bulk export uses the same foreground service for the same reason.
+- The release notes must state that `.thorbak` is **encrypted** and that the passphrase is **not
+  recoverable**. Both are properties of the format; a user who learns them after losing a passphrase
+  has already lost the archive.
+
+### Known limitations — triage a bug report against this list first
+
+- A document provider that hands back a **pipe** forces a copy to `cacheDir`. Peak disk is the
+  archive size, once. Not a leak, and not avoidable through SAF.
+- The `.thorbak` VIEW filter matches on **`Uri.getPath()`**, so it misses providers using opaque
+  document ids. Those users reach the file through the in-app picker instead.
+- A VIEW-intent grant lives as long as the **task**. A restore whose task is swiped away cannot
+  reopen the file.
+- **Progress does not survive process death, and neither does a job** — the derived key is
+  process-scoped by design. A killed job is reported through the breadcrumb, not resumed.
+- `strings_backup.xml` is **English-only**, behind a file-level `tools:ignore="MissingTranslation"`.
+
+### Deferred, each with why
+
+| Follow-up | Why not now |
+|---|---|
+| Migrate APK/XAPK export onto the job seam | The seam was built to carry it, but moving a shipped export path inside a branch that cannot be device-tested puts a regression on working code |
+| Move bulk actions onto the seam as `shortService` | Same seam, different foreground-service type; wants its own device pass |
+| Same for clear-all-cache | #373/#374 make this the path most recently broken and repaired; it should move on its own commit |
+| Multi-app batch backup | Needs a queue UI and a per-app failure model the single-app sheet does not have |
+| Streaming bundle build (`OutputStream` + `DEFLATED` at level 0) | Drops the staged `.xapk` copy and its peak disk cost; a format-adjacent change best made once the format has run on hardware |
+| **Translate `strings_backup.xml`** into `values-ar`, `values-es`, `values-fr`, `values-zh-rCN` | ~50 strings. This is the debt the file-level `tools:ignore="MissingTranslation"` holds open, and the reason that suppression must not be copied into any other file |
+
+**The manifest was already shaped for it.** `BackupIndex.schemaVersion` is written even when it
 equals its default, and `BackupIndexTest` pins that a v1 reader survives a v2 document carrying an
-extra `dataFileName` — so phase 2 can name a data file per entry without breaking anything that
-already reads a phase-1 folder. Bump `SCHEMA_VERSION` when it does.
+extra `dataFileName`.
 
 ### Phase 3 — declined
 
@@ -129,10 +233,12 @@ transport is 12–20 days for something Nearby Share does.
 
 ## Sequencing
 
-Phase 2 is its own branch behind a root gate and should not block a release.
+Phase 2 is its own branch behind a privilege gate and should not block a release. It is built, on
+`feat/app-backup-restore`.
 
 **#164 can be closed now** — everything in that issue is either shipped or deliberately declined
-(the raw split-folder output). **#51 stays open** on phase 2.
+(the raw split-folder output). **#51 stays open** on phase 2: the code exists, but *"has run on a
+device"* is the bar for closing it, and 21 checks say it has not. **Do not close #51 on the merge.**
 
 **Amended 2026-08-10.** #164 *was* closed on 2026-08-03, and reopened: on 2026-08-06 `playagain96`
 posted a screen recording of an export whose `.xapk` carried no OBB *"even tho app has it visible and
