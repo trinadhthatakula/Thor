@@ -26,13 +26,21 @@ import java.io.File
  *    between "split copied" and "bundle returned" strands a whole app's APKs.
  * 3. **The staged expansion files** under `externalCacheDir` — the other half of the same killed
  *    build, and for a large game the *bigger* half. They are not under `cacheDir` at all (see
- *    [ObbExportStagingDir]), so target 2 does not reach them; between them, 2 and 3 are the largest
- *    single thing this feature can leak.
+ *    [ObbExportStagingDir]), so target 2 does not reach them.
  * 4. **The read-copy** [UriArchiveSourceFactory] may leave in `cacheDir` — deleted by its exact name.
  *    `cacheDir` itself is shared with Coil, Room and the bundle builder; a pattern sweep there would
  *    delete another subsystem's working set.
  * 5. **`.part` containers in the user's folder** — only the names [PartialArchiveLedger] recorded, and
  *    a name is forgotten only once the file is gone.
+ *
+ * Resist reading that list as "and that is everything this feature can leak". It is not: a killed
+ * **restore** strands the same order of magnitude in `externalCacheDir/obb_in/<pkg>`
+ * (`ObbInstaller.OBB_INSTALL_STAGING_DIR`), which is not a target here. That is deliberate rather
+ * than overlooked. `obb_in` is shared with the already-shipped portable installer, so a wholesale
+ * delete at launch would reach a subtree that path may be using; and `ObbInstaller` opens each
+ * placement by deleting `obb_in/<pkg>` — **that package's subtree only, not the tree** — so a
+ * strand clears when the *same* package is restored again, and not before. Recorded for the
+ * whole-branch review.
  *
  * What it does **not** do is clear the breadcrumb. It reports it. Clearing it here would make the
  * sweep the thing that silences the warning a user is owed.
