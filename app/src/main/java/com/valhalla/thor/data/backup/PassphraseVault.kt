@@ -178,7 +178,26 @@ class PassphraseVault(
     val isRemembered: Flow<Boolean>
         get() = store.isSet
 
-    suspend fun remember(passphrase: CharArray) {
+    /**
+     * Wrap [passphrase] and store it.
+     *
+     * @return **false means nothing was written** — the Keystore key is gone or was never creatable —
+     * and a caller must not tell the user it was saved. Task 18's settings screen is the reason this is
+     * not `Unit`: "Saved" on a screen where nothing was saved is how a user stops writing their
+     * passphrase down.
+     *
+     * True is the weaker claim of the two: it says wrapping succeeded and the blob was handed to
+     * [PassphraseVaultStore.write]. It is not a receipt from disk —
+     * [DataStorePassphraseVaultStore.write] swallows an `IOException` on purpose, because a failed
+     * write must not tear down the screen that asked for it — so a full or read-only data partition
+     * still returns true here. The consequence is bounded and is the one this cache degrades to
+     * everywhere: [recall] returns null on the next launch and the user is prompted.
+     *
+     * [passphrase] belongs to the caller and is **not** cleared here — only the byte buffer derived
+     * from it is. `AppBackupViewModel.beginBackup` and `PassphraseSettingsViewModel.save` are the two
+     * callers, and both wipe it themselves.
+     */
+    suspend fun remember(passphrase: CharArray): Boolean {
         // Encode to bytes without creating an intermediate String — a String cannot be zeroed.
         val byteBuffer = Charsets.UTF_8.encode(CharBuffer.wrap(passphrase))
         val passphraseBytes = ByteArray(byteBuffer.limit())
@@ -193,11 +212,12 @@ class PassphraseVault(
             // Nothing is written: a half-written vault would claim a passphrase is stored and then
             // fail to produce it on every use.
             Logger.e("PassphraseVault", "could not wrap the passphrase", e)
-            return
+            return false
         } finally {
             passphraseBytes.fill(0)
         }
         store.write(Base64.getEncoder().encodeToString(wrapped))
+        return true
     }
 
     suspend fun recall(): CharArray? {

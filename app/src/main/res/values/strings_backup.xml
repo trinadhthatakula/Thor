@@ -126,4 +126,37 @@
       label on an app — a heading that reads as a verb over a row that reads as a different verb.
     -->
     <string name="backup_and_restore">Backup &amp; restore</string>
+
+    <!--
+      §5.4's surface. Separate strings from the backup sheet's rather than shared ones: the sheet is
+      talking about the archive it is about to write ("this backup"), and this screen is talking about
+      a device-wide setting that applies to every future one. One string cannot be true in both places
+      without going vague in both.
+    -->
+    <string name="passphrase_settings_title">Backup passphrase</string>
+    <string name="passphrase_settings_desc">Choose, change or remove the passphrase Thor remembers.</string>
+    <string name="passphrase_settings_stored">A passphrase is saved on this device.</string>
+    <string name="passphrase_settings_warning">Thor cannot recover this passphrase. Without it, a backup made with it cannot be restored.</string>
+    <!--
+      The consequence a user cannot see and would otherwise assume the opposite of. Changing a stored
+      passphrase re-encrypts nothing: each archive's key is derived from the passphrase it was written
+      with, so every existing .thorbak still opens only with that one. Stated where the choice is made,
+      because after it is made there is nothing to be done about it.
+    -->
+    <string name="passphrase_settings_no_reencrypt">Changing it does not change any backup you already made. Each one still opens only with the passphrase it was made with.</string>
+    <string name="passphrase_settings_save">Save</string>
+    <string name="passphrase_settings_forget">Forget it</string>
+    <string name="passphrase_settings_saved">Saved on this device.</string>
+    <!--
+      PluralsCandidate fires on the %1$d, the same way it does on restore_archive_version above. It is
+      a minimum — a threshold the passphrase has to clear — not a count of anything present, so there
+      is no quantity for a plural form to agree with.
+    -->
+    <string name="passphrase_error_too_short" tools:ignore="PluralsCandidate">Use at least %1$d characters.</string>
+    <string name="passphrase_error_mismatch">The two passphrases do not match.</string>
+    <!--
+      Deliberately not phrased as a failure of the backup: the vault is a convenience cache, and an
+      archive is protected by the passphrase itself, never by whether this device remembered it.
+    -->
+    <string name="passphrase_error_store_failed">Thor could not save the passphrase on this device. The backup will still work — you will just have to type it each time.</string>
 </resources>

@@ -740,6 +740,25 @@ fun SettingsScreen(
                     subtitle = stringResource(R.string.restore_settings_desc),
                     onClick = onNavigateToRestore
                 )
+
+                // §5.4. The only place "remember it on this device" — offered as a checkbox in the
+                // backup sheet — can be undone, and the only place a stored passphrase can be replaced
+                // without making a backup to do it.
+                var showPassphrase by remember { mutableStateOf(false) }
+
+                SettingsClickRow(
+                    icon = R.drawable.round_key,
+                    title = stringResource(R.string.passphrase_settings_title),
+                    subtitle = stringResource(R.string.passphrase_settings_desc),
+                    onClick = { showPassphrase = true }
+                )
+
+                // Hosted at its row, as every other sheet in this screen is. A ModalBottomSheet draws
+                // in its own window over the whole screen regardless of where it is composed, so being
+                // inside this Column costs it nothing.
+                if (showPassphrase) {
+                    PassphraseSettingsSheet(onDismiss = { showPassphrase = false })
+                }
             }
         }
 

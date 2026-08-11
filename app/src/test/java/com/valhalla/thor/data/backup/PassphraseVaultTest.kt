@@ -157,9 +157,27 @@ class PassphraseVaultTest {
         val store = FakeStore()
         val vault = PassphraseVault(store, FakeProvider(alive = false))
 
-        vault.remember("correct horse".toCharArray())
+        val stored = vault.remember("correct horse".toCharArray())
 
+        // Both halves, because they are separate failures. `store.blob` being null says the vault was
+        // not half-written; `stored` being false says the caller was told so. A `remember` that wrote
+        // nothing and returned true would pass the second assertion alone and put "Saved on this
+        // device." on a screen where nothing was.
+        assertEquals(false, stored)
         assertNull(store.blob)
+    }
+
+    @Test
+    fun `a successful remember says so`() = runTest {
+        // The other side of the Boolean. Without it, `remember` could `return false` unconditionally
+        // and only the settings view model's tests would notice — the assertion above is satisfied by
+        // a constant false, which is the shape a hurried refactor leaves behind.
+        val store = FakeStore()
+        val vault = PassphraseVault(store, FakeProvider())
+
+        val stored = vault.remember("correct horse".toCharArray())
+
+        assertEquals(true, stored)
     }
 
     @Test
