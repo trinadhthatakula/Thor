@@ -86,4 +86,47 @@ internal interface AppDataArchiveGateway {
      * signed package is a data-exfiltration primitive.
      */
     suspend fun signerSha256(packageName: String): String?
+
+    /**
+     * Extract [tar] into `<class root>/.thorbak-staging/` (§8.3 b).
+     *
+     * The tar is a file Thor wrote in its own internal cache, so it is mode 600 owned by Thor's uid.
+     * Root reads it without ceremony. A shell-uid channel could not — which costs nothing, because the
+     * capability probe (Task 6) already refuses a channel that cannot read a private data directory,
+     * and that is the same refusal.
+     *
+     * **Destructive-first**, and the caller has to know it: `extractCommand` opens with
+     * `rm -rf '<staging>'`. That is deliberate — it stops a previous run's debris from being promoted
+     * into the class root alongside this archive's contents — but it means re-entering this call after
+     * an interrupted swap deletes the staged tree, which at that moment may hold data the class root
+     * no longer has. See `RestoreAppArchiveUseCase`, which never re-enters it.
+     *
+     * @param compressed must match the member's recorded compression. `extractCommand` picks `-xzf`
+     *   or `-xf` from it; guessing would fail on a plain tar or, worse, half-succeed.
+     */
+    suspend fun extractInto(
+        packageName: String,
+        dataClass: DataClass,
+        tar: File,
+        compressed: Boolean,
+    ): Boolean
+
+    /**
+     * Replace the class root's contents with the staged extraction, then remove the staging directory
+     * (§8.3 c).
+     *
+     * This is the destructive step. Everything before it is recoverable.
+     */
+    suspend fun swapStaged(packageName: String, dataClass: DataClass): Boolean
+
+    /**
+     * `chown -R <uid>:<uid>` over the class root (§8.3 d).
+     *
+     * @param uid the app's **live Linux** uid, read after any install. Not [thorUserId] — see its
+     *   KDoc for why the two must never be swapped.
+     */
+    suspend fun chownClass(packageName: String, dataClass: DataClass, uid: Int): Boolean
+
+    /** `restorecon -RF` over the class root (§8.3 e). */
+    suspend fun relabelClass(packageName: String, dataClass: DataClass): Boolean
 }

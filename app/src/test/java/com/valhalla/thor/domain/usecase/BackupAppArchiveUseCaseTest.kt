@@ -121,6 +121,24 @@ class BackupAppArchiveUseCaseTest {
         override suspend fun appUid(packageName: String): Int? = 10123
 
         override suspend fun signerSha256(packageName: String): String? = "AB".repeat(32)
+
+        // The restore half of the port (Task 14). Backup never calls these; throwing rather than
+        // returning `true` is what keeps that a fact rather than an assumption.
+        override suspend fun extractInto(
+            packageName: String,
+            dataClass: DataClass,
+            tar: File,
+            compressed: Boolean,
+        ): Boolean = error("backup must not extract")
+
+        override suspend fun swapStaged(packageName: String, dataClass: DataClass): Boolean =
+            error("backup must not swap")
+
+        override suspend fun chownClass(packageName: String, dataClass: DataClass, uid: Int): Boolean =
+            error("backup must not chown")
+
+        override suspend fun relabelClass(packageName: String, dataClass: DataClass): Boolean =
+            error("backup must not relabel")
     }
 
     /**

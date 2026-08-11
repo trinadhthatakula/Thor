@@ -11,10 +11,14 @@ import com.valhalla.thor.domain.model.ClassEntries
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.TarOutcome
 import com.valhalla.thor.domain.model.chownFileCommand
+import com.valhalla.thor.domain.model.chownRecursiveCommand
 import com.valhalla.thor.domain.model.classifyTarExit
 import com.valhalla.thor.domain.model.dataClassRoot
+import com.valhalla.thor.domain.model.extractCommand
 import com.valhalla.thor.domain.model.filterBackupEntries
 import com.valhalla.thor.domain.model.listClassEntriesCommand
+import com.valhalla.thor.domain.model.restoreconCommand
+import com.valhalla.thor.domain.model.swapStagedEntriesCommand
 import com.valhalla.thor.domain.model.tarCreateCommand
 import com.valhalla.thor.domain.repository.AppDataArchiveGateway
 import com.valhalla.thor.domain.repository.SystemRepository
@@ -109,8 +113,18 @@ internal class AppDataArchiveGatewayImpl(
             .onFailure { Logger.e(TAG, "force-stop of $packageName failed", it) }
     }
 
+    /**
+     * The one place a class root is resolved.
+     *
+     * Every command builder below refuses a root it will not quote, so this is not the validation —
+     * it is the single spelling of the resolution, so `listClass`, `tarClass` and the four restore
+     * calls cannot drift apart in which user id or external root they ask about.
+     */
+    private suspend fun classRootOf(packageName: String, dataClass: DataClass): String? =
+        dataClassRoot(dataClass, packageName, thorUserId(), externalStorageDir())
+
     override suspend fun listClass(packageName: String, dataClass: DataClass): ClassEntries {
-        val root = dataClassRoot(dataClass, packageName, thorUserId(), externalStorageDir())
+        val root = classRootOf(packageName, dataClass)
             ?: return ClassEntries(kept = emptyList(), skipped = emptyList(), rootAbsent = true)
         val command = listClassEntriesCommand(root)
             ?: return ClassEntries(kept = emptyList(), skipped = emptyList(), rootAbsent = true)
@@ -152,7 +166,7 @@ internal class AppDataArchiveGatewayImpl(
             return TarOutcome.Failed("${out.name} is not inside the staging directory")
         }
 
-        val root = dataClassRoot(dataClass, packageName, thorUserId(), externalStorageDir())
+        val root = classRootOf(packageName, dataClass)
             ?: return TarOutcome.Failed("no usable path for ${dataClass.id}")
         val command = tarCreateCommand(root, out.absolutePath, entries, compress)
             ?: return TarOutcome.Failed("refused to build a tar command for ${dataClass.id}")
@@ -243,5 +257,49 @@ internal class AppDataArchiveGatewayImpl(
             Logger.e(TAG, "reading the signer of $packageName failed", it)
             null
         }
+    }
+
+    override suspend fun extractInto(
+        packageName: String,
+        dataClass: DataClass,
+        tar: File,
+        compressed: Boolean,
+    ): Boolean = runClassCommand(packageName, dataClass, "extract") { root ->
+        extractCommand(root, tar.absolutePath, compressed)
+    }
+
+    override suspend fun swapStaged(packageName: String, dataClass: DataClass): Boolean =
+        runClassCommand(packageName, dataClass, "swap") { root -> swapStagedEntriesCommand(root) }
+
+    override suspend fun chownClass(packageName: String, dataClass: DataClass, uid: Int): Boolean =
+        runClassCommand(packageName, dataClass, "chown") { root -> chownRecursiveCommand(root, uid) }
+
+    override suspend fun relabelClass(packageName: String, dataClass: DataClass): Boolean =
+        runClassCommand(packageName, dataClass, "restorecon") { root -> restoreconCommand(root) }
+
+    /**
+     * Resolve the class root, build the command, run it, and report whether it exited 0.
+     *
+     * `exitCode == 0`, not `!= -1`: `RootSystemGateway.execute()` folds a *throw* into
+     * `-1 to stackTraceToString()`, so any rule phrased as "not the failure code" reads Thor's own
+     * stack trace as a success.
+     */
+    private suspend fun runClassCommand(
+        packageName: String,
+        dataClass: DataClass,
+        what: String,
+        build: (String) -> String?,
+    ): Boolean = withContext(ioDispatcher) {
+        val root = classRootOf(packageName, dataClass) ?: return@withContext false
+        val command = build(root) ?: run {
+            Logger.e(TAG, "$what refused for ${dataClass.id} of $packageName")
+            return@withContext false
+        }
+        val result = systemRepository.executeShellCommand(command).getOrNull()
+        if (result == null || result.first != 0) {
+            Logger.e(TAG, "$what of ${dataClass.id} for $packageName exited ${result?.first}")
+            return@withContext false
+        }
+        true
     }
 }
