@@ -89,15 +89,34 @@ class UriArchiveSourceFactory(
     }
 
     /**
-     * The fallback. One fixed file name, in Thor's own cache, so the launch-time orphan sweep can
-     * delete it by exact name if the process dies mid-read.
+     * The fallback: copy the archive into Thor's own cache and open *that*.
+     *
+     * **One file per open, not one file for the app.** The fixed name this replaced was chosen so the
+     * launch-time orphan sweep could delete it by exact equality, which is a real requirement — but it
+     * was pinned on one side only, and said nothing about two opens overlapping. They do overlap:
+     * `ArchiveRestoreViewModel` opens a source to read a header while `AppArchiveWorker` can be holding
+     * one open for the whole of a running restore, and the fallback is provider-decided, so if one open
+     * takes it the other almost certainly does too. With a shared name the second `outputStream()`
+     * truncates the inode the first's `ZipFile` is mid-read on, and the first `onClose` then deletes the
+     * second's copy. The reader that loses can be a *destructive* restore that has already swapped a
+     * class in.
+     *
+     * `createTempFile` gives the uniqueness, and [isReadCopyName] gives the sweep back its side of the
+     * bargain: prefix-and-suffix instead of equality, which the staging sweep already does for `.part`
+     * names. The name is only ever produced and consumed here, so nothing has to parse it.
      */
     private fun copyThenOpen(uri: Uri, name: String): ArchiveSource? {
-        val copy = File(context.cacheDir, COPY_FILE_NAME)
+        val copy = runCatching {
+            File.createTempFile(COPY_FILE_PREFIX, COPY_FILE_SUFFIX, context.cacheDir)
+        }.getOrElse {
+            Logger.e(TAG, "could not create a cache copy for $name", it)
+            return null
+        }
         return runCatching {
             context.contentResolver.openInputStream(uri)!!.use { input ->
                 copy.outputStream().use(input::copyTo)
             }
+            // Deletes *this* copy, by identity — the whole point of the unique name.
             ZipArchiveSource(copy, name, onClose = { copy.delete() })
         }.getOrElse {
             Logger.e(TAG, "could not read $name", it)
@@ -114,8 +133,29 @@ class UriArchiveSourceFactory(
     companion object {
         private const val TAG = "UriArchiveSource"
 
-        /** Also named in the orphan sweep (Task 15). Exact name, never a wildcard. */
+        /**
+         * The name every fallback copy used to share.
+         *
+         * Kept, and still swept, because it is what an orphan left by an *older build* of Thor is
+         * called: the sweep runs at launch, and the launch after an update is exactly when such a file
+         * is found. Nothing writes it any more — see [copyThenOpen].
+         */
         const val COPY_FILE_NAME = "thorbak_read_copy.zip"
+
+        private const val COPY_FILE_PREFIX = "thorbak_read_copy_"
+        private const val COPY_FILE_SUFFIX = ".zip"
+
+        /**
+         * True for a cache entry the orphan sweep owns: a current per-open copy, or the legacy
+         * [COPY_FILE_NAME].
+         *
+         * Prefix-and-suffix rather than equality, now that the name is unique per open. The two
+         * `thorbak_read_copy` spellings are Thor's alone — `createTempFile` inserts digits between the
+         * prefix and the suffix, so no other cache entry can collide with the shape by accident.
+         */
+        fun isReadCopyName(name: String): Boolean =
+            name == COPY_FILE_NAME ||
+                (name.startsWith(COPY_FILE_PREFIX) && name.endsWith(COPY_FILE_SUFFIX))
     }
 }
 
@@ -129,8 +169,9 @@ class UriArchiveSourceFactory(
  * block therefore never enters its `finally` on the cancellation path — the block runs to
  * completion, commits, and `withContext`'s prompt-cancellation guarantee then discards the returned
  * value at the call site with nothing left holding a reference to close it. The result is a leaked
- * `ParcelFileDescriptor`, a leaked `ZipFile`, and a possibly multi-gigabyte
- * [UriArchiveSourceFactory.COPY_FILE_NAME] orphaned in cache.
+ * `ParcelFileDescriptor`, a leaked `ZipFile`, and a possibly multi-gigabyte fallback copy orphaned in
+ * cache (one the launch-time sweep will only find if it matches
+ * [UriArchiveSourceFactory.Companion.isReadCopyName]).
  *
  * `ensureActive()` is the checkpoint that makes [release] reachable. It is not optional decoration:
  * `AppDataArchiveGatewayImpl` uses the same `committed`/[NonCancellable] shape *without* an explicit

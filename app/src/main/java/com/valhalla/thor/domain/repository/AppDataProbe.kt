@@ -28,7 +28,12 @@ interface AppDataProbe {
     suspend fun probeDataArchiveCapability(): Boolean
 
     /**
-     * Apparent size of one storage class, via `du -s -k`.
+     * Apparent size of **what a backup of this class would contain**, via `du -s -k`.
+     *
+     * Not the size of the directory: the volatile children the archive drops (`cache`, `code_cache`,
+     * `no_backup`) are measured separately and subtracted. The distinction is load-bearing rather than
+     * cosmetic — this number is both displayed and the one the staging-space refusal compares against,
+     * so measuring a 3 GB browser cache that is never packed refuses a backup of 20 MB of real data.
      *
      * Returns `Undetermined` for anything that is not a number Thor asked for — a missing `du`, a
      * gateway failure, an unusable package name. `Empty` means the directory genuinely is not there.

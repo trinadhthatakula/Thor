@@ -11,6 +11,7 @@ import com.valhalla.thor.domain.model.AppDataArchiveStagingDir
 import com.valhalla.thor.domain.model.ClassEntries
 import com.valhalla.thor.domain.model.DataClass
 import com.valhalla.thor.domain.model.TarOutcome
+import com.valhalla.thor.domain.model.applyEntryVerification
 import com.valhalla.thor.domain.model.chownFileCommand
 import com.valhalla.thor.domain.model.chownRecursiveCommand
 import com.valhalla.thor.domain.model.classifyTarExit
@@ -21,6 +22,7 @@ import com.valhalla.thor.domain.model.listClassEntriesCommand
 import com.valhalla.thor.domain.model.restoreconCommand
 import com.valhalla.thor.domain.model.swapStagedEntriesCommand
 import com.valhalla.thor.domain.model.tarCreateCommand
+import com.valhalla.thor.domain.model.verifyEntriesCommand
 import com.valhalla.thor.domain.repository.AppDataArchiveGateway
 import com.valhalla.thor.domain.repository.SystemRepository
 import com.valhalla.thor.util.Logger
@@ -136,10 +138,38 @@ internal class AppDataArchiveGatewayImpl(
         }
         if (exitCode != 0 || output == null) {
             // Reported as absent rather than empty-and-fine: the caller writes no member either way,
-            // but `rootAbsent` is what earns a warning in the header.
+            // but `rootAbsent` is what earns a warning in the header. This is also where an absent root
+            // is *detected* — `ls` on a directory that is not there exits non-zero — which is why the
+            // listing command no longer prints a marker Thor would have to trust an app not to forge.
             return ClassEntries(kept = emptyList(), skipped = emptyList(), rootAbsent = true)
         }
-        return filterBackupEntries(dataClass, output)
+        val listing = filterBackupEntries(dataClass, output)
+        return verifyListing(root, dataClass, listing)
+    }
+
+    /**
+     * Second round trip: drop any entry the listing named that is not actually there.
+     *
+     * `ls -A`'s reply is line-split, so a filename containing a line break arrives as two names that
+     * both pass every filter and neither of which exists. Handing those to `tar` loses the real file
+     * *and* makes tar exit 1, which the outcome classifier then reports as "files that changed while
+     * being read" — a cause that is not the cause. This turns both halves into visible
+     * `ArchiveSkip` rows and keeps them out of the tar command.
+     *
+     * Fails open at every exit: no command, a gateway throw, or a non-zero exit all return the listing
+     * untouched. A backup must not be emptied by a refinement step.
+     */
+    private suspend fun verifyListing(
+        root: String,
+        dataClass: DataClass,
+        listing: ClassEntries,
+    ): ClassEntries {
+        val command = verifyEntriesCommand(root, listing.kept) ?: return listing
+        val (exitCode, output) = systemRepository.executeShellCommand(command).getOrElse {
+            Logger.e(TAG, "verifying ${dataClass.id} entries for the archive failed", it)
+            return listing
+        }
+        return applyEntryVerification(dataClass, listing, exitCode, output)
     }
 
     override suspend fun tarClass(
@@ -204,9 +234,12 @@ internal class AppDataArchiveGatewayImpl(
                 return TarOutcome.Failed("refused to build a chown command for ${out.name}")
             }
 
-            // Read the exit code rather than discarding it. `canRead()` alone is DAC-only and blind to
-            // SELinux policy; a non-zero exit is the more direct signal that the ownership transfer failed.
-            // Both signals are checked: a zero exit but an unreadable file is also a failure.
+            // Both the exit code and `canRead()` are checked, and neither subsumes the other.
+            // `canRead()` is `access(2)`, which goes through `inode_permission` and so through the
+            // SELinux hook as well as the DAC check — it is not blind to policy, and an earlier comment
+            // here claiming that was simply wrong. What it *is* blind to is a `chown` that never ran:
+            // the file is Thor-readable in the (impossible-today, cheap-to-keep) case where it was
+            // already ours, so a silent failure of the ownership transfer would pass. Hence both.
             val (chownExit, _) = systemRepository.executeShellCommand(chown).getOrElse {
                 Logger.e(TAG, "chown of ${out.name} failed", it)
                 withContext(ioDispatcher) { out.delete() }

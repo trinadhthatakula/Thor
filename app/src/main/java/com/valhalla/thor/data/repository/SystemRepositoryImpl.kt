@@ -18,6 +18,7 @@ import com.valhalla.thor.domain.model.PrivilegeMode
 import com.valhalla.thor.domain.model.capabilityProbeCommand
 import com.valhalla.thor.domain.model.classSizeCommand
 import com.valhalla.thor.domain.model.dataClassRoot
+import com.valhalla.thor.domain.model.measuredExclusions
 import com.valhalla.thor.domain.model.parseCapabilityProbe
 import com.valhalla.thor.domain.model.parseClassSize
 import com.valhalla.thor.domain.repository.AppDataProbe
@@ -351,7 +352,12 @@ class SystemRepositoryImpl(
         val externalRoot = Environment.getExternalStorageDirectory()?.absolutePath.orEmpty()
         val root = dataClassRoot(dataClass, packageName, thorUserId, externalRoot)
             ?: return DataClassSize.Undetermined
-        val command = classSizeCommand(root) ?: return DataClassSize.Undetermined
+        // The exclusions are not an optimisation. This number is shown as the class size *and* is what
+        // the space check refuses on, so measuring a cache the archive then drops refuses a backup that
+        // would have fitted. `measuredExclusions` derives them from the same constant the backup filter
+        // uses, so the two cannot drift.
+        val command = classSizeCommand(root, measuredExclusions(dataClass))
+            ?: return DataClassSize.Undetermined
         return executeShellCommand(command).fold(
             onSuccess = { (exitCode, output) -> parseClassSize(exitCode, output) },
             onFailure = { DataClassSize.Undetermined }

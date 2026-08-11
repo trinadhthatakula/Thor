@@ -54,7 +54,17 @@ internal interface AppDataArchiveGateway {
      */
     suspend fun forceStop(packageName: String)
 
-    /** `ls -A` the class root and run the reply through `filterBackupEntries`. */
+    /**
+     * `ls -A` the class root, run the reply through `filterBackupEntries`, then verify the survivors
+     * exist before returning them.
+     *
+     * Two round trips, not one: the reply is line-split, so a filename containing a line break arrives
+     * as two names that both look real. The second trip is what turns those into
+     * [com.valhalla.thor.domain.model.ArchiveSkip] rows instead of `tar` operands that do not resolve.
+     *
+     * [ClassEntries.rootAbsent] means *absent or unreadable* — the two are one answer here because the
+     * implementation cannot tell them apart, and the caller's warning string says both.
+     */
     suspend fun listClass(packageName: String, dataClass: DataClass): ClassEntries
 
     /**

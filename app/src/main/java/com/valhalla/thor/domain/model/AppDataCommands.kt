@@ -19,8 +19,25 @@ package com.valhalla.thor.domain.model
 /** Printed on a probe's success path. */
 const val THOR_OK = "THOR_OK"
 
-/** Printed when the directory being measured or listed does not exist at all. */
-const val THOR_ABSENT = "THOR_ABSENT"
+/**
+ * The exit status [classSizeCommand] uses to say *the directory is not there*.
+ *
+ * **Out of band on purpose.** The marker this replaced (`THOR_ABSENT`, printed on stdout) shared a
+ * channel with text the app being backed up chooses: a file called `THOR_ABSENT` in a class root made
+ * the listing read as "absent" and dropped a whole storage class from the archive, and `du` echoes the
+ * root path — which carries the package name — into the very text the size parser searched. An exit
+ * status cannot be forged by a filename, so the collision is designed out rather than defended
+ * against.
+ *
+ * 44 is arbitrary but not free: it has to be a value neither `du` nor the shell produces. POSIX
+ * utilities report failure as 1 or 2, `126`/`127` are the shell's own "cannot execute", and `128+n` is
+ * a signal death, so the free range is 3–125. Anything not 0 and not this is [DataClassSize.Undetermined].
+ *
+ * The command that raises it wraps the `exit` in a **subshell**. Thor's root channel is a long-lived
+ * shell (Odin keeps one `su` session), so a bare `exit` would terminate the session rather than the
+ * command; `( … exit 44 )` exits the subshell and hands 44 to the caller as `$?`.
+ */
+const val THOR_ABSENT_EXIT = 44
 
 /**
  * Echoed *into the listing stream* when `tar` cannot list an archive Thor is about to extract.
@@ -65,16 +82,46 @@ internal fun isQuotableAbsolutePath(path: String): Boolean =
  * - **`/` and bare top-level directories**: `swapStagedEntriesCommand("/")` would delete the device
  *   root filesystem.
  *
- * The minimum segment count is 2: CE/DE roots look like `/data/user/0/<pkg>` (4 segments). A path
- * with only one segment — `/data` — is still a system directory the command must not touch.
+ * **The minimum segment count is 4, which is the shallowest root any caller can legitimately
+ * produce.** Every shorter path names a directory whose *children* belong to the system or to other
+ * apps, and every command guarded by this predicate deletes or re-owns exactly those children:
+ *
+ * | Path | Segments | What `swapStagedEntriesCommand` would delete |
+ * |---|---|---|
+ * | `/` | 0 | the device |
+ * | `/data` | 1 | every data partition tree |
+ * | `/data/user`, `/data/user_de`, `/data/media` | 2 | every user's entire data tree |
+ * | `/data/user/0` | 3 | every app's data for that user |
+ * | `/data/user/0/<pkg>` | 4 | that one app's data — the intended target |
+ *
+ * The two external roots are deeper still: `<externalStorageDir>/Android/data/<pkg>` is 4 segments
+ * with the shortest real storage root (`/sdcard`) and 6 with `/storage/emulated/0`. So 4 refuses
+ * every system tree above without refusing anything [dataClassRoot] builds.
+ *
+ * A count is a proxy and it is deliberately the *only* rule here: an allow-list of prefixes would
+ * have to know every OEM's storage root, and `..` is already refused, so nothing can climb back out
+ * of a 4-segment path into a 2-segment one.
  */
 private fun isNormalisedRoot(root: String): Boolean {
     if (!isQuotableAbsolutePath(root)) return false
     val segments = root.split('/').filter { it.isNotEmpty() }
-    return segments.size >= 2 && segments.none { it == ".." }
+    return segments.size >= MIN_ROOT_SEGMENTS && segments.none { it == ".." }
 }
 
-/** True when [name] is safe as a quoted `tar` operand. */
+/** See [isNormalisedRoot]'s table: `/data/user/0/<pkg>` is the shallowest legitimate root. */
+private const val MIN_ROOT_SEGMENTS = 4
+
+/**
+ * True when [name] is safe as a quoted `tar` operand.
+ *
+ * Protects [tarCreateCommand]'s `entries`, [verifyEntriesCommand]'s `entries` and
+ * [classSizeCommand]'s `excludedChildren` — the three places a name Thor did not choose is
+ * interpolated into a command. The `'\n'` clause is **not** dead: a listing is line-split before it
+ * reaches [filterBackupEntries], so a name arriving from there can never hold one, but nothing stops
+ * a future caller passing a name from somewhere that is not line-split, and this is the guard that
+ * would catch it. (What happens to a filename that *does* contain a newline is
+ * [verifyEntriesCommand]'s subject, not this one's.)
+ */
 private fun isQuotableEntryName(name: String): Boolean =
     name.isNotEmpty() &&
         !name.startsWith('-') &&
@@ -138,51 +185,150 @@ internal fun capabilityProbeCommand(thorPackageName: String, userId: Int): Strin
  * run nothing has not proved a capability.
  */
 internal fun parseCapabilityProbe(exitCode: Int, output: String?): Boolean =
-    exitCode == 0 && output?.contains(THOR_OK) == true
+    exitCode == 0 && output?.lineSequence()?.any { it.trim() == THOR_OK } == true
 
 /**
- * `du` for the sizing UI, with an existence test in front of it.
+ * `du` for the sizing UI: the class root, minus every child the archive will not pack.
+ *
+ * **The measurement has to exclude what the archive excludes.** The same number is shown as the
+ * class size *and* drives §7.4's staging-space refusal, so counting a 3 GB browser cache that
+ * [filterBackupEntries] then drops refuses a backup of 20 MB of real data. [excludedChildren] is
+ * therefore the caller's copy of that filter — see [measuredExclusions], which derives it from the
+ * same constant the filter uses.
+ *
+ * Shape of the reply, and why it is in this order:
+ *
+ * ```
+ * ( [ -d ROOT ] || exit 44 ; [ -e ROOT/cache ] && du -s -k ROOT/cache ; … ; du -s -k ROOT )
+ * ```
+ *
+ * - The excluded children come **first** and the root **last**, so [parseClassSize] can keep reading
+ *   the total off the last numeric line. That is the rule the single-line version already used, and it
+ *   is what makes a shell banner printed *before* the output harmless.
+ * - Each child is guarded by `[ -e ]` because `du` exits nonzero on a missing operand and a missing
+ *   `no_backup` is the common case, not an error. `-e`, not `-d`: an app that made `cache` a regular
+ *   file still has it dropped from the archive, so it must be dropped from the measurement too.
+ * - `du` of the root is last and unguarded, so its failure is the subshell's status and the caller
+ *   reads [DataClassSize.Undetermined] rather than a wrong number.
+ * - The whole thing is one subshell, so [THOR_ABSENT_EXIT]'s `exit` cannot kill a long-lived root
+ *   shell.
+ *
+ * The native-library link is **not** subtracted even though the archive drops it: `du` does not follow
+ * a symlink operand, so `lib` contributes nothing to the root's total and subtracting it would be a
+ * no-op at best and an under-count on a build that does follow. See [PLATFORM_ENTRIES].
  *
  * POSIX `-k`, never `-b`: `-b` is a GNU extension and is not safe to assume on toybox.
  */
-internal fun classSizeCommand(root: String): String? {
+internal fun classSizeCommand(root: String, excludedChildren: List<String>): String? {
     if (!isQuotableAbsolutePath(root)) return null
-    return "if [ ! -d '$root' ]; then echo $THOR_ABSENT; else du -s -k '$root' 2>/dev/null; fi"
+    if (excludedChildren.any { !isQuotableEntryName(it) }) return null
+    // `buildString`, not `joinToString(transform)`: `buildString` is inline, so no synthetic
+    // `classSizeCommand$lambda$N` method is emitted. One would be, with a `String` first parameter and
+    // "Command" in its name — which is exactly what `AppDataCommandsTest`'s reflective sweep picks up,
+    // and it then invokes the *lambda* instead of the builder and reads the fragment it returns as an
+    // unguarded command. `tarCreateCommand` avoids the same trap the same way.
+    val exclusions = buildString {
+        for (child in excludedChildren) {
+            append("[ -e '$root/$child' ] && du -s -k '$root/$child' 2>/dev/null ; ")
+        }
+    }
+    return "( [ -d '$root' ] || exit $THOR_ABSENT_EXIT ; ${exclusions}du -s -k '$root' 2>/dev/null )"
 }
 
 /**
- * The marker is tested **before** the exit code, and the exit code before the number.
+ * The exit status is read **before** any text, and the last number is the total.
  *
  * An absent root reported as [DataClassSize.Undetermined] puts "size unknown" beside a class that
  * holds nothing; an unreadable root reported as `Known(0)` is how a user deselects data they have.
  * Both directions are wrong, so the tri-state is decided in this order and nowhere else.
+ *
+ * Absence arrives as [THOR_ABSENT_EXIT] and not as a word in the output, because the output carries
+ * the root path — which carries the package name — and a package name may legally contain any marker
+ * text this file could invent (see `PACKAGE_NAME`, which allows `_` and uppercase).
+ *
+ * Every numeric line *before* the last is a child [classSizeCommand] was told to exclude, so it is
+ * subtracted. A non-numeric line is ignored rather than treated as a failure: that is what keeps a
+ * `su` banner from being read as a size. The result is clamped at zero — a hard-linked file counted in
+ * both a child and the root would otherwise produce a negative size.
  */
 internal fun parseClassSize(exitCode: Int, output: String?): DataClassSize {
-    val text = output ?: return DataClassSize.Undetermined
-    if (text.contains(THOR_ABSENT)) return DataClassSize.Empty
+    if (exitCode == THOR_ABSENT_EXIT) return DataClassSize.Empty
     if (exitCode != 0) return DataClassSize.Undetermined
-    val kilobytes = text.lineSequence()
+    val text = output ?: return DataClassSize.Undetermined
+    val numbers = text.lineSequence()
         .map { it.trim() }
-        .lastOrNull { it.isNotEmpty() }
-        ?.takeWhile { it.isDigit() }
-        ?.toLongOrNull()
-        ?: return DataClassSize.Undetermined
-    return DataClassSize.Known(kilobytes * 1024)
+        .filter { it.isNotEmpty() }
+        .map { it.takeWhile { char -> char.isDigit() }.toLongOrNull() }
+        .toList()
+    val total = numbers.lastOrNull() ?: return DataClassSize.Undetermined
+    val excluded = numbers.dropLast(1).filterNotNull().sum()
+    return DataClassSize.Known((total - excluded).coerceAtLeast(0L) * 1024)
 }
 
-/** `ls -A` the class root, with the same absent marker the size probe uses. */
+/**
+ * `ls -A` the class root.
+ *
+ * No marker and no `[ -d ]` test: `ls` on a directory that is not there exits nonzero, and the caller
+ * already reads any nonzero exit as "absent or unreadable" — which is the same sentence its warning
+ * says. Printing a marker instead put Thor's control word in the one stream that carries filenames the
+ * app chose, and a file called `THOR_ABSENT` then dropped the whole class from the archive.
+ *
+ * `2>/dev/null` for the reason [classSizeCommand] has always carried it: `RootSystemGateway`
+ * substitutes stderr for a blank stdout, so on an **empty** class root any shell chatter would be
+ * handed to [filterBackupEntries] and parsed as filenames.
+ */
 internal fun listClassEntriesCommand(root: String): String? {
     if (!isQuotableAbsolutePath(root)) return null
-    return "if [ ! -d '$root' ]; then echo $THOR_ABSENT; else ls -A '$root'; fi"
+    return "ls -A '$root' 2>/dev/null"
 }
 
 /** `cache`, `code_cache`, `no_backup` — volatile, and restoring them helps nothing. */
 private val VOLATILE_DIRS = setOf("cache", "code_cache", "no_backup")
 
 /**
+ * Top-level entries the **platform** puts in an app's data directory that are not the app's data.
+ *
+ * `lib` is the symlink `installd` points at `/data/app/~~<hash>==/<pkg>-<hash>==/lib/<abi>`. Its
+ * target is **absolute**, and that is what makes it a correctness bug rather than a size one:
+ * `tarCreateCommand` passes no `-h`, so tar stores it as a symlink member carrying that absolute link
+ * name, and [ARCHIVE_MEMBER_REFUSAL_PATTERN]'s `(^| )/` alternative then refuses the **whole class**
+ * at restore. Thor was writing archives its own restore rejects, for every app that has this link —
+ * and CE is the class holding the databases the feature exists for.
+ *
+ * Excluded rather than dereferenced: `-h` would pack the app's `.so` files, which the reinstall
+ * already provides, and would restore real files where a symlink belongs. AOSP's own
+ * `FullBackup.backupToTar` excludes `nativeLibraryDir` for the same reason it excludes the three in
+ * [VOLATILE_DIRS].
+ *
+ * **Internal classes only.** `installd` creates this link under `/data/user*` only; a `lib` directory
+ * under `Android/data/<pkg>` would be the app's own, and dropping it would be silent data loss.
+ *
+ * This closes the class *at the root of the data directory*. It does not close the general one: a
+ * symlink nested inside a kept subtree whose target is absolute or contains `..` is still packed and
+ * still refused at restore, in whole, for that class. Fixing that needs the backup half to read what
+ * it wrote (`tar -tv` over the staged tar, through the same pattern) — recorded as a follow-up rather
+ * than done here, because it is a round trip per class and a design decision about what to do when it
+ * fires.
+ */
+private val PLATFORM_ENTRIES = setOf("lib")
+
+/**
+ * Every top-level entry [filterBackupEntries] drops for [dataClass], for a caller that needs the same
+ * list — [classSizeCommand] is the one that does.
+ *
+ * Excludes [PLATFORM_ENTRIES] deliberately: see [classSizeCommand] for why the library link is
+ * dropped from the archive but not subtracted from the measurement.
+ */
+internal fun measuredExclusions(dataClass: DataClass): List<String> =
+    if (dataClass.excludesVolatileDirs) VOLATILE_DIRS.sorted() else emptyList()
+
+/**
  * What survived the filter, what was refused, and whether the root was there at all.
  *
  * [rootAbsent] and an empty [kept] both produce no member, but only the first is worth a warning.
+ *
+ * [filterBackupEntries] never sets [rootAbsent]: absence is the listing command's **exit status**, not
+ * a word in its output, so only the caller that has the status can decide it.
  */
 internal data class ClassEntries(
     val kept: List<String>,
@@ -190,23 +336,40 @@ internal data class ClassEntries(
     val rootAbsent: Boolean,
 )
 
+/** Why an entry the shell listed is not in the archive. Pinned as constants so tests can name them. */
+internal const val SKIP_UNQUOTABLE = "name cannot be passed to the shell safely"
+
+/** See [filterBackupEntries]: Thor's own staging directory, left behind by an interrupted restore. */
+internal const val SKIP_STAGING_DIR =
+    "left by an interrupted restore of this app; it is Thor's staging directory, not app data"
+
+/** See [applyEntryVerification]. */
+internal const val SKIP_LISTED_BUT_ABSENT =
+    "listed by the shell but not present when the archive was written — a name containing a line " +
+        "break appears this way, as does a file the app deleted mid-backup"
+
 /**
  * Turn one `ls -A` reply into the operands `tar` will be given.
  *
  * Filtering in Kotlin rather than with `tar --exclude` is deliberate: `--exclude` bets on toybox's
  * option surface, where this is a pure `String -> ClassEntries` function that a JVM test pins down.
  *
- * An excluded volatile directory is dropped **silently** — it was never going to be packed, and
- * three rows on every archive would bury the entries Thor actually refused. An entry Thor cannot
- * quote is recorded in [ClassEntries.skipped] and reaches the header, because a filename Thor
- * dropped is something the user is entitled to know about.
+ * **What is dropped silently, and what is recorded.** A volatile directory ([VOLATILE_DIRS]) and the
+ * platform's native-library link ([PLATFORM_ENTRIES]) are dropped without a row: they are on every
+ * app, they were never going to be packed, and rows for them on every archive would bury the entries
+ * Thor actually refused. Everything else that is dropped gets an [ArchiveSkip] and reaches the header,
+ * because a filename Thor dropped is something the user is entitled to know about — including the
+ * staging directory, which is *not* routine: it exists only after a restore died, and it can hold the
+ * only copy of the half that was never swapped in.
+ *
+ * **What this function cannot see.** The reply is line-split before it arrives, so a filename
+ * containing a line break has already become two lines and reaches here as two plausible names. The
+ * `'\n'` clause in [isQuotableEntryName] therefore never fires for that name, and no rule written here
+ * could make it fire. That case is caught after the fact by [verifyEntriesCommand] and
+ * [applyEntryVerification]; this KDoc says so rather than claiming a completeness the split destroyed.
  */
 internal fun filterBackupEntries(dataClass: DataClass, listing: String): ClassEntries {
     val lines = listing.lines().map { it.removeSuffix("\r") }
-    if (lines.any { it.trim() == THOR_ABSENT }) {
-        return ClassEntries(kept = emptyList(), skipped = emptyList(), rootAbsent = true)
-    }
-
     val kept = mutableListOf<String>()
     val skipped = mutableListOf<ArchiveSkip>()
     for (name in lines) {
@@ -218,14 +381,20 @@ internal fun filterBackupEntries(dataClass: DataClass, listing: String): ClassEn
         // between extracting and swapping, and packing it would produce an archive that
         // ARCHIVE_MEMBER_REFUSAL_PATTERN refuses **in whole** — one interrupted restore would make
         // every later backup of that app permanently unrestorable. Unconditional, unlike VOLATILE_DIRS:
-        // this is not a per-class choice.
-        if (name == STAGING_DIR_NAME) continue
+        // this is not a per-class choice. It is *recorded*, unlike the routine exclusions, because at
+        // this moment it holds data the class root does not: the entries the dead restore extracted but
+        // never swapped in. An archive that omits them without saying so reads as a complete backup.
+        if (name == STAGING_DIR_NAME) {
+            skipped += ArchiveSkip(dataClass = dataClass.id, name = name, reason = SKIP_STAGING_DIR)
+            continue
+        }
         if (dataClass.excludesVolatileDirs && name in VOLATILE_DIRS) continue
+        if (dataClass.isInternal && name in PLATFORM_ENTRIES) continue
         if (!isQuotableEntryName(name)) {
             skipped += ArchiveSkip(
                 dataClass = dataClass.id,
                 name = name,
-                reason = "name cannot be passed to the shell safely",
+                reason = SKIP_UNQUOTABLE,
             )
             continue
         }
@@ -234,6 +403,69 @@ internal fun filterBackupEntries(dataClass: DataClass, listing: String): ClassEn
     // Sorted so two runs over the same directory produce the same command, which is what makes a
     // failure reproducible.
     return ClassEntries(kept = kept.sorted(), skipped = skipped, rootAbsent = false)
+}
+
+/**
+ * Ask the shell which of [entries] is actually there, so a name that only *looks* like a file is not
+ * handed to `tar`.
+ *
+ * The case this exists for: `ls -A`'s reply is line-split, so a file called `"report\n2024.pdf"`
+ * arrives as `report` and `2024.pdf`. Both pass every filter, neither exists, and `tar` is then given
+ * two operands it cannot find. Without this step the outcome is a backup that is *missing a file* and
+ * says nothing, reported through `tar`'s exit 1 as "files that changed while being read" — a cause
+ * that is not the cause.
+ *
+ * Shape: `[ -e 'R/n' ] || [ -L 'R/n' ] || echo 'n' ; …`, one clause per entry, so the reply names only
+ * the entries that are missing. `-L` as well as `-e` because `-e` is false for a **dangling** symlink,
+ * which is a real member `tar` can and should pack.
+ *
+ * Returns null for an empty [entries] — there is nothing to verify, and the caller has nothing to pack
+ * either.
+ */
+internal fun verifyEntriesCommand(root: String, entries: List<String>): String? {
+    if (!isQuotableAbsolutePath(root)) return null
+    if (entries.isEmpty()) return null
+    if (entries.any { !isQuotableEntryName(it) }) return null
+    // Inline `buildString` rather than a `joinToString` transform, for the reason spelled out in
+    // [classSizeCommand]: a non-inline lambda here becomes a synthetic method the reflective sweep
+    // mistakes for a command builder.
+    return buildString {
+        for (name in entries) {
+            if (isNotEmpty()) append(" ; ")
+            append("[ -e '$root/$name' ] || [ -L '$root/$name' ] || echo '$name'")
+        }
+    }
+}
+
+/**
+ * Fold [verifyEntriesCommand]'s reply back into [listing].
+ *
+ * **Fails open.** A non-zero [exitCode] or a null [output] returns [listing] untouched: the
+ * verification is a *refinement*, and a channel that could not answer must not be able to empty an
+ * archive. The only thing lost in that case is the row.
+ *
+ * Only names already in [ClassEntries.kept] are removed. The reply arrives on the same stdout as any
+ * shell chatter, and `RootSystemGateway` substitutes stderr for a blank stdout, so an unfiltered read
+ * would let a banner line delete an entry from the backup. Intersecting with what was sent makes the
+ * worst case a no-op.
+ */
+internal fun applyEntryVerification(
+    dataClass: DataClass,
+    listing: ClassEntries,
+    exitCode: Int,
+    output: String?,
+): ClassEntries {
+    if (exitCode != 0) return listing
+    val text = output ?: return listing
+    val reported = text.lines().map { it.removeSuffix("\r") }.toSet()
+    val missing = listing.kept.filter { it in reported }
+    if (missing.isEmpty()) return listing
+    return listing.copy(
+        kept = listing.kept - missing.toSet(),
+        skipped = listing.skipped + missing.map { name ->
+            ArchiveSkip(dataClass = dataClass.id, name = name, reason = SKIP_LISTED_BUT_ABSENT)
+        },
+    )
 }
 
 /**

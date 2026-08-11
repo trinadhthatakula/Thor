@@ -84,11 +84,12 @@ class AppDataCommandsTest {
     fun `the size probe tests for the directory before measuring it`() {
         // `du` on a missing path exits nonzero, which is indistinguishable from a failed probe —
         // and a legitimately absent class rendered as "size unknown" is a lie in the other
-        // direction. The marker separates the two.
-        val command = classSizeCommand("/data/user/0/$pkg")!!
+        // direction. A dedicated exit status separates the two, out of band from any text an app
+        // could choose.
+        val command = classSizeCommand("/data/user/0/$pkg", emptyList())!!
 
-        assertTrue(command, command.startsWith("if [ ! -d '/data/user/0/$pkg' ]"))
-        assertTrue(command, command.contains("echo $THOR_ABSENT"))
+        assertTrue(command, command.startsWith("( [ -d '/data/user/0/$pkg' ] || exit "))
+        assertTrue(command, command.contains("exit $THOR_ABSENT_EXIT"))
         // POSIX -k. `du -b` is a GNU extension and is not safe to assume on toybox.
         assertTrue(command, command.contains("du -s -k '/data/user/0/$pkg'"))
         assertEquals(false, command.contains("-b"))
@@ -96,10 +97,8 @@ class AppDataCommandsTest {
 
     @Test
     fun `an absent class root is Empty, not Undetermined`() {
-        assertEquals(DataClassSize.Empty, parseClassSize(0, THOR_ABSENT))
-        // The `if` branch exits 0, but a gateway that reports otherwise must not turn the marker
-        // into "unknown".
-        assertEquals(DataClassSize.Empty, parseClassSize(1, "$THOR_ABSENT\n"))
+        assertEquals(DataClassSize.Empty, parseClassSize(THOR_ABSENT_EXIT, null))
+        assertEquals(DataClassSize.Empty, parseClassSize(THOR_ABSENT_EXIT, "\n"))
     }
 
     @Test
@@ -138,8 +137,11 @@ class AppDataCommandsTest {
             val entries = filterBackupEntries(dataClass, "databases\n$STAGING_DIR_NAME\nfiles")
 
             assertEquals(dataClass.id, listOf("databases", "files"), entries.kept)
-            // Thor's own control directory, not something Thor refused of the user's — so no row.
-            assertEquals(dataClass.id, emptyList<ArchiveSkip>(), entries.skipped)
+            // Recorded, unlike the routine volatile-directory exclusions. Its presence means a restore
+            // died mid-swap, so at this moment it holds entries the class root itself does not: an
+            // archive that omitted them silently would read as a complete backup of the app.
+            assertEquals(dataClass.id, 1, entries.skipped.size)
+            assertEquals(dataClass.id, STAGING_DIR_NAME, entries.skipped.single().name)
         }
     }
 
@@ -168,10 +170,14 @@ class AppDataCommandsTest {
     }
 
     @Test
-    fun `an absent root is distinguished from an empty one`() {
-        assertTrue(filterBackupEntries(DataClass.CE, THOR_ABSENT).rootAbsent)
+    fun `the filter never declares a root absent, because it cannot know`() {
+        // Absence is the listing command's exit status now, not a word in its output. It has to be:
+        // the only channel a marker could travel on is the one carrying filenames the app being
+        // backed up chose, and a file called THOR_ABSENT used to drop the whole class from the
+        // archive. Nothing this function is given can set the flag.
         assertEquals(false, filterBackupEntries(DataClass.CE, "").rootAbsent)
-        // Both produce no member at all, but only one of them is worth a warning.
+        assertEquals(false, filterBackupEntries(DataClass.CE, "THOR_ABSENT").rootAbsent)
+        assertEquals(listOf("THOR_ABSENT"), filterBackupEntries(DataClass.CE, "THOR_ABSENT").kept)
         assertEquals(emptyList<String>(), filterBackupEntries(DataClass.CE, "").kept)
     }
 
